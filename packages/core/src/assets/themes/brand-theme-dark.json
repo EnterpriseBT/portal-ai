@@ -55,9 +55,15 @@
     "fontWeightMedium": 500,
     "fontWeightBold": 700,
     "h1": {
+      "fontSize": "2.5rem",
+      "fontWeight": 700,
+      "lineHeight": 1.2,
       "fontFamily": "'Playfair Display', 'Noto Sans', serif"
     },
     "h2": {
+      "fontSize": "2rem",
+      "fontWeight": 700,
+      "lineHeight": 1.25,
       "fontFamily": "'Playfair Display', 'Noto Sans', serif"
     },
     "h3": {
@@ -72,6 +78,8 @@
     "h6": {
       "fontFamily": "'Playfair Display', 'Noto Sans', serif"
     },
+    "body1": { "fontSize": "1rem", "lineHeight": 1.5 },
+    "body2": { "fontSize": "0.875rem", "lineHeight": 1.43 },
     "code": {
       "fontFamily": "'Cutive Mono', 'Courier New', monospace"
     },

@@ -21,7 +21,7 @@
     "build:ts": "tsc --project tsconfig.build.json",
     "build:scss": "sass src/assets/scss:dist/styles --no-source-map",
     "build:assets": "cp -r src/assets/fonts dist/fonts && cp -r src/assets/themes dist/themes && mkdir -p dist/assets/icons && cp -r src/assets/icons dist/assets/",
-    "dev": "storybook dev -p 6006 --no-open",
+    "storybook": "storybook dev -p 6006 --no-open",
     "build-storybook": "storybook build",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",

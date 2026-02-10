@@ -1,0 +1,30 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`PublicLayout Component should match snapshot 1`] = `
+<div
+  class="MuiBox-root css-s92abg"
+  data-testid="public-layout"
+>
+  <header
+    class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation4 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-ptdwpq-MuiPaper-root-MuiAppBar-root"
+    style="--Paper-shadow: 0px 2px 4px -1px rgba(0,0,0,0.2),0px 4px 5px 0px rgba(0,0,0,0.14),0px 1px 10px 0px rgba(0,0,0,0.12);"
+  >
+    <div
+      class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-1ygil4i-MuiToolbar-root"
+    >
+      <h1
+        class="MuiTypography-root MuiTypography-h1 css-10l7o3s-MuiTypography-root"
+      >
+        My App
+      </h1>
+    </div>
+  </header>
+  <div
+    class="MuiBox-root css-1ob3z7a"
+  >
+    <div>
+      Test Content
+    </div>
+  </div>
+</div>
+`;
