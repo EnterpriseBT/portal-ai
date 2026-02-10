@@ -6,8 +6,10 @@ RUN apt-get update && apt-get install -y \
     bash-completion \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable git bash completion
-RUN echo 'source /etc/bash_completion.d/git' >> ~/.bashrc
+# Enable bash completion (git completion is included automatically)
+RUN echo 'if [ -f /usr/share/bash-completion/bash_completion ]; then' >> ~/.bashrc && \
+    echo '  . /usr/share/bash-completion/bash_completion' >> ~/.bashrc && \
+    echo 'fi' >> ~/.bashrc
 
 # Set working directory
 WORKDIR /worspace
