@@ -146,7 +146,7 @@ const ThemeShowcase = () => {
             <Typography variant="caption">
               Caption: Lorem ipsum dolor sit amet.
             </Typography>
-            <Typography variant='monospace'>
+            <Typography variant="monospace">
               Monospace: Lorem ipsum dolor sit amet.
             </Typography>
           </Stack>

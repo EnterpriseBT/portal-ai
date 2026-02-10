@@ -268,7 +268,7 @@ describe("ThemeProvider Component", () => {
               {theme.typography ? "true" : "false"}
             </div>
             <div data-testid="has-spacing">
-              {!!theme.spacing ? "true" : "false"}
+              {typeof theme.spacing !== "undefined" ? "true" : "false"}
             </div>
           </div>
         );
@@ -318,7 +318,7 @@ describe("ThemeProvider Component", () => {
               {context.themeName ? "true" : "false"}
             </div>
             <div data-testid="has-setThemeName">
-              {!!context.setThemeName ? "true" : "false"}
+              {typeof context.setThemeName !== "undefined" ? "true" : "false"}
             </div>
           </div>
         );

@@ -9,7 +9,7 @@ export interface IconButtonProps extends MuiIconButtonProps {
 }
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
-  ({ children, icon, ...props }, ref) => {
+  ({ icon, ...props }, ref) => {
     return (
       <MuiIconButton ref={ref} {...props}>
         <Icon name={icon} />
