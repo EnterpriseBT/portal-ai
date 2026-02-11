@@ -2,6 +2,30 @@ import type { Preview } from "@storybook/react";
 import { type ThemeName } from "@mcp-ui/core";
 import { AppProvider } from "../src/App";
 
+// Disable localStorage in Storybook to prevent state persistence between stories
+if (typeof window !== "undefined") {
+  const noopStorage: Storage = {
+    length: 0,
+    clear: () => {},
+    getItem: () => null,
+    key: () => null,
+    removeItem: () => {},
+    setItem: () => {},
+  };
+
+  Object.defineProperty(window, "localStorage", {
+    value: noopStorage,
+    writable: false,
+    configurable: true,
+  });
+
+  Object.defineProperty(window, "sessionStorage", {
+    value: noopStorage,
+    writable: false,
+    configurable: true,
+  });
+}
+
 const preview: Preview = {
   parameters: {
     controls: {

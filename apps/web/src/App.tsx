@@ -11,12 +11,16 @@ import { useStorage } from "./utils";
 
 export interface AppProviderProps {
   children: React.ReactNode;
+  defaultTheme?: ThemeName;
 }
 
-export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
+export const AppProvider: React.FC<AppProviderProps> = ({
+  children,
+  defaultTheme = "brand",
+}) => {
   const { value: theme } = useStorage<ThemeName>({
     key: "mcp-ui-theme",
-    defaultValue: "brand",
+    defaultValue: defaultTheme,
     storageType: "local",
   });
 
