@@ -34,15 +34,3 @@ export const CustomMessage: Story = {
     message: "Authentication failed. Please try again.",
   },
 };
-
-export const NetworkError: Story = {
-  args: {
-    message: "Network error. Please check your connection.",
-  },
-};
-
-export const GenericError: Story = {
-  args: {
-    message: "Something went wrong. Please contact support.",
-  },
-};

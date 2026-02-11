@@ -17,6 +17,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import MenuIcon from "@mui/icons-material/Menu";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
+import GoogleIcon from "@mui/icons-material/Google";
 import HeartIcon from "./assets/icons/heart.svg";
 
 export enum IconName {
@@ -38,6 +39,7 @@ export enum IconName {
   MoreVert = "more_vert",
   Heart = "heart",
   Logo = "logo",
+  Google = "google",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -82,6 +84,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <MenuIcon ref={ref} {...props} />;
       case IconName.MoreVert:
         return <MoreVertIcon ref={ref} {...props} />;
+      case IconName.Google:
+        return <GoogleIcon ref={ref} {...props} />;
       case IconName.Heart:
         return (
           <MuiSvgIcon ref={ref} {...props}>

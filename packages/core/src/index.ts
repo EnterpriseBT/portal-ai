@@ -7,4 +7,13 @@ export * from "./IconButton";
 
 /** Material UI */
 
-export { Box, AppBar, Toolbar, CircularProgress } from "@mui/material";
+export {
+  Box,
+  AppBar,
+  Toolbar,
+  CircularProgress,
+  Paper,
+  Container,
+  Stack,
+  Divider,
+} from "@mui/material";

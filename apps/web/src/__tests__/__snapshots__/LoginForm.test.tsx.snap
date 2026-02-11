@@ -1,0 +1,65 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LoginFormUI Component should match snapshot 1`] = `
+<div
+  class="MuiContainer-root MuiContainer-maxWidthSm css-zzzaw2-MuiContainer-root"
+>
+  <div
+    class="MuiBox-root css-1jvvll6"
+  >
+    <div
+      class="MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation3 css-zool2b-MuiPaper-root"
+      style="--Paper-shadow: 0px 3px 3px -2px rgba(0,0,0,0.2),0px 3px 4px 0px rgba(0,0,0,0.14),0px 1px 8px 0px rgba(0,0,0,0.12);"
+    >
+      <div
+        class="MuiStack-root css-v2woy3-MuiStack-root"
+      >
+        <div
+          class="MuiBox-root css-xi606m"
+        >
+          <h1
+            class="MuiTypography-root MuiTypography-h4 MuiTypography-gutterBottom css-1it4a80-MuiTypography-root"
+          >
+            Welcome
+          </h1>
+          <p
+            class="MuiTypography-root MuiTypography-body2 css-1wle3ir-MuiTypography-root"
+          >
+            Sign in to continue
+          </p>
+        </div>
+        <hr
+          class="MuiDivider-root MuiDivider-fullWidth css-1jpc804-MuiDivider-root"
+        />
+        <button
+          class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeLarge MuiButton-containedSizeLarge MuiButton-colorPrimary MuiButton-fullWidth MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeLarge MuiButton-containedSizeLarge MuiButton-colorPrimary MuiButton-fullWidth css-ci48m3-MuiButtonBase-root-MuiButton-root"
+          tabindex="0"
+          type="button"
+        >
+          <span
+            class="MuiButton-icon MuiButton-startIcon MuiButton-iconSizeLarge css-hev6se-MuiButton-startIcon"
+          >
+            <svg
+              aria-hidden="true"
+              class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1umw9bq-MuiSvgIcon-root"
+              data-testid="GoogleIcon"
+              focusable="false"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"
+              />
+            </svg>
+          </span>
+          Continue with Google
+        </button>
+        <span
+          class="MuiTypography-root MuiTypography-caption css-y42uos-MuiTypography-root"
+        >
+          By continuing, you agree to our Terms of Service and Privacy Policy
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+`;

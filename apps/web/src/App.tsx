@@ -3,7 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./router";
 import { ThemeName, ThemeProvider } from "@mcp-ui/core";
-import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
+import { Auth0Provider } from "@auth0/auth0-react";
 
 import "@mcp-ui/core/styles";
 import { queryClient } from "./client";
