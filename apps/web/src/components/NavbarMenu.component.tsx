@@ -51,7 +51,14 @@ export const NavbarMenuUI: React.FC<NavbarMenuUIProps> = ({
           borderRadius: `${theme.shape.borderRadius}px`,
         })}
       >
-        {label && <Typography variant="body2">{label}</Typography>}
+        {label && (
+          <Typography
+            variant="body2"
+            sx={{ display: { xs: "none", sm: "block" } }}
+          >
+            {label}
+          </Typography>
+        )}
         <Avatar
           src={image}
           alt={label || "User"}
