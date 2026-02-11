@@ -9,7 +9,7 @@ exports[`Header Component should match snapshot 1`] = `
     class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-yg49xf-MuiToolbar-root"
   >
     <h4
-      class="MuiTypography-root MuiTypography-h4 css-f84ov1-MuiTypography-root"
+      class="MuiTypography-root MuiTypography-h4 css-1cwbpq2-MuiTypography-root"
     >
       MCP UI
     </h4>
