@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(timeout 30 npm run storybook:*)",
+      "Bash(npm run build-storybook:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

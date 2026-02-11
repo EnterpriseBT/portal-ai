@@ -1,14 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { LoadingPage } from "../pages/Loading.page";
+import { DashboardView } from "../views/Dashboard.view";
 
 const meta = {
-  title: "Pages/LoadingPage",
-  component: LoadingPage,
+  title: "Views/DashboardView",
+  component: DashboardView,
   parameters: {
     layout: "fullscreen",
   },
   tags: ["autodocs"],
-} satisfies Meta<typeof LoadingPage>;
+} satisfies Meta<typeof DashboardView>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

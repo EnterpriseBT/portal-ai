@@ -3,7 +3,6 @@
 exports[`PublicLayout Component should match snapshot 1`] = `
 <div
   class="MuiBox-root css-s92abg"
-  data-testid="public-layout"
 >
   <header
     class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation4 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-ptdwpq-MuiPaper-root-MuiAppBar-root"
@@ -12,15 +11,15 @@ exports[`PublicLayout Component should match snapshot 1`] = `
     <div
       class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-1ygil4i-MuiToolbar-root"
     >
-      <h1
-        class="MuiTypography-root MuiTypography-h1 css-10l7o3s-MuiTypography-root"
+      <h2
+        class="MuiTypography-root MuiTypography-h2 css-o2za6n-MuiTypography-root"
       >
         My App
-      </h1>
+      </h2>
     </div>
   </header>
   <div
-    class="MuiBox-root css-1ob3z7a"
+    class="MuiBox-root css-9eeetu"
   >
     <div>
       Test Content

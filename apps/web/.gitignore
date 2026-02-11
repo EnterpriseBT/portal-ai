@@ -28,3 +28,6 @@ dist-ssr
 
 # Storybook
 storybook-static
+
+# TanStack Router generated files
+src/routes/routeTree.gen.ts

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { PublicLayout } from "../layouts/Public.layout";
 
 describe("PublicLayout Component", () => {

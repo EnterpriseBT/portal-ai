@@ -1,34 +1,12 @@
 import React, { StrictMode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider, createRouter } from "@tanstack/react-router";
-import { routes } from "./router";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
+import { router } from "./router";
 import { ThemeName, ThemeProvider } from "@mcp-ui/core";
+import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 
 import "@mcp-ui/core/styles";
-
-// Create a new query client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60 * 1000, // 1 minute
-    },
-  },
-});
-
-// Create a new router instance
-const router = createRouter({
-  routeTree: routes,
-  context: {
-    queryClient,
-  },
-});
-
-// Register the router instance for type safety
-declare module "@tanstack/react-router" {
-  interface Register {
-    router: typeof router;
-  }
-}
+import { queryClient } from "./client";
 
 export interface AppProviderProps {
   defaultTheme: ThemeName;
@@ -41,11 +19,17 @@ export const AppProvider: React.FC<AppProviderProps> = ({
 }) => {
   return (
     <StrictMode>
-      <ThemeProvider defaultTheme={defaultTheme}>
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
-      </ThemeProvider>
+      <Auth0Provider
+        domain={import.meta.env.VITE_AUTH0_DOMAIN}
+        clientId={import.meta.env.VITE_AUTH0_CLIENT_ID}
+        authorizationParams={{ redirect_uri: window.location.origin }}
+      >
+        <ThemeProvider defaultTheme={defaultTheme}>
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        </ThemeProvider>
+      </Auth0Provider>
     </StrictMode>
   );
 };

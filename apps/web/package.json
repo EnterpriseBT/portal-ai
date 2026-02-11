@@ -18,6 +18,7 @@
     "test:ui": "NODE_OPTIONS=--experimental-vm-modules jest --watch --verbose=false"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.13.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mcp-ui/core": "*",
