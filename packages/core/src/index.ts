@@ -6,9 +6,9 @@ export * from "./Icon";
 export * from "./IconButton";
 
 /** Material UI */
-
 export {
   Box,
+  ButtonGroup,
   AppBar,
   Toolbar,
   CircularProgress,
@@ -16,4 +16,10 @@ export {
   Container,
   Stack,
   Divider,
+  Avatar,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  IconButton as BaseIconButton,
 } from "@mui/material";

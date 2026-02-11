@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PublicLayout } from "../layouts/Public.layout";
 import { DashboardView } from "../views/Dashboard.view";
 import { Authorized } from "../components/Authorized.component";
+import { AuthorizedLayout } from "../layouts/Authorized.layout";
 
 export const Route = createFileRoute("/")({
   component: DashboardRoute,
@@ -10,9 +10,9 @@ export const Route = createFileRoute("/")({
 export function DashboardRoute() {
   return (
     <Authorized>
-      <PublicLayout>
+      <AuthorizedLayout>
         <DashboardView />
-      </PublicLayout>
+      </AuthorizedLayout>
     </Authorized>
   );
 }

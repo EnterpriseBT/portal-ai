@@ -27,7 +27,6 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          minHeight: "100vh",
         }}
       >
         <Paper

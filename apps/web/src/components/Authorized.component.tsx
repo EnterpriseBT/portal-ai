@@ -4,6 +4,7 @@ import { ErrorView } from "../views/Error.view";
 import { LoadingView } from "../views/Loading.view";
 import React from "react";
 import { useAuth0 } from "@auth0/auth0-react";
+import { AuthorizedLayout } from "../layouts/Authorized.layout";
 
 export interface AuthorizedPageUIProps {
   loading: boolean;

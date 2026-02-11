@@ -18,13 +18,13 @@ exports[`AuthorizedUI Component Error State should render ErrorView when error i
       style="--Paper-shadow: 0px 2px 4px -1px rgba(0,0,0,0.2),0px 4px 5px 0px rgba(0,0,0,0.14),0px 1px 10px 0px rgba(0,0,0,0.12);"
     >
       <div
-        class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-1ygil4i-MuiToolbar-root"
+        class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-yg49xf-MuiToolbar-root"
       >
-        <h2
-          class="MuiTypography-root MuiTypography-h2 css-o2za6n-MuiTypography-root"
+        <h4
+          class="MuiTypography-root MuiTypography-h4 css-f84ov1-MuiTypography-root"
         >
-          My App
-        </h2>
+          MCP UI
+        </h4>
       </div>
     </header>
     <div
@@ -54,13 +54,13 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
       style="--Paper-shadow: 0px 2px 4px -1px rgba(0,0,0,0.2),0px 4px 5px 0px rgba(0,0,0,0.14),0px 1px 10px 0px rgba(0,0,0,0.12);"
     >
       <div
-        class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-1ygil4i-MuiToolbar-root"
+        class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-yg49xf-MuiToolbar-root"
       >
-        <h2
-          class="MuiTypography-root MuiTypography-h2 css-o2za6n-MuiTypography-root"
+        <h4
+          class="MuiTypography-root MuiTypography-h4 css-f84ov1-MuiTypography-root"
         >
-          My App
-        </h2>
+          MCP UI
+        </h4>
       </div>
     </header>
     <div

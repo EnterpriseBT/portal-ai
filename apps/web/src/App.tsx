@@ -23,6 +23,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({
         domain={import.meta.env.VITE_AUTH0_DOMAIN}
         clientId={import.meta.env.VITE_AUTH0_CLIENT_ID}
         authorizationParams={{ redirect_uri: window.location.origin }}
+        cacheLocation="localstorage"
+        useRefreshTokens={true}
       >
         <ThemeProvider defaultTheme={defaultTheme}>
           <QueryClientProvider client={queryClient}>

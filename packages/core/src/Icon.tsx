@@ -18,6 +18,9 @@ import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import MenuIcon from "@mui/icons-material/Menu";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import GoogleIcon from "@mui/icons-material/Google";
+import LogoutIcon from "@mui/icons-material/Logout";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
 import HeartIcon from "./assets/icons/heart.svg";
 
 export enum IconName {
@@ -40,6 +43,9 @@ export enum IconName {
   Heart = "heart",
   Logo = "logo",
   Google = "google",
+  Logout = "logout",
+  Sun = "sun",
+  Moon = "moon",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -86,6 +92,12 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <MoreVertIcon ref={ref} {...props} />;
       case IconName.Google:
         return <GoogleIcon ref={ref} {...props} />;
+      case IconName.Logout:
+        return <LogoutIcon ref={ref} {...props} />;
+      case IconName.Sun:
+        return <LightModeIcon ref={ref} {...props} />;
+      case IconName.Moon:
+        return <DarkModeIcon ref={ref} {...props} />;
       case IconName.Heart:
         return (
           <MuiSvgIcon ref={ref} {...props}>

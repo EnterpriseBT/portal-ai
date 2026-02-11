@@ -3,7 +3,14 @@ import { Box } from "@mcp-ui/core";
 
 export const LoginView = () => {
   return (
-    <Box>
+    <Box
+      sx={{
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
       <LoginForm />
     </Box>
   );
