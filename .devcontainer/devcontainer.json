@@ -7,6 +7,21 @@
   },
   "workspaceFolder": "/workspace",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "forwardPorts": [3000, 3001, 6006, 6007],
+  "portsAttributes": {
+    "3000": {
+      "label": "Web App"
+    },
+    "3001": {
+      "label": "API"
+    },
+    "6006": {
+      "label": "Storybook"
+    },
+    "6007": {
+      "label": "Additional Service"
+    }
+  },
   "onCreateCommand": "npm i",
   "postCreateCommand": "npm install -g @anthropic-ai/claude-code"
 }

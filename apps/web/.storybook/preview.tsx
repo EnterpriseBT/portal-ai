@@ -4,14 +4,14 @@ import { AppProvider } from "../src/App";
 
 // Disable localStorage in Storybook to prevent state persistence between stories
 if (typeof window !== "undefined") {
-  const noopStorage: Storage = {
+  const noopStorage = {
     length: 0,
     clear: () => {},
     getItem: () => null,
     key: () => null,
     removeItem: () => {},
     setItem: () => {},
-  };
+  } as Storage;
 
   Object.defineProperty(window, "localStorage", {
     value: noopStorage,
