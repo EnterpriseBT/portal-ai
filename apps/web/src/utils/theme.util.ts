@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ThemeName, THEME_MAP, useTheme, ThemeApi } from "@mcp-ui/core";
+import { ThemeName, THEME_MAP, useTheme } from "@mcp-ui/core";
 import { useStorage } from "./storage.util";
 import { Theme } from "@mui/material";
 

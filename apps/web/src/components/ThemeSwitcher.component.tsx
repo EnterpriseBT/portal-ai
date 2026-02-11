@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import {
   BaseIconButton,
   Icon,
@@ -8,9 +8,8 @@ import {
   ListItemIcon,
   ListItemText,
   type ThemeName,
-  useTheme,
 } from "@mcp-ui/core";
-import { usePersistedTheme, useStorage } from "../utils";
+import { usePersistedTheme } from "../utils";
 
 export interface ThemeConfig {
   label: string;
