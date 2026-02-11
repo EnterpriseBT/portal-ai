@@ -7,5 +7,6 @@
   },
   "workspaceFolder": "/workspace",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-  "onCreateCommand": "npm i"
+  "onCreateCommand": "npm i",
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code"
 }
