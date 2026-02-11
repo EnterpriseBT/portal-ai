@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   BaseIconButton,
   Icon,
@@ -7,9 +7,10 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  useTheme,
   type ThemeName,
+  useTheme,
 } from "@mcp-ui/core";
+import { usePersistedTheme, useStorage } from "../utils";
 
 export interface ThemeConfig {
   label: string;
@@ -45,7 +46,7 @@ export const ThemeSwitcherUI: React.FC<ThemeSwitcherUIProps> = ({
   };
 
   const currentTheme = availableThemes.find(
-    (theme) => theme.themeName === currentThemeName
+    (theme) => theme.themeName === currentThemeName,
   );
 
   return (
@@ -108,7 +109,7 @@ export interface ThemeSwitcherProps {
 export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({
   themeConfigs = DEFAULT_THEME_CONFIGS,
 }) => {
-  const { themeName, setThemeName } = useTheme();
+  const { themeName, setThemeName } = usePersistedTheme();
 
   return (
     <ThemeSwitcherUI

@@ -7,16 +7,19 @@ import { Auth0Provider } from "@auth0/auth0-react";
 
 import "@mcp-ui/core/styles";
 import { queryClient } from "./client";
+import { useStorage } from "./utils";
 
 export interface AppProviderProps {
-  defaultTheme: ThemeName;
   children: React.ReactNode;
 }
 
-export const AppProvider: React.FC<AppProviderProps> = ({
-  children,
-  defaultTheme = "brand",
-}) => {
+export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
+  const { value: theme } = useStorage<ThemeName>({
+    key: "mcp-ui-theme",
+    defaultValue: "brand",
+    storageType: "local",
+  });
+
   return (
     <StrictMode>
       <Auth0Provider
@@ -26,7 +29,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({
         cacheLocation="localstorage"
         useRefreshTokens={true}
       >
-        <ThemeProvider defaultTheme={defaultTheme}>
+        <ThemeProvider defaultTheme={theme}>
           <QueryClientProvider client={queryClient}>
             {children}
           </QueryClientProvider>
@@ -38,7 +41,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({
 
 export const App: React.FC = () => {
   return (
-    <AppProvider defaultTheme="brand">
+    <AppProvider>
       <RouterProvider router={router} />
     </AppProvider>
   );

@@ -504,4 +504,5 @@ describe("ThemeProvider Component", () => {
       );
     });
   });
+
 });
