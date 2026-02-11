@@ -31,7 +31,7 @@ export const useAuthFetch = () => {
 
       return response;
     },
-    [getAccessTokenSilently],
+    [getAccessTokenSilently]
   );
 
   return { fetchWithAuth };
