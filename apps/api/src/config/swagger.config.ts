@@ -213,7 +213,7 @@ const options: swaggerJsdoc.Options = {
         description: "Health check endpoints",
       },
       {
-        name: "User",
+        name: "Profile",
         description: "User profile and authentication endpoints",
       },
     ],

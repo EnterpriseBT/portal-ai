@@ -1,3 +1,4 @@
+import React from "react";
 import { Box, ButtonGroup } from "@mcp-ui/core";
 import { Header } from "../components/Header.component";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";

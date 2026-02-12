@@ -2,6 +2,7 @@ import { Box, ButtonGroup } from "@mcp-ui/core";
 import { Header } from "../components/Header.component";
 import { NavbarMenu } from "../components/NavbarMenu.component";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
+import React from "react";
 
 export const AuthorizedLayout = ({
   children,

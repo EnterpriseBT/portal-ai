@@ -38,7 +38,7 @@ export const usePersistedTheme = (): UsePersistedThemeResult => {
   // Sync provider theme to localStorage
   useEffect(() => {
     setPersistedTheme(themeName);
-  }, [themeName]);
+  }, [themeName, setPersistedTheme]);
 
   return {
     themeName,

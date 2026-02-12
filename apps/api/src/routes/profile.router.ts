@@ -16,7 +16,7 @@ export const profileRouter = Router();
  * /api/profile:
  *   get:
  *     tags:
- *       - User
+ *       - Profile
  *     summary: Get authenticated user profile
  *     description: Returns the authenticated user's complete profile information from Auth0, including name, email, picture, and other profile details
  *     security:

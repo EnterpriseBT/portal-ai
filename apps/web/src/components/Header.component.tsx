@@ -1,3 +1,4 @@
+import React from "react";
 import { Typography, AppBar, Toolbar } from "@mcp-ui/core";
 
 export interface HeaderProps {

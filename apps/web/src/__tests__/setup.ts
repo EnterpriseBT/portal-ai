@@ -3,7 +3,7 @@ import { TextEncoder, TextDecoder } from 'util';
 
 // Polyfill for TextEncoder/TextDecoder (needed for Auth0)
 global.TextEncoder = TextEncoder;
-global.TextDecoder = TextDecoder as any;
+global.TextDecoder = TextDecoder as typeof global.TextDecoder;
 
 // Extend Jest matchers with jest-dom
 // This provides matchers like toBeInTheDocument(), toHaveClass(), etc.
@@ -32,4 +32,4 @@ global.IntersectionObserver = class IntersectionObserver {
     return [];
   }
   unobserve() {}
-} as any;
+} as unknown as typeof IntersectionObserver;

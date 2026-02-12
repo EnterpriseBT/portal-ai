@@ -58,10 +58,12 @@ export default [
     files: [
       "**/*.test.{ts,tsx}",
       "**/*.spec.{ts,tsx}",
-      "**/__tests__/**/*.{ts,tsx}",
+      "**/__tests__/**/*.{ts,tsx,js}",
     ],
     languageOptions: {
       globals: {
+        ...globals.browser,
+        ...globals.node,
         describe: "readonly",
         it: "readonly",
         expect: "readonly",
@@ -71,12 +73,14 @@ export default [
         beforeAll: "readonly",
         afterAll: "readonly",
         jest: "readonly",
+        global: "readonly",
       },
     },
   },
   {
     ignores: [
       "dist/**",
+      "storybook-static/**",
       "node_modules/**",
       "*.config.js",
       "*.config.ts",
