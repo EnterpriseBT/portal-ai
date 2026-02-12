@@ -7,7 +7,6 @@ import {
   Icon,
   IconName,
 } from "@mcp-ui/core";
-import { fn } from "@storybook/test";
 
 const meta = {
   title: "Components/NavbarMenuUI",
@@ -16,14 +15,10 @@ const meta = {
     layout: "centered",
   },
   tags: ["autodocs"],
-  args: {
-    onLogout: fn(),
-  },
 } satisfies Meta<typeof NavbarMenuUI>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
-type MenuUIStory = StoryObj<typeof menuUIMeta>;
+type MenuUIStory = StoryObj<typeof meta>;
 
 export const UIWithCustomChildren: MenuUIStory = {
   args: {

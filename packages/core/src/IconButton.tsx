@@ -1,7 +1,7 @@
 import MuiIconButton, {
   IconButtonProps as MuiIconButtonProps,
 } from "@mui/material/IconButton";
-import Icon, { IconName } from "./Icon";
+import Icon, { IconName } from "./Icon.js";
 import React from "react";
 
 export interface IconButtonProps extends MuiIconButtonProps {

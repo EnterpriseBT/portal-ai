@@ -1,7 +1,9 @@
 export const environment = {
   NODE_ENV: process.env.NODE_ENV || "development",
   PORT: process.env.PORT,
-  CORS_ORIGIN: process.env.CORS_ORIGIN,
+  CORS_ORIGIN: process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",")
+    : [],
   AUTH0_AUDIENCE: process.env.AUTH0_AUDIENCE,
   AUTH0_DOMAIN: process.env.AUTH0_DOMAIN,
   // Logging configuration

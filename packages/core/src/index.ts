@@ -1,9 +1,12 @@
 /** Custom UI components and utilities */
-export * from "./ThemeProvider";
-export * from "./Button";
-export * from "./Typography";
-export * from "./Icon";
-export * from "./IconButton";
+export * from "./ThemeProvider.js";
+export * from "./Button.js";
+export * from "./Typography.js";
+export * from "./Icon.js";
+export * from "./IconButton.js";
+
+/** API types */
+export * from "./api.js";
 
 /** Material UI */
 export {

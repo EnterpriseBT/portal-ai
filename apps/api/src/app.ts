@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { healthRouter } from "./routes/health.router.js";
 import { protectedRouter } from "./routes/protected.router.js";
+import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
 
@@ -18,4 +19,5 @@ app.use(
 );
 
 app.use("/health", healthRouter);
+app.use("/docs", swaggerRouter);
 app.use("/api", protectedRouter);

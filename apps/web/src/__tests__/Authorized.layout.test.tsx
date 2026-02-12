@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
+import React from "react";
 import { render, screen } from "@testing-library/react";
 import { AuthorizedLayout } from "../layouts/Authorized.layout";
-import { Auth0Provider } from "@auth0/auth0-react";
 
 const mockAuth0Provider = {
   user: { name: "Test User", picture: "https://example.com/pic.jpg" },

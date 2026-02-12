@@ -16,3 +16,7 @@ export interface ApiErrorResponse extends ApiResponse {
   message: string;
   code: string;
 }
+
+export interface ApiGetHealthResponse extends ApiSuccessResponse {
+  timestamp: string;
+}

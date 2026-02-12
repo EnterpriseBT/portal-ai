@@ -20,6 +20,9 @@ jest-results.json
 *.log
 *.tsbuildinfo
 
+# Generated API Documentation
+swagger.json
+
 # Environment
 .env
 .env.local
