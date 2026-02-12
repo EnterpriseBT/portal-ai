@@ -129,7 +129,7 @@ The Swagger documentation will automatically include your new routes!
 
 ### Protected (requires JWT)
 
-- `GET /api/me` - Get authenticated user profile
+- `[GET|POST|PUT|DELETE] /api/<path>` - Protected API endpoints (e.g., `/api/users`, `/api/data`)
 
 ## Project Structure
 

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ApiResponseStatus, ApiGetHealthResponse } from "@mcp-ui/core/api";
+import { ApiResponseStatus, ApiGetHealthResponse } from "@mcp-ui/types";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "health" });

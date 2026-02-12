@@ -5,9 +5,6 @@ export * from "./Typography.js";
 export * from "./Icon.js";
 export * from "./IconButton.js";
 
-/** API types */
-export * from "./api.js";
-
 /** Material UI */
 export {
   Box,

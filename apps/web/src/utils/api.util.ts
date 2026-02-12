@@ -7,14 +7,18 @@ import { useCallback } from "react";
  *
  * Usage:
  *   const { fetchWithAuth } = useAuthFetch();
- *   const data = await fetchWithAuth("/api/me");
+ *   const data = await fetchWithAuth("/api/profile");
  */
 export const useAuthFetch = () => {
   const { getAccessTokenSilently } = useAuth0();
 
   const fetchWithAuth = useCallback(
     async (url: string, options: RequestInit = {}): Promise<Response> => {
-      const token = await getAccessTokenSilently();
+      const token = await getAccessTokenSilently({
+        authorizationParams: {
+          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+        },
+      });
 
       const response = await fetch(url, {
         ...options,
