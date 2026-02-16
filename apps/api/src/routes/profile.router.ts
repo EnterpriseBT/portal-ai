@@ -16,8 +16,7 @@ function validateProfileRequest(
   _res: Response,
   next: NextFunction
 ) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!Auth0Service.hasAccessToken(req.headers.authorization)) {
     return next(
       new ApiError(
         401,
@@ -72,7 +71,9 @@ profileRouter.get(
     try {
       logger.info({ userId: req.auth?.payload.sub }, "GET /api/profile called");
 
-      const accessToken = req.headers.authorization!.substring(7);
+      const accessToken = Auth0Service.getAccessToken(
+        req.headers.authorization
+      );
       const profile = await Auth0Service.getUserProfile(accessToken);
 
       // Validate response payload before sending

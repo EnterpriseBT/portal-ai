@@ -8,6 +8,33 @@ const logger = createLogger({ module: "auth0-service" });
 
 export class Auth0Service {
   /**
+   * Checks whether the Authorization header contains a Bearer token.
+   * @param authorization - The raw Authorization header value
+   * @returns true if a Bearer token is present
+   */
+  public static hasAccessToken(authorization: string | undefined): boolean {
+    return !!authorization && authorization.startsWith("Bearer ");
+  }
+
+  /**
+   * Extracts the access token from the Authorization header.
+   * Throws an ApiError if the header is missing or malformed.
+   * @param authorization - The raw Authorization header value
+   * @returns The bare access token string
+   */
+  public static getAccessToken(authorization: string | undefined): string {
+    if (!Auth0Service.hasAccessToken(authorization)) {
+      logger.error("Missing or malformed Authorization header");
+      throw new ApiError(
+        401,
+        ApiCode.PROFILE_MISSING_TOKEN,
+        "Missing or malformed access token"
+      );
+    }
+    return authorization!.substring(7);
+  }
+
+  /**
    * Fetches the authenticated user's profile from Auth0's userinfo endpoint
    * @param accessToken - The user's access token
    * @returns The user's profile information
