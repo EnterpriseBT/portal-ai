@@ -62,28 +62,48 @@ describe("HttpErrorView Component", () => {
   });
 
   it("should render correct icon for 404", () => {
-    renderWithTheme(<HttpErrorView statusCode={404} title="Not Found" />);
-    expect(screen.getByText("🔍")).toBeInTheDocument();
+    const { container } = renderWithTheme(
+      <HttpErrorView statusCode={404} title="Not Found" />
+    );
+    expect(
+      container.querySelector("[data-testid='SearchIcon']")
+    ).toBeInTheDocument();
   });
 
   it("should render correct icon for 401", () => {
-    renderWithTheme(<HttpErrorView statusCode={401} title="Unauthorized" />);
-    expect(screen.getByText("🔒")).toBeInTheDocument();
+    const { container } = renderWithTheme(
+      <HttpErrorView statusCode={401} title="Unauthorized" />
+    );
+    expect(
+      container.querySelector("[data-testid='LockIcon']")
+    ).toBeInTheDocument();
   });
 
   it("should render correct icon for 403", () => {
-    renderWithTheme(<HttpErrorView statusCode={403} title="Forbidden" />);
-    expect(screen.getByText("🚫")).toBeInTheDocument();
+    const { container } = renderWithTheme(
+      <HttpErrorView statusCode={403} title="Forbidden" />
+    );
+    expect(
+      container.querySelector("[data-testid='BlockIcon']")
+    ).toBeInTheDocument();
   });
 
   it("should render correct icon for 500", () => {
-    renderWithTheme(<HttpErrorView statusCode={500} title="Server Error" />);
-    expect(screen.getByText("⚠️")).toBeInTheDocument();
+    const { container } = renderWithTheme(
+      <HttpErrorView statusCode={500} title="Server Error" />
+    );
+    expect(
+      container.querySelector("[data-testid='WarningIcon']")
+    ).toBeInTheDocument();
   });
 
   it("should render fallback icon for unknown status codes", () => {
-    renderWithTheme(<HttpErrorView statusCode={418} title="I'm a Teapot" />);
-    expect(screen.getByText("⚠️")).toBeInTheDocument();
+    const { container } = renderWithTheme(
+      <HttpErrorView statusCode={418} title="I'm a Teapot" />
+    );
+    expect(
+      container.querySelector("[data-testid='WarningIcon']")
+    ).toBeInTheDocument();
   });
 
   it("should render Go Back and Go Home buttons by default", () => {

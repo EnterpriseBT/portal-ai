@@ -4,12 +4,22 @@ exports[`ServerErrorView Component should match snapshot 1`] = `
 <div
   class="MuiBox-root css-12crrv0"
 >
-  <h1
+  <div
     aria-hidden="true"
-    class="MuiTypography-root MuiTypography-h1 css-2egdlx-MuiTypography-root"
+    class="MuiBox-root css-19idom"
   >
-    ⚠️
-  </h1>
+    <svg
+      aria-hidden="true"
+      class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1n2dx9w-MuiSvgIcon-root"
+      data-testid="WarningIcon"
+      focusable="false"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M1 21h22L12 2zm12-3h-2v-2h2zm0-4h-2v-4h2z"
+      />
+    </svg>
+  </div>
   <h1
     class="MuiTypography-root MuiTypography-h1 css-1hlpb9j-MuiTypography-root"
     style="color: rgb(255, 86, 48); margin-bottom: 8px;"

@@ -21,6 +21,9 @@ import GoogleIcon from "@mui/icons-material/Google";
 import LogoutIcon from "@mui/icons-material/Logout";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LockIcon from "@mui/icons-material/Lock";
+import BlockIcon from "@mui/icons-material/Block";
+import WarningIcon from "@mui/icons-material/Warning";
 import HeartIcon from "./assets/icons/heart.svg";
 
 export enum IconName {
@@ -46,6 +49,9 @@ export enum IconName {
   Logout = "logout",
   Sun = "sun",
   Moon = "moon",
+  Lock = "lock",
+  Block = "block",
+  Warning = "warning",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -98,6 +104,12 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <LightModeIcon ref={ref} {...props} />;
       case IconName.Moon:
         return <DarkModeIcon ref={ref} {...props} />;
+      case IconName.Lock:
+        return <LockIcon ref={ref} {...props} />;
+      case IconName.Block:
+        return <BlockIcon ref={ref} {...props} />;
+      case IconName.Warning:
+        return <WarningIcon ref={ref} {...props} />;
       case IconName.Heart:
         return (
           <MuiSvgIcon ref={ref} {...props}>
@@ -107,10 +119,10 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
       default:
         // If no name is provided or the name doesn't match, render children as a custom icon
         throw new Error(
-          `Icon name "${name}" is not recognized. Please provide a valid icon name or use children to define a custom icon.`,
+          `Icon name "${name}" is not recognized. Please provide a valid icon name or use children to define a custom icon.`
         );
     }
-  },
+  }
 );
 
 export default Icon;

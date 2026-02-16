@@ -1,5 +1,12 @@
 import React from "react";
-import { Box, Button, Typography, useTheme } from "@mcp-ui/core";
+import {
+  Box,
+  Button,
+  Icon,
+  IconName,
+  Typography,
+  useTheme,
+} from "@mcp-ui/core";
 import { alpha } from "@mui/material/styles";
 import { useRouter } from "@tanstack/react-router";
 
@@ -16,11 +23,11 @@ export interface HttpErrorViewProps {
   showHomeButton?: boolean;
 }
 
-const STATUS_ICONS: Record<number, string> = {
-  401: "🔒",
-  403: "🚫",
-  404: "🔍",
-  500: "⚠️",
+const STATUS_ICONS: Record<number, IconName> = {
+  401: IconName.Lock,
+  403: IconName.Block,
+  404: IconName.Search,
+  500: IconName.Warning,
 };
 
 export const HttpErrorView: React.FC<HttpErrorViewProps> = ({
@@ -33,7 +40,7 @@ export const HttpErrorView: React.FC<HttpErrorViewProps> = ({
   const { theme } = useTheme();
   const router = useRouter();
 
-  const icon = STATUS_ICONS[statusCode] ?? "⚠️";
+  const iconName = STATUS_ICONS[statusCode] ?? IconName.Warning;
 
   return (
     <Box
@@ -45,9 +52,12 @@ export const HttpErrorView: React.FC<HttpErrorViewProps> = ({
       py={10}
       px={3}
     >
-      <Typography variant="h1" fontSize="5rem" mb={1} aria-hidden>
-        {icon}
-      </Typography>
+      <Box mb={1} aria-hidden>
+        <Icon
+          name={iconName}
+          sx={{ fontSize: "5rem", color: theme.palette.error.main }}
+        />
+      </Box>
 
       <Typography
         variant="h1"

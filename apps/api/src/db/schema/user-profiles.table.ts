@@ -1,5 +1,5 @@
 import { pgTable, text } from "drizzle-orm/pg-core";
-import { baseColumns } from "./base.columns";
+import { baseColumns } from "./base.columns.js";
 
 /**
  * User profiles table.
