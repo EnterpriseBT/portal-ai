@@ -1,8 +1,6 @@
-import { describe, it, expect } from "@jest/globals";
+import { jest, describe, it, expect } from "@jest/globals";
 import request from "supertest";
-import express, { Request, Response, NextFunction } from "express";
-import { healthRouter } from "../routes/health.router.js";
-import { ApiError, HttpService } from "../services/http.service.js";
+import { Request, Response, NextFunction } from "express";
 
 /**
  * Integration tests against the Express app to verify middleware, routing,
@@ -11,32 +9,18 @@ import { ApiError, HttpService } from "../services/http.service.js";
  * Note: Protected routes are excluded here because they require JWT
  * validation which is tested separately with mocked auth middleware.
  */
-function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use("/health", healthRouter);
 
-  // Replicate the catch-all error handler from app.ts
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof ApiError) {
-      return HttpService.error(res, err);
-    }
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      code: "UNKNOWN",
-    });
-  });
+// Mock the auth middleware so the real app can be imported without JWT config
+jest.unstable_mockModule("../middleware/auth.middleware.js", () => ({
+  jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
+}));
 
-  return app;
-}
+const { app } = await import("../app.js");
 
 describe("App Integration", () => {
-  const app = createApp();
-
   describe("Health endpoint", () => {
-    it("should respond to GET /health with status 200", async () => {
-      const res = await request(app).get("/health");
+    it("should respond to GET /api/health with status 200", async () => {
+      const res = await request(app).get("/api/health");
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
@@ -59,7 +43,7 @@ describe("App Integration", () => {
   describe("JSON parsing", () => {
     it("should accept requests with JSON content type", async () => {
       const res = await request(app)
-        .get("/health")
+        .get("/api/health")
         .set("Content-Type", "application/json");
 
       expect(res.status).toBe(200);

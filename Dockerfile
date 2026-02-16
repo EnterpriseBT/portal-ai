@@ -12,7 +12,7 @@ RUN echo 'if [ -f /usr/share/bash-completion/bash_completion ]; then' >> ~/.bash
     echo 'fi' >> ~/.bashrc
 
 # Set working directory
-WORKDIR /worspace
+WORKDIR /workspace
 
 # Default command
 CMD ["node"]

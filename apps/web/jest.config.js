@@ -1,59 +1,57 @@
 export default {
   // Use ts-jest preset for ESM
-  preset: 'ts-jest/presets/default-esm',
+  preset: "ts-jest/presets/default-esm",
 
   // Set test environment to jsdom for React
-  testEnvironment: 'jest-environment-jsdom',
+  testEnvironment: "jest-environment-jsdom",
 
   // Specify root directory
-  rootDir: '.',
+  rootDir: ".",
 
   // Module paths
-  modulePaths: ['<rootDir>/src'],
+  modulePaths: ["<rootDir>/src"],
 
   // File extensions Jest should look for
-  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
+  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
 
   // Transform files with ts-jest
   transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
+    "^.+\\.tsx?$": [
+      "ts-jest",
       {
         useESM: true,
-        tsconfig: 'tsconfig.json',
+        tsconfig: "tsconfig.json",
       },
     ],
   },
 
   // Treat these extensions as ESM
-  extensionsToTreatAsEsm: ['.ts', '.tsx'],
+  extensionsToTreatAsEsm: [".ts", ".tsx"],
 
   // Module name mapper for path aliases and static assets
   moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1',
-    '\\.svg$': '<rootDir>/src/__tests__/__mocks__/svgMock.js',
-    '\\.css$': '<rootDir>/src/__tests__/__mocks__/styleMock.js',
-    // Map @mcp-ui/core to the built package
-    '^@mcp-ui/core$': '<rootDir>/../../packages/core/dist/index.js',
+    "^(\\.{1,2}/.*)\\.js$": "$1",
+    "\\.svg$": "<rootDir>/src/__tests__/__mocks__/svgMock.js",
+    "\\.css$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",
+    // Map @mcp-ui/core to the TypeScript source so ts-jest can transform it
+    "^@mcp-ui/core/styles$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",
+    "^@mcp-ui/core$": "<rootDir>/../../packages/core/src/index.ts",
   },
 
   // Setup files to run after Jest is initialized
-  setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
+  setupFilesAfterEnv: ["<rootDir>/src/__tests__/setup.ts"],
 
   // Test match patterns
-  testMatch: [
-    '**/__tests__/**/*.test.ts?(x)',
-    '**/?(*.)+(spec|test).ts?(x)',
-  ],
+  testMatch: ["**/__tests__/**/*.test.ts?(x)", "**/?(*.)+(spec|test).ts?(x)"],
 
   // Coverage configuration
   collectCoverageFrom: [
-    'src/**/*.{ts,tsx}',
-    '!src/**/*.d.ts',
-    '!src/__tests__/**',
-    '!src/main.tsx',
-    '!src/routes.tsx',
-    '!src/**/*.stories.tsx',
+    "src/**/*.{ts,tsx}",
+    "!src/**/*.d.ts",
+    "!src/__tests__/**",
+    "!src/main.tsx",
+    "!src/routes.tsx",
+    "!src/**/*.stories.tsx",
   ],
 
   coverageThreshold: {
@@ -66,7 +64,7 @@ export default {
   },
 
   // Ignore patterns
-  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/storybook-static/'],
+  testPathIgnorePatterns: ["/node_modules/", "/dist/", "/storybook-static/"],
 
   // Clear mocks between tests
   clearMocks: true,

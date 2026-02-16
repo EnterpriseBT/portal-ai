@@ -24,5 +24,8 @@ export {
   IconButton as BaseIconButton,
 } from "@mui/material";
 
-/** Interfaces */
-export * from "./interfaces/index.js";
+/** Contracts — API response payloads & request parameters */
+export * from "./contracts/index.js";
+
+/** Models — database object schemas */
+export * from "./models/index.js";

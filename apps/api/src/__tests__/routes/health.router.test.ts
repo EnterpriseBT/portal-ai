@@ -1,36 +1,18 @@
-import { describe, it, expect } from "@jest/globals";
+import { jest, describe, it, expect } from "@jest/globals";
 import request from "supertest";
-import express, { Request, Response, NextFunction } from "express";
-import { healthRouter } from "../../routes/health.router.js";
-import { ApiError, HttpService } from "../../services/http.service.js";
+import { Request, Response, NextFunction } from "express";
 
-// Build a mini Express app with the health router and the error handler
-function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use("/health", healthRouter);
+// Mock the auth middleware so the real app can be imported without JWT config
+jest.unstable_mockModule("../../middleware/auth.middleware.js", () => ({
+  jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
+}));
 
-  // Error handler (mirrors the one in app.ts)
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof ApiError) {
-      return HttpService.error(res, err);
-    }
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      code: "UNKNOWN",
-    });
-  });
-
-  return app;
-}
+const { app } = await import("../../app.js");
 
 describe("Health Router", () => {
-  const app = createApp();
-
-  describe("GET /health", () => {
+  describe("GET /api/health", () => {
     it("should return 200 with a success response", async () => {
-      const res = await request(app).get("/health");
+      const res = await request(app).get("/api/health");
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -39,7 +21,7 @@ describe("Health Router", () => {
     });
 
     it("should include a valid ISO timestamp in the payload", async () => {
-      const res = await request(app).get("/health");
+      const res = await request(app).get("/api/health");
 
       const { timestamp } = res.body.payload;
       expect(timestamp).toBeDefined();
@@ -50,7 +32,7 @@ describe("Health Router", () => {
     });
 
     it("should return application/json content type", async () => {
-      const res = await request(app).get("/health");
+      const res = await request(app).get("/api/health");
 
       expect(res.headers["content-type"]).toMatch(/application\/json/);
     });

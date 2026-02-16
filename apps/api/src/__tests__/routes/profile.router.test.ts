@@ -1,9 +1,13 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
-import express, { Request, Response, NextFunction } from "express";
-import { ApiError, HttpService } from "../../services/http.service.js";
+import { Request, Response, NextFunction } from "express";
 import { ApiCode } from "../../constants/api-codes.constants.js";
 import type { Auth0UserProfile } from "@mcp-ui/core";
+
+// Mock the auth middleware so the real app can be imported without JWT config
+jest.unstable_mockModule("../../middleware/auth.middleware.js", () => ({
+  jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
+}));
 
 // Mock Auth0Service
 jest.unstable_mockModule("../../services/auth0.service.js", () => ({
@@ -15,28 +19,9 @@ jest.unstable_mockModule("../../services/auth0.service.js", () => ({
 }));
 
 const { Auth0Service } = await import("../../services/auth0.service.js");
-const { profileRouter } = await import("../../routes/profile.router.js");
+const { app } = await import("../../app.js");
+const { ApiError } = await import("../../services/http.service.js");
 const mockedAuth0Service = Auth0Service as jest.Mocked<typeof Auth0Service>;
-
-function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use("/profile", profileRouter);
-
-  // Error handler (mirrors the one in app.ts)
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof ApiError) {
-      return HttpService.error(res, err);
-    }
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      code: "UNKNOWN",
-    });
-  });
-
-  return app;
-}
 
 const mockProfile: Auth0UserProfile = {
   sub: "auth0|user123",
@@ -49,19 +34,17 @@ const mockProfile: Auth0UserProfile = {
 };
 
 describe("Profile Router", () => {
-  const app = createApp();
-
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe("GET /profile", () => {
+  describe("GET /api/profile", () => {
     describe("when no authorization header is provided", () => {
       it("should return 401 for missing token", async () => {
         // hasAccessToken returns false when no auth header is present
         mockedAuth0Service.hasAccessToken.mockReturnValue(false);
 
-        const res = await request(app).get("/profile");
+        const res = await request(app).get("/api/profile");
 
         expect(res.status).toBe(401);
         expect(res.body.success).toBe(false);
@@ -74,7 +57,7 @@ describe("Profile Router", () => {
         mockedAuth0Service.hasAccessToken.mockReturnValue(false);
 
         const res = await request(app)
-          .get("/profile")
+          .get("/api/profile")
           .set("Authorization", "InvalidToken");
 
         expect(res.status).toBe(401);
@@ -93,7 +76,7 @@ describe("Profile Router", () => {
         mockedAuth0Service.getUserProfile.mockResolvedValue(mockProfile);
 
         const res = await request(app)
-          .get("/profile")
+          .get("/api/profile")
           .set("Authorization", "Bearer valid-token");
 
         expect(res.status).toBe(200);
@@ -107,7 +90,7 @@ describe("Profile Router", () => {
         } as Auth0UserProfile);
 
         const res = await request(app)
-          .get("/profile")
+          .get("/api/profile")
           .set("Authorization", "Bearer valid-token");
 
         expect(res.status).toBe(500);
@@ -121,7 +104,7 @@ describe("Profile Router", () => {
         );
 
         const res = await request(app)
-          .get("/profile")
+          .get("/api/profile")
           .set("Authorization", "Bearer valid-token");
 
         expect(res.status).toBe(500);
@@ -139,7 +122,7 @@ describe("Profile Router", () => {
         );
 
         const res = await request(app)
-          .get("/profile")
+          .get("/api/profile")
           .set("Authorization", "Bearer valid-token");
 
         expect(res.status).toBe(502);
@@ -153,7 +136,7 @@ describe("Profile Router", () => {
         );
 
         const res = await request(app)
-          .get("/profile")
+          .get("/api/profile")
           .set("Authorization", "Bearer valid-token");
 
         expect(res.status).toBe(500);

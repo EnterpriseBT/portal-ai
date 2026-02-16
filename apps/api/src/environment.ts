@@ -15,4 +15,6 @@ export const environment = {
     | "error"
     | "fatal",
   LOG_FORMAT: (process.env.LOG_FORMAT || "pretty") as "pretty" | "json",
+  // Database configuration
+  DATABASE_URL: process.env.DATABASE_URL || "",
 };

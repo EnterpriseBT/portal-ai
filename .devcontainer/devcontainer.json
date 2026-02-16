@@ -1,19 +1,21 @@
 {
   "name": "MCP UI",
-  "build": {
-    "context": "..",
-    "dockerfile": "../Dockerfile",
-    "target": "dev"
-  },
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "dev",
   "workspaceFolder": "/workspace",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-  "forwardPorts": [3000, 3001, 6006, 6007],
+  "forwardPorts": [3000, 3001, 5432, 6006, 6007, 4983],
   "portsAttributes": {
     "3000": {
       "label": "Web App"
     },
     "3001": {
       "label": "API"
+    },
+    "5432": {
+      "label": "PostgreSQL"
+    },
+    "4983": {
+      "label": "PostgreSQL"
     },
     "6006": {
       "label": "Storybook"

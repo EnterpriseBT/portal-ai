@@ -22,8 +22,8 @@ app.use(
   })
 );
 
-app.use("/health", healthRouter);
 app.use("/docs", swaggerRouter);
+app.use("/api/health", healthRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here

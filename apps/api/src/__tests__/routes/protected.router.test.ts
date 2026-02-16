@@ -1,7 +1,6 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
-import express, { Request, Response, NextFunction } from "express";
-import { ApiError, HttpService } from "../../services/http.service.js";
+import { Request, Response, NextFunction } from "express";
 import type { Auth0UserProfile } from "@mcp-ui/core";
 
 // Mock the auth middleware so we can control JWT validation
@@ -19,28 +18,9 @@ jest.unstable_mockModule("../../services/auth0.service.js", () => ({
 }));
 
 // Import after mocks are in place
-const { protectedRouter } = await import("../../routes/protected.router.js");
+const { app } = await import("../../app.js");
 const { Auth0Service } = await import("../../services/auth0.service.js");
 const mockedAuth0Service = Auth0Service as jest.Mocked<typeof Auth0Service>;
-
-function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use("/api", protectedRouter);
-
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof ApiError) {
-      return HttpService.error(res, err);
-    }
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      code: "UNKNOWN",
-    });
-  });
-
-  return app;
-}
 
 const mockProfile: Auth0UserProfile = {
   sub: "auth0|user456",
@@ -49,8 +29,6 @@ const mockProfile: Auth0UserProfile = {
 };
 
 describe("Protected Router", () => {
-  const app = createApp();
-
   beforeEach(() => {
     jest.clearAllMocks();
   });
