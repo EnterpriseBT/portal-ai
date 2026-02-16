@@ -23,3 +23,6 @@ export {
   ListItemText,
   IconButton as BaseIconButton,
 } from "@mui/material";
+
+/** Interfaces */
+export * from "./interfaces/index.js";

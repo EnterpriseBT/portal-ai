@@ -163,3 +163,180 @@ Authorization: Bearer <your-jwt-token>
 ```
 
 You can test protected endpoints using the Swagger UI by clicking the "Authorize" button and entering your JWT token.
+
+## Style Guide
+
+### Services
+
+Services should export classes with methods instead of exporting single functions.
+
+```typescript
+// ✅ Good — class with methods
+export class UserService {
+  public static async getById(id: string): Promise<User> {
+    logger.info({ id }, "Fetching user by ID");
+    // ...
+  }
+
+  public static async update(id: string, data: UpdateUserDto): Promise<User> {
+    logger.info({ id }, "Updating user");
+    // ...
+  }
+}
+
+// ❌ Bad — loose exported functions
+export async function getUser(id: string) { /* ... */ }
+export async function updateUser(id: string, data: UpdateUserDto) { /* ... */ }
+```
+
+### Logging
+
+Routes, services, and database queries should log every action.
+
+```typescript
+// In a route handler
+profileRouter.get("/", async (req, res, next) => {
+  logger.info({ userId: req.auth?.payload.sub }, "GET /api/profile called");
+  // ...
+});
+
+// In a service method
+export class Auth0Service {
+  public static async getUserProfile(accessToken: string): Promise<Auth0UserProfile> {
+    logger.debug({ url: userInfoUrl }, "Fetching user profile from Auth0");
+    const response = await fetch(userInfoUrl, { /* ... */ });
+    logger.info({ sub: userProfile.sub }, "Successfully fetched user profile");
+    return userProfile;
+  }
+}
+
+// In a database query
+export class UserRepository {
+  public static async findById(id: string): Promise<User | null> {
+    logger.debug({ id }, "Querying user by ID");
+    const user = await db.query("SELECT * FROM users WHERE id = $1", [id]);
+    logger.info({ id, found: !!user }, "User query complete");
+    return user;
+  }
+}
+```
+
+### Request Validation
+
+Routes should validate request parameters/body using middleware, and extend the express object for type safety.
+
+```typescript
+// Define a typed request interface extending Express
+interface GetUserRequest extends Request {
+  params: { userId: string };
+}
+
+// Validation middleware
+function validateGetUser(req: Request, _res: Response, next: NextFunction) {
+  const { userId } = req.params;
+  if (!userId || typeof userId !== "string") {
+    return next(new ApiError(400, ApiCode.USER_INVALID_ID, "Invalid user ID"));
+  }
+  next();
+}
+
+// Use the middleware on the route
+userRouter.get("/:userId", validateGetUser, async (req: GetUserRequest, res, next) => {
+  // req.params.userId is guaranteed to be a valid string here
+});
+```
+
+### Response Validation
+
+Routes should validate the response before sending payload.
+
+```typescript
+userRouter.get("/:userId", validateGetUser, async (req: GetUserRequest, res, next) => {
+  try {
+    const user = await UserService.getById(req.params.userId);
+
+    // Validate the response payload before sending
+    if (!user || !user.id || !user.email) {
+      return next(new ApiError(500, ApiCode.USER_MALFORMED_RESPONSE, "Malformed user response"));
+    }
+
+    return HttpService.success(res, { user });
+  } catch (error) {
+    return next(error);
+  }
+});
+```
+
+### Error Handling
+
+Handle all errors using the `ApiError` class. Pass them into the `next()` function so that all errors are funneled to the catch-all error handler consistently.
+
+```typescript
+// ✅ Good — throw ApiError and pass to next()
+profileRouter.get("/", async (req, res, next) => {
+  try {
+    const accessToken = req.headers.authorization?.substring(7);
+    if (!accessToken) {
+      return next(new ApiError(401, ApiCode.PROFILE_MISSING_TOKEN, "Missing access token"));
+    }
+
+    const profile = await Auth0Service.getUserProfile(accessToken);
+    return HttpService.success(res, { profile });
+  } catch (error) {
+    // Wrap unknown errors in ApiError before passing to next()
+    if (error instanceof ApiError) {
+      return next(error);
+    }
+    return next(new ApiError(500, ApiCode.PROFILE_FETCH_FAILED, "Failed to fetch profile"));
+  }
+});
+
+// ❌ Bad — sending error responses directly in the route
+profileRouter.get("/", async (req, res) => {
+  try {
+    // ...
+  } catch (error) {
+    res.status(500).json({ message: "Something went wrong" }); // Bypasses error handler
+  }
+});
+```
+
+### API Error Codes
+
+Error codes are unique enum strings defined in `ApiCode` (see [src/constants/api-codes.constants.ts](src/constants/api-codes.constants.ts)). They identify specific points of failure in a route or service, making production debugging straightforward. Every `ApiError` must include one.
+
+Codes follow the format `<DOMAIN>_<FAILURE>` — the domain identifies the route or service, and the failure describes what went wrong.
+
+```typescript
+// src/constants/api-codes.constants.ts
+export enum ApiCode {
+  // Profile
+  PROFILE_MISSING_TOKEN = "PROFILE_MISSING_TOKEN",
+  PROFILE_FETCH_FAILED  = "PROFILE_FETCH_FAILED",
+
+  // User
+  USER_INVALID_ID         = "USER_INVALID_ID",
+  USER_NOT_FOUND          = "USER_NOT_FOUND",
+  USER_MALFORMED_RESPONSE = "USER_MALFORMED_RESPONSE",
+
+  // Auth
+  AUTH_TOKEN_EXPIRED = "AUTH_TOKEN_EXPIRED",
+  AUTH_UNAUTHORIZED  = "AUTH_UNAUTHORIZED",
+}
+```
+
+When adding a new route or service, add corresponding error codes to the enum:
+
+```typescript
+// Usage in a route
+return next(new ApiError(404, ApiCode.USER_NOT_FOUND, "User not found"));
+
+// The client receives a structured error response:
+// {
+//   "success": false,
+//   "message": "User not found",
+//   "code": "USER_NOT_FOUND"
+// }
+```
+
+This makes it possible to search logs and error tracking tools by code (e.g. `USER_NOT_FOUND`) to pinpoint the exact failure location without relying on ambiguous status codes or message strings.

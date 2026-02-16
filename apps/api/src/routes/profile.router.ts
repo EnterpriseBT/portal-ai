@@ -1,15 +1,33 @@
-import { Router } from "express";
-import {
-  ApiGetProfileResponse,
-  ApiResponseStatus,
-  ApiErrorResponse,
-} from "@mcp-ui/types";
+import { Router, Request, Response, NextFunction } from "express";
 import { createLogger } from "../utils/logger.util.js";
-import { getUserProfile } from "../services/auth0.service.js";
+import { Auth0Service } from "../services/auth0.service.js";
+import { HttpService, ApiError } from "../services/http.service.js";
+import { ApiCode } from "../constants/api-codes.constants.js";
 
 const logger = createLogger({ module: "profile" });
 
 export const profileRouter = Router();
+
+/**
+ * Validation middleware — ensures the Authorization header contains a Bearer token.
+ */
+function validateProfileRequest(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next(
+      new ApiError(
+        401,
+        ApiCode.PROFILE_MISSING_TOKEN,
+        "Missing or malformed access token"
+      )
+    );
+  }
+  next();
+}
 
 /**
  * @openapi
@@ -29,10 +47,10 @@ export const profileRouter = Router();
  *             schema:
  *               type: object
  *               properties:
- *                 status:
- *                   type: string
- *                   example: OK
- *                 data:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
  *                   $ref: '#/components/schemas/UserProfile'
  *       401:
  *         description: Unauthorized - Invalid or missing JWT token
@@ -47,35 +65,49 @@ export const profileRouter = Router();
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  */
-profileRouter.get("/", async (req, res) => {
-  try {
-    // Extract the access token from the Authorization header
-    const authHeader = req.headers.authorization as string;
-    const accessToken = authHeader.substring(7); // Remove "Bearer " prefix
-    const userProfile = await getUserProfile(accessToken);
+profileRouter.get(
+  "/",
+  validateProfileRequest,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      logger.info({ userId: req.auth?.payload.sub }, "GET /api/profile called");
 
-    logger.info(
-      { userId: userProfile.sub },
-      "User retrieved their profile information"
-    );
+      const accessToken = req.headers.authorization!.substring(7);
+      const profile = await Auth0Service.getUserProfile(accessToken);
 
-    const response: ApiGetProfileResponse = {
-      status: ApiResponseStatus.OK,
-      profile: userProfile,
-    };
-    res.json(response);
-  } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      "Failed to fetch user profile"
-    );
+      // Validate response payload before sending
+      if (!profile || !profile.sub) {
+        return next(
+          new ApiError(
+            500,
+            ApiCode.PROFILE_INVALID_RESPONSE,
+            "Malformed profile response from Auth0"
+          )
+        );
+      }
 
-    const errorResponse: ApiErrorResponse = {
-      status: ApiResponseStatus.ERROR,
-      message: "Failed to fetch user profile",
-      code: "PG001",
-    };
+      logger.info(
+        { userId: profile.sub },
+        "User retrieved their profile information"
+      );
 
-    res.status(500).json(errorResponse);
+      return HttpService.success(res, { profile });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch user profile"
+      );
+
+      if (error instanceof ApiError) {
+        return next(error);
+      }
+      return next(
+        new ApiError(
+          500,
+          ApiCode.PROFILE_FETCH_FAILED,
+          "Failed to fetch user profile"
+        )
+      );
+    }
   }
-});
+);
