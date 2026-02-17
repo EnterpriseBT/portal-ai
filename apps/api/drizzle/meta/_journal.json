@@ -8,6 +8,13 @@
       "when": 1771288465669,
       "tag": "0000_damp_crystal",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771292101853,
+      "tag": "0001_regular_galactus",
+      "breakpoints": true
     }
   ]
 }

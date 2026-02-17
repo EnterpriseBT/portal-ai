@@ -12,10 +12,10 @@
  * type-checker.
  */
 
-import type { UserProfileModel, BaseModel } from "@mcp-ui/core/models";
-import type { UserProfileSelect } from "./zod.js";
+import type { User, BaseModel } from "@mcp-ui/core/models";
+import type { UserSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
-import type { userProfiles } from "./user-profiles.table.js";
+import type { users } from "./users.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -28,16 +28,16 @@ type IsAssignable<A, B> = A extends B ? true : never;
 // ── User Profile ────────────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _DrizzleToModel = IsAssignable<UserProfileSelect, UserProfileModel>;
+type _DrizzleToModel = IsAssignable<UserSelect, User>;
 const _drizzleToModel: _DrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _ModelToDrizzle = IsAssignable<UserProfileModel, UserProfileSelect>;
+type _ModelToDrizzle = IsAssignable<User, UserSelect>;
 const _modelToDrizzle: _ModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
-type _InferredRow = InferSelectModel<typeof userProfiles>;
-type _InferredToModel = IsAssignable<_InferredRow, UserProfileModel>;
+type _InferredRow = InferSelectModel<typeof users>;
+type _InferredToModel = IsAssignable<_InferredRow, User>;
 const _inferredToModel: _InferredToModel = true;
 
 // ── Base Model ──────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ const _inferredToModel: _InferredToModel = true;
 // Ensure the base audit fields in the Drizzle row satisfy BaseModel.
 // We pick only the base keys to avoid failing on entity-specific columns.
 type BaseKeys = keyof BaseModel;
-type DrizzleBaseFields = Pick<UserProfileSelect, BaseKeys>;
+type DrizzleBaseFields = Pick<UserSelect, BaseKeys>;
 
 type _DrizzleBaseToModel = IsAssignable<DrizzleBaseFields, BaseModel>;
 const _drizzleBaseToModel: _DrizzleBaseToModel = true;

@@ -9,10 +9,10 @@ import { BaseModelSchema } from "./base.model.js";
  * time via `apps/api/src/db/schema/type-checks.ts` and at runtime
  * via drizzle-zod derived schemas in `apps/api/src/db/schema/zod.ts`.
  */
-export const UserProfileModelSchema = BaseModelSchema.extend({
+export const UserSchema = BaseModelSchema.extend({
   email: z.string().nullable(),
   name: z.string().nullable(),
   picture: z.string().nullable(),
 });
 
-export type UserProfileModel = z.infer<typeof UserProfileModelSchema>;
+export type User = z.infer<typeof UserSchema>;

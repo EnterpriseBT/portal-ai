@@ -7,7 +7,7 @@ import { baseColumns } from "./base.columns.js";
  * The `id` column stores the Auth0 `sub` claim, making it the link
  * between the identity provider and the local database.
  */
-export const userProfiles = pgTable("user_profiles", {
+export const users = pgTable("users", {
   ...baseColumns,
   email: text("email"),
   name: text("name"),

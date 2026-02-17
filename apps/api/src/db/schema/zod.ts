@@ -7,16 +7,16 @@
  */
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { userProfiles } from "./user-profiles.table.js";
+import { users } from "./users.table.js";
 
-// ── User Profiles ───────────────────────────────────────────────────
+// ── Users ─────────────────────────────────────────────────────────────
 
-/** Zod schema for a `user_profiles` row returned by SELECT. */
-export const UserProfileSelectSchema = createSelectSchema(userProfiles);
+/** Zod schema for a `users` row returned by SELECT. */
+export const UserSelectSchema = createSelectSchema(users);
 
-/** Zod schema for inserting into `user_profiles`. */
-export const UserProfileInsertSchema = createInsertSchema(userProfiles);
+/** Zod schema for inserting into `users`. */
+export const UserInsertSchema = createInsertSchema(users);
 
 /** Inferred types */
-export type UserProfileSelect = z.infer<typeof UserProfileSelectSchema>;
-export type UserProfileInsert = z.infer<typeof UserProfileInsertSchema>;
+export type UserSelect = z.infer<typeof UserSelectSchema>;
+export type UserInsert = z.infer<typeof UserInsertSchema>;

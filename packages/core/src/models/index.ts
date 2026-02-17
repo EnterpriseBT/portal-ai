@@ -2,4 +2,4 @@
 export * from "./base.model.js";
 
 /** User profile model schema & type */
-export * from "./user-profile.model.js";
+export * from "./user.model.js";
