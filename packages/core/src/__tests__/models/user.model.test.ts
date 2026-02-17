@@ -1,35 +1,9 @@
 import { UserModel, UserModelFactory } from "../../models/user.model.js";
-import { CoreModelFactory } from "../../models/base.model.js";
-import { DateFactory } from "../../utils/date.factory.js";
-import { IDFactory } from "../../utils/id-factory.js";
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Deterministic ID factory for predictable assertions. */
-class StubIDFactory extends IDFactory {
-  private _counter = 0;
-  private _prefix: string;
-  constructor(prefix: string = "stub-id") {
-    super();
-    this._prefix = prefix;
-  }
-  generate(): string {
-    return `${this._prefix}-${++this._counter}`;
-  }
-}
-
-/** Shared factories used across tests. */
-const dateFactory = new DateFactory("UTC");
-
-function buildCoreModelFactory(idFactory?: IDFactory) {
-  return new CoreModelFactory({
-    dateFactory,
-    ...(idFactory ? { idFactory } : {}),
-  });
-}
+import {
+  UUID_REGEX,
+  StubIDFactory,
+  buildCoreModelFactory,
+} from "../test-utils.js";
 
 // ── Tests ───────────────────────────────────────────────────────────
 

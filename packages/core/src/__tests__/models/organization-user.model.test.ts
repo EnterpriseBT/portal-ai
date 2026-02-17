@@ -1,65 +1,42 @@
-import { UserModel, UserModelFactory } from "../models/user.model.js";
-import { CoreModelFactory } from "../models/base.model.js";
-import { DateFactory } from "../utils/date.factory.js";
-import { IDFactory } from "../utils/id-factory.js";
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Deterministic ID factory for predictable assertions. */
-class StubIDFactory extends IDFactory {
-  private _counter = 0;
-  private _prefix: string;
-  constructor(prefix: string = "stub-id") {
-    super();
-    this._prefix = prefix;
-  }
-  generate(): string {
-    return `${this._prefix}-${++this._counter}`;
-  }
-}
-
-/** Shared factories used across tests. */
-const dateFactory = new DateFactory("UTC");
-
-function buildCoreModelFactory(idFactory?: IDFactory) {
-  return new CoreModelFactory({
-    dateFactory,
-    ...(idFactory ? { idFactory } : {}),
-  });
-}
+import {
+  OrganizationUserModel,
+  OrganizationUserModelFactory,
+} from "../../models/organization-user.model.js";
+import {
+  UUID_REGEX,
+  StubIDFactory,
+  buildCoreModelFactory,
+} from "../test-utils.js";
 
 // ── Tests ───────────────────────────────────────────────────────────
 
-describe("UserModelFactory", () => {
+describe("OrganizationUserModelFactory", () => {
   // ── Constructor ─────────────────────────────────────────────────
 
   describe("constructor", () => {
     it("should accept a CoreModelFactory", () => {
       const coreModelFactory = buildCoreModelFactory();
-      const factory = new UserModelFactory({ coreModelFactory });
-      expect(factory).toBeInstanceOf(UserModelFactory);
+      const factory = new OrganizationUserModelFactory({ coreModelFactory });
+      expect(factory).toBeInstanceOf(OrganizationUserModelFactory);
     });
   });
 
   // ── create ──────────────────────────────────────────────────────
 
   describe("create", () => {
-    let factory: UserModelFactory;
+    let factory: OrganizationUserModelFactory;
     let stubIdFactory: StubIDFactory;
 
     beforeEach(() => {
       stubIdFactory = new StubIDFactory("test-id");
-      factory = new UserModelFactory({
+      factory = new OrganizationUserModelFactory({
         coreModelFactory: buildCoreModelFactory(stubIdFactory),
       });
     });
 
-    it("should return a UserModel instance", () => {
+    it("should return an OrganizationUserModel instance", () => {
       const model = factory.create("user-1");
-      expect(model).toBeInstanceOf(UserModel);
+      expect(model).toBeInstanceOf(OrganizationUserModel);
     });
 
     it("should assign the generated id from the underlying CoreModelFactory", () => {
@@ -93,7 +70,7 @@ describe("UserModelFactory", () => {
     });
 
     it("should produce unique ids across multiple calls", () => {
-      const defaultFactory = new UserModelFactory({
+      const defaultFactory = new OrganizationUserModelFactory({
         coreModelFactory: buildCoreModelFactory(),
       });
       const ids = new Set(
@@ -103,14 +80,14 @@ describe("UserModelFactory", () => {
     });
 
     it("should produce ids matching UUID format when using the default IDFactory", () => {
-      const defaultFactory = new UserModelFactory({
+      const defaultFactory = new OrganizationUserModelFactory({
         coreModelFactory: buildCoreModelFactory(),
       });
       const model = defaultFactory.create("user-1");
       expect(model.toJSON().id).toMatch(UUID_REGEX);
     });
 
-    it("should return a different UserModel instance on each call", () => {
+    it("should return a different OrganizationUserModel instance on each call", () => {
       const a = factory.create("user-a");
       const b = factory.create("user-b");
 
@@ -118,30 +95,23 @@ describe("UserModelFactory", () => {
       expect(a.toJSON().id).not.toBe(b.toJSON().id);
     });
 
-    it("should expose the UserSchema via the schema getter", () => {
+    it("should expose the OrganizationUserSchema via the schema getter", () => {
       const model = factory.create("user-1");
-      // UserSchema extends BaseModelSchema with auth0Id, email, name, picture
       const shape = model.schema.shape;
-      expect(shape).toHaveProperty("auth0Id");
-      expect(shape).toHaveProperty("email");
-      expect(shape).toHaveProperty("name");
-      expect(shape).toHaveProperty("picture");
+      expect(shape).toHaveProperty("organizationId");
+      expect(shape).toHaveProperty("userId");
     });
 
-    it("should allow updating user-specific fields after creation", () => {
+    it("should allow updating organizationId and userId after creation", () => {
       const model = factory.create("user-1");
       model.update({
-        auth0Id: "auth0|abc",
-        email: "user@example.com",
-        name: "Jane Doe",
-        picture: "https://example.com/avatar.png",
+        organizationId: "org-abc",
+        userId: "usr-xyz",
       });
 
       const json = model.toJSON();
-      expect(json.auth0Id).toBe("auth0|abc");
-      expect(json.email).toBe("user@example.com");
-      expect(json.name).toBe("Jane Doe");
-      expect(json.picture).toBe("https://example.com/avatar.png");
+      expect(json.organizationId).toBe("org-abc");
+      expect(json.userId).toBe("usr-xyz");
       // base fields should still be present
       expect(json.id).toBe("test-id-1");
       expect(json.createdBy).toBe("user-1");
@@ -150,10 +120,8 @@ describe("UserModelFactory", () => {
     it("should pass validation when all required fields are set", () => {
       const model = factory.create("system");
       model.update({
-        auth0Id: "auth0|123",
-        email: "test@test.com",
-        name: "Test",
-        picture: null,
+        organizationId: "org-1",
+        userId: "usr-1",
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -164,9 +132,44 @@ describe("UserModelFactory", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should fail validation when user-specific required fields are missing", () => {
+    it("should fail validation when organizationId is missing", () => {
       const model = factory.create("user-1");
-      // base fields are set, but auth0Id etc. are missing
+      model.update({
+        userId: "usr-1",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+
+      const result = model.validate();
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const paths = result.error.issues.map((i) => i.path[0]);
+        expect(paths).toContain("organizationId");
+      }
+    });
+
+    it("should fail validation when userId is missing", () => {
+      const model = factory.create("user-1");
+      model.update({
+        organizationId: "org-1",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+
+      const result = model.validate();
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const paths = result.error.issues.map((i) => i.path[0]);
+        expect(paths).toContain("userId");
+      }
+    });
+
+    it("should fail validation when both organizationId and userId are missing", () => {
+      const model = factory.create("user-1");
       model.update({
         updated: null,
         updatedBy: null,
@@ -178,7 +181,8 @@ describe("UserModelFactory", () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         const paths = result.error.issues.map((i) => i.path[0]);
-        expect(paths).toContain("auth0Id");
+        expect(paths).toContain("organizationId");
+        expect(paths).toContain("userId");
       }
     });
   });

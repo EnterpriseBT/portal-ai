@@ -9,6 +9,7 @@ import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { users } from "./users.table.js";
 import { organizations } from "./organizations.table.js";
+import { organizationUsers } from "./organization-users.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -33,3 +34,21 @@ export const OrganizationInsertSchema = createInsertSchema(organizations);
 /** Inferred types */
 export type OrganizationSelect = z.infer<typeof OrganizationSelectSchema>;
 export type OrganizationInsert = z.infer<typeof OrganizationInsertSchema>;
+
+// ── Organization Users ────────────────────────────────────────────────
+
+/** Zod schema for an `organization_users` row returned by SELECT. */
+export const OrganizationUserSelectSchema =
+  createSelectSchema(organizationUsers);
+
+/** Zod schema for inserting into `organization_users`. */
+export const OrganizationUserInsertSchema =
+  createInsertSchema(organizationUsers);
+
+/** Inferred types */
+export type OrganizationUserSelect = z.infer<
+  typeof OrganizationUserSelectSchema
+>;
+export type OrganizationUserInsert = z.infer<
+  typeof OrganizationUserInsertSchema
+>;

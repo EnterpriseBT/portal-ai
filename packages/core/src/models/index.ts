@@ -6,3 +6,6 @@ export * from "./user.model.js";
 
 /** Organization model schema & type */
 export * from "./organization.model.js";
+
+/** Organization–User join model schema & type */
+export * from "./organization-user.model.js";

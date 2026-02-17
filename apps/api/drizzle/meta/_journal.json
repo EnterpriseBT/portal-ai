@@ -29,6 +29,13 @@
       "when": 1771363654410,
       "tag": "0003_create_organizations",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771364165998,
+      "tag": "0004_create_organization_users",
+      "breakpoints": true
     }
   ]
 }
