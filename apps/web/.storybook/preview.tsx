@@ -1,5 +1,5 @@
 import type { Preview } from "@storybook/react";
-import { type ThemeName } from "@mcp-ui/core";
+import { type ThemeName } from "@mcp-ui/core/ui";
 import { AppProvider } from "../src/App";
 
 // Disable localStorage in Storybook to prevent state persistence between stories

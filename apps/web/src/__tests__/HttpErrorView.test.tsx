@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { ThemeProvider } from "@mcp-ui/core";
+import { ThemeProvider } from "@mcp-ui/core/ui";
 import React from "react";
 
 // Mock @tanstack/react-router

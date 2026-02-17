@@ -9,7 +9,7 @@ import {
   DEFAULT_THEME,
   THEME_MAP,
   type ThemeName,
-} from "../ThemeProvider";
+} from "../ui/ThemeProvider";
 
 // Test component that uses the theme context
 const ThemeConsumer: React.FC<{
@@ -46,7 +46,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <TestChild />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("test-child")).toBeInTheDocument();
@@ -57,7 +57,7 @@ describe("ThemeProvider Component", () => {
       const { container } = render(
         <ThemeProvider>
           <TestChild />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       // CssBaseline adds global styles, verify the component tree includes it
@@ -70,7 +70,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       const currentTheme = screen.getByTestId("current-theme");
@@ -81,7 +81,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("current-theme")).toHaveTextContent("brand");
@@ -93,7 +93,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider defaultTheme="brand.dark">
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       const currentTheme = screen.getByTestId("current-theme");
@@ -104,7 +104,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider defaultTheme="brand.dark">
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       const themeMode = screen.getByTestId("theme-mode");
@@ -117,7 +117,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       // Verify initial theme
@@ -132,7 +132,7 @@ describe("ThemeProvider Component", () => {
       // Verify theme changed
       await waitFor(() => {
         expect(screen.getByTestId("current-theme")).toHaveTextContent(
-          "brand.dark",
+          "brand.dark"
         );
       });
     });
@@ -141,12 +141,12 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider defaultTheme="brand.dark">
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       // Verify initial theme
       expect(screen.getByTestId("current-theme")).toHaveTextContent(
-        "brand.dark",
+        "brand.dark"
       );
 
       // Switch to light theme
@@ -167,7 +167,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer onThemeChange={onThemeChange} />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       // Wait for initial effect to complete
@@ -191,7 +191,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       const lightButton = screen.getByRole("button", {
@@ -205,7 +205,7 @@ describe("ThemeProvider Component", () => {
       fireEvent.click(darkButton);
       await waitFor(() => {
         expect(screen.getByTestId("current-theme")).toHaveTextContent(
-          "brand.dark",
+          "brand.dark"
         );
       });
 
@@ -219,7 +219,7 @@ describe("ThemeProvider Component", () => {
       fireEvent.click(darkButton);
       await waitFor(() => {
         expect(screen.getByTestId("current-theme")).toHaveTextContent(
-          "brand.dark",
+          "brand.dark"
         );
       });
     });
@@ -230,7 +230,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("current-theme")).toHaveTextContent("brand");
@@ -240,7 +240,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       const darkButton = screen.getByRole("button", {
@@ -251,7 +251,7 @@ describe("ThemeProvider Component", () => {
       // Verify setThemeName works
       await waitFor(() => {
         expect(screen.getByTestId("current-theme")).toHaveTextContent(
-          "brand.dark",
+          "brand.dark"
         );
       });
     });
@@ -277,7 +277,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeObjectConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("has-palette")).toHaveTextContent("true");
@@ -289,7 +289,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       // Initial theme mode should be light
@@ -327,7 +327,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ContextConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("has-themeName")).toHaveTextContent("true");
@@ -374,7 +374,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <MuiThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("mui-theme-mode")).toHaveTextContent("light");
@@ -397,7 +397,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <MuiThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("mui-theme-mode")).toHaveTextContent("light");
@@ -418,7 +418,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       const lightButton = screen.getByRole("button", {
@@ -444,7 +444,7 @@ describe("ThemeProvider Component", () => {
       const { rerender } = render(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       // Switch theme
@@ -455,7 +455,7 @@ describe("ThemeProvider Component", () => {
 
       await waitFor(() => {
         expect(screen.getByTestId("current-theme")).toHaveTextContent(
-          "brand.dark",
+          "brand.dark"
         );
       });
 
@@ -463,7 +463,7 @@ describe("ThemeProvider Component", () => {
       rerender(
         <ThemeProvider>
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       // Theme should persist (starts with default again due to new instance)
@@ -486,7 +486,7 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider defaultTheme="brand">
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("current-theme")).toHaveTextContent("brand");
@@ -496,13 +496,12 @@ describe("ThemeProvider Component", () => {
       render(
         <ThemeProvider defaultTheme="brand.dark">
           <ThemeConsumer />
-        </ThemeProvider>,
+        </ThemeProvider>
       );
 
       expect(screen.getByTestId("current-theme")).toHaveTextContent(
-        "brand.dark",
+        "brand.dark"
       );
     });
   });
-
 });

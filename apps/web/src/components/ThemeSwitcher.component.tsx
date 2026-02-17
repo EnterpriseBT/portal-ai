@@ -8,7 +8,7 @@ import {
   ListItemIcon,
   ListItemText,
   type ThemeName,
-} from "@mcp-ui/core";
+} from "@mcp-ui/core/ui";
 import { usePersistedTheme } from "../utils";
 
 export interface ThemeConfig {
@@ -45,7 +45,7 @@ export const ThemeSwitcherUI: React.FC<ThemeSwitcherUIProps> = ({
   };
 
   const currentTheme = availableThemes.find(
-    (theme) => theme.themeName === currentThemeName,
+    (theme) => theme.themeName === currentThemeName
   );
 
   return (

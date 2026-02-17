@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mcp-ui/core";
+import { Box, Typography } from "@mcp-ui/core/ui";
 import React from "react";
 
 export interface ErrorViewProps {

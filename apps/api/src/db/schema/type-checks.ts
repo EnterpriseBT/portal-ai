@@ -1,0 +1,54 @@
+/**
+ * Compile-time assertions that guarantee the Drizzle table schemas
+ * (source of truth) stay in sync with the hand-written Zod model
+ * schemas exported from `@mcp-ui/core`.
+ *
+ * If a column is added/removed/changed in a Drizzle table but the
+ * corresponding Zod model in core is not updated (or vice-versa),
+ * TypeScript will produce a compile error here — failing CI before
+ * the mismatch can reach production.
+ *
+ * This file produces NO runtime code; it exists purely for the
+ * type-checker.
+ */
+
+import type { UserProfileModel, BaseModel } from "@mcp-ui/core/models";
+import type { UserProfileSelect } from "./zod.js";
+import type { InferSelectModel } from "drizzle-orm";
+import type { userProfiles } from "./user-profiles.table.js";
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Evaluates to `true` if A is assignable to B, otherwise `never`.
+ * Use in both directions for structural equality.
+ */
+type IsAssignable<A, B> = A extends B ? true : never;
+
+// ── User Profile ────────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _DrizzleToModel = IsAssignable<UserProfileSelect, UserProfileModel>;
+const _drizzleToModel: _DrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _ModelToDrizzle = IsAssignable<UserProfileModel, UserProfileSelect>;
+const _modelToDrizzle: _ModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _InferredRow = InferSelectModel<typeof userProfiles>;
+type _InferredToModel = IsAssignable<_InferredRow, UserProfileModel>;
+const _inferredToModel: _InferredToModel = true;
+
+// ── Base Model ──────────────────────────────────────────────────────
+
+// Ensure the base audit fields in the Drizzle row satisfy BaseModel.
+// We pick only the base keys to avoid failing on entity-specific columns.
+type BaseKeys = keyof BaseModel;
+type DrizzleBaseFields = Pick<UserProfileSelect, BaseKeys>;
+
+type _DrizzleBaseToModel = IsAssignable<DrizzleBaseFields, BaseModel>;
+const _drizzleBaseToModel: _DrizzleBaseToModel = true;
+
+type _ModelToBase = IsAssignable<BaseModel, DrizzleBaseFields>;
+const _modelToBase: _ModelToBase = true;

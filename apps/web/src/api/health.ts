@@ -1,4 +1,7 @@
-import { type ApiSuccessResponse, type HealthGetResponse } from "@mcp-ui/core";
+import {
+  type ApiSuccessResponse,
+  type HealthGetResponse,
+} from "@mcp-ui/core/contracts";
 import { useAuthQuery } from "../utils/api.util";
 
 /**

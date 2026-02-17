@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { Header } from "../components/Header.component";
-import { Button } from "@mcp-ui/core";
+import { Button } from "@mcp-ui/core/ui";
 
 describe("Header Component", () => {
   it("should match snapshot", () => {
@@ -36,8 +36,12 @@ describe("Header Component", () => {
       </Header>
     );
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /settings/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /profile/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /settings/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /profile/i })
+    ).toBeInTheDocument();
   });
 
   it("should render custom title with children", () => {

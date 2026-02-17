@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ErrorView } from "../views/Error.view";
-import { Box } from "@mcp-ui/core";
+import { Box } from "@mcp-ui/core/ui";
 
 const meta = {
   title: "Views/ErrorView",

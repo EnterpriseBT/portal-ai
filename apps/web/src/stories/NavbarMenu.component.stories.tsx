@@ -6,7 +6,7 @@ import {
   ListItemIcon,
   Icon,
   IconName,
-} from "@mcp-ui/core";
+} from "@mcp-ui/core/ui";
 
 const meta = {
   title: "Components/NavbarMenuUI",

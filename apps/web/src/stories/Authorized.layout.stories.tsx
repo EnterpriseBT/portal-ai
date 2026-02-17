@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AuthorizedLayout } from "../layouts/Authorized.layout";
-import { Box, Typography } from "@mcp-ui/core";
+import { Box, Typography } from "@mcp-ui/core/ui";
 import { Auth0Provider } from "@auth0/auth0-react";
 
 const meta = {

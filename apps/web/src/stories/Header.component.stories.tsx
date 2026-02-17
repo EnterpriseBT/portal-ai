@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Header } from "../components/Header.component";
-import { Button } from "@mcp-ui/core";
+import { Button } from "@mcp-ui/core/ui";
 
 const meta = {
   title: "Components/Header",

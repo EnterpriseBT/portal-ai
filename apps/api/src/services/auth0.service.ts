@@ -1,4 +1,4 @@
-import { Auth0UserProfile } from "@mcp-ui/core";
+import { Auth0UserProfile } from "@mcp-ui/core/contracts";
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
 import { ApiError } from "./http.service.js";

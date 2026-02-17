@@ -1,4 +1,4 @@
-import { Box, Typography, useTheme } from "@mcp-ui/core";
+import { Box, Typography, useTheme } from "@mcp-ui/core/ui";
 import { alpha } from "@mui/material/styles";
 import { useHealth } from "../api/health";
 

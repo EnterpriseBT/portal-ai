@@ -10,7 +10,7 @@ import {
   Button,
   Icon,
   IconName,
-} from "@mcp-ui/core";
+} from "@mcp-ui/core/ui";
 
 export interface LoginFormUIProps {
   onClickGoogleLogin: () => void;

@@ -5,7 +5,7 @@ import {
   ThemeSwitcherUI,
   type ThemeConfig,
 } from "../components/ThemeSwitcher.component";
-import { IconName } from "@mcp-ui/core";
+import { IconName } from "@mcp-ui/core/ui";
 
 describe("ThemeSwitcherUI Component", () => {
   const mockOnThemeSelect = jest.fn();

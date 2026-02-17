@@ -9,7 +9,7 @@ import {
   Icon,
   IconName,
   Typography,
-} from "@mcp-ui/core";
+} from "@mcp-ui/core/ui";
 import { useAuth0 } from "@auth0/auth0-react";
 
 export interface NavbarMenuUIProps {

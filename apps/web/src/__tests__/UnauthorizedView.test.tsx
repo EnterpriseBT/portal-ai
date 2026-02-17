@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { render, screen } from "@testing-library/react";
-import { ThemeProvider } from "@mcp-ui/core";
+import { ThemeProvider } from "@mcp-ui/core/ui";
 
 jest.unstable_mockModule("@tanstack/react-router", () => ({
   useRouter: () => ({

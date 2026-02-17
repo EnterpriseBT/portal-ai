@@ -24,7 +24,7 @@ import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LockIcon from "@mui/icons-material/Lock";
 import BlockIcon from "@mui/icons-material/Block";
 import WarningIcon from "@mui/icons-material/Warning";
-import HeartIcon from "./assets/icons/heart.svg";
+import HeartIcon from "../assets/icons/heart.svg";
 
 export enum IconName {
   Home = "home",

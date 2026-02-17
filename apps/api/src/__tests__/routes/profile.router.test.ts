@@ -2,7 +2,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { ApiCode } from "../../constants/api-codes.constants.js";
-import type { Auth0UserProfile } from "@mcp-ui/core";
+import type { Auth0UserProfile } from "@mcp-ui/core/contracts";
 
 // Mock the auth middleware so the real app can be imported without JWT config
 jest.unstable_mockModule("../../middleware/auth.middleware.js", () => ({

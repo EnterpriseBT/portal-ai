@@ -9,6 +9,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "import": "./dist/models/index.js"
+    },
+    "./contracts": {
+      "types": "./dist/contracts/index.d.ts",
+      "import": "./dist/contracts/index.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/index.d.ts",
+      "import": "./dist/ui/index.js"
+    },
     "./styles": "./dist/styles/index.css",
     "./styles/fonts": "./dist/styles/fonts.css",
     "./styles/global": "./dist/styles/global.css"

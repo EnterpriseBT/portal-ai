@@ -6,8 +6,8 @@ import {
   type ThemeOptions,
 } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
-import brandTheme from "./assets/themes/brand-theme.json" with { type: "json" };
-import brandDarkTheme from "./assets/themes/brand-theme-dark.json" with { type: "json" };
+import brandTheme from "../assets/themes/brand-theme.json" with { type: "json" };
+import brandDarkTheme from "../assets/themes/brand-theme-dark.json" with { type: "json" };
 
 export const THEME_MAP = {
   brand: createTheme(brandTheme as ThemeOptions),
@@ -44,7 +44,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
       themeName,
       setThemeName,
     }),
-    [themeName],
+    [themeName]
   );
 
   return (

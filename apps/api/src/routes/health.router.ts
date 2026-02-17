@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { HealthGetResponse } from "@mcp-ui/core";
+import { HealthGetResponse } from "@mcp-ui/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";

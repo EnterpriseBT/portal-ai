@@ -1,4 +1,4 @@
-import { ApiErrorResponse, ApiSuccessResponse } from "@mcp-ui/core";
+import { ApiErrorResponse, ApiSuccessResponse } from "@mcp-ui/core/contracts";
 import { Response } from "express";
 import { ApiCode } from "../constants/api-codes.constants.js";
 

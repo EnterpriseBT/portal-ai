@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { Typography } from "../Typography";
-import type { TypographyProps } from "../Typography";
+import { Typography } from "../ui/Typography";
+import type { TypographyProps } from "../ui/Typography";
 
 describe("Typography Component", () => {
   describe("Rendering", () => {
@@ -53,7 +53,7 @@ describe("Typography Component", () => {
       render(
         <Typography ref={ref} component="h1">
           H1 Ref Test
-        </Typography>,
+        </Typography>
       );
 
       expect(ref.current).toBeInstanceOf(HTMLHeadingElement);

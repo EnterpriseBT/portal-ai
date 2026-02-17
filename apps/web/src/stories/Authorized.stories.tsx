@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AuthorizedUI } from "../components/Authorized.component";
-import { Box } from "@mcp-ui/core";
+import { Box } from "@mcp-ui/core/ui";
 
 const meta = {
   title: "Components/AuthorizedUI",

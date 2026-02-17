@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { IconButton } from "../IconButton";
-import { IconName } from "../Icon";
+import { IconButton } from "../ui/IconButton";
+import { IconName } from "../ui/Icon";
 
 describe("IconButton Component", () => {
   describe("Rendering", () => {
@@ -16,7 +16,7 @@ describe("IconButton Component", () => {
   describe("Icon Display", () => {
     it("should display the correct icon", () => {
       const { container } = render(
-        <IconButton icon={IconName.Home} aria-label="home button" />,
+        <IconButton icon={IconName.Home} aria-label="home button" />
       );
 
       // Check that the icon component is rendered inside the button
@@ -29,7 +29,9 @@ describe("IconButton Component", () => {
   describe("Ref Forwarding", () => {
     it("should forward ref to the underlying button element", () => {
       const ref = React.createRef<HTMLButtonElement>();
-      render(<IconButton ref={ref} icon={IconName.Home} aria-label="home button" />);
+      render(
+        <IconButton ref={ref} icon={IconName.Home} aria-label="home button" />
+      );
 
       expect(ref.current).toBeInstanceOf(HTMLButtonElement);
       expect(ref.current?.getAttribute("type")).toBe("button");

@@ -6,7 +6,7 @@ import {
   IconName,
   Typography,
   useTheme,
-} from "@mcp-ui/core";
+} from "../../../../packages/core/dist/ui";
 import { alpha } from "@mui/material/styles";
 import { useRouter } from "@tanstack/react-router";
 
