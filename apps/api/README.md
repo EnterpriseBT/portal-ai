@@ -154,6 +154,127 @@ src/
 └── index.ts         # Server entry point
 ```
 
+## Database Schema Workflow
+
+This project enforces a **dual-schema** approach — hand-written Zod models in `@mcp-ui/core` and Drizzle table definitions in the API. Compile-time type assertions guarantee they never drift apart.
+
+| Layer | Location | Purpose |
+|---|---|---|
+| **Zod models** | `packages/core/src/models/` | Business models shared across the monorepo (API + web) |
+| **Drizzle tables** | `apps/api/src/db/schema/` | Database table definitions (API only) |
+
+### Creating a New Table
+
+#### 1. Define the Zod model in `@mcp-ui/core`
+
+Create `packages/core/src/models/foo.model.ts`:
+
+```typescript
+import { z } from "zod";
+import { BaseModelSchema } from "./base.model.js";
+
+export const FooSchema = BaseModelSchema.extend({
+  title: z.string(),
+  description: z.string().nullable(),
+});
+
+export type Foo = z.infer<typeof FooSchema>;
+```
+
+`BaseModelSchema` provides `id`, `created`, `createdBy`, `updated`, `updatedBy`, `deleted`, `deletedBy` for free. Re-export from `packages/core/src/models/index.ts`.
+
+#### 2. Define the Drizzle table
+
+Create `apps/api/src/db/schema/foo.table.ts`:
+
+```typescript
+import { pgTable, text } from "drizzle-orm/pg-core";
+import { baseColumns } from "./base.columns.js";
+
+export const foos = pgTable("foos", {
+  ...baseColumns,       // auto-derived from BaseModelSchema
+  title: text("title").notNull(),
+  description: text("description"),
+});
+```
+
+`baseColumns` dynamically derives Drizzle columns from `BaseModelSchema` — strings become `text()`, numbers become `bigint()`, and nullability is preserved. Export the table from `apps/api/src/db/schema/index.ts`.
+
+#### 3. Generate drizzle-zod validation schemas
+
+Add entries in `apps/api/src/db/schema/zod.ts`:
+
+```typescript
+import { foos } from "./foo.table.js";
+
+export const FooSelectSchema = createSelectSchema(foos);
+export const FooInsertSchema = createInsertSchema(foos);
+export type FooSelect = z.infer<typeof FooSelectSchema>;
+export type FooInsert = z.infer<typeof FooInsertSchema>;
+```
+
+#### 4. Add compile-time type guards
+
+Add assertions in `apps/api/src/db/schema/type-checks.ts`:
+
+```typescript
+import type { Foo } from "@mcp-ui/core/models";
+import type { FooSelect } from "./zod.js";
+
+type _FooDrizzleToModel = IsAssignable<FooSelect, Foo>;
+const _fooDrizzleToModel: _FooDrizzleToModel = true;
+
+type _FooModelToDrizzle = IsAssignable<Foo, FooSelect>;
+const _fooModelToDrizzle: _FooModelToDrizzle = true;
+```
+
+If the Zod model and Drizzle table ever disagree on field names, types, or nullability, **the build fails**.
+
+#### 5. Generate and apply the migration
+
+```bash
+cd apps/api
+npm run db:generate    # creates a new numbered .sql migration file
+npm run db:migrate     # applies versioned migrations
+# OR
+npm run db:push        # pushes schema directly (dev convenience)
+```
+
+### Extending an Existing Table
+
+1. **Update the Zod model** in `packages/core/src/models/` — add the new field to the schema.
+2. **Update the Drizzle table** in `apps/api/src/db/schema/` — add the matching column.
+3. **Build** — run `npm run build` from the root. The type-check guards will fail if one side was updated without the other.
+4. **Generate & apply the migration** — `npm run db:generate` then `npm run db:migrate`.
+
+### How the Safety Net Works
+
+```
+  @mcp-ui/core                          apps/api
+  ┌──────────────┐                     ┌──────────────────┐
+  │ UserSchema   │◄── IsAssignable ──►│ UserSelectSchema  │
+  │ (Zod)        │    (type-checks.ts) │ (drizzle-zod)     │
+  └──────────────┘                     └────────┬─────────┘
+                                                │ createSelectSchema()
+                                       ┌────────┴─────────┐
+                                       │ users table       │
+                                       │ (Drizzle pgTable) │
+                                       └────────┬─────────┘
+                                                │ baseColumns
+                                       ┌────────┴─────────┐
+                                       │ BaseModelSchema   │
+                                       │ (auto-derived)    │
+                                       └──────────────────┘
+```
+
+### Database Scripts
+
+- `npm run db:generate` — Generate SQL migration from schema changes
+- `npm run db:migrate` — Run pending migrations
+- `npm run db:push` — Push schema directly (dev only)
+- `npm run db:studio` — Open Drizzle Studio GUI
+- `npm run db:seed` — Seed the database
+
 ## Authentication
 
 This API uses Auth0 JWT tokens for authentication. Protected routes require a valid JWT token in the Authorization header:

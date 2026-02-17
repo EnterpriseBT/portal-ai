@@ -25,7 +25,7 @@ import type { users } from "./users.table.js";
  */
 type IsAssignable<A, B> = A extends B ? true : never;
 
-// ── User Profile ────────────────────────────────────────────────────
+// ── User ────────────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
 type _DrizzleToModel = IsAssignable<UserSelect, User>;
