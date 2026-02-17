@@ -31,8 +31,12 @@ export default {
     "^@mcp-ui/core$": "<rootDir>/../../packages/core/src/index.ts",
   },
 
-  // Test file patterns
+  // Test file patterns - exclude integration tests
   testMatch: ["<rootDir>/src/**/__tests__/**/*.test.ts"],
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "<rootDir>/src/__tests__/__integration__/",
+  ],
 
   // Setup file run before tests
   setupFiles: ["<rootDir>/src/__tests__/setup.ts"],

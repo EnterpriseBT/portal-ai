@@ -32,19 +32,7 @@ healthRouter.get("/", (_req: Request, res: Response, next: NextFunction) => {
       timestamp: new Date().toISOString(),
     };
 
-    // Validate response payload before sending
-    if (!payload.timestamp) {
-      return next(
-        new ApiError(
-          500,
-          ApiCode.HEALTH_CHECK_FAILED,
-          "Failed to generate health check timestamp"
-        )
-      );
-    }
-
     logger.info("Health check OK");
-
     return HttpService.success(res, payload);
   } catch (error) {
     logger.error(

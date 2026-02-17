@@ -1,0 +1,68 @@
+export default {
+  // Use ts-jest preset for ESM
+  preset: "ts-jest/presets/default-esm",
+
+  // Node test environment for database integration tests
+  testEnvironment: "node",
+
+  // Root directory
+  rootDir: ".",
+
+  // File extensions
+  moduleFileExtensions: ["ts", "js", "json"],
+
+  // Transform TypeScript files with ts-jest
+  transform: {
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        useESM: true,
+        tsconfig: "tsconfig.json",
+      },
+    ],
+  },
+
+  // Treat .ts files as ESM
+  extensionsToTreatAsEsm: [".ts"],
+
+  // Map .js imports back to .ts source files
+  moduleNameMapper: {
+    "^(\\.{1,2}/.*)\\.js$": "$1",
+    "^@mcp-ui/core$": "<rootDir>/../../packages/core/src/index.ts",
+  },
+
+  // Test file patterns - only integration tests
+  testMatch: [
+    "<rootDir>/src/**/__tests__/__integration__/**/*.integration.test.ts",
+  ],
+
+  // Setup file run before tests - this will spin up postgres
+  globalSetup: "<rootDir>/src/__tests__/__integration__/setup.ts",
+  globalTeardown: "<rootDir>/src/__tests__/__integration__/teardown.ts",
+
+  // Coverage configuration
+  collectCoverageFrom: [
+    "src/**/*.ts",
+    "!src/index.ts",
+    "!src/types/**",
+    "!src/**/__tests__/**",
+    "!src/scripts/**",
+  ],
+
+  coverageDirectory: "coverage-integration",
+
+  coverageReporters: ["text", "lcov", "clover"],
+
+  // Don't silence logs for integration tests (helpful for debugging)
+  silent: false,
+
+  // Increase timeout for integration tests
+  testTimeout: 60000,
+
+  // Force Jest to exit after all tests complete.
+  // Integration tests open a module-level postgres connection pool (via db/client.ts)
+  // that keeps the process alive. Without this flag, Jest tears down the environment
+  // while pending pool callbacks are still in flight, causing the
+  // "import after teardown" ReferenceError.
+  forceExit: true,
+};

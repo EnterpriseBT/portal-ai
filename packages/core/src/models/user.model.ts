@@ -10,7 +10,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
  * via drizzle-zod derived schemas in `apps/api/src/db/schema/zod.ts`.
  */
 export const UserSchema = CoreSchema.extend({
-  auth0Id: z.string(),
+  auth0Id: z.string(), // Auth0 user ID (e.g., "auth0|1234567890")
   email: z.string().nullable(),
   name: z.string().nullable(),
   picture: z.string().nullable(),

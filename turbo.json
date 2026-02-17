@@ -33,6 +33,11 @@
       "outputs": ["coverage/**"],
       "cache": true
     },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage-integration/**"],
+      "cache": false
+    },
     "storybook": {
       "cache": false,
       "persistent": true,
