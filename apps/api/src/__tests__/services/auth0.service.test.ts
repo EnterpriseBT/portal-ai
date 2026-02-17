@@ -53,7 +53,7 @@ describe("Auth0Service", () => {
     });
   });
 
-  describe("getUserProfile()", () => {
+  describe("getAuth0UserProfile()", () => {
     const mockProfile = {
       sub: "auth0|user789",
       name: "Test User",
@@ -70,7 +70,7 @@ describe("Auth0Service", () => {
         json: () => Promise.resolve(mockProfile),
       } as globalThis.Response);
 
-      const profile = await Auth0Service.getUserProfile("valid-token");
+      const profile = await Auth0Service.getAuth0UserProfile("valid-token");
 
       expect(profile).toEqual(mockProfile);
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -93,11 +93,11 @@ describe("Auth0Service", () => {
       } as globalThis.Response);
 
       await expect(
-        Auth0Service.getUserProfile("invalid-token")
+        Auth0Service.getAuth0UserProfile("invalid-token")
       ).rejects.toThrow(ApiError);
 
       try {
-        await Auth0Service.getUserProfile("invalid-token");
+        await Auth0Service.getAuth0UserProfile("invalid-token");
       } catch (error) {
         expect((error as ApiError).status).toBe(401);
         expect((error as ApiError).code).toBe(ApiCode.AUTH_UPSTREAM_ERROR);
@@ -112,12 +112,12 @@ describe("Auth0Service", () => {
         text: () => Promise.resolve("Auth0 is down"),
       } as globalThis.Response);
 
-      await expect(Auth0Service.getUserProfile("some-token")).rejects.toThrow(
+      await expect(Auth0Service.getAuth0UserProfile("some-token")).rejects.toThrow(
         ApiError
       );
 
       try {
-        await Auth0Service.getUserProfile("some-token");
+        await Auth0Service.getAuth0UserProfile("some-token");
       } catch (error) {
         expect((error as ApiError).status).toBe(503);
       }
@@ -128,7 +128,7 @@ describe("Auth0Service", () => {
         .spyOn(globalThis, "fetch")
         .mockRejectedValue(new Error("Network failure"));
 
-      await expect(Auth0Service.getUserProfile("token")).rejects.toThrow(
+      await expect(Auth0Service.getAuth0UserProfile("token")).rejects.toThrow(
         "Network failure"
       );
     });

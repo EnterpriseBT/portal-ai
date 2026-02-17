@@ -14,7 +14,7 @@ jest.unstable_mockModule("../../services/auth0.service.js", () => ({
   Auth0Service: {
     hasAccessToken: jest.fn(),
     getAccessToken: jest.fn(),
-    getUserProfile: jest.fn(),
+    getAuth0UserProfile: jest.fn(),
   },
 }));
 
@@ -73,7 +73,7 @@ describe("Profile Router", () => {
       });
 
       it("should return 200 with the user profile", async () => {
-        mockedAuth0Service.getUserProfile.mockResolvedValue(mockProfile);
+        mockedAuth0Service.getAuth0UserProfile.mockResolvedValue(mockProfile);
 
         const res = await request(app)
           .get("/api/profile")
@@ -85,7 +85,7 @@ describe("Profile Router", () => {
       });
 
       it("should return 500 when Auth0 returns a profile without sub", async () => {
-        mockedAuth0Service.getUserProfile.mockResolvedValue({
+        mockedAuth0Service.getAuth0UserProfile.mockResolvedValue({
           sub: "",
         } as Auth0UserProfile);
 
@@ -99,7 +99,7 @@ describe("Profile Router", () => {
       });
 
       it("should return 500 when Auth0 returns null profile", async () => {
-        mockedAuth0Service.getUserProfile.mockResolvedValue(
+        mockedAuth0Service.getAuth0UserProfile.mockResolvedValue(
           null as unknown as Auth0UserProfile
         );
 
@@ -113,7 +113,7 @@ describe("Profile Router", () => {
       });
 
       it("should forward ApiError when Auth0Service throws one", async () => {
-        mockedAuth0Service.getUserProfile.mockRejectedValue(
+        mockedAuth0Service.getAuth0UserProfile.mockRejectedValue(
           new ApiError(
             502,
             ApiCode.AUTH_UPSTREAM_ERROR,
@@ -131,7 +131,7 @@ describe("Profile Router", () => {
       });
 
       it("should return 500 for unexpected errors", async () => {
-        mockedAuth0Service.getUserProfile.mockRejectedValue(
+        mockedAuth0Service.getAuth0UserProfile.mockRejectedValue(
           new Error("Network error")
         );
 

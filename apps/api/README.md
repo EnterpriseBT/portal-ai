@@ -202,7 +202,7 @@ profileRouter.get("/", async (req, res, next) => {
 
 // In a service method
 export class Auth0Service {
-  public static async getUserProfile(accessToken: string): Promise<Auth0UserProfile> {
+  public static async getAuth0UserProfile(accessToken: string): Promise<Auth0UserProfile> {
     logger.debug({ url: userInfoUrl }, "Fetching user profile from Auth0");
     const response = await fetch(userInfoUrl, { /* ... */ });
     logger.info({ sub: userProfile.sub }, "Successfully fetched user profile");
@@ -280,7 +280,7 @@ profileRouter.get("/", async (req, res, next) => {
       return next(new ApiError(401, ApiCode.PROFILE_MISSING_TOKEN, "Missing access token"));
     }
 
-    const profile = await Auth0Service.getUserProfile(accessToken);
+    const profile = await Auth0Service.getAuth0UserProfile(accessToken);
     return HttpService.success(res, { profile });
   } catch (error) {
     // Wrap unknown errors in ApiError before passing to next()

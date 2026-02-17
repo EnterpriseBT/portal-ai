@@ -13,7 +13,7 @@ jest.unstable_mockModule("../../services/auth0.service.js", () => ({
   Auth0Service: {
     hasAccessToken: jest.fn(),
     getAccessToken: jest.fn(),
-    getUserProfile: jest.fn(),
+    getAuth0UserProfile: jest.fn(),
   },
 }));
 
@@ -37,7 +37,7 @@ describe("Protected Router", () => {
     it("should return profile when JWT is valid and Auth0 responds", async () => {
       mockedAuth0Service.hasAccessToken.mockReturnValue(true);
       mockedAuth0Service.getAccessToken.mockReturnValue("valid-token");
-      mockedAuth0Service.getUserProfile.mockResolvedValue(mockProfile);
+      mockedAuth0Service.getAuth0UserProfile.mockResolvedValue(mockProfile);
 
       const res = await request(app)
         .get("/api/profile")

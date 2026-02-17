@@ -3,6 +3,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { Auth0Service } from "../services/auth0.service.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { Auth0UserProfileGetResponse } from "@mcp-ui/core";
 
 const logger = createLogger({ module: "profile" });
 
@@ -74,7 +75,7 @@ profileRouter.get(
       const accessToken = Auth0Service.getAccessToken(
         req.headers.authorization
       );
-      const profile = await Auth0Service.getUserProfile(accessToken);
+      const profile = await Auth0Service.getAuth0UserProfile(accessToken);
 
       // Validate response payload before sending
       if (!profile || !profile.sub) {
@@ -92,7 +93,7 @@ profileRouter.get(
         "User retrieved their profile information"
       );
 
-      return HttpService.success(res, { profile });
+      return HttpService.success<Auth0UserProfileGetResponse>(res, { profile });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

@@ -44,14 +44,12 @@ export const Auth0UserProfileSchema = z
 export type Auth0UserProfile = z.infer<typeof Auth0UserProfileSchema>;
 
 /**
- * User profile information used throughout the application.
- * A simplified subset of the Auth0 profile for API responses.
+ * User profile API response payload.
  */
-export const UserProfileSchema = z.object({
-  id: z.string(),
-  email: z.string().optional(),
-  name: z.string().optional(),
-  picture: z.string().optional(),
+export const Auth0UserProfileGetResponseSchema = z.object({
+  profile: Auth0UserProfileSchema,
 });
 
-export type UserProfile = z.infer<typeof UserProfileSchema>;
+export type Auth0UserProfileGetResponse = z.infer<
+  typeof Auth0UserProfileGetResponseSchema
+>;

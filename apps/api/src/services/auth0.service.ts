@@ -39,7 +39,7 @@ export class Auth0Service {
    * @param accessToken - The user's access token
    * @returns The user's profile information
    */
-  public static async getUserProfile(
+  public static async getAuth0UserProfile(
     accessToken: string
   ): Promise<Auth0UserProfile> {
     const userInfoUrl = `https://${environment.AUTH0_DOMAIN}/userinfo`;
