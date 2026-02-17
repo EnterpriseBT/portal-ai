@@ -11,7 +11,7 @@ import { DateFactory, IDFactory, UUIDv4Factory } from "../utils/index.js";
  * Sync with the Drizzle table columns is enforced at compile time
  * via `apps/api/src/db/schema/type-checks.ts`.
  */
-export const BaseModelSchema = z.object({
+export const CoreSchema = z.object({
   id: z.string(),
   created: z.number(),
   createdBy: z.string(),
@@ -21,7 +21,7 @@ export const BaseModelSchema = z.object({
   deletedBy: z.string().nullable(),
 });
 
-export type BaseModel = z.infer<typeof BaseModelSchema>;
+export type Core = z.infer<typeof CoreSchema>;
 
 export abstract class AbstractModel<T> {
   protected _model: Partial<T>;
@@ -46,22 +46,22 @@ export abstract class AbstractModel<T> {
   }
 }
 
-export class BaseModelClass<T extends BaseModel> extends AbstractModel<T> {
+export class CoreModel<T extends Core> extends AbstractModel<T> {
   get schema() {
-    return BaseModelSchema;
+    return CoreSchema;
   }
 }
 
-export interface BaseModelFactoryOptions {
+export interface CoreModelFactoryOptions {
   idFactory?: IDFactory;
   dateFactory: DateFactory;
 }
 
-export class BaseModelFactory {
+export class CoreModelFactory {
   protected _idFactory: IDFactory;
   protected _dateFactory: DateFactory;
 
-  constructor(options: BaseModelFactoryOptions) {
+  constructor(options: CoreModelFactoryOptions) {
     const { idFactory = new UUIDv4Factory(), dateFactory } = options;
     this._idFactory = idFactory;
     this._dateFactory = dateFactory;
@@ -70,24 +70,24 @@ export class BaseModelFactory {
   create(createdBy: string) {
     const id = this._idFactory.generate();
     const timestamp = this._dateFactory.now();
-    const baseData: Partial<BaseModel> = {
+    const baseData: Partial<Core> = {
       id,
       created: timestamp.getTime(),
       createdBy,
     };
-    const baseModel = new BaseModelClass(baseData);
+    const baseModel = new CoreModel(baseData);
     return baseModel;
   }
 }
 
 export interface ModelFactoryOptions {
-  baseModelFactory: BaseModelFactory;
+  coreModelFactory: CoreModelFactory;
 }
 
 export abstract class ModelFactory<T, M extends AbstractModel<T>> {
-  _baseModelFactory: BaseModelFactory;
+  _coreModelFactory: CoreModelFactory;
   constructor(options: ModelFactoryOptions) {
-    this._baseModelFactory = options.baseModelFactory;
+    this._coreModelFactory = options.coreModelFactory;
   }
 
   abstract create(createdBy: string): M;

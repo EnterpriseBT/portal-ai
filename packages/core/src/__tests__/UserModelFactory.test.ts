@@ -1,7 +1,7 @@
-import { UserModel, UserModelFactory } from "../../models/user.model.js";
-import { CoreModelFactory } from "../../models/base.model.js";
-import { DateFactory } from "../../utils/date.factory.js";
-import { IDFactory } from "../../utils/id-factory.js";
+import { UserModel, UserModelFactory } from "../models/user.model.js";
+import { CoreModelFactory } from "../models/base.model.js";
+import { DateFactory } from "../utils/date.factory.js";
+import { IDFactory } from "../utils/id-factory.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -120,7 +120,7 @@ describe("UserModelFactory", () => {
 
     it("should expose the UserSchema via the schema getter", () => {
       const model = factory.create("user-1");
-      // UserSchema extends CoreObjectSchema with auth0Id, email, name, picture
+      // UserSchema extends BaseModelSchema with auth0Id, email, name, picture
       const shape = model.schema.shape;
       expect(shape).toHaveProperty("auth0Id");
       expect(shape).toHaveProperty("email");

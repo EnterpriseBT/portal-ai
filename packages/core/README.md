@@ -41,7 +41,7 @@ Domain models are built on a layered schema → class → factory pattern using 
 
 | Layer | Purpose |
 |---|---|
-| `BaseModelSchema` | Zod schema with standard audit fields (`id`, `created`, `createdBy`, `updated`, `updatedBy`, `deleted`, `deletedBy`) |
+| `CoreObjectSchema` | Zod schema with standard audit fields (`id`, `created`, `createdBy`, `updated`, `updatedBy`, `deleted`, `deletedBy`) |
 | `BaseModelClass<T>` | Wraps a `Partial<T>`, exposes `toJSON()`, `validate()`, and `update()` |
 | `BaseModelFactory` | Generates base fields (`id` via `IDFactory`, `created` via `DateFactory`, `createdBy`) |
 | `ModelFactory<T, M>` | Abstract factory subclasses extend to create domain-specific models |
@@ -52,13 +52,13 @@ Use `user.model.ts` as the reference implementation.
 
 #### 1. Define the Zod schema
 
-Extend `BaseModelSchema` with domain-specific fields:
+Extend `CoreObjectSchema` with domain-specific fields:
 
 ```ts
 import { z } from "zod";
-import { BaseModelSchema } from "./base.model.js";
+import { CoreObjectSchema } from "./base.model.js";
 
-export const WidgetSchema = BaseModelSchema.extend({
+export const WidgetSchema = CoreObjectSchema.extend({
   label: z.string(),
   color: z.string().nullable(),
 });
@@ -125,7 +125,7 @@ widget.toJSON();   // plain object snapshot
 
 - **One file per model** — name it `<entity>.model.ts` and place it in `src/models/`.
 - **Schema first** — always define the Zod schema, then derive the `type` with `z.infer`.
-- **Extend, don't redefine** — use `BaseModelSchema.extend({})` so every model inherits the audit fields.
+- **Extend, don't redefine** — use `CoreObjectSchema.extend({})` so every model inherits the audit fields.
 - **Thin factories** — the `create()` method should only call `_baseModelFactory.create()` and wrap the result. Domain-specific fields are set later via `model.update()`.
 - **Tests** — add a corresponding `<entity>.model.test.ts` in `__tests__/models/`.
 

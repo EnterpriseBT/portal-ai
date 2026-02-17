@@ -171,9 +171,9 @@ Create `packages/core/src/models/foo.model.ts`:
 
 ```typescript
 import { z } from "zod";
-import { BaseModelSchema } from "./base.model.js";
+import { CoreObjectSchema } from "./base.model.js";
 
-export const FooSchema = BaseModelSchema.extend({
+export const FooSchema = CoreObjectSchema.extend({
   title: z.string(),
   description: z.string().nullable(),
 });
@@ -181,7 +181,7 @@ export const FooSchema = BaseModelSchema.extend({
 export type Foo = z.infer<typeof FooSchema>;
 ```
 
-`BaseModelSchema` provides `id`, `created`, `createdBy`, `updated`, `updatedBy`, `deleted`, `deletedBy` for free. Re-export from `packages/core/src/models/index.ts`.
+`CoreObjectSchema` provides `id`, `created`, `createdBy`, `updated`, `updatedBy`, `deleted`, `deletedBy` for free. Re-export from `packages/core/src/models/index.ts`.
 
 #### 2. Define the Drizzle table
 
@@ -192,13 +192,13 @@ import { pgTable, text } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 
 export const foos = pgTable("foos", {
-  ...baseColumns,       // auto-derived from BaseModelSchema
+  ...baseColumns,       // auto-derived from CoreObjectSchema
   title: text("title").notNull(),
   description: text("description"),
 });
 ```
 
-`baseColumns` dynamically derives Drizzle columns from `BaseModelSchema` — strings become `text()`, numbers become `bigint()`, and nullability is preserved. Export the table from `apps/api/src/db/schema/index.ts`.
+`baseColumns` dynamically derives Drizzle columns from `CoreObjectSchema` — strings become `text()`, numbers become `bigint()`, and nullability is preserved. Export the table from `apps/api/src/db/schema/index.ts`.
 
 #### 3. Generate drizzle-zod validation schemas
 
@@ -262,7 +262,7 @@ npm run db:push        # pushes schema directly (dev convenience)
                                        └────────┬─────────┘
                                                 │ baseColumns
                                        ┌────────┴─────────┐
-                                       │ BaseModelSchema   │
+                                       │ CoreObjectSchema   │
                                        │ (auto-derived)    │
                                        └──────────────────┘
 ```

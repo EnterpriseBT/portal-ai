@@ -4,9 +4,9 @@ import {
   CoreModel,
   CoreModelFactory,
   ModelFactory,
-} from "../../models/base.model.js";
-import { DateFactory } from "../../utils/date.factory.js";
-import { IDFactory } from "../../utils/id-factory.js";
+} from "../models/base.model.js";
+import { DateFactory } from "../utils/date.factory.js";
+import { IDFactory } from "../utils/id-factory.js";
 
 // ── Test fixtures ───────────────────────────────────────────────────
 

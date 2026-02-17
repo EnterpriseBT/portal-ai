@@ -12,7 +12,7 @@
  * type-checker.
  */
 
-import type { User, BaseModel } from "@mcp-ui/core/models";
+import type { User, Core } from "@mcp-ui/core/models";
 import type { UserSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
@@ -42,13 +42,13 @@ const _inferredToModel: _InferredToModel = true;
 
 // ── Base Model ──────────────────────────────────────────────────────
 
-// Ensure the base audit fields in the Drizzle row satisfy BaseModel.
+// Ensure the base audit fields in the Drizzle row satisfy Core.
 // We pick only the base keys to avoid failing on entity-specific columns.
-type BaseKeys = keyof BaseModel;
+type BaseKeys = keyof Core;
 type DrizzleBaseFields = Pick<UserSelect, BaseKeys>;
 
-type _DrizzleBaseToModel = IsAssignable<DrizzleBaseFields, BaseModel>;
+type _DrizzleBaseToModel = IsAssignable<DrizzleBaseFields, Core>;
 const _drizzleBaseToModel: _DrizzleBaseToModel = true;
 
-type _ModelToBase = IsAssignable<BaseModel, DrizzleBaseFields>;
+type _ModelToBase = IsAssignable<Core, DrizzleBaseFields>;
 const _modelToBase: _ModelToBase = true;

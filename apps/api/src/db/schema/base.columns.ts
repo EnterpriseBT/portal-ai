@@ -1,5 +1,5 @@
 import { text, bigint, type PgColumnBuilderBase } from "drizzle-orm/pg-core";
-import { BaseModelSchema, type BaseModel } from "@mcp-ui/core/models";
+import { CoreSchema, type Core } from "@mcp-ui/core/models";
 import { z } from "zod";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -52,10 +52,10 @@ type BaseColumns = ReturnType<typeof _typeRef>;
 // ── Column builder ──────────────────────────────────────────────────
 
 /**
- * Derive Drizzle base columns directly from `BaseModelSchema` defined
+ * Derive Drizzle base columns directly from `CoreSchema` defined
  * in `@mcp-ui/core`.
  *
- * The mapping is intentionally kept simple — every field in BaseModel
+ * The mapping is intentionally kept simple — every field in Core
  * is either a `string` (→ `text`) or a `number` (→ `bigint`).
  * The `id` key is always the primary key.
  *
@@ -63,7 +63,7 @@ type BaseColumns = ReturnType<typeof _typeRef>;
  *   pgTable("my_table", { ...baseColumns, myField: text("my_field") })
  */
 function deriveBaseColumns(): BaseColumns {
-  const shape = BaseModelSchema.shape;
+  const shape = CoreSchema.shape;
   const columns: Record<string, PgColumnBuilderBase> = {};
 
   for (const [key, zodField] of Object.entries(shape)) {
@@ -89,11 +89,11 @@ function deriveBaseColumns(): BaseColumns {
 export const baseColumns = deriveBaseColumns();
 
 // ── Compile-time guard ──────────────────────────────────────────────
-// Ensure every key in BaseModel has a corresponding column and vice-versa.
-// If a field is added to / removed from BaseModelSchema without updating
+// Ensure every key in Core has a corresponding column and vice-versa.
+// If a field is added to / removed from CoreSchema without updating
 // the type reference above, TypeScript will error here.
-type _KeysMatch = keyof typeof baseColumns extends keyof BaseModel
-  ? keyof BaseModel extends keyof typeof baseColumns
+type _KeysMatch = keyof typeof baseColumns extends keyof Core
+  ? keyof Core extends keyof typeof baseColumns
     ? true
     : never
   : never;
