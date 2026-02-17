@@ -12,10 +12,11 @@
  * type-checker.
  */
 
-import type { User, Core } from "@mcp-ui/core/models";
-import type { UserSelect } from "./zod.js";
+import type { User, Organization, Core } from "@mcp-ui/core/models";
+import type { UserSelect, OrganizationSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
+import type { organizations } from "./organizations.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -39,6 +40,21 @@ const _modelToDrizzle: _ModelToDrizzle = true;
 type _InferredRow = InferSelectModel<typeof users>;
 type _InferredToModel = IsAssignable<_InferredRow, User>;
 const _inferredToModel: _InferredToModel = true;
+
+// ── Organization ────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _OrgDrizzleToModel = IsAssignable<OrganizationSelect, Organization>;
+const _orgDrizzleToModel: _OrgDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _OrgModelToDrizzle = IsAssignable<Organization, OrganizationSelect>;
+const _orgModelToDrizzle: _OrgModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _OrgInferredRow = InferSelectModel<typeof organizations>;
+type _OrgInferredToModel = IsAssignable<_OrgInferredRow, Organization>;
+const _orgInferredToModel: _OrgInferredToModel = true;
 
 // ── Base Model ──────────────────────────────────────────────────────
 
