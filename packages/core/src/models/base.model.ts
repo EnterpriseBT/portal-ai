@@ -1,3 +1,4 @@
+import _ from "lodash";
 import { z } from "zod";
 
 /**
@@ -20,3 +21,32 @@ export const BaseModelSchema = z.object({
 });
 
 export type BaseModel = z.infer<typeof BaseModelSchema>;
+
+export abstract class AbstractModel<T> {
+  protected _model: Partial<T>;
+
+  constructor(data?: Partial<T>) {
+    this._model = data || {};
+  }
+
+  abstract get schema(): z.ZodTypeAny;
+
+  toJSON(): Partial<T> {
+    return JSON.parse(JSON.stringify(this._model));
+  }
+
+  validate() {
+    return this.schema.safeParse(this._model);
+  }
+
+  update(data: Partial<T>) {
+    this._model = _.merge({}, this._model, data);
+    return this;
+  }
+}
+
+export class BaseModelClass<T extends BaseModel> extends AbstractModel<T> {
+  get schema() {
+    return BaseModelSchema;
+  }
+}

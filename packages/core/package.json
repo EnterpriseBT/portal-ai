@@ -29,6 +29,12 @@
       "require": "./dist/ui/index.js",
       "default": "./dist/ui/index.js"
     },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js",
+      "require": "./dist/utils/index.js",
+      "default": "./dist/utils/index.js"
+    },
     "./styles": "./dist/styles/index.css",
     "./styles/fonts": "./dist/styles/fonts.css",
     "./styles/global": "./dist/styles/global.css"
@@ -70,6 +76,7 @@
     "@types/jest": "^29.5.14",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/uuid": "^9.0.8",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
     "@vitejs/plugin-react": "^4.7.0",
@@ -93,6 +100,9 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.7",
+    "@types/lodash": "^4.17.23",
+    "lodash": "^4.17.23",
+    "uuid": "^9.0.1",
     "zod": "^4.3.6"
   }
 }

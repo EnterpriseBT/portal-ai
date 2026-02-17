@@ -6,3 +6,6 @@ export * from "./contracts/index.js";
 
 /** Models — database object schemas */
 export * from "./models/index.js";
+
+/** Utilities — ID factories and helpers */
+export * from "./utils/index.js";
