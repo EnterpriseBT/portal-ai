@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { Icon, IconName } from "../ui/Icon";
-import type { IconProps } from "../ui/Icon";
+import { Icon, IconName } from "../../ui/Icon";
+import type { IconProps } from "../../ui/Icon";
 
 describe("Icon Component", () => {
   describe("Rendering", () => {

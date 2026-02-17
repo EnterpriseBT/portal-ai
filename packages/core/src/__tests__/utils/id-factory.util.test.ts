@@ -3,7 +3,7 @@ import {
   IDFactory,
   UUIDv4Factory,
   UUIDv5Factory,
-} from "../utils/id-factory.js";
+} from "../../utils/id-factory.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 

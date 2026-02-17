@@ -39,7 +39,7 @@ export default {
   setupFilesAfterEnv: ["<rootDir>/src/__tests__/setup.ts"],
 
   // Test match patterns
-  testMatch: ["**/__tests__/**/*.test.ts?(x)", "**/?(*.)+(spec|test).ts?(x)"],
+  testMatch: ["**/__tests__/**/*.test.ts?(x)"],
 
   // Coverage configuration
   collectCoverageFrom: [

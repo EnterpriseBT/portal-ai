@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { Typography } from "../ui/Typography";
-import type { TypographyProps } from "../ui/Typography";
+import { Typography } from "../../ui/Typography";
+import type { TypographyProps } from "../../ui/Typography";
 
 describe("Typography Component", () => {
   describe("Rendering", () => {

@@ -15,6 +15,13 @@
       "when": 1771292101853,
       "tag": "0001_regular_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771372800000,
+      "tag": "0002_add_auth0_id",
+      "breakpoints": true
     }
   ]
 }

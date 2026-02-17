@@ -96,11 +96,13 @@
     "vite-plugin-svgr": "^4.5.0"
   },
   "dependencies": {
+    "@date-fns/tz": "^1.4.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.7",
     "@types/lodash": "^4.17.23",
+    "date-fns": "^4.1.0",
     "lodash": "^4.17.23",
     "uuid": "^9.0.1",
     "zod": "^4.3.6"

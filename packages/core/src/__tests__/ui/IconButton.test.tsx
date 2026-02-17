@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { IconButton } from "../ui/IconButton";
-import { IconName } from "../ui/Icon";
+import { IconButton } from "../../ui/IconButton";
+import { IconName } from "../../ui/Icon";
 
 describe("IconButton Component", () => {
   describe("Rendering", () => {

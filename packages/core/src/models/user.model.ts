@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BaseModelSchema } from "./base.model.js";
+import { BaseModelClass, BaseModelSchema, ModelFactory } from "./base.model.js";
 
 /**
  * User profile database model.
@@ -10,9 +10,24 @@ import { BaseModelSchema } from "./base.model.js";
  * via drizzle-zod derived schemas in `apps/api/src/db/schema/zod.ts`.
  */
 export const UserSchema = BaseModelSchema.extend({
+  auth0Id: z.string(),
   email: z.string().nullable(),
   name: z.string().nullable(),
   picture: z.string().nullable(),
 });
 
 export type User = z.infer<typeof UserSchema>;
+
+export class UserModel extends BaseModelClass<User> {
+  get schema() {
+    return UserSchema;
+  }
+}
+
+export class UserModelFactory extends ModelFactory<User, UserModel> {
+  create(createdBy: string): UserModel {
+    const baseModel = this._baseModelFactory.create(createdBy);
+    const userModel = new UserModel(baseModel.toJSON());
+    return userModel;
+  }
+}

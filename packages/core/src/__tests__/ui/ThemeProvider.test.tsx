@@ -9,7 +9,7 @@ import {
   DEFAULT_THEME,
   THEME_MAP,
   type ThemeName,
-} from "../ui/ThemeProvider";
+} from "../../ui/ThemeProvider";
 
 // Test component that uses the theme context
 const ThemeConsumer: React.FC<{
