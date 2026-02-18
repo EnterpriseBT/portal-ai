@@ -131,7 +131,19 @@ webhookRouter.post(
         "Processing Auth0 webhook"
       );
 
-      const result = await WebhookService.syncUser(parsed.data);
+      const result = await WebhookService.syncUser(parsed.data).catch(
+        (error) => {
+          logger.error(
+            { error: error instanceof Error ? error.message : "Unknown error" },
+            "Error syncing user from webhook"
+          );
+          throw new ApiError(
+            500,
+            ApiCode.WEBHOOK_SYNC_FAILED,
+            "Failed to sync user from webhook"
+          );
+        }
+      );
 
       return HttpService.success<Auth0WebhookSyncResponse>(res, result);
     } catch (error) {

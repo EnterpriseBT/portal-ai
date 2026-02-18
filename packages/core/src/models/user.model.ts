@@ -23,6 +23,10 @@ export class UserModel extends CoreModel<User> {
     return UserSchema;
   }
 
+  parse(): User {
+    return this.schema.parse(this._model);
+  }
+
   validate(): z.ZodSafeParseResult<User> {
     return this.schema.safeParse(this._model);
   }

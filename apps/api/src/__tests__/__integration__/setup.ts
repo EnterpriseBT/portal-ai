@@ -25,8 +25,15 @@ export default async function globalSetup() {
   console.log("🔄 Connecting to test database...");
   console.log(`📍 Connection: ${databaseUrl.replace(/:[^:@]+@/, ':****@')}`);
 
-  // Set environment variable for tests
+  // Set environment variables for tests
   process.env.DATABASE_URL = databaseUrl;
+  process.env.NAMESPACE ??= "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+  process.env.SYSTEM_ID ??= "SYSTEM_TEST";
+  process.env.AUTH0_WEBHOOK_SECRET ??= "test-webhook-secret";
+  process.env.AUTH0_DOMAIN ??= "test.auth0.com";
+  process.env.AUTH0_AUDIENCE ??= "https://test-api";
+  process.env.CORS_ORIGIN ??= "http://localhost:3000";
+  process.env.LOG_LEVEL ??= "silent";
 
   const connection = postgres(databaseUrl, { max: 1 });
   const db = drizzle(connection);

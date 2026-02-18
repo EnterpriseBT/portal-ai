@@ -48,6 +48,10 @@ export class SystemUtilities {
     };
   }
 
+  static get timezone() {
+    return DEFAULT_TIMEZONE;
+  }
+
   /**
    * Date factory bound to UTC by default.
    *

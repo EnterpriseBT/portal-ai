@@ -21,6 +21,14 @@ export class OrganizationUserModel extends CoreModel<OrganizationUser> {
   get schema() {
     return OrganizationUserSchema;
   }
+
+  parse(): OrganizationUser {
+    return this.schema.parse(this._model);
+  }
+
+  validate(): z.ZodSafeParseResult<OrganizationUser> {
+    return this.schema.safeParse(this._model);
+  }
 }
 
 export class OrganizationUserModelFactory extends ModelFactory<

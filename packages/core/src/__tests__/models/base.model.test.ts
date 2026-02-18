@@ -84,6 +84,54 @@ describe("CoreModel", () => {
     });
   });
 
+  // ── parse ──────────────────────────────────────────────────────
+
+  describe("parse", () => {
+    it("should return the parsed data for a valid complete model", () => {
+      const instance = new TestModelClass(validData);
+      const result = instance.parse();
+
+      expect(result).toEqual(validData);
+    });
+
+    it("should throw a ZodError for an empty model", () => {
+      const instance = new TestModelClass();
+
+      expect(() => instance.parse()).toThrow(z.ZodError);
+    });
+
+    it("should throw a ZodError when required fields are missing", () => {
+      const instance = new TestModelClass({
+        id: "1",
+      } as Partial<TestModel>);
+
+      expect(() => instance.parse()).toThrow(z.ZodError);
+    });
+
+    it("should throw a ZodError for data with wrong types", () => {
+      const instance = new TestModelClass({
+        ...validData,
+        created: "not-a-number" as unknown as number,
+      });
+
+      expect(() => instance.parse()).toThrow(z.ZodError);
+    });
+
+    it("should strip unknown fields from the returned data", () => {
+      const dataWithExtra = {
+        ...validData,
+        unknownField: "should be stripped",
+      };
+      const instance = new TestModelClass(
+        dataWithExtra as unknown as Partial<TestModel>
+      );
+      const result = instance.parse();
+
+      expect(result).toEqual(validData);
+      expect((result as Record<string, unknown>).unknownField).toBeUndefined();
+    });
+  });
+
   // ── validate ────────────────────────────────────────────────────
 
   describe("validate", () => {

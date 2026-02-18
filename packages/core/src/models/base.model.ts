@@ -36,6 +36,10 @@ export abstract class AbstractModel<T> {
     return JSON.parse(JSON.stringify(this._model));
   }
 
+  parse(): T {
+    return this.schema.parse(this._model) as T;
+  }
+
   validate() {
     return this.schema.safeParse(this._model);
   }

@@ -122,6 +122,7 @@ describe("OrganizationModelFactory", () => {
       model.update({
         name: "Acme Corp",
         timezone: "UTC",
+        ownerUserId: "owner-123",
         updated: null,
         updatedBy: null,
         deleted: null,

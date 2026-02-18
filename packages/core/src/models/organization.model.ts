@@ -12,6 +12,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 export const OrganizationSchema = CoreSchema.extend({
   name: z.string(),
   timezone: z.string(),
+  ownerUserId: z.string(), // ID of the user who owns this organization
 });
 
 export type Organization = z.infer<typeof OrganizationSchema>;
@@ -19,6 +20,14 @@ export type Organization = z.infer<typeof OrganizationSchema>;
 export class OrganizationModel extends CoreModel<Organization> {
   get schema() {
     return OrganizationSchema;
+  }
+
+  parse(): Organization {
+    return this.schema.parse(this._model);
+  }
+
+  validate(): z.ZodSafeParseResult<Organization> {
+    return this.schema.safeParse(this._model);
   }
 }
 

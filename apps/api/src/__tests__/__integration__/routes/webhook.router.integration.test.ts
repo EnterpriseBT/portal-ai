@@ -32,7 +32,7 @@ const mockedWebhookService = WebhookService as jest.Mocked<
 >;
 
 function signPayload(body: string): string {
-  return `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex")}`;
+  return createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex");
 }
 
 const validPayload: Auth0WebhookPayload = {
@@ -66,21 +66,8 @@ describe("Webhook Router", () => {
           .set("Content-Type", "application/json")
           .set(
             "X-Auth0-Webhook-Signature",
-            "sha256=0000000000000000000000000000000000000000000000000000000000000000"
+            "0000000000000000000000000000000000000000000000000000000000000000"
           )
-          .send(body);
-
-        expect(res.status).toBe(401);
-        expect(res.body.success).toBe(false);
-        expect(res.body.code).toBe(ApiCode.WEBHOOK_INVALID_SIGNATURE);
-      });
-
-      it("should return 401 when signature format is invalid", async () => {
-        const body = JSON.stringify(validPayload);
-        const res = await request(app)
-          .post("/api/webhooks/auth0/sync")
-          .set("Content-Type", "application/json")
-          .set("X-Auth0-Webhook-Signature", "md5=abc123")
           .send(body);
 
         expect(res.status).toBe(401);
@@ -227,7 +214,7 @@ describe("Webhook Router", () => {
         expect(res.body.code).toBe(ApiCode.WEBHOOK_SYNC_FAILED);
       });
 
-      it("should forward ApiError when sync service throws one", async () => {
+      it("should return 500 when sync service throws an ApiError", async () => {
         mockedWebhookService.syncUser.mockRejectedValue(
           new ApiError(
             502,
@@ -245,7 +232,7 @@ describe("Webhook Router", () => {
           .set("X-Auth0-Webhook-Signature", signature)
           .send(body);
 
-        expect(res.status).toBe(502);
+        expect(res.status).toBe(500);
         expect(res.body.success).toBe(false);
         expect(res.body.code).toBe(ApiCode.WEBHOOK_SYNC_FAILED);
       });

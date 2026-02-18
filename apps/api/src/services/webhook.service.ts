@@ -6,8 +6,7 @@ import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
 import { UserModelFactory } from "@mcp-ui/core/models";
 import { SystemUtilities } from "../utils/system.util.js";
-import { ApiError } from "./http.service.js";
-import { ApiCode } from "../constants/api-codes.constants.js";
+import { ApplicationService } from "./application.service.js";
 
 const logger = createLogger({ module: "webhook" });
 
@@ -16,7 +15,16 @@ export class WebhookService {
     payload: Auth0WebhookPayload
   ): Promise<Auth0WebhookSyncResponse> {
     const usersRepo = DbService.repository.users;
-    const existing = await usersRepo.findByAuth0Id(payload.user_id);
+    const existing = await usersRepo
+      .findByAuth0Id(payload.user_id)
+      .catch((err) => {
+        logger.error(
+          { auth0Id: payload.user_id, error: err },
+          "Database error finding user by Auth0 ID"
+        );
+        throw new Error("Database error finding user");
+      });
+
     if (!existing) {
       const user = new UserModelFactory()
         .create(SystemUtilities.id.system)
@@ -27,27 +35,22 @@ export class WebhookService {
           picture: payload.picture ?? null,
         });
 
-      const validation = user.validate();
-      if (validation.error) {
+      const created = await ApplicationService.setupOrganization(
+        user.parse()
+      ).catch((err) => {
         logger.error(
-          { auth0Id: payload.user_id },
-          "Validation failed for new user from webhook"
+          { auth0Id: payload.user_id, error: err },
+          "Error setting up organization for new user"
         );
-        throw new ApiError(
-          400,
-          ApiCode.WEBHOOK_INVALID_PAYLOAD,
-          "User validation failed"
-        );
-      }
-
-      const created = await usersRepo.create(validation.data);
+        throw new Error("Error setting up organization for new user");
+      });
 
       logger.info(
-        { userId: created.id, auth0Id: payload.user_id },
+        { userId: created.user.id, auth0Id: payload.user_id },
         "Created new user from webhook"
       );
 
-      return { action: "created", userId: created.id };
+      return { action: "created", userId: created.user.id };
     }
 
     const hasChanges =
@@ -63,13 +66,21 @@ export class WebhookService {
       return { action: "unchanged", userId: existing.id };
     }
 
-    await usersRepo.update(existing.id, {
-      email: payload.email ?? null,
-      name: payload.name ?? null,
-      picture: payload.picture ?? null,
-      updated: Date.now(),
-      updatedBy: SystemUtilities.id.system,
-    });
+    await usersRepo
+      .update(existing.id, {
+        email: payload.email ?? null,
+        name: payload.name ?? null,
+        picture: payload.picture ?? null,
+        updated: Date.now(),
+        updatedBy: SystemUtilities.id.system,
+      })
+      .catch((err) => {
+        logger.error(
+          { userId: existing.id, auth0Id: payload.user_id, error: err },
+          "Database error updating user from webhook"
+        );
+        throw new Error("Database error updating user");
+      });
 
     logger.info(
       { userId: existing.id, auth0Id: payload.user_id },
