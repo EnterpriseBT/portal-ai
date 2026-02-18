@@ -509,6 +509,7 @@ describe("Repository Integration Tests", () => {
           await usersRepo.create(createTestUser(), tx);
           throw new Error("Intentional error");
         });
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
         // Expected
       }
@@ -548,6 +549,60 @@ describe("Repository Integration Tests", () => {
       );
 
       expect(results).toHaveLength(2);
+    });
+
+    // ── createTransactionClient ──────────────────────────────────
+
+    describe("createTransactionClient", () => {
+      it("should persist changes when commit is called", async () => {
+        const { tx, commit } = await Repository.createTransactionClient();
+
+        await usersRepo.create(createTestUser(), tx);
+        await usersRepo.create(createTestUser(), tx);
+        await commit();
+
+        const count = await usersRepo.count(undefined, db);
+        expect(count).toBe(2);
+      });
+
+      it("should revert changes when rollback is called", async () => {
+        const { tx, rollback } = await Repository.createTransactionClient();
+
+        await usersRepo.create(createTestUser(), tx);
+        await usersRepo.create(createTestUser(), tx);
+        await rollback();
+
+        const count = await usersRepo.count(undefined, db);
+        expect(count).toBe(0);
+      });
+
+      it("should support multiple repository operations before commit", async () => {
+        const { tx, commit } = await Repository.createTransactionClient();
+
+        const user = await usersRepo.create(createTestUser(), tx);
+        await usersRepo.update(user.id, { name: "Updated in TX" }, tx);
+        const user2 = await usersRepo.create(createTestUser(), tx);
+        await usersRepo.softDelete(user2.id, "admin", tx);
+        await commit();
+
+        const found = await usersRepo.findById(user.id, db);
+        const count = await usersRepo.count(undefined, db);
+
+        expect(found?.name).toBe("Updated in TX");
+        expect(count).toBe(1);
+      });
+
+      it("should revert all operations when rollback is called after multiple writes", async () => {
+        const { tx, rollback } = await Repository.createTransactionClient();
+
+        const user = await usersRepo.create(createTestUser(), tx);
+        await usersRepo.update(user.id, { name: "Updated in TX" }, tx);
+        await usersRepo.create(createTestUser(), tx);
+        await rollback();
+
+        const count = await usersRepo.count(undefined, db);
+        expect(count).toBe(0);
+      });
     });
 
     it("should reuse existing transaction when provided", async () => {

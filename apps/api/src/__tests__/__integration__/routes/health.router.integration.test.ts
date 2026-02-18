@@ -3,11 +3,11 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 
 // Mock the auth middleware so the real app can be imported without JWT config
-jest.unstable_mockModule("../../middleware/auth.middleware.js", () => ({
+jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
-const { app } = await import("../../app.js");
+const { app } = await import("../../../app.js");
 
 describe("Health Router", () => {
   describe("GET /api/health", () => {

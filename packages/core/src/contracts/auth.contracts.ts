@@ -9,7 +9,7 @@ import { z } from "zod";
  */
 export const Auth0UserProfileSchema = z
   .object({
-    sub: z.string(),
+    sub: z.string().min(1),
     name: z.string().optional(),
     given_name: z.string().optional(),
     family_name: z.string().optional(),

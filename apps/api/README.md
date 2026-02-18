@@ -275,6 +275,103 @@ npm run db:push        # pushes schema directly (dev convenience)
 - `npm run db:studio` — Open Drizzle Studio GUI
 - `npm run db:seed` — Seed the database
 
+## Repositories
+
+Every Drizzle table gets a corresponding repository class that extends the generic `Repository<TTable, TSelect, TInsert>` base class. The base class provides type-safe CRUD operations with built-in soft-delete awareness — all reads and updates automatically skip rows where `deleted IS NOT NULL`.
+
+### Updating Records
+
+The base repository exposes three update methods. All three ignore soft-deleted rows and accept an optional `DbClient` parameter for transaction support.
+
+#### `update(id, data, client?)` — Single row by ID
+
+```typescript
+const updated = await usersRepo.update("user-123", { email: "new@example.com" });
+
+if (!updated) {
+  // Row not found or already soft-deleted
+}
+```
+
+Returns the updated row, or `undefined` if the ID does not exist or the row is soft-deleted.
+
+#### `updateWhere(where, data, client?)` — Multiple rows matching a condition
+
+Applies the same partial update to every row matching a `where` clause.
+
+```typescript
+import { eq } from "drizzle-orm";
+import { users } from "../db/schema/index.js";
+
+const updated = await usersRepo.updateWhere(
+  eq(users.role, "guest"),
+  { role: "member" }
+);
+// updated: array of all rows that were changed
+```
+
+#### `updateMany(payloads, client?)` — Bulk update with per-row data
+
+Each payload carries its own `id` and `data`, so every row can receive different values. The operation runs inside a transaction for atomicity (or re-uses an existing one).
+
+```typescript
+const updated = await usersRepo.updateMany([
+  { id: "user-1", data: { displayName: "Alice" } },
+  { id: "user-2", data: { displayName: "Bob" } },
+]);
+// Non-existent or soft-deleted IDs are silently skipped
+```
+
+### Using Transactions
+
+Wrap cross-repository writes in a transaction so they commit or roll back as a unit.
+
+#### Callback-based (recommended)
+
+```typescript
+const result = await Repository.transaction(async (tx) => {
+  const org = await orgsRepo.create({ name: "Acme" }, tx);
+  await orgUsersRepo.create({ organizationId: org.id, userId: "user-1" }, tx);
+  return org;
+});
+```
+
+#### Manual commit / rollback
+
+```typescript
+const { tx, commit, rollback } = await Repository.createTransactionClient();
+try {
+  await usersRepo.update("user-1", { role: "admin" }, tx);
+  await auditRepo.create({ action: "PROMOTE", targetId: "user-1" }, tx);
+  await commit();
+} catch (err) {
+  await rollback();
+  throw err;
+}
+```
+
+### Creating a Concrete Repository
+
+1. Extend the base class with the table's types.
+2. Add custom query methods as needed.
+3. Export a singleton instance.
+
+```typescript
+import { Repository } from "./base.repository.js";
+import { foos } from "../schema/index.js";
+import type { FooSelect, FooInsert } from "../schema/zod.js";
+
+class FoosRepository extends Repository<typeof foos, FooSelect, FooInsert> {
+  constructor() {
+    super(foos);
+  }
+}
+
+export const foosRepo = new FoosRepository();
+```
+
+The singleton inherits all base methods (`findById`, `findMany`, `count`, `create`, `createMany`, `update`, `updateWhere`, `updateMany`, `softDelete`, `softDeleteMany`, `hardDelete`, `hardDeleteMany`) with full type safety.
+
 ## Authentication
 
 This API uses Auth0 JWT tokens for authentication. Protected routes require a valid JWT token in the Authorization header:

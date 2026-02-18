@@ -1,16 +1,16 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
-import { ApiCode } from "../../constants/api-codes.constants.js";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import type { Auth0UserProfile } from "@mcp-ui/core/contracts";
 
 // Mock the auth middleware so the real app can be imported without JWT config
-jest.unstable_mockModule("../../middleware/auth.middleware.js", () => ({
+jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
 // Mock Auth0Service
-jest.unstable_mockModule("../../services/auth0.service.js", () => ({
+jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
   Auth0Service: {
     hasAccessToken: jest.fn(),
     getAccessToken: jest.fn(),
@@ -18,9 +18,9 @@ jest.unstable_mockModule("../../services/auth0.service.js", () => ({
   },
 }));
 
-const { Auth0Service } = await import("../../services/auth0.service.js");
-const { app } = await import("../../app.js");
-const { ApiError } = await import("../../services/http.service.js");
+const { Auth0Service } = await import("../../../services/auth0.service.js");
+const { app } = await import("../../../app.js");
+const { ApiError } = await import("../../../services/http.service.js");
 const mockedAuth0Service = Auth0Service as jest.Mocked<typeof Auth0Service>;
 
 const mockProfile: Auth0UserProfile = {

@@ -50,6 +50,16 @@ export type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
  */
 export type DbClient = typeof db | DbTransaction;
 
+/** A manually controlled transaction with explicit commit / rollback. */
+export interface TransactionClient {
+  /** The Drizzle transaction object – pass this to repository methods. */
+  tx: DbTransaction;
+  /** Commit the transaction. */
+  commit: () => Promise<void>;
+  /** Roll back the transaction. */
+  rollback: () => Promise<void>;
+}
+
 /** Options for list / findMany queries. */
 export interface ListOptions {
   limit?: number;
@@ -295,5 +305,64 @@ export class Repository<
     fn: (tx: DbTransaction) => Promise<R>
   ): Promise<R> {
     return db.transaction(fn);
+  }
+
+  /**
+   * Create a transaction client that can be committed or rolled back manually.
+   *
+   * Unlike `Repository.transaction`, which uses a callback, this returns an
+   * object whose `tx` can be passed to any repository method and later
+   * committed or rolled back at the caller's discretion.
+   *
+   * **Important:** Always call either `commit()` or `rollback()` – failing to
+   * do so will leave the underlying connection hanging.
+   *
+   * @example
+   *   const { tx, commit, rollback } = await Repository.createTransactionClient();
+   *   try {
+   *     await repoA.create(dataA, tx);
+   *     await repoB.create(dataB, tx);
+   *     await commit();
+   *   } catch (err) {
+   *     await rollback();
+   *     throw err;
+   *   }
+   */
+  static async createTransactionClient(): Promise<TransactionClient> {
+    let resolveTx!: (tx: DbTransaction) => void;
+    let commitFn!: () => void;
+    let rollbackFn!: (err: Error) => void;
+
+    const txReady = new Promise<DbTransaction>((resolve) => {
+      resolveTx = resolve;
+    });
+
+    const txComplete = new Promise<void>((resolve, reject) => {
+      commitFn = resolve;
+      rollbackFn = reject;
+    });
+
+    const txPromise = db.transaction(async (tx) => {
+      resolveTx(tx);
+      await txComplete;
+    });
+
+    const tx = await txReady;
+
+    return {
+      tx,
+      commit: async () => {
+        commitFn();
+        await txPromise;
+      },
+      rollback: async () => {
+        rollbackFn(new Error("Transaction rolled back"));
+        try {
+          await txPromise;
+        } catch {
+          // Expected – Drizzle rolls back when the callback rejects.
+        }
+      },
+    };
   }
 }

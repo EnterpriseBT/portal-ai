@@ -1,5 +1,6 @@
 export const environment = {
   NODE_ENV: process.env.NODE_ENV || "development",
+  NAMESPACE: process.env.NAMESPACE,
   PORT: process.env.PORT,
   CORS_ORIGIN: process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(",")

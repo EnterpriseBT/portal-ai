@@ -4,12 +4,12 @@ import { Request, Response, NextFunction } from "express";
 import type { Auth0UserProfile } from "@mcp-ui/core/contracts";
 
 // Mock the auth middleware so we can control JWT validation
-jest.unstable_mockModule("../../middleware/auth.middleware.js", () => ({
+jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
   jwtCheck: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
 // Mock Auth0Service for the profile sub-router
-jest.unstable_mockModule("../../services/auth0.service.js", () => ({
+jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
   Auth0Service: {
     hasAccessToken: jest.fn(),
     getAccessToken: jest.fn(),
@@ -18,8 +18,8 @@ jest.unstable_mockModule("../../services/auth0.service.js", () => ({
 }));
 
 // Import after mocks are in place
-const { app } = await import("../../app.js");
-const { Auth0Service } = await import("../../services/auth0.service.js");
+const { app } = await import("../../../app.js");
+const { Auth0Service } = await import("../../../services/auth0.service.js");
 const mockedAuth0Service = Auth0Service as jest.Mocked<typeof Auth0Service>;
 
 const mockProfile: Auth0UserProfile = {
