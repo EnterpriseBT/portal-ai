@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from "express";
-import { createHmac, timingSafeEqual } from "crypto";
 import { environment } from "../environment.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
+import crypto from "crypto";
 
 const logger = createLogger({ module: "webhook-auth" });
 
@@ -31,10 +31,7 @@ export function verifyWebhookSignature(
     );
   }
 
-  const signatureHeader = req.headers["x-auth0-webhook-signature"] as
-    | string
-    | undefined;
-
+  const signatureHeader = req.headers["x-auth0-webhook-signature"] as string;
   if (!signatureHeader) {
     return next(
       new ApiError(
@@ -45,21 +42,18 @@ export function verifyWebhookSignature(
     );
   }
 
-  const parts = signatureHeader.split("=");
-  if (parts.length !== 2 || parts[0] !== "sha256") {
+  if (!signatureHeader.startsWith("sha256=")) {
     return next(
       new ApiError(
         401,
         ApiCode.WEBHOOK_INVALID_SIGNATURE,
-        "Invalid signature format"
+        "Invalid webhook signature format"
       )
     );
   }
 
-  const receivedHex = parts[1];
-  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
-
-  if (!rawBody) {
+  const payload = req.rawBody;
+  if (!payload) {
     return next(
       new ApiError(
         401,
@@ -69,17 +63,17 @@ export function verifyWebhookSignature(
     );
   }
 
-  const expectedHex = createHmac("sha256", secret)
-    .update(rawBody)
+  const signature = signatureHeader.slice(7);
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(payload)
     .digest("hex");
 
-  const receivedBuf = Buffer.from(receivedHex, "hex");
-  const expectedBuf = Buffer.from(expectedHex, "hex");
+  const trusted = Buffer.from(expectedSignature, "ascii");
+  const untrusted = Buffer.from(signature, "ascii");
 
-  if (
-    receivedBuf.length !== expectedBuf.length ||
-    !timingSafeEqual(receivedBuf, expectedBuf)
-  ) {
+  if (!crypto.timingSafeEqual(trusted, untrusted)) {
+    logger.error("Error comparing webhook signatures");
     return next(
       new ApiError(
         401,

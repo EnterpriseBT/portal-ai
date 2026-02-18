@@ -11,7 +11,7 @@ export const Auth0WebhookEventTypeSchema = z.enum([
 export type Auth0WebhookEventType = z.infer<typeof Auth0WebhookEventTypeSchema>;
 
 /**
- * User payload included in Auth0 webhook events.
+ * Auth0 user object nested inside the webhook payload.
  */
 export const Auth0WebhookUserSchema = z.object({
   user_id: z.string().min(1),
@@ -20,15 +20,14 @@ export const Auth0WebhookUserSchema = z.object({
   picture: z.string().optional(),
 });
 
-export type Auth0WebhookUser = z.infer<typeof Auth0WebhookUserSchema>;
-
 /**
  * Full Auth0 webhook payload sent by Auth0 Actions.
  */
 export const Auth0WebhookPayloadSchema = z.object({
-  event_type: Auth0WebhookEventTypeSchema,
-  user: Auth0WebhookUserSchema,
-  timestamp: z.string(),
+  user_id: z.string().min(1),
+  email: z.string().optional(),
+  name: z.string().optional(),
+  picture: z.string().optional(),
 });
 
 export type Auth0WebhookPayload = z.infer<typeof Auth0WebhookPayloadSchema>;

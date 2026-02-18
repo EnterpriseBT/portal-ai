@@ -28,14 +28,10 @@ describe("WebhookService", () => {
 
   describe("syncUser", () => {
     const basePayload: Auth0WebhookPayload = {
-      event_type: "post_login",
-      user: {
-        user_id: "auth0|abc123",
-        email: "test@example.com",
-        name: "Test User",
-        picture: "https://example.com/avatar.png",
-      },
-      timestamp: "2026-01-01T00:00:00.000Z",
+      user_id: "auth0|abc123",
+      email: "test@example.com",
+      name: "Test User",
+      picture: "https://example.com/avatar.png",
     };
 
     it("should create a new user when not found by auth0Id", async () => {
@@ -139,11 +135,7 @@ describe("WebhookService", () => {
 
     it("should handle user with no email, name, or picture", async () => {
       const minimalPayload: Auth0WebhookPayload = {
-        event_type: "post_user_registration",
-        user: {
-          user_id: "auth0|minimal",
-        },
-        timestamp: "2026-01-01T00:00:00.000Z",
+        user_id: "auth0|minimal",
       };
 
       mockUsersRepo.findByAuth0Id.mockResolvedValue(undefined);

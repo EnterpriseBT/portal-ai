@@ -1,4 +1,7 @@
-import { Request as ExpressRequest, Response as ExpressResponse } from "express";
+import {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+} from "express";
 
 /**
  * JWT token payload structure from Auth0
@@ -42,6 +45,7 @@ declare global {
     interface Request {
       /** Authentication context populated by express-oauth2-jwt-bearer */
       auth?: AuthContext;
+      rawBody?: Buffer; // For webhook signature verification
     }
 
     /**

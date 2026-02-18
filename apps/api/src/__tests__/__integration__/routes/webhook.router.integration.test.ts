@@ -36,14 +36,10 @@ function signPayload(body: string): string {
 }
 
 const validPayload: Auth0WebhookPayload = {
-  event_type: "post_login",
-  user: {
-    user_id: "auth0|user123",
-    email: "test@example.com",
-    name: "Test User",
-    picture: "https://example.com/avatar.png",
-  },
-  timestamp: "2026-01-01T00:00:00.000Z",
+  user_id: "auth0|user123",
+  email: "test@example.com",
+  name: "Test User",
+  picture: "https://example.com/avatar.png",
 };
 
 describe("Webhook Router", () => {
@@ -94,8 +90,8 @@ describe("Webhook Router", () => {
     });
 
     describe("payload validation", () => {
-      it("should return 400 for invalid payload (missing event_type)", async () => {
-        const invalidPayload = { user: { user_id: "auth0|123" }, timestamp: "now" };
+      it("should return 400 for invalid payload (missing user_id)", async () => {
+        const invalidPayload = { email: "test@example.com" };
         const body = JSON.stringify(invalidPayload);
         const signature = signPayload(body);
 
@@ -110,12 +106,8 @@ describe("Webhook Router", () => {
         expect(res.body.code).toBe(ApiCode.WEBHOOK_INVALID_PAYLOAD);
       });
 
-      it("should return 400 for invalid payload (missing user_id)", async () => {
-        const invalidPayload = {
-          event_type: "post_login",
-          user: { email: "test@example.com" },
-          timestamp: "now",
-        };
+      it("should return 400 for invalid payload (empty user_id)", async () => {
+        const invalidPayload = { user_id: "" };
         const body = JSON.stringify(invalidPayload);
         const signature = signPayload(body);
 
@@ -194,17 +186,14 @@ describe("Webhook Router", () => {
         expect(res.body.payload.action).toBe("unchanged");
       });
 
-      it("should handle post_user_registration event type", async () => {
+      it("should handle minimal payload with only user_id", async () => {
         mockedWebhookService.syncUser.mockResolvedValue({
           action: "created",
           userId: "new-user-id",
         });
 
-        const registrationPayload = {
-          ...validPayload,
-          event_type: "post_user_registration",
-        };
-        const body = JSON.stringify(registrationPayload);
+        const minimalPayload = { user_id: "auth0|minimal" };
+        const body = JSON.stringify(minimalPayload);
         const signature = signPayload(body);
 
         const res = await request(app)

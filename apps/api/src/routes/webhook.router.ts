@@ -20,7 +20,7 @@ export const webhookRouter = Router();
  */
 const jsonWithRawBody = express.json({
   verify: (req: Request, _res: Response, buf: Buffer) => {
-    (req as Request & { rawBody?: Buffer }).rawBody = buf;
+    (req as Request).rawBody = buf;
   },
 });
 
@@ -127,7 +127,7 @@ webhookRouter.post(
       }
 
       logger.info(
-        { eventType: parsed.data.event_type, userId: parsed.data.user.user_id },
+        { eventType: "post_login", userId: parsed.data.user_id },
         "Processing Auth0 webhook"
       );
 

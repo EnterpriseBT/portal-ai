@@ -1,4 +1,7 @@
-import type { Auth0WebhookPayload, Auth0WebhookSyncResponse } from "@mcp-ui/core/contracts";
+import type {
+  Auth0WebhookPayload,
+  Auth0WebhookSyncResponse,
+} from "@mcp-ui/core/contracts";
 import { UUIDv4Factory } from "@mcp-ui/core/utils";
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -10,19 +13,18 @@ export class WebhookService {
   static async syncUser(
     payload: Auth0WebhookPayload
   ): Promise<Auth0WebhookSyncResponse> {
-    const { user } = payload;
     const usersRepo = DbService.repository.users;
 
-    const existing = await usersRepo.findByAuth0Id(user.user_id);
+    const existing = await usersRepo.findByAuth0Id(payload.user_id);
 
     if (!existing) {
       const now = Date.now();
       const created = await usersRepo.create({
         id: idFactory.generate(),
-        auth0Id: user.user_id,
-        email: user.email ?? null,
-        name: user.name ?? null,
-        picture: user.picture ?? null,
+        auth0Id: payload.user_id,
+        email: payload.email ?? null,
+        name: payload.name ?? null,
+        picture: payload.picture ?? null,
         created: now,
         createdBy: "webhook:auth0",
         updated: null,
@@ -32,7 +34,7 @@ export class WebhookService {
       });
 
       logger.info(
-        { userId: created.id, auth0Id: user.user_id },
+        { userId: created.id, auth0Id: payload.user_id },
         "Created new user from webhook"
       );
 
@@ -40,28 +42,28 @@ export class WebhookService {
     }
 
     const hasChanges =
-      (user.email ?? null) !== existing.email ||
-      (user.name ?? null) !== existing.name ||
-      (user.picture ?? null) !== existing.picture;
+      (payload.email ?? null) !== existing.email ||
+      (payload.name ?? null) !== existing.name ||
+      (payload.picture ?? null) !== existing.picture;
 
     if (!hasChanges) {
       logger.debug(
-        { userId: existing.id, auth0Id: user.user_id },
+        { userId: existing.id, auth0Id: payload.user_id },
         "User unchanged, skipping update"
       );
       return { action: "unchanged", userId: existing.id };
     }
 
     await usersRepo.update(existing.id, {
-      email: user.email ?? null,
-      name: user.name ?? null,
-      picture: user.picture ?? null,
+      email: payload.email ?? null,
+      name: payload.name ?? null,
+      picture: payload.picture ?? null,
       updated: Date.now(),
       updatedBy: "webhook:auth0",
     });
 
     logger.info(
-      { userId: existing.id, auth0Id: user.user_id },
+      { userId: existing.id, auth0Id: payload.user_id },
       "Updated user from webhook"
     );
 

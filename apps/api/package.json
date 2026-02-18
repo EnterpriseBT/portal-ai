@@ -24,7 +24,7 @@
     "db:push": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs push",
     "db:studio": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs studio",
     "db:seed": "dotenv -e .env -- tsx src/db/seed.ts",
-    "tunnel": "npx cloudflared tunnel --url http://localhost:3001"
+    "tunnel": "cloudflared tunnel --url http://localhost:3001"
   },
   "dependencies": {
     "@mcp-ui/core": "*",
@@ -50,6 +50,7 @@
     "@types/swagger-ui-express": "^4.1.8",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
+    "cloudflared": "^0.7.1",
     "dotenv-cli": "^7.4.2",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.1",
