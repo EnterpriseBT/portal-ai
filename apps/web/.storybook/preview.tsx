@@ -1,8 +1,19 @@
 import type { Preview } from "@storybook/react";
 import { type ThemeName } from "@mcp-ui/core/ui";
 import { AppProvider } from "../src/App";
-import { RouterProvider } from "@tanstack/react-router";
-import { router } from "../src/router";
+import {
+  createRootRoute,
+  createRouter,
+  createMemoryHistory,
+  RouterContextProvider,
+} from "@tanstack/react-router";
+import { QueryClient } from "@tanstack/react-query";
+
+const storybookRouter = createRouter({
+  routeTree: createRootRoute(),
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+  context: { queryClient: new QueryClient() },
+});
 
 // Disable localStorage in Storybook to prevent state persistence between stories
 if (typeof window !== "undefined") {
@@ -58,7 +69,9 @@ const preview: Preview = {
       const theme = context.globals.theme as ThemeName;
       return (
         <AppProvider defaultTheme={theme}>
-          <RouterProvider router={router} defaultComponent={() => <Story />} />
+          <RouterContextProvider router={storybookRouter}>
+            <Story />
+          </RouterContextProvider>
         </AppProvider>
       );
     },

@@ -32,4 +32,22 @@ describe("NavbarMenuUI Component", () => {
 
     expect(screen.getByText("Custom Item")).toBeInTheDocument();
   });
+
+  it("should render a Settings menu item that links to /settings", async () => {
+    const user = userEvent.setup();
+    render(
+      <NavbarMenuUI>
+        <MenuItem component="a" href="/settings">
+          <ListItemText>Settings</ListItemText>
+        </MenuItem>
+      </NavbarMenuUI>
+    );
+
+    const avatarButton = screen.getByRole("button", { name: /account menu/i });
+    await user.click(avatarButton);
+
+    const settingsItem = screen.getByText("Settings");
+    expect(settingsItem).toBeInTheDocument();
+    expect(settingsItem.closest("a")).toHaveAttribute("href", "/settings");
+  });
 });

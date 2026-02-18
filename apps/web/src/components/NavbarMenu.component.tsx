@@ -11,6 +11,7 @@ import {
   Typography,
 } from "@mcp-ui/core/ui";
 import { useAuth0 } from "@auth0/auth0-react";
+import { Link } from "@tanstack/react-router";
 
 export interface NavbarMenuUIProps {
   image?: string;
@@ -90,6 +91,12 @@ export const NavbarMenu: React.FC = () => {
 
   return (
     <NavbarMenuUI image={user?.picture} label={user?.name}>
+      <MenuItem component={Link} to="/settings">
+        <ListItemIcon>
+          <Icon name={IconName.Settings} fontSize="small" />
+        </ListItemIcon>
+        <ListItemText>Settings</ListItemText>
+      </MenuItem>
       <MenuItem onClick={handleLogout}>
         <ListItemIcon>
           <Icon name={IconName.Logout} fontSize="small" />
