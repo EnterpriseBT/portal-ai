@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "./test-utils";
 import { ThemeProvider } from "@mcp-ui/core/ui";
 import React from "react";
 
@@ -44,8 +44,6 @@ describe("BadRequestView Component", () => {
     renderWithTheme(
       <BadRequestView description="Custom bad request message." />
     );
-    expect(
-      screen.getByText("Custom bad request message.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Custom bad request message.")).toBeInTheDocument();
   });
 });

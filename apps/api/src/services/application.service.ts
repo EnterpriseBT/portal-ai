@@ -29,17 +29,8 @@ export class ApplicationService {
         ownerUserId: createdUser.id,
       });
 
-      const orgValidation = orgModel.validate();
-      if (orgValidation.error) {
-        logger.error(
-          { userId: createdUser.id },
-          "Validation failed for new organization"
-        );
-        throw new Error("Organization validation failed");
-      }
-
       const createdOrg = await DbService.repository.organizations.create(
-        orgValidation.data,
+        orgModel.parse(),
         tx
       );
 
@@ -51,18 +42,9 @@ export class ApplicationService {
           userId: createdUser.id,
         });
 
-      const orgUserValidation = orgUserModel.validate();
-      if (orgUserValidation.error) {
-        logger.error(
-          { userId: createdUser.id, organizationId: createdOrg.id },
-          "Validation failed for organization-user link"
-        );
-        throw new Error("Organization-user link validation failed");
-      }
-
       const createdOrgUser =
         await DbService.repository.organizationUsers.create(
-          orgUserValidation.data,
+          orgUserModel.parse(),
           tx
         );
 

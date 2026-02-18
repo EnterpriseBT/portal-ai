@@ -31,10 +31,11 @@ export default {
   // Module name mapper for path aliases and static assets
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
-    "\\.svg$": "<rootDir>/src/__tests__/__mocks__/svgMock.js",
+    "\\.svg$": "<rootDir>/src/__tests__/__mocks__/svgMock.tsx",
     "\\.css$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",
     // Map @mcp-ui/core to the TypeScript source so ts-jest can transform it
     "^@mcp-ui/core/styles$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",
+    "^@mcp-ui/core/ui$": "<rootDir>/../../packages/core/src/ui/index.ts",
     "^@mcp-ui/core$": "<rootDir>/../../packages/core/src/index.ts",
   },
 

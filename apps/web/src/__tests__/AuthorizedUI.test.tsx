@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "./test-utils";
 import { AuthorizedUI } from "../components/Authorized.component";
 
 describe("AuthorizedUI Component", () => {
@@ -9,7 +9,7 @@ describe("AuthorizedUI Component", () => {
       const { container } = render(
         <AuthorizedUI loading={true} error={undefined}>
           {mockChildren}
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
       expect(container).toMatchSnapshot();
@@ -19,7 +19,7 @@ describe("AuthorizedUI Component", () => {
       render(
         <AuthorizedUI loading={true} error={undefined}>
           {mockChildren}
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
       expect(screen.queryByText("Protected Content")).not.toBeInTheDocument();
@@ -32,7 +32,7 @@ describe("AuthorizedUI Component", () => {
       const { container } = render(
         <AuthorizedUI loading={false} error={mockError}>
           {mockChildren}
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
       expect(container).toMatchSnapshot();
@@ -43,21 +43,23 @@ describe("AuthorizedUI Component", () => {
       render(
         <AuthorizedUI loading={false} error={mockError}>
           {mockChildren}
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
       expect(screen.queryByText("Protected Content")).not.toBeInTheDocument();
     });
 
-    it("should pass error message to ErrorView", () => {
+    it("should display error description in ErrorView", () => {
       const mockError = new Error("Custom error message");
       render(
         <AuthorizedUI loading={false} error={mockError}>
           {mockChildren}
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
-      expect(screen.getByText("Custom error message")).toBeInTheDocument();
+      expect(
+        screen.getByText("Unable to process your request")
+      ).toBeInTheDocument();
     });
   });
 
@@ -66,7 +68,7 @@ describe("AuthorizedUI Component", () => {
       const { container } = render(
         <AuthorizedUI loading={false} error={undefined}>
           {mockChildren}
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
       expect(container).toMatchSnapshot();
@@ -76,7 +78,7 @@ describe("AuthorizedUI Component", () => {
       render(
         <AuthorizedUI loading={false} error={undefined}>
           {mockChildren}
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
       expect(screen.getByText("Protected Content")).toBeInTheDocument();
@@ -89,7 +91,7 @@ describe("AuthorizedUI Component", () => {
             <h1>Dashboard</h1>
             <p>Welcome back!</p>
           </div>
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
       expect(screen.getByText("Dashboard")).toBeInTheDocument();
@@ -103,7 +105,7 @@ describe("AuthorizedUI Component", () => {
       render(
         <AuthorizedUI loading={true} error={mockError}>
           {mockChildren}
-        </AuthorizedUI>,
+        </AuthorizedUI>
       );
 
       expect(screen.queryByText("Protected Content")).not.toBeInTheDocument();

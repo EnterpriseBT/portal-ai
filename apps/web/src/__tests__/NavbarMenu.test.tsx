@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { NavbarMenuUI } from "../components/NavbarMenu.component";
 import { MenuItem, ListItemText } from "@mcp-ui/core/ui";

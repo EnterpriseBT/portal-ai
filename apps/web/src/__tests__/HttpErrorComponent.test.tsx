@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent } from "./test-utils";
 import { ThemeProvider } from "@mcp-ui/core/ui";
 import React from "react";
 

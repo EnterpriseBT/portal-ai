@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import {
   ThemeSwitcherUI,

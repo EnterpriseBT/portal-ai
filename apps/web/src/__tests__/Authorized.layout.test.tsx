@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "./test-utils";
 import { AuthorizedLayout } from "../layouts/Authorized.layout";
 
 const mockAuth0Provider = {

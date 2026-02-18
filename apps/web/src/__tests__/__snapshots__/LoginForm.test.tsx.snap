@@ -8,7 +8,7 @@ exports[`LoginFormUI Component should match snapshot 1`] = `
     class="MuiBox-root css-u6v8er"
   >
     <div
-      class="MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation3 css-zool2b-MuiPaper-root"
+      class="MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation3 css-1wavdjo-MuiPaper-root"
       style="--Paper-shadow: 0px 3px 3px -2px rgba(0,0,0,0.2),0px 3px 4px 0px rgba(0,0,0,0.14),0px 1px 8px 0px rgba(0,0,0,0.12);"
     >
       <div
@@ -18,12 +18,12 @@ exports[`LoginFormUI Component should match snapshot 1`] = `
           class="MuiBox-root css-xi606m"
         >
           <h1
-            class="MuiTypography-root MuiTypography-h4 MuiTypography-gutterBottom css-1it4a80-MuiTypography-root"
+            class="MuiTypography-root MuiTypography-h4 MuiTypography-gutterBottom css-1pmdao1-MuiTypography-root"
           >
             Welcome
           </h1>
           <p
-            class="MuiTypography-root MuiTypography-body2 css-1wle3ir-MuiTypography-root"
+            class="MuiTypography-root MuiTypography-body2 css-14kunq2-MuiTypography-root"
           >
             Sign in to continue
           </p>
@@ -32,7 +32,7 @@ exports[`LoginFormUI Component should match snapshot 1`] = `
           class="MuiDivider-root MuiDivider-fullWidth css-1jpc804-MuiDivider-root"
         />
         <button
-          class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeLarge MuiButton-containedSizeLarge MuiButton-colorPrimary MuiButton-fullWidth MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeLarge MuiButton-containedSizeLarge MuiButton-colorPrimary MuiButton-fullWidth css-ci48m3-MuiButtonBase-root-MuiButton-root"
+          class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeLarge MuiButton-containedSizeLarge MuiButton-colorPrimary MuiButton-fullWidth MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeLarge MuiButton-containedSizeLarge MuiButton-colorPrimary MuiButton-fullWidth css-xwydob-MuiButtonBase-root-MuiButton-root"
           tabindex="0"
           type="button"
         >
@@ -54,7 +54,7 @@ exports[`LoginFormUI Component should match snapshot 1`] = `
           Continue with Google
         </button>
         <span
-          class="MuiTypography-root MuiTypography-caption css-y42uos-MuiTypography-root"
+          class="MuiTypography-root MuiTypography-caption css-1fq3hlc-MuiTypography-root"
         >
           By continuing, you agree to our Terms of Service and Privacy Policy
         </span>

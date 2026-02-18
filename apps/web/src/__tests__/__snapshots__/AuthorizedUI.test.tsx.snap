@@ -14,25 +14,33 @@ exports[`AuthorizedUI Component Error State should render ErrorView when error i
     class="MuiBox-root css-s92abg"
   >
     <header
-      class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation4 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-ptdwpq-MuiPaper-root-MuiAppBar-root"
+      class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation4 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-pryc19-MuiPaper-root-MuiAppBar-root"
       style="--Paper-shadow: 0px 2px 4px -1px rgba(0,0,0,0.2),0px 4px 5px 0px rgba(0,0,0,0.14),0px 1px 10px 0px rgba(0,0,0,0.12);"
     >
       <div
         class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-yg49xf-MuiToolbar-root"
       >
-        <h4
-          class="MuiTypography-root MuiTypography-h4 css-1cwbpq2-MuiTypography-root"
+        <a
+          aria-current="page"
+          class="active"
+          data-status="active"
+          href="/"
+          style="text-decoration: none;"
         >
-          MCP UI
-        </h4>
+          <h6
+            class="MuiTypography-root MuiTypography-h6 css-1fjaxg5-MuiTypography-root"
+          >
+            MCP UI
+          </h6>
+        </a>
         <div
-          class="MuiButtonGroup-root MuiButtonGroup-outlined MuiButtonGroup-horizontal MuiButtonGroup-colorPrimary css-1joretd-MuiButtonGroup-root"
+          class="MuiButtonGroup-root MuiButtonGroup-outlined MuiButtonGroup-horizontal MuiButtonGroup-colorPrimary css-z9jna-MuiButtonGroup-root"
           role="group"
         >
           <button
             aria-haspopup="true"
             aria-label="Select theme"
-            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-15z41qh-MuiButtonBase-root-MuiIconButton-root"
+            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-2xu6xz-MuiButtonBase-root-MuiIconButton-root"
             tabindex="0"
             type="button"
           >
@@ -55,13 +63,61 @@ exports[`AuthorizedUI Component Error State should render ErrorView when error i
       class="MuiBox-root css-9eeetu"
     >
       <div
-        class="MuiBox-root css-0"
+        class="MuiBox-root css-12crrv0"
       >
-        <h2
-          class="MuiTypography-root MuiTypography-h2 css-zi892p-MuiTypography-root"
+        <div
+          aria-hidden="true"
+          class="MuiBox-root css-19idom"
         >
-          Authentication failed
-        </h2>
+          <svg
+            aria-hidden="true"
+            class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1n2dx9w-MuiSvgIcon-root"
+            data-testid="WarningIcon"
+            focusable="false"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M1 21h22L12 2zm12-3h-2v-2h2zm0-4h-2v-4h2z"
+            />
+          </svg>
+        </div>
+        <h1
+          class="MuiTypography-root MuiTypography-h1 css-1hlpb9j-MuiTypography-root"
+          style="color: rgb(255, 86, 48); margin-bottom: 8px;"
+        >
+          400
+        </h1>
+        <h4
+          class="MuiTypography-root MuiTypography-h4 css-kp3j89-MuiTypography-root"
+          style="margin-bottom: 16px;"
+        >
+          Bad Request
+        </h4>
+        <p
+          class="MuiTypography-root MuiTypography-body1 css-wlsem8-MuiTypography-root"
+          style="color: rgb(107, 119, 140); max-width: 480px; margin-bottom: 32px;"
+        >
+          Unable to process your request
+        </p>
+        <div
+          class="MuiBox-root css-10egq61"
+        >
+          <button
+            class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary css-1ltjtnm-MuiButtonBase-root-MuiButton-root"
+            style="border-color: rgba(0, 82, 204, 0.5);"
+            tabindex="0"
+            type="button"
+          >
+            Go Back
+          </button>
+          <button
+            class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary css-1b8afgd-MuiButtonBase-root-MuiButton-root"
+            tabindex="0"
+            type="button"
+          >
+            Go Home
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -74,25 +130,33 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
     class="MuiBox-root css-s92abg"
   >
     <header
-      class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation4 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-ptdwpq-MuiPaper-root-MuiAppBar-root"
+      class="MuiPaper-root MuiPaper-elevation MuiPaper-elevation4 MuiAppBar-root MuiAppBar-colorPrimary MuiAppBar-positionStatic css-pryc19-MuiPaper-root-MuiAppBar-root"
       style="--Paper-shadow: 0px 2px 4px -1px rgba(0,0,0,0.2),0px 4px 5px 0px rgba(0,0,0,0.14),0px 1px 10px 0px rgba(0,0,0,0.12);"
     >
       <div
         class="MuiToolbar-root MuiToolbar-gutters MuiToolbar-regular css-yg49xf-MuiToolbar-root"
       >
-        <h4
-          class="MuiTypography-root MuiTypography-h4 css-1cwbpq2-MuiTypography-root"
+        <a
+          aria-current="page"
+          class="active"
+          data-status="active"
+          href="/"
+          style="text-decoration: none;"
         >
-          MCP UI
-        </h4>
+          <h6
+            class="MuiTypography-root MuiTypography-h6 css-1fjaxg5-MuiTypography-root"
+          >
+            MCP UI
+          </h6>
+        </a>
         <div
-          class="MuiButtonGroup-root MuiButtonGroup-outlined MuiButtonGroup-horizontal MuiButtonGroup-colorPrimary css-1joretd-MuiButtonGroup-root"
+          class="MuiButtonGroup-root MuiButtonGroup-outlined MuiButtonGroup-horizontal MuiButtonGroup-colorPrimary css-z9jna-MuiButtonGroup-root"
           role="group"
         >
           <button
             aria-haspopup="true"
             aria-label="Select theme"
-            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-15z41qh-MuiButtonBase-root-MuiIconButton-root"
+            class="MuiButtonBase-root MuiIconButton-root MuiIconButton-colorInherit MuiIconButton-sizeMedium css-2xu6xz-MuiButtonBase-root-MuiIconButton-root"
             tabindex="0"
             type="button"
           >
@@ -119,7 +183,7 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
         data-testid="loading-view"
       >
         <span
-          class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-1wxecgq-MuiCircularProgress-root"
+          class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-1t1ckwe-MuiCircularProgress-root"
           role="progressbar"
           style="width: 40px; height: 40px;"
         >

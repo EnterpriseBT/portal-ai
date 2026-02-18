@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "./test-utils";
 import { Header } from "../components/Header.component";
 import { Button } from "@mcp-ui/core/ui";
 

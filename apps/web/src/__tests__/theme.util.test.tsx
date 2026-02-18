@@ -1,4 +1,4 @@
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, act, waitFor } from "./test-utils";
 import { jest } from "@jest/globals";
 import { usePersistedTheme } from "../utils/theme.util";
 import { ThemeProvider, ThemeName } from "@mcp-ui/core/ui";
