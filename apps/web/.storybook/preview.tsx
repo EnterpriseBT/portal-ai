@@ -1,6 +1,8 @@
 import type { Preview } from "@storybook/react";
 import { type ThemeName } from "@mcp-ui/core/ui";
 import { AppProvider } from "../src/App";
+import { RouterProvider } from "@tanstack/react-router";
+import { router } from "../src/router";
 
 // Disable localStorage in Storybook to prevent state persistence between stories
 if (typeof window !== "undefined") {
@@ -56,7 +58,7 @@ const preview: Preview = {
       const theme = context.globals.theme as ThemeName;
       return (
         <AppProvider defaultTheme={theme}>
-          <Story />
+          <RouterProvider router={router} defaultComponent={() => <Story />} />
         </AppProvider>
       );
     },

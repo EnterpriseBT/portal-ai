@@ -10,7 +10,7 @@ import {
 import { alpha } from "@mui/material/styles";
 import { useRouter } from "@tanstack/react-router";
 
-export interface HttpErrorViewProps {
+export interface HttpErrorProps {
   /** HTTP status code */
   statusCode: number;
   /** Short title displayed as the heading */
@@ -30,7 +30,7 @@ const STATUS_ICONS: Record<number, IconName> = {
   500: IconName.Warning,
 };
 
-export const HttpErrorView: React.FC<HttpErrorViewProps> = ({
+export const HttpError: React.FC<HttpErrorProps> = ({
   statusCode,
   title,
   description,

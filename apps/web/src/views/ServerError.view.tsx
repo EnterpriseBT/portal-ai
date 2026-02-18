@@ -1,10 +1,13 @@
 import React from "react";
-import { HttpErrorView, type HttpErrorViewProps } from "./HttpError.view";
+import {
+  HttpError,
+  type HttpErrorProps,
+} from "../components/HttpError.component";
 
-type PartialHttpErrorProps = Omit<HttpErrorViewProps, "statusCode" | "title">;
+type PartialHttpErrorProps = Omit<HttpErrorProps, "statusCode" | "title">;
 
 export const ServerErrorView: React.FC<PartialHttpErrorProps> = (props) => (
-  <HttpErrorView
+  <HttpError
     statusCode={500}
     title="Internal Server Error"
     description="Something went wrong on our end. Please try again later."

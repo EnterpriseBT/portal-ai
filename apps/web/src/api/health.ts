@@ -9,9 +9,9 @@ import { useAuthQuery } from "../utils/api.util";
  * Uses `useAuthQuery` to make an authenticated GET request to `/api/health`.
  *
  * Usage:
- *   const { data, isLoading, error } = useHealth();
+ *   const { data, isLoading, error } = useHealthCheck();
  */
-export const useHealth = () => {
+export const useHealthCheck = () => {
   return useAuthQuery<ApiSuccessResponse<HealthGetResponse>>(
     ["health"],
     "/api/health"

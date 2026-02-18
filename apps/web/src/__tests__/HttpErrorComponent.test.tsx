@@ -14,12 +14,12 @@ jest.unstable_mockModule("@tanstack/react-router", () => ({
   }),
 }));
 
-const { HttpErrorView } = await import("../views/HttpError.view");
+const { HttpError } = await import("../components/HttpError.component");
 
 const renderWithTheme = (ui: React.ReactElement) =>
   render(<ThemeProvider>{ui}</ThemeProvider>);
 
-describe("HttpErrorView Component", () => {
+describe("HttpError Component", () => {
   beforeEach(() => {
     mockBack.mockClear();
     mockNavigate.mockClear();
@@ -27,24 +27,24 @@ describe("HttpErrorView Component", () => {
 
   it("should match snapshot", () => {
     const { container } = renderWithTheme(
-      <HttpErrorView statusCode={404} title="Not Found" />
+      <HttpError statusCode={404} title="Not Found" />
     );
     expect(container.firstChild).toMatchSnapshot();
   });
 
   it("should display the status code", () => {
-    renderWithTheme(<HttpErrorView statusCode={404} title="Not Found" />);
+    renderWithTheme(<HttpError statusCode={404} title="Not Found" />);
     expect(screen.getByText("404")).toBeInTheDocument();
   });
 
   it("should display the title", () => {
-    renderWithTheme(<HttpErrorView statusCode={500} title="Server Error" />);
+    renderWithTheme(<HttpError statusCode={500} title="Server Error" />);
     expect(screen.getByText("Server Error")).toBeInTheDocument();
   });
 
   it("should display description when provided", () => {
     renderWithTheme(
-      <HttpErrorView
+      <HttpError
         statusCode={404}
         title="Not Found"
         description="The page does not exist."
@@ -55,7 +55,7 @@ describe("HttpErrorView Component", () => {
 
   it("should not render description when not provided", () => {
     const { container } = renderWithTheme(
-      <HttpErrorView statusCode={404} title="Not Found" />
+      <HttpError statusCode={404} title="Not Found" />
     );
     const bodyTexts = container.querySelectorAll(".MuiTypography-body1");
     expect(bodyTexts.length).toBe(0);
@@ -63,7 +63,7 @@ describe("HttpErrorView Component", () => {
 
   it("should render correct icon for 404", () => {
     const { container } = renderWithTheme(
-      <HttpErrorView statusCode={404} title="Not Found" />
+      <HttpError statusCode={404} title="Not Found" />
     );
     expect(
       container.querySelector("[data-testid='SearchIcon']")
@@ -72,7 +72,7 @@ describe("HttpErrorView Component", () => {
 
   it("should render correct icon for 401", () => {
     const { container } = renderWithTheme(
-      <HttpErrorView statusCode={401} title="Unauthorized" />
+      <HttpError statusCode={401} title="Unauthorized" />
     );
     expect(
       container.querySelector("[data-testid='LockIcon']")
@@ -81,7 +81,7 @@ describe("HttpErrorView Component", () => {
 
   it("should render correct icon for 403", () => {
     const { container } = renderWithTheme(
-      <HttpErrorView statusCode={403} title="Forbidden" />
+      <HttpError statusCode={403} title="Forbidden" />
     );
     expect(
       container.querySelector("[data-testid='BlockIcon']")
@@ -90,7 +90,7 @@ describe("HttpErrorView Component", () => {
 
   it("should render correct icon for 500", () => {
     const { container } = renderWithTheme(
-      <HttpErrorView statusCode={500} title="Server Error" />
+      <HttpError statusCode={500} title="Server Error" />
     );
     expect(
       container.querySelector("[data-testid='WarningIcon']")
@@ -99,7 +99,7 @@ describe("HttpErrorView Component", () => {
 
   it("should render fallback icon for unknown status codes", () => {
     const { container } = renderWithTheme(
-      <HttpErrorView statusCode={418} title="I'm a Teapot" />
+      <HttpError statusCode={418} title="I'm a Teapot" />
     );
     expect(
       container.querySelector("[data-testid='WarningIcon']")
@@ -107,7 +107,7 @@ describe("HttpErrorView Component", () => {
   });
 
   it("should render Go Back and Go Home buttons by default", () => {
-    renderWithTheme(<HttpErrorView statusCode={404} title="Not Found" />);
+    renderWithTheme(<HttpError statusCode={404} title="Not Found" />);
     expect(
       screen.getByRole("button", { name: /go back/i })
     ).toBeInTheDocument();
@@ -118,11 +118,7 @@ describe("HttpErrorView Component", () => {
 
   it("should hide Go Back button when showBackButton is false", () => {
     renderWithTheme(
-      <HttpErrorView
-        statusCode={404}
-        title="Not Found"
-        showBackButton={false}
-      />
+      <HttpError statusCode={404} title="Not Found" showBackButton={false} />
     );
     expect(
       screen.queryByRole("button", { name: /go back/i })
@@ -134,11 +130,7 @@ describe("HttpErrorView Component", () => {
 
   it("should hide Go Home button when showHomeButton is false", () => {
     renderWithTheme(
-      <HttpErrorView
-        statusCode={404}
-        title="Not Found"
-        showHomeButton={false}
-      />
+      <HttpError statusCode={404} title="Not Found" showHomeButton={false} />
     );
     expect(
       screen.getByRole("button", { name: /go back/i })
@@ -150,7 +142,7 @@ describe("HttpErrorView Component", () => {
 
   it("should hide both buttons when both are false", () => {
     renderWithTheme(
-      <HttpErrorView
+      <HttpError
         statusCode={404}
         title="Not Found"
         showBackButton={false}
@@ -166,13 +158,13 @@ describe("HttpErrorView Component", () => {
   });
 
   it("should call router.history.back when Go Back is clicked", () => {
-    renderWithTheme(<HttpErrorView statusCode={404} title="Not Found" />);
+    renderWithTheme(<HttpError statusCode={404} title="Not Found" />);
     fireEvent.click(screen.getByRole("button", { name: /go back/i }));
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
   it("should call router.navigate to home when Go Home is clicked", () => {
-    renderWithTheme(<HttpErrorView statusCode={404} title="Not Found" />);
+    renderWithTheme(<HttpError statusCode={404} title="Not Found" />);
     fireEvent.click(screen.getByRole("button", { name: /go home/i }));
     expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
   });

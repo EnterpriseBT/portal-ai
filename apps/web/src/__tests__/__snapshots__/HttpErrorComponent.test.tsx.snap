@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`HttpErrorView Component should match snapshot 1`] = `
+exports[`HttpError Component should match snapshot 1`] = `
 <div
   class="MuiBox-root css-12crrv0"
 >

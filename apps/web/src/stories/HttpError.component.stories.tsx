@@ -6,7 +6,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { HttpErrorView } from "../views/HttpError.view";
+import { HttpError } from "../components/HttpError.component";
 
 // Minimal router for storybook so useRouter is available
 const createStoryRouter = (story: () => React.ReactNode) => {
@@ -18,8 +18,8 @@ const createStoryRouter = (story: () => React.ReactNode) => {
 };
 
 const meta = {
-  title: "Views/HttpErrorView",
-  component: HttpErrorView,
+  title: "Components/HttpError",
+  component: HttpError,
   parameters: {
     layout: "fullscreen",
   },
@@ -52,7 +52,7 @@ const meta = {
       return <RouterProvider router={router} />;
     },
   ],
-} satisfies Meta<typeof HttpErrorView>;
+} satisfies Meta<typeof HttpError>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
