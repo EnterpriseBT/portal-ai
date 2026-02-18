@@ -4,7 +4,7 @@ import type {
 } from "@mcp-ui/core/contracts";
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
-import { UserModelFactory } from "@mcp-ui/core/models";
+import { UserModel, UserModelFactory } from "@mcp-ui/core/models";
 import { SystemUtilities } from "../utils/system.util.js";
 import { ApplicationService } from "./application.service.js";
 
@@ -33,6 +33,7 @@ export class WebhookService {
           email: payload.email ?? null,
           name: payload.name ?? null,
           picture: payload.picture ?? null,
+          lastLogin: SystemUtilities.utc.now().getTime(),
         });
 
       const created = await ApplicationService.setupOrganization(
@@ -53,34 +54,22 @@ export class WebhookService {
       return { action: "created", userId: created.user.id };
     }
 
-    const hasChanges =
-      (payload.email ?? null) !== existing.email ||
-      (payload.name ?? null) !== existing.name ||
-      (payload.picture ?? null) !== existing.picture;
+    const user = new UserModel(existing).update({
+      email: payload.email ?? null,
+      name: payload.name ?? null,
+      picture: payload.picture ?? null,
+      lastLogin: SystemUtilities.utc.now().getTime(),
+      updated: SystemUtilities.utc.now().getTime(),
+      updatedBy: SystemUtilities.id.system,
+    });
 
-    if (!hasChanges) {
-      logger.debug(
-        { userId: existing.id, auth0Id: payload.user_id },
-        "User unchanged, skipping update"
+    await usersRepo.update(existing.id, user.parse()).catch((err) => {
+      logger.error(
+        { userId: existing.id, auth0Id: payload.user_id, error: err },
+        "Database error updating user from webhook"
       );
-      return { action: "unchanged", userId: existing.id };
-    }
-
-    await usersRepo
-      .update(existing.id, {
-        email: payload.email ?? null,
-        name: payload.name ?? null,
-        picture: payload.picture ?? null,
-        updated: Date.now(),
-        updatedBy: SystemUtilities.id.system,
-      })
-      .catch((err) => {
-        logger.error(
-          { userId: existing.id, auth0Id: payload.user_id, error: err },
-          "Database error updating user from webhook"
-        );
-        throw new Error("Database error updating user");
-      });
+      throw new Error("Database error updating user");
+    });
 
     logger.info(
       { userId: existing.id, auth0Id: payload.user_id },

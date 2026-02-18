@@ -43,6 +43,13 @@
       "when": 1771389186896,
       "tag": "0005_add_owner_user_id_to_organizations",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771444811820,
+      "tag": "0006_add_user_last_login",
+      "breakpoints": true
     }
   ]
 }

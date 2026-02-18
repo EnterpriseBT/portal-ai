@@ -1,4 +1,4 @@
-import { pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, pgTable, text } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 
 /**
@@ -13,4 +13,5 @@ export const users = pgTable("users", {
   email: text("email"),
   name: text("name"),
   picture: text("picture"),
+  lastLogin: bigint("last_login", { mode: "number" }),
 });

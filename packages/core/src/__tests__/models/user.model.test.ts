@@ -127,6 +127,7 @@ describe("UserModelFactory", () => {
         auth0Id: "auth0|123",
         email: "test@test.com",
         name: "Test",
+        lastLogin: null,
         picture: null,
         updated: null,
         updatedBy: null,

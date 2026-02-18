@@ -14,6 +14,7 @@ export const UserSchema = CoreSchema.extend({
   email: z.string().nullable(),
   name: z.string().nullable(),
   picture: z.string().nullable(),
+  lastLogin: z.number().nullable(),
 });
 
 export type User = z.infer<typeof UserSchema>;
