@@ -23,7 +23,8 @@
     "db:migrate": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs migrate",
     "db:push": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs push",
     "db:studio": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs studio",
-    "db:seed": "dotenv -e .env -- tsx src/db/seed.ts"
+    "db:seed": "dotenv -e .env -- tsx src/db/seed.ts",
+    "tunnel": "npx cloudflared tunnel --url http://localhost:3001"
   },
   "dependencies": {
     "@mcp-ui/core": "*",

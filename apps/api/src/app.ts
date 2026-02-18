@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { healthRouter } from "./routes/health.router.js";
 import { protectedRouter } from "./routes/protected.router.js";
+import { webhookRouter } from "./routes/webhook.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
@@ -14,6 +15,10 @@ export const app = express();
 
 // HTTP request/response logging - logs all incoming requests
 app.use(httpLogger);
+
+// Webhook routes must be mounted before express.json() so the webhook's
+// custom JSON parser can capture the raw body for HMAC signature verification.
+app.use("/api/webhooks", webhookRouter);
 
 app.use(express.json());
 app.use(

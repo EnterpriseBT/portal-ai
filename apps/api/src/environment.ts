@@ -18,4 +18,6 @@ export const environment = {
   LOG_FORMAT: (process.env.LOG_FORMAT || "pretty") as "pretty" | "json",
   // Database configuration
   DATABASE_URL: process.env.DATABASE_URL || "",
+  // Auth0 webhook
+  AUTH0_WEBHOOK_SECRET: process.env.AUTH0_WEBHOOK_SECRET,
 };
