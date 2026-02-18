@@ -57,28 +57,9 @@ describe("verifyWebhookSignature", () => {
     expect(error.code).toBe(ApiCode.WEBHOOK_MISSING_SIGNATURE);
   });
 
-  it("should return 401 if signature format is invalid (no sha256= prefix)", () => {
-    const req = createMockReq({
-      headers: { "x-auth0-webhook-signature": "invalid-format" } as Record<
-        string,
-        string
-      >,
-      rawBody: Buffer.from("{}"),
-    });
-    const res = createMockRes();
-
-    verifyWebhookSignature(req, res, next);
-
-    expect(next).toHaveBeenCalledTimes(1);
-    const error = next.mock.calls[0][0] as ApiError;
-    expect(error).toBeInstanceOf(ApiError);
-    expect(error.status).toBe(401);
-    expect(error.code).toBe(ApiCode.WEBHOOK_INVALID_SIGNATURE);
-  });
-
   it("should return 401 if rawBody is missing", () => {
     const req = createMockReq({
-      headers: { "x-auth0-webhook-signature": "sha256=abc123" } as Record<
+      headers: { "x-auth0-webhook-signature": "abc123" } as Record<
         string,
         string
       >,
@@ -99,7 +80,7 @@ describe("verifyWebhookSignature", () => {
     const req = createMockReq({
       headers: {
         "x-auth0-webhook-signature":
-          "sha256=0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
       } as Record<string, string>,
       rawBody: body,
     });
@@ -121,7 +102,7 @@ describe("verifyWebhookSignature", () => {
 
     const req = createMockReq({
       headers: {
-        "x-auth0-webhook-signature": `sha256=${expectedHex}`,
+        "x-auth0-webhook-signature": expectedHex,
       } as Record<string, string>,
       rawBody: body,
     });

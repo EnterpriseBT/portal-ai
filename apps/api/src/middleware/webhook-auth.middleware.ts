@@ -31,23 +31,13 @@ export function verifyWebhookSignature(
     );
   }
 
-  const signatureHeader = req.headers["x-auth0-webhook-signature"] as string;
-  if (!signatureHeader) {
+  const signature = req.headers["x-auth0-webhook-signature"] as string;
+  if (!signature) {
     return next(
       new ApiError(
         401,
         ApiCode.WEBHOOK_MISSING_SIGNATURE,
         "Missing X-Auth0-Webhook-Signature header"
-      )
-    );
-  }
-
-  if (!signatureHeader.startsWith("sha256=")) {
-    return next(
-      new ApiError(
-        401,
-        ApiCode.WEBHOOK_INVALID_SIGNATURE,
-        "Invalid webhook signature format"
       )
     );
   }
@@ -63,7 +53,6 @@ export function verifyWebhookSignature(
     );
   }
 
-  const signature = signatureHeader.slice(7);
   const expectedSignature = crypto
     .createHmac("sha256", secret)
     .update(payload)
