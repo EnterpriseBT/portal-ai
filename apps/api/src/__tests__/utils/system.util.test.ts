@@ -1,11 +1,8 @@
 import { describe, it, expect } from "@jest/globals";
 import { v5 } from "uuid";
-import {
-  UUIDv4Factory,
-  UUIDv5Factory,
-  DateFactory,
-} from "@mcp-ui/core/utils";
+import { UUIDv4Factory, UUIDv5Factory, DateFactory } from "@mcp-ui/core/utils";
 import { SystemUtilities } from "../../utils/system.util.js";
+import { environment } from "../../environment.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -35,6 +32,10 @@ describe("SystemUtilities.id", () => {
 
     it("returns the same singleton instance across accesses", () => {
       expect(SystemUtilities.id.v4).toBe(SystemUtilities.id.v4);
+    });
+
+    it("system returns the SYSTEM_ID from environment", () => {
+      expect(SystemUtilities.id.system).toBe(environment.SYSTEM_ID);
     });
   });
 
@@ -72,27 +73,6 @@ describe("SystemUtilities.id", () => {
 
     it("returns the same singleton instance across accesses", () => {
       expect(SystemUtilities.id.v5).toBe(SystemUtilities.id.v5);
-    });
-  });
-
-  describe("createV5()", () => {
-    const customNamespace = "6ba7b811-9dad-11d1-80b4-00c04fd430c8"; // URL namespace
-
-    it("returns a new UUIDv5Factory", () => {
-      const factory = SystemUtilities.id.createV5(customNamespace);
-      expect(factory).toBeInstanceOf(UUIDv5Factory);
-    });
-
-    it("creates a factory that uses the provided namespace", () => {
-      const factory = SystemUtilities.id.createV5(customNamespace);
-      const name = "https://example.com";
-      expect(factory.generate(name)).toBe(v5(name, customNamespace));
-    });
-
-    it("returns a distinct instance on each call", () => {
-      const a = SystemUtilities.id.createV5(customNamespace);
-      const b = SystemUtilities.id.createV5(customNamespace);
-      expect(a).not.toBe(b);
     });
   });
 });

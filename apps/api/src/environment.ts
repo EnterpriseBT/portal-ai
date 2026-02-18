@@ -20,4 +20,6 @@ export const environment = {
   DATABASE_URL: process.env.DATABASE_URL || "",
   // Auth0 webhook
   AUTH0_WEBHOOK_SECRET: process.env.AUTH0_WEBHOOK_SECRET,
+  // System ID for deterministic UUID generation
+  SYSTEM_ID: process.env.SYSTEM_ID,
 };

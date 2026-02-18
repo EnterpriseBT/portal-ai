@@ -54,15 +54,18 @@ export class CoreModel<T extends Core> extends AbstractModel<T> {
 
 export interface CoreModelFactoryOptions {
   idFactory?: IDFactory;
-  dateFactory: DateFactory;
+  dateFactory?: DateFactory;
 }
 
 export class CoreModelFactory {
   protected _idFactory: IDFactory;
   protected _dateFactory: DateFactory;
 
-  constructor(options: CoreModelFactoryOptions) {
-    const { idFactory = new UUIDv4Factory(), dateFactory } = options;
+  constructor(options: CoreModelFactoryOptions = {}) {
+    const {
+      idFactory = new UUIDv4Factory(),
+      dateFactory = new DateFactory("UTC"),
+    } = options;
     this._idFactory = idFactory;
     this._dateFactory = dateFactory;
   }
@@ -74,6 +77,10 @@ export class CoreModelFactory {
       id,
       created: timestamp.getTime(),
       createdBy,
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
     };
     const baseModel = new CoreModel(baseData);
     return baseModel;
@@ -81,13 +88,14 @@ export class CoreModelFactory {
 }
 
 export interface ModelFactoryOptions {
-  coreModelFactory: CoreModelFactory;
+  coreModelFactory?: CoreModelFactory;
 }
 
 export abstract class ModelFactory<T, M extends AbstractModel<T>> {
   _coreModelFactory: CoreModelFactory;
-  constructor(options: ModelFactoryOptions) {
-    this._coreModelFactory = options.coreModelFactory;
+  constructor(options: ModelFactoryOptions = {}) {
+    const { coreModelFactory = new CoreModelFactory() } = options;
+    this._coreModelFactory = coreModelFactory;
   }
 
   abstract create(createdBy: string): M;

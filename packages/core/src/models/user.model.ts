@@ -22,6 +22,10 @@ export class UserModel extends CoreModel<User> {
   get schema() {
     return UserSchema;
   }
+
+  validate(): z.ZodSafeParseResult<User> {
+    return this.schema.safeParse(this._model);
+  }
 }
 
 export class UserModelFactory extends ModelFactory<User, UserModel> {

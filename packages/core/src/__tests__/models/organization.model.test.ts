@@ -63,10 +63,10 @@ describe("OrganizationModelFactory", () => {
     it("should not set updated, updatedBy, deleted, or deletedBy", () => {
       const json = factory.create("user-1").toJSON();
 
-      expect(json.updated).toBeUndefined();
-      expect(json.updatedBy).toBeUndefined();
-      expect(json.deleted).toBeUndefined();
-      expect(json.deletedBy).toBeUndefined();
+      expect(json.updated).toBeNull();
+      expect(json.updatedBy).toBeNull();
+      expect(json.deleted).toBeNull();
+      expect(json.deletedBy).toBeNull();
     });
 
     it("should produce unique ids across multiple calls", () => {

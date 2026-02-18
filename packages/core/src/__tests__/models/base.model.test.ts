@@ -225,6 +225,35 @@ describe("CoreModelFactory", () => {
       const model = factory.create("user-1");
       expect(model.toJSON().id).toBe("custom-id-123");
     });
+
+    it("should default to UUIDv4 and UTC DateFactory when no options are provided", () => {
+      const factory = new CoreModelFactory();
+      const before = Date.now();
+      const model = factory.create("user-1");
+      const after = Date.now();
+      const json = model.toJSON();
+
+      expect(json.id).toBeDefined();
+      expect(json.id!.length).toBeGreaterThan(0);
+      expect(json.created).toBeGreaterThanOrEqual(before);
+      expect(json.created).toBeLessThanOrEqual(after);
+    });
+
+    it("should default dateFactory to UTC when only idFactory is provided", () => {
+      const customIdFactory: IDFactory = {
+        generate: () => "id-no-date",
+      } as unknown as IDFactory;
+
+      const factory = new CoreModelFactory({ idFactory: customIdFactory });
+      const before = Date.now();
+      const model = factory.create("user-1");
+      const after = Date.now();
+      const json = model.toJSON();
+
+      expect(json.id).toBe("id-no-date");
+      expect(json.created).toBeGreaterThanOrEqual(before);
+      expect(json.created).toBeLessThanOrEqual(after);
+    });
   });
 
   // ── create ──────────────────────────────────────────────────────
@@ -280,10 +309,10 @@ describe("CoreModelFactory", () => {
       const factory = new CoreModelFactory({ dateFactory });
       const json = factory.create("user-1").toJSON();
 
-      expect(json.updated).toBeUndefined();
-      expect(json.updatedBy).toBeUndefined();
-      expect(json.deleted).toBeUndefined();
-      expect(json.deletedBy).toBeUndefined();
+      expect(json.updated).toBeNull();
+      expect(json.updatedBy).toBeNull();
+      expect(json.deleted).toBeNull();
+      expect(json.deletedBy).toBeNull();
     });
 
     it("should use the configured timezone for the timestamp", () => {
@@ -352,6 +381,16 @@ describe("ModelFactory", () => {
     it("should store the coreModelFactory", () => {
       const factory = buildFactory();
       expect(factory._coreModelFactory).toBeInstanceOf(CoreModelFactory);
+    });
+
+    it("should default to a CoreModelFactory when none is provided", () => {
+      const factory = new ItemModelFactory({});
+      expect(factory._coreModelFactory).toBeInstanceOf(CoreModelFactory);
+
+      const model = factory.create("user-1");
+      const json = model.toJSON();
+      expect(json.id).toBeDefined();
+      expect(json.createdBy).toBe("user-1");
     });
   });
 

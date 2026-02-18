@@ -1,5 +1,6 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { Auth0WebhookPayload } from "@mcp-ui/core/contracts";
+import { environment } from "../../environment.js";
 
 // Mock DbService
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -43,7 +44,7 @@ describe("WebhookService", () => {
         name: "Test User",
         picture: "https://example.com/avatar.png",
         created: Date.now(),
-        createdBy: "webhook:auth0",
+        createdBy: environment.SYSTEM_ID!,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -61,7 +62,12 @@ describe("WebhookService", () => {
           email: "test@example.com",
           name: "Test User",
           picture: "https://example.com/avatar.png",
-          createdBy: "webhook:auth0",
+          createdBy: environment.SYSTEM_ID!,
+          created: expect.any(Number),
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
         })
       );
     });
@@ -74,7 +80,7 @@ describe("WebhookService", () => {
         name: "Test User",
         picture: "https://example.com/avatar.png",
         created: Date.now(),
-        createdBy: "webhook:auth0",
+        createdBy: environment.SYSTEM_ID!,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -97,7 +103,7 @@ describe("WebhookService", () => {
         name: "Old Name",
         picture: null,
         created: Date.now(),
-        createdBy: "webhook:auth0",
+        createdBy: environment.SYSTEM_ID!,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -111,9 +117,9 @@ describe("WebhookService", () => {
         name: "Test User",
         picture: "https://example.com/avatar.png",
         created: Date.now(),
-        createdBy: "webhook:auth0",
+        createdBy: environment.SYSTEM_ID!,
         updated: Date.now(),
-        updatedBy: "webhook:auth0",
+        updatedBy: environment.SYSTEM_ID!,
         deleted: null,
         deletedBy: null,
       });
@@ -128,7 +134,7 @@ describe("WebhookService", () => {
           email: "test@example.com",
           name: "Test User",
           picture: "https://example.com/avatar.png",
-          updatedBy: "webhook:auth0",
+          updatedBy: environment.SYSTEM_ID!,
         })
       );
     });
@@ -146,7 +152,7 @@ describe("WebhookService", () => {
         name: null,
         picture: null,
         created: Date.now(),
-        createdBy: "webhook:auth0",
+        createdBy: environment.SYSTEM_ID!,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -174,7 +180,7 @@ describe("WebhookService", () => {
         name: "Test User",
         picture: "https://example.com/avatar.png",
         created: Date.now(),
-        createdBy: "webhook:auth0",
+        createdBy: environment.SYSTEM_ID!,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -188,9 +194,9 @@ describe("WebhookService", () => {
         name: "Test User",
         picture: "https://example.com/avatar.png",
         created: Date.now(),
-        createdBy: "webhook:auth0",
+        createdBy: environment.SYSTEM_ID!,
         updated: Date.now(),
-        updatedBy: "webhook:auth0",
+        updatedBy: environment.SYSTEM_ID!,
         deleted: null,
         deletedBy: null,
       });

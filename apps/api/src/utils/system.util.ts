@@ -42,9 +42,9 @@ export class SystemUtilities {
    */
   static get id() {
     return {
+      system: environment.SYSTEM_ID!,
       v4: this._v4Factory,
       v5: this._v5Factory,
-      createV5: (namespace: string) => new UUIDv5Factory(namespace),
     };
   }
 
