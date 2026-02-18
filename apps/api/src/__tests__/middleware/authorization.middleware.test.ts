@@ -9,7 +9,7 @@ import {
 function createMocks(authPayload?: Record<string, unknown>) {
   const req = {
     auth: authPayload ? { payload: authPayload } : undefined,
-  } as unknown as Request;
+  } as Request;
 
   const res = {
     status: jest.fn().mockReturnThis(),
