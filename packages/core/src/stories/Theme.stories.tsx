@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { ThemeProvider, useTheme } from "../ThemeProvider";
-import { Button } from "../Button";
+import { ThemeProvider, useTheme } from "../ui/ThemeProvider";
+import { Button } from "../ui/Button";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";

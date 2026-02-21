@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { Typography } from "../Typography";
+import { Typography } from "../ui/Typography";
 
 const meta = {
   title: "Components/Typography",
@@ -66,7 +66,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     children: "Typography",
-    variant: 'body1',
+    variant: "body1",
     color: "text.primary",
     align: "left",
     gutterBottom: false,

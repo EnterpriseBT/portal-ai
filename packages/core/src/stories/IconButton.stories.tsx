@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { IconButton } from "../IconButton";
-import { IconName } from "../Icon";
+import { IconButton } from "../ui/IconButton";
+import { IconName } from "../ui/Icon";
 
 const meta = {
   title: "Components/IconButton",
@@ -17,7 +17,15 @@ const meta = {
     },
     color: {
       control: "select",
-      options: ["default", "primary", "secondary", "success", "error", "info", "warning"],
+      options: [
+        "default",
+        "primary",
+        "secondary",
+        "success",
+        "error",
+        "info",
+        "warning",
+      ],
       description: "The color of the button",
     },
     size: {
