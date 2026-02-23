@@ -10,6 +10,45 @@ const logger = createLogger({ module: "organization" });
 
 export const organizationRouter = Router();
 
+/**
+ * @openapi
+ * /api/organization/current:
+ *   get:
+ *     tags:
+ *       - Organization
+ *     summary: Get current organization
+ *     description: Returns the authenticated user's most recently logged-into organization, determined by the latest lastLogin timestamp on the organization_users join record.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current organization retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     organization:
+ *                       $ref: '#/components/schemas/Organization'
+ *       404:
+ *         description: User or organization not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 organizationRouter.get(
   "/current",
   async (req: Request, res: Response, next: NextFunction) => {
