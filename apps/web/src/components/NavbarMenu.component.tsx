@@ -96,9 +96,10 @@ export const NavbarMenu: React.FC = () => {
     <NavbarMenuUI image={user?.picture} label={user?.name}>
       <Typography
         variant="subtitle2"
-        paddingX={2}
-        paddingY={1}
-        sx={(theme) => ({ color: theme.palette.text.secondary })}
+        sx={(theme) => ({
+          color: theme.palette.text.secondary,
+          padding: theme.spacing(1, 2),
+        })}
       >
         {currentOrganizationResponse?.payload.organization.name}
       </Typography>
