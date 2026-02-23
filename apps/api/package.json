@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "dotenv -e .env -- nodemon",
+    "dev": "concurrently --names server,tunnel --prefix-colors blue,green \"dotenv -e .env -- nodemon\" \"dotenv -e .env -- ngrok http 3001\"",
+    "dev:server": "dotenv -e .env -- nodemon",
     "build": "dotenv -e .env -- tsc",
     "start": "dotenv -e .env -- node dist/index.js",
     "clean": "rm -rf dist .turbo node_modules",
@@ -24,7 +25,7 @@
     "db:push": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs push",
     "db:studio": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs studio",
     "db:seed": "dotenv -e .env -- tsx src/db/seed.ts",
-    "tunnel": "cloudflared tunnel --url http://localhost:3001"
+    "tunnel": "dotenv -e .env -- ngrok http 3001"
   },
   "dependencies": {
     "@mcp-ui/core": "*",
@@ -50,7 +51,7 @@
     "@types/swagger-ui-express": "^4.1.8",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
-    "cloudflared": "^0.7.1",
+    "concurrently": "^9.1.2",
     "dotenv-cli": "^7.4.2",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.1",

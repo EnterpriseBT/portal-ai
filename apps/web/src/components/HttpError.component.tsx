@@ -101,7 +101,7 @@ export const HttpError: React.FC<HttpErrorProps> = ({
         {showHomeButton && (
           <Button
             variant="contained"
-            onClick={() => router.navigate({ to: "/" })}
+            onClick={() => router.navigate({ to: "/", reloadDocument: true })}
           >
             Go Home
           </Button>
