@@ -9,6 +9,7 @@ import {
   Icon,
   IconName,
   Typography,
+  Divider,
 } from "@mcp-ui/core/ui";
 import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";
@@ -85,6 +86,7 @@ export const NavbarMenuUI: React.FC<NavbarMenuUIProps> = ({
 
 export const NavbarMenu: React.FC = () => {
   const { user } = sdk.auth.session();
+  const { data: currentOrganizationResponse } = sdk.organizations.current();
   const { logout } = sdk.auth.logout();
   const handleLogout = () => {
     logout();
@@ -92,6 +94,15 @@ export const NavbarMenu: React.FC = () => {
 
   return (
     <NavbarMenuUI image={user?.picture} label={user?.name}>
+      <Typography
+        variant="subtitle2"
+        paddingX={2}
+        paddingY={1}
+        sx={(theme) => ({ color: theme.palette.text.secondary })}
+      >
+        {currentOrganizationResponse?.payload.organization.name}
+      </Typography>
+      <Divider />
       <MenuItem component={Link} to="/settings">
         <ListItemIcon>
           <Icon name={IconName.Settings} fontSize="small" />
