@@ -3,6 +3,9 @@ import {
   OrganizationModelFactory,
   OrganizationUserModelFactory,
 } from "@mcp-ui/core/models";
+import { eq, desc, and, isNull } from "drizzle-orm";
+import { organizationUsers } from "../db/schema/organization-users.table.js";
+import { db } from "../db/client.js";
 import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -10,6 +13,30 @@ import { createLogger } from "../utils/logger.util.js";
 const logger = createLogger({ module: "application" });
 
 export class ApplicationService {
+  static async getCurrentOrganization(userId: string) {
+    const [orgUser] = await db
+      .select()
+      .from(organizationUsers)
+      .where(
+        and(
+          eq(organizationUsers.userId, userId),
+          isNull(organizationUsers.deleted)
+        )
+      )
+      .orderBy(desc(organizationUsers.lastLogin))
+      .limit(1);
+
+    if (!orgUser) {
+      return null;
+    }
+
+    const organization = await DbService.repository.organizations.findById(
+      orgUser.organizationId
+    );
+
+    return organization ? { organization, organizationUser: orgUser } : null;
+  }
+
   static async setupOrganization(owner: User) {
     const systemId = SystemUtilities.id.system;
 

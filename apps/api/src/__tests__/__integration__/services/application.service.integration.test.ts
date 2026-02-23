@@ -1,5 +1,5 @@
 /**
- * Integration tests for ApplicationService.setupOrganization().
+ * Integration tests for ApplicationService.
  *
  * Runs against the real postgres-test database spun up by docker-compose.
  * Verifies that user, organization, and organization_users rows are created
@@ -192,6 +192,103 @@ describe("ApplicationService Integration Tests", () => {
       const orgUsersRepo = new Repository(organizationUsers);
       const linkCount = await orgUsersRepo.count(undefined, db);
       expect(linkCount).toBe(0);
+    });
+  });
+
+  describe("getCurrentOrganization", () => {
+    async function seedUserWithOrg(
+      overrides?: Partial<{ lastLogin: number | null }>
+    ) {
+      const owner = createOwner();
+      const result = await ApplicationService.setupOrganization(owner);
+
+      if (overrides?.lastLogin !== undefined) {
+        const orgUsersRepo = new Repository(organizationUsers);
+        await orgUsersRepo.update(
+          result.organizationUser.id,
+          { lastLogin: overrides.lastLogin } as never,
+          db
+        );
+      }
+
+      return result;
+    }
+
+    it("should return null when user has no organizations", async () => {
+      const result =
+        await ApplicationService.getCurrentOrganization(generateId());
+
+      expect(result).toBeNull();
+    });
+
+    it("should return the organization and organizationUser for a user", async () => {
+      const { user, organization } = await seedUserWithOrg();
+
+      const result = await ApplicationService.getCurrentOrganization(user.id);
+
+      expect(result).not.toBeNull();
+      expect(result!.organization.id).toBe(organization.id);
+      expect(result!.organizationUser.userId).toBe(user.id);
+    });
+
+    it("should return the organization with the most recent lastLogin", async () => {
+      // Create first org with older lastLogin
+      const { user } = await seedUserWithOrg({ lastLogin: 1000 });
+
+      // Create a second org linked to the same user with a newer lastLogin
+      const orgsRepo = new Repository(organizations);
+      const orgUsersRepo = new Repository(organizationUsers);
+      const now = Date.now();
+
+      const secondOrg = await orgsRepo.create(
+        {
+          id: generateId(),
+          name: "Second Org",
+          timezone: "UTC",
+          ownerUserId: user.id,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+
+      await orgUsersRepo.create(
+        {
+          id: generateId(),
+          organizationId: secondOrg.id,
+          userId: user.id,
+          lastLogin: 2000,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+
+      const result = await ApplicationService.getCurrentOrganization(user.id);
+
+      expect(result).not.toBeNull();
+      expect(result!.organization.id).toBe(secondOrg.id);
+    });
+
+    it("should ignore soft-deleted organization_users links", async () => {
+      const { user } = await seedUserWithOrg();
+
+      // Soft-delete the org-user link
+      const orgUsersRepo = new Repository(organizationUsers);
+      const links = await orgUsersRepo.findMany(undefined, {}, db);
+      await orgUsersRepo.softDelete(links[0].id, "SYSTEM_TEST", db);
+
+      const result = await ApplicationService.getCurrentOrganization(user.id);
+
+      expect(result).toBeNull();
     });
   });
 });
