@@ -13,6 +13,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 export const OrganizationUserSchema = CoreSchema.extend({
   organizationId: z.string(),
   userId: z.string(),
+  lastLogin: z.number().nullable(),
 });
 
 export type OrganizationUser = z.infer<typeof OrganizationUserSchema>;

@@ -40,6 +40,7 @@ export class ApplicationService {
         .update({
           organizationId: createdOrg.id,
           userId: createdUser.id,
+          lastLogin: SystemUtilities.utc.now().getTime(),
         });
 
       const createdOrgUser =

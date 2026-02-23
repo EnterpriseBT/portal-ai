@@ -49,6 +49,7 @@ describe("ApplicationService Integration Tests", () => {
       auth0Id: `auth0|${generateId()}`,
       email: `owner-${generateId()}@example.com`,
       name: "Jane Doe",
+      lastLogin: now,
       picture: "https://example.com/avatar.png",
       created: now,
       createdBy: "SYSTEM_TEST",
@@ -122,6 +123,21 @@ describe("ApplicationService Integration Tests", () => {
       expect(links).toHaveLength(1);
       expect(links[0].organizationId).toBe(result.organization.id);
       expect(links[0].userId).toBe(owner.id);
+    });
+
+    it("should set lastLogin on the organization_users link", async () => {
+      const before = Date.now();
+      const owner = createOwner();
+
+      const result = await ApplicationService.setupOrganization(owner);
+
+      const orgUsersRepo = new Repository(organizationUsers);
+      const links = await orgUsersRepo.findMany(undefined, {}, db);
+
+      expect(links).toHaveLength(1);
+      expect(links[0].lastLogin).toBeGreaterThanOrEqual(before);
+      expect(links[0].lastLogin).toBeLessThanOrEqual(Date.now());
+      expect(result.organizationUser.lastLogin).toBe(links[0].lastLogin);
     });
 
     it("should return all three created entities", async () => {

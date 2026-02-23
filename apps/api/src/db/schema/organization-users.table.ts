@@ -1,4 +1,4 @@
-import { pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, pgTable, text } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { users } from "./users.table.js";
@@ -14,4 +14,5 @@ export const organizationUsers = pgTable("organization_users", {
   userId: text("user_id")
     .notNull()
     .references(() => users.id),
+  lastLogin: bigint("last_login", { mode: "number" }),
 });

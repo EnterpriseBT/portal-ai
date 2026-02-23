@@ -39,3 +39,6 @@ swagger.json
 
 # Turbo
 .turbo/
+
+# Vite
+vite.config.ts.timestamp-*
