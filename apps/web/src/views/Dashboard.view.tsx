@@ -1,9 +1,9 @@
 import { Box, Typography, useTheme } from "@mcp-ui/core/ui";
 import { alpha } from "@mui/material/styles";
-import { useHealthCheck } from "../api/health";
+import { sdk } from "../api/sdk";
 
 export const DashboardView = () => {
-  const { data, isLoading, error } = useHealthCheck();
+  const { data, isLoading, error } = sdk.health.check();
   const { theme } = useTheme();
 
   return (

@@ -63,7 +63,7 @@ export const useAuthFetch = () => {
  *     "/api/profile",
  *   );
  */
-export const useAuthQuery = <T = unknown>(
+export const useAuthQuery = <T>(
   queryKey: QueryKey,
   url: string,
   options?: RequestInit,

@@ -53,6 +53,13 @@ export default [
       },
     },
   },
+  // SDK api modules call hooks inside non-hook-named functions (e.g. sdk.users.getAll)
+  {
+    files: ["src/api/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
   // Test files configuration
   {
     files: [
