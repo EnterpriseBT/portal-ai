@@ -6,8 +6,8 @@ import { WebhookService } from "../services/webhook.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { verifyWebhookSignature } from "../middleware/webhook-auth.middleware.js";
 import {
-  Auth0WebhookPayloadSchema,
-  type Auth0WebhookSyncResponse,
+  Auth0PostLoginWebhookPayloadSchema,
+  type Auth0PostLoginWebhookSyncResponse,
 } from "@mcp-ui/core/contracts";
 
 const logger = createLogger({ module: "webhook-router" });
@@ -115,7 +115,7 @@ webhookRouter.post(
   verifyWebhookSignature,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = Auth0WebhookPayloadSchema.safeParse(req.body);
+      const parsed = Auth0PostLoginWebhookPayloadSchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
           new ApiError(
@@ -145,7 +145,10 @@ webhookRouter.post(
         }
       );
 
-      return HttpService.success<Auth0WebhookSyncResponse>(res, result);
+      return HttpService.success<Auth0PostLoginWebhookSyncResponse>(
+        res,
+        result
+      );
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

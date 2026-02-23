@@ -1,6 +1,6 @@
 import type {
-  Auth0WebhookPayload,
-  Auth0WebhookSyncResponse,
+  Auth0PostLoginWebhookPayload,
+  Auth0PostLoginWebhookSyncResponse,
 } from "@mcp-ui/core/contracts";
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -12,8 +12,8 @@ const logger = createLogger({ module: "webhook" });
 
 export class WebhookService {
   static async syncUser(
-    payload: Auth0WebhookPayload
-  ): Promise<Auth0WebhookSyncResponse> {
+    payload: Auth0PostLoginWebhookPayload
+  ): Promise<Auth0PostLoginWebhookSyncResponse> {
     const usersRepo = DbService.repository.users;
     const existing = await usersRepo
       .findByAuth0Id(payload.user_id)

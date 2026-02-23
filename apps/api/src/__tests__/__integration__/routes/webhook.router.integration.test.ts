@@ -3,7 +3,7 @@ import { createHmac } from "crypto";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
-import type { Auth0WebhookPayload } from "@mcp-ui/core/contracts";
+import type { Auth0PostLoginWebhookPayload } from "@mcp-ui/core/contracts";
 
 const WEBHOOK_SECRET = "test-webhook-secret";
 
@@ -22,9 +22,7 @@ jest.unstable_mockModule("../../../services/webhook.service.js", () => ({
   },
 }));
 
-const { WebhookService } = await import(
-  "../../../services/webhook.service.js"
-);
+const { WebhookService } = await import("../../../services/webhook.service.js");
 const { app } = await import("../../../app.js");
 const { ApiError } = await import("../../../services/http.service.js");
 const mockedWebhookService = WebhookService as jest.Mocked<
@@ -35,7 +33,7 @@ function signPayload(body: string): string {
   return createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex");
 }
 
-const validPayload: Auth0WebhookPayload = {
+const validPayload: Auth0PostLoginWebhookPayload = {
   user_id: "auth0|user123",
   email: "test@example.com",
   name: "Test User",

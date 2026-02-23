@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import type { Auth0WebhookPayload } from "@mcp-ui/core/contracts";
+import type { Auth0PostLoginWebhookPayload } from "@mcp-ui/core/contracts";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
@@ -39,7 +39,7 @@ describe("WebhookService Integration Tests", () => {
   });
 
   describe("syncUser", () => {
-    const basePayload: Auth0WebhookPayload = {
+    const basePayload: Auth0PostLoginWebhookPayload = {
       user_id: "auth0|abc123",
       email: "test@example.com",
       name: "Test User",
@@ -72,24 +72,13 @@ describe("WebhookService Integration Tests", () => {
       expect(orgs[0].ownerUserId).toBe(result.userId);
     });
 
-    it("should return unchanged when user exists with same data", async () => {
-      // First call creates the user
-      const created = await WebhookService.syncUser(basePayload);
-      expect(created.action).toBe("created");
-
-      // Second call with identical payload should be unchanged
-      const result = await WebhookService.syncUser(basePayload);
-      expect(result.action).toBe("unchanged");
-      expect(result.userId).toBe(created.userId);
-    });
-
     it("should update user when fields have changed", async () => {
       // Create user first
       const created = await WebhookService.syncUser(basePayload);
       expect(created.action).toBe("created");
 
       // Update with changed fields
-      const updatedPayload: Auth0WebhookPayload = {
+      const updatedPayload: Auth0PostLoginWebhookPayload = {
         user_id: "auth0|abc123",
         email: "new@example.com",
         name: "New Name",
@@ -109,7 +98,7 @@ describe("WebhookService Integration Tests", () => {
     });
 
     it("should handle user with no email, name, or picture", async () => {
-      const minimalPayload: Auth0WebhookPayload = {
+      const minimalPayload: Auth0PostLoginWebhookPayload = {
         user_id: "auth0|minimal",
       };
 
@@ -128,7 +117,7 @@ describe("WebhookService Integration Tests", () => {
 
     it("should detect change when email goes from null to a value", async () => {
       // Create user with no email
-      const minimalPayload: Auth0WebhookPayload = {
+      const minimalPayload: Auth0PostLoginWebhookPayload = {
         user_id: "auth0|abc123",
       };
       const created = await WebhookService.syncUser(minimalPayload);

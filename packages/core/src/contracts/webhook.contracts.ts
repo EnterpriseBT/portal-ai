@@ -1,45 +1,27 @@
 import { z } from "zod";
 
 /**
- * Auth0 webhook event types fired by Auth0 Actions.
- */
-export const Auth0WebhookEventTypeSchema = z.enum([
-  "post_login",
-  "post_user_registration",
-]);
-
-export type Auth0WebhookEventType = z.infer<typeof Auth0WebhookEventTypeSchema>;
-
-/**
- * Auth0 user object nested inside the webhook payload.
- */
-export const Auth0WebhookUserSchema = z.object({
-  user_id: z.string().min(1),
-  email: z.string().optional(),
-  name: z.string().optional(),
-  picture: z.string().optional(),
-});
-
-/**
  * Full Auth0 webhook payload sent by Auth0 Actions.
  */
-export const Auth0WebhookPayloadSchema = z.object({
+export const Auth0PostLoginWebhookPayloadSchema = z.object({
   user_id: z.string().min(1),
   email: z.string().optional(),
   name: z.string().optional(),
   picture: z.string().optional(),
 });
 
-export type Auth0WebhookPayload = z.infer<typeof Auth0WebhookPayloadSchema>;
+export type Auth0PostLoginWebhookPayload = z.infer<
+  typeof Auth0PostLoginWebhookPayloadSchema
+>;
 
 /**
  * Response returned by the webhook sync endpoint.
  */
-export const Auth0WebhookSyncResponseSchema = z.object({
-  action: z.enum(["created", "updated", "unchanged"]),
+export const Auth0PostLoginWebhookSyncResponseSchema = z.object({
+  action: z.enum(["created", "updated"]),
   userId: z.string(),
 });
 
-export type Auth0WebhookSyncResponse = z.infer<
-  typeof Auth0WebhookSyncResponseSchema
+export type Auth0PostLoginWebhookSyncResponse = z.infer<
+  typeof Auth0PostLoginWebhookSyncResponseSchema
 >;
