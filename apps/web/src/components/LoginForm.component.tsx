@@ -1,5 +1,5 @@
 import React from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { sdk } from "../api/sdk";
 import {
   Box,
   Paper,
@@ -80,15 +80,10 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
 };
 
 export const LoginForm = () => {
-  const { loginWithRedirect } = useAuth0();
+  const { withGoogle } = sdk.auth.login();
 
   const handleGoogleLogin = () => {
-    loginWithRedirect({
-      authorizationParams: {
-        connection: "google-oauth2",
-        redirect_uri: `${window.location.origin}`, // Adjust this to your actual callback URL
-      },
-    });
+    withGoogle();
   };
 
   return <LoginFormUI onClickGoogleLogin={handleGoogleLogin} />;

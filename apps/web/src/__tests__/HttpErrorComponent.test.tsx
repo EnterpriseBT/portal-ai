@@ -166,6 +166,6 @@ describe("HttpError Component", () => {
   it("should call router.navigate to home when Go Home is clicked", () => {
     renderWithTheme(<HttpError statusCode={404} title="Not Found" />);
     fireEvent.click(screen.getByRole("button", { name: /go home/i }));
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/", reloadDocument: true });
   });
 });

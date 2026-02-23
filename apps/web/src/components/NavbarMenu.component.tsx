@@ -10,7 +10,7 @@ import {
   IconName,
   Typography,
 } from "@mcp-ui/core/ui";
-import { useAuth0 } from "@auth0/auth0-react";
+import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";
 
 export interface NavbarMenuUIProps {
@@ -84,9 +84,10 @@ export const NavbarMenuUI: React.FC<NavbarMenuUIProps> = ({
 };
 
 export const NavbarMenu: React.FC = () => {
-  const { user, logout } = useAuth0();
+  const { user } = sdk.auth.session();
+  const { logout } = sdk.auth.logout();
   const handleLogout = () => {
-    logout({ logoutParams: { returnTo: window.location.origin } });
+    logout();
   };
 
   return (
