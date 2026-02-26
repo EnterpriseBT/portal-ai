@@ -8,6 +8,7 @@ import {
   createMemoryHistory,
   RouterContextProvider,
 } from "@tanstack/react-router";
+import { LayoutProvider } from "../providers/Layout.provider";
 
 const createTestRouter = () => {
   const rootRoute = createRootRoute();
@@ -32,9 +33,11 @@ function renderWithProviders(
     return (
       <ThemeProvider defaultTheme="brand">
         <QueryClientProvider client={queryClient}>
-          <RouterContextProvider router={testRouter}>
-            {children}
-          </RouterContextProvider>
+          <LayoutProvider>
+            <RouterContextProvider router={testRouter}>
+              {children}
+            </RouterContextProvider>
+          </LayoutProvider>
         </QueryClientProvider>
       </ThemeProvider>
     );

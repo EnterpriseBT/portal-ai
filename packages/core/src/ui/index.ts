@@ -19,7 +19,12 @@ export {
   Avatar,
   Menu,
   MenuItem,
+  List,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
+  Collapse,
+  ClickAwayListener,
+  Tooltip,
   IconButton as BaseIconButton,
 } from "@mui/material";
