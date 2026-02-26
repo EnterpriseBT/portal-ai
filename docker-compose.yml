@@ -9,14 +9,16 @@ services:
     ports:
       - "3000:3000"
       - "3001:3001"
-      - "6006:6006"
-      - "6007:6007"
+      - "7006:7006"
+      - "7007:7007"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/mcp_ui
     command: sleep infinity
+    networks:
+      - mcp-net
 
   postgres:
     image: postgres:17-alpine
@@ -34,6 +36,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - mcp-net
 
   postgres-test:
     image: postgres:17-alpine
@@ -51,6 +55,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - mcp-net
 
 volumes:
   pgdata:
+
+networks:
+  mcp-net:
+    driver: bridge

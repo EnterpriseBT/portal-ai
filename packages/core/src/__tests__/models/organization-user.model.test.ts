@@ -126,6 +126,7 @@ describe("OrganizationUserModelFactory", () => {
         updatedBy: null,
         deleted: null,
         deletedBy: null,
+        lastLogin: null,
       });
 
       const result = model.validate();

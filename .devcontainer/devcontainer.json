@@ -3,7 +3,7 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "dev",
   "workspaceFolder": "/workspace",
-  "forwardPorts": [3000, 3001, 5432, 6006, 6007, 4983],
+  "forwardPorts": [3000, 3001, 5432, 7006, 7007, 4983],
   "portsAttributes": {
     "3000": {
       "label": "Web App"
@@ -17,11 +17,11 @@
     "4983": {
       "label": "PostgreSQL"
     },
-    "6006": {
-      "label": "Storybook"
+    "7006": {
+      "label": "Storybook Core"
     },
-    "6007": {
-      "label": "Additional Service"
+    "7007": {
+      "label": "Storybook App"
     }
   },
   "onCreateCommand": "npm i",

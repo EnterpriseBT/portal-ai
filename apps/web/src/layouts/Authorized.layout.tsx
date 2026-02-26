@@ -1,8 +1,8 @@
-import { Box, ButtonGroup } from "@mcp-ui/core/ui";
-import { Header } from "../components/Header.component";
+import { AppBar, Box, ButtonGroup, Toolbar, Typography } from "@mcp-ui/core/ui";
 import { NavbarMenu } from "../components/NavbarMenu.component";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
 import React from "react";
+import { Link } from "@tanstack/react-router";
 
 export const AuthorizedLayout = ({
   children,
@@ -11,12 +11,20 @@ export const AuthorizedLayout = ({
 }) => {
   return (
     <Box display="flex" flexDirection="column" height={"100vh"}>
-      <Header>
-        <ButtonGroup>
-          <ThemeSwitcher />
-          <NavbarMenu />
-        </ButtonGroup>
-      </Header>
+      <AppBar position="static">
+        <Toolbar sx={{ justifyContent: "space-between" }}>
+          <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
+            <Typography variant="h6" color="inherit">
+              MCP UI
+            </Typography>
+          </Link>
+
+          <ButtonGroup>
+            <ThemeSwitcher />
+            <NavbarMenu />
+          </ButtonGroup>
+        </Toolbar>
+      </AppBar>
       <Box flex={1} padding={3} overflow="auto">
         {children}
       </Box>
