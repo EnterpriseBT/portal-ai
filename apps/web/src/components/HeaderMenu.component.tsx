@@ -14,13 +14,13 @@ import {
 import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";
 
-export interface NavbarMenuUIProps {
+export interface HeaderMenuUIProps {
   image?: string;
   label?: string;
   children?: React.ReactNode;
 }
 
-export const NavbarMenuUI: React.FC<NavbarMenuUIProps> = ({
+export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
   image,
   label,
   children,
@@ -84,7 +84,7 @@ export const NavbarMenuUI: React.FC<NavbarMenuUIProps> = ({
   );
 };
 
-export const NavbarMenu: React.FC = () => {
+export const HeaderMenu: React.FC = () => {
   const { user } = sdk.auth.session();
   const { data: currentOrganizationResponse } = sdk.organizations.current();
   const { logout } = sdk.auth.logout();
@@ -93,7 +93,7 @@ export const NavbarMenu: React.FC = () => {
   };
 
   return (
-    <NavbarMenuUI image={user?.picture} label={user?.name}>
+    <HeaderMenuUI image={user?.picture} label={user?.name}>
       <Typography
         variant="subtitle2"
         sx={(theme) => ({
@@ -116,6 +116,6 @@ export const NavbarMenu: React.FC = () => {
         </ListItemIcon>
         <ListItemText>Logout</ListItemText>
       </MenuItem>
-    </NavbarMenuUI>
+    </HeaderMenuUI>
   );
 };

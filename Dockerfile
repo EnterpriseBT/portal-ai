@@ -11,10 +11,12 @@ RUN apt-get update && apt-get install -y \
     && apt-get update && apt-get install -y ngrok \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Claude CLI
+RUN curl -fsSL https://claude.ai/install.sh | bash
+ENV PATH="/root/.local/bin:${PATH}"
+
 # Enable bash completion (git completion is included automatically)
-RUN echo 'if [ -f /usr/share/bash-completion/bash_completion ]; then' >> ~/.bashrc && \
-    echo '  . /usr/share/bash-completion/bash_completion' >> ~/.bashrc && \
-    echo 'fi' >> ~/.bashrc
+RUN printf 'if [ -f /usr/share/bash-completion/bash_completion ]; then\n  . /usr/share/bash-completion/bash_completion\nfi\n' >> ~/.bashrc
 
 # Set working directory
 WORKDIR /workspace

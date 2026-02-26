@@ -1,30 +1,30 @@
 import { render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
-import { NavbarMenuUI } from "../components/NavbarMenu.component";
+import { HeaderMenuUI } from "../components/HeaderMenu.component";
 import { MenuItem, ListItemText } from "@mcp-ui/core/ui";
 
-describe("NavbarMenuUI Component", () => {
+describe("HeaderMenuUI Component", () => {
   it("should render image", () => {
     render(
-      <NavbarMenuUI image="https://example.com/user.jpg" label="John Doe" />
+      <HeaderMenuUI image="https://example.com/user.jpg" label="John Doe" />
     );
     const avatar = screen.getByAltText("John Doe");
     expect(avatar).toHaveAttribute("src", "https://example.com/user.jpg");
   });
 
   it("should render label", () => {
-    render(<NavbarMenuUI label="John Doe" />);
+    render(<HeaderMenuUI label="John Doe" />);
     expect(screen.getByText("John Doe")).toBeInTheDocument();
   });
 
   it("should render children", async () => {
     const user = userEvent.setup();
     render(
-      <NavbarMenuUI>
+      <HeaderMenuUI>
         <MenuItem>
           <ListItemText>Custom Item</ListItemText>
         </MenuItem>
-      </NavbarMenuUI>
+      </HeaderMenuUI>
     );
 
     const avatarButton = screen.getByRole("button", { name: /account menu/i });
@@ -36,11 +36,11 @@ describe("NavbarMenuUI Component", () => {
   it("should render a Settings menu item that links to /settings", async () => {
     const user = userEvent.setup();
     render(
-      <NavbarMenuUI>
+      <HeaderMenuUI>
         <MenuItem component="a" href="/settings">
           <ListItemText>Settings</ListItemText>
         </MenuItem>
-      </NavbarMenuUI>
+      </HeaderMenuUI>
     );
 
     const avatarButton = screen.getByRole("button", { name: /account menu/i });

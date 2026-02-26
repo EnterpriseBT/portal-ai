@@ -1,6 +1,6 @@
 import type { Preview } from "@storybook/react";
 import { type ThemeName } from "@mcp-ui/core/ui";
-import { AppProvider } from "../src/App";
+import { ApplicationProvider } from "../src/providers/Application.provider";
 import {
   createRootRoute,
   createRouter,
@@ -68,11 +68,11 @@ const preview: Preview = {
     (Story, context) => {
       const theme = context.globals.theme as ThemeName;
       return (
-        <AppProvider defaultTheme={theme}>
+        <ApplicationProvider defaultTheme={theme}>
           <RouterContextProvider router={storybookRouter}>
             <Story />
           </RouterContextProvider>
-        </AppProvider>
+        </ApplicationProvider>
       );
     },
   ],

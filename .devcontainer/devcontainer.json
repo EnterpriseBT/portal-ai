@@ -24,6 +24,6 @@
       "label": "Storybook App"
     }
   },
-  "onCreateCommand": "npm i",
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code"
+  "remoteUser": "root",
+  "onCreateCommand": "npm i"
 }

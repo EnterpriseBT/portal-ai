@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { NavbarMenuUI } from "../components/NavbarMenu.component";
+import { HeaderMenuUI } from "../components/HeaderMenu.component";
 import {
   MenuItem,
   ListItemText,
@@ -9,13 +9,13 @@ import {
 } from "@mcp-ui/core/ui";
 
 const meta = {
-  title: "Components/NavbarMenuUI",
-  component: NavbarMenuUI,
+  title: "Components/HeaderMenuUI",
+  component: HeaderMenuUI,
   parameters: {
     layout: "centered",
   },
   tags: ["autodocs"],
-} satisfies Meta<typeof NavbarMenuUI>;
+} satisfies Meta<typeof HeaderMenuUI>;
 
 export default meta;
 type MenuUIStory = StoryObj<typeof meta>;

@@ -24,6 +24,8 @@ import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LockIcon from "@mui/icons-material/Lock";
 import BlockIcon from "@mui/icons-material/Block";
 import WarningIcon from "@mui/icons-material/Warning";
+import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
+import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
 import HeartIcon from "../assets/icons/heart.svg";
 
 export enum IconName {
@@ -52,6 +54,8 @@ export enum IconName {
   Lock = "lock",
   Block = "block",
   Warning = "warning",
+  KeyboardDoubleArrowLeft = "keyboard_double_arrow_left",
+  KeyboardDoubleArrowRight = "keyboard_double_arrow_right",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -110,6 +114,10 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <BlockIcon ref={ref} {...props} />;
       case IconName.Warning:
         return <WarningIcon ref={ref} {...props} />;
+      case IconName.KeyboardDoubleArrowLeft:
+        return <KeyboardDoubleArrowLeftIcon ref={ref} {...props} />;
+      case IconName.KeyboardDoubleArrowRight:
+        return <KeyboardDoubleArrowRightIcon ref={ref} {...props} />;
       case IconName.Heart:
         return (
           <MuiSvgIcon ref={ref} {...props}>

@@ -1,20 +1,19 @@
 import React, { StrictMode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { RouterProvider } from "@tanstack/react-router";
-import { router } from "./router";
 import { ThemeName, ThemeProvider } from "@mcp-ui/core/ui";
 import { Auth0Provider } from "@auth0/auth0-react";
 
 import "@mcp-ui/core/styles";
-import { queryClient } from "./client";
-import { useStorage } from "./utils";
+import { queryClient } from "../client";
+import { useStorage } from "../utils";
+import { LayoutProvider } from "./Layout.provider";
 
-export interface AppProviderProps {
+export interface ApplicationProviderProps {
   children: React.ReactNode;
   defaultTheme?: ThemeName;
 }
 
-export const AppProvider: React.FC<AppProviderProps> = ({
+export const ApplicationProvider: React.FC<ApplicationProviderProps> = ({
   children,
   defaultTheme = "brand",
 }) => {
@@ -37,19 +36,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({
         useRefreshTokens={true}
       >
         <ThemeProvider defaultTheme={theme}>
-          <QueryClientProvider client={queryClient}>
-            {children}
-          </QueryClientProvider>
+          <LayoutProvider>
+            <QueryClientProvider client={queryClient}>
+              {children}
+            </QueryClientProvider>
+          </LayoutProvider>
         </ThemeProvider>
       </Auth0Provider>
     </StrictMode>
-  );
-};
-
-export const App: React.FC = () => {
-  return (
-    <AppProvider>
-      <RouterProvider router={router} />
-    </AppProvider>
   );
 };
