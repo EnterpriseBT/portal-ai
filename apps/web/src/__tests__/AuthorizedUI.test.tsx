@@ -1,5 +1,25 @@
+import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
 import { AuthorizedUI } from "../components/Authorized.component";
+
+// Mock sdk to avoid import.meta.env in api.util.ts
+jest.mock("../api/sdk", () => ({
+  sdk: {
+    auth: {
+      session: () => ({
+        user: undefined,
+        isAuthenticated: false,
+        isLoading: false,
+        error: undefined,
+      }),
+      logout: () => ({ logout: jest.fn() }),
+    },
+    organizations: {
+      current: () => ({ data: undefined }),
+    },
+  },
+  queryKeys: {},
+}));
 
 describe("AuthorizedUI Component", () => {
   const mockChildren = <div>Protected Content</div>;

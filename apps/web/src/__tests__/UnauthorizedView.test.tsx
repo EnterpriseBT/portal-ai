@@ -2,14 +2,15 @@ import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
 import { ThemeProvider } from "@mcp-ui/core/ui";
 
-jest.unstable_mockModule("@tanstack/react-router", () => ({
+jest.mock("@tanstack/react-router", () => ({
+  ...(jest.requireActual("@tanstack/react-router") as object),
   useRouter: () => ({
     history: { back: jest.fn() },
     navigate: jest.fn(),
   }),
 }));
 
-const { UnauthorizedView } = await import("../views/Unauthorized.view");
+import { UnauthorizedView } from "../views/Unauthorized.view";
 
 const renderWithTheme = (ui: React.ReactElement) =>
   render(<ThemeProvider>{ui}</ThemeProvider>);

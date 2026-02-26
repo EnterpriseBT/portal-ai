@@ -3,6 +3,8 @@ import { HeaderMenu } from "../components/HeaderMenu.component";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
 import React from "react";
 import { Link } from "@tanstack/react-router";
+import { SidebarNav } from "../components/SidebarNav.component";
+import { useLayout } from "../utils";
 import { SidebarNavToggle } from "../components/SidebarNavToggle.component";
 
 export const AuthorizedLayout = ({
@@ -10,17 +12,18 @@ export const AuthorizedLayout = ({
 }: {
   children: React.ReactNode;
 }) => {
+  const { isMobileExpanded, isMobile } = useLayout();
   return (
     <Box display="flex" flexDirection="column" height={"100vh"}>
-      <AppBar position="static">
+      <AppBar position="static" sx={{ paddingY: 2 }}>
         <Toolbar
           sx={{
             justifyContent: "space-between",
             alignItems: "center",
           }}
         >
-          <ButtonGroup>
-            <SidebarNavToggle />
+          <ButtonGroup sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            {isMobile && <SidebarNavToggle />}
             <Link
               to="/"
               style={{
@@ -30,7 +33,7 @@ export const AuthorizedLayout = ({
                 alignItems: "center",
               }}
             >
-              <Typography variant="h6" color="inherit" margin="auto">
+              <Typography variant="h5" color="inherit" margin="auto">
                 MCP UI
               </Typography>
             </Link>
@@ -42,8 +45,21 @@ export const AuthorizedLayout = ({
           </ButtonGroup>
         </Toolbar>
       </AppBar>
-      <Box flex={1} padding={3} overflow="auto">
-        {children}
+      <Box display="flex" position="relative" flex={1}>
+        <SidebarNav />
+        <Box
+          flex={1}
+          overflow="auto"
+          sx={(theme) => ({
+            background: isMobileExpanded
+              ? theme.darken(theme.palette.background.default, 0.2)
+              : theme.palette.background.default,
+            pointerEvents: isMobileExpanded ? "none" : "auto",
+            padding: theme.spacing(3),
+          })}
+        >
+          {children}
+        </Box>
       </Box>
     </Box>
   );

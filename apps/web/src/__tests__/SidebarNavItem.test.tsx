@@ -1,4 +1,4 @@
-import React from "react";
+import { jest } from "@jest/globals";
 import { render, screen, fireEvent, act } from "./test-utils";
 import { IconName } from "@mcp-ui/core/ui";
 import { SidebarNavItemUI } from "../components/SidebarNavItem.component";
@@ -43,11 +43,7 @@ describe("SidebarNavItemUI", () => {
     const onClick = jest.fn();
     const onToggle = jest.fn();
     render(
-      <SidebarNavItemUI
-        {...defaultProps}
-        onClick={onClick}
-        onToggle={onToggle}
-      >
+      <SidebarNavItemUI {...defaultProps} onClick={onClick} onToggle={onToggle}>
         <li>Child</li>
       </SidebarNavItemUI>
     );
@@ -160,22 +156,15 @@ describe("SidebarNavItemUI", () => {
       { label: "Child A", onClick: jest.fn() },
       { label: "Child B", onClick: jest.fn() },
     ];
-    render(
-      <SidebarNavItemUI {...defaultProps} items={items} open={true} />
-    );
+    render(<SidebarNavItemUI {...defaultProps} items={items} open={true} />);
 
     expect(screen.getByText("Child A")).toBeVisible();
     expect(screen.getByText("Child B")).toBeVisible();
   });
 
   it("renders selected state on child item", () => {
-    const items = [
-      { label: "Child A", selected: true },
-      { label: "Child B" },
-    ];
-    render(
-      <SidebarNavItemUI {...defaultProps} items={items} open={true} />
-    );
+    const items = [{ label: "Child A", selected: true }, { label: "Child B" }];
+    render(<SidebarNavItemUI {...defaultProps} items={items} open={true} />);
 
     const buttons = screen.getAllByRole("button");
     // buttons[0] = parent, buttons[1] = Child A, buttons[2] = Child B
@@ -186,9 +175,7 @@ describe("SidebarNavItemUI", () => {
   it("calls child item onClick when clicked", () => {
     const onChildClick = jest.fn();
     const items = [{ label: "Child A", onClick: onChildClick }];
-    render(
-      <SidebarNavItemUI {...defaultProps} items={items} open={true} />
-    );
+    render(<SidebarNavItemUI {...defaultProps} items={items} open={true} />);
 
     fireEvent.click(screen.getByText("Child A"));
 

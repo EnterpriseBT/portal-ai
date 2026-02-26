@@ -1,6 +1,22 @@
 import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
+
+// Mock sdk to avoid import.meta.env in api.util.ts
+jest.mock("../api/sdk", () => ({
+  sdk: {
+    auth: {
+      session: () => ({ user: undefined, isAuthenticated: false, isLoading: false, error: undefined }),
+      login: () => ({ withGoogle: jest.fn() }),
+      logout: () => ({ logout: jest.fn() }),
+    },
+    organizations: {
+      current: () => ({ data: undefined }),
+    },
+  },
+  queryKeys: {},
+}));
+
 import { LoginFormUI } from "../components/LoginForm.component";
 
 describe("LoginFormUI Component", () => {

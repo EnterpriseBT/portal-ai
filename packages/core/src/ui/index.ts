@@ -26,5 +26,6 @@ export {
   Collapse,
   ClickAwayListener,
   Tooltip,
+  Drawer,
   IconButton as BaseIconButton,
 } from "@mui/material";

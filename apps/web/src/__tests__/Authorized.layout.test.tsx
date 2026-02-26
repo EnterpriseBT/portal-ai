@@ -16,6 +16,25 @@ jest.mock("@auth0/auth0-react", () => ({
   useAuth0: () => mockAuth0Provider,
 }));
 
+// Mock sdk to avoid import.meta.env in api.util.ts
+jest.mock("../api/sdk", () => ({
+  sdk: {
+    auth: {
+      session: () => ({
+        user: { name: "Test User", picture: "https://example.com/pic.jpg" },
+        isAuthenticated: true,
+        isLoading: false,
+        error: undefined,
+      }),
+      logout: () => ({ logout: jest.fn() }),
+    },
+    organizations: {
+      current: () => ({ data: undefined }),
+    },
+  },
+  queryKeys: {},
+}));
+
 describe("AuthorizedLayout", () => {
   it("should render children", () => {
     render(

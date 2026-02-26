@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Icon,
   IconName,
@@ -8,7 +8,6 @@ import {
   Collapse,
   List,
   ClickAwayListener,
-  Tooltip,
 } from "@mcp-ui/core/ui";
 import { useLayout } from "../utils";
 
@@ -54,8 +53,18 @@ export const SidebarNavItemUI = ({
   };
 
   const button = (
-    <ListItemButton selected={selected} onClick={handleClick}>
-      <ListItemIcon>
+    <ListItemButton
+      selected={selected}
+      onClick={handleClick}
+      sx={(theme) => ({
+        height: 48,
+        paddingX: theme.spacing(3),
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(2),
+      })}
+    >
+      <ListItemIcon sx={{ minWidth: "auto" }}>
         <Icon name={icon} />
       </ListItemIcon>
       {!collapsed && <ListItemText primary={label} />}
@@ -67,13 +76,7 @@ export const SidebarNavItemUI = ({
 
   const content = (
     <>
-      {collapsed ? (
-        <Tooltip title={label} placement="right">
-          {button}
-        </Tooltip>
-      ) : (
-        button
-      )}
+      {button}
       {hasChildren && (
         <Collapse in={open && !collapsed}>
           <List disablePadding>
@@ -112,15 +115,12 @@ export const SidebarNavItem = ({
   items,
   onClick,
   selected,
-}: Omit<SidebarNavItemUIProps, "collapsed" | "open" | "onToggle" | "onClose">) => {
+}: Omit<
+  SidebarNavItemUIProps,
+  "collapsed" | "open" | "onToggle" | "onClose"
+>) => {
   const { isCollapsed } = useLayout();
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (isCollapsed) {
-      setOpen(false); // eslint-disable-line react-hooks/set-state-in-effect -- sync local state when sidebar collapses
-    }
-  }, [isCollapsed]);
 
   return (
     <SidebarNavItemUI

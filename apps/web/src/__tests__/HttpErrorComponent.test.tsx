@@ -1,23 +1,38 @@
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "./test-utils";
+import {
+  render as rtlRender,
+  screen,
+  fireEvent,
+} from "@testing-library/react";
 import { ThemeProvider } from "@mcp-ui/core/ui";
+import {
+  createRootRoute,
+  createRouter,
+  createMemoryHistory,
+  RouterContextProvider,
+} from "@tanstack/react-router";
+import { QueryClient } from "@tanstack/react-query";
 import React from "react";
+import { HttpError } from "../components/HttpError.component";
 
-// Mock @tanstack/react-router
 const mockBack = jest.fn();
 const mockNavigate = jest.fn();
 
-jest.unstable_mockModule("@tanstack/react-router", () => ({
-  useRouter: () => ({
-    history: { back: mockBack },
-    navigate: mockNavigate,
-  }),
-}));
+const renderWithTheme = (ui: React.ReactElement) => {
+  const router = createRouter({
+    routeTree: createRootRoute(),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+    context: { queryClient: new QueryClient() },
+  });
+  router.history.back = mockBack;
+  router.navigate = mockNavigate as typeof router.navigate;
 
-const { HttpError } = await import("../components/HttpError.component");
-
-const renderWithTheme = (ui: React.ReactElement) =>
-  render(<ThemeProvider>{ui}</ThemeProvider>);
+  return rtlRender(
+    <ThemeProvider defaultTheme="brand">
+      <RouterContextProvider router={router}>{ui}</RouterContextProvider>
+    </ThemeProvider>
+  );
+};
 
 describe("HttpError Component", () => {
   beforeEach(() => {

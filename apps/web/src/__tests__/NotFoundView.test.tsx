@@ -3,14 +3,15 @@ import { render, screen } from "./test-utils";
 import { ThemeProvider } from "@mcp-ui/core/ui";
 import React from "react";
 
-jest.unstable_mockModule("@tanstack/react-router", () => ({
+jest.mock("@tanstack/react-router", () => ({
+  ...(jest.requireActual("@tanstack/react-router") as object),
   useRouter: () => ({
     history: { back: jest.fn() },
     navigate: jest.fn(),
   }),
 }));
 
-const { NotFoundView } = await import("../views/NotFound.view");
+import { NotFoundView } from "../views/NotFound.view";
 
 const renderWithTheme = (ui: React.ReactElement) =>
   render(<ThemeProvider>{ui}</ThemeProvider>);

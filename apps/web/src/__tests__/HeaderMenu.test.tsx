@@ -1,7 +1,23 @@
+import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
-import { HeaderMenuUI } from "../components/HeaderMenu.component";
 import { MenuItem, ListItemText } from "@mcp-ui/core/ui";
+
+// Mock sdk to avoid import.meta.env in api.util.ts
+jest.mock("../api/sdk", () => ({
+  sdk: {
+    auth: {
+      session: () => ({ user: undefined, isAuthenticated: false, isLoading: false, error: undefined }),
+      logout: () => ({ logout: jest.fn() }),
+    },
+    organizations: {
+      current: () => ({ data: undefined }),
+    },
+  },
+  queryKeys: {},
+}));
+
+import { HeaderMenuUI } from "../components/HeaderMenu.component";
 
 describe("HeaderMenuUI Component", () => {
   it("should render image", () => {
