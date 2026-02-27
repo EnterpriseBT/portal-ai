@@ -73,7 +73,10 @@ profileRouter.get(
   validateProfileRequest,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      logger.info({ userId: req.auth?.payload.sub }, "GET /api/profile called");
+      logger.info(
+        { userId: req.auth?.payload.sub },
+        "GET /api/profile called"
+      );
 
       const accessToken = Auth0Service.getAccessToken(
         req.headers.authorization

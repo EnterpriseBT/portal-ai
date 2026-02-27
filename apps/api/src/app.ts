@@ -27,7 +27,7 @@ app.use(
   })
 );
 
-app.use("/docs", swaggerRouter);
+app.use("/api/docs", swaggerRouter);
 app.use("/api/health", healthRouter);
 app.use("/api", protectedRouter);
 

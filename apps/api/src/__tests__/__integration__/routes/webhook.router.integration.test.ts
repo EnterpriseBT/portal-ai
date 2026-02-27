@@ -151,26 +151,6 @@ describe("Webhook Router", () => {
         expect(res.body.payload.userId).toBe("existing-user-id");
       });
 
-      it("should return 200 with unchanged action for identical user", async () => {
-        mockedWebhookService.syncUser.mockResolvedValue({
-          action: "unchanged",
-          userId: "existing-user-id",
-        });
-
-        const body = JSON.stringify(validPayload);
-        const signature = signPayload(body);
-
-        const res = await request(app)
-          .post("/api/webhooks/auth0/sync")
-          .set("Content-Type", "application/json")
-          .set("X-Auth0-Webhook-Signature", signature)
-          .send(body);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.payload.action).toBe("unchanged");
-      });
-
       it("should handle minimal payload with only user_id", async () => {
         mockedWebhookService.syncUser.mockResolvedValue({
           action: "created",

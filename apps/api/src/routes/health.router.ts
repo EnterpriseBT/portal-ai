@@ -10,7 +10,7 @@ export const healthRouter = Router();
 
 /**
  * @openapi
- * /health:
+ * /api/health:
  *   get:
  *     tags:
  *       - Health
@@ -26,7 +26,7 @@ export const healthRouter = Router();
  */
 healthRouter.get("/", (_req: Request, res: Response, next: NextFunction) => {
   try {
-    logger.info("GET /health called");
+    logger.info("GET /api/health called");
 
     const payload: HealthGetResponse = {
       timestamp: new Date().toISOString(),

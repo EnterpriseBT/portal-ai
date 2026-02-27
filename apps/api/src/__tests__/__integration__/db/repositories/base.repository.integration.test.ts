@@ -17,7 +17,7 @@ import * as schema from "../../../../db/schema/index.js";
 import type { UserInsert, UserSelect } from "../../../../db/schema/zod.js";
 import { UUIDv4Factory } from "@mcp-ui/core/utils";
 
-const { users } = schema;
+const { users, organizationUsers, organizations } = schema;
 const idFactory = new UUIDv4Factory();
 const generateId = () => idFactory.generate();
 
@@ -36,7 +36,9 @@ describe("Repository Integration Tests", () => {
     db = drizzle(connection, { schema });
     usersRepo = new Repository(users);
 
-    // Clean up users table before each test
+    // Clean up tables in FK-safe order
+    await db.delete(organizationUsers);
+    await db.delete(organizations);
     await db.delete(users);
   });
 

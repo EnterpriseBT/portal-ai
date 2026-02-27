@@ -15,7 +15,7 @@ export const AuthorizedLayout = ({
   const { isMobileExpanded, isMobile } = useLayout();
   return (
     <Box display="flex" flexDirection="column" height={"100vh"}>
-      <AppBar position="static" sx={{ paddingY: 2 }}>
+      <AppBar position="static" sx={{ paddingY: 1 }}>
         <Toolbar
           sx={{
             justifyContent: "space-between",

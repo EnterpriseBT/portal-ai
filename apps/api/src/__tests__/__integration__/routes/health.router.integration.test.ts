@@ -10,7 +10,7 @@ jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
 const { app } = await import("../../../app.js");
 
 describe("Health Router", () => {
-  describe("GET /api/health", () => {
+  describe("GET /health", () => {
     it("should return 200 with a success response", async () => {
       const res = await request(app).get("/api/health");
 

@@ -19,7 +19,7 @@ const { app } = await import("../../app.js");
 
 describe("App Integration", () => {
   describe("Health endpoint", () => {
-    it("should respond to GET /api/health with status 200", async () => {
+    it("should respond to GET /health with status 200", async () => {
       const res = await request(app).get("/api/health");
 
       expect(res.status).toBe(200);
