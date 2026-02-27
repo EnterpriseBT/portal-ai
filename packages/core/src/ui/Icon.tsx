@@ -24,6 +24,9 @@ import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LockIcon from "@mui/icons-material/Lock";
 import BlockIcon from "@mui/icons-material/Block";
 import WarningIcon from "@mui/icons-material/Warning";
+import ErrorIcon from "@mui/icons-material/Error";
+import InfoIcon from "@mui/icons-material/Info";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -56,6 +59,9 @@ export enum IconName {
   Lock = "lock",
   Block = "block",
   Warning = "warning",
+  Error = "error",
+  Info = "info",
+  CheckCircle = "check_circle",
   KeyboardDoubleArrowLeft = "keyboard_double_arrow_left",
   KeyboardDoubleArrowRight = "keyboard_double_arrow_right",
   ExpandMore = "expand_more",
@@ -118,6 +124,12 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <BlockIcon ref={ref} {...props} />;
       case IconName.Warning:
         return <WarningIcon ref={ref} {...props} />;
+      case IconName.Error:
+        return <ErrorIcon ref={ref} {...props} />;
+      case IconName.Info:
+        return <InfoIcon ref={ref} {...props} />;
+      case IconName.CheckCircle:
+        return <CheckCircleIcon ref={ref} {...props} />;
       case IconName.KeyboardDoubleArrowLeft:
         return <KeyboardDoubleArrowLeftIcon ref={ref} {...props} />;
       case IconName.KeyboardDoubleArrowRight:

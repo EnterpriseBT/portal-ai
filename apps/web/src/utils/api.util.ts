@@ -7,6 +7,21 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import { useCallback } from "react";
+import type {
+  ApiErrorResponse,
+  ApiSuccessResponse,
+} from "@mcp-ui/core/contracts";
+
+export class ApiError extends Error {
+  code: string;
+  success: false;
+
+  constructor(message: string, code: string) {
+    super(message);
+    this.code = code;
+    this.success = false;
+  }
+}
 
 /**
  * Hook that returns an authenticated fetch function.
@@ -20,7 +35,7 @@ export const useAuthFetch = () => {
   const { getAccessTokenSilently } = useAuth0();
 
   const fetchWithAuth = useCallback(
-    async <T = unknown>(url: string, options: RequestInit = {}): Promise<T> => {
+    async <T>(url: string, options: RequestInit = {}): Promise<T> => {
       const token = await getAccessTokenSilently({
         authorizationParams: {
           audience: import.meta.env.VITE_AUTH0_AUDIENCE,
@@ -37,7 +52,8 @@ export const useAuthFetch = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`);
+        const body = (await response.json()) as ApiErrorResponse;
+        throw new ApiError(body.message, body.code);
       }
 
       return response.json() as Promise<T>;
@@ -68,15 +84,18 @@ export const useAuthQuery = <T>(
   url: string,
   options?: RequestInit,
   queryOptions?: Omit<
-    UseQueryOptions<T, Error, T, QueryKey>,
+    UseQueryOptions<T, ApiError, T, QueryKey>,
     "queryKey" | "queryFn"
   >
 ) => {
   const { fetchWithAuth } = useAuthFetch();
 
-  return useQuery<T, Error, T, QueryKey>({
+  return useQuery<T, ApiError, T, QueryKey>({
     queryKey,
-    queryFn: () => fetchWithAuth<T>(url, options),
+    queryFn: async () => {
+      const response = await fetchWithAuth<ApiSuccessResponse<T>>(url, options);
+      return response.payload;
+    },
     ...queryOptions,
   });
 };
@@ -86,7 +105,7 @@ interface AuthMutationConfig<TData, TVariables> {
   method?: string;
   options?: Omit<RequestInit, "method" | "body">;
   mutationOptions?: Omit<
-    UseMutationOptions<TData, Error, TVariables>,
+    UseMutationOptions<TData, ApiError, TVariables>,
     "mutationFn"
   >;
 }
@@ -113,7 +132,7 @@ interface AuthMutationConfig<TData, TVariables> {
  *   });
  *   remove();
  */
-export const useAuthMutation = <TData = unknown, TVariables = unknown>({
+export const useAuthMutation = <TData, TVariables>({
   url,
   method = "POST",
   options,
@@ -121,15 +140,17 @@ export const useAuthMutation = <TData = unknown, TVariables = unknown>({
 }: AuthMutationConfig<TData, TVariables>) => {
   const { fetchWithAuth } = useAuthFetch();
 
-  return useMutation<TData, Error, TVariables>({
-    mutationFn: (variables) =>
-      fetchWithAuth<TData>(url, {
+  return useMutation<TData, ApiError, TVariables>({
+    mutationFn: async (variables) => {
+      const response = await fetchWithAuth<ApiSuccessResponse<TData>>(url, {
         ...options,
         method,
         ...(variables !== undefined && variables !== null
           ? { body: JSON.stringify(variables) }
           : {}),
-      }),
+      });
+      return response.payload;
+    },
     ...mutationOptions,
   });
 };

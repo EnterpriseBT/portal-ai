@@ -1,59 +1,17 @@
-import { Box, Typography, useTheme } from "@mcp-ui/core/ui";
-import { alpha } from "@mui/material/styles";
+import { Box, StatusMessage, Typography } from "@mcp-ui/core/ui";
 import { sdk } from "../api/sdk";
 
 export const DashboardView = () => {
-  const { data, isLoading, error } = sdk.health.check();
-  const { theme } = useTheme();
+  const { isLoading, error } = sdk.health.check();
 
   return (
     <Box>
       <Typography variant="h1">Dashboard</Typography>
-
-      {isLoading && (
-        <Box
-          role="alert"
-          style={{
-            padding: "12px 16px",
-            marginTop: "16px",
-            borderRadius: "6px",
-            backgroundColor: alpha(theme.palette.info.main, 0.12),
-            color: theme.palette.info.dark,
-          }}
-        >
-          Checking API connection…
-        </Box>
-      )}
-
-      {error && (
-        <Box
-          role="alert"
-          style={{
-            padding: "12px 16px",
-            marginTop: "16px",
-            borderRadius: "6px",
-            backgroundColor: alpha(theme.palette.error.main, 0.12),
-            color: theme.palette.error.dark,
-          }}
-        >
-          API connection failed: {error.message}
-        </Box>
-      )}
-
-      {data?.success && (
-        <Box
-          role="alert"
-          style={{
-            padding: "12px 16px",
-            marginTop: "16px",
-            borderRadius: "6px",
-            backgroundColor: alpha(theme.palette.success.main, 0.12),
-            color: theme.palette.success.dark,
-          }}
-        >
-          API is healthy — last check: {data.payload.timestamp}
-        </Box>
-      )}
+      <StatusMessage
+        message={error?.message}
+        variant={error ? "error" : "success"}
+        loading={isLoading}
+      />
     </Box>
   );
 };

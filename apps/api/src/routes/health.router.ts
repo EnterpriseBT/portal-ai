@@ -32,6 +32,10 @@ healthRouter.get("/", (_req: Request, res: Response, next: NextFunction) => {
       timestamp: new Date().toISOString(),
     };
 
+    // return next(
+    //   new ApiError(500, ApiCode.HEALTH_CHECK_FAILED, "Health check failed")
+    // );
+
     logger.info("Health check OK");
     return HttpService.success(res, payload);
   } catch (error) {

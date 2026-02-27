@@ -4,6 +4,8 @@ export * from "./Button.js";
 export * from "./Typography.js";
 export * from "./Icon.js";
 export * from "./IconButton.js";
+export * from "./Tabs.js";
+export * from "./StatusMessage.js";
 
 /** Material UI */
 export {

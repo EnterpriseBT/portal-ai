@@ -1,4 +1,8 @@
 import { useAuth0 } from "@auth0/auth0-react";
+import type { Auth0UserProfileGetResponse } from "@mcp-ui/core/contracts";
+import { useAuthQuery } from "../utils/api.util";
+import { queryKeys } from "./keys";
+import type { QueryOptions } from "./types";
 
 export const auth = {
   session: () => {
@@ -26,4 +30,12 @@ export const auth = {
         logout({ logoutParams: { returnTo: window.location.origin } }),
     };
   },
+
+  profile: (options?: QueryOptions<Auth0UserProfileGetResponse>) =>
+    useAuthQuery<Auth0UserProfileGetResponse>(
+      queryKeys.auth.profile(),
+      "/api/profile",
+      undefined,
+      options
+    ),
 };

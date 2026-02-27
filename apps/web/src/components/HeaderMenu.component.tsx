@@ -86,7 +86,7 @@ export const HeaderMenuUI: React.FC<HeaderMenuUIProps> = ({
 
 export const HeaderMenu: React.FC = () => {
   const { user } = sdk.auth.session();
-  const { data: currentOrganizationResponse } = sdk.organizations.current();
+  const { data: currentOrganizationPayload } = sdk.organizations.current();
   const { logout } = sdk.auth.logout();
   const handleLogout = () => {
     logout();
@@ -101,7 +101,7 @@ export const HeaderMenu: React.FC = () => {
           padding: theme.spacing(1, 2),
         })}
       >
-        {currentOrganizationResponse?.payload.organization.name}
+        {currentOrganizationPayload?.organization.name}
       </Typography>
       <Divider />
       <MenuItem component={Link} to="/settings">
