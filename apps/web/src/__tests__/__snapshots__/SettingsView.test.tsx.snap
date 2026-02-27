@@ -13,8 +13,12 @@ exports[`SettingsView Component should match snapshot 1`] = `
     class="MuiTabs-root css-jhczcq-MuiTabs-root"
   >
     <div
-      class="MuiTabs-scroller MuiTabs-fixed css-s2t35c-MuiTabs-scroller"
-      style="overflow: hidden; margin-bottom: 0px;"
+      class="MuiTabs-scrollableX MuiTabs-hideScrollbar css-i8yde5"
+      style="width: 99px; height: 99px; position: absolute; top: -9999px; overflow: scroll;"
+    />
+    <div
+      class="MuiTabs-scroller MuiTabs-hideScrollbar MuiTabs-scrollableX css-1fr578y-MuiTabs-scroller"
+      style="margin-bottom: 0px;"
     >
       <div
         class="MuiTabs-list MuiTabs-flexContainer css-hzcega-MuiTabs-list"
@@ -58,11 +62,43 @@ exports[`SettingsView Component should match snapshot 1`] = `
     <div
       class="MuiBox-root css-19midj6"
     >
-      <h2
-        class="MuiTypography-root MuiTypography-h2 css-1eof97i-MuiTypography-root"
+      <div
+        class="MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation1 MuiCard-root css-fnwiwi-MuiPaper-root-MuiCard-root"
+        style="--Paper-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),0px 1px 1px 0px rgba(0,0,0,0.14),0px 1px 3px 0px rgba(0,0,0,0.12);"
       >
-        Profile
-      </h2>
+        <div
+          class="MuiCardContent-root css-1lt5qva-MuiCardContent-root"
+        >
+          <div
+            class="MuiStack-root css-1rlitzi-MuiStack-root"
+          >
+            <span
+              class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-1t1ckwe-MuiCircularProgress-root"
+              role="progressbar"
+              style="width: 20px; height: 20px;"
+            >
+              <svg
+                class="MuiCircularProgress-svg css-54pwck-MuiCircularProgress-svg"
+                viewBox="22 22 44 44"
+              >
+                <circle
+                  class="MuiCircularProgress-circle MuiCircularProgress-circleIndeterminate css-19t5dcl-MuiCircularProgress-circle"
+                  cx="44"
+                  cy="44"
+                  fill="none"
+                  r="20.2"
+                  stroke-width="3.6"
+                />
+              </svg>
+            </span>
+            <p
+              class="MuiTypography-root MuiTypography-body2 css-g7ji6g-MuiTypography-root"
+            >
+              Loading...
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <div

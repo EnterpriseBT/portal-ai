@@ -7,6 +7,7 @@ import {
   Auth0UserProfileGetResponse,
   Auth0UserProfileSchema,
 } from "@mcp-ui/core/contracts";
+import { usersRepo } from "../db/repositories/users.repository.js";
 
 const logger = createLogger({ module: "profile" });
 
@@ -73,10 +74,7 @@ profileRouter.get(
   validateProfileRequest,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      logger.info(
-        { userId: req.auth?.payload.sub },
-        "GET /api/profile called"
-      );
+      logger.info({ userId: req.auth?.payload.sub }, "GET /api/profile called");
 
       const accessToken = Auth0Service.getAccessToken(
         req.headers.authorization
@@ -98,8 +96,23 @@ profileRouter.get(
         "User retrieved their profile information"
       );
 
+      const user = await usersRepo
+        .findByAuth0Id(validatedProfile.data.sub)
+        .catch((error) => {
+          logger.error(
+            { error: error instanceof Error ? error.message : "Unknown error" },
+            "Database error while fetching user by Auth0 ID"
+          );
+          throw new ApiError(
+            500,
+            ApiCode.PROFILE_USER_NOT_FOUND,
+            "Failed to fetch user information from database"
+          );
+        });
+
       return HttpService.success<Auth0UserProfileGetResponse>(res, {
         profile: validatedProfile.data,
+        lastLogin: user?.lastLogin ?? null,
       });
     } catch (error) {
       logger.error(

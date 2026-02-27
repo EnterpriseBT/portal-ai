@@ -1,17 +1,13 @@
-import { Box, StatusMessage, Typography } from "@mcp-ui/core/ui";
-import { sdk } from "../api/sdk";
+import { Box, Stack, Typography } from "@mcp-ui/core/ui";
+import { HealthCheck } from "../components/HealthCheck.component";
 
 export const DashboardView = () => {
-  const { isLoading, error } = sdk.health.check();
-
   return (
     <Box>
-      <Typography variant="h1">Dashboard</Typography>
-      <StatusMessage
-        message={error?.message}
-        variant={error ? "error" : "success"}
-        loading={isLoading}
-      />
+      <Stack direction="row" alignItems="center" gap={1}>
+        <HealthCheck />
+        <Typography variant="h1">Dashboard</Typography>
+      </Stack>
     </Box>
   );
 };

@@ -18,10 +18,21 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
   },
 }));
 
+// Mock usersRepo
+jest.unstable_mockModule("../../../db/repositories/users.repository.js", () => ({
+  usersRepo: {
+    findByAuth0Id: jest.fn(),
+  },
+}));
+
 const { Auth0Service } = await import("../../../services/auth0.service.js");
+const { usersRepo } = await import(
+  "../../../db/repositories/users.repository.js"
+);
 const { app } = await import("../../../app.js");
 const { ApiError } = await import("../../../services/http.service.js");
 const mockedAuth0Service = Auth0Service as jest.Mocked<typeof Auth0Service>;
+const mockedUsersRepo = usersRepo as jest.Mocked<typeof usersRepo>;
 
 const mockProfile: Auth0UserProfile = {
   sub: "auth0|user123",
@@ -72,8 +83,22 @@ describe("Profile Router", () => {
         mockedAuth0Service.getAccessToken.mockReturnValue("valid-token");
       });
 
-      it("should return 200 with the user profile", async () => {
+      it("should return 200 with the user profile and lastLogin", async () => {
         mockedAuth0Service.getAuth0UserProfile.mockResolvedValue(mockProfile);
+        mockedUsersRepo.findByAuth0Id.mockResolvedValue({
+          id: "user-1",
+          auth0Id: mockProfile.sub,
+          email: mockProfile.email ?? null,
+          name: mockProfile.name ?? null,
+          picture: mockProfile.picture ?? null,
+          lastLogin: 1706000000000,
+          created: Date.now(),
+          createdBy: "system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        });
 
         const res = await request(app)
           .get("/api/profile")
@@ -82,6 +107,21 @@ describe("Profile Router", () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.payload.profile).toEqual(mockProfile);
+        expect(res.body.payload.lastLogin).toBe(1706000000000);
+      });
+
+      it("should return 200 with lastLogin as null when user is not in the database", async () => {
+        mockedAuth0Service.getAuth0UserProfile.mockResolvedValue(mockProfile);
+        mockedUsersRepo.findByAuth0Id.mockResolvedValue(undefined);
+
+        const res = await request(app)
+          .get("/api/profile")
+          .set("Authorization", "Bearer valid-token");
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.payload.profile).toEqual(mockProfile);
+        expect(res.body.payload.lastLogin).toBeNull();
       });
 
       it("should return 500 when Auth0 returns a profile without sub", async () => {
