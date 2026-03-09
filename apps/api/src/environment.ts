@@ -22,4 +22,8 @@ export const environment = {
   AUTH0_WEBHOOK_SECRET: process.env.AUTH0_WEBHOOK_SECRET,
   // System ID for deterministic UUID generation
   SYSTEM_ID: process.env.SYSTEM_ID,
+  // Anthropic configuration
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  // Tavily configuration
+  TAVILY_API_KEY: process.env.TAVILY_API_KEY,
 };

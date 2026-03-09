@@ -20,7 +20,7 @@ export type ThemeMode = "light" | "dark";
 export const DEFAULT_THEME: ThemeName = "brand";
 
 export interface ThemeProviderProps {
-  children: React.ReactElement;
+  children: React.ReactNode;
   defaultTheme?: ThemeName;
 }
 

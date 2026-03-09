@@ -1,6 +1,6 @@
 import { text, bigint, type PgColumnBuilderBase } from "drizzle-orm/pg-core";
 import { CoreSchema, type Core } from "@mcp-ui/core/models";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ function deriveBaseColumns(): BaseColumns {
 
   for (const [key, zodField] of Object.entries(shape)) {
     const col = toSnakeCase(key);
-    const { inner, nullable } = unwrap(zodField as z.ZodTypeAny);
+    const { inner, nullable } = unwrap(zodField as unknown as z.ZodTypeAny);
 
     if (inner instanceof z.ZodNumber) {
       const c = bigint(col, { mode: "number" });

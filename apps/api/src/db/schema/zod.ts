@@ -6,7 +6,7 @@
  * hand-written Zod schemas in `@mcp-ui/core` stay in sync with these.
  */
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { users } from "./users.table.js";
 import { organizations } from "./organizations.table.js";
 import { organizationUsers } from "./organization-users.table.js";

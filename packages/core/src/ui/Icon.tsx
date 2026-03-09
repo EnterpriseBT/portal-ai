@@ -31,6 +31,7 @@ import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrow
 import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import HeartIcon from "../assets/icons/heart.svg";
 
 export enum IconName {
@@ -66,6 +67,7 @@ export enum IconName {
   KeyboardDoubleArrowRight = "keyboard_double_arrow_right",
   ExpandMore = "expand_more",
   ExpandLess = "expand_less",
+  Refresh = "refresh",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -138,6 +140,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <ExpandMoreIcon ref={ref} {...props} />;
       case IconName.ExpandLess:
         return <ExpandLessIcon ref={ref} {...props} />;
+      case IconName.Refresh:
+        return <RefreshIcon ref={ref} {...props} />;
       case IconName.Heart:
         return (
           <MuiSvgIcon ref={ref} {...props}>
