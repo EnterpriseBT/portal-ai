@@ -2,6 +2,7 @@ export { baseColumns } from "./base.columns.js";
 export { users } from "./users.table.js";
 export { organizations } from "./organizations.table.js";
 export { organizationUsers } from "./organization-users.table.js";
+export { connectorDefinitions } from "./connector-definitions.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";

@@ -12,12 +12,13 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, Core } from "@mcp-ui/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect } from "./zod.js";
+import type { User, Organization, OrganizationUser, ConnectorDefinitions, Core } from "@mcp-ui/core/models";
+import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionsSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
 import type { organizationUsers } from "./organization-users.table.js";
+import type { connectorDefinitions } from "./connector-definitions.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -84,3 +85,18 @@ const _drizzleBaseToModel: _DrizzleBaseToModel = true;
 
 type _ModelToBase = IsAssignable<Core, DrizzleBaseFields>;
 const _modelToBase: _ModelToBase = true;
+
+// ── ConnectorDefinitions ─────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _ConnDefDrizzleToModel = IsAssignable<ConnectorDefinitionsSelect, ConnectorDefinitions>;
+const _connDefDrizzleToModel: _ConnDefDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _ConnDefModelToDrizzle = IsAssignable<ConnectorDefinitions, ConnectorDefinitionsSelect>;
+const _connDefModelToDrizzle: _ConnDefModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _ConnDefInferredRow = InferSelectModel<typeof connectorDefinitions>;
+type _ConnDefInferredToModel = IsAssignable<_ConnDefInferredRow, ConnectorDefinitions>;
+const _connDefInferredToModel: _ConnDefInferredToModel = true;

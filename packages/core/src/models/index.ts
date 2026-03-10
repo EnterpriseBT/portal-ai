@@ -9,3 +9,6 @@ export * from "./organization.model.js";
 
 /** Organization–User join model schema & type */
 export * from "./organization-user.model.js";
+
+/** Connector Definitions model schema & type */
+export * from "./connector-definitions.model.js";
