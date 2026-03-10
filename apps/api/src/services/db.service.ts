@@ -10,6 +10,7 @@ import {
   organizationsRepo,
   organizationUsersRepo,
   usersRepo,
+  connectorDefinitionsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -64,6 +65,7 @@ export class DbService {
       organizationUsers: organizationUsersRepo,
       users: usersRepo,
       organizations: organizationsRepo,
+      connectorDefinitions: connectorDefinitionsRepo,
     };
   }
 }

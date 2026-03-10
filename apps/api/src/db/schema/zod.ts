@@ -57,7 +57,7 @@ export type OrganizationUserInsert = z.infer<
 // ── Connector Definitions ────────────────────────────────────────────
 
 /** Zod schema for a `connector_definitions` row returned by SELECT. */
-export const ConnectorDefinitionsSelectSchema =
+export const ConnectorDefinitionSelectSchema =
   createSelectSchema(connectorDefinitions);
 
 /** Zod schema for inserting into `connector_definitions`. */
@@ -65,9 +65,9 @@ export const ConnectorDefinitionsInsertSchema =
   createInsertSchema(connectorDefinitions);
 
 /** Inferred types */
-export type ConnectorDefinitionsSelect = z.infer<
-  typeof ConnectorDefinitionsSelectSchema
+export type ConnectorDefinitionSelect = z.infer<
+  typeof ConnectorDefinitionSelectSchema
 >;
-export type ConnectorDefinitionsInsert = z.infer<
+export type ConnectorDefinitionInsert = z.infer<
   typeof ConnectorDefinitionsInsertSchema
 >;

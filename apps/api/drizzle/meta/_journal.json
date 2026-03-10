@@ -64,6 +64,13 @@
       "when": 1741564800000,
       "tag": "0008_create_connector_definitions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1741651200000,
+      "tag": "0009_add_unique_slug_to_connector_definitions",
+      "breakpoints": true
     }
   ]
 }

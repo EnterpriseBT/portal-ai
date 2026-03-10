@@ -249,6 +249,128 @@ describe("Repository Integration Tests", () => {
     });
   });
 
+  // ── UPSERT TESTS ─────────────────────────────────────────────────
+
+  describe("upsert", () => {
+    it("should insert a new row when no conflict exists", async () => {
+      const userData = createTestUser();
+
+      const result = await usersRepo.upsert(userData, db);
+
+      expect(result.id).toBe(userData.id);
+      expect(result.email).toBe(userData.email);
+    });
+
+    it("should update an existing row on id conflict", async () => {
+      const userData = createTestUser();
+      await usersRepo.create(userData, db);
+
+      const newEmail = `updated-${generateId()}@example.com`;
+      const result = await usersRepo.upsert(
+        { ...userData, email: newEmail },
+        db
+      );
+
+      expect(result.id).toBe(userData.id);
+      expect(result.email).toBe(newEmail);
+    });
+
+    it("should persist the upserted data", async () => {
+      const userData = createTestUser();
+      await usersRepo.create(userData, db);
+
+      const newName = "Upserted Name";
+      await usersRepo.upsert({ ...userData, name: newName }, db);
+
+      const found = await usersRepo.findById(userData.id, db);
+      expect(found?.name).toBe(newName);
+    });
+
+    it("should not create a duplicate row on conflict", async () => {
+      const userData = createTestUser();
+      await usersRepo.upsert(userData, db);
+      await usersRepo.upsert({ ...userData, name: "Changed" }, db);
+
+      const count = await usersRepo.count(undefined, db);
+      expect(count).toBe(1);
+    });
+  });
+
+  describe("upsertMany", () => {
+    it("should insert multiple new rows when no conflicts exist", async () => {
+      const users = [createTestUser(), createTestUser(), createTestUser()];
+
+      const results = await usersRepo.upsertMany(users, db);
+
+      expect(results).toHaveLength(3);
+      expect(results[0].email).toBe(users[0].email);
+      expect(results[1].email).toBe(users[1].email);
+      expect(results[2].email).toBe(users[2].email);
+    });
+
+    it("should update existing rows on id conflict", async () => {
+      const user1 = createTestUser();
+      const user2 = createTestUser();
+      await usersRepo.createMany([user1, user2], db);
+
+      const newName1 = "Upserted 1";
+      const newName2 = "Upserted 2";
+      const results = await usersRepo.upsertMany(
+        [
+          { ...user1, name: newName1 },
+          { ...user2, name: newName2 },
+        ],
+        db
+      );
+
+      expect(results).toHaveLength(2);
+      const names = results.map((r) => r.name);
+      expect(names).toContain(newName1);
+      expect(names).toContain(newName2);
+    });
+
+    it("should handle a mix of inserts and updates", async () => {
+      const existing = createTestUser();
+      await usersRepo.create(existing, db);
+
+      const newUser = createTestUser();
+      const results = await usersRepo.upsertMany(
+        [
+          { ...existing, name: "Updated Existing" },
+          newUser,
+        ],
+        db
+      );
+
+      expect(results).toHaveLength(2);
+
+      const count = await usersRepo.count(undefined, db);
+      expect(count).toBe(2);
+
+      const found = await usersRepo.findById(existing.id, db);
+      expect(found?.name).toBe("Updated Existing");
+    });
+
+    it("should return empty array when given empty array", async () => {
+      const results = await usersRepo.upsertMany([], db);
+
+      expect(results).toEqual([]);
+    });
+
+    it("should not create duplicate rows on conflict", async () => {
+      const users = [createTestUser(), createTestUser()];
+      await usersRepo.createMany(users, db);
+
+      await usersRepo.upsertMany(
+        users.map((u) => ({ ...u, name: "Bulk Updated" })),
+        db
+      );
+
+      const count = await usersRepo.count(undefined, db);
+      expect(count).toBe(2);
+    });
+  });
+
   // ── UPDATE TESTS ──────────────────────────────────────────────────
 
   describe("update", () => {

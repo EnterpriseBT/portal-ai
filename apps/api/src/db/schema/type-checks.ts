@@ -12,8 +12,8 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinitions, Core } from "@mcp-ui/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionsSelect } from "./zod.js";
+import type { User, Organization, OrganizationUser, ConnectorDefinition, Core } from "@mcp-ui/core/models";
+import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
@@ -86,18 +86,18 @@ const _drizzleBaseToModel: _DrizzleBaseToModel = true;
 type _ModelToBase = IsAssignable<Core, DrizzleBaseFields>;
 const _modelToBase: _ModelToBase = true;
 
-// ── ConnectorDefinitions ─────────────────────────────────────────
+// ── ConnectorDefinition ─────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _ConnDefDrizzleToModel = IsAssignable<ConnectorDefinitionsSelect, ConnectorDefinitions>;
+type _ConnDefDrizzleToModel = IsAssignable<ConnectorDefinitionSelect, ConnectorDefinition>;
 const _connDefDrizzleToModel: _ConnDefDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _ConnDefModelToDrizzle = IsAssignable<ConnectorDefinitions, ConnectorDefinitionsSelect>;
+type _ConnDefModelToDrizzle = IsAssignable<ConnectorDefinition, ConnectorDefinitionSelect>;
 const _connDefModelToDrizzle: _ConnDefModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _ConnDefInferredRow = InferSelectModel<typeof connectorDefinitions>;
-type _ConnDefInferredToModel = IsAssignable<_ConnDefInferredRow, ConnectorDefinitions>;
+type _ConnDefInferredToModel = IsAssignable<_ConnDefInferredRow, ConnectorDefinition>;
 const _connDefInferredToModel: _ConnDefInferredToModel = true;

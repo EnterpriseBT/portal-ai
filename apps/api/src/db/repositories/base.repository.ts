@@ -25,6 +25,7 @@ import {
   type InferSelectModel,
   type InferInsertModel,
   type SQL,
+  sql,
   getTableColumns,
   eq,
   and,
@@ -33,7 +34,7 @@ import {
   count,
   type Column,
 } from "drizzle-orm";
-import type { PgTable } from "drizzle-orm/pg-core";
+import type { PgTable, IndexColumn } from "drizzle-orm/pg-core";
 import { db } from "../client.js";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -171,6 +172,55 @@ export class Repository<
     const rows = await (client as typeof db)
       .insert(this.table)
       .values(data as any)
+      .returning();
+    return rows as TSelect[];
+  }
+
+  // ── UPSERT ─────────────────────────────────────────────────────
+
+  /**
+   * Build a `set` object that references `excluded` columns for upserts.
+   * This ensures each conflicting row is updated with its own proposed values.
+   */
+  private buildExcludedSet(): Record<string, SQL> {
+    const set: Record<string, SQL> = {};
+    for (const [name, col] of Object.entries(this.cols)) {
+      if (name === "id") continue;
+      set[name] = sql.raw(`excluded."${col.name}"`);
+    }
+    return set;
+  }
+
+  /**
+   * Insert a row or update it if a row with the same `id` already exists.
+   * Returns the resulting row.
+   */
+  async upsert(data: TInsert, client: DbClient = db): Promise<TSelect> {
+    const [row] = await (client as typeof db)
+      .insert(this.table)
+      .values(data as any)
+      .onConflictDoUpdate({
+        target: this.cols.id as IndexColumn,
+        set: this.buildExcludedSet() as any,
+      })
+      .returning();
+    return row as TSelect;
+  }
+
+  /**
+   * Insert multiple rows, updating any that conflict on `id`.
+   * Executes as a single statement. Returns all resulting rows.
+   */
+  async upsertMany(data: TInsert[], client: DbClient = db): Promise<TSelect[]> {
+    if (data.length === 0) return [];
+
+    const rows = await (client as typeof db)
+      .insert(this.table)
+      .values(data as any)
+      .onConflictDoUpdate({
+        target: this.cols.id as IndexColumn,
+        set: this.buildExcludedSet() as any,
+      })
       .returning();
     return rows as TSelect[];
   }

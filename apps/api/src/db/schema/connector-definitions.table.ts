@@ -12,7 +12,7 @@ export interface CapabilityFlags {
  */
 export const connectorDefinitions = pgTable("connector_definitions", {
   ...baseColumns,
-  slug: text("slug").notNull(),
+  slug: text("slug").notNull().unique(),
   display: text("display").notNull(),
   category: text("category").notNull(),
   authType: text("auth_type").notNull(),
