@@ -57,6 +57,13 @@
       "when": 1771870217357,
       "tag": "0007_add_user-organization_last_login",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1741564800000,
+      "tag": "0008_create_connector_definitions",
+      "breakpoints": true
     }
   ]
 }

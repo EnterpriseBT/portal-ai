@@ -22,6 +22,8 @@ export const ConnectorDefinitionsSchema = CoreSchema.extend({
     write: z.boolean().optional(),
   }),
   isActive: z.boolean(),
+  version: z.string(),
+  iconUrl: z.string().nullable(),
 });
 
 export type ConnectorDefinitions = z.infer<typeof ConnectorDefinitionsSchema>;

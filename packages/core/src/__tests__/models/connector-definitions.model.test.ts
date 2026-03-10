@@ -105,6 +105,8 @@ describe("ConnectorDefinitionsModelFactory", () => {
       expect(shape).toHaveProperty("configSchema");
       expect(shape).toHaveProperty("capabilityFlags");
       expect(shape).toHaveProperty("isActive");
+      expect(shape).toHaveProperty("version");
+      expect(shape).toHaveProperty("iconUrl");
     });
 
     it("should allow updating connector-specific fields after creation", () => {
@@ -117,6 +119,8 @@ describe("ConnectorDefinitionsModelFactory", () => {
         configSchema: { clientId: "abc" },
         capabilityFlags: { sync: true, query: true, write: false },
         isActive: true,
+        version: "1.0.0",
+        iconUrl: "https://example.com/salesforce.png",
       });
 
       const json = model.toJSON();
@@ -127,6 +131,8 @@ describe("ConnectorDefinitionsModelFactory", () => {
       expect(json.configSchema).toEqual({ clientId: "abc" });
       expect(json.capabilityFlags).toEqual({ sync: true, query: true, write: false });
       expect(json.isActive).toBe(true);
+      expect(json.version).toBe("1.0.0");
+      expect(json.iconUrl).toBe("https://example.com/salesforce.png");
       // base fields should still be present
       expect(json.id).toBe("test-id-1");
       expect(json.createdBy).toBe("user-1");
@@ -142,6 +148,8 @@ describe("ConnectorDefinitionsModelFactory", () => {
         configSchema: null,
         capabilityFlags: { sync: true },
         isActive: true,
+        version: "2.1.0",
+        iconUrl: null,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -162,6 +170,8 @@ describe("ConnectorDefinitionsModelFactory", () => {
         configSchema: null,
         capabilityFlags: {},
         isActive: false,
+        version: "0.1.0",
+        iconUrl: null,
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -182,6 +192,8 @@ describe("ConnectorDefinitionsModelFactory", () => {
         configSchema: null,
         capabilityFlags: { query: true },
         isActive: true,
+        version: "1.0.0",
+        iconUrl: "https://example.com/icon.svg",
         updated: null,
         updatedBy: null,
         deleted: null,
@@ -215,6 +227,7 @@ describe("ConnectorDefinitionsModelFactory", () => {
         expect(paths).toContain("authType");
         expect(paths).toContain("capabilityFlags");
         expect(paths).toContain("isActive");
+        expect(paths).toContain("version");
       }
     });
   });

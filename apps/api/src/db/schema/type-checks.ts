@@ -93,6 +93,7 @@ type _ConnDefDrizzleToModel = IsAssignable<ConnectorDefinitionsSelect, Connector
 const _connDefDrizzleToModel: _ConnDefDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
+// Core Zod model → Drizzle select row (every model value must be a valid row)
 type _ConnDefModelToDrizzle = IsAssignable<ConnectorDefinitions, ConnectorDefinitionsSelect>;
 const _connDefModelToDrizzle: _ConnDefModelToDrizzle = true;
 

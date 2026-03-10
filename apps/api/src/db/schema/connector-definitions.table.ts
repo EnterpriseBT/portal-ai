@@ -19,4 +19,6 @@ export const connectorDefinitions = pgTable("connector_definitions", {
   configSchema: jsonb("config_schema").$type<Record<string, unknown>>(),
   capabilityFlags: jsonb("capability_flags").$type<CapabilityFlags>().notNull(),
   isActive: boolean("is_active").notNull(),
+  version: text("version").notNull(),
+  iconUrl: text("icon_url"),
 });
