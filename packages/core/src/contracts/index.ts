@@ -1,3 +1,6 @@
+/** Pagination contracts — schemas & types */
+export * from "./pagination.contract.js";
+
 /** Auth contracts — schemas & types */
 export * from "./auth.contract.js";
 
@@ -15,3 +18,6 @@ export * from "./user-organization.contract.js";
 
 /** Webhook contracts — schemas & types */
 export * from "./webhook.contract.js";
+
+/** Connector Definition contracts — schemas & types */
+export * from "./connector-definition.contract.js";

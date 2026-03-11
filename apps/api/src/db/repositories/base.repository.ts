@@ -33,6 +33,8 @@ import {
   inArray,
   count,
   type Column,
+  asc,
+  desc,
 } from "drizzle-orm";
 import type { PgTable, IndexColumn } from "drizzle-orm/pg-core";
 import { db } from "../client.js";
@@ -66,6 +68,7 @@ export interface ListOptions {
   limit?: number;
   offset?: number;
   includeDeleted?: boolean;
+  orderBy?: { column: Column; direction?: "asc" | "desc" };
 }
 
 /** Payload shape for bulk-updating records with per-row data. */
@@ -138,6 +141,10 @@ export class Repository<
       .from(this.table as any)
       .where(conditions)
       .$dynamic();
+    if (opts.orderBy) {
+      const orderFn = opts.orderBy.direction === "desc" ? desc : asc;
+      query = query.orderBy(orderFn(opts.orderBy.column));
+    }
     if (opts.limit !== undefined) query = query.limit(opts.limit);
     if (opts.offset !== undefined) query = query.offset(opts.offset);
     return (await query) as TSelect[];
