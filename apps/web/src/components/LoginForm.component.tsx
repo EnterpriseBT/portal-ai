@@ -42,9 +42,6 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
               <Typography variant="h4" component="h1" gutterBottom>
                 Welcome
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Sign in to continue
-              </Typography>
             </Box>
 
             <Divider />
@@ -61,7 +58,7 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
                 fontSize: "1rem",
               }}
             >
-              Continue with Google
+              Sign in with Google
             </Button>
 
             <Typography

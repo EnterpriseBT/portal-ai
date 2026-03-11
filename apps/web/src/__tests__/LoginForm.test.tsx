@@ -6,7 +6,12 @@ import userEvent from "@testing-library/user-event";
 jest.mock("../api/sdk", () => ({
   sdk: {
     auth: {
-      session: () => ({ user: undefined, isAuthenticated: false, isLoading: false, error: undefined }),
+      session: () => ({
+        user: undefined,
+        isAuthenticated: false,
+        isLoading: false,
+        error: undefined,
+      }),
       login: () => ({ withGoogle: jest.fn() }),
       logout: () => ({ logout: jest.fn() }),
     },
@@ -36,20 +41,19 @@ describe("LoginFormUI Component", () => {
   it("should render welcome message", () => {
     render(<LoginFormUI onClickGoogleLogin={mockOnClickGoogleLogin} />);
     expect(screen.getByText("Welcome")).toBeInTheDocument();
-    expect(screen.getByText("Sign in to continue")).toBeInTheDocument();
   });
 
   it("should render Google login button", () => {
     render(<LoginFormUI onClickGoogleLogin={mockOnClickGoogleLogin} />);
     expect(
-      screen.getByRole("button", { name: /continue with google/i }),
+      screen.getByRole("button", { name: /sign in with google/i })
     ).toBeInTheDocument();
   });
 
   it("should render terms and privacy notice", () => {
     render(<LoginFormUI onClickGoogleLogin={mockOnClickGoogleLogin} />);
     expect(
-      screen.getByText(/by continuing, you agree to our terms/i),
+      screen.getByText(/by continuing, you agree to our terms/i)
     ).toBeInTheDocument();
   });
 
@@ -57,7 +61,7 @@ describe("LoginFormUI Component", () => {
     const user = userEvent.setup();
     render(<LoginFormUI onClickGoogleLogin={mockOnClickGoogleLogin} />);
 
-    const button = screen.getByRole("button", { name: /continue with google/i });
+    const button = screen.getByRole("button", { name: /sign in with google/i });
     await user.click(button);
 
     expect(mockOnClickGoogleLogin).toHaveBeenCalledTimes(1);

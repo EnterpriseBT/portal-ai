@@ -42,6 +42,48 @@ const options: swaggerJsdoc.Options = {
           description: "OAuth2 authentication with Auth0",
         },
       },
+      parameters: {
+        limitParam: {
+          in: "query",
+          name: "limit",
+          schema: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+            default: 20,
+          },
+          description: "Number of items per page",
+        },
+        offsetParam: {
+          in: "query",
+          name: "offset",
+          schema: {
+            type: "integer",
+            minimum: 0,
+            default: 0,
+          },
+          description: "Number of items to skip",
+        },
+        sortByParam: {
+          in: "query",
+          name: "sortBy",
+          schema: {
+            type: "string",
+            default: "created",
+          },
+          description: "Field to sort by",
+        },
+        sortOrderParam: {
+          in: "query",
+          name: "sortOrder",
+          schema: {
+            type: "string",
+            enum: ["asc", "desc"],
+            default: "asc",
+          },
+          description: "Sort direction",
+        },
+      },
       schemas: {
         ApiErrorResponse: {
           type: "object",
@@ -205,6 +247,156 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+        ConnectorDefinition: {
+          type: "object",
+          required: [
+            "id",
+            "slug",
+            "display",
+            "category",
+            "authType",
+            "capabilityFlags",
+            "isActive",
+            "version",
+            "created",
+            "createdBy",
+          ],
+          properties: {
+            id: {
+              type: "string",
+              description: "Unique identifier",
+              example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            },
+            slug: {
+              type: "string",
+              description: "URL-friendly unique slug",
+              example: "postgresql-connector",
+            },
+            display: {
+              type: "string",
+              description: "Human-readable display name",
+              example: "PostgreSQL Connector",
+            },
+            category: {
+              type: "string",
+              description: "Connector category",
+              example: "database",
+            },
+            authType: {
+              type: "string",
+              description: "Authentication type required by the connector",
+              example: "oauth2",
+            },
+            configSchema: {
+              type: "object",
+              nullable: true,
+              description: "JSON schema for connector configuration",
+              additionalProperties: true,
+            },
+            capabilityFlags: {
+              type: "object",
+              description: "Supported capabilities",
+              properties: {
+                sync: { type: "boolean" },
+                query: { type: "boolean" },
+                write: { type: "boolean" },
+              },
+            },
+            isActive: {
+              type: "boolean",
+              description: "Whether the connector definition is active",
+              example: true,
+            },
+            version: {
+              type: "string",
+              description: "Semantic version of the connector definition",
+              example: "1.0.0",
+            },
+            iconUrl: {
+              type: "string",
+              nullable: true,
+              description: "URL to the connector icon",
+              example: "https://example.com/icons/postgres.svg",
+            },
+            created: {
+              type: "number",
+              description: "Creation timestamp (epoch ms)",
+              example: 1700000000000,
+            },
+            createdBy: {
+              type: "string",
+              description: "ID of the creator",
+              example: "SYSTEM",
+            },
+            updated: {
+              type: "number",
+              nullable: true,
+              description: "Last update timestamp (epoch ms)",
+            },
+            updatedBy: {
+              type: "string",
+              nullable: true,
+              description: "ID of the last updater",
+            },
+            deleted: {
+              type: "number",
+              nullable: true,
+              description: "Soft-delete timestamp (epoch ms)",
+            },
+            deletedBy: {
+              type: "string",
+              nullable: true,
+              description: "ID of the deleter",
+            },
+          },
+        },
+        PaginatedResponse: {
+          type: "object",
+          required: ["total", "limit", "offset"],
+          properties: {
+            total: {
+              type: "integer",
+              description: "Total number of matching records",
+              example: 42,
+            },
+            limit: {
+              type: "integer",
+              description: "Page size used for this request",
+              example: 20,
+            },
+            offset: {
+              type: "integer",
+              description: "Offset used for this request",
+              example: 0,
+            },
+          },
+        },
+        ConnectorDefinitionListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["connectorDefinitions"],
+              properties: {
+                connectorDefinitions: {
+                  type: "array",
+                  items: {
+                    $ref: "#/components/schemas/ConnectorDefinition",
+                  },
+                },
+              },
+            },
+          ],
+        },
+        ConnectorDefinitionGetResponse: {
+          type: "object",
+          required: ["connectorDefinition"],
+          properties: {
+            connectorDefinition: {
+              $ref: "#/components/schemas/ConnectorDefinition",
+            },
+          },
+        },
       },
     },
     tags: [
@@ -215,6 +407,10 @@ const options: swaggerJsdoc.Options = {
       {
         name: "Profile",
         description: "User profile and authentication endpoints",
+      },
+      {
+        name: "ConnectorDefinitions",
+        description: "Connector definition management endpoints",
       },
     ],
   },

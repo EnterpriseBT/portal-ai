@@ -35,50 +35,55 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *       - in: query
- *         name: offset
- *         schema:
- *           type: integer
- *           default: 0
- *       - in: query
- *         name: category
- *         schema:
- *           type: string
- *       - in: query
- *         name: authType
- *         schema:
- *           type: string
- *       - in: query
- *         name: isActive
- *         schema:
- *           type: boolean
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *         description: Case-insensitive search on display name
+ *       - $ref: '#/components/parameters/limitParam'
+ *       - $ref: '#/components/parameters/offsetParam'
+ *       - $ref: '#/components/parameters/sortOrderParam'
  *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
  *           enum: [display, category, slug, created, version]
- *           default: display
+ *           default: created
+ *         description: Field to sort by
  *       - in: query
- *         name: sortOrder
+ *         name: category
  *         schema:
  *           type: string
- *           enum: [asc, desc]
- *           default: asc
+ *         description: Filter by connector category
+ *       - in: query
+ *         name: authType
+ *         schema:
+ *           type: string
+ *         description: Filter by authentication type
+ *       - in: query
+ *         name: isActive
+ *         schema:
+ *           type: boolean
+ *         description: Filter by active status
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive search on display name
  *     responses:
  *       200:
  *         description: Paginated list of connector definitions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ConnectorDefinitionListResponse'
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 connectorDefinitionRouter.get(
   "/",
@@ -161,13 +166,32 @@ connectorDefinitionRouter.get(
  *         required: true
  *         schema:
  *           type: string
+ *         description: Connector definition ID
  *     responses:
  *       200:
  *         description: Connector definition found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ConnectorDefinitionGetResponse'
  *       404:
  *         description: Connector definition not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 connectorDefinitionRouter.get(
   "/:id",

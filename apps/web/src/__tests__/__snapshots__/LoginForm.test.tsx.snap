@@ -22,11 +22,6 @@ exports[`LoginFormUI Component should match snapshot 1`] = `
           >
             Welcome
           </h1>
-          <p
-            class="MuiTypography-root MuiTypography-body2 css-14kunq2-MuiTypography-root"
-          >
-            Sign in to continue
-          </p>
         </div>
         <hr
           class="MuiDivider-root MuiDivider-fullWidth css-1jpc804-MuiDivider-root"
@@ -51,7 +46,7 @@ exports[`LoginFormUI Component should match snapshot 1`] = `
               />
             </svg>
           </span>
-          Continue with Google
+          Sign in with Google
         </button>
         <span
           class="MuiTypography-root MuiTypography-caption css-1fq3hlc-MuiTypography-root"
