@@ -1,0 +1,523 @@
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+} from "@jest/globals";
+import crypto from "crypto";
+import request from "supertest";
+import { Request, Response, NextFunction } from "express";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { UUIDv4Factory } from "@mcp-ui/core/utils";
+import * as schema from "../../../db/schema/index.js";
+import type { DbClient } from "../../../db/repositories/base.repository.js";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
+import { environment } from "../../../environment.js";
+
+const AUTH0_ID = "auth0|ci-test-user";
+
+// Set ENCRYPTION_KEY before anything imports crypto.util
+const TEST_ENCRYPTION_KEY = crypto.randomBytes(32).toString("base64");
+let _originalEncryptionKey: string | undefined;
+
+beforeAll(() => {
+  _originalEncryptionKey = environment.ENCRYPTION_KEY;
+  environment.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
+});
+
+// Mock the auth middleware to populate req.auth with our test sub
+jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
+  jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
+    req.auth = { payload: { sub: AUTH0_ID } } as never;
+    next();
+  },
+}));
+
+// Mock Auth0Service (required by profile router which shares the protected router)
+jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
+  Auth0Service: {
+    hasAccessToken: jest.fn(),
+    getAccessToken: jest.fn(),
+    getAuth0UserProfile: jest.fn(),
+  },
+}));
+
+const { app } = await import("../../../app.js");
+
+const { users, connectorDefinitions, connectorInstances, organizationUsers, organizations } = schema;
+const idFactory = new UUIDv4Factory();
+const generateId = () => idFactory.generate();
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+const now = Date.now();
+
+function createUser(overrides?: Partial<Record<string, unknown>>) {
+  return {
+    id: generateId(),
+    auth0Id: AUTH0_ID,
+    email: `user-${generateId()}@example.com`,
+    name: "Test User",
+    lastLogin: now,
+    picture: null,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createConnectorDefinition(
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    slug: `slug-${generateId()}`,
+    display: "Test Connector",
+    category: "crm",
+    authType: "oauth2",
+    configSchema: null,
+    capabilityFlags: { sync: true, query: true, write: false },
+    isActive: true,
+    version: "1.0.0",
+    iconUrl: null,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createConnectorInstance(
+  connectorDefinitionId: string,
+  organizationId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    connectorDefinitionId,
+    organizationId,
+    name: "Test Instance",
+    status: "active" as const,
+    config: null,
+    credentials: null,
+    lastSyncAt: null,
+    lastErrorMessage: null,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+describe("Connector Instance Router", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+
+    // Clean tables in FK-safe order
+    await db.delete(connectorInstances);
+    await db.delete(connectorDefinitions);
+    await db.delete(organizationUsers);
+    await db.delete(organizations);
+    await db.delete(users);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  // ── GET /api/connector-instances ────────────────────────────────
+
+  describe("GET /api/connector-instances", () => {
+    it("should return an empty list when no instances exist", async () => {
+      const res = await request(app)
+        .get("/api/connector-instances")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.connectorInstances).toEqual([]);
+      expect(res.body.payload.total).toBe(0);
+    });
+
+    it("should return paginated connector instances", async () => {
+      const def = createConnectorDefinition();
+      const orgId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      // Insert 3 instances
+      for (let i = 0; i < 3; i++) {
+        await (db as ReturnType<typeof drizzle>)
+          .insert(connectorInstances)
+          .values(
+            createConnectorInstance(def.id, orgId, {
+              name: `Instance ${i}`,
+            }) as never
+          );
+      }
+
+      const res = await request(app)
+        .get("/api/connector-instances?limit=2&offset=0")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(2);
+      expect(res.body.payload.total).toBe(3);
+      expect(res.body.payload.limit).toBe(2);
+      expect(res.body.payload.offset).toBe(0);
+    });
+
+    it("should filter by connectorDefinitionId", async () => {
+      const def1 = createConnectorDefinition();
+      const def2 = createConnectorDefinition();
+      const orgId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values([def1, def2] as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def1.id, orgId, { name: "A" }),
+          createConnectorInstance(def2.id, orgId, { name: "B" }),
+        ] as never);
+
+      const res = await request(app)
+        .get(
+          `/api/connector-instances?connectorDefinitionId=${def1.id}`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(1);
+      expect(res.body.payload.connectorInstances[0].name).toBe("A");
+    });
+
+    it("should filter by status", async () => {
+      const def = createConnectorDefinition();
+      const orgId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def.id, orgId, {
+            name: "Active",
+            status: "active",
+          }),
+          createConnectorInstance(def.id, orgId, {
+            name: "Pending",
+            status: "pending",
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/connector-instances?status=pending")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(1);
+      expect(res.body.payload.connectorInstances[0].name).toBe("Pending");
+    });
+
+    it("should filter by search (case-insensitive name match)", async () => {
+      const def = createConnectorDefinition();
+      const orgId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def.id, orgId, { name: "Salesforce Prod" }),
+          createConnectorInstance(def.id, orgId, { name: "HubSpot Dev" }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/connector-instances?search=salesforce")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(1);
+      expect(res.body.payload.connectorInstances[0].name).toBe(
+        "Salesforce Prod"
+      );
+    });
+
+    it("should filter by organizationId", async () => {
+      const def = createConnectorDefinition();
+      const org1 = generateId();
+      const org2 = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def.id, org1, { name: "Org1 Instance" }),
+          createConnectorInstance(def.id, org2, { name: "Org2 Instance" }),
+        ] as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances?organizationId=${org1}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(1);
+      expect(res.body.payload.connectorInstances[0].name).toBe(
+        "Org1 Instance"
+      );
+    });
+  });
+
+  // ── GET /api/connector-instances/:id ────────────────────────────
+
+  describe("GET /api/connector-instances/:id", () => {
+    it("should return 404 when instance does not exist", async () => {
+      const res = await request(app)
+        .get(`/api/connector-instances/${generateId()}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+    });
+
+    it("should return a connector instance by id", async () => {
+      const def = createConnectorDefinition();
+      const orgId = generateId();
+      const instance = createConnectorInstance(def.id, orgId, {
+        name: "My Instance",
+      });
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(instance as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.connectorInstance.id).toBe(instance.id);
+      expect(res.body.payload.connectorInstance.name).toBe("My Instance");
+    });
+
+    it("should not return soft-deleted instances", async () => {
+      const def = createConnectorDefinition();
+      const orgId = generateId();
+      const instance = createConnectorInstance(def.id, orgId, {
+        deleted: now,
+        deletedBy: "SYSTEM_TEST",
+      });
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(instance as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── POST /api/connector-instances ───────────────────────────────
+
+  describe("POST /api/connector-instances", () => {
+    it("should return 400 for invalid payload", async () => {
+      const res = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD);
+    });
+
+    it("should return 400 when name is empty", async () => {
+      const res = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId: generateId(),
+          organizationId: generateId(),
+          name: "",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD);
+    });
+
+    it("should return 404 when connector definition does not exist", async () => {
+      const user = createUser();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(users)
+        .values(user as never);
+
+      const res = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId: generateId(),
+          organizationId: generateId(),
+          name: "New Instance",
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_DEFINITION_NOT_FOUND);
+    });
+
+    it("should return 404 when user does not exist", async () => {
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      const res = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId: def.id,
+          organizationId: generateId(),
+          name: "New Instance",
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_USER_NOT_FOUND);
+    });
+
+    it("should create a connector instance successfully", async () => {
+      const def = createConnectorDefinition();
+      const user = createUser();
+      const orgId = generateId();
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(users)
+        .values(user as never);
+
+      const res = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId: def.id,
+          organizationId: orgId,
+          name: "My New Instance",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      const created = res.body.payload.connectorInstance;
+      expect(created.name).toBe("My New Instance");
+      expect(created.connectorDefinitionId).toBe(def.id);
+      expect(created.organizationId).toBe(orgId);
+      expect(created.status).toBe("pending");
+      expect(created.config).toBeNull();
+      expect(created.credentials).toBeNull();
+    });
+
+    it("should create an instance with config and credentials", async () => {
+      const def = createConnectorDefinition();
+      const user = createUser();
+      const orgId = generateId();
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(users)
+        .values(user as never);
+
+      const res = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId: def.id,
+          organizationId: orgId,
+          name: "Configured Instance",
+          config: { endpoint: "https://api.example.com" },
+          credentials: { apiKey: "secret-key-123" },
+        });
+
+      expect(res.status).toBe(201);
+      const created = res.body.payload.connectorInstance;
+      expect(created.config).toEqual({ endpoint: "https://api.example.com" });
+      // Credentials should be returned decrypted through the API
+      expect(created.credentials).toEqual({ apiKey: "secret-key-123" });
+    });
+
+    it("created instance should be retrievable via GET", async () => {
+      const def = createConnectorDefinition();
+      const user = createUser();
+      const orgId = generateId();
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(users)
+        .values(user as never);
+
+      const createRes = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId: def.id,
+          organizationId: orgId,
+          name: "Retrievable Instance",
+        });
+
+      const id = createRes.body.payload.connectorInstance.id;
+
+      const getRes = await request(app)
+        .get(`/api/connector-instances/${id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(getRes.status).toBe(200);
+      expect(getRes.body.payload.connectorInstance.id).toBe(id);
+      expect(getRes.body.payload.connectorInstance.name).toBe(
+        "Retrievable Instance"
+      );
+    });
+  });
+});

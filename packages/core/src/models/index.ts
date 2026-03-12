@@ -12,3 +12,6 @@ export * from "./organization-user.model.js";
 
 /** Connector Definitions model schema & type */
 export * from "./connector-definition.model.js";
+
+/** Connector Instances model schema & type */
+export * from "./connector-instance.model.js";

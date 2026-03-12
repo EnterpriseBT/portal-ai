@@ -409,7 +409,7 @@ const options: swaggerJsdoc.Options = {
         description: "User profile and authentication endpoints",
       },
       {
-        name: "ConnectorDefinitions",
+        name: "Connector Definitions",
         description: "Connector definition management endpoints",
       },
     ],

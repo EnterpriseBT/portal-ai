@@ -21,3 +21,6 @@ export * from "./webhook.contract.js";
 
 /** Connector Definition contracts — schemas & types */
 export * from "./connector-definition.contract.js";
+
+/** Connector Instance contracts — schemas & types */
+export * from "./connector-instance.contract.js";

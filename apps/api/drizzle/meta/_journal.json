@@ -71,6 +71,20 @@
       "when": 1741651200000,
       "tag": "0009_add_unique_slug_to_connector_definitions",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1741737600000,
+      "tag": "0010_create_connector_instances",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1741824000000,
+      "tag": "0011_encrypt_connector_instance_credentials",
+      "breakpoints": true
     }
   ]
 }

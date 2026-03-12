@@ -34,6 +34,8 @@ export default async function globalSetup() {
   process.env.AUTH0_AUDIENCE ??= "https://test-api";
   process.env.CORS_ORIGIN ??= "http://localhost:3000";
   process.env.LOG_LEVEL ??= "silent";
+  // Encryption key for connector instance credential tests (32 random bytes, base64)
+  process.env.ENCRYPTION_KEY ??= "B6c8MuUiBbxwrAWSopmasgp1TMQ3eTi91aG8Og4TOCQ=";
 
   const connection = postgres(databaseUrl, { max: 1 });
   const db = drizzle(connection);

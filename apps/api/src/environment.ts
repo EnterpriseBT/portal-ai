@@ -26,4 +26,6 @@ export const environment = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   // Tavily configuration
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+  // Encryption key for securing sensitive data at rest (base64-encoded, 32 bytes)
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
 };

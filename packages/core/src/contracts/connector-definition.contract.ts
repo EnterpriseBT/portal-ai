@@ -4,6 +4,7 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 
 
 export const ConnectorDefinitionListRequestQuerySchema = PaginationRequestQuerySchema.extend({
+  sortBy: z.string().optional().default("display"),
   category: z.string().optional(),
   authType: z.string().optional(),
   isActive: z

@@ -29,7 +29,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  * /api/connector-definitions:
  *   get:
  *     tags:
- *       - ConnectorDefinitions
+ *       - Connector Definitions
  *     summary: List connector definitions
  *     description: Returns a paginated, filterable, and sortable list of connector definitions.
  *     security:
@@ -152,7 +152,7 @@ connectorDefinitionRouter.get(
  * /api/connector-definitions/{id}:
  *   get:
  *     tags:
- *       - ConnectorDefinitions
+ *       - Connector Definitions
  *     summary: Get a connector definition by ID
  *     security:
  *       - bearerAuth: []

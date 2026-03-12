@@ -3,6 +3,7 @@ import { jwtCheck } from "../middleware/auth.middleware.js";
 import { profileRouter } from "./profile.router.js";
 import { organizationRouter } from "./organization.router.js";
 import { connectorDefinitionRouter } from "./connector-definition.router.js";
+import { connectorInstanceRouter } from "./connector-instance.router.js";
 
 export const protectedRouter = Router();
 
@@ -13,3 +14,4 @@ protectedRouter.use(jwtCheck);
 protectedRouter.use("/profile", profileRouter);
 protectedRouter.use("/organization", organizationRouter);
 protectedRouter.use("/connector-definitions", connectorDefinitionRouter);
+protectedRouter.use("/connector-instances", connectorInstanceRouter);

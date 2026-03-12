@@ -12,13 +12,14 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinition, Core } from "@mcp-ui/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect } from "./zod.js";
+import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Core } from "@mcp-ui/core/models";
+import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
 import type { organizationUsers } from "./organization-users.table.js";
 import type { connectorDefinitions } from "./connector-definitions.table.js";
+import type { connectorInstances } from "./connector-instances.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -101,3 +102,18 @@ const _connDefModelToDrizzle: _ConnDefModelToDrizzle = true;
 type _ConnDefInferredRow = InferSelectModel<typeof connectorDefinitions>;
 type _ConnDefInferredToModel = IsAssignable<_ConnDefInferredRow, ConnectorDefinition>;
 const _connDefInferredToModel: _ConnDefInferredToModel = true;
+
+// ── ConnectorInstance ──────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _ConnInstDrizzleToModel = IsAssignable<ConnectorInstanceSelect, ConnectorInstance>;
+const _connInstDrizzleToModel: _ConnInstDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _ConnInstModelToDrizzle = IsAssignable<ConnectorInstance, ConnectorInstanceSelect>;
+const _connInstModelToDrizzle: _ConnInstModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _ConnInstInferredRow = InferSelectModel<typeof connectorInstances>;
+type _ConnInstInferredToModel = IsAssignable<_ConnInstInferredRow, ConnectorInstance>;
+const _connInstInferredToModel: _ConnInstInferredToModel = true;

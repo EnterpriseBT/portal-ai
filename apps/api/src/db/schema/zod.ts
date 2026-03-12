@@ -11,6 +11,7 @@ import { users } from "./users.table.js";
 import { organizations } from "./organizations.table.js";
 import { organizationUsers } from "./organization-users.table.js";
 import { connectorDefinitions } from "./connector-definitions.table.js";
+import { connectorInstances } from "./connector-instances.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -70,4 +71,22 @@ export type ConnectorDefinitionSelect = z.infer<
 >;
 export type ConnectorDefinitionInsert = z.infer<
   typeof ConnectorDefinitionsInsertSchema
+>;
+
+// ── Connector Instances ─────────────────────────────────────────────
+
+/** Zod schema for a `connector_instances` row returned by SELECT. */
+export const ConnectorInstanceSelectSchema =
+  createSelectSchema(connectorInstances);
+
+/** Zod schema for inserting into `connector_instances`. */
+export const ConnectorInstanceInsertSchema =
+  createInsertSchema(connectorInstances);
+
+/** Inferred types */
+export type ConnectorInstanceSelect = z.infer<
+  typeof ConnectorInstanceSelectSchema
+>;
+export type ConnectorInstanceInsert = z.infer<
+  typeof ConnectorInstanceInsertSchema
 >;
