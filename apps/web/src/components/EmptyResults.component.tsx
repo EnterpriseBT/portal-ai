@@ -2,7 +2,7 @@ import { Box, Typography } from "@mcp-ui/core/ui";
 
 export const EmptyResults = () => {
   return (
-    <Box textAlign="center" py={10} px={6}>
+    <Box textAlign="center" py={10}>
       <Typography variant="h2" mb={2}>
         No results found
       </Typography>
