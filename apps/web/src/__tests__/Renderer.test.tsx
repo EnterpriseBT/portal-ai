@@ -10,9 +10,16 @@ const fakeRegistryDefinition = {
   executeAction: async () => {},
 } as unknown as DefineRegistryResult;
 
-const mockGetCatalog = jest.fn<
-  (name: string) => { name: string; definition: DefineRegistryResult; catalog: unknown } | null
->();
+const mockGetCatalog =
+  jest.fn<
+    (
+      name: string
+    ) => {
+      name: string;
+      definition: DefineRegistryResult;
+      catalog: unknown;
+    } | null
+  >();
 
 jest.unstable_mockModule("@mcp-ui/registry", () => ({
   CatalogName: { Blog: "blog" },
@@ -82,17 +89,6 @@ describe("Renderer Component", () => {
         "data-loading",
         "undefined"
       );
-    });
-  });
-
-  describe("Loading State", () => {
-    it("should show loading message when loading prop is true", () => {
-      render(
-        <Renderer catalogName={CatalogName.Blog} spec={mockSpec} loading />
-      );
-      expect(screen.getByText("Loading...")).toBeInTheDocument();
-      expect(screen.getByRole("progressbar")).toBeInTheDocument();
-      expect(screen.queryByTestId("json-renderer")).not.toBeInTheDocument();
     });
   });
 

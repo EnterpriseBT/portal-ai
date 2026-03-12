@@ -6,7 +6,10 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 export const ConnectorDefinitionListRequestQuerySchema = PaginationRequestQuerySchema.extend({
   category: z.string().optional(),
   authType: z.string().optional(),
-  isActive: z.coerce.boolean().optional(),
+  isActive: z
+    .enum(["true", "false"])
+    .transform((v) => v === "true")
+    .optional(),
   search: z.string().optional(),
 });
 

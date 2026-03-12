@@ -10,7 +10,7 @@ export type StatusMessageVariant = "error" | "warning" | "info" | "success";
 export interface StatusMessageProps {
   message?: string;
   variant?: StatusMessageVariant;
-  error?: Error;
+  error?: Error | null;
   loading?: boolean;
   tooltip?: string;
   className?: string;
@@ -54,6 +54,7 @@ export const StatusMessage = React.forwardRef<
       <Stack
         ref={ref}
         direction="row"
+        justifyContent="center"
         alignItems="center"
         gap={1}
         className={className}

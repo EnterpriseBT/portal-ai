@@ -89,13 +89,9 @@ connectorDefinitionRouter.get(
   "/",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      logger.info({ rawQuery: req.query, rawIsActive: req.query.isActive, typeofIsActive: typeof req.query.isActive }, "DEBUG raw query before parse");
       const { limit, offset, sortBy, sortOrder, category, authType, isActive, search } =
         ConnectorDefinitionListRequestQuerySchema.parse(req.query);
-
-      logger.info(
-        { limit, offset, category, authType, isActive, search, sortBy, sortOrder },
-        "GET /api/connector-definitions called"
-      );
 
       // Build filter conditions
       const filters: SQL[] = [];

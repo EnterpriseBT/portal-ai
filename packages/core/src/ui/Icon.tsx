@@ -33,6 +33,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import HeartIcon from "../assets/icons/heart.svg";
+import MemoryChip from "@mui/icons-material/Memory";
 
 export enum IconName {
   Home = "home",
@@ -68,6 +69,7 @@ export enum IconName {
   ExpandMore = "expand_more",
   ExpandLess = "expand_less",
   Refresh = "refresh",
+  MemoryChip = "memory_chip",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -148,6 +150,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
             <HeartIcon />
           </MuiSvgIcon>
         );
+      case IconName.MemoryChip:
+        return <MemoryChip ref={ref} {...props} />;
       default:
         // If no name is provided or the name doesn't match, render children as a custom icon
         throw new Error(

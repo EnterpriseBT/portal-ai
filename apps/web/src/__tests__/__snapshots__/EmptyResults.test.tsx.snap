@@ -1,0 +1,18 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`EmptyResults should match snapshot 1`] = `
+<div
+  class="MuiBox-root css-k7czhu"
+>
+  <h2
+    class="MuiTypography-root MuiTypography-h2 css-1697pr5-MuiTypography-root"
+  >
+    No results found
+  </h2>
+  <p
+    class="MuiTypography-root MuiTypography-body1 css-as95wb-MuiTypography-root"
+  >
+    Try adjusting your search or filter to find what you are looking for.
+  </p>
+</div>
+`;

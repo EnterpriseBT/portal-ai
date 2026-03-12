@@ -23,10 +23,6 @@ export function Renderer({ catalogName, spec, loading, error }: RendererProps) {
     return <StatusMessage variant="error" message="Catalog not found" />;
   }
 
-  if (loading) {
-    return <StatusMessage loading message="Loading..." />;
-  }
-
   if (error) {
     return <StatusMessage variant="error" error={error} />;
   }

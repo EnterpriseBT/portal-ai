@@ -186,6 +186,12 @@ export const SidebarNav = () => {
         selected={pathname === ApplicationRoute.Dashboard}
         onClick={() => handleClick(ApplicationRoute.Dashboard)}
       />
+      <SidebarNavItem
+        icon={IconName.MemoryChip}
+        label="Connectors"
+        selected={pathname === ApplicationRoute.Connectors}
+        onClick={() => handleClick(ApplicationRoute.Connectors)}
+      />
     </SidebarNavUI>
   );
 };

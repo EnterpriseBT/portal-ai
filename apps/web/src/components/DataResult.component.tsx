@@ -7,6 +7,9 @@ export interface QueryResultLike<TData = unknown> {
   isLoading: boolean;
   isError: boolean;
   isSuccess: boolean;
+  limit?: boolean;
+  total?: number;
+  offset?: number;
 }
 
 export interface ResultOptions {
