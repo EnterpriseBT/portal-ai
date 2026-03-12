@@ -28,4 +28,6 @@ export const environment = {
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
   // Encryption key for securing sensitive data at rest (base64-encoded, 32 bytes)
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+  // Redis configuration (BullMQ + Pub/Sub)
+  REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
 };

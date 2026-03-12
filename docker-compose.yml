@@ -34,6 +34,21 @@ services:
     networks:
       - mcp-net
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mcp-net
+
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -76,6 +91,7 @@ volumes:
   pgdata:
   claude-config:
   ollama_data:
+  redis-data:
 
 networks:
   mcp-net:

@@ -2,6 +2,7 @@ import { app } from "./app.js";
 import { environment } from "./environment.js";
 import { connectDatabase, closeDatabase } from "./db/index.js";
 import { logger } from "./utils/logger.util.js";
+import { closeRedis } from "./utils/redis.util.js";
 
 async function start() {
   await connectDatabase();
@@ -30,10 +31,12 @@ async function shutdown() {
   const server = await serverPromise;
   if (server) {
     server.close(async () => {
+      await closeRedis();
       await closeDatabase();
       process.exit(0);
     });
   } else {
+    await closeRedis();
     await closeDatabase();
     process.exit(1);
   }
