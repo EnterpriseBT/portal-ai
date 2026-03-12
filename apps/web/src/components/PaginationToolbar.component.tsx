@@ -361,15 +361,15 @@ export const PaginationToolbar = React.forwardRef<
     const sortOpen = Boolean(sortAnchor);
 
     return (
-      <Box
-        ref={ref}
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 1,
-          flexWrap: "wrap",
-        }}
-      >
+      <Box ref={ref} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            flexWrap: "wrap",
+          }}
+        >
         {/* Search */}
         <TextField
           size="small"
@@ -626,51 +626,56 @@ export const PaginationToolbar = React.forwardRef<
             <LastPageIcon fontSize="small" />
           </IconButton>
         </Box>
+        </Box>
 
         {/* Active filter chips */}
-        {Object.entries(filters).map(([field, values]) => {
-          if (values.length === 0) return null;
-          const config = filterConfigs.find((c) => c.field === field);
-          const label = config?.label ?? field;
-          const on = values[0] === "true" ? "Yes" : "No";
+        {Object.entries(filters).some(([, values]) => values.length > 0) && (
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+            {Object.entries(filters).map(([field, values]) => {
+              if (values.length === 0) return null;
+              const config = filterConfigs.find((c) => c.field === field);
+              const label = config?.label ?? field;
+              const on = values[0] === "true" ? "Yes" : "No";
 
-          if (config?.type === "boolean") {
-            return (
-              <Chip
-                key={field}
-                label={`${label}: ${on}`}
-                size="small"
-                onDelete={() => onFilterValueChange(field, "")}
-              />
-            );
-          }
+              if (config?.type === "boolean") {
+                return (
+                  <Chip
+                    key={field}
+                    label={`${label}: ${on}`}
+                    size="small"
+                    onDelete={() => onFilterValueChange(field, "")}
+                  />
+                );
+              }
 
-          if (config?.type === "number" || config?.type === "text") {
-            return (
-              <Chip
-                key={field}
-                label={`${label}: ${values[0]}`}
-                size="small"
-                onDelete={() => onFilterValueChange(field, "")}
-              />
-            );
-          }
+              if (config?.type === "number" || config?.type === "text") {
+                return (
+                  <Chip
+                    key={field}
+                    label={`${label}: ${values[0]}`}
+                    size="small"
+                    onDelete={() => onFilterValueChange(field, "")}
+                  />
+                );
+              }
 
-          return values.map((value) => {
-            const option =
-              config?.type === "multiselect"
-                ? config.options.find((o) => o.value === value)
-                : undefined;
-            return (
-              <Chip
-                key={`${field}-${value}`}
-                label={`${label}: ${option?.label ?? value}`}
-                size="small"
-                onDelete={() => onToggleFilterValue(field, value)}
-              />
-            );
-          });
-        })}
+              return values.map((value) => {
+                const option =
+                  config?.type === "multiselect"
+                    ? config.options.find((o) => o.value === value)
+                    : undefined;
+                return (
+                  <Chip
+                    key={`${field}-${value}`}
+                    label={`${label}: ${option?.label ?? value}`}
+                    size="small"
+                    onDelete={() => onToggleFilterValue(field, value)}
+                  />
+                );
+              });
+            })}
+          </Box>
+        )}
       </Box>
     );
   }
