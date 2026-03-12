@@ -75,7 +75,7 @@ export const ConnectorDefinitionCard = ({
           <Avatar
             src={cd.iconUrl ?? undefined}
             alt={cd.display}
-            sx={{ width: 40, height: 40 }}
+            sx={{ width: 40, height: 40, borderRadius: 1 }}
           >
             {cd.display.charAt(0).toUpperCase()}
           </Avatar>
