@@ -93,16 +93,13 @@ connectorInstanceRouter.get(
   "/",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, connectorDefinitionId, organizationId, status, search } =
+      const { limit, offset, sortBy, sortOrder, connectorDefinitionId, status, search } =
         ConnectorInstanceListRequestQuerySchema.parse(req.query);
 
       const filters: SQL[] = [];
 
       if (connectorDefinitionId) {
         filters.push(eq(connectorInstances.connectorDefinitionId, connectorDefinitionId));
-      }
-      if (organizationId) {
-        filters.push(eq(connectorInstances.organizationId, organizationId));
       }
       if (status) {
         filters.push(eq(connectorInstances.status, status));
