@@ -478,7 +478,7 @@ jobsRouter.post('/', async (req, res, next) => {
 jobsRouter.get('/', async (req, res, next) => {
   try {
     const userId = req.auth!.payload.sub!;
-    const jobs = await JobsService.listForUser(userId, req.query);
+    const jobs = await JobsService.listForOrganization(userId, req.query);
     HttpService.success(res, jobs);
   } catch (err) {
     next(err);
@@ -622,7 +622,7 @@ export class JobsService {
     return job;
   }
 
-  static async listForUser(userId: string, query: {
+  static async listForOrganization(userId: string, query: {
     status?: string;
     type?: string;
     limit?: number;
@@ -961,7 +961,7 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] Create `apps/api/src/services/jobs.service.ts`
 - [x] Implement `create()` — DB insert + BullMQ enqueue + store `bullJobId`
 - [x] Implement `findById()` — with `JOB_NOT_FOUND` error
-- [x] Implement `listForUser()` — resolve org, query with pagination
+- [x] Implement `listForOrganization()` — resolve org, query with pagination
 - [x] Implement `cancel()` — remove from BullMQ + transition to `cancelled`
 
 ### Step 8 — Graceful Shutdown

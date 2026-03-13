@@ -4,6 +4,7 @@ import { z } from "zod";
  * Generic pagination query parameters for list endpoints.
  */
 export const PaginationRequestQuerySchema = z.object({
+  search: z.string().optional(),
   limit: z.coerce.number().int().min(1).optional().default(20).transform((v) => Math.min(v, 100)),
   offset: z.coerce.number().int().min(0).optional().default(0),
   sortBy: z.string().optional().default("created"),

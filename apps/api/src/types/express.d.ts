@@ -37,6 +37,16 @@ export interface AuthContext {
   token: string;
 }
 
+/**
+ * Application metadata resolved by getApplicationMetadata middleware
+ */
+export interface ApplicationMetadata {
+  /** Internal user ID resolved from Auth0 subject */
+  userId: string;
+  /** Current organization ID for the authenticated user */
+  organizationId: string;
+}
+
 declare global {
   namespace Express {
     /**
@@ -46,6 +56,10 @@ declare global {
       /** Authentication context populated by express-oauth2-jwt-bearer */
       auth?: AuthContext;
       rawBody?: Buffer; // For webhook signature verification
+      /** Application context populated by getApplicationMetadata middleware */
+      application?: {
+        metadata: ApplicationMetadata;
+      };
     }
 
     /**

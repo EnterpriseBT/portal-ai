@@ -1,24 +1,14 @@
-import { eq, and, type SQL, type Column } from "drizzle-orm";
 import { JobModelFactory } from "@mcp-ui/core/models";
-import type { JobCreateRequestBody, JobListRequestQuery } from "@mcp-ui/core/contracts";
+import type { JobCreateRequestBody } from "@mcp-ui/core/contracts";
 
 import { jobsQueue } from "../queues/jobs.queue.js";
 import { DbService } from "./db.service.js";
 import { JobEventsService } from "./job-events.service.js";
-import { ApplicationService } from "./application.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { createLogger } from "../utils/logger.util.js";
-import { jobs } from "../db/schema/index.js";
 
 const logger = createLogger({ module: "jobs-service" });
-
-/** Map of sortable field names to their Drizzle columns. */
-const SORTABLE_COLUMNS: Record<string, Column> = {
-  created: jobs.created,
-  status: jobs.status,
-  type: jobs.type,
-};
 
 export class JobsService {
   /**
@@ -80,44 +70,6 @@ export class JobsService {
       throw new ApiError(404, ApiCode.JOB_NOT_FOUND, "Job not found");
     }
     return job;
-  }
-
-  /**
-   * List jobs for the current user's organization with pagination and filters.
-   */
-  static async listForUser(
-    userId: string,
-    query: JobListRequestQuery
-  ) {
-    const orgResult = await ApplicationService.getCurrentOrganization(userId);
-    if (!orgResult) {
-      throw new ApiError(404, ApiCode.ORGANIZATION_NOT_FOUND, "No organization found for user");
-    }
-
-    const { limit, offset, sortBy, sortOrder, status, type } = query;
-
-    const filters: SQL[] = [];
-    if (status) {
-      filters.push(eq(jobs.status, status));
-    }
-    if (type) {
-      filters.push(eq(jobs.type, type));
-    }
-
-    const where = filters.length > 0 ? and(...filters) : undefined;
-    const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-
-    const [data, total] = await Promise.all([
-      DbService.repository.jobs.findMany(where, {
-        limit,
-        offset,
-        organizationId: orgResult.organization.id,
-        orderBy: { column, direction: sortOrder },
-      }),
-      DbService.repository.jobs.count(where),
-    ]);
-
-    return { jobs: data, total, limit, offset };
   }
 
   /**

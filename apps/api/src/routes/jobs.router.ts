@@ -15,10 +15,19 @@ import {
   type JobListResponsePayload,
   type JobCancelResponsePayload,
 } from "@mcp-ui/core/contracts";
+import { and, Column, eq, ilike, or, SQL } from "drizzle-orm";
+import { jobs } from "../db/schema/index.js";
+import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
 const logger = createLogger({ module: "jobs" });
 
 export const jobsRouter = Router();
+
+const SORTABLE_COLUMNS: Record<string, Column> = {
+  created: jobs.created,
+  status: jobs.status,
+  type: jobs.type,
+};
 
 /**
  * @openapi
@@ -48,10 +57,28 @@ export const jobsRouter = Router();
  *     responses:
  *       201:
  *         description: Job created and enqueued
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/JobGetResponse'
  *       400:
  *         description: Invalid request body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 jobsRouter.post(
   "/",
@@ -114,42 +141,91 @@ jobsRouter.post(
  *       - $ref: '#/components/parameters/limitParam'
  *       - $ref: '#/components/parameters/offsetParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
+ *       - $ref: '#/components/parameters/sortByParam'
  *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
  *           enum: [created, status, type]
  *           default: created
+ *         description: Field to sort by
  *       - in: query
  *         name: status
  *         schema:
  *           type: string
  *           enum: [pending, active, completed, failed, stalled, cancelled]
+ *         description: Filter by job status
  *       - in: query
  *         name: type
  *         schema:
  *           type: string
+ *         description: Filter by job type
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive search on job type or error message
  *     responses:
  *       200:
  *         description: Paginated list of jobs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/JobListResponse'
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 jobsRouter.get(
   "/",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const query = JobListRequestQuerySchema.parse(req.query);
+      const filters: SQL[] = [eq(jobs.organizationId, req.application?.metadata.organizationId as string)];
 
-      const auth0Id = req.auth?.payload.sub as string;
-      const user = await DbService.repository.users.findByAuth0Id(auth0Id);
-      if (!user) {
-        return next(
-          new ApiError(404, ApiCode.JOB_USER_NOT_FOUND, "User not found")
+      if (query.status) {
+        filters.push(eq(jobs.status, query.status));
+      }
+      if (query.type) {
+        filters.push(eq(jobs.type, query.type));
+      }
+      if (query.search) {
+        filters.push(
+          or(
+            ilike(jobs.type, `%${query.search}%`),
+            ilike(jobs.error, `%${query.search}%`)
+          )!
         );
       }
 
-      const result = await JobsService.listForUser(user.id, query);
+      const where = and(...filters);
+      const column = SORTABLE_COLUMNS[query.sortBy] ?? SORTABLE_COLUMNS.created;
+
+      const [data, total] = await Promise.all([
+        DbService.repository.jobs.findMany(where, {
+          limit: query.limit,
+          offset: query.offset,
+          orderBy: { column, direction: query.sortOrder },
+        }),
+        DbService.repository.jobs.count(where),
+      ]);
+
+      const result: JobListResponsePayload = {
+        jobs: data,
+        total,
+        limit: query.limit,
+        offset: query.offset,
+      };
 
       return HttpService.success<JobListResponsePayload>(res, result);
     } catch (error) {
@@ -186,10 +262,28 @@ jobsRouter.get(
  *     responses:
  *       200:
  *         description: Job found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/JobGetResponse'
  *       404:
  *         description: Job not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 jobsRouter.get(
   "/:id",
@@ -327,12 +421,34 @@ jobsRouter.get(
  *     responses:
  *       200:
  *         description: Job cancelled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/JobGetResponse'
  *       400:
  *         description: Job already in terminal state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Job not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 jobsRouter.post(
   "/:id/cancel",

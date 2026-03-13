@@ -397,6 +397,150 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+        Job: {
+          type: "object",
+          required: [
+            "id",
+            "organizationId",
+            "type",
+            "status",
+            "progress",
+            "metadata",
+            "attempts",
+            "maxAttempts",
+            "created",
+            "createdBy",
+          ],
+          properties: {
+            id: {
+              type: "string",
+              description: "Unique identifier",
+              example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            },
+            organizationId: {
+              type: "string",
+              description: "Organization that owns this job",
+            },
+            type: {
+              type: "string",
+              enum: ["file_upload"],
+              description: "Job type",
+            },
+            status: {
+              type: "string",
+              enum: [
+                "pending",
+                "active",
+                "completed",
+                "failed",
+                "stalled",
+                "cancelled",
+              ],
+              description: "Current job status",
+            },
+            progress: {
+              type: "integer",
+              description: "Progress percentage (0-100)",
+              example: 0,
+            },
+            metadata: {
+              type: "object",
+              additionalProperties: true,
+              description: "Arbitrary metadata attached to the job",
+            },
+            result: {
+              type: "object",
+              nullable: true,
+              additionalProperties: true,
+              description: "Job result payload (set on completion)",
+            },
+            error: {
+              type: "string",
+              nullable: true,
+              description: "Error message (set on failure)",
+            },
+            startedAt: {
+              type: "number",
+              nullable: true,
+              description: "Start timestamp (epoch ms)",
+            },
+            completedAt: {
+              type: "number",
+              nullable: true,
+              description: "Completion timestamp (epoch ms)",
+            },
+            bullJobId: {
+              type: "string",
+              nullable: true,
+              description: "BullMQ job ID",
+            },
+            attempts: {
+              type: "integer",
+              description: "Number of attempts made",
+              example: 0,
+            },
+            maxAttempts: {
+              type: "integer",
+              description: "Maximum number of retry attempts",
+              example: 3,
+            },
+            created: {
+              type: "number",
+              description: "Creation timestamp (epoch ms)",
+              example: 1700000000000,
+            },
+            createdBy: {
+              type: "string",
+              description: "ID of the creator",
+            },
+            updated: {
+              type: "number",
+              nullable: true,
+              description: "Last update timestamp (epoch ms)",
+            },
+            updatedBy: {
+              type: "string",
+              nullable: true,
+              description: "ID of the last updater",
+            },
+            deleted: {
+              type: "number",
+              nullable: true,
+              description: "Soft-delete timestamp (epoch ms)",
+            },
+            deletedBy: {
+              type: "string",
+              nullable: true,
+              description: "ID of the deleter",
+            },
+          },
+        },
+        JobListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["jobs"],
+              properties: {
+                jobs: {
+                  type: "array",
+                  items: {
+                    $ref: "#/components/schemas/Job",
+                  },
+                },
+              },
+            },
+          ],
+        },
+        JobGetResponse: {
+          type: "object",
+          required: ["job"],
+          properties: {
+            job: {
+              $ref: "#/components/schemas/Job",
+            },
+          },
+        },
       },
     },
     tags: [
@@ -411,6 +555,10 @@ const options: swaggerJsdoc.Options = {
       {
         name: "Connector Definitions",
         description: "Connector definition management endpoints",
+      },
+      {
+        name: "Jobs",
+        description: "Background job management endpoints",
       },
     ],
   },

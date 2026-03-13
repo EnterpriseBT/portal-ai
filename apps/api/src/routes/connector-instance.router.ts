@@ -15,6 +15,7 @@ import {
   type ConnectorInstanceApi,
 } from "@mcp-ui/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
+import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
@@ -91,12 +92,13 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  */
 connectorInstanceRouter.get(
   "/",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { limit, offset, sortBy, sortOrder, connectorDefinitionId, status, search } =
         ConnectorInstanceListRequestQuerySchema.parse(req.query);
 
-      const filters: SQL[] = [];
+      const filters: SQL[] = [eq(connectorInstances.organizationId, req.application?.metadata.organizationId as string)];
 
       if (connectorDefinitionId) {
         filters.push(eq(connectorInstances.connectorDefinitionId, connectorDefinitionId));
@@ -108,7 +110,7 @@ connectorInstanceRouter.get(
         filters.push(ilike(connectorInstances.name, `%${search}%`));
       }
 
-      const where = filters.length > 0 ? and(...filters) : undefined;
+      const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
 
       const [data, total] = await Promise.all([
