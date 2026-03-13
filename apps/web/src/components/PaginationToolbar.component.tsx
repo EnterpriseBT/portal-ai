@@ -3,9 +3,7 @@ import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
 import Popover from "@mui/material/Popover";
-import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import FormGroup from "@mui/material/FormGroup";
 import Chip from "@mui/material/Chip";
 import Badge from "@mui/material/Badge";
 import Radio from "@mui/material/Radio";
@@ -40,8 +38,8 @@ interface BaseFilterConfig {
   defaultValue?: string[];
 }
 
-export interface MultiSelectFilterConfig extends BaseFilterConfig {
-  type: "multiselect";
+export interface SelectFilterConfig extends BaseFilterConfig {
+  type: "select";
   options: FilterOption[];
 }
 
@@ -62,7 +60,7 @@ export interface TextFilterConfig extends BaseFilterConfig {
 }
 
 export type FilterConfig =
-  | MultiSelectFilterConfig
+  | SelectFilterConfig
   | BooleanFilterConfig
   | NumberFilterConfig
   | TextFilterConfig;
@@ -94,7 +92,6 @@ export interface UsePaginationReturn {
   setSearch: (value: string) => void;
   setFilter: (field: string, values: string[]) => void;
   setFilterValue: (field: string, value: string) => void;
-  toggleFilterValue: (field: string, value: string) => void;
   setSortBy: (field: string) => void;
   setSortOrder: (order: "asc" | "desc") => void;
   toggleSortOrder: () => void;
@@ -153,19 +150,6 @@ export function usePagination(
     [resetOffset]
   );
 
-  const toggleFilterValue = React.useCallback(
-    (field: string, value: string) => {
-      setFilters((prev) => {
-        const current = prev[field] ?? [];
-        const next = current.includes(value)
-          ? current.filter((v) => v !== value)
-          : [...current, value];
-        return { ...prev, [field]: next };
-      });
-      resetOffset();
-    },
-    [resetOffset]
-  );
 
   const toggleSortOrder = React.useCallback(() => {
     setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -217,10 +201,8 @@ export function usePagination(
               : undefined;
       } else if (config?.type === "number") {
         params[field] = Number(values[0]);
-      } else if (values.length === 1) {
-        params[field] = values[0];
       } else {
-        params[field] = values.join(",");
+        params[field] = values[0];
       }
     }
     return params;
@@ -247,7 +229,6 @@ export function usePagination(
     onSearchChange: setSearch,
     filterConfigs,
     filters,
-    onToggleFilterValue: toggleFilterValue,
     onFilterValueChange: setFilterValue,
     activeFilterCount,
     sortFields,
@@ -279,7 +260,6 @@ export function usePagination(
     setSearch,
     setFilter,
     setFilterValue,
-    toggleFilterValue,
     setSortBy,
     setSortOrder,
     toggleSortOrder,
@@ -298,7 +278,6 @@ export interface PaginationToolbarProps {
   onSearchChange: (value: string) => void;
   filterConfigs: FilterConfig[];
   filters: Record<string, string[]>;
-  onToggleFilterValue: (field: string, value: string) => void;
   onFilterValueChange: (field: string, value: string) => void;
   activeFilterCount: number;
   sortFields: SortFieldConfig[];
@@ -329,7 +308,6 @@ export const PaginationToolbar = React.forwardRef<
       onSearchChange,
       filterConfigs,
       filters,
-      onToggleFilterValue,
       onFilterValueChange,
       activeFilterCount,
       sortFields,
@@ -428,29 +406,22 @@ export const PaginationToolbar = React.forwardRef<
                       {config.label}
                     </Typography>
 
-                    {config.type === "multiselect" && (
-                      <FormGroup>
+                    {config.type === "select" && (
+                      <RadioGroup
+                        value={(filters[config.field] ?? [])[0] ?? ""}
+                        onChange={(e) =>
+                          onFilterValueChange(config.field, e.target.value)
+                        }
+                      >
                         {config.options.map((option) => (
                           <FormControlLabel
                             key={option.value}
-                            control={
-                              <Checkbox
-                                size="small"
-                                checked={(filters[config.field] ?? []).includes(
-                                  option.value
-                                )}
-                                onChange={() =>
-                                  onToggleFilterValue(
-                                    config.field,
-                                    option.value
-                                  )
-                                }
-                              />
-                            }
+                            value={option.value}
+                            control={<Radio size="small" />}
                             label={option.label}
                           />
                         ))}
-                      </FormGroup>
+                      </RadioGroup>
                     )}
 
                     {config.type === "boolean" && (
@@ -659,20 +630,18 @@ export const PaginationToolbar = React.forwardRef<
                 );
               }
 
-              return values.map((value) => {
-                const option =
-                  config?.type === "multiselect"
-                    ? config.options.find((o) => o.value === value)
-                    : undefined;
-                return (
-                  <Chip
-                    key={`${field}-${value}`}
-                    label={`${label}: ${option?.label ?? value}`}
-                    size="small"
-                    onDelete={() => onToggleFilterValue(field, value)}
-                  />
-                );
-              });
+              const option =
+                config?.type === "select"
+                  ? config.options.find((o) => o.value === values[0])
+                  : undefined;
+              return (
+                <Chip
+                  key={field}
+                  label={`${label}: ${option?.label ?? values[0]}`}
+                  size="small"
+                  onDelete={() => onFilterValueChange(field, "")}
+                />
+              );
             })}
           </Box>
         )}

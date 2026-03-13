@@ -1,4 +1,5 @@
 import type { ConnectorDefinitionListRequestQuery } from "@mcp-ui/core/contracts";
+import type { JobListRequestQuery } from "@mcp-ui/core/contracts";
 
 export const queryKeys = {
   health: {
@@ -19,5 +20,12 @@ export const queryKeys = {
       [...queryKeys.connectorDefinitions.root, "list", params] as const,
     get: (id: string) =>
       [...queryKeys.connectorDefinitions.root, "get", id] as const,
+  },
+  jobs: {
+    root: ["jobs"] as const,
+    list: (params?: JobListRequestQuery) =>
+      [...queryKeys.jobs.root, "list", params] as const,
+    get: (id: string) =>
+      [...queryKeys.jobs.root, "get", id] as const,
   },
 };

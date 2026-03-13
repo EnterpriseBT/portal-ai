@@ -988,11 +988,10 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] End-to-end test: create job → watch SSE → verify progress → confirm completion
 
 ### Step 11 — UI Components
-- [ ] Create job progress bar component (`JobProgress.component.tsx`)
-- [ ] Create job status badge component (`JobStatusBadge.component.tsx`)
-- [ ] Create jobs list view (`Jobs.view.tsx`) with filtering and pagination
-- [ ] Create job detail view (`JobDetail.view.tsx`) with live SSE progress
-- [ ] Add route for jobs in `apps/web/src/routes/_authorized/`
-- [ ] Add navigation link to jobs in sidebar/header
-- [ ] Integrate `useJobStream` hook with TanStack Query fallback
-- [ ] Add Storybook stories for job components
+- [x] Create core progress bar component and story (`Progress.component.tsx`)
+- [x] Create core status badge component and story (`StatusBadge.component.tsx`)
+- [x] Create jobs list view (`Jobs.view.tsx`) with filtering and pagination
+- [x] Create job detail view (`JobDetail.view.tsx`) with live SSE progress
+- [x] Add route for jobs in `apps/web/src/routes/_authorized/`
+- [x] Add navigation link to jobs in sidebar
+- [x] Integrate `useJobStream` hook with TanStack Query fallback

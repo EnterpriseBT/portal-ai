@@ -11,7 +11,7 @@ import React from "react";
 
 const sampleFilterConfigs: FilterConfig[] = [
   {
-    type: "multiselect",
+    type: "select",
     field: "category",
     label: "Category",
     options: [
@@ -22,7 +22,7 @@ const sampleFilterConfigs: FilterConfig[] = [
     ],
   },
   {
-    type: "multiselect",
+    type: "select",
     field: "authType",
     label: "Auth Type",
     options: [
@@ -40,7 +40,7 @@ const sampleFilterConfigs: FilterConfig[] = [
 
 const allFilterTypes: FilterConfig[] = [
   {
-    type: "multiselect",
+    type: "select",
     field: "category",
     label: "Category",
     options: [
@@ -98,7 +98,6 @@ const meta = {
   ],
   args: {
     onSearchChange: fn(),
-    onToggleFilterValue: fn(),
     onFilterValueChange: fn(),
     onSortByChange: fn(),
     onSortOrderChange: fn(),
@@ -143,10 +142,10 @@ export const WithActiveFilters: Story = {
     search: "",
     filterConfigs: sampleFilterConfigs,
     filters: {
-      category: ["crm", "marketing"],
+      category: ["crm"],
       authType: ["oauth2"],
     },
-    activeFilterCount: 3,
+    activeFilterCount: 2,
     sortFields: sampleSortFields,
     sortBy: "created",
     sortOrder: "asc",

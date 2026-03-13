@@ -3,4 +3,5 @@ export enum ApplicationRoute {
   Settings = "/settings",
   Login = "/login",
   Connectors = "/connectors",
+  Jobs = "/jobs",
 }

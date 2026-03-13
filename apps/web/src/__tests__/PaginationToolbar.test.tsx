@@ -4,15 +4,15 @@ import userEvent from "@testing-library/user-event";
 import {
   PaginationToolbar,
   usePagination,
-  type PaginationToolbarProps,
-  type FilterConfig,
-  type SortFieldConfig,
+  PaginationToolbarProps,
+  FilterConfig,
+  SortFieldConfig,
 } from "../components/PaginationToolbar.component";
 
 // --- Test Data ---
 
-const multiselectFilter: FilterConfig = {
-  type: "multiselect",
+const selectFilter: FilterConfig = {
+  type: "select",
   field: "category",
   label: "Category",
   options: [
@@ -44,7 +44,7 @@ const textFilter: FilterConfig = {
 };
 
 const allFilters: FilterConfig[] = [
-  multiselectFilter,
+  selectFilter,
   booleanFilter,
   numberFilter,
   textFilter,
@@ -61,7 +61,6 @@ function makeProps(overrides: Partial<PaginationToolbarProps> = {}): PaginationT
     onSearchChange: jest.fn(),
     filterConfigs: [],
     filters: {},
-    onToggleFilterValue: jest.fn(),
     onFilterValueChange: jest.fn(),
     activeFilterCount: 0,
     sortFields: [],
@@ -150,23 +149,6 @@ describe("usePagination", () => {
       expect(result.current.offset).toBe(0);
     });
 
-    it("should toggle filter value on", () => {
-      const { result } = renderHook(() => usePagination());
-
-      act(() => result.current.toggleFilterValue("category", "crm"));
-      expect(result.current.filters.category).toEqual(["crm"]);
-    });
-
-    it("should toggle filter value off", () => {
-      const { result } = renderHook(() => usePagination());
-
-      act(() => result.current.toggleFilterValue("category", "crm"));
-      act(() => result.current.toggleFilterValue("category", "marketing"));
-      act(() => result.current.toggleFilterValue("category", "crm"));
-
-      expect(result.current.filters.category).toEqual(["marketing"]);
-    });
-
     it("should set single filter value for boolean/number/text", () => {
       const { result } = renderHook(() => usePagination());
 
@@ -190,23 +172,13 @@ describe("usePagination", () => {
       });
     });
 
-    it("should include single multiselect filter as string", () => {
+    it("should include select filter as string", () => {
       const { result } = renderHook(() =>
-        usePagination({ filters: [multiselectFilter] })
+        usePagination({ filters: [selectFilter] })
       );
 
-      act(() => result.current.toggleFilterValue("category", "crm"));
+      act(() => result.current.setFilterValue("category", "crm"));
       expect(result.current.queryParams.category).toBe("crm");
-    });
-
-    it("should join multiple multiselect values with comma", () => {
-      const { result } = renderHook(() =>
-        usePagination({ filters: [multiselectFilter] })
-      );
-
-      act(() => result.current.toggleFilterValue("category", "crm"));
-      act(() => result.current.toggleFilterValue("category", "marketing"));
-      expect(result.current.queryParams.category).toBe("crm,marketing");
     });
 
     it("should convert boolean filter to actual boolean", () => {
@@ -357,10 +329,10 @@ describe("usePagination", () => {
     it("should count active filter values", () => {
       const { result } = renderHook(() => usePagination());
 
-      act(() => result.current.setFilter("category", ["crm", "marketing"]));
+      act(() => result.current.setFilterValue("category", "crm"));
       act(() => result.current.setFilterValue("isActive", "true"));
 
-      expect(result.current.toolbarProps.activeFilterCount).toBe(3);
+      expect(result.current.toolbarProps.activeFilterCount).toBe(2);
     });
   });
 
@@ -443,7 +415,7 @@ describe("PaginationToolbar", () => {
 
     it("should render filter button when filterConfigs provided", () => {
       render(
-        <PaginationToolbar {...makeProps({ filterConfigs: [multiselectFilter] })} />
+        <PaginationToolbar {...makeProps({ filterConfigs: [selectFilter] })} />
       );
       expect(screen.getByText("Filter")).toBeInTheDocument();
     });
@@ -451,7 +423,7 @@ describe("PaginationToolbar", () => {
     it("should open filter popover on click", async () => {
       const user = userEvent.setup();
       render(
-        <PaginationToolbar {...makeProps({ filterConfigs: [multiselectFilter] })} />
+        <PaginationToolbar {...makeProps({ filterConfigs: [selectFilter] })} />
       );
 
       await user.click(screen.getByText("Filter"));
@@ -460,18 +432,18 @@ describe("PaginationToolbar", () => {
       expect(screen.getByText("Marketing")).toBeInTheDocument();
     });
 
-    it("should call onToggleFilterValue when multiselect option clicked", async () => {
-      const onToggleFilterValue = jest.fn();
+    it("should call onFilterValueChange when select option clicked", async () => {
+      const onFilterValueChange = jest.fn();
       const user = userEvent.setup();
       render(
         <PaginationToolbar
-          {...makeProps({ filterConfigs: [multiselectFilter], onToggleFilterValue })}
+          {...makeProps({ filterConfigs: [selectFilter], onFilterValueChange })}
         />
       );
 
       await user.click(screen.getByText("Filter"));
       await user.click(screen.getByText("CRM"));
-      expect(onToggleFilterValue).toHaveBeenCalledWith("category", "crm");
+      expect(onFilterValueChange).toHaveBeenCalledWith("category", "crm");
     });
 
     it("should render boolean filter as switch", async () => {
@@ -536,11 +508,11 @@ describe("PaginationToolbar", () => {
   });
 
   describe("active filter chips", () => {
-    it("should render multiselect filter chips", () => {
+    it("should render select filter chips", () => {
       render(
         <PaginationToolbar
           {...makeProps({
-            filterConfigs: [multiselectFilter],
+            filterConfigs: [selectFilter],
             filters: { category: ["crm"] },
           })}
         />
@@ -752,7 +724,7 @@ describe("PaginationToolbar", () => {
             search: "test",
             filterConfigs: allFilters,
             filters: { category: ["crm"], isActive: ["true"] },
-            activeFilterCount: 2,
+            activeFilterCount: 2, // updated to reflect single-select
             sortFields,
             currentPage: 2,
             totalPages: 5,

@@ -192,6 +192,12 @@ export const SidebarNav = () => {
         selected={pathname === ApplicationRoute.Connectors}
         onClick={() => handleClick(ApplicationRoute.Connectors)}
       />
+      <SidebarNavItem
+        icon={IconName.Work}
+        label="Jobs"
+        selected={pathname.startsWith(ApplicationRoute.Jobs)}
+        onClick={() => handleClick(ApplicationRoute.Jobs)}
+      />
     </SidebarNavUI>
   );
 };
