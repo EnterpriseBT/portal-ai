@@ -17,7 +17,7 @@ import {
   type JobCancelResponsePayload,
   type JobSnapshotEvent,
 } from "@mcp-ui/core/contracts";
-import { and, Column, eq, ilike, or, SQL } from "drizzle-orm";
+import { and, Column, eq, ilike, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
@@ -204,7 +204,7 @@ jobsRouter.get(
       if (query.search) {
         filters.push(
           or(
-            ilike(jobs.type, `%${query.search}%`),
+            ilike(sql`${jobs.type}::text`, `%${query.search}%`),
             ilike(jobs.error, `%${query.search}%`)
           )!
         );
