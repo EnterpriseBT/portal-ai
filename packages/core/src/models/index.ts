@@ -15,3 +15,6 @@ export * from "./connector-definition.model.js";
 
 /** Connector Instances model schema & type */
 export * from "./connector-instance.model.js";
+
+/** Async job model schema & type */
+export * from "./job.model.js";

@@ -914,15 +914,15 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] Verify Redis connectivity from API server
 
 ### Step 2 — Data Model
-- [ ] Create `packages/core/src/models/job.model.ts` (`JobStatus`, `JobType` enums, `JobSchema`, `JobModel`, `JobModelFactory`)
-- [ ] Export from `packages/core/src/models/index.ts`
-- [ ] Create `apps/api/src/db/schema/jobs.table.ts` (Drizzle table with `baseColumns`)
-- [ ] Export from `apps/api/src/db/schema/index.ts`
-- [ ] Add `JobSelectSchema` / `JobInsertSchema` to `apps/api/src/db/schema/zod.ts`
-- [ ] Add bidirectional `IsAssignable` checks to `apps/api/src/db/schema/type-checks.ts`
-- [ ] Run `npm run db:generate` to create migration
-- [ ] Run `npm run db:migrate` to apply migration
-- [ ] Verify build passes (`npm run type-check`)
+- [x] Create `packages/core/src/models/job.model.ts` (`JobStatus`, `JobType` enums, `JobSchema`, `JobModel`, `JobModelFactory`)
+- [x] Export from `packages/core/src/models/index.ts`
+- [x] Create `apps/api/src/db/schema/jobs.table.ts` (Drizzle table with `baseColumns`)
+- [x] Export from `apps/api/src/db/schema/index.ts`
+- [x] Add `JobSelectSchema` / `JobInsertSchema` to `apps/api/src/db/schema/zod.ts`
+- [x] Add bidirectional `IsAssignable` checks to `apps/api/src/db/schema/type-checks.ts`
+- [x] Run `npm run db:generate` to create migration
+- [x] Run `npm run db:migrate` to apply migration
+- [x] Verify build passes (`npm run type-check`)
 
 ### Step 3 — Repository
 - [ ] Create `apps/api/src/db/repositories/jobs.repository.ts` extending `Repository`

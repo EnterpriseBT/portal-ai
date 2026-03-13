@@ -12,14 +12,15 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Core } from "@mcp-ui/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect } from "./zod.js";
+import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, Core } from "@mcp-ui/core/models";
+import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
 import type { organizationUsers } from "./organization-users.table.js";
 import type { connectorDefinitions } from "./connector-definitions.table.js";
 import type { connectorInstances } from "./connector-instances.table.js";
+import type { jobs } from "./jobs.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -117,3 +118,18 @@ const _connInstModelToDrizzle: _ConnInstModelToDrizzle = true;
 type _ConnInstInferredRow = InferSelectModel<typeof connectorInstances>;
 type _ConnInstInferredToModel = IsAssignable<_ConnInstInferredRow, ConnectorInstance>;
 const _connInstInferredToModel: _ConnInstInferredToModel = true;
+
+// ── Job ─────────────────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _JobDrizzleToModel = IsAssignable<JobSelect, Job>;
+const _jobDrizzleToModel: _JobDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _JobModelToDrizzle = IsAssignable<Job, JobSelect>;
+const _jobModelToDrizzle: _JobModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _JobInferredRow = InferSelectModel<typeof jobs>;
+type _JobInferredToModel = IsAssignable<_JobInferredRow, Job>;
+const _jobInferredToModel: _JobInferredToModel = true;

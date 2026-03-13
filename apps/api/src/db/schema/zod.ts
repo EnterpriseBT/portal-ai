@@ -12,6 +12,7 @@ import { organizations } from "./organizations.table.js";
 import { organizationUsers } from "./organization-users.table.js";
 import { connectorDefinitions } from "./connector-definitions.table.js";
 import { connectorInstances } from "./connector-instances.table.js";
+import { jobs } from "./jobs.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -90,3 +91,15 @@ export type ConnectorInstanceSelect = z.infer<
 export type ConnectorInstanceInsert = z.infer<
   typeof ConnectorInstanceInsertSchema
 >;
+
+// ── Jobs ──────────────────────────────────────────────────────────────
+
+/** Zod schema for a `jobs` row returned by SELECT. */
+export const JobSelectSchema = createSelectSchema(jobs);
+
+/** Zod schema for inserting into `jobs`. */
+export const JobInsertSchema = createInsertSchema(jobs);
+
+/** Inferred types */
+export type JobSelect = z.infer<typeof JobSelectSchema>;
+export type JobInsert = z.infer<typeof JobInsertSchema>;

@@ -4,6 +4,7 @@ export { organizations } from "./organizations.table.js";
 export { organizationUsers } from "./organization-users.table.js";
 export { connectorDefinitions } from "./connector-definitions.table.js";
 export { connectorInstances } from "./connector-instances.table.js";
+export { jobs, jobStatusEnum, jobTypeEnum } from "./jobs.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";
