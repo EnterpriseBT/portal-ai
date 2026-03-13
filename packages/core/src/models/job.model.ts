@@ -29,8 +29,58 @@ export const TERMINAL_JOB_STATUSES: JobStatus[] = ["completed", "failed", "cance
 
 export const JobTypeEnum = z.enum([
   "file_upload",
+  "system_check",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
+
+// --- Per-Type Metadata & Result Schemas ---
+
+/** system_check — diagnostic job with no input, returns health summary. */
+export const SystemCheckMetadataSchema = z.object({});
+export type SystemCheckMetadata = z.infer<typeof SystemCheckMetadataSchema>;
+
+export const SystemCheckResultSchema = z.object({
+  status: z.string(),
+  checks: z.record(z.string(), z.string()),
+  durationMs: z.number(),
+});
+export type SystemCheckResult = z.infer<typeof SystemCheckResultSchema>;
+
+/** file_upload — placeholder for future file-based import jobs. */
+export const FileUploadMetadataSchema = z.object({});
+export type FileUploadMetadata = z.infer<typeof FileUploadMetadataSchema>;
+
+export const FileUploadResultSchema = z.object({});
+export type FileUploadResult = z.infer<typeof FileUploadResultSchema>;
+
+// --- Type Map ---
+
+/**
+ * Maps each job type to its strongly-typed metadata and result shapes.
+ *
+ * When adding a new job type:
+ * 1. Add the type string to `JobTypeEnum`
+ * 2. Define `<Type>MetadataSchema` and `<Type>ResultSchema` above
+ * 3. Add an entry here — TypeScript will error if `JOB_TYPE_SCHEMAS` is incomplete
+ */
+export interface JobTypeMap {
+  system_check: { metadata: SystemCheckMetadata; result: SystemCheckResult };
+  file_upload: { metadata: FileUploadMetadata; result: FileUploadResult };
+}
+
+/**
+ * Runtime Zod schema registry — keyed by job type.
+ * Used for validating metadata at the API boundary and processor results.
+ */
+export const JOB_TYPE_SCHEMAS: {
+  [K in JobType]: {
+    metadata: z.ZodType<JobTypeMap[K]["metadata"]>;
+    result: z.ZodType<JobTypeMap[K]["result"]>;
+  };
+} = {
+  system_check: { metadata: SystemCheckMetadataSchema, result: SystemCheckResultSchema },
+  file_upload: { metadata: FileUploadMetadataSchema, result: FileUploadResultSchema },
+};
 
 // --- Schema ---
 

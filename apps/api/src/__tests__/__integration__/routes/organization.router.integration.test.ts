@@ -15,7 +15,7 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { ApplicationService } from "../../../services/application.service.js";
-import { generateId, teardownOrg } from "../utils.js";
+import { generateId, teardownOrg } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|org-test-user";
 

@@ -981,11 +981,11 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] Verify browser refresh recovery (snapshot re-syncs state)
 
 ### Step 10 — First Processor
-- [ ] Choose initial job type (e.g., `system_check`)
-- [ ] Create `apps/api/src/queues/processors/<type>.processor.ts`
-- [ ] Implement processor with `bullJob.updateProgress()` calls
-- [ ] Register processor in `apps/api/src/queues/processors/index.ts`
-- [ ] End-to-end test: create job → watch SSE → verify progress → confirm completion
+- [x] Choose initial job type (e.g., `system_check`)
+- [x] Create `apps/api/src/queues/processors/<type>.processor.ts`
+- [x] Implement processor with `bullJob.updateProgress()` calls
+- [x] Register processor in `apps/api/src/queues/processors/index.ts`
+- [x] End-to-end test: create job → watch SSE → verify progress → confirm completion
 
 ### Step 11 — UI Components
 - [ ] Create job progress bar component (`JobProgress.component.tsx`)

@@ -14,7 +14,7 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import type { ConnectorDefinitionInsert } from "../../../db/schema/zod.js";
-import { generateId } from "../utils.js";
+import { generateId } from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|cd-test-user";
 

@@ -8,7 +8,7 @@
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import { UUIDv4Factory } from "@mcp-ui/core/utils";
-import * as schema from "../../db/schema/index.js";
+import * as schema from "../../../db/schema/index.js";
 
 const {
   users,

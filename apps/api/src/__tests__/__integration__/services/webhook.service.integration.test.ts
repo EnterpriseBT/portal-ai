@@ -13,7 +13,7 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
 import { WebhookService } from "../../../services/webhook.service.js";
-import { teardownOrg } from "../utils.js";
+import { teardownOrg } from "../utils/application.util.js";
 
 const { users, organizations } = schema;
 

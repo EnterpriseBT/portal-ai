@@ -17,7 +17,10 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
     "clean": "rm -rf dist",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "true",
+    "test:integration": "true"
   },
   "peerDependencies": {
     "react": "^19.0.0",

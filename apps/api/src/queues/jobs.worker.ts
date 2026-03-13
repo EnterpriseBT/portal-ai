@@ -1,12 +1,26 @@
 import { Worker, Job as BullJob } from "bullmq";
 
+import type { JobType, JobTypeMap } from "@mcp-ui/core/models";
+
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
 import { JOBS_QUEUE_NAME } from "./jobs.queue.js";
 
 const logger = createLogger({ module: "jobs-worker" });
 
+/** Untyped processor — accepts any BullMQ job. Used by the registry map. */
 export type JobProcessor = (job: BullJob) => Promise<unknown>;
+
+/** BullMQ job data shape for a given job type (jobId + type + typed metadata). */
+export type JobData<T extends JobType = JobType> = {
+  jobId: string;
+  type: T;
+} & JobTypeMap[T]["metadata"];
+
+/** Typed processor — constrains both input data and return type per job type. */
+export type TypedJobProcessor<T extends JobType> = (
+  job: BullJob<JobData<T>, JobTypeMap[T]["result"]>
+) => Promise<JobTypeMap[T]["result"]>;
 
 /**
  * Lazily import JobEventsService to avoid circular dependency

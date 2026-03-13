@@ -29,6 +29,10 @@
       "cache": false
     },
     "test": {
+      "dependsOn": ["test:unit", "test:integration"],
+      "cache": false
+    },
+    "test:unit": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
       "cache": true

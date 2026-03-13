@@ -1,4 +1,5 @@
 import type { JobProcessor } from "../jobs.worker.js";
+import { systemCheckProcessor } from "./system-check.processor.js";
 
 /**
  * Declarative processor map.
@@ -9,8 +10,5 @@ import type { JobProcessor } from "../jobs.worker.js";
  * 3. Import and add it to the `processors` map below
  */
 export const processors: Record<string, JobProcessor> = {
-  // Uncomment as processors are implemented (Step 10):
-  // "connector-sync": connectorSyncProcessor,
-  // "data-import": dataImportProcessor,
-  // "report-generation": reportGenerationProcessor,
+  system_check: systemCheckProcessor,
 };

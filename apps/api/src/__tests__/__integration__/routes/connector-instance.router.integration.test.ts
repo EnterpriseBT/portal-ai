@@ -21,7 +21,7 @@ import {
   createUser,
   seedUserAndOrg,
   teardownOrg,
-} from "../utils.js";
+} from "../utils/application.util.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
 
