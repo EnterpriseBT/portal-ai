@@ -10,11 +10,11 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { UUIDv4Factory } from "@mcp-ui/core/utils";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import type { ConnectorDefinitionInsert } from "../../../db/schema/zod.js";
+import { generateId } from "../utils.js";
 
 const AUTH0_ID = "auth0|cd-test-user";
 
@@ -38,8 +38,6 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 const { app } = await import("../../../app.js");
 
 const { connectorDefinitions } = schema;
-const idFactory = new UUIDv4Factory();
-const generateId = () => idFactory.generate();
 
 function buildConnectorDefinition(
   overrides?: Partial<ConnectorDefinitionInsert>

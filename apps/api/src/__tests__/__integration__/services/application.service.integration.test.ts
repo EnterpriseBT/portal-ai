@@ -10,15 +10,13 @@ import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { User } from "@mcp-ui/core/models";
-import { UUIDv4Factory } from "@mcp-ui/core/utils";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
+import { generateId, teardownOrg } from "../utils.js";
 
 const { users, organizations, organizationUsers } = schema;
-const idFactory = new UUIDv4Factory();
-const generateId = () => idFactory.generate();
 
 describe("ApplicationService Integration Tests", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -32,10 +30,7 @@ describe("ApplicationService Integration Tests", () => {
     connection = postgres(process.env.DATABASE_URL, { max: 1 });
     db = drizzle(connection, { schema });
 
-    // Clean tables in FK-safe order
-    await db.delete(organizationUsers);
-    await db.delete(organizations);
-    await db.delete(users);
+    await teardownOrg(db as ReturnType<typeof drizzle>);
   });
 
   afterEach(async () => {

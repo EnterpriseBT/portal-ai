@@ -12,11 +12,16 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { UUIDv4Factory } from "@mcp-ui/core/utils";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
 import { environment } from "../../../environment.js";
+import {
+  generateId,
+  createUser,
+  seedUserAndOrg,
+  teardownOrg,
+} from "../utils.js";
 
 const AUTH0_ID = "auth0|ci-test-user";
 
@@ -48,31 +53,11 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 
-const { users, connectorDefinitions, connectorInstances, organizationUsers, organizations } = schema;
-const idFactory = new UUIDv4Factory();
-const generateId = () => idFactory.generate();
+const { connectorDefinitions, connectorInstances } = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
 const now = Date.now();
-
-function createUser(overrides?: Partial<Record<string, unknown>>) {
-  return {
-    id: generateId(),
-    auth0Id: AUTH0_ID,
-    email: `user-${generateId()}@example.com`,
-    name: "Test User",
-    lastLogin: now,
-    picture: null,
-    created: now,
-    createdBy: "SYSTEM_TEST",
-    updated: null,
-    updatedBy: null,
-    deleted: null,
-    deletedBy: null,
-    ...overrides,
-  };
-}
 
 function createConnectorDefinition(
   overrides?: Partial<Record<string, unknown>>
@@ -136,12 +121,7 @@ describe("Connector Instance Router", () => {
     connection = postgres(process.env.DATABASE_URL, { max: 1 });
     db = drizzle(connection, { schema });
 
-    // Clean tables in FK-safe order
-    await db.delete(connectorInstances);
-    await db.delete(connectorDefinitions);
-    await db.delete(organizationUsers);
-    await db.delete(organizations);
-    await db.delete(users);
+    await teardownOrg(db as ReturnType<typeof drizzle>);
   });
 
   afterEach(async () => {
@@ -152,6 +132,8 @@ describe("Connector Instance Router", () => {
 
   describe("GET /api/connector-instances", () => {
     it("should return an empty list when no instances exist", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
       const res = await request(app)
         .get("/api/connector-instances")
         .set("Authorization", "Bearer test-token");
@@ -163,8 +145,11 @@ describe("Connector Instance Router", () => {
     });
 
     it("should return paginated connector instances", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
       const def = createConnectorDefinition();
-      const orgId = generateId();
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
@@ -192,9 +177,12 @@ describe("Connector Instance Router", () => {
     });
 
     it("should filter by connectorDefinitionId", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
       const def1 = createConnectorDefinition();
       const def2 = createConnectorDefinition();
-      const orgId = generateId();
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values([def1, def2] as never);
@@ -218,8 +206,11 @@ describe("Connector Instance Router", () => {
     });
 
     it("should filter by status", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
       const def = createConnectorDefinition();
-      const orgId = generateId();
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
@@ -247,8 +238,11 @@ describe("Connector Instance Router", () => {
     });
 
     it("should filter by search (case-insensitive name match)", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
       const def = createConnectorDefinition();
-      const orgId = generateId();
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
@@ -361,9 +355,9 @@ describe("Connector Instance Router", () => {
     });
 
     it("should return 404 when connector definition does not exist", async () => {
-      const user = createUser();
+      const user = createUser(AUTH0_ID);
       await (db as ReturnType<typeof drizzle>)
-        .insert(users)
+        .insert(schema.users)
         .values(user as never);
 
       const res = await request(app)
@@ -400,14 +394,14 @@ describe("Connector Instance Router", () => {
 
     it("should create a connector instance successfully", async () => {
       const def = createConnectorDefinition();
-      const user = createUser();
+      const user = createUser(AUTH0_ID);
       const orgId = generateId();
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
       await (db as ReturnType<typeof drizzle>)
-        .insert(users)
+        .insert(schema.users)
         .values(user as never);
 
       const res = await request(app)
@@ -432,14 +426,14 @@ describe("Connector Instance Router", () => {
 
     it("should create an instance with config and credentials", async () => {
       const def = createConnectorDefinition();
-      const user = createUser();
+      const user = createUser(AUTH0_ID);
       const orgId = generateId();
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
       await (db as ReturnType<typeof drizzle>)
-        .insert(users)
+        .insert(schema.users)
         .values(user as never);
 
       const res = await request(app)
@@ -462,14 +456,14 @@ describe("Connector Instance Router", () => {
 
     it("created instance should be retrievable via GET", async () => {
       const def = createConnectorDefinition();
-      const user = createUser();
+      const user = createUser(AUTH0_ID);
       const orgId = generateId();
 
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorDefinitions)
         .values(def as never);
       await (db as ReturnType<typeof drizzle>)
-        .insert(users)
+        .insert(schema.users)
         .values(user as never);
 
       const createRes = await request(app)

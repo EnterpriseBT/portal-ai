@@ -13,8 +13,9 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
 import { WebhookService } from "../../../services/webhook.service.js";
+import { teardownOrg } from "../utils.js";
 
-const { users, organizations, organizationUsers } = schema;
+const { users, organizations } = schema;
 
 describe("WebhookService Integration Tests", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -28,10 +29,7 @@ describe("WebhookService Integration Tests", () => {
     connection = postgres(process.env.DATABASE_URL, { max: 1 });
     db = drizzle(connection, { schema });
 
-    // Clean tables in FK-safe order
-    await db.delete(organizationUsers);
-    await db.delete(organizations);
-    await db.delete(users);
+    await teardownOrg(db as ReturnType<typeof drizzle>);
   });
 
   afterEach(async () => {

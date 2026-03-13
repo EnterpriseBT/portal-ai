@@ -15,11 +15,9 @@ import {
 } from "../../../../db/repositories/base.repository.js";
 import * as schema from "../../../../db/schema/index.js";
 import type { UserInsert, UserSelect, JobInsert, JobSelect } from "../../../../db/schema/zod.js";
-import { UUIDv4Factory } from "@mcp-ui/core/utils";
+import { generateId, teardownOrg } from "../../utils.js";
 
-const { users, organizationUsers, organizations, jobs } = schema;
-const idFactory = new UUIDv4Factory();
-const generateId = () => idFactory.generate();
+const { users, jobs } = schema;
 
 describe("Repository Integration Tests", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -36,11 +34,7 @@ describe("Repository Integration Tests", () => {
     db = drizzle(connection, { schema });
     usersRepo = new Repository(users);
 
-    // Clean up tables in FK-safe order
-    await db.delete(jobs);
-    await db.delete(organizationUsers);
-    await db.delete(organizations);
-    await db.delete(users);
+    await teardownOrg(db as ReturnType<typeof drizzle>);
   });
 
   afterEach(async () => {
