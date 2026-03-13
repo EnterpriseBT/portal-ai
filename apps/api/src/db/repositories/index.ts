@@ -7,3 +7,4 @@ export * from "./organizations.repository.js";
 export * from "./organization-users.repository.js";
 export * from "./connector-definitions.repository.js";
 export * from "./connector-instances.repository.js";
+export * from "./jobs.repository.js";

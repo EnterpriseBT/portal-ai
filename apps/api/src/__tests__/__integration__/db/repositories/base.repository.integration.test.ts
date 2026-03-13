@@ -14,10 +14,10 @@ import {
   type DbClient,
 } from "../../../../db/repositories/base.repository.js";
 import * as schema from "../../../../db/schema/index.js";
-import type { UserInsert, UserSelect } from "../../../../db/schema/zod.js";
+import type { UserInsert, UserSelect, JobInsert, JobSelect } from "../../../../db/schema/zod.js";
 import { UUIDv4Factory } from "@mcp-ui/core/utils";
 
-const { users, organizationUsers, organizations } = schema;
+const { users, organizationUsers, organizations, jobs } = schema;
 const idFactory = new UUIDv4Factory();
 const generateId = () => idFactory.generate();
 
@@ -37,6 +37,7 @@ describe("Repository Integration Tests", () => {
     usersRepo = new Repository(users);
 
     // Clean up tables in FK-safe order
+    await db.delete(jobs);
     await db.delete(organizationUsers);
     await db.delete(organizations);
     await db.delete(users);
@@ -168,6 +169,69 @@ describe("Repository Integration Tests", () => {
       const results = await usersRepo.findMany(
         undefined,
         { includeDeleted: true },
+        db
+      );
+
+      expect(results).toHaveLength(2);
+    });
+
+    it("should filter by organizationId when provided in ListOptions", async () => {
+      const jobsRepo = new Repository<typeof jobs, JobSelect, JobInsert>(jobs);
+      const orgA = generateId();
+      const orgB = generateId();
+      const now = Date.now();
+
+      const makeJob = (organizationId: string): JobInsert =>
+        ({
+          id: generateId(),
+          organizationId,
+          type: "file_upload",
+          status: "pending",
+          progress: 0,
+          metadata: {},
+          result: null,
+          error: null,
+          startedAt: null,
+          completedAt: null,
+          bullJobId: null,
+          attempts: 0,
+          maxAttempts: 3,
+          created: now,
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        }) as JobInsert;
+
+      await jobsRepo.create(makeJob(orgA), db);
+      await jobsRepo.create(makeJob(orgA), db);
+      await jobsRepo.create(makeJob(orgB), db);
+
+      const resultsA = await jobsRepo.findMany(
+        undefined,
+        { organizationId: orgA },
+        db
+      );
+      const resultsB = await jobsRepo.findMany(
+        undefined,
+        { organizationId: orgB },
+        db
+      );
+
+      expect(resultsA).toHaveLength(2);
+      expect(resultsB).toHaveLength(1);
+    });
+
+    it("should ignore organizationId filter on tables without that column", async () => {
+      const user1 = createTestUser();
+      const user2 = createTestUser();
+      await usersRepo.create(user1, db);
+      await usersRepo.create(user2, db);
+
+      const results = await usersRepo.findMany(
+        undefined,
+        { organizationId: "some-org-id" },
         db
       );
 

@@ -925,10 +925,10 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] Verify build passes (`npm run type-check`)
 
 ### Step 3 — Repository
-- [ ] Create `apps/api/src/db/repositories/jobs.repository.ts` extending `Repository`
-- [ ] Add entity-specific methods (`findByOrganizationId`, `findByStatus`, `findByBullJobId`)
-- [ ] Export singleton `jobsRepo` instance
-- [ ] Register in `DbService.repository` object
+- [x] Create `apps/api/src/db/repositories/jobs.repository.ts` extending `Repository`
+- [x] Add entity-specific methods (`findByStatus`, `findByBullJobId`)
+- [x] Export singleton `jobsRepo` instance
+- [x] Register in `DbService.repository` object
 
 ### Step 4 — Queue Layer
 - [ ] Create `apps/api/src/queues/jobs.queue.ts` (BullMQ `Queue` instance with default options)

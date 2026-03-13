@@ -68,6 +68,7 @@ export interface ListOptions {
   limit?: number;
   offset?: number;
   includeDeleted?: boolean;
+  organizationId?: string;
   orderBy?: { column: Column; direction?: "asc" | "desc" };
 }
 
@@ -134,7 +135,12 @@ export class Repository<
     opts: ListOptions = {},
     client: DbClient = db
   ): Promise<TSelect[]> {
-    const conditions = this.withSoftDelete(where, opts.includeDeleted);
+    let baseWhere = where;
+    if (opts.organizationId && this.cols.organizationId) {
+      const orgFilter = eq(this.cols.organizationId, opts.organizationId);
+      baseWhere = baseWhere ? and(baseWhere, orgFilter) : orgFilter;
+    }
+    const conditions = this.withSoftDelete(baseWhere, opts.includeDeleted);
 
     let query = (client as typeof db)
       .select()
