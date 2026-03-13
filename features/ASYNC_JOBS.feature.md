@@ -931,11 +931,12 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] Register in `DbService.repository` object
 
 ### Step 4 — Queue Layer
-- [ ] Create `apps/api/src/queues/jobs.queue.ts` (BullMQ `Queue` instance with default options)
-- [ ] Create `apps/api/src/queues/jobs.worker.ts` (BullMQ `Worker`, processor registry, event forwarding)
-- [ ] Create `apps/api/src/queues/processors/` directory
-- [ ] Create `apps/api/src/queues/processors/index.ts` (registers all processors)
-- [ ] Initialize worker on API server startup in `apps/api/src/index.ts`
+- [x] Create `apps/api/src/queues/jobs.queue.ts` (BullMQ `Queue` instance with default options)
+- [x] Create `apps/api/src/queues/jobs.worker.ts` (BullMQ `Worker`, processor registry, event forwarding)
+- [x] Create `apps/api/src/queues/processors/` directory
+- [x] Create `apps/api/src/queues/processors/index.ts` (registers all processors)
+- [x] Initialize worker on API server startup in `apps/api/src/index.ts`
+- [x] Create and run integration tests for job related queues, services and processors (`apps/api/src/__tests__/__integration__/queues/`)
 
 ### Step 5 — Event Service
 - [ ] Create `apps/api/src/services/job-events.service.ts`

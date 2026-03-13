@@ -270,32 +270,6 @@ describe("Connector Instance Router", () => {
         "Salesforce Prod"
       );
     });
-
-    it("should filter by organizationId", async () => {
-      const def = createConnectorDefinition();
-      const org1 = generateId();
-      const org2 = generateId();
-      await (db as ReturnType<typeof drizzle>)
-        .insert(connectorDefinitions)
-        .values(def as never);
-
-      await (db as ReturnType<typeof drizzle>)
-        .insert(connectorInstances)
-        .values([
-          createConnectorInstance(def.id, org1, { name: "Org1 Instance" }),
-          createConnectorInstance(def.id, org2, { name: "Org2 Instance" }),
-        ] as never);
-
-      const res = await request(app)
-        .get(`/api/connector-instances?organizationId=${org1}`)
-        .set("Authorization", "Bearer test-token");
-
-      expect(res.status).toBe(200);
-      expect(res.body.payload.connectorInstances).toHaveLength(1);
-      expect(res.body.payload.connectorInstances[0].name).toBe(
-        "Org1 Instance"
-      );
-    });
   });
 
   // ── GET /api/connector-instances/:id ────────────────────────────

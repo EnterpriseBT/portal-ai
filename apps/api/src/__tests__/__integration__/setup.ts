@@ -36,6 +36,8 @@ export default async function globalSetup() {
   process.env.LOG_LEVEL ??= "silent";
   // Encryption key for connector instance credential tests (32 random bytes, base64)
   process.env.ENCRYPTION_KEY ??= "B6c8MuUiBbxwrAWSopmasgp1TMQ3eTi91aG8Og4TOCQ=";
+  // Redis for BullMQ queue integration tests
+  process.env.REDIS_URL ??= "redis://redis:6379";
 
   const connection = postgres(databaseUrl, { max: 1 });
   const db = drizzle(connection);
