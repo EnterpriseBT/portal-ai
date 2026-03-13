@@ -939,30 +939,30 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] Create and run integration tests for job related queues, services and processors (`apps/api/src/__tests__/__integration__/queues/`)
 
 ### Step 5 — Event Service
-- [ ] Create `apps/api/src/services/job-events.service.ts`
-- [ ] Implement `transition()` — update PostgreSQL row + publish to Redis Pub/Sub
-- [ ] Implement `updateProgress()` — progress-only update + publish
-- [ ] Implement `subscribe()` — Redis Pub/Sub listener with cleanup function
-- [ ] Verify write-before-publish ordering for no-gap guarantee
+- [x] Create `apps/api/src/services/job-events.service.ts`
+- [x] Implement `transition()` — update PostgreSQL row + publish to Redis Pub/Sub
+- [x] Implement `updateProgress()` — progress-only update + publish
+- [x] Implement `subscribe()` — Redis Pub/Sub listener with cleanup function
+- [x] Verify write-before-publish ordering for no-gap guarantee
 
 ### Step 6 — API Routes
-- [ ] Create `apps/api/src/middleware/sse-auth.middleware.ts` (query-param JWT validation)
-- [ ] Create `apps/api/src/routes/jobs.router.ts`
-- [ ] Implement `POST /api/jobs` — create and enqueue
-- [ ] Implement `GET /api/jobs` — list with pagination and filters
-- [ ] Implement `GET /api/jobs/:id` — get single job
-- [ ] Implement `GET /api/jobs/:id/events` — SSE stream with snapshot-on-connect
-- [ ] Implement `POST /api/jobs/:id/cancel` — cancel a running job
-- [ ] Mount `jobsRouter` in `apps/api/src/routes/protected.router.ts`
-- [ ] Add job error codes to `apps/api/src/constants/api-codes.constants.ts`
-- [ ] Add request validation middleware for `POST /api/jobs` body
+- [x] Create `apps/api/src/middleware/sse-auth.middleware.ts` (query-param JWT validation)
+- [x] Create `apps/api/src/routes/jobs.router.ts`
+- [x] Implement `POST /api/jobs` — create and enqueue
+- [x] Implement `GET /api/jobs` — list with pagination and filters
+- [x] Implement `GET /api/jobs/:id` — get single job
+- [x] Implement `GET /api/jobs/:id/events` — SSE stream with snapshot-on-connect
+- [x] Implement `POST /api/jobs/:id/cancel` — cancel a running job
+- [x] Mount `jobsRouter` in `apps/api/src/routes/protected.router.ts`
+- [x] Add job error codes to `apps/api/src/constants/api-codes.constants.ts`
+- [x] Add request validation middleware for `POST /api/jobs` body
 
 ### Step 7 — Jobs Service
-- [ ] Create `apps/api/src/services/jobs.service.ts`
-- [ ] Implement `create()` — DB insert + BullMQ enqueue + store `bullJobId`
-- [ ] Implement `findById()` — with `JOB_NOT_FOUND` error
-- [ ] Implement `listForUser()` — resolve org, query with pagination
-- [ ] Implement `cancel()` — remove from BullMQ + transition to `cancelled`
+- [x] Create `apps/api/src/services/jobs.service.ts`
+- [x] Implement `create()` — DB insert + BullMQ enqueue + store `bullJobId`
+- [x] Implement `findById()` — with `JOB_NOT_FOUND` error
+- [x] Implement `listForUser()` — resolve org, query with pagination
+- [x] Implement `cancel()` — remove from BullMQ + transition to `cancelled`
 
 ### Step 8 — Graceful Shutdown
 - [ ] Import worker and queue in `apps/api/src/index.ts`

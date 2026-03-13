@@ -4,6 +4,7 @@ import { profileRouter } from "./profile.router.js";
 import { organizationRouter } from "./organization.router.js";
 import { connectorDefinitionRouter } from "./connector-definition.router.js";
 import { connectorInstanceRouter } from "./connector-instance.router.js";
+import { jobsRouter } from "./jobs.router.js";
 
 export const protectedRouter = Router();
 
@@ -15,3 +16,4 @@ protectedRouter.use("/profile", profileRouter);
 protectedRouter.use("/organization", organizationRouter);
 protectedRouter.use("/connector-definitions", connectorDefinitionRouter);
 protectedRouter.use("/connector-instances", connectorInstanceRouter);
+protectedRouter.use("/jobs", jobsRouter);

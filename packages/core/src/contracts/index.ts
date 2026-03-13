@@ -24,3 +24,6 @@ export * from "./connector-definition.contract.js";
 
 /** Connector Instance contracts — schemas & types */
 export * from "./connector-instance.contract.js";
+
+/** Job contracts — schemas & types */
+export * from "./job.contract.js";
