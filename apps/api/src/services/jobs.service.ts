@@ -1,4 +1,4 @@
-import { JobModelFactory } from "@mcp-ui/core/models";
+import { JobModelFactory, TERMINAL_JOB_STATUSES } from "@mcp-ui/core/models";
 import type { JobCreateRequestBody } from "@mcp-ui/core/contracts";
 
 import { jobsQueue } from "../queues/jobs.queue.js";
@@ -79,7 +79,7 @@ export class JobsService {
   static async cancel(jobId: string) {
     const job = await this.findById(jobId);
 
-    if (["completed", "failed", "cancelled"].includes(job.status)) {
+    if (TERMINAL_JOB_STATUSES.includes(job.status)) {
       throw new ApiError(
         400,
         ApiCode.JOB_ALREADY_TERMINAL,

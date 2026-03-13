@@ -5,21 +5,15 @@
  * so that SSE clients can receive real-time updates.
  */
 
+import type { JobStatus } from "@mcp-ui/core/models";
+import type { JobUpdateEvent } from "@mcp-ui/core/contracts";
+
 import { getRedisClient } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { DbService } from "./db.service.js";
 
 const logger = createLogger({ module: "job-events" });
-
-export interface JobEvent {
-  jobId: string;
-  status: string;
-  progress: number;
-  error?: string | null;
-  result?: Record<string, unknown> | null;
-  timestamp: number;
-}
 
 const JOB_CHANNEL_PREFIX = "job:events:";
 
@@ -29,7 +23,7 @@ export class JobEventsService {
    */
   static async transition(
     jobId: string,
-    status: string,
+    status: JobStatus,
     patch: Partial<{
       progress: number;
       error: string;
@@ -49,7 +43,7 @@ export class JobEventsService {
     await DbService.repository.jobs.update(jobId, dbPatch);
 
     // Broadcast via Redis Pub/Sub
-    const event: JobEvent = {
+    const event: JobUpdateEvent = {
       jobId,
       status,
       progress: patch.progress ?? 0,
@@ -78,7 +72,7 @@ export class JobEventsService {
       updated: now,
     });
 
-    const event: JobEvent = {
+    const event: JobUpdateEvent = {
       jobId,
       status: "active",
       progress,
@@ -97,7 +91,7 @@ export class JobEventsService {
    */
   static subscribe(
     jobId: string,
-    onEvent: (event: JobEvent) => void
+    onEvent: (event: JobUpdateEvent) => void
   ): () => void {
     // Dedicated subscriber connection (required by Redis for pub/sub)
     const subscriber = getRedisClient().duplicate();

@@ -7,6 +7,7 @@ import { JobsService } from "../services/jobs.service.js";
 import { JobEventsService } from "../services/job-events.service.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
+import { TERMINAL_JOB_STATUSES } from "@mcp-ui/core/models";
 import {
   JobCreateRequestBodySchema,
   JobListRequestQuerySchema,
@@ -14,6 +15,7 @@ import {
   type JobGetResponsePayload,
   type JobListResponsePayload,
   type JobCancelResponsePayload,
+  type JobSnapshotEvent,
 } from "@mcp-ui/core/contracts";
 import { and, Column, eq, ilike, or, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
@@ -356,18 +358,19 @@ jobsRouter.get(
       const sse = new SseUtil(res);
 
       // 1. Send current state snapshot (recovery on reconnect)
-      sse.send("snapshot", {
+      const snapshot: JobSnapshotEvent = {
         jobId: job.id,
         status: job.status,
         progress: job.progress,
         error: job.error,
-        result: job.result,
+        result: job.result as Record<string, unknown> | null,
         startedAt: job.startedAt,
         completedAt: job.completedAt,
-      });
+      };
+      sse.send("snapshot", snapshot);
 
       // 2. If job is already terminal, close immediately
-      if (["completed", "failed", "cancelled"].includes(job.status)) {
+      if (TERMINAL_JOB_STATUSES.includes(job.status)) {
         sse.end();
         return;
       }
@@ -377,7 +380,7 @@ jobsRouter.get(
         sse.send("update", event);
 
         // Close stream when job reaches terminal state
-        if (["completed", "failed", "cancelled"].includes(event.status)) {
+        if (TERMINAL_JOB_STATUSES.includes(event.status)) {
           unsubscribe();
           sse.end();
         }

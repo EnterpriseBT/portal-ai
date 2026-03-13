@@ -16,7 +16,7 @@ import {
 } from "@jest/globals";
 import Redis from "ioredis";
 
-import type { JobEvent } from "../../../services/job-events.service.js";
+import type { JobUpdateEvent } from "@mcp-ui/core/contracts";
 
 // ── Shared Redis URL for tests ───────────────────────────────────────────
 
@@ -75,12 +75,12 @@ function uniqueJobId(): string {
  * received events. Returns the collected events array and a cleanup fn.
  */
 function createTestSubscriber(channel: string): {
-  events: JobEvent[];
+  events: JobUpdateEvent[];
   ready: Promise<void>;
   cleanup: () => Promise<void>;
 } {
   const sub = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
-  const events: JobEvent[] = [];
+  const events: JobUpdateEvent[] = [];
 
   const ready = new Promise<void>((resolve) => {
     sub.subscribe(channel, () => resolve());
@@ -257,7 +257,7 @@ describe("JobEventsService Integration Tests", () => {
   describe("subscribe()", () => {
     it("should receive events published to the job channel", async () => {
       const jobId = uniqueJobId();
-      const received: JobEvent[] = [];
+      const received: JobUpdateEvent[] = [];
 
       const cleanup = JobEventsService.subscribe(jobId, (event) => {
         received.push(event);
@@ -267,7 +267,7 @@ describe("JobEventsService Integration Tests", () => {
       await new Promise((r) => setTimeout(r, 300));
 
       // Publish directly via Redis
-      const event: JobEvent = {
+      const event: JobUpdateEvent = {
         jobId,
         status: "active",
         progress: 25,
@@ -288,7 +288,7 @@ describe("JobEventsService Integration Tests", () => {
 
     it("should stop receiving events after cleanup", async () => {
       const jobId = uniqueJobId();
-      const received: JobEvent[] = [];
+      const received: JobUpdateEvent[] = [];
 
       const cleanup = JobEventsService.subscribe(jobId, (event) => {
         received.push(event);
@@ -304,7 +304,7 @@ describe("JobEventsService Integration Tests", () => {
       await new Promise((r) => setTimeout(r, 200));
 
       // Publish after cleanup
-      const event: JobEvent = {
+      const event: JobUpdateEvent = {
         jobId,
         status: "completed",
         progress: 100,

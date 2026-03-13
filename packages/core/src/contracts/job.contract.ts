@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { JobSchema, JobStatusEnum, JobTypeEnum } from "../models/job.model.js";
 import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
 
@@ -44,3 +45,30 @@ export const JobCancelResponsePayloadSchema = z.object({
 });
 
 export type JobCancelResponsePayload = z.infer<typeof JobCancelResponsePayloadSchema>;
+
+// --- SSE Event Schemas ---
+
+/** Snapshot sent on SSE connect with the current persisted job state. */
+export const JobSnapshotEventSchema = z.object({
+  jobId: z.string(),
+  status: JobStatusEnum,
+  progress: z.number(),
+  error: z.string().nullable(),
+  result: z.record(z.string(), z.unknown()).nullable(),
+  startedAt: z.number().nullable(),
+  completedAt: z.number().nullable(),
+});
+
+export type JobSnapshotEvent = z.infer<typeof JobSnapshotEventSchema>;
+
+/** Live update event published via Redis Pub/Sub and forwarded over SSE. */
+export const JobUpdateEventSchema = z.object({
+  jobId: z.string(),
+  status: JobStatusEnum,
+  progress: z.number(),
+  error: z.string().nullable().optional(),
+  result: z.record(z.string(), z.unknown()).nullable().optional(),
+  timestamp: z.number(),
+});
+
+export type JobUpdateEvent = z.infer<typeof JobUpdateEventSchema>;

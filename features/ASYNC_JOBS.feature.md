@@ -972,16 +972,16 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] Verify shutdown order: worker → queue → Redis → database
 
 ### Step 9 — Frontend Hook
-- [ ] Create `apps/web/src/hooks/useJobStream.util.ts`
-- [ ] Implement `EventSource` connection with Auth0 token as query param
-- [ ] Handle `snapshot` event — set initial state
-- [ ] Handle `update` event — merge live state, close on terminal
-- [ ] Handle `error` event — track connection status, allow auto-reconnect
-- [ ] Clean up `EventSource` on unmount
-- [ ] Verify browser refresh recovery (snapshot re-syncs state)
+- [x] Create `apps/web/src/hooks/useJobStream.util.ts`
+- [x] Implement `EventSource` connection with Auth0 token as query param
+- [x] Handle `snapshot` event — set initial state
+- [x] Handle `update` event — merge live state, close on terminal
+- [x] Handle `error` event — track connection status, allow auto-reconnect
+- [x] Clean up `EventSource` on unmount
+- [x] Verify browser refresh recovery (snapshot re-syncs state)
 
 ### Step 10 — First Processor
-- [ ] Choose initial job type (e.g., `connector_sync`)
+- [ ] Choose initial job type (e.g., `system_check`)
 - [ ] Create `apps/api/src/queues/processors/<type>.processor.ts`
 - [ ] Implement processor with `bullJob.updateProgress()` calls
 - [ ] Register processor in `apps/api/src/queues/processors/index.ts`

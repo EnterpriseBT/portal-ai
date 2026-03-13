@@ -24,6 +24,9 @@ export const JobStatusEnum = z.enum([
 ]);
 export type JobStatus = z.infer<typeof JobStatusEnum>;
 
+/** Statuses that indicate a job has reached a final state and will not change further. */
+export const TERMINAL_JOB_STATUSES: JobStatus[] = ["completed", "failed", "cancelled"];
+
 export const JobTypeEnum = z.enum([
   "file_upload",
 ]);
