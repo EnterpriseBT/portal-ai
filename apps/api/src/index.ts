@@ -3,6 +3,7 @@ import { environment } from "./environment.js";
 import { connectDatabase, closeDatabase } from "./db/index.js";
 import { logger } from "./utils/logger.util.js";
 import { closeRedis } from "./utils/redis.util.js";
+import { gracefulShutdown } from "./utils/shutdown.util.js";
 import { jobsQueue } from "./queues/jobs.queue.js";
 import { createJobsWorker } from "./queues/jobs.worker.js";
 import { processors } from "./queues/processors/index.js";
@@ -32,23 +33,15 @@ const serverPromise = start().catch((err) => {
 
 // Graceful shutdown
 async function shutdown() {
-  logger.info("Shutting down…");
   const server = await serverPromise;
-  if (server) {
-    server.close(async () => {
-      await jobsWorker.close();
-      await jobsQueue.close();
-      await closeRedis();
-      await closeDatabase();
-      process.exit(0);
-    });
-  } else {
-    await jobsWorker.close();
-    await jobsQueue.close();
-    await closeRedis();
-    await closeDatabase();
-    process.exit(1);
-  }
+  await gracefulShutdown({
+    server: server || undefined,
+    closeWorker: () => jobsWorker.close(),
+    closeQueue: () => jobsQueue.close(),
+    closeRedis,
+    closeDatabase,
+  });
+  process.exit(server ? 0 : 1);
 }
 
 process.on("SIGINT", shutdown);

@@ -965,11 +965,11 @@ No new frontend dependencies required — `EventSource` is a browser built-in.
 - [x] Implement `cancel()` — remove from BullMQ + transition to `cancelled`
 
 ### Step 8 — Graceful Shutdown
-- [ ] Import worker and queue in `apps/api/src/index.ts`
-- [ ] Add `jobsWorker.close()` to shutdown handler
-- [ ] Add `jobsQueue.close()` to shutdown handler
-- [ ] Add `closeRedis()` to shutdown handler
-- [ ] Verify shutdown order: worker → queue → Redis → database
+- [x] Import worker and queue in `apps/api/src/index.ts`
+- [x] Add `jobsWorker.close()` to shutdown handler
+- [x] Add `jobsQueue.close()` to shutdown handler
+- [x] Add `closeRedis()` to shutdown handler
+- [x] Verify shutdown order: worker → queue → Redis → database
 
 ### Step 9 — Frontend Hook
 - [ ] Create `apps/web/src/hooks/useJobStream.util.ts`
