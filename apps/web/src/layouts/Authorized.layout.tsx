@@ -45,7 +45,7 @@ export const AuthorizedLayout = ({
           </ButtonGroup>
         </Toolbar>
       </AppBar>
-      <Box display="flex" position="relative" flex={1}>
+      <Box display="flex" position="relative" flex={1} minHeight={0}>
         <SidebarNav />
         <Box
           flex={1}

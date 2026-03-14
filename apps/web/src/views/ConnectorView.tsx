@@ -26,7 +26,7 @@ export const ConnectorView = () => {
   const pagination = usePagination({
     defaultSortBy: "display",
     defaultSortOrder: "asc",
-    limit: 10,
+    limit: 5,
     sortFields: [
       { field: "display", label: "Name" },
       { field: "category", label: "Category" },
@@ -71,14 +71,12 @@ export const ConnectorView = () => {
                       <EmptyResults />
                     ) : (
                       <Stack spacing={1}>
-                        {connectorDefinitions.connectorDefinitions.map(
-                          (cd) => (
-                            <ConnectorDefinitionCard
-                              key={cd.id}
-                              connectorDefinition={cd}
-                            />
-                          )
-                        )}
+                        {connectorDefinitions.connectorDefinitions.map((cd) => (
+                          <ConnectorDefinitionCard
+                            key={cd.id}
+                            connectorDefinition={cd}
+                          />
+                        ))}
                       </Stack>
                     )
                   }

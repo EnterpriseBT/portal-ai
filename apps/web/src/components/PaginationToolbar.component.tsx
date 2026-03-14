@@ -110,8 +110,8 @@ export function usePagination(
     sortFields = [],
     defaultSortBy = "created",
     defaultSortOrder = "asc",
-    limit: defaultLimit = 20,
-    limitOptions = [10, 20, 50, 100],
+    limit: defaultLimit = 10,
+    limitOptions = [5, 10, 20, 50, 100],
   } = config;
 
   const [search, setSearchRaw] = React.useState("");
@@ -149,7 +149,6 @@ export function usePagination(
     },
     [resetOffset]
   );
-
 
   const toggleSortOrder = React.useCallback(() => {
     setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -348,255 +347,259 @@ export const PaginationToolbar = React.forwardRef<
             flexWrap: "wrap",
           }}
         >
-        {/* Search */}
-        <TextField
-          size="small"
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-              endAdornment: search ? (
-                <InputAdornment position="end">
-                  <IconButton
-                    size="small"
-                    onClick={() => onSearchChange("")}
-                    edge="end"
-                  >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ) : undefined,
-            },
-          }}
-          sx={{ minWidth: 200 }}
-        />
+          {/* Search */}
+          <TextField
+            size="small"
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+                endAdornment: search ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={() => onSearchChange("")}
+                      edge="end"
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
+              },
+            }}
+            sx={{ minWidth: 200 }}
+          />
 
-        {/* Filter Button */}
-        {filterConfigs.length > 0 && (
-          <>
-            <Badge badgeContent={activeFilterCount} color="primary">
+          {/* Filter Button */}
+          {filterConfigs.length > 0 && (
+            <>
+              <Badge badgeContent={activeFilterCount} color="primary">
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<FilterListIcon />}
+                  onClick={(e) => setFilterAnchor(e.currentTarget)}
+                >
+                  Filter
+                </Button>
+              </Badge>
+
+              <Popover
+                open={filterOpen}
+                anchorEl={filterAnchor}
+                onClose={() => setFilterAnchor(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                transformOrigin={{ vertical: "top", horizontal: "left" }}
+              >
+                <Box sx={{ p: 2, minWidth: 220 }}>
+                  {filterConfigs.map((config, idx) => (
+                    <Box key={config.field}>
+                      {idx > 0 && <Divider sx={{ my: 1 }} />}
+                      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                        {config.label}
+                      </Typography>
+
+                      {config.type === "select" && (
+                        <RadioGroup
+                          value={(filters[config.field] ?? [])[0] ?? ""}
+                          onChange={(e) =>
+                            onFilterValueChange(config.field, e.target.value)
+                          }
+                        >
+                          {config.options.map((option) => (
+                            <FormControlLabel
+                              key={option.value}
+                              value={option.value}
+                              control={<Radio size="small" />}
+                              label={option.label}
+                            />
+                          ))}
+                        </RadioGroup>
+                      )}
+
+                      {config.type === "boolean" && (
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              size="small"
+                              checked={
+                                (filters[config.field] ?? [])[0] === "true"
+                              }
+                              onChange={(e) =>
+                                onFilterValueChange(
+                                  config.field,
+                                  e.target.checked ? "true" : "false"
+                                )
+                              }
+                            />
+                          }
+                          label={
+                            (filters[config.field] ?? [])[0] === "true"
+                              ? "Yes"
+                              : "No"
+                          }
+                        />
+                      )}
+
+                      {config.type === "number" && (
+                        <TextField
+                          size="small"
+                          type="number"
+                          fullWidth
+                          placeholder={config.placeholder ?? "Enter a number"}
+                          value={(filters[config.field] ?? [])[0] ?? ""}
+                          onChange={(e) =>
+                            onFilterValueChange(config.field, e.target.value)
+                          }
+                          slotProps={{
+                            htmlInput: {
+                              min: config.min,
+                              max: config.max,
+                            },
+                          }}
+                        />
+                      )}
+
+                      {config.type === "text" && (
+                        <TextField
+                          size="small"
+                          fullWidth
+                          placeholder={config.placeholder ?? "Enter a value"}
+                          value={(filters[config.field] ?? [])[0] ?? ""}
+                          onChange={(e) =>
+                            onFilterValueChange(config.field, e.target.value)
+                          }
+                        />
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+              </Popover>
+            </>
+          )}
+
+          {/* Sort Button */}
+          {sortFields.length > 0 && (
+            <>
               <Button
                 variant="outlined"
                 size="small"
-                startIcon={<FilterListIcon />}
-                onClick={(e) => setFilterAnchor(e.currentTarget)}
+                startIcon={<SortIcon />}
+                onClick={(e) => setSortAnchor(e.currentTarget)}
               >
-                Filter
+                Sort
               </Button>
-            </Badge>
 
-            <Popover
-              open={filterOpen}
-              anchorEl={filterAnchor}
-              onClose={() => setFilterAnchor(null)}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-              transformOrigin={{ vertical: "top", horizontal: "left" }}
-            >
-              <Box sx={{ p: 2, minWidth: 220 }}>
-                {filterConfigs.map((config, idx) => (
-                  <Box key={config.field}>
-                    {idx > 0 && <Divider sx={{ my: 1 }} />}
-                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                      {config.label}
-                    </Typography>
-
-                    {config.type === "select" && (
-                      <RadioGroup
-                        value={(filters[config.field] ?? [])[0] ?? ""}
-                        onChange={(e) =>
-                          onFilterValueChange(config.field, e.target.value)
-                        }
-                      >
-                        {config.options.map((option) => (
-                          <FormControlLabel
-                            key={option.value}
-                            value={option.value}
-                            control={<Radio size="small" />}
-                            label={option.label}
-                          />
-                        ))}
-                      </RadioGroup>
-                    )}
-
-                    {config.type === "boolean" && (
+              <Popover
+                open={sortOpen}
+                anchorEl={sortAnchor}
+                onClose={() => setSortAnchor(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                transformOrigin={{ vertical: "top", horizontal: "left" }}
+              >
+                <Box sx={{ p: 2, minWidth: 200 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                    Sort by
+                  </Typography>
+                  <RadioGroup
+                    value={sortBy}
+                    onChange={(e) => onSortByChange(e.target.value)}
+                  >
+                    {sortFields.map((field) => (
                       <FormControlLabel
-                        control={
-                          <Switch
-                            size="small"
-                            checked={
-                              (filters[config.field] ?? [])[0] === "true"
-                            }
-                            onChange={(e) =>
-                              onFilterValueChange(
-                                config.field,
-                                e.target.checked ? "true" : "false"
-                              )
-                            }
-                          />
-                        }
-                        label={
-                          (filters[config.field] ?? [])[0] === "true"
-                            ? "Yes"
-                            : "No"
-                        }
+                        key={field.field}
+                        value={field.field}
+                        control={<Radio size="small" />}
+                        label={field.label}
                       />
-                    )}
+                    ))}
+                  </RadioGroup>
 
-                    {config.type === "number" && (
-                      <TextField
-                        size="small"
-                        type="number"
-                        fullWidth
-                        placeholder={config.placeholder ?? "Enter a number"}
-                        value={(filters[config.field] ?? [])[0] ?? ""}
-                        onChange={(e) =>
-                          onFilterValueChange(config.field, e.target.value)
-                        }
-                        slotProps={{
-                          htmlInput: {
-                            min: config.min,
-                            max: config.max,
-                          },
-                        }}
-                      />
-                    )}
+                  <Divider sx={{ my: 1 }} />
 
-                    {config.type === "text" && (
-                      <TextField
-                        size="small"
-                        fullWidth
-                        placeholder={config.placeholder ?? "Enter a value"}
-                        value={(filters[config.field] ?? [])[0] ?? ""}
-                        onChange={(e) =>
-                          onFilterValueChange(config.field, e.target.value)
-                        }
-                      />
-                    )}
-                  </Box>
-                ))}
-              </Box>
-            </Popover>
-          </>
-        )}
-
-        {/* Sort Button */}
-        {sortFields.length > 0 && (
-          <>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<SortIcon />}
-              onClick={(e) => setSortAnchor(e.currentTarget)}
-            >
-              Sort
-            </Button>
-
-            <Popover
-              open={sortOpen}
-              anchorEl={sortAnchor}
-              onClose={() => setSortAnchor(null)}
-              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-              transformOrigin={{ vertical: "top", horizontal: "left" }}
-            >
-              <Box sx={{ p: 2, minWidth: 200 }}>
-                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                  Sort by
-                </Typography>
-                <RadioGroup
-                  value={sortBy}
-                  onChange={(e) => onSortByChange(e.target.value)}
-                >
-                  {sortFields.map((field) => (
-                    <FormControlLabel
-                      key={field.field}
-                      value={field.field}
-                      control={<Radio size="small" />}
-                      label={field.label}
+                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                    Direction
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 1 }}>
+                    <Chip
+                      icon={<ArrowUpwardIcon />}
+                      label="Asc"
+                      size="small"
+                      variant={sortOrder === "asc" ? "filled" : "outlined"}
+                      color={sortOrder === "asc" ? "primary" : "default"}
+                      onClick={() => onSortOrderChange("asc")}
                     />
-                  ))}
-                </RadioGroup>
-
-                <Divider sx={{ my: 1 }} />
-
-                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                  Direction
-                </Typography>
-                <Box sx={{ display: "flex", gap: 1 }}>
-                  <Chip
-                    icon={<ArrowUpwardIcon />}
-                    label="Asc"
-                    size="small"
-                    variant={sortOrder === "asc" ? "filled" : "outlined"}
-                    color={sortOrder === "asc" ? "primary" : "default"}
-                    onClick={() => onSortOrderChange("asc")}
-                  />
-                  <Chip
-                    icon={<ArrowDownwardIcon />}
-                    label="Desc"
-                    size="small"
-                    variant={sortOrder === "desc" ? "filled" : "outlined"}
-                    color={sortOrder === "desc" ? "primary" : "default"}
-                    onClick={() => onSortOrderChange("desc")}
-                  />
+                    <Chip
+                      icon={<ArrowDownwardIcon />}
+                      label="Desc"
+                      size="small"
+                      variant={sortOrder === "desc" ? "filled" : "outlined"}
+                      color={sortOrder === "desc" ? "primary" : "default"}
+                      onClick={() => onSortOrderChange("desc")}
+                    />
+                  </Box>
                 </Box>
-              </Box>
-            </Popover>
-          </>
-        )}
+              </Popover>
+            </>
+          )}
 
-        {/* Spacer */}
-        <Box sx={{ flex: 1 }} />
+          {/* Spacer */}
+          <Box sx={{ flex: 1 }} />
 
-        {/* Pagination */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <Select
-            size="small"
-            value={limit}
-            onChange={(e) => onLimitChange(Number(e.target.value))}
-            sx={{ minWidth: 70, "& .MuiSelect-select": { py: 0.5 } }}
-          >
-            {limitOptions.map((opt) => (
-              <MenuItem key={opt} value={opt}>
-                {opt}
-              </MenuItem>
-            ))}
-          </Select>
+          {/* Pagination */}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <Select
+              size="small"
+              value={limit}
+              onChange={(e) => onLimitChange(Number(e.target.value))}
+              sx={{ minWidth: 70, "& .MuiSelect-select": { py: 0.5 } }}
+            >
+              {limitOptions.map((opt) => (
+                <MenuItem key={opt} value={opt}>
+                  {opt}
+                </MenuItem>
+              ))}
+            </Select>
 
-          <Typography variant="body2" sx={{ mx: 1, whiteSpace: "nowrap" }}>
-            {currentPage} of {totalPages} ({total})
-          </Typography>
+            <Typography variant="body2" sx={{ mx: 1, whiteSpace: "nowrap" }}>
+              {currentPage} of {totalPages} ({total})
+            </Typography>
 
-          <IconButton
-            size="small"
-            onClick={onFirst}
-            disabled={currentPage <= 1}
-          >
-            <FirstPageIcon fontSize="small" />
-          </IconButton>
-          <IconButton size="small" onClick={onPrev} disabled={currentPage <= 1}>
-            <ChevronLeftIcon fontSize="small" />
-          </IconButton>
-          <IconButton
-            size="small"
-            onClick={onNext}
-            disabled={currentPage >= totalPages}
-          >
-            <ChevronRightIcon fontSize="small" />
-          </IconButton>
-          <IconButton
-            size="small"
-            onClick={onLast}
-            disabled={currentPage >= totalPages}
-          >
-            <LastPageIcon fontSize="small" />
-          </IconButton>
-        </Box>
+            <IconButton
+              size="small"
+              onClick={onFirst}
+              disabled={currentPage <= 1}
+            >
+              <FirstPageIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={onPrev}
+              disabled={currentPage <= 1}
+            >
+              <ChevronLeftIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={onNext}
+              disabled={currentPage >= totalPages}
+            >
+              <ChevronRightIcon fontSize="small" />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={onLast}
+              disabled={currentPage >= totalPages}
+            >
+              <LastPageIcon fontSize="small" />
+            </IconButton>
+          </Box>
         </Box>
 
         {/* Active filter chips */}

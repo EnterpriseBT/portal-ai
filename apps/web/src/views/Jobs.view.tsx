@@ -1,8 +1,4 @@
-import {
-  Box,
-  Stack,
-  Typography,
-} from "@mcp-ui/core/ui";
+import { Box, Stack, Typography } from "@mcp-ui/core/ui";
 import type { JobListRequestQuery } from "@mcp-ui/core/contracts";
 
 import { DataJobStream } from "../components/DataJobStream.component";
@@ -19,7 +15,7 @@ export const JobsView = () => {
   const pagination = usePagination({
     defaultSortBy: "created",
     defaultSortOrder: "desc",
-    limit: 20,
+    limit: 5,
     sortFields: [
       { field: "created", label: "Created" },
       { field: "type", label: "Type" },
@@ -57,9 +53,7 @@ export const JobsView = () => {
       </Typography>
       <Stack spacing={2}>
         <PaginationToolbar {...pagination.toolbarProps} />
-        <JobDataList
-          query={pagination.queryParams as JobListRequestQuery}
-        >
+        <JobDataList query={pagination.queryParams as JobListRequestQuery}>
           {(response) => (
             <SyncTotal
               total={response.data?.total}
@@ -77,7 +71,11 @@ export const JobsView = () => {
                             <JobCard
                               job={job}
                               status={stream.status ?? undefined}
-                              progress={stream.status !== null ? stream.progress : undefined}
+                              progress={
+                                stream.status !== null
+                                  ? stream.progress
+                                  : undefined
+                              }
                             />
                           )}
                         </DataJobStream>
