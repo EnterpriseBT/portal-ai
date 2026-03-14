@@ -119,7 +119,10 @@ connectorDefinitionRouter.get(
           orderBy: { column, direction: sortOrder },
         }),
         DbService.repository.connectorDefinitions.count(where),
-      ]);
+      ]).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector definitions");
+      });
 
       return HttpService.success<ConnectorDefinitionListResponsePayload>(res, {
         connectorDefinitions: data,
@@ -132,17 +135,7 @@ connectorDefinitionRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list connector definitions"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(
-          500,
-          ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED,
-          "Failed to list connector definitions"
-        )
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector definitions"));
     }
   }
 );
@@ -197,7 +190,10 @@ connectorDefinitionRouter.get(
       logger.info({ id }, "GET /api/connector-definitions/:id called");
 
       const connectorDefinition =
-        await DbService.repository.connectorDefinitions.findById(id);
+        await DbService.repository.connectorDefinitions.findById(id).catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector definition");
+        });
 
       if (!connectorDefinition) {
         return next(
@@ -217,17 +213,7 @@ connectorDefinitionRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch connector definition"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(
-          500,
-          ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED,
-          "Failed to fetch connector definition"
-        )
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector definition"));
     }
   }
 );

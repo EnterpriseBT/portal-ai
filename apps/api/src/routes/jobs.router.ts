@@ -1,13 +1,10 @@
 import { Router, Request, Response, NextFunction } from "express";
+
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { JobsService } from "../services/jobs.service.js";
-import { JobEventsService } from "../services/job-events.service.js";
-import { SseUtil } from "../utils/sse.util.js";
-import { sseAuth } from "../middleware/sse-auth.middleware.js";
-import { TERMINAL_JOB_STATUSES } from "@mcp-ui/core/models";
 import {
   JobCreateRequestBodySchema,
   JobListRequestQuerySchema,
@@ -15,7 +12,6 @@ import {
   type JobGetResponsePayload,
   type JobListResponsePayload,
   type JobCancelResponsePayload,
-  type JobSnapshotEvent,
 } from "@mcp-ui/core/contracts";
 import { and, Column, eq, ilike, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
@@ -84,6 +80,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  */
 jobsRouter.post(
   "/",
+  getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = JobCreateRequestBodySchema.safeParse(req.body);
@@ -97,15 +94,13 @@ jobsRouter.post(
         );
       }
 
-      const auth0Id = req.auth?.payload.sub as string;
-      const user = await DbService.repository.users.findByAuth0Id(auth0Id);
-      if (!user) {
-        return next(
-          new ApiError(404, ApiCode.JOB_USER_NOT_FOUND, "User not found")
-        );
-      }
-
-      const job = await JobsService.create(user.id, parsed.data);
+      const job = await JobsService.create(
+        req.application?.metadata.userId as string,
+        parsed.data
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.JOB_ENQUEUE_FAILED, error instanceof Error ? error.message : "Failed to create job");
+      });
 
       logger.info({ jobId: job.id, type: parsed.data.type }, "Job created");
 
@@ -119,13 +114,7 @@ jobsRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create job"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(500, ApiCode.JOB_ENQUEUE_FAILED, "Failed to create job")
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_ENQUEUE_FAILED, error instanceof Error ? error.message : "Failed to create job"));
     }
   }
 );
@@ -220,7 +209,10 @@ jobsRouter.get(
           orderBy: { column, direction: query.sortOrder },
         }),
         DbService.repository.jobs.count(where),
-      ]);
+      ]).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list jobs");
+      });
 
       const result: JobListResponsePayload = {
         jobs: data,
@@ -235,13 +227,7 @@ jobsRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list jobs"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(500, ApiCode.JOB_FETCH_FAILED, "Failed to list jobs")
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list jobs"));
     }
   }
 );
@@ -294,7 +280,10 @@ jobsRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/jobs/:id called");
 
-      const job = await JobsService.findById(id);
+      const job = await JobsService.findById(id).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch job");
+      });
 
       return HttpService.success<JobGetResponsePayload>(res, { job });
     } catch (error) {
@@ -302,106 +291,7 @@ jobsRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch job"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(500, ApiCode.JOB_FETCH_FAILED, "Failed to fetch job")
-      );
-    }
-  }
-);
-
-/**
- * @openapi
- * /api/jobs/{id}/events:
- *   get:
- *     tags:
- *       - Jobs
- *     summary: SSE stream for real-time job updates
- *     description: >
- *       Opens a Server-Sent Events stream. On connect, sends a "snapshot"
- *       event with the current job state. Subsequent "update" events are
- *       pushed as the job progresses. The stream closes when the job
- *       reaches a terminal state. Auth via ?token=<jwt> query parameter.
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: query
- *         name: token
- *         required: true
- *         schema:
- *           type: string
- *         description: JWT token for SSE authentication
- *     responses:
- *       200:
- *         description: SSE event stream
- *       401:
- *         description: Missing or invalid token
- *       404:
- *         description: Job not found
- */
-jobsRouter.get(
-  "/:id/events",
-  sseAuth,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const jobId = req.params.id;
-
-      // Verify job exists
-      const job = await JobsService.findById(jobId);
-
-      const sse = new SseUtil(res);
-
-      // 1. Send current state snapshot (recovery on reconnect)
-      const snapshot: JobSnapshotEvent = {
-        jobId: job.id,
-        status: job.status,
-        progress: job.progress,
-        error: job.error,
-        result: job.result as Record<string, unknown> | null,
-        startedAt: job.startedAt,
-        completedAt: job.completedAt,
-      };
-      sse.send("snapshot", snapshot);
-
-      // 2. If job is already terminal, close immediately
-      if (TERMINAL_JOB_STATUSES.includes(job.status)) {
-        sse.end();
-        return;
-      }
-
-      // 3. Subscribe to live updates via Redis Pub/Sub
-      const unsubscribe = JobEventsService.subscribe(jobId, (event) => {
-        sse.send("update", event);
-
-        // Close stream when job reaches terminal state
-        if (TERMINAL_JOB_STATUSES.includes(event.status)) {
-          unsubscribe();
-          sse.end();
-        }
-      });
-
-      // 4. Cleanup on client disconnect
-      req.on("close", () => {
-        unsubscribe();
-      });
-    } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to open SSE stream"
-      );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(500, ApiCode.JOB_FETCH_FAILED, "Failed to open job event stream")
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch job"));
     }
   }
 );
@@ -460,7 +350,10 @@ jobsRouter.post(
       const { id } = req.params;
       logger.info({ id }, "POST /api/jobs/:id/cancel called");
 
-      const job = await JobsService.cancel(id);
+      const job = await JobsService.cancel(id).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.JOB_CANCEL_FAILED, error instanceof Error ? error.message : "Failed to cancel job");
+      });
 
       return HttpService.success<JobCancelResponsePayload>(res, { job });
     } catch (error) {
@@ -468,13 +361,7 @@ jobsRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to cancel job"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(500, ApiCode.JOB_CANCEL_FAILED, "Failed to cancel job")
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_CANCEL_FAILED, error instanceof Error ? error.message : "Failed to cancel job"));
     }
   }
 );

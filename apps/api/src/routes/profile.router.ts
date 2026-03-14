@@ -79,7 +79,10 @@ profileRouter.get(
       const accessToken = Auth0Service.getAccessToken(
         req.headers.authorization
       );
-      const profile = await Auth0Service.getAuth0UserProfile(accessToken);
+      const profile = await Auth0Service.getAuth0UserProfile(accessToken).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.PROFILE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch profile from Auth0");
+      });
       const validatedProfile = Auth0UserProfileSchema.safeParse(profile);
       if (!validatedProfile.success) {
         return next(
@@ -99,15 +102,8 @@ profileRouter.get(
       const user = await usersRepo
         .findByAuth0Id(validatedProfile.data.sub)
         .catch((error) => {
-          logger.error(
-            { error: error instanceof Error ? error.message : "Unknown error" },
-            "Database error while fetching user by Auth0 ID"
-          );
-          throw new ApiError(
-            500,
-            ApiCode.PROFILE_USER_NOT_FOUND,
-            "Failed to fetch user information from database"
-          );
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(500, ApiCode.PROFILE_USER_NOT_FOUND, error instanceof Error ? error.message : "Failed to fetch user from database");
         });
 
       return HttpService.success<Auth0UserProfileGetResponse>(res, {
@@ -119,17 +115,7 @@ profileRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch user profile"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(
-          500,
-          ApiCode.PROFILE_FETCH_FAILED,
-          "Failed to fetch user profile"
-        )
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.PROFILE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch user profile"));
     }
   }
 );

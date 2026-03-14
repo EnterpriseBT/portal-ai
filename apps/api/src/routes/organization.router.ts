@@ -56,7 +56,10 @@ organizationRouter.get(
       const auth0Id = req.auth?.payload.sub as string;
       logger.info({ auth0Id }, "GET /api/organization/current called");
 
-      const user = await DbService.repository.users.findByAuth0Id(auth0Id);
+      const user = await DbService.repository.users.findByAuth0Id(auth0Id).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.ORGANIZATION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch user");
+      });
       if (!user) {
         return next(
           new ApiError(
@@ -67,7 +70,10 @@ organizationRouter.get(
         );
       }
 
-      const result = await ApplicationService.getCurrentOrganization(user.id);
+      const result = await ApplicationService.getCurrentOrganization(user.id).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.ORGANIZATION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch current organization");
+      });
       if (!result) {
         return next(
           new ApiError(
@@ -86,17 +92,7 @@ organizationRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch current organization"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(
-          500,
-          ApiCode.ORGANIZATION_FETCH_FAILED,
-          "Failed to fetch current organization"
-        )
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ORGANIZATION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch current organization"));
     }
   }
 );

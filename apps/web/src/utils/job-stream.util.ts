@@ -101,7 +101,7 @@ export const useJobStream = (jobId: string | null | undefined): JobStreamState =
 
       if (cancelled) return;
 
-      const url = `/api/jobs/${encodeURIComponent(jobId)}/events?token=${encodeURIComponent(token)}`;
+      const url = `/api/sse/jobs/${encodeURIComponent(jobId)}/events?token=${encodeURIComponent(token)}`;
       const es = new EventSource(url);
       eventSourceRef.current = es;
 

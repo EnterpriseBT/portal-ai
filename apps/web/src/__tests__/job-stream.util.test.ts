@@ -141,7 +141,7 @@ describe("useJobStream", () => {
     const es = await waitForConnection();
 
     expect(es.url).toBe(
-      "/api/jobs/job-123/events?token=test-token-123"
+      "/api/sse/jobs/job-123/events?token=test-token-123"
     );
     // Verify token was requested with authorizationParams
     // (audience comes from import.meta.env which is undefined in Jest)

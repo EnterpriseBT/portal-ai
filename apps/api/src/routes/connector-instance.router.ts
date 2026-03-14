@@ -120,7 +120,10 @@ connectorInstanceRouter.get(
           orderBy: { column, direction: sortOrder },
         }),
         DbService.repository.connectorInstances.count(where),
-      ]);
+      ]).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector instances");
+      });
 
       return HttpService.success<ConnectorInstanceListResponsePayload>(res, {
         connectorInstances: data as unknown as ConnectorInstanceApi[],
@@ -133,17 +136,7 @@ connectorInstanceRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list connector instances"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(
-          500,
-          ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-          "Failed to list connector instances"
-        )
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector instances"));
     }
   }
 );
@@ -198,7 +191,10 @@ connectorInstanceRouter.get(
       logger.info({ id }, "GET /api/connector-instances/:id called");
 
       const connectorInstance =
-        await DbService.repository.connectorInstances.findById(id);
+        await DbService.repository.connectorInstances.findById(id).catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector instance");
+        });
 
       if (!connectorInstance) {
         return next(
@@ -218,17 +214,7 @@ connectorInstanceRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch connector instance"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(
-          500,
-          ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
-          "Failed to fetch connector instance"
-        )
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector instance"));
     }
   }
 );
@@ -316,7 +302,10 @@ connectorInstanceRouter.post(
       const { connectorDefinitionId, organizationId, name, config, credentials } = parsed.data;
 
       // Verify the connector definition exists
-      const definition = await DbService.repository.connectorDefinitions.findById(connectorDefinitionId);
+      const definition = await DbService.repository.connectorDefinitions.findById(connectorDefinitionId).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector definition");
+      });
       if (!definition) {
         return next(
           new ApiError(
@@ -328,7 +317,10 @@ connectorInstanceRouter.post(
       }
 
       const auth0Id = req.auth?.payload.sub as string;
-      const user = await DbService.repository.users.findByAuth0Id(auth0Id);
+      const user = await DbService.repository.users.findByAuth0Id(auth0Id).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_USER_NOT_FOUND, error instanceof Error ? error.message : "Failed to fetch user");
+      });
       if (!user) {
         return next(
           new ApiError(
@@ -354,7 +346,10 @@ connectorInstanceRouter.post(
 
       const connectorInstance = await DbService.repository.connectorInstances.create(
         model.parse()
-      );
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create connector instance");
+      });
 
       logger.info(
         { id: connectorInstance.id, connectorDefinitionId, organizationId },
@@ -371,17 +366,7 @@ connectorInstanceRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create connector instance"
       );
-
-      if (error instanceof ApiError) {
-        return next(error);
-      }
-      return next(
-        new ApiError(
-          500,
-          ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED,
-          "Failed to create connector instance"
-        )
-      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create connector instance"));
     }
   }
 );

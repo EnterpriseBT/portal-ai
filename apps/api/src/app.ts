@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { healthRouter } from "./routes/health.router.js";
 import { protectedRouter } from "./routes/protected.router.js";
+import { sseRouter } from "./routes/sse.router.js";
 import { webhookRouter } from "./routes/webhook.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
@@ -29,6 +30,9 @@ app.use(
 
 app.use("/api/docs", swaggerRouter);
 app.use("/api/health", healthRouter);
+// SSE routes use query-param auth (sseAuth) — mount before protectedRouter
+// so the router-level jwtCheck does not reject the headerless EventSource request.
+app.use("/api/sse", sseRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here
