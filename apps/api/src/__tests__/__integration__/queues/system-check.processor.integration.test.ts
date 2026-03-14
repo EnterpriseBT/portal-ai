@@ -9,6 +9,8 @@ import {
   describe,
   it,
   expect,
+  beforeAll,
+  afterAll,
   afterEach,
 } from "@jest/globals";
 import { Queue, Worker, Job as BullJob } from "bullmq";
@@ -22,6 +24,20 @@ import { connectionOpts, uniqueQueueName, waitForJobState } from "./queue.util.j
 describe("system_check Processor Integration Tests", () => {
   const cleanupQueues: Queue[] = [];
   const cleanupWorkers: Worker[] = [];
+
+  // Compress setTimeout delays ≥ 500ms by 10× so the processor's 1-second ticks
+  // complete in ~100ms each (~1s total instead of 10s). Short delays used by
+  // BullMQ internals (< 500ms) are left untouched.
+  const originalSetTimeout = globalThis.setTimeout;
+  beforeAll(() => {
+    globalThis.setTimeout = ((fn: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+      const adjusted = ms != null && ms >= 500 ? Math.ceil(ms / 10) : ms;
+      return originalSetTimeout(fn, adjusted, ...args);
+    }) as typeof globalThis.setTimeout;
+  });
+  afterAll(() => {
+    globalThis.setTimeout = originalSetTimeout;
+  });
 
   afterEach(async () => {
     for (const w of cleanupWorkers) {
