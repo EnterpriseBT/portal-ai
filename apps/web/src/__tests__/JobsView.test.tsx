@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import type { UseQueryResult } from "@tanstack/react-query";
-import type { JobListResponsePayload } from "@mcp-ui/core/contracts";
-import type { Job } from "@mcp-ui/core/models";
+import type { JobListResponsePayload } from "@portalai/core/contracts";
+import type { Job } from "@portalai/core/models";
 import type { JobStreamState } from "../utils/job-stream.util";
 import type { ApiError } from "../utils";
 

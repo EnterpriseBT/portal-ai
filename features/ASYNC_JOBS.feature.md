@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document proposes an architecture for managing asynchronous jobs in MCP UI using **BullMQ** (backed by **Redis**) for job queuing and processing, and **Server-Sent Events (SSE)** for real-time job status notifications to the browser. A key requirement is the ability to **recover job state** if the browser refreshes mid-stream.
+This document proposes an architecture for managing asynchronous jobs in Portal.ai using **BullMQ** (backed by **Redis**) for job queuing and processing, and **Server-Sent Events (SSE)** for real-time job status notifications to the browser. A key requirement is the ability to **recover job state** if the browser refreshes mid-stream.
 
 ---
 
@@ -703,7 +703,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 import { useAuth0 } from '@auth0/auth0-react';
 
-import { JobEvent } from '@mcp-ui/core/models';
+import { JobEvent } from '@portalai/core/models';
 
 interface JobState {
   status: string;

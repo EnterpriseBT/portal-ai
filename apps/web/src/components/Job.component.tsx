@@ -5,7 +5,7 @@ import {
   JobGetResponsePayload,
   JobListRequestQuery,
   JobListResponsePayload,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 import {
   Box,
   Card,
@@ -16,9 +16,9 @@ import {
   Button,
   StatusBadge,
   Progress,
-} from "@mcp-ui/core/ui";
-import type { Job, JobStatus } from "@mcp-ui/core/models";
-import { DateFactory } from "@mcp-ui/core/utils";
+} from "@portalai/core/ui";
+import type { Job, JobStatus } from "@portalai/core/models";
+import { DateFactory } from "@portalai/core/utils";
 
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";

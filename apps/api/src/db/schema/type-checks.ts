@@ -1,7 +1,7 @@
 /**
  * Compile-time assertions that guarantee the Drizzle table schemas
  * (source of truth) stay in sync with the hand-written Zod model
- * schemas exported from `@mcp-ui/core`.
+ * schemas exported from `@portalai/core`.
  *
  * If a column is added/removed/changed in a Drizzle table but the
  * corresponding Zod model in core is not updated (or vice-versa),
@@ -12,7 +12,7 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, Core } from "@mcp-ui/core/models";
+import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, Core } from "@portalai/core/models";
 import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";

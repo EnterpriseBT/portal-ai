@@ -1,6 +1,6 @@
 import { renderHook, act, waitFor } from "./test-utils";
 import React from "react";
-import { ThemeProvider } from "@mcp-ui/core/ui";
+import { ThemeProvider } from "@portalai/core/ui";
 import {
   LayoutProvider,
   SidebarState,

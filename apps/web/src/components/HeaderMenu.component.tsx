@@ -10,7 +10,7 @@ import {
   IconName,
   Typography,
   Divider,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";
 

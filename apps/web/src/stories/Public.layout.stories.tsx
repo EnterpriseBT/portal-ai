@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { PublicLayout } from "../layouts/Public.layout";
-import { Box, Typography } from "@mcp-ui/core/ui";
+import { Box, Typography } from "@portalai/core/ui";
 
 const meta = {
   title: "Layouts/PublicLayout",

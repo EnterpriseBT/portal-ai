@@ -9,7 +9,7 @@ import {
   ConnectorDefinitionListRequestQuerySchema,
   type ConnectorDefinitionListResponsePayload,
   type ConnectorDefinitionGetResponsePayload,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 
 const logger = createLogger({ module: "connector-definition" });
 

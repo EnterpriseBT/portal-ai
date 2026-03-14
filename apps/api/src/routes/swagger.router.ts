@@ -11,7 +11,7 @@ export const swaggerRouter = Router();
 swaggerRouter.use("/", swaggerUi.serve);
 swaggerRouter.get("/", swaggerUi.setup(swaggerSpec, {
   customCss: ".swagger-ui .topbar { display: none }",
-  customSiteTitle: "MCP UI API Documentation",
+  customSiteTitle: "Portal.ai API Documentation",
 }));
 
 // Serve raw OpenAPI spec as JSON

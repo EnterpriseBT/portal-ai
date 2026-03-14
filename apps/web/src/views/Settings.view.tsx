@@ -12,7 +12,7 @@ import {
   Stack,
   Icon,
   IconName,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 import { DataResult } from "../components/DataResult.component";
 import { sdk } from "../api/sdk";
 export const SettingsView = () => {

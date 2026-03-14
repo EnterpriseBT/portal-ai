@@ -30,7 +30,7 @@ exports[`AuthorizedUI Component Error State should render ErrorView when error i
           <h6
             class="MuiTypography-root MuiTypography-h6 css-1fjaxg5-MuiTypography-root"
           >
-            MCP UI
+            Portal.ai
           </h6>
         </a>
         <div
@@ -146,7 +146,7 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
           <h6
             class="MuiTypography-root MuiTypography-h6 css-1fjaxg5-MuiTypography-root"
           >
-            MCP UI
+            Portal.ai
           </h6>
         </a>
         <div

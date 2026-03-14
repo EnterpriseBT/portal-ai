@@ -4,7 +4,7 @@ import {
   screen,
   fireEvent,
 } from "@testing-library/react";
-import { ThemeProvider } from "@mcp-ui/core/ui";
+import { ThemeProvider } from "@portalai/core/ui";
 import {
   createRootRoute,
   createRouter,

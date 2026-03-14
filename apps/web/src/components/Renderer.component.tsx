@@ -5,8 +5,8 @@ import {
   VisibilityProvider,
   ActionProvider,
 } from "@json-render/react";
-import { StatusMessage } from "@mcp-ui/core/ui";
-import { CatalogName, registry } from "@mcp-ui/registry";
+import { StatusMessage } from "@portalai/core/ui";
+import { CatalogName, registry } from "@portalai/registry";
 import { ApiError } from "../utils";
 
 export interface RendererProps {

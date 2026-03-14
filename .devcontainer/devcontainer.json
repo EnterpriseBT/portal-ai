@@ -1,5 +1,5 @@
 {
-  "name": "MCP UI",
+  "name": "Portal.ai",
   "dockerComposeFile": "../docker-compose.yml",
   "service": "dev",
   "workspaceFolder": "/workspace",

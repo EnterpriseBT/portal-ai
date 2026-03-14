@@ -20,7 +20,7 @@ export default async function globalSetup() {
   // From host machine, it's localhost:5433
   const databaseUrl =
     process.env.INTEGRATION_TEST_DATABASE_URL ||
-    "postgresql://postgres:postgres@postgres-test:5432/mcp_ui_test";
+    "postgresql://postgres:postgres@postgres-test:5432/portal_ai_test";
 
   console.log("🔄 Connecting to test database...");
   console.log(`📍 Connection: ${databaseUrl.replace(/:[^:@]+@/, ':****@')}`);

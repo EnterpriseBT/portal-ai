@@ -1,5 +1,5 @@
-import { JobModelFactory, TERMINAL_JOB_STATUSES } from "@mcp-ui/core/models";
-import type { JobCreateRequestBody } from "@mcp-ui/core/contracts";
+import { JobModelFactory, TERMINAL_JOB_STATUSES } from "@portalai/core/models";
+import type { JobCreateRequestBody } from "@portalai/core/contracts";
 
 import { jobsQueue } from "../queues/jobs.queue.js";
 import { DbService } from "./db.service.js";

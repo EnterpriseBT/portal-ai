@@ -1,9 +1,9 @@
 import React, { StrictMode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ThemeName, ThemeProvider } from "@mcp-ui/core/ui";
+import { ThemeName, ThemeProvider } from "@portalai/core/ui";
 import { Auth0Provider } from "@auth0/auth0-react";
 
-import "@mcp-ui/core/styles";
+import "@portalai/core/styles";
 import { queryClient } from "../client";
 import { useStorage } from "../utils";
 import { LayoutProvider } from "./Layout.provider";
@@ -18,7 +18,7 @@ export const ApplicationProvider: React.FC<ApplicationProviderProps> = ({
   defaultTheme = "brand",
 }) => {
   const { value: theme } = useStorage<ThemeName>({
-    key: "mcp-ui-theme",
+    key: "portalai-theme",
     defaultValue: defaultTheme,
     storageType: "local",
   });

@@ -1,4 +1,4 @@
-# MCP UI
+# Portal.ai
 
 A Turborepo monorepo for displaying dynamic UI content from a Model-Controller-Presenter architecture.
 

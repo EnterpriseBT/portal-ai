@@ -10,7 +10,7 @@ import { useCallback } from "react";
 import type {
   ApiErrorResponse,
   ApiSuccessResponse,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 
 export class ApiError extends Error {
   code: string;

@@ -1,5 +1,5 @@
 /**
- * Shared test utilities for @mcp-ui/core tests.
+ * Shared test utilities for @portalai/core tests.
  *
  * Centralises common helpers (regex patterns, stub factories, builder
  * functions) so individual test files stay focused on behaviour.

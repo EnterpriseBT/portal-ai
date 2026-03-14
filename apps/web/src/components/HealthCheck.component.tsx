@@ -1,7 +1,7 @@
 import React from "react";
-import { Box, Tooltip } from "@mcp-ui/core/ui";
+import { Box, Tooltip } from "@portalai/core/ui";
 import { keyframes } from "@mui/material/styles";
-import type { HealthGetResponse } from "@mcp-ui/core/contracts";
+import type { HealthGetResponse } from "@portalai/core/contracts";
 import { DataResult } from "./DataResult.component";
 import { sdk } from "../api/sdk";
 

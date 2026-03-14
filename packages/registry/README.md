@@ -1,6 +1,6 @@
-# @mcp-ui/registry
+# @portalai/registry
 
-Dynamic UI catalog registry for MCP UI, built on [@json-render](https://github.com/nicholasgriffintn/json-render).
+Dynamic UI catalog registry for Portal.ai, built on [@json-render](https://github.com/nicholasgriffintn/json-render).
 
 ## Overview
 
@@ -32,7 +32,7 @@ registry/src/
 ## Usage
 
 ```tsx
-import { registry, CatalogName } from "@mcp-ui/registry";
+import { registry, CatalogName } from "@portalai/registry";
 
 // Retrieve a registered catalog
 const blogEntry = registry.get(CatalogName.Blog);

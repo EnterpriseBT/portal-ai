@@ -8,7 +8,7 @@ import { verifyWebhookSignature } from "../middleware/webhook-auth.middleware.js
 import {
   Auth0PostLoginWebhookPayloadSchema,
   type Auth0PostLoginWebhookSyncResponse,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 
 const logger = createLogger({ module: "webhook-router" });
 

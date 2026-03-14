@@ -21,7 +21,7 @@ const mockGetCatalog =
     } | null
   >();
 
-jest.unstable_mockModule("@mcp-ui/registry", () => ({
+jest.unstable_mockModule("@portalai/registry", () => ({
   CatalogName: { Blog: "blog" },
   registry: {
     get: mockGetCatalog,
@@ -51,7 +51,7 @@ jest.unstable_mockModule("@json-render/react", () => ({
 
 const { render, screen } = await import("./test-utils");
 const { Renderer } = await import("../components/Renderer.component");
-const { CatalogName } = await import("@mcp-ui/registry");
+const { CatalogName } = await import("@portalai/registry");
 const { ApiError } = await import("../utils/api.util");
 
 const mockSpec: Spec = {

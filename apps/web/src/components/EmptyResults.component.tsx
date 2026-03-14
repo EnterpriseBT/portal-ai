@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mcp-ui/core/ui";
+import { Box, Typography } from "@portalai/core/ui";
 
 export const EmptyResults = () => {
   return (

@@ -1,7 +1,7 @@
 import React from "react";
 import { render, RenderOptions } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "@mcp-ui/core/ui";
+import { ThemeProvider } from "@portalai/core/ui";
 import {
   createRootRoute,
   createRouter,

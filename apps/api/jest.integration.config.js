@@ -28,8 +28,8 @@ export default {
   // Map .js imports back to .ts source files
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
-    "^@mcp-ui/core$": "<rootDir>/../../packages/core/src/index.ts",
-    "^@mcp-ui/core/(.*)$": "<rootDir>/../../packages/core/src/$1/index.ts",
+    "^@portalai/core$": "<rootDir>/../../packages/core/src/index.ts",
+    "^@portalai/core/(.*)$": "<rootDir>/../../packages/core/src/$1/index.ts",
   },
 
   // Test file patterns - only integration tests

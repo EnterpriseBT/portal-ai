@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import type { Auth0PostLoginWebhookPayload } from "@mcp-ui/core/contracts";
+import type { Auth0PostLoginWebhookPayload } from "@portalai/core/contracts";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";

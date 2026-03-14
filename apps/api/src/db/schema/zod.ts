@@ -3,7 +3,7 @@
  *
  * These are the single source of truth for database-layer validation.
  * Compile-time assertions in `./type-checks.ts` ensure that the
- * hand-written Zod schemas in `@mcp-ui/core` stay in sync with these.
+ * hand-written Zod schemas in `@portalai/core` stay in sync with these.
  */
 import { createSelectSchema, createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";

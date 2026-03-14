@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import type { ConnectorDefinition } from "@mcp-ui/core/models";
+import type { ConnectorDefinition } from "@portalai/core/models";
 import {
   ConnectorDefinitionCard,
   ConnectorDefinitionCardProps,

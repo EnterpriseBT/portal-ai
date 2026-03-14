@@ -1,9 +1,9 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, useRef, useState } from "react";
 
-import { TERMINAL_JOB_STATUSES } from "@mcp-ui/core/models";
-import type { JobStatus } from "@mcp-ui/core/models";
-import type { JobSnapshotEvent, JobUpdateEvent } from "@mcp-ui/core/contracts";
+import { TERMINAL_JOB_STATUSES } from "@portalai/core/models";
+import type { JobStatus } from "@portalai/core/models";
+import type { JobSnapshotEvent, JobUpdateEvent } from "@portalai/core/contracts";
 
 // --- Types ---
 

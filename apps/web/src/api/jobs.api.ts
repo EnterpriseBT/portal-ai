@@ -5,7 +5,7 @@ import type {
   JobCreateRequestBody,
   JobCreateResponsePayload,
   JobCancelResponsePayload,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";

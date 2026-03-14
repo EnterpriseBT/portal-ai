@@ -1,6 +1,6 @@
 import { Worker, Job as BullJob } from "bullmq";
 
-import type { JobType, JobTypeMap } from "@mcp-ui/core/models";
+import type { JobType, JobTypeMap } from "@portalai/core/models";
 
 import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";

@@ -9,8 +9,8 @@
  * automatically subscribed/unsubscribed as listeners are added/removed.
  */
 
-import type { JobStatus } from "@mcp-ui/core/models";
-import type { JobUpdateEvent } from "@mcp-ui/core/contracts";
+import type { JobStatus } from "@portalai/core/models";
+import type { JobUpdateEvent } from "@portalai/core/contracts";
 
 import type { Redis } from "ioredis";
 

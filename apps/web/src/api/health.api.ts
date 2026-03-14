@@ -1,4 +1,4 @@
-import type { HealthGetResponse } from "@mcp-ui/core/contracts";
+import type { HealthGetResponse } from "@portalai/core/contracts";
 import { useAuthQuery } from "../utils/api.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";

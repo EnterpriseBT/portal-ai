@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { LoadingView } from "../views/Loading.view";
-import { Box } from "@mcp-ui/core/ui";
+import { Box } from "@portalai/core/ui";
 
 const meta = {
   title: "Views/LoadingView",

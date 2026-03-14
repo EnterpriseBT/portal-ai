@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "./test-utils";
-import { IconName } from "@mcp-ui/core/ui";
+import { IconName } from "@portalai/core/ui";
 import { SidebarNavToggleUI } from "../components/SidebarNavToggle.component";
 
 describe("SidebarNavToggleUI", () => {

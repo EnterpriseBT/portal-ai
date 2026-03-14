@@ -57,7 +57,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: mcp_ui
+      POSTGRES_DB: portal_ai
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -76,7 +76,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: mcp_ui_test
+      POSTGRES_DB: portal_ai_test
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:

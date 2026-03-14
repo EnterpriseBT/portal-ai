@@ -1,5 +1,5 @@
-import type { ConnectorDefinitionListRequestQuery } from "@mcp-ui/core/contracts";
-import type { JobListRequestQuery } from "@mcp-ui/core/contracts";
+import type { ConnectorDefinitionListRequestQuery } from "@portalai/core/contracts";
+import type { JobListRequestQuery } from "@portalai/core/contracts";
 
 export const queryKeys = {
   health: {

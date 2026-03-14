@@ -3,7 +3,7 @@ import { createHmac } from "crypto";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
-import type { Auth0PostLoginWebhookPayload } from "@mcp-ui/core/contracts";
+import type { Auth0PostLoginWebhookPayload } from "@portalai/core/contracts";
 
 const WEBHOOK_SECRET = "test-webhook-secret";
 

@@ -1,4 +1,4 @@
-import { IconButton, IconName } from "@mcp-ui/core/ui";
+import { IconButton, IconName } from "@portalai/core/ui";
 import { useLayout } from "../utils";
 
 export interface SidebarNavToggleProps {

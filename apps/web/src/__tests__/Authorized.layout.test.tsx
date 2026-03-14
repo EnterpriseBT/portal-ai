@@ -54,12 +54,12 @@ describe("AuthorizedLayout", () => {
     expect(screen.getByRole("banner")).toBeInTheDocument();
   });
 
-  it("should render MCP UI title in header", () => {
+  it("should render Portal.ai title in header", () => {
     render(
       <AuthorizedLayout>
         <div>Test Content</div>
       </AuthorizedLayout>
     );
-    expect(screen.getByText("MCP UI")).toBeInTheDocument();
+    expect(screen.getByText("Portal.ai")).toBeInTheDocument();
   });
 });

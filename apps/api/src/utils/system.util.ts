@@ -20,7 +20,7 @@
  * ```
  */
 
-import { UUIDv4Factory, UUIDv5Factory, DateFactory } from "@mcp-ui/core/utils";
+import { UUIDv4Factory, UUIDv5Factory, DateFactory } from "@portalai/core/utils";
 import { environment } from "../environment.js";
 
 /** Default timezone for the date factory. */

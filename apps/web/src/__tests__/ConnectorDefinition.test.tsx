@@ -3,8 +3,8 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import type {
   ConnectorDefinitionGetResponsePayload,
   ConnectorDefinitionListResponsePayload,
-} from "@mcp-ui/core/contracts";
-import type { ConnectorDefinition } from "@mcp-ui/core/models";
+} from "@portalai/core/contracts";
+import type { ConnectorDefinition } from "@portalai/core/models";
 import type { ApiError } from "../utils";
 
 type ListQuery = UseQueryResult<

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { IconName, Typography, Box } from "@mcp-ui/core/ui";
+import { IconName, Typography, Box } from "@portalai/core/ui";
 import { SidebarNavUI } from "../components/SidebarNav.component";
 import { SidebarNavItemUI } from "../components/SidebarNavItem.component";
 

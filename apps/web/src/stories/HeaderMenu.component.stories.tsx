@@ -6,7 +6,7 @@ import {
   ListItemIcon,
   Icon,
   IconName,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 
 const meta = {
   title: "Components/HeaderMenuUI",

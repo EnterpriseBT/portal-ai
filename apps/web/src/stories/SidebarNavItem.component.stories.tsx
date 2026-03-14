@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
-import { IconName } from "@mcp-ui/core/ui";
+import { IconName } from "@portalai/core/ui";
 import { SidebarNavItemUI } from "../components/SidebarNavItem.component";
 
 const meta = {

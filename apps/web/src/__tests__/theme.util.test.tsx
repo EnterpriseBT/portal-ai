@@ -1,11 +1,11 @@
 import { renderHook, act, waitFor } from "./test-utils";
 import { jest } from "@jest/globals";
 import { usePersistedTheme } from "../utils/theme.util";
-import { ThemeProvider, ThemeName } from "@mcp-ui/core/ui";
+import { ThemeProvider, ThemeName } from "@portalai/core/ui";
 import React from "react";
 
 describe("usePersistedTheme", () => {
-  const THEME_STORAGE_KEY = "mcp-ui-theme";
+  const THEME_STORAGE_KEY = "portalai-theme";
 
   // Helper to wrap hook in ThemeProvider
   const createWrapper = (defaultTheme?: ThemeName) => {

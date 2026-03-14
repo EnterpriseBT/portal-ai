@@ -4,7 +4,7 @@ import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApplicationService } from "../services/application.service.js";
 import { DbService } from "../services/db.service.js";
-import type { OrganizationGetResponse } from "@mcp-ui/core/contracts";
+import type { OrganizationGetResponse } from "@portalai/core/contracts";
 
 const logger = createLogger({ module: "organization" });
 

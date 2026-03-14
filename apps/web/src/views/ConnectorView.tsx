@@ -6,7 +6,7 @@ import {
   Tabs,
   Typography,
   useTabs,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 import {
   ConnectorDefinitionCard,
   ConnectorDefinitionDataList,
@@ -18,7 +18,7 @@ import {
   usePagination,
 } from "../components/PaginationToolbar.component";
 import { SyncTotal } from "../components/SyncTotal.component";
-import type { ConnectorDefinitionListRequestQuery } from "@mcp-ui/core/contracts";
+import type { ConnectorDefinitionListRequestQuery } from "@portalai/core/contracts";
 
 export const ConnectorView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();

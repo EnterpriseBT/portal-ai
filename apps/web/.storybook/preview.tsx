@@ -1,5 +1,5 @@
 import type { Preview } from "@storybook/react";
-import { type ThemeName } from "@mcp-ui/core/ui";
+import { type ThemeName } from "@portalai/core/ui";
 import { ApplicationProvider } from "../src/providers/Application.provider";
 import {
   createRootRoute,

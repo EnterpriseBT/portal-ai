@@ -7,8 +7,8 @@ import { JobsService } from "../services/jobs.service.js";
 import { JobEventsService } from "../services/job-events.service.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
-import { TERMINAL_JOB_STATUSES } from "@mcp-ui/core/models";
-import type { JobSnapshotEvent } from "@mcp-ui/core/contracts";
+import { TERMINAL_JOB_STATUSES } from "@portalai/core/models";
+import type { JobSnapshotEvent } from "@portalai/core/contracts";
 
 const logger = createLogger({ module: "job-events" });
 

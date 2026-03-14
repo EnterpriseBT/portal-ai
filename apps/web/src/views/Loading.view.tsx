@@ -1,4 +1,4 @@
-import { Box, CircularProgress } from "@mcp-ui/core/ui";
+import { Box, CircularProgress } from "@portalai/core/ui";
 
 export const LoadingView = () => {
   return (

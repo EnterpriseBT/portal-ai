@@ -1,4 +1,4 @@
-# MCP UI — Copilot Instructions
+# Portal.ai — Copilot Instructions
 
 ## Project
 
@@ -22,7 +22,7 @@ Turborepo monorepo: React 19 frontend (`apps/web/`), Express API (`apps/api/`), 
 
 1. React / React libraries
 2. Third-party (`@mui`, `@tanstack`, `zod`, etc.)
-3. Monorepo (`@mcp-ui/core`, `@mcp-ui/registry`)
+3. Monorepo (`@portalai/core`, `@portalai/registry`)
 4. Local (relative imports)
 5. Types, styles, assets
 
@@ -69,7 +69,7 @@ TanStack Router, file-based in `src/routes/`. Route tree auto-generates. Use `cr
 
 ## Themes
 
-Three MUI themes: Brand (default), Light, Dark. Persisted in localStorage via `@mcp-ui/core`.
+Three MUI themes: Brand (default), Light, Dark. Persisted in localStorage via `@portalai/core`.
 
 ## Registry (packages/registry)
 

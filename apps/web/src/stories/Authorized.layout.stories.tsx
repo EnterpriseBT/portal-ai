@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AuthorizedLayout } from "../layouts/Authorized.layout";
-import { Box, Typography } from "@mcp-ui/core/ui";
+import { Box, Typography } from "@portalai/core/ui";
 import { Auth0Provider } from "@auth0/auth0-react";
 
 const meta = {
@@ -48,7 +48,7 @@ export const WithMultipleElements: Story = {
   args: {
     children: (
       <Box display="flex" flexDirection="column" gap={3}>
-        <Typography variant="h4">Welcome to MCP UI</Typography>
+        <Typography variant="h4">Welcome to Portal.ai</Typography>
         <Box
           sx={{
             p: 3,

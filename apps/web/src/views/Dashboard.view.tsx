@@ -1,4 +1,4 @@
-import { Box, Stack, Typography } from "@mcp-ui/core/ui";
+import { Box, Stack, Typography } from "@portalai/core/ui";
 import { HealthCheck } from "../components/HealthCheck.component";
 
 export const DashboardView = () => {

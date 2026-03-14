@@ -1,5 +1,5 @@
 import { text, bigint, type PgColumnBuilderBase } from "drizzle-orm/pg-core";
-import { CoreSchema, type Core } from "@mcp-ui/core/models";
+import { CoreSchema, type Core } from "@portalai/core/models";
 import { z } from "zod/v4";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ type BaseColumns = ReturnType<typeof _typeRef>;
 
 /**
  * Derive Drizzle base columns directly from `CoreSchema` defined
- * in `@mcp-ui/core`.
+ * in `@portalai/core`.
  *
  * The mapping is intentionally kept simple — every field in Core
  * is either a `string` (→ `text`) or a `number` (→ `bigint`).

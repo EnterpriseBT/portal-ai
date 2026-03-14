@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { ThemeName, THEME_MAP, useTheme } from "@mcp-ui/core/ui";
+import { ThemeName, THEME_MAP, useTheme } from "@portalai/core/ui";
 import { useStorage } from "./storage.util";
 import { Theme } from "@mui/material";
 
-const THEME_STORAGE_KEY = "mcp-ui-theme";
+const THEME_STORAGE_KEY = "portalai-theme";
 
 /**
  * Type guard to validate if a value is a valid ThemeName

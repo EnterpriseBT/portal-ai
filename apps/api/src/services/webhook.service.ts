@@ -1,10 +1,10 @@
 import type {
   Auth0PostLoginWebhookPayload,
   Auth0PostLoginWebhookSyncResponse,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
-import { UserModel, UserModelFactory } from "@mcp-ui/core/models";
+import { UserModel, UserModelFactory } from "@portalai/core/models";
 import { SystemUtilities } from "../utils/system.util.js";
 import { ApplicationService } from "./application.service.js";
 

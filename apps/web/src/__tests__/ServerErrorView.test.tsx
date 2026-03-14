@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
-import { ThemeProvider } from "@mcp-ui/core/ui";
+import { ThemeProvider } from "@portalai/core/ui";
 import React from "react";
 
 jest.mock("@tanstack/react-router", () => ({

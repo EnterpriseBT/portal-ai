@@ -1,6 +1,6 @@
-# MCP UI Web
+# Portal.ai Web
 
-React web application for the MCP UI project with Auth0 authentication, Material UI, and TanStack Router.
+React web application for the Portal.ai project with Auth0 authentication, Material UI, and TanStack Router.
 
 ## Features
 
@@ -30,7 +30,7 @@ Create a `.env` file in the web app directory (`apps/web/.env`) with the followi
 ```env
 VITE_AUTH0_CLIENT_ID=your-auth0-client-id
 VITE_AUTH0_DOMAIN=your-domain.auth0.com
-VITE_AUTH0_AUDIENCE=https://api.mcp-ui.dev
+VITE_AUTH0_AUDIENCE=https://api.portalai.dev
 ```
 
 > **Note:** All environment variables must be prefixed with `VITE_` to be accessible in the Vite application.
@@ -47,7 +47,7 @@ npm install
 npm run build
 
 # Start development server
-npm run dev --workspace=@mcp-ui/web
+npm run dev --workspace=@portalai/web
 ```
 
 The web app will start on `http://localhost:3000`.
@@ -62,7 +62,7 @@ npm run dev
 
 ```bash
 # From monorepo root
-npm run build --workspace=@mcp-ui/web
+npm run build --workspace=@portalai/web
 
 # Or from apps/web
 npm run build
@@ -183,7 +183,7 @@ Organize imports in this order:
 
 1. React and React-related libraries
 2. Third-party libraries
-3. Monorepo packages (`@mcp-ui/*`)
+3. Monorepo packages (`@portalai/*`)
 4. Local components and utilities
 5. Types and interfaces
 6. Styles and assets
@@ -192,10 +192,10 @@ Organize imports in this order:
 import React, { useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { Box } from "@mui/material";
-import { ThemeProvider } from "@mcp-ui/core";
+import { ThemeProvider } from "@portalai/core";
 import { Header } from "../components/Header.component";
 import { useAuthFetch } from "../utils/api.util";
-import type { UserProfile } from "@mcp-ui/types";
+import type { UserProfile } from "@portalai/types";
 ```
 
 ## Routing
@@ -289,7 +289,7 @@ When testing API endpoints in Swagger or other tools:
 
 ## Theming
 
-The app supports three themes managed by the `@mcp-ui/core` package:
+The app supports three themes managed by the `@portalai/core` package:
 
 - **Brand** - Custom branded theme (default)
 - **Light** - Light mode
@@ -302,7 +302,7 @@ Theme preference is stored in localStorage and persists across sessions.
 Use the `ThemeSwitcher` component (in navbar) or programmatically:
 
 ```typescript
-import { useTheme } from "@mcp-ui/core";
+import { useTheme } from "@portalai/core";
 
 const MyComponent = () => {
   const { theme, setTheme } = useTheme();
@@ -426,8 +426,8 @@ npm run type-check
 
 This app depends on internal monorepo packages:
 
-- **`@mcp-ui/core`** - Shared UI components, themes, and utilities
-- **`@mcp-ui/types`** - Shared TypeScript type definitions
+- **`@portalai/core`** - Shared UI components, themes, and utilities
+- **`@portalai/types`** - Shared TypeScript type definitions
 
 When making changes to these packages, rebuild them:
 
@@ -438,7 +438,7 @@ npm run build
 
 ## Troubleshooting
 
-### Module Not Found: `@mcp-ui/core`
+### Module Not Found: `@portalai/core`
 
 **Solution:** Build the packages first
 ```bash

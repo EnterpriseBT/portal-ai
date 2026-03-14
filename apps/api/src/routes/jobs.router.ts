@@ -12,7 +12,7 @@ import {
   type JobGetResponsePayload,
   type JobListResponsePayload,
   type JobCancelResponsePayload,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 import { and, Column, eq, ilike, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";

@@ -3,8 +3,8 @@ import type { UseQueryResult, UseMutationResult } from "@tanstack/react-query";
 import type {
   JobGetResponsePayload,
   JobCancelResponsePayload,
-} from "@mcp-ui/core/contracts";
-import type { Job } from "@mcp-ui/core/models";
+} from "@portalai/core/contracts";
+import type { Job } from "@portalai/core/models";
 import type { JobStreamState } from "../utils/job-stream.util";
 import type { ApiError } from "../utils";
 

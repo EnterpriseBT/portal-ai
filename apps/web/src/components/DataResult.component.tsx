@@ -1,5 +1,5 @@
 import React from "react";
-import { StatusMessage } from "@mcp-ui/core/ui";
+import { StatusMessage } from "@portalai/core/ui";
 
 export interface QueryResultLike<TData = unknown> {
   data: TData | undefined;

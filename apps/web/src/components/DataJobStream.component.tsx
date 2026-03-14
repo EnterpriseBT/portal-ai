@@ -1,7 +1,7 @@
 import React from "react";
 
-import { TERMINAL_JOB_STATUSES } from "@mcp-ui/core/models";
-import type { Job } from "@mcp-ui/core/models";
+import { TERMINAL_JOB_STATUSES } from "@portalai/core/models";
+import type { Job } from "@portalai/core/models";
 
 import { JobStreamState, useJobStream } from "../utils/job-stream.util";
 

@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
-import { MenuItem, ListItemText } from "@mcp-ui/core/ui";
+import { MenuItem, ListItemText } from "@portalai/core/ui";
 
 // Mock sdk to avoid import.meta.env in api.util.ts
 jest.mock("../api/sdk", () => ({

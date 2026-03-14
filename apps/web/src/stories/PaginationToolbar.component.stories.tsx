@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
-import { Box } from "@mcp-ui/core/ui";
+import { Box } from "@portalai/core/ui";
 import {
   PaginationToolbar,
   usePagination,

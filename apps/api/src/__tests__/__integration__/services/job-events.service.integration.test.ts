@@ -16,7 +16,7 @@ import {
 } from "@jest/globals";
 import Redis from "ioredis";
 
-import type { JobUpdateEvent } from "@mcp-ui/core/contracts";
+import type { JobUpdateEvent } from "@portalai/core/contracts";
 
 // ── Shared Redis URL for tests ───────────────────────────────────────────
 

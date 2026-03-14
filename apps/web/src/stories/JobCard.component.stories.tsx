@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import type { Job } from "@mcp-ui/core/models";
+import type { Job } from "@portalai/core/models";
 
 import { JobCard } from "../components/Job.component";
 

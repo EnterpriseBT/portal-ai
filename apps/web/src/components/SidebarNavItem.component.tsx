@@ -8,7 +8,7 @@ import {
   Collapse,
   List,
   ClickAwayListener,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 import { useLayout } from "../utils";
 
 export interface SidebarNavChildItem {

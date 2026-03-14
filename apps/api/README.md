@@ -1,6 +1,6 @@
-# MCP UI API
+# Portal.ai API
 
-Express API server for the MCP UI application with Auth0 JWT authentication.
+Express API server for the Portal.ai application with Auth0 JWT authentication.
 
 ## Features
 
@@ -156,7 +156,7 @@ src/
 
 ## Database Schema Workflow
 
-This project enforces a **dual-schema** approach — hand-written Zod models in `@mcp-ui/core` and Drizzle table definitions in the API. Compile-time type assertions guarantee they never drift apart.
+This project enforces a **dual-schema** approach — hand-written Zod models in `@portalai/core` and Drizzle table definitions in the API. Compile-time type assertions guarantee they never drift apart.
 
 | Layer | Location | Purpose |
 |---|---|---|
@@ -165,7 +165,7 @@ This project enforces a **dual-schema** approach — hand-written Zod models in 
 
 ### Creating a New Table
 
-#### 1. Define the Zod model in `@mcp-ui/core`
+#### 1. Define the Zod model in `@portalai/core`
 
 Create `packages/core/src/models/foo.model.ts`:
 
@@ -218,7 +218,7 @@ export type FooInsert = z.infer<typeof FooInsertSchema>;
 Add assertions in `apps/api/src/db/schema/type-checks.ts`:
 
 ```typescript
-import type { Foo } from "@mcp-ui/core/models";
+import type { Foo } from "@portalai/core/models";
 import type { FooSelect } from "./zod.js";
 
 type _FooDrizzleToModel = IsAssignable<FooSelect, Foo>;
@@ -250,7 +250,7 @@ npm run db:push        # pushes schema directly (dev convenience)
 ### How the Safety Net Works
 
 ```
-  @mcp-ui/core                          apps/api
+  @portalai/core                          apps/api
   ┌──────────────┐                     ┌──────────────────┐
   │ UserSchema   │◄── IsAssignable ──►│ UserSelectSchema  │
   │ (Zod)        │    (type-checks.ts) │ (drizzle-zod)     │

@@ -8,7 +8,7 @@ import {
   ListItemIcon,
   ListItemText,
   type ThemeName,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 import { usePersistedTheme } from "../utils";
 
 export interface ThemeConfig {

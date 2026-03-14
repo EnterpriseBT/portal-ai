@@ -1,8 +1,8 @@
-import { User } from "@mcp-ui/core/models";
+import { User } from "@portalai/core/models";
 import {
   OrganizationModelFactory,
   OrganizationUserModelFactory,
-} from "@mcp-ui/core/models";
+} from "@portalai/core/models";
 import { eq, desc, and, isNull } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { db } from "../db/client.js";

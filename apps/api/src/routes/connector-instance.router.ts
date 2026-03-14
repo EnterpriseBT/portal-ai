@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
-import { ConnectorInstanceModelFactory } from "@mcp-ui/core/models";
+import { ConnectorInstanceModelFactory } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -13,7 +13,7 @@ import {
   ConnectorInstanceCreateRequestBodySchema,
   type ConnectorInstanceCreateResponsePayload,
   type ConnectorInstanceApi,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 

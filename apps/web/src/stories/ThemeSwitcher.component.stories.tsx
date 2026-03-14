@@ -4,7 +4,7 @@ import {
   type ThemeConfig,
 } from "../components/ThemeSwitcher.component";
 import { fn } from "@storybook/test";
-import { Box, IconName } from "@mcp-ui/core/ui";
+import { Box, IconName } from "@portalai/core/ui";
 
 const defaultThemes: ThemeConfig[] = [
   {

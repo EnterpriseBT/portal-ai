@@ -1,17 +1,17 @@
-# MCP UI
+# Portal.ai
 
 ## Overview
 
-MCP UI is a Turborepo monorepo for displaying dynamic UI content from a Model-Controller-Presenter architecture. It consists of a React frontend, an Express API server, a shared component/model library, and a JSON-Render registry for dynamic UI catalogs.
+Portal.ai is a Turborepo monorepo for displaying dynamic UI content from a Model-Controller-Presenter architecture. It consists of a React frontend, an Express API server, a shared component/model library, and a JSON-Render registry for dynamic UI catalogs.
 
 ## Monorepo Structure
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@mcp-ui/web` | `apps/web/` | Vite + React 19 frontend with Auth0, TanStack Router/Query, MUI |
-| `@mcp-ui/api` | `apps/api/` | Express + TypeScript API with Auth0 JWT, Drizzle ORM, PostgreSQL |
-| `@mcp-ui/core` | `packages/core/` | Shared UI components, MUI themes, Zod domain models, utilities |
-| `@mcp-ui/registry` | `packages/registry/` | Dynamic UI catalog registry using @json-render |
+| `@portalai/web` | `apps/web/` | Vite + React 19 frontend with Auth0, TanStack Router/Query, MUI |
+| `@portalai/api` | `apps/api/` | Express + TypeScript API with Auth0 JWT, Drizzle ORM, PostgreSQL |
+| `@portalai/core` | `packages/core/` | Shared UI components, MUI themes, Zod domain models, utilities |
+| `@portalai/registry` | `packages/registry/` | Dynamic UI catalog registry using @json-render |
 
 ## Key Scripts
 
@@ -64,7 +64,7 @@ Organize imports in this order (separated by blank lines):
 
 1. React and React-related libraries
 2. Third-party libraries (`@mui`, `@tanstack`, `@auth0`, `zod`, etc.)
-3. Monorepo packages (`@mcp-ui/core`, `@mcp-ui/registry`)
+3. Monorepo packages (`@portalai/core`, `@portalai/registry`)
 4. Local components and utilities (relative imports)
 5. Types, interfaces, styles, and assets
 
@@ -95,7 +95,7 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 
 ## Database Schema Workflow (Dual-Schema)
 
-This project enforces a dual-schema approach — Zod models in `@mcp-ui/core` and Drizzle tables in the API. Compile-time type assertions prevent drift.
+This project enforces a dual-schema approach — Zod models in `@portalai/core` and Drizzle tables in the API. Compile-time type assertions prevent drift.
 
 ### Adding a new table
 
@@ -142,7 +142,7 @@ TanStack Router with file-based routing in `apps/web/src/routes/`. Route tree au
 
 ## Theming
 
-Three themes via `@mcp-ui/core`: Brand (default), Light, Dark. Persisted in localStorage. Fonts: Noto Sans (body), Playfair Display (headings), Cutive Mono (monospace).
+Three themes via `@portalai/core`: Brand (default), Light, Dark. Persisted in localStorage. Fonts: Noto Sans (body), Playfair Display (headings), Cutive Mono (monospace).
 
 ## Registry (packages/registry)
 

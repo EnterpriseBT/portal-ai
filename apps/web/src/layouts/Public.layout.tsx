@@ -1,6 +1,6 @@
 import React from "react";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
-import { AppBar, Box, ButtonGroup, Toolbar, Typography } from "@mcp-ui/core/ui";
+import { AppBar, Box, ButtonGroup, Toolbar, Typography } from "@portalai/core/ui";
 import { Link } from "@tanstack/react-router";
 
 export const PublicLayout = ({ children }: { children: React.ReactNode }) => {
@@ -10,7 +10,7 @@ export const PublicLayout = ({ children }: { children: React.ReactNode }) => {
         <Toolbar sx={{ justifyContent: "space-between" }}>
           <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
             <Typography variant="h6" color="inherit">
-              MCP UI
+              Portal.ai
             </Typography>
           </Link>
           <ButtonGroup>

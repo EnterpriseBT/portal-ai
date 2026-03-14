@@ -5,7 +5,7 @@ import {
   Divider,
   ClickAwayListener,
   IconName,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 import { useLayout } from "../utils";
 import { SidebarNavItem } from "./SidebarNavItem.component";
 import { useRouter } from "@tanstack/react-router";

@@ -1,5 +1,5 @@
-import { Box, Stack, Typography } from "@mcp-ui/core/ui";
-import type { JobListRequestQuery } from "@mcp-ui/core/contracts";
+import { Box, Stack, Typography } from "@portalai/core/ui";
+import type { JobListRequestQuery } from "@portalai/core/contracts";
 
 import { DataJobStream } from "../components/DataJobStream.component";
 import DataResult from "../components/DataResult.component";

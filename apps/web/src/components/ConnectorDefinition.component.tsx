@@ -2,11 +2,11 @@ import {
   ConnectorDefinitionGetResponsePayload,
   ConnectorDefinitionListRequestQuery,
   ConnectorDefinitionListResponsePayload,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 import React from "react";
 import { sdk } from "../api/sdk";
 import { UseQueryResult } from "@tanstack/react-query";
-import { ConnectorDefinition } from "@mcp-ui/core/models";
+import { ConnectorDefinition } from "@portalai/core/models";
 import { ApiError } from "../utils";
 import {
   Avatar,
@@ -15,7 +15,7 @@ import {
   CardContent,
   Stack,
   Typography,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 
 export interface ConnectorDefinitionDataListProps {

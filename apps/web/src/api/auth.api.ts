@@ -1,5 +1,5 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import type { Auth0UserProfileGetResponse } from "@mcp-ui/core/contracts";
+import type { Auth0UserProfileGetResponse } from "@portalai/core/contracts";
 import { useAuthQuery } from "../utils/api.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";

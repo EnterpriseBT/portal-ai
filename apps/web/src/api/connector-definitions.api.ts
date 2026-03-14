@@ -2,7 +2,7 @@ import type {
   ConnectorDefinitionGetResponsePayload,
   ConnectorDefinitionListRequestQuery,
   ConnectorDefinitionListResponsePayload,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 import { useAuthQuery } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";

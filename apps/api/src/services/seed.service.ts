@@ -1,4 +1,4 @@
-import { ConnectorDefinition, CSVConnectorDefinitionModelFactory } from "@mcp-ui/core/models";
+import { ConnectorDefinition, CSVConnectorDefinitionModelFactory } from "@portalai/core/models";
 import { DbClient } from "../db/index.js";
 import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";

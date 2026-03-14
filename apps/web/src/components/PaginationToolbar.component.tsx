@@ -23,7 +23,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import IconButton from "@mui/material/IconButton";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
-import { Button, Typography } from "@mcp-ui/core/ui";
+import { Button, Typography } from "@portalai/core/ui";
 
 // --- Configuration Types ---
 

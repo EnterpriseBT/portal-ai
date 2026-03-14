@@ -6,7 +6,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import {
   Auth0UserProfileGetResponse,
   Auth0UserProfileSchema,
-} from "@mcp-ui/core/contracts";
+} from "@portalai/core/contracts";
 import { usersRepo } from "../db/repositories/users.repository.js";
 
 const logger = createLogger({ module: "profile" });

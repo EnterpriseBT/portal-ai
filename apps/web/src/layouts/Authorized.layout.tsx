@@ -1,4 +1,4 @@
-import { AppBar, Box, ButtonGroup, Toolbar, Typography } from "@mcp-ui/core/ui";
+import { AppBar, Box, ButtonGroup, Toolbar, Typography } from "@portalai/core/ui";
 import { HeaderMenu } from "../components/HeaderMenu.component";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
 import React from "react";
@@ -34,7 +34,7 @@ export const AuthorizedLayout = ({
               }}
             >
               <Typography variant="h5" color="inherit" margin="auto">
-                MCP UI
+                Portal.ai
               </Typography>
             </Link>
           </ButtonGroup>

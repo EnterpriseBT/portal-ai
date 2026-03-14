@@ -55,7 +55,9 @@ const sortFields: SortFieldConfig[] = [
   { field: "display", label: "Name" },
 ];
 
-function makeProps(overrides: Partial<PaginationToolbarProps> = {}): PaginationToolbarProps {
+function makeProps(
+  overrides: Partial<PaginationToolbarProps> = {}
+): PaginationToolbarProps {
   return {
     search: "",
     onSearchChange: jest.fn(),
@@ -97,7 +99,7 @@ describe("usePagination", () => {
       expect(result.current.sortBy).toBe("created");
       expect(result.current.sortOrder).toBe("asc");
       expect(result.current.offset).toBe(0);
-      expect(result.current.limit).toBe(20);
+      expect(result.current.limit).toBe(10);
       expect(result.current.total).toBe(0);
     });
 
@@ -165,7 +167,7 @@ describe("usePagination", () => {
       const { result } = renderHook(() => usePagination());
 
       expect(result.current.queryParams).toEqual({
-        limit: 20,
+        limit: 10,
         offset: 0,
         sortBy: "created",
         sortOrder: "asc",
@@ -386,7 +388,9 @@ describe("PaginationToolbar", () => {
       // The close icon button should be present
       const input = screen.getByPlaceholderText("Search...");
       const container = input.closest(".MuiTextField-root")!;
-      expect(within(container as HTMLElement).getByTestId("CloseIcon")).toBeInTheDocument();
+      expect(
+        within(container as HTMLElement).getByTestId("CloseIcon")
+      ).toBeInTheDocument();
     });
 
     it("should not show clear button when search is empty", () => {
@@ -462,7 +466,10 @@ describe("PaginationToolbar", () => {
       const user = userEvent.setup();
       render(
         <PaginationToolbar
-          {...makeProps({ filterConfigs: [booleanFilter], onFilterValueChange })}
+          {...makeProps({
+            filterConfigs: [booleanFilter],
+            onFilterValueChange,
+          })}
         />
       );
 
@@ -685,7 +692,9 @@ describe("PaginationToolbar", () => {
         />
       );
 
-      await user.click(screen.getByTestId("ChevronLeftIcon").closest("button")!);
+      await user.click(
+        screen.getByTestId("ChevronLeftIcon").closest("button")!
+      );
       expect(onPrev).toHaveBeenCalledTimes(1);
     });
 
@@ -698,7 +707,9 @@ describe("PaginationToolbar", () => {
         />
       );
 
-      await user.click(screen.getByTestId("ChevronRightIcon").closest("button")!);
+      await user.click(
+        screen.getByTestId("ChevronRightIcon").closest("button")!
+      );
       expect(onNext).toHaveBeenCalledTimes(1);
     });
 

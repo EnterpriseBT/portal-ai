@@ -1,18 +1,18 @@
-# @mcp-ui/core
+# @portalai/core
 
-Core React component library for MCP UI with Material-UI integration.
+Core React component library for Portal.ai with Material-UI integration.
 
 ## Installation
 
 ```bash
-npm install @mcp-ui/core
+npm install @portalai/core
 ```
 
 ## Quick Start
 
 ```tsx
-import { ThemeProvider, Button } from '@mcp-ui/core';
-import '@mcp-ui/core/styles';
+import { ThemeProvider, Button } from '@portalai/core';
+import '@portalai/core/styles';
 
 function App() {
   return (
@@ -30,7 +30,7 @@ function App() {
 Import the pre-compiled CSS to get custom fonts and global styles:
 
 ```tsx
-import '@mcp-ui/core/styles';
+import '@portalai/core/styles';
 ```
 
 ## Models
@@ -107,8 +107,8 @@ export * from "./widget.model.js";
 #### 5. Usage
 
 ```ts
-import { DateFactory } from "@mcp-ui/core/utils";
-import { BaseModelFactory, WidgetModelFactory } from "@mcp-ui/core/models";
+import { DateFactory } from "@portalai/core/utils";
+import { BaseModelFactory, WidgetModelFactory } from "@portalai/core/models";
 
 const dateFactory    = new DateFactory("America/New_York");
 const baseFactory    = new BaseModelFactory({ dateFactory });

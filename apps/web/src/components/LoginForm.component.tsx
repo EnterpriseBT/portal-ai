@@ -10,7 +10,7 @@ import {
   Button,
   Icon,
   IconName,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 
 export interface LoginFormUIProps {
   onClickGoogleLogin: () => void;

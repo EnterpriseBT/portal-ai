@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import type { QueryResultLike } from "../components/DataResult.component";
-import type { HealthGetResponse } from "@mcp-ui/core/contracts";
+import type { HealthGetResponse } from "@portalai/core/contracts";
 
 const makeQuery = (
   overrides: Partial<QueryResultLike<HealthGetResponse>> = {}

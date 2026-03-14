@@ -1,5 +1,5 @@
 import { LoginForm } from "../components/LoginForm.component";
-import { Box } from "@mcp-ui/core/ui";
+import { Box } from "@portalai/core/ui";
 
 export const LoginView = () => {
   return (

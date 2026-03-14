@@ -33,12 +33,12 @@ export default {
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "\\.svg$": "<rootDir>/src/__tests__/__mocks__/svgMock.tsx",
     "\\.css$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",
-    // Map @mcp-ui/core to the TypeScript source so ts-jest can transform it
-    "^@mcp-ui/core/styles$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",
-    "^@mcp-ui/core/ui$": "<rootDir>/../../packages/core/src/ui/index.ts",
-    "^@mcp-ui/core/models$": "<rootDir>/../../packages/core/src/models/index.ts",
-    "^@mcp-ui/core/contracts$": "<rootDir>/../../packages/core/src/contracts/index.ts",
-    "^@mcp-ui/core$": "<rootDir>/../../packages/core/src/index.ts",
+    // Map @portalai/core to the TypeScript source so ts-jest can transform it
+    "^@portalai/core/styles$": "<rootDir>/src/__tests__/__mocks__/styleMock.js",
+    "^@portalai/core/ui$": "<rootDir>/../../packages/core/src/ui/index.ts",
+    "^@portalai/core/models$": "<rootDir>/../../packages/core/src/models/index.ts",
+    "^@portalai/core/contracts$": "<rootDir>/../../packages/core/src/contracts/index.ts",
+    "^@portalai/core$": "<rootDir>/../../packages/core/src/index.ts",
     // Force CJS build of uuid (jsdom env resolves to ESM browser build which Jest can't parse)
     "^uuid$": "<rootDir>/../../node_modules/uuid/dist/index.js",
   },

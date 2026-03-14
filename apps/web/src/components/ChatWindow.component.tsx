@@ -6,7 +6,7 @@ import {
   IconButton,
   IconName,
   Icon,
-} from "@mcp-ui/core/ui";
+} from "@portalai/core/ui";
 import { TextField, Tooltip } from "@mui/material";
 import { useLayout } from "../utils/layout.util";
 

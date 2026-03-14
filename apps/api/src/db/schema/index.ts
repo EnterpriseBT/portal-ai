@@ -11,6 +11,6 @@ export * from "./zod.js";
 
 /**
  * Type-checks — importing this module is a no-op at runtime but
- * causes a compile error if Drizzle schemas drift from @mcp-ui/core.
+ * causes a compile error if Drizzle schemas drift from @portalai/core.
  */
 import "./type-checks.js";

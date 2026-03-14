@@ -24,7 +24,7 @@ The test database is automatically cleaned and migrated before each test run.
 ## How It Works
 
 1. **Setup** ([setup.ts](./setup.ts)):
-   - Connects to the `postgres-test` container (postgresql://postgres-test:5432/mcp_ui_test)
+   - Connects to the `postgres-test` container (postgresql://postgres-test:5432/portal_ai_test)
    - Truncates all existing tables
    - Runs all Drizzle migrations from `/drizzle`
 2. **Tests**: Integration tests run against the real database, testing actual SQL queries
@@ -89,7 +89,7 @@ postgres-test:
   ports:
     - "5433:5432"  # Exposed on host as localhost:5433
   environment:
-    POSTGRES_DB: mcp_ui_test
+    POSTGRES_DB: portal_ai_test
   tmpfs:
     - /var/lib/postgresql/data  # In-memory for speed
 ```
@@ -119,5 +119,5 @@ If migrations fail, ensure:
 If running tests from outside the dev container, override the database URL:
 
 ```bash
-INTEGRATION_TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5433/mcp_ui_test" npm run test:integration
+INTEGRATION_TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5433/portal_ai_test" npm run test:integration
 ```
