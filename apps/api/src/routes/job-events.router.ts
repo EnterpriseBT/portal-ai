@@ -85,11 +85,13 @@ jobEventsRouter.get(
       }
 
       // 3. Subscribe to live updates via Redis Pub/Sub
+      let cleaned = false;
       const unsubscribe = JobEventsService.subscribe(jobId, (event) => {
         sse.send("update", event);
 
         // Close stream when job reaches terminal state
-        if (TERMINAL_JOB_STATUSES.includes(event.status)) {
+        if (TERMINAL_JOB_STATUSES.includes(event.status) && !cleaned) {
+          cleaned = true;
           unsubscribe();
           sse.end();
         }
@@ -97,7 +99,10 @@ jobEventsRouter.get(
 
       // 4. Cleanup on client disconnect
       req.on("close", () => {
-        unsubscribe();
+        if (!cleaned) {
+          cleaned = true;
+          unsubscribe();
+        }
       });
     } catch (error) {
       logger.error(

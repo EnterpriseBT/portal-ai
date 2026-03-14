@@ -3,10 +3,16 @@
  *
  * Persists state changes to PostgreSQL and broadcasts events via Redis Pub/Sub
  * so that SSE clients can receive real-time updates.
+ *
+ * Uses a single shared Redis subscriber connection for all job event
+ * subscriptions, with per-channel listener tracking. Channels are
+ * automatically subscribed/unsubscribed as listeners are added/removed.
  */
 
 import type { JobStatus } from "@mcp-ui/core/models";
 import type { JobUpdateEvent } from "@mcp-ui/core/contracts";
+
+import type { Redis } from "ioredis";
 
 import { getRedisClient } from "../utils/redis.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -16,6 +22,39 @@ import { DbService } from "./db.service.js";
 const logger = createLogger({ module: "job-events" });
 
 const JOB_CHANNEL_PREFIX = "job:events:";
+
+// ---------------------------------------------------------------------------
+// Shared subscriber — one Redis connection for all job event subscriptions
+// ---------------------------------------------------------------------------
+
+type EventCallback = (event: JobUpdateEvent) => void;
+
+let sharedSubscriber: Redis | null = null;
+const channelListeners = new Map<string, Set<EventCallback>>();
+
+function getSharedSubscriber(): Redis {
+  if (!sharedSubscriber) {
+    sharedSubscriber = getRedisClient().duplicate();
+    sharedSubscriber.on("error", (err) => {
+      logger.warn({ err }, "Shared Redis subscriber error");
+    });
+    sharedSubscriber.on("message", (channel: string, message: string) => {
+      const listeners = channelListeners.get(channel);
+      if (!listeners || listeners.size === 0) return;
+      try {
+        const event: JobUpdateEvent = JSON.parse(message);
+        for (const cb of listeners) {
+          cb(event);
+        }
+      } catch (err) {
+        logger.error({ err, channel }, "Failed to parse job event");
+      }
+    });
+  }
+  return sharedSubscriber;
+}
+
+// ---------------------------------------------------------------------------
 
 export class JobEventsService {
   /**
@@ -93,22 +132,24 @@ export class JobEventsService {
     jobId: string,
     onEvent: (event: JobUpdateEvent) => void
   ): () => void {
-    // Dedicated subscriber connection (required by Redis for pub/sub)
-    const subscriber = getRedisClient().duplicate();
     const channel = `${JOB_CHANNEL_PREFIX}${jobId}`;
+    const sub = getSharedSubscriber();
 
-    subscriber.subscribe(channel);
-    subscriber.on("message", (_ch: string, message: string) => {
-      try {
-        onEvent(JSON.parse(message));
-      } catch (err) {
-        logger.error({ err, jobId }, "Failed to parse job event");
-      }
-    });
+    // Track listener for this channel
+    let listeners = channelListeners.get(channel);
+    if (!listeners) {
+      listeners = new Set();
+      channelListeners.set(channel, listeners);
+      sub.subscribe(channel);
+    }
+    listeners.add(onEvent);
 
     return () => {
-      subscriber.unsubscribe(channel);
-      subscriber.disconnect();
+      listeners!.delete(onEvent);
+      if (listeners!.size === 0) {
+        channelListeners.delete(channel);
+        sub.unsubscribe(channel);
+      }
     };
   }
 }

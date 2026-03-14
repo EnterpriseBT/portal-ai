@@ -55,10 +55,15 @@ const formatDate = (timestamp: number | null) =>
 
 export interface JobCardProps {
   job: Job;
+  status?: JobStatus;
+  progress?: number;
 }
 
-export const JobCard = ({ job }: JobCardProps) => {
+export const JobCard = ({ job, status, progress }: JobCardProps) => {
   const router = useRouter();
+
+  const displayStatus = status ?? job.status;
+  const displayProgress = progress ?? job.progress;
 
   return (
     <Box
@@ -67,7 +72,8 @@ export const JobCard = ({ job }: JobCardProps) => {
       }
       sx={{
         display: "flex",
-        alignItems: "center",
+        flexDirection: { xs: "column", sm: "row" },
+        alignItems: { xs: "flex-start", sm: "center" },
         gap: 2,
         p: 2,
         borderRadius: 1,
@@ -77,7 +83,7 @@ export const JobCard = ({ job }: JobCardProps) => {
         borderColor: "divider",
       }}
     >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box sx={{ flex: 1, minWidth: 0, width: { xs: "100%", sm: "auto" } }}>
         <Typography variant="body1" fontWeight={600} noWrap>
           {job.type}
         </Typography>
@@ -85,11 +91,11 @@ export const JobCard = ({ job }: JobCardProps) => {
           {formatDate(job.created)}
         </Typography>
       </Box>
-      <Box sx={{ width: 200 }}>
-        {job.status === "active" ? (
-          <Progress value={job.progress} height={6} />
+      <Box sx={{ width: { xs: "100%", sm: 200 } }}>
+        {displayStatus === "active" ? (
+          <Progress value={displayProgress} height={6} />
         ) : (
-          <StatusBadge status={job.status} />
+          <StatusBadge status={displayStatus} />
         )}
       </Box>
     </Box>

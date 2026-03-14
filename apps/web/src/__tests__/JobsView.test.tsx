@@ -2,11 +2,22 @@ import { jest } from "@jest/globals";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { JobListResponsePayload } from "@mcp-ui/core/contracts";
 import type { Job } from "@mcp-ui/core/models";
+import type { JobStreamState } from "../utils/job-stream.util";
 import type { ApiError } from "../utils";
 
 type ListQuery = UseQueryResult<JobListResponsePayload, ApiError>;
 
 let currentListQuery: Partial<ListQuery> = {};
+let currentStreamState: JobStreamState = {
+  jobId: null,
+  status: null,
+  progress: 0,
+  error: null,
+  result: null,
+  startedAt: null,
+  completedAt: null,
+  connectionStatus: "idle",
+};
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -14,6 +25,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
       list: () => currentListQuery,
     },
   },
+}));
+
+jest.unstable_mockModule("../utils/job-stream.util", () => ({
+  useJobStream: () => currentStreamState,
 }));
 
 const { render, screen } = await import("./test-utils");
@@ -45,6 +60,16 @@ const makeJob = (overrides: Partial<Job> = {}): Job => ({
 describe("JobsView", () => {
   beforeEach(() => {
     currentListQuery = {};
+    currentStreamState = {
+      jobId: null,
+      status: null,
+      progress: 0,
+      error: null,
+      result: null,
+      startedAt: null,
+      completedAt: null,
+      connectionStatus: "idle",
+    };
   });
 
   it("should display the Jobs heading", () => {
@@ -127,5 +152,57 @@ describe("JobsView", () => {
     render(<JobsView />);
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
     expect(screen.getByText("45%")).toBeInTheDocument();
+  });
+
+  it("should show live stream progress for active jobs", () => {
+    const job = makeJob({ status: "active", progress: 30 });
+
+    currentListQuery = {
+      data: { jobs: [job], total: 1, limit: 20, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    currentStreamState = {
+      jobId: "job-1",
+      status: "active",
+      progress: 72,
+      error: null,
+      result: null,
+      startedAt: 1710000000000,
+      completedAt: null,
+      connectionStatus: "connected",
+    };
+
+    render(<JobsView />);
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    expect(screen.getByText("72%")).toBeInTheDocument();
+  });
+
+  it("should show updated status badge when stream reports completion", () => {
+    const job = makeJob({ status: "active", progress: 80 });
+
+    currentListQuery = {
+      data: { jobs: [job], total: 1, limit: 20, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    currentStreamState = {
+      jobId: "job-1",
+      status: "completed",
+      progress: 100,
+      error: null,
+      result: null,
+      startedAt: 1710000000000,
+      completedAt: 1710000060000,
+      connectionStatus: "closed",
+    };
+
+    render(<JobsView />);
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
   });
 });

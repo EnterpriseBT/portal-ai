@@ -5,6 +5,7 @@ import {
 } from "@mcp-ui/core/ui";
 import type { JobListRequestQuery } from "@mcp-ui/core/contracts";
 
+import { DataJobStream } from "../components/DataJobStream.component";
 import DataResult from "../components/DataResult.component";
 import { EmptyResults } from "../components/EmptyResults.component";
 import { JobCard, JobDataList } from "../components/Job.component";
@@ -71,7 +72,15 @@ export const JobsView = () => {
                   ) : (
                     <Stack spacing={1}>
                       {jobs.jobs.map((job) => (
-                        <JobCard key={job.id} job={job} />
+                        <DataJobStream key={job.id} job={job}>
+                          {(stream) => (
+                            <JobCard
+                              job={job}
+                              status={stream.status ?? undefined}
+                              progress={stream.status !== null ? stream.progress : undefined}
+                            />
+                          )}
+                        </DataJobStream>
                       ))}
                     </Stack>
                   )
