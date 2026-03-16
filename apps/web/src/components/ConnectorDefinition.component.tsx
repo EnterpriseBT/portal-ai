@@ -11,12 +11,14 @@ import { ApiError } from "../utils";
 import {
   Avatar,
   Box,
+  Button,
   Card,
   CardContent,
   Stack,
   Typography,
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import LinkIcon from "@mui/icons-material/Link";
 
 export interface ConnectorDefinitionDataListProps {
   query: ConnectorDefinitionListRequestQuery;
@@ -57,13 +59,15 @@ export const ConnectorDefinitionItem = (
   return props.children(props.connectorDefinition);
 };
 
-export interface ConnectorDefinitionCardProps {
+export interface ConnectorDefinitionCardUIProps {
   connectorDefinition: ConnectorDefinition;
+  onConnect?: (connectorDefinition: ConnectorDefinition) => void;
 }
 
-export const ConnectorDefinitionCard = ({
+export const ConnectorDefinitionCardUI = ({
   connectorDefinition: cd,
-}: ConnectorDefinitionCardProps) => {
+  onConnect,
+}: ConnectorDefinitionCardUIProps) => {
   const capabilities = (["sync", "query", "write"] as const).filter(
     (c) => cd.capabilityFlags[c]
   );
@@ -71,7 +75,11 @@ export const ConnectorDefinitionCard = ({
   return (
     <Card variant="outlined">
       <CardContent>
-        <Stack direction="row" spacing={2} alignItems="center">
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={2}
+          alignItems={{ xs: "center", sm: "center" }}
+        >
           <Avatar
             src={cd.iconUrl ?? undefined}
             alt={cd.display}
@@ -80,11 +88,12 @@ export const ConnectorDefinitionCard = ({
             {cd.display.charAt(0).toUpperCase()}
           </Avatar>
 
-          <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ flex: 1, minWidth: 0, textAlign: { xs: "center", sm: "left" } }}>
             <Stack
               direction="row"
               spacing={1}
               alignItems="center"
+              justifyContent={{ xs: "center", sm: "flex-start" }}
               flexWrap="wrap"
             >
               <Typography variant="subtitle1" noWrap>
@@ -103,13 +112,27 @@ export const ConnectorDefinitionCard = ({
             </Typography>
 
             {capabilities.length > 0 && (
-              <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+              <Stack
+                direction="row"
+                spacing={0.5}
+                justifyContent={{ xs: "center", sm: "flex-start" }}
+                sx={{ mt: 0.5 }}
+              >
                 {capabilities.map((cap) => (
                   <Chip key={cap} label={cap} size="small" variant="outlined" />
                 ))}
               </Stack>
             )}
           </Box>
+
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<LinkIcon />}
+            onClick={() => onConnect?.(cd)}
+          >
+            Connect
+          </Button>
         </Stack>
       </CardContent>
     </Card>

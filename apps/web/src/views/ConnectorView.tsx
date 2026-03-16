@@ -8,7 +8,7 @@ import {
   useTabs,
 } from "@portalai/core/ui";
 import {
-  ConnectorDefinitionCard,
+  ConnectorDefinitionCardUI,
   ConnectorDefinitionDataList,
 } from "../components/ConnectorDefinition.component";
 import DataResult from "../components/DataResult.component";
@@ -72,7 +72,7 @@ export const ConnectorView = () => {
                     ) : (
                       <Stack spacing={1}>
                         {connectorDefinitions.connectorDefinitions.map((cd) => (
-                          <ConnectorDefinitionCard
+                          <ConnectorDefinitionCardUI
                             key={cd.id}
                             connectorDefinition={cd}
                           />

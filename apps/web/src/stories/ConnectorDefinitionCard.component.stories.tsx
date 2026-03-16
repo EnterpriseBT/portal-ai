@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { fn } from "@storybook/test";
 import type { ConnectorDefinition } from "@portalai/core/models";
 import {
-  ConnectorDefinitionCard,
-  ConnectorDefinitionCardProps,
+  ConnectorDefinitionCardUI,
+  ConnectorDefinitionCardUIProps,
 } from "../components/ConnectorDefinition.component";
 
 const baseConnector: ConnectorDefinition = {
@@ -25,12 +26,15 @@ const baseConnector: ConnectorDefinition = {
 };
 
 const meta = {
-  title: "Components/ConnectorDefinitionCard",
-  component: ConnectorDefinitionCard,
+  title: "Components/ConnectorDefinitionCardUI",
+  component: ConnectorDefinitionCardUI,
   parameters: {
     layout: "centered",
   },
   tags: ["autodocs"],
+  args: {
+    onConnect: fn(),
+  },
   decorators: [
     (Story) => (
       <div style={{ width: 480 }}>
@@ -38,10 +42,10 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof ConnectorDefinitionCard>;
+} satisfies Meta<typeof ConnectorDefinitionCardUI>;
 
 export default meta;
-type Story = StoryObj<ConnectorDefinitionCardProps>;
+type Story = StoryObj<ConnectorDefinitionCardUIProps>;
 
 export const Default: Story = {
   args: {
@@ -53,7 +57,8 @@ export const WithIcon: Story = {
   args: {
     connectorDefinition: {
       ...baseConnector,
-      iconUrl: "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/salesforce.svg",
+      iconUrl:
+        "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/salesforce.svg",
     },
   },
 };
@@ -111,7 +116,8 @@ export const AllFields: Story = {
       authType: "Connection String",
       capabilityFlags: { sync: true, query: true, write: true },
       version: "3.1.4",
-      iconUrl: "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/postgresql.svg",
+      iconUrl:
+        "https://cdn.jsdelivr.net/gh/gilbarbara/logos@main/logos/postgresql.svg",
     },
   },
 };

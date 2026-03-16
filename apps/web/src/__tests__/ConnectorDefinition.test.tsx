@@ -25,15 +25,17 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, fireEvent } = await import("./test-utils");
 const {
   ConnectorDefinitionDataList,
   ConnectorDefinitionDataItem,
   ConnectorDefinitionItem,
-  ConnectorDefinitionCard,
+  ConnectorDefinitionCardUI,
 } = await import("../components/ConnectorDefinition.component");
-type ConnectorDefinitionDataListProps = import("../components/ConnectorDefinition.component").ConnectorDefinitionDataListProps;
-type ConnectorDefinitionDataItemProps = import("../components/ConnectorDefinition.component").ConnectorDefinitionDataItemProps;
+type ConnectorDefinitionDataListProps =
+  import("../components/ConnectorDefinition.component").ConnectorDefinitionDataListProps;
+type ConnectorDefinitionDataItemProps =
+  import("../components/ConnectorDefinition.component").ConnectorDefinitionDataItemProps;
 
 const makeConnectorDefinition = (
   overrides: Partial<ConnectorDefinition> = {}
@@ -69,7 +71,9 @@ describe("ConnectorDefinitionDataList", () => {
       isSuccess: true,
     } as Partial<ListQuery>;
 
-    const childrenFn = jest.fn((() => <div>list-content</div>) as ConnectorDefinitionDataListProps["children"]);
+    const childrenFn = jest.fn((() => (
+      <div>list-content</div>
+    )) as ConnectorDefinitionDataListProps["children"]);
     render(
       <ConnectorDefinitionDataList
         query={{ limit: 20, offset: 0, sortBy: "created", sortOrder: "asc" }}
@@ -95,7 +99,9 @@ describe("ConnectorDefinitionDataItem", () => {
       isSuccess: true,
     } as Partial<GetQuery>;
 
-    const childrenFn = jest.fn((() => <div>item-content</div>) as ConnectorDefinitionDataItemProps["children"]);
+    const childrenFn = jest.fn((() => (
+      <div>item-content</div>
+    )) as ConnectorDefinitionDataItemProps["children"]);
     render(
       <ConnectorDefinitionDataItem id="cd-1">
         {childrenFn}
@@ -125,10 +131,10 @@ describe("ConnectorDefinitionItem", () => {
   });
 });
 
-describe("ConnectorDefinitionCard", () => {
+describe("ConnectorDefinitionCardUI", () => {
   it("should render display name", () => {
     const cd = makeConnectorDefinition({ display: "PostgreSQL" });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText("PostgreSQL")).toBeInTheDocument();
   });
 
@@ -138,7 +144,7 @@ describe("ConnectorDefinitionCard", () => {
       authType: "password",
       version: "2.0.0",
     });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText(/Database/)).toBeInTheDocument();
     expect(screen.getByText(/password/)).toBeInTheDocument();
     expect(screen.getByText(/v2\.0\.0/)).toBeInTheDocument();
@@ -146,13 +152,13 @@ describe("ConnectorDefinitionCard", () => {
 
   it("should show Active chip when isActive is true", () => {
     const cd = makeConnectorDefinition({ isActive: true });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText("Active")).toBeInTheDocument();
   });
 
   it("should show Inactive chip when isActive is false", () => {
     const cd = makeConnectorDefinition({ isActive: false });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText("Inactive")).toBeInTheDocument();
   });
 
@@ -160,7 +166,7 @@ describe("ConnectorDefinitionCard", () => {
     const cd = makeConnectorDefinition({
       capabilityFlags: { sync: true, query: true, write: true },
     });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText("sync")).toBeInTheDocument();
     expect(screen.getByText("query")).toBeInTheDocument();
     expect(screen.getByText("write")).toBeInTheDocument();
@@ -170,7 +176,7 @@ describe("ConnectorDefinitionCard", () => {
     const cd = makeConnectorDefinition({
       capabilityFlags: { sync: false, query: false, write: false },
     });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.queryByText("sync")).not.toBeInTheDocument();
     expect(screen.queryByText("query")).not.toBeInTheDocument();
     expect(screen.queryByText("write")).not.toBeInTheDocument();
@@ -180,7 +186,7 @@ describe("ConnectorDefinitionCard", () => {
     const cd = makeConnectorDefinition({
       capabilityFlags: { sync: true, query: false, write: true },
     });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText("sync")).toBeInTheDocument();
     expect(screen.queryByText("query")).not.toBeInTheDocument();
     expect(screen.getByText("write")).toBeInTheDocument();
@@ -191,7 +197,7 @@ describe("ConnectorDefinitionCard", () => {
       iconUrl: "https://example.com/icon.png",
       display: "PostgreSQL",
     });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     const avatar = screen.getByAltText("PostgreSQL");
     expect(avatar).toHaveAttribute("src", "https://example.com/icon.png");
   });
@@ -201,7 +207,31 @@ describe("ConnectorDefinitionCard", () => {
       iconUrl: null,
       display: "PostgreSQL",
     });
-    render(<ConnectorDefinitionCard connectorDefinition={cd} />);
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText("P")).toBeInTheDocument();
+  });
+
+  it("should render Connect button", () => {
+    const cd = makeConnectorDefinition();
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
+    expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
+  });
+
+  it("should call onConnect with connector definition when Connect is clicked", () => {
+    const cd = makeConnectorDefinition();
+    const onConnect = jest.fn();
+    render(
+      <ConnectorDefinitionCardUI connectorDefinition={cd} onConnect={onConnect} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(onConnect).toHaveBeenCalledWith(cd);
+  });
+
+  it("should not throw when Connect is clicked without onConnect handler", () => {
+    const cd = makeConnectorDefinition();
+    render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "Connect" }))
+    ).not.toThrow();
   });
 });
