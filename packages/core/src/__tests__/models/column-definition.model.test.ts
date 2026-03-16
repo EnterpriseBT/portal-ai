@@ -53,6 +53,7 @@ describe("ColumnDataTypeEnum", () => {
     "json",
     "array",
     "reference",
+    "currency",
   ])("should accept '%s' as a valid type", (type) => {
     const result = ColumnDataTypeEnum.safeParse(type);
     expect(result.success).toBe(true);

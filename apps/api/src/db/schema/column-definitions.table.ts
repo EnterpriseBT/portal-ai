@@ -12,6 +12,7 @@ export const columnDataTypeEnum = pgEnum("column_data_type", [
   "json",
   "array",
   "reference",
+  "currency",
 ]);
 
 /**

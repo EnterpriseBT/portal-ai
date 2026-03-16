@@ -39,7 +39,7 @@ organizations
 ```ts
 export const ColumnDataType = z.enum([
   "string", "number", "boolean", "date", "datetime",
-  "enum", "json", "array", "reference",
+  "enum", "json", "array", "reference", "currency",
 ]);
 
 export const ColumnDefinitionSchema = CoreSchema.extend({
