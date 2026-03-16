@@ -36,7 +36,7 @@ export class SeedService {
             write: false,
           },
           version: "1.0.0",
-          iconUrl: null,
+          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1773338114/CSV_Icons_oad8ko.png',
         }).parse()
 
       // Add more connectors as needed
