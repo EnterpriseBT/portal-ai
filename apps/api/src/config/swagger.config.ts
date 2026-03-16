@@ -541,6 +541,187 @@ const options: swaggerJsdoc.Options = {
             },
           },
         },
+        ColumnDefinition: {
+          type: "object",
+          required: [
+            "id",
+            "organizationId",
+            "key",
+            "label",
+            "type",
+            "required",
+            "created",
+            "createdBy",
+          ],
+          properties: {
+            id: { type: "string" },
+            organizationId: { type: "string" },
+            key: { type: "string", example: "email" },
+            label: { type: "string", example: "Email Address" },
+            type: {
+              type: "string",
+              enum: [
+                "string",
+                "number",
+                "boolean",
+                "date",
+                "datetime",
+                "enum",
+                "json",
+                "array",
+                "reference",
+                "currency",
+              ],
+            },
+            required: { type: "boolean" },
+            defaultValue: { type: "string", nullable: true },
+            format: { type: "string", nullable: true },
+            enumValues: {
+              type: "array",
+              items: { type: "string" },
+              nullable: true,
+            },
+            description: { type: "string", nullable: true },
+            refColumnDefinitionId: { type: "string", nullable: true },
+            refEntityKey: { type: "string", nullable: true },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        ColumnDefinitionListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["columnDefinitions"],
+              properties: {
+                columnDefinitions: {
+                  type: "array",
+                  items: {
+                    $ref: "#/components/schemas/ColumnDefinition",
+                  },
+                },
+              },
+            },
+          ],
+        },
+        ColumnDefinitionGetResponse: {
+          type: "object",
+          required: ["columnDefinition"],
+          properties: {
+            columnDefinition: {
+              $ref: "#/components/schemas/ColumnDefinition",
+            },
+          },
+        },
+        ConnectorEntity: {
+          type: "object",
+          required: [
+            "id",
+            "organizationId",
+            "connectorInstanceId",
+            "key",
+            "label",
+            "created",
+            "createdBy",
+          ],
+          properties: {
+            id: { type: "string" },
+            organizationId: { type: "string" },
+            connectorInstanceId: { type: "string" },
+            key: { type: "string", example: "contacts" },
+            label: { type: "string", example: "Contacts" },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        ConnectorEntityListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["connectorEntities"],
+              properties: {
+                connectorEntities: {
+                  type: "array",
+                  items: {
+                    $ref: "#/components/schemas/ConnectorEntity",
+                  },
+                },
+              },
+            },
+          ],
+        },
+        ConnectorEntityGetResponse: {
+          type: "object",
+          required: ["connectorEntity"],
+          properties: {
+            connectorEntity: {
+              $ref: "#/components/schemas/ConnectorEntity",
+            },
+          },
+        },
+        FieldMapping: {
+          type: "object",
+          required: [
+            "id",
+            "organizationId",
+            "connectorEntityId",
+            "columnDefinitionId",
+            "sourceField",
+            "isPrimaryKey",
+            "created",
+            "createdBy",
+          ],
+          properties: {
+            id: { type: "string" },
+            organizationId: { type: "string" },
+            connectorEntityId: { type: "string" },
+            columnDefinitionId: { type: "string" },
+            sourceField: { type: "string", example: "account_name" },
+            isPrimaryKey: { type: "boolean" },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        FieldMappingListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["fieldMappings"],
+              properties: {
+                fieldMappings: {
+                  type: "array",
+                  items: {
+                    $ref: "#/components/schemas/FieldMapping",
+                  },
+                },
+              },
+            },
+          ],
+        },
+        FieldMappingGetResponse: {
+          type: "object",
+          required: ["fieldMapping"],
+          properties: {
+            fieldMapping: {
+              $ref: "#/components/schemas/FieldMapping",
+            },
+          },
+        },
       },
     },
     tags: [
@@ -557,8 +738,24 @@ const options: swaggerJsdoc.Options = {
         description: "Connector definition management endpoints",
       },
       {
+        name: "Connector Instances",
+        description: "Connector instance management endpoints",
+      },
+      {
         name: "Jobs",
         description: "Background job management endpoints",
+      },
+      {
+        name: "Column Definitions",
+        description: "Organization-level column definition management endpoints",
+      },
+      {
+        name: "Connector Entities",
+        description: "Connector entity management endpoints",
+      },
+      {
+        name: "Field Mappings",
+        description: "Field mapping management endpoints",
       },
     ],
   },

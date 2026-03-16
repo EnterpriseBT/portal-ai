@@ -10,6 +10,7 @@ import {
 
 const validConnectorEntity = {
   id: "ce-1",
+  organizationId: "org-1",
   connectorInstanceId: "ci-1",
   key: "contacts",
   label: "Contacts",
@@ -41,14 +42,13 @@ describe("ConnectorEntityListRequestQuerySchema", () => {
     expect(result.sortOrder).toBe("asc");
   });
 
-  it("should reject missing connectorInstanceId", () => {
+  it("should accept a query without connectorInstanceId", () => {
     const result = ConnectorEntityListRequestQuerySchema.safeParse({});
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("should cap limit at 100", () => {
     const result = ConnectorEntityListRequestQuerySchema.parse({
-      connectorInstanceId: "ci-1",
       limit: "999",
     });
     expect(result.limit).toBe(100);

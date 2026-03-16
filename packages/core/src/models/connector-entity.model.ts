@@ -12,6 +12,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
  * `apps/api/src/db/schema/zod.ts`.
  */
 export const ConnectorEntitySchema = CoreSchema.extend({
+  organizationId: z.string(),
   connectorInstanceId: z.string(),
   key: z.string().regex(/^[a-z][a-z0-9_]*$/),
   label: z.string(),

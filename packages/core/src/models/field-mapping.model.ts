@@ -12,6 +12,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
  * `apps/api/src/db/schema/zod.ts`.
  */
 export const FieldMappingSchema = CoreSchema.extend({
+  organizationId: z.string(),
   connectorEntityId: z.string(),
   columnDefinitionId: z.string(),
   sourceField: z.string(),

@@ -120,6 +120,13 @@
       "when": 1773692275198,
       "tag": "0016_add_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1773695427557,
+      "tag": "0017_add-organization-id-to-connector-entities",
+      "breakpoints": true
     }
   ]
 }

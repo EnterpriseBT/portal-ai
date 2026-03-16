@@ -6,7 +6,7 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 // ── List ──────────────────────────────────────────────────────────────
 
 export const ConnectorEntityListRequestQuerySchema = PaginationRequestQuerySchema.extend({
-  connectorInstanceId: z.string(),
+  connectorInstanceId: z.string().optional(),
 });
 
 export type ConnectorEntityListRequestQuery = z.infer<typeof ConnectorEntityListRequestQuerySchema>;

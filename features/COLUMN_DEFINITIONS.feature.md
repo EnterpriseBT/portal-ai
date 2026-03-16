@@ -228,14 +228,14 @@ References are a property of *what the data means*, not *where it comes from*. "
   - Request schema validation (required fields, pagination defaults, sort options)
   - Response schema shape matches expected structure
 
-### 6. API Routes (`apps/api/src/routes/`)
+### 6. API Routes (`apps/api/src/routes/`) ✅
 
-- [ ] Create `column-definition.router.ts` — CRUD endpoints scoped to organization
-- [ ] Create `connector-entity.router.ts` — CRUD endpoints scoped to connector instance
-- [ ] Create `field-mapping.router.ts` — CRUD endpoints scoped to connector entity
-- [ ] Register routes in main router
-- [ ] Add error codes to `ApiCode` enum
-- [ ] Write integration tests for each router:
+- [x] Create `column-definition.router.ts` — CRUD endpoints scoped to organization
+- [x] Create `connector-entity.router.ts` — CRUD endpoints scoped to connector instance
+- [x] Create `field-mapping.router.ts` — CRUD endpoints scoped to connector entity
+- [x] Register routes in main router
+- [x] Add error codes to `ApiCode` enum
+- [x] Write integration tests for each router:
   - Happy path for each endpoint (list, get, create, update, delete)
   - 404 for missing resources
   - 400/422 for invalid request bodies

@@ -13,6 +13,9 @@ import {
   connectorDefinitionsRepo,
   connectorInstancesRepo,
   jobsRepo,
+  columnDefinitionsRepo,
+  connectorEntitiesRepo,
+  fieldMappingsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -70,6 +73,9 @@ export class DbService {
       connectorDefinitions: connectorDefinitionsRepo,
       connectorInstances: connectorInstancesRepo,
       jobs: jobsRepo,
+      columnDefinitions: columnDefinitionsRepo,
+      connectorEntities: connectorEntitiesRepo,
+      fieldMappings: fieldMappingsRepo,
     };
   }
 }

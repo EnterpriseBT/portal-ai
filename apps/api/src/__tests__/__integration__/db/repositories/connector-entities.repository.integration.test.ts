@@ -24,6 +24,7 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
   let db!: DbClient;
   let repo: ConnectorEntitiesRepository;
   let connectorInstanceId: string;
+  let orgId: string;
 
   beforeEach(async () => {
     if (!process.env.DATABASE_URL) {
@@ -45,6 +46,7 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
     await (db as ReturnType<typeof drizzle>)
       .insert(schema.organizations)
       .values(org as never);
+    orgId = org.id;
 
     const connDefId = generateId();
     await (db as ReturnType<typeof drizzle>)
@@ -102,6 +104,7 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
     const now = Date.now();
     return {
       id: generateId(),
+      organizationId: orgId,
       connectorInstanceId,
       key: `entity_${generateId().replace(/-/g, "").slice(0, 8)}`,
       label: "Test Entity",

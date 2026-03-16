@@ -34,17 +34,13 @@ const validColumnDefinition = {
 // ── List request query ───────────────────────────────────────────────
 
 describe("ColumnDefinitionListRequestQuerySchema", () => {
-  it("should accept a valid query with organizationId only", () => {
-    const result = ColumnDefinitionListRequestQuerySchema.safeParse({
-      organizationId: "org-1",
-    });
+  it("should accept an empty query (pagination defaults only)", () => {
+    const result = ColumnDefinitionListRequestQuerySchema.safeParse({});
     expect(result.success).toBe(true);
   });
 
   it("should apply pagination defaults", () => {
-    const result = ColumnDefinitionListRequestQuerySchema.parse({
-      organizationId: "org-1",
-    });
+    const result = ColumnDefinitionListRequestQuerySchema.parse({});
     expect(result.limit).toBe(20);
     expect(result.offset).toBe(0);
     expect(result.sortBy).toBe("created");
@@ -53,7 +49,6 @@ describe("ColumnDefinitionListRequestQuerySchema", () => {
 
   it("should accept optional type filter", () => {
     const result = ColumnDefinitionListRequestQuerySchema.parse({
-      organizationId: "org-1",
       type: "string",
     });
     expect(result.type).toBe("string");
@@ -61,7 +56,6 @@ describe("ColumnDefinitionListRequestQuerySchema", () => {
 
   it("should reject invalid type filter", () => {
     const result = ColumnDefinitionListRequestQuerySchema.safeParse({
-      organizationId: "org-1",
       type: "bigint",
     });
     expect(result.success).toBe(false);
@@ -69,20 +63,13 @@ describe("ColumnDefinitionListRequestQuerySchema", () => {
 
   it("should accept optional required filter and coerce to boolean", () => {
     const result = ColumnDefinitionListRequestQuerySchema.parse({
-      organizationId: "org-1",
       required: "true",
     });
     expect(result.required).toBe(true);
   });
 
-  it("should reject missing organizationId", () => {
-    const result = ColumnDefinitionListRequestQuerySchema.safeParse({});
-    expect(result.success).toBe(false);
-  });
-
   it("should cap limit at 100", () => {
     const result = ColumnDefinitionListRequestQuerySchema.parse({
-      organizationId: "org-1",
       limit: "500",
     });
     expect(result.limit).toBe(100);
@@ -90,7 +77,6 @@ describe("ColumnDefinitionListRequestQuerySchema", () => {
 
   it("should accept search, sortBy, and sortOrder", () => {
     const result = ColumnDefinitionListRequestQuerySchema.parse({
-      organizationId: "org-1",
       search: "email",
       sortBy: "key",
       sortOrder: "desc",
@@ -153,7 +139,6 @@ describe("ColumnDefinitionGetResponsePayloadSchema", () => {
 describe("ColumnDefinitionCreateRequestBodySchema", () => {
   it("should accept a valid create body with required fields only", () => {
     const result = ColumnDefinitionCreateRequestBodySchema.safeParse({
-      organizationId: "org-1",
       key: "email",
       label: "Email",
       type: "string",
@@ -163,7 +148,6 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
 
   it("should apply defaults for optional fields", () => {
     const result = ColumnDefinitionCreateRequestBodySchema.parse({
-      organizationId: "org-1",
       key: "email",
       label: "Email",
       type: "string",
@@ -179,7 +163,6 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
 
   it("should accept all optional fields", () => {
     const result = ColumnDefinitionCreateRequestBodySchema.safeParse({
-      organizationId: "org-1",
       key: "status",
       label: "Status",
       type: "enum",
@@ -194,18 +177,8 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should reject missing organizationId", () => {
-    const result = ColumnDefinitionCreateRequestBodySchema.safeParse({
-      key: "email",
-      label: "Email",
-      type: "string",
-    });
-    expect(result.success).toBe(false);
-  });
-
   it("should reject missing key", () => {
     const result = ColumnDefinitionCreateRequestBodySchema.safeParse({
-      organizationId: "org-1",
       label: "Email",
       type: "string",
     });
@@ -214,7 +187,6 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
 
   it("should reject invalid key format", () => {
     const result = ColumnDefinitionCreateRequestBodySchema.safeParse({
-      organizationId: "org-1",
       key: "Invalid-Key",
       label: "Email",
       type: "string",
@@ -224,7 +196,6 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
 
   it("should reject empty label", () => {
     const result = ColumnDefinitionCreateRequestBodySchema.safeParse({
-      organizationId: "org-1",
       key: "email",
       label: "",
       type: "string",
@@ -234,7 +205,6 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
 
   it("should reject invalid type", () => {
     const result = ColumnDefinitionCreateRequestBodySchema.safeParse({
-      organizationId: "org-1",
       key: "email",
       label: "Email",
       type: "bigint",

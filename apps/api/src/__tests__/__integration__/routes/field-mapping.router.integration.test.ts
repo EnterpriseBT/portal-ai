@@ -1,0 +1,581 @@
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
+import request from "supertest";
+import { Request, Response, NextFunction } from "express";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "../../../db/schema/index.js";
+import type { DbClient } from "../../../db/repositories/base.repository.js";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
+import {
+  generateId,
+  seedUserAndOrg,
+  teardownOrg,
+} from "../utils/application.util.js";
+
+const AUTH0_ID = "auth0|ci-test-user";
+
+// Mock the auth middleware to populate req.auth with our test sub
+jest.unstable_mockModule("../../../middleware/auth.middleware.js", () => ({
+  jwtCheck: (req: Request, _res: Response, next: NextFunction) => {
+    req.auth = { payload: { sub: AUTH0_ID } } as never;
+    next();
+  },
+}));
+
+// Mock Auth0Service (required by profile router which shares the protected router)
+jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
+  Auth0Service: {
+    hasAccessToken: jest.fn(),
+    getAccessToken: jest.fn(),
+    getAuth0UserProfile: jest.fn(),
+  },
+}));
+
+const { app } = await import("../../../app.js");
+
+const {
+  connectorDefinitions,
+  connectorInstances,
+  connectorEntities,
+  columnDefinitions,
+  fieldMappings,
+  organizations,
+} = schema;
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+const now = Date.now();
+
+function createConnectorDefinition(
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    slug: `slug-${generateId()}`,
+    display: "Test Connector",
+    category: "crm",
+    authType: "oauth2",
+    configSchema: null,
+    capabilityFlags: { sync: true, query: true, write: false },
+    isActive: true,
+    version: "1.0.0",
+    iconUrl: null,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createConnectorInstance(
+  connectorDefinitionId: string,
+  organizationId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    connectorDefinitionId,
+    organizationId,
+    name: "Test Instance",
+    status: "active" as const,
+    config: null,
+    credentials: null,
+    lastSyncAt: null,
+    lastErrorMessage: null,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createConnEntity(
+  organizationId: string,
+  connectorInstanceId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    organizationId,
+    connectorInstanceId,
+    key: `entity_${generateId().replace(/-/g, "").slice(0, 8)}`,
+    label: "Test Entity",
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createColDef(
+  organizationId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    organizationId,
+    key: `col_${generateId().replace(/-/g, "").slice(0, 8)}`,
+    label: "Test Column",
+    type: "string" as const,
+    required: false,
+    defaultValue: null,
+    format: null,
+    enumValues: null,
+    description: null,
+    refColumnDefinitionId: null,
+    refEntityKey: null,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createFieldMap(
+  organizationId: string,
+  connectorEntityId: string,
+  columnDefinitionId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    organizationId,
+    connectorEntityId,
+    columnDefinitionId,
+    sourceField: "source_field",
+    isPrimaryKey: false,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+/** Seed a full chain: org → connector def → connector instance → connector entity + column definition. */
+async function seedFullChain(db: ReturnType<typeof drizzle>) {
+  const { organizationId, userId } = await seedUserAndOrg(db, AUTH0_ID);
+
+  const def = createConnectorDefinition();
+  await db.insert(connectorDefinitions).values(def as never);
+
+  const instance = createConnectorInstance(def.id, organizationId);
+  await db.insert(connectorInstances).values(instance as never);
+
+  const entity = createConnEntity(organizationId, instance.id);
+  await db.insert(connectorEntities).values(entity as never);
+
+  const colDef = createColDef(organizationId);
+  await db.insert(columnDefinitions).values(colDef as never);
+
+  return {
+    organizationId,
+    userId,
+    connectorInstanceId: instance.id,
+    connectorEntityId: entity.id,
+    columnDefinitionId: colDef.id,
+  };
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+describe("Field Mapping Router", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  // ── GET /api/field-mappings ──────────────────────────────────────
+
+  describe("GET /api/field-mappings", () => {
+    it("should return an empty list when no field mappings exist", async () => {
+      const { connectorEntityId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const res = await request(app)
+        .get(
+          `/api/field-mappings?connectorEntityId=${connectorEntityId}`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.fieldMappings).toEqual([]);
+      expect(res.body.payload.total).toBe(0);
+    });
+
+    it("should return paginated field mappings", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      // Create additional column definitions for multiple field mappings
+      const colDef2 = createColDef(organizationId);
+      const colDef3 = createColDef(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values([colDef2, colDef3] as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values([
+          createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+            sourceField: "field_a",
+          }),
+          createFieldMap(organizationId, connectorEntityId, colDef2.id, {
+            sourceField: "field_b",
+          }),
+          createFieldMap(organizationId, connectorEntityId, colDef3.id, {
+            sourceField: "field_c",
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get(
+          `/api/field-mappings?connectorEntityId=${connectorEntityId}&limit=2&offset=0`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.fieldMappings).toHaveLength(2);
+      expect(res.body.payload.total).toBe(3);
+    });
+
+    it("should filter by columnDefinitionId", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const colDef2 = createColDef(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef2 as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values([
+          createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+            sourceField: "mapped_a",
+          }),
+          createFieldMap(organizationId, connectorEntityId, colDef2.id, {
+            sourceField: "mapped_b",
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get(
+          `/api/field-mappings?connectorEntityId=${connectorEntityId}&columnDefinitionId=${columnDefinitionId}`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.fieldMappings).toHaveLength(1);
+      expect(res.body.payload.fieldMappings[0].sourceField).toBe("mapped_a");
+    });
+
+    it("should scope results to the requested connector entity", async () => {
+      const { connectorEntityId, columnDefinitionId, connectorInstanceId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      // Create a second entity
+      const entity2 = createConnEntity(organizationId, connectorInstanceId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity2 as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values([
+          createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+            sourceField: "entity1_field",
+          }),
+          createFieldMap(organizationId, entity2.id, columnDefinitionId, {
+            sourceField: "entity2_field",
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get(
+          `/api/field-mappings?connectorEntityId=${connectorEntityId}`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.fieldMappings).toHaveLength(1);
+      expect(res.body.payload.fieldMappings[0].sourceField).toBe(
+        "entity1_field"
+      );
+    });
+  });
+
+  // ── GET /api/field-mappings/:id ──────────────────────────────────
+
+  describe("GET /api/field-mappings/:id", () => {
+    it("should return 404 when field mapping does not exist", async () => {
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${generateId()}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+    });
+
+    it("should return a field mapping by id", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        sourceField: "my_source",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.fieldMapping.id).toBe(mapping.id);
+      expect(res.body.payload.fieldMapping.sourceField).toBe("my_source");
+    });
+
+    it("should not return soft-deleted field mappings", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        deleted: now,
+        deletedBy: "SYSTEM_TEST",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── POST /api/field-mappings ─────────────────────────────────────
+
+  describe("POST /api/field-mappings", () => {
+    it("should return 400 for invalid payload", async () => {
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_INVALID_PAYLOAD);
+    });
+
+    it("should return 404 when connector entity does not exist", async () => {
+      const { columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: generateId(),
+          columnDefinitionId,
+          sourceField: "some_field",
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+    });
+
+    it("should return 404 when column definition does not exist", async () => {
+      const { connectorEntityId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId: generateId(),
+          sourceField: "some_field",
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_NOT_FOUND);
+    });
+
+    it("should create a field mapping successfully", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "account_name",
+          isPrimaryKey: false,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      const created = res.body.payload.fieldMapping;
+      expect(created.sourceField).toBe("account_name");
+      expect(created.isPrimaryKey).toBe(false);
+      expect(created.connectorEntityId).toBe(connectorEntityId);
+      expect(created.columnDefinitionId).toBe(columnDefinitionId);
+    });
+
+    it("created field mapping should be retrievable via GET", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const createRes = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "email_addr",
+        });
+
+      const id = createRes.body.payload.fieldMapping.id;
+
+      const getRes = await request(app)
+        .get(`/api/field-mappings/${id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(getRes.status).toBe(200);
+      expect(getRes.body.payload.fieldMapping.id).toBe(id);
+      expect(getRes.body.payload.fieldMapping.sourceField).toBe("email_addr");
+    });
+  });
+
+  // ── PATCH /api/field-mappings/:id ────────────────────────────────
+
+  describe("PATCH /api/field-mappings/:id", () => {
+    it("should return 404 when field mapping does not exist", async () => {
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ sourceField: "updated" });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+    });
+
+    it("should update a field mapping", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        sourceField: "original",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ sourceField: "updated_field", isPrimaryKey: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.fieldMapping.sourceField).toBe("updated_field");
+      expect(res.body.payload.fieldMapping.isPrimaryKey).toBe(true);
+    });
+  });
+
+  // ── DELETE /api/field-mappings/:id ───────────────────────────────
+
+  describe("DELETE /api/field-mappings/:id", () => {
+    it("should return 404 when field mapping does not exist", async () => {
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .delete(`/api/field-mappings/${generateId()}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
+    });
+
+    it("should soft-delete a field mapping", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const deleteRes = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.body.payload.id).toBe(mapping.id);
+
+      // Should not be retrievable after deletion
+      const getRes = await request(app)
+        .get(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(getRes.status).toBe(404);
+    });
+  });
+});

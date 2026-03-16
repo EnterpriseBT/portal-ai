@@ -6,7 +6,7 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 // ── List ──────────────────────────────────────────────────────────────
 
 export const FieldMappingListRequestQuerySchema = PaginationRequestQuerySchema.extend({
-  connectorEntityId: z.string(),
+  connectorEntityId: z.string().optional(),
   columnDefinitionId: z.string().optional(),
 });
 

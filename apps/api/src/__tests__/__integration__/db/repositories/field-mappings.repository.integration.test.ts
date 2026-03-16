@@ -91,6 +91,7 @@ describe("FieldMappingsRepository Integration Tests", () => {
     connectorEntityId = generateId();
     await dbTyped.insert(schema.connectorEntities).values({
       id: connectorEntityId,
+      organizationId: orgId,
       connectorInstanceId: instanceId,
       key: "contacts",
       label: "Contacts",
@@ -161,6 +162,7 @@ describe("FieldMappingsRepository Integration Tests", () => {
     const now = Date.now();
     return {
       id: generateId(),
+      organizationId: orgId,
       connectorEntityId,
       columnDefinitionId,
       sourceField: "source_name",

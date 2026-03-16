@@ -1,5 +1,6 @@
 import { pgTable, text, boolean, unique } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
+import { organizations } from "./organizations.table.js";
 import { connectorEntities } from "./connector-entities.table.js";
 import { columnDefinitions } from "./column-definitions.table.js";
 
@@ -12,6 +13,9 @@ export const fieldMappings = pgTable(
   "field_mappings",
   {
     ...baseColumns,
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id),
     connectorEntityId: text("connector_entity_id")
       .notNull()
       .references(() => connectorEntities.id),

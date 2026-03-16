@@ -6,7 +6,6 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 // ── List ──────────────────────────────────────────────────────────────
 
 export const ColumnDefinitionListRequestQuerySchema = PaginationRequestQuerySchema.extend({
-  organizationId: z.string(),
   type: ColumnDataTypeEnum.optional(),
   required: z
     .enum(["true", "false"])
@@ -33,7 +32,6 @@ export type ColumnDefinitionGetResponsePayload = z.infer<typeof ColumnDefinition
 // ── Create ────────────────────────────────────────────────────────────
 
 export const ColumnDefinitionCreateRequestBodySchema = z.object({
-  organizationId: z.string(),
   key: z.string().regex(/^[a-z][a-z0-9_]*$/),
   label: z.string().min(1),
   type: ColumnDataTypeEnum,

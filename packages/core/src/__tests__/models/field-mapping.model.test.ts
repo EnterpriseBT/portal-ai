@@ -11,6 +11,7 @@ import {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const validMappingFields = {
+  organizationId: "org-1",
   connectorEntityId: "ent-1",
   columnDefinitionId: "col-1",
   sourceField: "full_name",

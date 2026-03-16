@@ -1,0 +1,4 @@
+ALTER TABLE "connector_entities" ADD COLUMN "organization_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "field_mappings" ADD COLUMN "organization_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "connector_entities" ADD CONSTRAINT "connector_entities_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "field_mappings" ADD CONSTRAINT "field_mappings_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;

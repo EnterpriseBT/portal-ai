@@ -11,6 +11,7 @@ import {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const validEntityFields = {
+  organizationId: "org-1",
   connectorInstanceId: "ci-1",
   key: "contacts",
   label: "Contacts",

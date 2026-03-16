@@ -12,6 +12,7 @@ import {
 
 const validFieldMapping = {
   id: "fm-1",
+  organizationId: "org-1",
   connectorEntityId: "ce-1",
   columnDefinitionId: "cd-1",
   sourceField: "account_name",
@@ -35,9 +36,7 @@ describe("FieldMappingListRequestQuerySchema", () => {
   });
 
   it("should apply pagination defaults", () => {
-    const result = FieldMappingListRequestQuerySchema.parse({
-      connectorEntityId: "ce-1",
-    });
+    const result = FieldMappingListRequestQuerySchema.parse({});
     expect(result.limit).toBe(20);
     expect(result.offset).toBe(0);
     expect(result.sortBy).toBe("created");
@@ -46,20 +45,18 @@ describe("FieldMappingListRequestQuerySchema", () => {
 
   it("should accept optional columnDefinitionId filter", () => {
     const result = FieldMappingListRequestQuerySchema.parse({
-      connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
     });
     expect(result.columnDefinitionId).toBe("cd-1");
   });
 
-  it("should reject missing connectorEntityId", () => {
+  it("should accept a query without connectorEntityId", () => {
     const result = FieldMappingListRequestQuerySchema.safeParse({});
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("should cap limit at 100", () => {
     const result = FieldMappingListRequestQuerySchema.parse({
-      connectorEntityId: "ce-1",
       limit: "200",
     });
     expect(result.limit).toBe(100);
