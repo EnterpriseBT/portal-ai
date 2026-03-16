@@ -18,6 +18,7 @@ const validColumnFields = {
   label: "Email",
   type: "string" as const,
   required: true,
+  defaultValue: null,
   format: "email",
   enumValues: null,
   description: "Primary email address",

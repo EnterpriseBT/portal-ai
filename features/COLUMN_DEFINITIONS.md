@@ -48,8 +48,8 @@ export const ColumnDefinitionSchema = CoreSchema.extend({
   label: z.string(),
   type: ColumnDataType,
   required: z.boolean().default(false),
-  defaultValue: z.unknown().optional(),
-  format: z.string().optional(),
+  defaultValue: z.string().nullable(),
+  format: z.string().nullable(),
   enumValues: z.array(z.string()).optional(),
   description: z.string().optional(),
 
@@ -188,14 +188,14 @@ References are a property of *what the data means*, not *where it comes from*. "
   - `key` regex enforcement (rejects uppercase, spaces, leading digits)
   - Factory `create()` produces valid models with audit fields
 
-### 2. Drizzle Tables (`apps/api/src/db/schema/`)
+### 2. Drizzle Tables (`apps/api/src/db/schema/`) ✅
 
-- [ ] Create `column-definitions.table.ts` — with FK to `organizations`, self-referencing FK for `ref_column_definition_id`, unique on `(organization_id, key)`
-- [ ] Create `connector-entities.table.ts` — with FK to `connector_instances`, unique on `(connector_instance_id, key)`
-- [ ] Create `field-mappings.table.ts` — with FKs to `connector_entities` and `column_definitions`, unique on `(connector_entity_id, column_definition_id)`
-- [ ] Update `zod.ts` — add `createSelectSchema` / `createInsertSchema` for all three tables
-- [ ] Update `type-checks.ts` — add bidirectional `IsAssignable` checks for all three tables
-- [ ] Export tables from schema index
+- [x] Create `column-definitions.table.ts` — with FK to `organizations`, self-referencing FK for `ref_column_definition_id`, unique on `(organization_id, key)`
+- [x] Create `connector-entities.table.ts` — with FK to `connector_instances`, unique on `(connector_instance_id, key)`
+- [x] Create `field-mappings.table.ts` — with FKs to `connector_entities` and `column_definitions`, unique on `(connector_entity_id, column_definition_id)`
+- [x] Update `zod.ts` — add `createSelectSchema` / `createInsertSchema` for all three tables
+- [x] Update `type-checks.ts` — add bidirectional `IsAssignable` checks for all three tables
+- [x] Export tables from schema index (no schema index file exists — tables are imported directly)
 
 ### 3. Migrations
 

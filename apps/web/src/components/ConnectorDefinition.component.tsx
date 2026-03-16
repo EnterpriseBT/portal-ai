@@ -88,7 +88,13 @@ export const ConnectorDefinitionCardUI = ({
             {cd.display.charAt(0).toUpperCase()}
           </Avatar>
 
-          <Box sx={{ flex: 1, minWidth: 0, textAlign: { xs: "center", sm: "left" } }}>
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              textAlign: { xs: "center", sm: "left" },
+            }}
+          >
             <Stack
               direction="row"
               spacing={1}
@@ -126,7 +132,6 @@ export const ConnectorDefinitionCardUI = ({
           </Box>
 
           <Button
-            variant="outlined"
             size="small"
             startIcon={<LinkIcon />}
             onClick={() => onConnect?.(cd)}

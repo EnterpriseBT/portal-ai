@@ -13,6 +13,9 @@ import { organizationUsers } from "./organization-users.table.js";
 import { connectorDefinitions } from "./connector-definitions.table.js";
 import { connectorInstances } from "./connector-instances.table.js";
 import { jobs } from "./jobs.table.js";
+import { columnDefinitions } from "./column-definitions.table.js";
+import { connectorEntities } from "./connector-entities.table.js";
+import { fieldMappings } from "./field-mappings.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -103,3 +106,51 @@ export const JobInsertSchema = createInsertSchema(jobs);
 /** Inferred types */
 export type JobSelect = z.infer<typeof JobSelectSchema>;
 export type JobInsert = z.infer<typeof JobInsertSchema>;
+
+// ── Column Definitions ───────────────────────────────────────────────
+
+/** Zod schema for a `column_definitions` row returned by SELECT. */
+export const ColumnDefinitionSelectSchema =
+  createSelectSchema(columnDefinitions);
+
+/** Zod schema for inserting into `column_definitions`. */
+export const ColumnDefinitionInsertSchema =
+  createInsertSchema(columnDefinitions);
+
+/** Inferred types */
+export type ColumnDefinitionSelect = z.infer<
+  typeof ColumnDefinitionSelectSchema
+>;
+export type ColumnDefinitionInsert = z.infer<
+  typeof ColumnDefinitionInsertSchema
+>;
+
+// ── Connector Entities ───────────────────────────────────────────────
+
+/** Zod schema for a `connector_entities` row returned by SELECT. */
+export const ConnectorEntitySelectSchema =
+  createSelectSchema(connectorEntities);
+
+/** Zod schema for inserting into `connector_entities`. */
+export const ConnectorEntityInsertSchema =
+  createInsertSchema(connectorEntities);
+
+/** Inferred types */
+export type ConnectorEntitySelect = z.infer<
+  typeof ConnectorEntitySelectSchema
+>;
+export type ConnectorEntityInsert = z.infer<
+  typeof ConnectorEntityInsertSchema
+>;
+
+// ── Field Mappings ───────────────────────────────────────────────────
+
+/** Zod schema for a `field_mappings` row returned by SELECT. */
+export const FieldMappingSelectSchema = createSelectSchema(fieldMappings);
+
+/** Zod schema for inserting into `field_mappings`. */
+export const FieldMappingInsertSchema = createInsertSchema(fieldMappings);
+
+/** Inferred types */
+export type FieldMappingSelect = z.infer<typeof FieldMappingSelectSchema>;
+export type FieldMappingInsert = z.infer<typeof FieldMappingInsertSchema>;

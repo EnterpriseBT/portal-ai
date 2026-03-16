@@ -36,7 +36,7 @@ export const ColumnDefinitionSchema = CoreSchema.extend({
   label: z.string(),
   type: ColumnDataType,
   required: z.boolean(),
-  defaultValue: z.unknown().optional(),
+  defaultValue: z.string().nullable(),
   format: z.string().nullable(),
   enumValues: z.array(z.string()).nullable(),
   description: z.string().nullable(),

@@ -12,8 +12,8 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, Core } from "@portalai/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect } from "./zod.js";
+import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, ColumnDefinition, ConnectorEntity, FieldMapping, Core } from "@portalai/core/models";
+import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect, ColumnDefinitionSelect, ConnectorEntitySelect, FieldMappingSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
@@ -21,6 +21,9 @@ import type { organizationUsers } from "./organization-users.table.js";
 import type { connectorDefinitions } from "./connector-definitions.table.js";
 import type { connectorInstances } from "./connector-instances.table.js";
 import type { jobs } from "./jobs.table.js";
+import type { columnDefinitions } from "./column-definitions.table.js";
+import type { connectorEntities } from "./connector-entities.table.js";
+import type { fieldMappings } from "./field-mappings.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -133,3 +136,48 @@ const _jobModelToDrizzle: _JobModelToDrizzle = true;
 type _JobInferredRow = InferSelectModel<typeof jobs>;
 type _JobInferredToModel = IsAssignable<_JobInferredRow, Job>;
 const _jobInferredToModel: _JobInferredToModel = true;
+
+// ── ColumnDefinition ─────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _ColDefDrizzleToModel = IsAssignable<ColumnDefinitionSelect, ColumnDefinition>;
+const _colDefDrizzleToModel: _ColDefDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _ColDefModelToDrizzle = IsAssignable<ColumnDefinition, ColumnDefinitionSelect>;
+const _colDefModelToDrizzle: _ColDefModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _ColDefInferredRow = InferSelectModel<typeof columnDefinitions>;
+type _ColDefInferredToModel = IsAssignable<_ColDefInferredRow, ColumnDefinition>;
+const _colDefInferredToModel: _ColDefInferredToModel = true;
+
+// ── ConnectorEntity ──────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _ConnEntDrizzleToModel = IsAssignable<ConnectorEntitySelect, ConnectorEntity>;
+const _connEntDrizzleToModel: _ConnEntDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _ConnEntModelToDrizzle = IsAssignable<ConnectorEntity, ConnectorEntitySelect>;
+const _connEntModelToDrizzle: _ConnEntModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _ConnEntInferredRow = InferSelectModel<typeof connectorEntities>;
+type _ConnEntInferredToModel = IsAssignable<_ConnEntInferredRow, ConnectorEntity>;
+const _connEntInferredToModel: _ConnEntInferredToModel = true;
+
+// ── FieldMapping ─────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _FieldMapDrizzleToModel = IsAssignable<FieldMappingSelect, FieldMapping>;
+const _fieldMapDrizzleToModel: _FieldMapDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _FieldMapModelToDrizzle = IsAssignable<FieldMapping, FieldMappingSelect>;
+const _fieldMapModelToDrizzle: _FieldMapModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _FieldMapInferredRow = InferSelectModel<typeof fieldMappings>;
+type _FieldMapInferredToModel = IsAssignable<_FieldMapInferredRow, FieldMapping>;
+const _fieldMapInferredToModel: _FieldMapInferredToModel = true;
