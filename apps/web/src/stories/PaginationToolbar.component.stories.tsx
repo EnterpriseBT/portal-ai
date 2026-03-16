@@ -266,6 +266,36 @@ export const LastPage: Story = {
   },
 };
 
+const InteractiveContent: React.FC = () => {
+  const pagination = usePagination({
+    filters: allFilterTypes,
+    sortFields: sampleSortFields,
+  });
+
+  // Simulate a total count from the server
+  React.useEffect(() => {
+    pagination.setTotal(95);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <PaginationToolbar {...pagination.toolbarProps} />
+      <Box
+        component="pre"
+        sx={{
+          p: 2,
+          bgcolor: "grey.100",
+          borderRadius: 1,
+          fontSize: 12,
+          overflow: "auto",
+        }}
+      >
+        {JSON.stringify(pagination.queryParams, null, 2)}
+      </Box>
+    </Box>
+  );
+};
+
 /** Interactive story that uses the `usePagination` hook to wire up state. */
 export const Interactive: Story = {
   args: {
@@ -277,33 +307,5 @@ export const Interactive: Story = {
     sortBy: "created",
     sortOrder: "asc",
   },
-  render: () => {
-    const pagination = usePagination({
-      filters: allFilterTypes,
-      sortFields: sampleSortFields,
-    });
-
-    // Simulate a total count from the server
-    React.useEffect(() => {
-      pagination.setTotal(95);
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-    return (
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <PaginationToolbar {...pagination.toolbarProps} />
-        <Box
-          component="pre"
-          sx={{
-            p: 2,
-            bgcolor: "grey.100",
-            borderRadius: 1,
-            fontSize: 12,
-            overflow: "auto",
-          }}
-        >
-          {JSON.stringify(pagination.queryParams, null, 2)}
-        </Box>
-      </Box>
-    );
-  },
+  render: () => <InteractiveContent />,
 };

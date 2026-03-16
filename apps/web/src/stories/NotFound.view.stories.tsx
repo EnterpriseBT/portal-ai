@@ -6,6 +6,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { NotFoundView } from "../views/NotFound.view";
+import React from "react";
 
 const createStoryRouter = (story: () => React.ReactNode) => {
   const rootRoute = createRootRoute({ component: () => story() });
