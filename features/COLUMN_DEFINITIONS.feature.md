@@ -251,7 +251,7 @@ References are a property of *what the data means*, not *where it comes from*. "
 
 ### 8. Verification
 
-- [ ] Run `npm run type-check` — confirm all bidirectional type assertions pass
-- [ ] Run `npm run test` — confirm all existing and new tests pass
-- [ ] Run `npm run lint` — confirm no lint errors introduced
-- [ ] Run `npm run build` — confirm monorepo builds cleanly
+- [x] Run `npm run type-check` — confirm all bidirectional type assertions pass
+- [x] Run `npm run test` — confirm all existing and new tests pass
+- [x] Run `npm run lint` — confirm no lint errors introduced (4 pre-existing errors in `apps/web` unrelated to column definitions)
+- [x] Run `npm run build` — confirm monorepo builds cleanly
