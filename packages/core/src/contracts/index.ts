@@ -27,3 +27,12 @@ export * from "./connector-instance.contract.js";
 
 /** Job contracts — schemas & types */
 export * from "./job.contract.js";
+
+/** Column Definition contracts — schemas & types */
+export * from "./column-definition.contract.js";
+
+/** Connector Entity contracts — schemas & types */
+export * from "./connector-entity.contract.js";
+
+/** Field Mapping contracts — schemas & types */
+export * from "./field-mapping.contract.js";

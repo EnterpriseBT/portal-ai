@@ -219,12 +219,12 @@ References are a property of *what the data means*, not *where it comes from*. "
   - `upsertByKey` / `upsertByEntityAndColumn` insert on first call, update on second
   - `findByColumnDefinitionId` returns all field mappings across entities for a given column
 
-### 5. API Contracts (`packages/core/src/contracts/`)
+### 5. API Contracts (`packages/core/src/contracts/`) ✅
 
-- [ ] Create `column-definition.contract.ts` — list/create/update request/response schemas
-- [ ] Create `connector-entity.contract.ts` — list/create request/response schemas
-- [ ] Create `field-mapping.contract.ts` — list/create/update request/response schemas
-- [ ] Write unit tests for each contract:
+- [x] Create `column-definition.contract.ts` — list/create/update request/response schemas
+- [x] Create `connector-entity.contract.ts` — list/create request/response schemas
+- [x] Create `field-mapping.contract.ts` — list/create/update request/response schemas
+- [x] Write unit tests for each contract:
   - Request schema validation (required fields, pagination defaults, sort options)
   - Response schema shape matches expected structure
 
