@@ -14,7 +14,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 // ── Column data type enum ────────────────────────────────────────────
 
-export const ColumnDataType = z.enum([
+export const ColumnDataTypeEnum = z.enum([
   "string",
   "number",
   "boolean",
@@ -26,7 +26,7 @@ export const ColumnDataType = z.enum([
   "reference",
 ]);
 
-export type ColumnDataType = z.infer<typeof ColumnDataType>;
+export type ColumnDataType = z.infer<typeof ColumnDataTypeEnum>;
 
 // ── Schema ───────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ export const ColumnDefinitionSchema = CoreSchema.extend({
   organizationId: z.string(),
   key: z.string().regex(/^[a-z][a-z0-9_]*$/),
   label: z.string(),
-  type: ColumnDataType,
+  type: ColumnDataTypeEnum,
   required: z.boolean(),
   defaultValue: z.string().nullable(),
   format: z.string().nullable(),
