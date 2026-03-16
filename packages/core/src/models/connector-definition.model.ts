@@ -69,30 +69,6 @@ export const CSVParseOptionsSchema = z.object({
 
 export type CSVParseOptions = z.infer<typeof CSVParseOptionsSchema>;
 
-// ── CSV column schema (upload-time) ──────────────────────────────────
-
-export const CSVColumnSchema = z.object({
-  name: z.string(),
-  type: z.enum(["string", "number", "boolean", "date", "enum"]),
-  required: z.boolean().default(true),
-  format: z.string().optional(),        // e.g. date format "YYYY-MM-DD"
-  enumValues: z.array(z.string()).optional(),
-});
-
-export type CSVColumn = z.infer<typeof CSVColumnSchema>;
-
-// ── Full resolved config (parse options + columns) ───────────────────
-
-/**
- * The complete CSV config with columns resolved.
- * Used at runtime validation — NOT on the connector definition itself.
- */
-export const CSVConnectorConfigSchema = CSVParseOptionsSchema.extend({
-  columns: z.array(CSVColumnSchema).min(1),
-});
-
-export type CSVConnectorConfig = z.infer<typeof CSVConnectorConfigSchema>;
-
 // ── CSV Connector Definition ──────────────────────────────────────────
 
 /**

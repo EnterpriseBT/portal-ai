@@ -245,9 +245,9 @@ References are a property of *what the data means*, not *where it comes from*. "
 
 ### 7. Deprecation
 
-- [ ] Evaluate deprecating `CSVColumnSchema` in favor of `ColumnDefinitionSchema` + `FieldMappingSchema`
-- [ ] Migrate any existing CSV column references to the new structure
-- [ ] Update or remove tests referencing deprecated schemas
+- [x] Evaluate deprecating `CSVColumnSchema` in favor of `ColumnDefinitionSchema` + `FieldMappingSchema`
+- [x] Migrate any existing CSV column references to the new structure
+- [x] Update or remove tests referencing deprecated schemas
 
 ### 8. Verification
 
