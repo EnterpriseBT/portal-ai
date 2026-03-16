@@ -203,13 +203,13 @@ References are a property of *what the data means*, not *where it comes from*. "
 - [x] Run `npm run db:migrate` to apply
 - [x] Verify migration is reversible (`db:rollback` or manual down script)
 
-### 4. Repositories (`apps/api/src/db/repositories/`)
+### 4. Repositories (`apps/api/src/db/repositories/`) ✅
 
-- [ ] Create `column-definitions.repository.ts` — `findByOrganizationId`, `findByKey(orgId, key)`, `upsertByKey`
-- [ ] Create `connector-entities.repository.ts` — `findByConnectorInstanceId`, `findByKey(instanceId, key)`
-- [ ] Create `field-mappings.repository.ts` — `findByConnectorEntityId`, `findByColumnDefinitionId`, `upsertByEntityAndColumn`
-- [ ] Export from repository index
-- [ ] Write integration tests for each repository:
+- [x] Create `column-definitions.repository.ts` — `findByOrganizationId`, `findByKey(orgId, key)`, `upsertByKey`
+- [x] Create `connector-entities.repository.ts` — `findByConnectorInstanceId`, `findByKey(instanceId, key)`
+- [x] Create `field-mappings.repository.ts` — `findByConnectorEntityId`, `findByColumnDefinitionId`, `upsertByEntityAndColumn`
+- [x] Export from repository index
+- [x] Write integration tests for each repository:
   - CRUD lifecycle (create → read → update → soft delete)
   - Unique constraint enforcement (duplicate `org_id + key` rejected)
   - FK constraint enforcement (invalid `organization_id`, `connector_instance_id`, `column_definition_id` rejected)

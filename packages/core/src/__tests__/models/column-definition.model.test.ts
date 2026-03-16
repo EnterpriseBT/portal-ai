@@ -2,7 +2,7 @@ import {
   ColumnDefinitionModel,
   ColumnDefinitionModelFactory,
   ColumnDefinitionSchema,
-  ColumnDataType,
+  ColumnDataTypeEnum,
 } from "../../models/column-definition.model.js";
 import {
   UUID_REGEX,
@@ -42,7 +42,7 @@ const validReferenceFields = {
 
 // ── ColumnDataType enum ──────────────────────────────────────────────
 
-describe("ColumnDataType", () => {
+describe("ColumnDataTypeEnum", () => {
   it.each([
     "string",
     "number",
@@ -54,12 +54,12 @@ describe("ColumnDataType", () => {
     "array",
     "reference",
   ])("should accept '%s' as a valid type", (type) => {
-    const result = ColumnDataType.safeParse(type);
+    const result = ColumnDataTypeEnum.safeParse(type);
     expect(result.success).toBe(true);
   });
 
   it("should reject unknown types", () => {
-    const result = ColumnDataType.safeParse("bigint");
+    const result = ColumnDataTypeEnum.safeParse("bigint");
     expect(result.success).toBe(false);
   });
 });

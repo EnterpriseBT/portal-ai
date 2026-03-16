@@ -8,3 +8,6 @@ export * from "./organization-users.repository.js";
 export * from "./connector-definitions.repository.js";
 export * from "./connector-instances.repository.js";
 export * from "./jobs.repository.js";
+export * from "./column-definitions.repository.js";
+export * from "./connector-entities.repository.js";
+export * from "./field-mappings.repository.js";
