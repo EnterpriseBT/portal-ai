@@ -197,11 +197,11 @@ References are a property of *what the data means*, not *where it comes from*. "
 - [x] Update `type-checks.ts` — add bidirectional `IsAssignable` checks for all three tables
 - [x] Export tables from schema index (no schema index file exists — tables are imported directly)
 
-### 3. Migrations
+### 3. Migrations ✅
 
-- [ ] Run `npm run db:generate` to generate migration SQL
-- [ ] Run `npm run db:migrate` to apply
-- [ ] Verify migration is reversible (`db:rollback` or manual down script)
+- [x] Run `npm run db:generate` to generate migration SQL
+- [x] Run `npm run db:migrate` to apply
+- [x] Verify migration is reversible (`db:rollback` or manual down script)
 
 ### 4. Repositories (`apps/api/src/db/repositories/`)
 

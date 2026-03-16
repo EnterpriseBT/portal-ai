@@ -1,0 +1,1 @@
+ALTER TABLE "column_definitions" ADD CONSTRAINT "column_definitions_ref_column_definition_id_column_definitions_id_fk" FOREIGN KEY ("ref_column_definition_id") REFERENCES "public"."column_definitions"("id") ON DELETE no action ON UPDATE no action;

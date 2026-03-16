@@ -36,7 +36,10 @@ export const columnDefinitions = pgTable(
     description: text("description"),
 
     // Reference fields (when type is "reference")
-    refColumnDefinitionId: text("ref_column_definition_id"),
+    refColumnDefinitionId: text("ref_column_definition_id").references(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (): any => columnDefinitions.id,
+    ),
     refEntityKey: text("ref_entity_key"),
   },
   (table) => [
