@@ -5,7 +5,7 @@ import type {
   JobCancelResponsePayload,
 } from "@portalai/core/contracts";
 import type { Job } from "@portalai/core/models";
-import type { JobStreamState } from "../utils/job-stream.util";
+import type { JobStreamState } from "../api/jobs.api";
 import type { ApiError } from "../utils";
 
 type GetQuery = UseQueryResult<JobGetResponsePayload, ApiError>;
@@ -28,12 +28,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
     jobs: {
       get: () => currentGetQuery,
       cancel: () => currentCancelMutation,
+      stream: () => currentStreamState,
     },
   },
-}));
-
-jest.unstable_mockModule("../utils/job-stream.util", () => ({
-  useJobStream: () => currentStreamState,
 }));
 
 const { render, screen } = await import("./test-utils");

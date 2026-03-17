@@ -17,9 +17,10 @@ import {
   StatusBadge,
   Progress,
 } from "@portalai/core/ui";
+import { JobModel } from "@portalai/core/models";
 import type { Job, JobStatus } from "@portalai/core/models";
 import { DateFactory } from "@portalai/core/utils";
-
+import type { JobStreamState } from "../api/jobs.api";
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
 import { useRouter } from "@tanstack/react-router";
@@ -50,6 +51,17 @@ export const JobDataItem = (props: JobDataItemProps) => {
   return props.children(res);
 };
 
+export interface JobDataStreamProps {
+  job: Job;
+  children: (stream: JobStreamState) => React.ReactNode;
+}
+
+export const JobDataStream = ({ job, children }: JobDataStreamProps) => {
+  const isLive = !JobModel.isTerminalStatus(job.status);
+  const stream = sdk.jobs.stream(isLive ? job.id : null);
+  return <>{children(stream)}</>;
+};
+
 const formatDate = (timestamp: number | null) =>
   timestamp ? dates.format(timestamp, "MM/dd/yyyy hh:mm:ss a") : "—";
 
@@ -67,9 +79,7 @@ export const JobCard = ({ job, status, progress }: JobCardProps) => {
 
   return (
     <Box
-      onClick={() =>
-        router.navigate({ to: `/jobs/${job.id}` })
-      }
+      onClick={() => router.navigate({ to: `/jobs/${job.id}` })}
       sx={{
         display: "flex",
         flexDirection: { xs: "column", sm: "row" },
@@ -146,7 +156,7 @@ export const JobDetailContent = ({
   const startedAt = hasStreamData ? stream.startedAt : job.startedAt;
   const completedAt = hasStreamData ? stream.completedAt : job.completedAt;
 
-  const isTerminal = !["pending", "active"].includes(status);
+  const isTerminal = JobModel.isTerminalStatus(status);
 
   return (
     <Stack spacing={3}>
@@ -188,7 +198,10 @@ export const JobDetailContent = ({
             <DetailRow label="Created" value={formatDate(job.created)} />
             <DetailRow label="Started" value={formatDate(startedAt)} />
             <DetailRow label="Completed" value={formatDate(completedAt)} />
-            <DetailRow label="Attempts" value={`${job.attempts} / ${job.maxAttempts}`} />
+            <DetailRow
+              label="Attempts"
+              value={`${job.attempts} / ${job.maxAttempts}`}
+            />
           </Stack>
         </CardContent>
       </Card>

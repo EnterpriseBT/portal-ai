@@ -116,6 +116,12 @@ export type Job = z.infer<typeof JobSchema>;
 // --- Model Class ---
 
 export class JobModel extends CoreModel<Job> {
+  static readonly TERMINAL_STATUSES: readonly JobStatus[] = TERMINAL_JOB_STATUSES;
+
+  static isTerminalStatus(status: JobStatus): boolean {
+    return TERMINAL_JOB_STATUSES.includes(status);
+  }
+
   get schema() {
     return JobSchema;
   }

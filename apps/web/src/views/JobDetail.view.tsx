@@ -1,4 +1,4 @@
-import { DataJobStream } from "../components/DataJobStream.component";
+import { JobDataStream } from "../components/Job.component";
 import DataResult from "../components/DataResult.component";
 import { JobDataItem, JobDetailContent } from "../components/Job.component";
 import { sdk } from "../api/sdk";
@@ -15,7 +15,7 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
       {(response) => (
         <DataResult results={{ jobResponse: response }}>
           {({ jobResponse }) => (
-            <DataJobStream job={jobResponse.job}>
+            <JobDataStream job={jobResponse.job}>
               {(stream) => (
                 <JobDetailContent
                   job={jobResponse.job}
@@ -24,7 +24,7 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                   isCancelling={isCancelling}
                 />
               )}
-            </DataJobStream>
+            </JobDataStream>
           )}
         </DataResult>
       )}

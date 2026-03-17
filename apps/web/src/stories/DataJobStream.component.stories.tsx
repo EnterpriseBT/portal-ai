@@ -1,7 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { Job } from "@portalai/core/models";
 
-import { DataJobStream, DataJobStreamProps } from "../components/DataJobStream.component";
+import {
+  JobDataStream,
+  JobDataStreamProps,
+} from "../components/JobDataStream.component";
 import { JobCard } from "../components/Job.component";
 
 const baseJob: Job = {
@@ -27,14 +30,14 @@ const baseJob: Job = {
 };
 
 const meta = {
-  title: "Components/DataJobStream",
-  component: DataJobStream,
+  title: "Components/JobDataStream",
+  component: JobDataStream,
   parameters: { layout: "padded" },
   tags: ["autodocs"],
-} satisfies Meta<typeof DataJobStream>;
+} satisfies Meta<typeof JobDataStream>;
 
 export default meta;
-type Story = StoryObj<DataJobStreamProps>;
+type Story = StoryObj<JobDataStreamProps>;
 
 export const TerminalJob: Story = {
   args: {

@@ -7,7 +7,7 @@ import { JobsService } from "../services/jobs.service.js";
 import { JobEventsService } from "../services/job-events.service.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
-import { TERMINAL_JOB_STATUSES } from "@portalai/core/models";
+import { JobModel } from "@portalai/core/models";
 import type { JobSnapshotEvent } from "@portalai/core/contracts";
 
 const logger = createLogger({ module: "job-events" });
@@ -79,7 +79,7 @@ jobEventsRouter.get(
       sse.send("snapshot", snapshot);
 
       // 2. If job is already terminal, close immediately
-      if (TERMINAL_JOB_STATUSES.includes(job.status)) {
+      if (JobModel.isTerminalStatus(job.status)) {
         sse.end();
         return;
       }
@@ -90,7 +90,7 @@ jobEventsRouter.get(
         sse.send("update", event);
 
         // Close stream when job reaches terminal state
-        if (TERMINAL_JOB_STATUSES.includes(event.status) && !cleaned) {
+        if (JobModel.isTerminalStatus(event.status) && !cleaned) {
           cleaned = true;
           unsubscribe();
           sse.end();

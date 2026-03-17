@@ -1,7 +1,7 @@
 import { Box, Stack, Typography } from "@portalai/core/ui";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 
-import { DataJobStream } from "../components/DataJobStream.component";
+import { JobDataStream } from "../components/Job.component";
 import DataResult from "../components/DataResult.component";
 import { EmptyResults } from "../components/EmptyResults.component";
 import { JobCard, JobDataList } from "../components/Job.component";
@@ -66,7 +66,7 @@ export const JobsView = () => {
                   ) : (
                     <Stack spacing={1}>
                       {jobs.jobs.map((job) => (
-                        <DataJobStream key={job.id} job={job}>
+                        <JobDataStream key={job.id} job={job}>
                           {(stream) => (
                             <JobCard
                               job={job}
@@ -78,7 +78,7 @@ export const JobsView = () => {
                               }
                             />
                           )}
-                        </DataJobStream>
+                        </JobDataStream>
                       ))}
                     </Stack>
                   )

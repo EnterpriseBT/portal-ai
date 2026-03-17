@@ -1,7 +1,7 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, useRef, useState } from "react";
 
-import { TERMINAL_JOB_STATUSES } from "@portalai/core/models";
+import { JobModel } from "@portalai/core/models";
 import type { JobStatus } from "@portalai/core/models";
 import type { JobSnapshotEvent, JobUpdateEvent } from "@portalai/core/contracts";
 
@@ -119,7 +119,7 @@ export const useJobStream = (jobId: string | null | undefined): JobStreamState =
           connectionStatus: "connected",
         });
 
-        if (TERMINAL_JOB_STATUSES.includes(data.status)) {
+        if (JobModel.isTerminalStatus(data.status)) {
           es.close();
           eventSourceRef.current = null;
           setState((prev) => ({ ...prev, connectionStatus: "closed" }));
@@ -138,7 +138,7 @@ export const useJobStream = (jobId: string | null | undefined): JobStreamState =
           connectionStatus: "connected",
         }));
 
-        if (TERMINAL_JOB_STATUSES.includes(data.status)) {
+        if (JobModel.isTerminalStatus(data.status)) {
           es.close();
           eventSourceRef.current = null;
           setState((prev) => ({ ...prev, connectionStatus: "closed" }));
@@ -152,7 +152,7 @@ export const useJobStream = (jobId: string | null | undefined): JobStreamState =
 
         setState((prev) => {
           // Don't reconnect if job is already terminal
-          if (prev.status && TERMINAL_JOB_STATUSES.includes(prev.status)) {
+          if (prev.status && JobModel.isTerminalStatus(prev.status)) {
             return { ...prev, connectionStatus: "closed" };
           }
           reconnectTimerRef.current = setTimeout(() => {

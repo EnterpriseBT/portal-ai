@@ -287,6 +287,36 @@ describe("JobModelFactory", () => {
   });
 });
 
+// ── JobModel static helpers ──────────────────────────────────────
+
+describe("JobModel.isTerminalStatus", () => {
+  it.each(["completed", "failed", "cancelled"] as const)(
+    "should return true for terminal status '%s'",
+    (status) => {
+      expect(JobModel.isTerminalStatus(status)).toBe(true);
+    }
+  );
+
+  it.each(["pending", "active", "stalled", "awaiting_confirmation"] as const)(
+    "should return false for non-terminal status '%s'",
+    (status) => {
+      expect(JobModel.isTerminalStatus(status)).toBe(false);
+    }
+  );
+});
+
+describe("JobModel.TERMINAL_STATUSES", () => {
+  it("should equal TERMINAL_JOB_STATUSES", () => {
+    expect(JobModel.TERMINAL_STATUSES).toEqual(TERMINAL_JOB_STATUSES);
+  });
+
+  it("should contain exactly completed, failed, and cancelled", () => {
+    expect([...JobModel.TERMINAL_STATUSES].sort()).toEqual(
+      ["cancelled", "completed", "failed"]
+    );
+  });
+});
+
 // ── FileUploadFileSchema ──────────────────────────────────────────
 
 describe("FileUploadFileSchema", () => {

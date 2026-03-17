@@ -2,7 +2,7 @@ import { jest } from "@jest/globals";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { JobListResponsePayload } from "@portalai/core/contracts";
 import type { Job } from "@portalai/core/models";
-import type { JobStreamState } from "../utils/job-stream.util";
+import type { JobStreamState } from "../api/jobs.api";
 import type { ApiError } from "../utils";
 
 type ListQuery = UseQueryResult<JobListResponsePayload, ApiError>;
@@ -23,12 +23,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     jobs: {
       list: () => currentListQuery,
+      stream: () => currentStreamState,
     },
   },
-}));
-
-jest.unstable_mockModule("../utils/job-stream.util", () => ({
-  useJobStream: () => currentStreamState,
 }));
 
 const { render, screen } = await import("./test-utils");

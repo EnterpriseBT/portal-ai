@@ -8,9 +8,12 @@ import type {
 } from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
+import { useJobStream } from "../utils/job-stream.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
+
+export type { JobStreamState } from "../utils/job-stream.util";
 
 export const jobs = {
   list: (
@@ -41,4 +44,6 @@ export const jobs = {
     useAuthMutation<JobCancelResponsePayload, void>({
       url: `/api/jobs/${encodeURIComponent(id)}/cancel`,
     }),
+
+  stream: (jobId: string | null | undefined) => useJobStream(jobId),
 };
