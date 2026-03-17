@@ -24,6 +24,9 @@
       "label": "Storybook App"
     }
   },
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind,consistency=cached"
+  ],
   "remoteUser": "root",
   "onCreateCommand": "npm i"
 }

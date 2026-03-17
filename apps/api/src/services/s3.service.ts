@@ -9,6 +9,7 @@ const logger = createLogger({ module: "s3-service" });
 
 const s3Client = new S3Client({
   region: environment.UPLOAD_S3_REGION,
+  requestChecksumCalculation: "WHEN_REQUIRED",
 });
 
 export class S3Service {

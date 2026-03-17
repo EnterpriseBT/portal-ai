@@ -6,7 +6,7 @@ services:
       target: dev
     volumes:
       - .:/workspace:cached
-      - claude-config:/root/.claude
+
     ports:
       - "3000:3000"
       - "3001:3001"
@@ -89,7 +89,6 @@ services:
 
 volumes:
   pgdata:
-  claude-config:
   ollama_data:
   redis-data:
 
