@@ -893,14 +893,14 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 
 #### Verification
 
-- [ ] Selecting a `.csv` file and clicking submit produces a `jobId` visible in the UI
-- [ ] Non-CSV files are rejected client-side before presign request
-- [ ] Files appear in S3 at `uploads/{orgId}/{jobId}/{filename}`
-- [ ] `POST /presign` returns 400 for invalid extensions, oversized files, or too many files
-- [ ] `POST /process` returns 400 if files are missing from S3
-- [ ] Job record exists in DB with status `pending` and correct metadata
-- [ ] Large file (50MB) uploads to S3 with progress feedback in the UI
-- [ ] Multiple files upload in parallel with independent progress bars
+- [x] Selecting a `.csv` file and clicking submit produces a `jobId` visible in the UI
+- [x] Non-CSV files are rejected client-side before presign request
+- [x] Files appear in S3 at `uploads/{orgId}/{jobId}/{filename}`
+- [x] `POST /presign` returns 400 for invalid extensions, oversized files, or too many files
+- [x] `POST /process` returns 400 if files are missing from S3
+- [x] Job record exists in DB with status `pending` and correct metadata
+- [x] Large file (50MB) uploads to S3 with progress feedback in the UI
+- [x] Multiple files upload in parallel with independent progress bars
 
 ---
 
