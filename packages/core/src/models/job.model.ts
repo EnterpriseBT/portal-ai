@@ -89,8 +89,65 @@ export const FileParseResultSchema = z.object({
 });
 export type FileParseResult = z.infer<typeof FileParseResultSchema>;
 
+/** Action the user should take for a column recommendation. */
+export const ColumnRecommendationActionEnum = z.enum([
+  "match_existing",
+  "create_new",
+]);
+export type ColumnRecommendationAction = z.infer<typeof ColumnRecommendationActionEnum>;
+
+/** Per-column recommendation produced by AI analysis or heuristic fallback. */
+export const FileUploadColumnRecommendationSchema = z.object({
+  /** Source column name from the CSV header. */
+  sourceField: z.string(),
+  /** Recommended column definition key (snake_case). */
+  key: z.string(),
+  /** Human-readable label for the column. */
+  label: z.string(),
+  /** Inferred data type. */
+  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "currency"]),
+  /** Optional format hint (e.g. "YYYY-MM-DD", "email", "url"). */
+  format: z.string().nullable(),
+  /** Whether this column is a candidate primary key. */
+  isPrimaryKey: z.boolean(),
+  /** Whether the column should be required. */
+  required: z.boolean(),
+  /** Match or create action. */
+  action: ColumnRecommendationActionEnum,
+  /** ID of an existing column definition when action is "match_existing". */
+  existingColumnDefinitionId: z.string().nullable(),
+  /** Confidence score for the recommendation (0-1). */
+  confidence: z.number().min(0).max(1),
+  /** Sample values from the parsed data. */
+  sampleValues: z.array(z.string()),
+});
+export type FileUploadColumnRecommendation = z.infer<typeof FileUploadColumnRecommendationSchema>;
+
+/** Per-file entity recommendation produced by AI analysis. */
+export const FileUploadRecommendationEntitySchema = z.object({
+  /** Recommended connector entity key (snake_case). */
+  entityKey: z.string(),
+  /** Human-readable entity label. */
+  entityLabel: z.string(),
+  /** Source file name this recommendation is derived from. */
+  sourceFileName: z.string(),
+  /** Column-level recommendations. */
+  columns: z.array(FileUploadColumnRecommendationSchema),
+});
+export type FileUploadRecommendationEntity = z.infer<typeof FileUploadRecommendationEntitySchema>;
+
+/** Top-level recommendation payload. */
+export const FileUploadRecommendationSchema = z.object({
+  /** Suggested connector instance name. */
+  connectorInstanceName: z.string(),
+  /** Per-file entity recommendations. */
+  entities: z.array(FileUploadRecommendationEntitySchema),
+});
+export type FileUploadRecommendation = z.infer<typeof FileUploadRecommendationSchema>;
+
 export const FileUploadResultSchema = z.object({
   parseResults: z.array(FileParseResultSchema).optional(),
+  recommendations: FileUploadRecommendationSchema.optional(),
 });
 export type FileUploadResult = z.infer<typeof FileUploadResultSchema>;
 

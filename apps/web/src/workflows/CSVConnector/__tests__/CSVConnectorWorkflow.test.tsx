@@ -31,6 +31,7 @@ const MOCK_COLUMN: RecommendedColumn = {
   },
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
+  sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
 };
 
 const MOCK_COLUMN_NEW: RecommendedColumn = {
@@ -48,11 +49,13 @@ const MOCK_COLUMN_NEW: RecommendedColumn = {
   },
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
+  sampleValues: ["+1-555-0100", "+1-555-0101"],
 };
 
 const MOCK_ENTITIES: RecommendedEntity[] = [
   {
     connectorEntity: { key: "contacts", label: "Contacts" },
+    sourceFileName: "contacts.csv",
     columns: [MOCK_COLUMN, MOCK_COLUMN_NEW],
   },
 ];
@@ -98,6 +101,7 @@ function makeProps(
     jobStatus: null,
     jobResult: null,
     recommendations: null,
+    parseResults: null,
     onUpdateEntity: jest.fn(),
     onUpdateColumn: jest.fn(),
     onConnectorNameChange: jest.fn(),

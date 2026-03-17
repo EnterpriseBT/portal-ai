@@ -87,7 +87,10 @@ jobEventsRouter.get(
       // 3. Subscribe to live updates via Redis Pub/Sub
       let cleaned = false;
       const unsubscribe = JobEventsService.subscribe(jobId, (event) => {
-        sse.send("update", event);
+        // Custom event types (e.g. "recommendations") use a distinct SSE event name
+        const customType = (event as Record<string, unknown>)._eventType as string | undefined;
+        const sseEventName = customType ? `job:${customType}` : "update";
+        sse.send(sseEventName, event);
 
         // Close stream when job reaches terminal state
         if (JobModel.isTerminalStatus(event.status) && !cleaned) {

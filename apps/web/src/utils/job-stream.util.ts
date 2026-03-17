@@ -129,19 +129,43 @@ export const useJobStream = (jobId: string | null | undefined): JobStreamState =
       es.addEventListener("update", (e: MessageEvent) => {
         if (cancelled) return;
         const data: JobUpdateEvent = JSON.parse(e.data);
-        setState((prev) => ({
-          ...prev,
-          status: data.status,
-          progress: data.progress,
-          error: data.error ?? prev.error,
-          result: data.result ?? prev.result,
-          connectionStatus: "connected",
-        }));
+        setState((prev) => {
+          // Don't let a stale "active" progress event regress from a later status
+          const status =
+            prev.status === "awaiting_confirmation" && data.status === "active"
+              ? prev.status
+              : data.status;
+          return {
+            ...prev,
+            status,
+            progress: data.progress > prev.progress ? data.progress : prev.progress,
+            error: data.error ?? prev.error,
+            result: data.result ?? prev.result,
+            connectionStatus: "connected",
+          };
+        });
 
         if (JobModel.isTerminalStatus(data.status)) {
           es.close();
           eventSourceRef.current = null;
           setState((prev) => ({ ...prev, connectionStatus: "closed" }));
+        }
+      });
+
+      // Listen for custom job:recommendations event — merges recommendations
+      // into the result so the upload workflow can access them immediately.
+      es.addEventListener("job:recommendations", (e: MessageEvent) => {
+        if (cancelled) return;
+        const data = JSON.parse(e.data);
+        if (data.recommendations) {
+          setState((prev) => ({
+            ...prev,
+            result: {
+              ...(prev.result ?? {}),
+              recommendations: data.recommendations,
+            },
+            connectionStatus: "connected",
+          }));
         }
       });
 

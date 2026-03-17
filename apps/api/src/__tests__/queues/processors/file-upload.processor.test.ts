@@ -17,10 +17,30 @@ const mockGetObjectStream = jest.fn<
   (key: string) => Promise<{ stream: Readable; contentLength: number }>
 >();
 
+const mockFindByOrganizationId = jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]);
+
+const mockAnalyzeFile = jest.fn<(input: unknown) => Promise<unknown>>();
+
 jest.unstable_mockModule("../../../services/s3.service.js", () => ({
   S3Service: {
     headObject: mockHeadObject,
     getObjectStream: mockGetObjectStream,
+  },
+}));
+
+jest.unstable_mockModule("../../../services/db.service.js", () => ({
+  DbService: {
+    repository: {
+      columnDefinitions: {
+        findByOrganizationId: mockFindByOrganizationId,
+      },
+    },
+  },
+}));
+
+jest.unstable_mockModule("../../../services/file-analysis.service.js", () => ({
+  FileAnalysisService: {
+    analyzeFile: mockAnalyzeFile,
   },
 }));
 
@@ -98,6 +118,28 @@ describe("fileUploadProcessor", () => {
   beforeEach(() => {
     mockHeadObject.mockReset();
     mockGetObjectStream.mockReset();
+    mockFindByOrganizationId.mockReset().mockResolvedValue([]);
+    mockAnalyzeFile.mockReset().mockImplementation(async (raw: unknown) => {
+      const input = raw as { parseResult: { fileName: string; columnStats: Array<{ name: string; sampleValues: string[] }> } };
+      return {
+        entityKey: input.parseResult.fileName.replace(/\.[^.]+$/, "").toLowerCase(),
+        entityLabel: input.parseResult.fileName.replace(/\.[^.]+$/, ""),
+        sourceFileName: input.parseResult.fileName,
+        columns: input.parseResult.columnStats.map((s: { name: string; sampleValues: string[] }) => ({
+          sourceField: s.name,
+          key: s.name.toLowerCase(),
+          label: s.name,
+          type: "string",
+          format: null,
+          isPrimaryKey: false,
+          required: false,
+          action: "create_new",
+          existingColumnDefinitionId: null,
+          confidence: 0,
+          sampleValues: s.sampleValues,
+        })),
+      };
+    });
   });
 
   // ── S3 verification phase ───────────────────────────────────────────────
@@ -394,10 +436,14 @@ describe("fileUploadProcessor", () => {
         (c) => c[0]
       );
       // Verification: 10
-      // File 1: 10 + (1/3)*20 = 17
-      // File 2: 10 + (2/3)*20 = 23
-      // File 3: 10 + (3/3)*20 = 30
-      expect(calls).toEqual([10, 17, 23, 30]);
+      // Parse File 1: 10 + (1/3)*20 = 17
+      // Parse File 2: 10 + (2/3)*20 = 23
+      // Parse File 3: 10 + (3/3)*20 = 30
+      // Analysis File 1: 30 + (1/3)*40 = 43
+      // Analysis File 2: 30 + (2/3)*40 = 57
+      // Analysis File 3: 30 + (3/3)*40 = 70
+      // (Phase 4 progress is set by the worker's transition, not updateProgress)
+      expect(calls).toEqual([10, 17, 23, 30, 43, 57, 70]);
     });
   });
 

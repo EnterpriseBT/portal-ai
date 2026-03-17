@@ -36,6 +36,7 @@ const MOCK_COLUMN_CONTACT: RecommendedColumn = {
   },
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
+  sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
 };
 
 const MOCK_COLUMN_NAME: RecommendedColumn = {
@@ -53,6 +54,7 @@ const MOCK_COLUMN_NAME: RecommendedColumn = {
   },
   sourceField: "Full Name",
   isPrimaryKeyCandidate: false,
+  sampleValues: ["Alice Johnson", "Bob Smith", "Carol Williams"],
 };
 
 const MOCK_COLUMN_PHONE: RecommendedColumn = {
@@ -70,6 +72,7 @@ const MOCK_COLUMN_PHONE: RecommendedColumn = {
   },
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
+  sampleValues: ["+1-555-0100", "+1-555-0101"],
 };
 
 const MOCK_COLUMN_PRODUCT: RecommendedColumn = {
@@ -87,6 +90,7 @@ const MOCK_COLUMN_PRODUCT: RecommendedColumn = {
   },
   sourceField: "Product SKU",
   isPrimaryKeyCandidate: true,
+  sampleValues: ["SKU-001", "SKU-002", "SKU-003"],
 };
 
 const MOCK_COLUMN_PRICE: RecommendedColumn = {
@@ -104,15 +108,18 @@ const MOCK_COLUMN_PRICE: RecommendedColumn = {
   },
   sourceField: "Unit Price",
   isPrimaryKeyCandidate: false,
+  sampleValues: ["19.99", "24.50", "99.00"],
 };
 
 const MOCK_ENTITIES: RecommendedEntity[] = [
   {
     connectorEntity: { key: "contacts", label: "Contacts" },
+    sourceFileName: "contacts.csv",
     columns: [MOCK_COLUMN_CONTACT, MOCK_COLUMN_NAME, MOCK_COLUMN_PHONE],
   },
   {
     connectorEntity: { key: "products", label: "Products" },
+    sourceFileName: "products.csv",
     columns: [MOCK_COLUMN_PRODUCT, MOCK_COLUMN_PRICE],
   },
 ];
@@ -169,6 +176,7 @@ const baseArgs: CSVConnectorWorkflowUIProps = {
   jobStatus: null,
   jobResult: null,
   recommendations: null,
+  parseResults: null,
   onUpdateEntity: fn(),
   onUpdateColumn: fn(),
   onConnectorNameChange: fn(),

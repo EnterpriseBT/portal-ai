@@ -8,10 +8,14 @@ import type {
   FileParseResult,
   ColumnStat,
   FileUploadResult,
+  FileUploadRecommendation,
+  FileUploadRecommendationEntity,
 } from "@portalai/core/models";
 
 import type { TypedJobProcessor } from "../jobs.worker.js";
 import { S3Service } from "../../services/s3.service.js";
+import { DbService } from "../../services/db.service.js";
+import { FileAnalysisService, type ExistingColumnDefinition } from "../../services/file-analysis.service.js";
 import { createLogger } from "../../utils/logger.util.js";
 
 const logger = createLogger({ module: "file-upload-processor" });
@@ -367,6 +371,65 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
 
   logger.info({ jobId }, "Phase 2 complete: All files parsed");
 
-  const result: FileUploadResult = { parseResults };
+  // Phase 3: AI analysis (progress 30-70)
+  logger.info({ jobId }, "Phase 3: Analyzing files with AI");
+
+  const organizationId = bullJob.data.organizationId;
+
+  // Fetch existing column definitions for the organization
+  const existingColumnDefs = await DbService.repository.columnDefinitions
+    .findByOrganizationId(organizationId);
+  const existingColumns: ExistingColumnDefinition[] = existingColumnDefs.map((cd) => ({
+    id: cd.id,
+    key: cd.key,
+    label: cd.label,
+    type: cd.type,
+  }));
+
+  const entityRecommendations: FileUploadRecommendationEntity[] = [];
+
+  for (let i = 0; i < parseResults.length; i++) {
+    const parseResult = parseResults[i];
+    logger.info(
+      { jobId, fileName: parseResult.fileName },
+      `Analyzing file ${i + 1}/${parseResults.length}`
+    );
+
+    const recommendation = await FileAnalysisService.analyzeFile({
+      parseResult,
+      existingColumns,
+      priorRecommendations: entityRecommendations,
+    });
+
+    entityRecommendations.push(recommendation);
+
+    // Progress: 30 + ((i+1) / fileCount) * 40 (maps to 30-70 range)
+    const progress = Math.round(30 + ((i + 1) / fileCount) * 40);
+    await bullJob.updateProgress(progress);
+
+    logger.info(
+      { jobId, fileName: parseResult.fileName, columnCount: recommendation.columns.length },
+      `Analyzed file ${i + 1}/${parseResults.length}`
+    );
+  }
+
+  logger.info({ jobId }, "Phase 3 complete: All files analyzed");
+
+  // Phase 4: Assemble recommendations and persist (progress 70-80)
+  logger.info({ jobId }, "Phase 4: Persisting recommendations");
+
+  // Derive a suggested connector instance name from file names
+  const connectorInstanceName = parseResults.length === 1
+    ? parseResults[0].fileName.replace(/\.[^.]+$/, "")
+    : `CSV Import (${parseResults.length} files)`;
+
+  const recommendations: FileUploadRecommendation = {
+    connectorInstanceName,
+    entities: entityRecommendations,
+  };
+
+  logger.info({ jobId }, "Phase 4 complete: Recommendations assembled");
+
+  const result: FileUploadResult = { parseResults, recommendations };
   return result;
 };

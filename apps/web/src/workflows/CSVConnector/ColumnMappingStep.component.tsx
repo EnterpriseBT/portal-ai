@@ -161,6 +161,13 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
           checked={column.isPrimaryKeyCandidate}
           onChange={handlePrimaryKeyToggle}
         />
+
+        {column.sampleValues && column.sampleValues.length > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            Sample: {column.sampleValues.slice(0, 3).join(", ")}
+            {column.sampleValues.length > 3 && "…"}
+          </Typography>
+        )}
       </Stack>
     </Box>
   );

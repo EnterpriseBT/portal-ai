@@ -25,6 +25,7 @@ import type {
   Recommendations,
   RecommendedEntity,
   RecommendedColumn,
+  ParseSummary,
   WorkflowStep,
 } from "./utils/upload-workflow.util";
 import type {
@@ -58,6 +59,7 @@ export interface CSVConnectorWorkflowUIProps {
 
   // Entity step
   recommendations: Recommendations | null;
+  parseResults: ParseSummary[] | null;
   onUpdateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
 
   // Column mapping step
@@ -99,6 +101,7 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
   jobStatus,
   jobResult,
   recommendations,
+  parseResults,
   onUpdateEntity,
   onUpdateColumn,
   onConnectorNameChange,
@@ -143,6 +146,7 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
               <EntityStep
                 entities={recommendations.entities}
                 files={files}
+                parseResults={parseResults}
                 onUpdateEntity={onUpdateEntity}
               />
             ) : (
@@ -326,6 +330,7 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
       jobStatus={workflow.jobStatus}
       jobResult={workflow.jobResult}
       recommendations={workflow.recommendations}
+      parseResults={workflow.parseResults}
       onUpdateEntity={workflow.updateEntity}
       onUpdateColumn={workflow.updateColumn}
       onConnectorNameChange={workflow.updateConnectorName}

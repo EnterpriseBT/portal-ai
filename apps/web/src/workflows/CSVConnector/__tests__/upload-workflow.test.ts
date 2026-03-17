@@ -72,6 +72,7 @@ const MOCK_RECOMMENDATIONS = {
   entities: [
     {
       connectorEntity: { key: "contacts", label: "Contacts" },
+      sourceFileName: "contacts.csv",
       columns: [
         {
           action: "match_existing" as const,
@@ -88,6 +89,7 @@ const MOCK_RECOMMENDATIONS = {
           },
           sourceField: "Email Address",
           isPrimaryKeyCandidate: true,
+          sampleValues: ["alice@example.com", "bob@test.org"],
         },
       ],
     },

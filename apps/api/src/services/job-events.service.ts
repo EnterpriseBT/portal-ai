@@ -99,6 +99,32 @@ export class JobEventsService {
   }
 
   /**
+   * Publish a custom event (e.g. "recommendations") on the job channel.
+   * Does NOT update job status or persist to DB — the payload is broadcast only.
+   */
+  static async publishCustomEvent(
+    jobId: string,
+    eventType: string,
+    payload: Record<string, unknown>
+  ): Promise<void> {
+    const event: JobUpdateEvent = {
+      jobId,
+      status: "active",
+      progress: 0,
+      timestamp: SystemUtilities.utc.now().getTime(),
+      ...payload,
+      _eventType: eventType,
+    } as JobUpdateEvent & { _eventType: string };
+
+    const redis = getRedisClient();
+    await redis.publish(
+      `${JOB_CHANNEL_PREFIX}${jobId}`,
+      JSON.stringify(event)
+    );
+    logger.debug({ jobId, eventType }, "Custom job event published");
+  }
+
+  /**
    * Update progress without a status transition.
    */
   static async updateProgress(

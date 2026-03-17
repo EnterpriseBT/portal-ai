@@ -1,14 +1,15 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 
 import { Box, Stack, Typography, TextInput, Divider } from "@portalai/core/ui";
 
-import type { RecommendedEntity } from "./utils/upload-workflow.util";
+import type { RecommendedEntity, ParseSummary } from "./utils/upload-workflow.util";
 
 // --- Types ---
 
 interface EntityStepProps {
   entities: RecommendedEntity[];
   files: File[];
+  parseResults: ParseSummary[] | null;
   onUpdateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
 }
 
@@ -17,6 +18,7 @@ interface EntityStepProps {
 export const EntityStep: React.FC<EntityStepProps> = ({
   entities,
   files,
+  parseResults,
   onUpdateEntity,
 }) => {
   const handleKeyChange = useCallback(
@@ -37,6 +39,12 @@ export const EntityStep: React.FC<EntityStepProps> = ({
     [entities, onUpdateEntity]
   );
 
+  // Build a lookup for parse results by file name
+  const parseResultsByFile = useMemo(() => {
+    if (!parseResults) return new Map<string, ParseSummary>();
+    return new Map(parseResults.map((pr) => [pr.fileName, pr]));
+  }, [parseResults]);
+
   if (entities.length === 0) {
     return (
       <Typography color="text.secondary">
@@ -51,7 +59,33 @@ export const EntityStep: React.FC<EntityStepProps> = ({
         Review the detected entities. Each uploaded file maps to one entity.
       </Typography>
 
-      {entities.map((entity, index) => (
+      {/* Parse summary */}
+      {parseResults && parseResults.length > 0 && (
+        <Box
+          sx={{
+            p: 2,
+            bgcolor: "action.hover",
+            borderRadius: 1,
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Parse Summary
+          </Typography>
+          <Stack spacing={0.5}>
+            {parseResults.map((pr) => (
+              <Typography key={pr.fileName} variant="body2" color="text.secondary">
+                {pr.fileName}: {pr.rowCount.toLocaleString()} rows, delimiter: &quot;{pr.delimiter}&quot;, {pr.columnCount} columns, {pr.encoding}
+              </Typography>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {entities.map((entity, index) => {
+        const sourceFile = entity.sourceFileName || files[index]?.name || `File ${index + 1}`;
+        const parseSummary = parseResultsByFile.get(sourceFile);
+
+        return (
         <Box
           key={index}
           sx={{
@@ -68,7 +102,12 @@ export const EntityStep: React.FC<EntityStepProps> = ({
               alignItems="center"
             >
               <Typography variant="subtitle2" color="text.secondary">
-                Source: {files[index]?.name ?? `File ${index + 1}`}
+                Source: {sourceFile}
+                {parseSummary && (
+                  <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    ({parseSummary.rowCount.toLocaleString()} rows)
+                  </Typography>
+                )}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {entity.columns.length} columns detected
@@ -98,7 +137,8 @@ export const EntityStep: React.FC<EntityStepProps> = ({
             </Stack>
           </Stack>
         </Box>
-      ))}
+        );
+      })}
     </Stack>
   );
 };

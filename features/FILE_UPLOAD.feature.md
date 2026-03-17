@@ -975,30 +975,32 @@ AI analyzes parsed results, generates schema recommendations, and the frontend d
 
 #### Backend
 
-- [ ] Create `services/file-analysis.service.ts`:
-  - `analyzeFile()` — LangChain single-pass chain with `withStructuredOutput(FileUploadRecommendationEntitySchema)`
+- [x] Create `services/file-analysis.service.ts` — orchestrator with AI retry loop and heuristic fallback:
+  - `analyzeFile()` — Vercel AI SDK `generateObject()` with `FileUploadRecommendationEntitySchema` structured output
   - Input: file parse result + existing org column definitions + cumulative recommendations from prior files
   - Output: entity recommendation (connector entity key/label, column matches/creates, field mappings, primary key candidates)
   - Confidence scores per column match (0-1)
-- [ ] Implement heuristic fallback in `file-analysis.service.ts`:
-  - Regex-based type inference (dates, numbers, booleans, emails)
+- [x] Create `services/prompts/file-analysis.prompt.ts` — prompt builder for AI analysis
+- [x] Create `utils/heuristic-analyzer.util.ts` — heuristic fallback with `inferType()`, `toSnakeCase()`, `heuristicAnalyze()`:
+  - Regex-based type inference (dates, datetimes, numbers, booleans, emails)
   - Exact key/label match against existing column definitions
+  - Cross-file column matching via prior recommendations (confidence 0.9)
   - All non-exact matches flagged `action: "create_new"` with `confidence: 0`
   - Activated on AI timeout (30s), AI error, or Zod validation failure (after 1 retry)
-- [ ] Create `FileUploadRecommendationSchema` in `job.model.ts`
-- [ ] Extend job processor Phase 3: invoke `analyzeFile()` per file sequentially with cumulative context
+- [x] Create `FileUploadRecommendationSchema`, `FileUploadRecommendationEntitySchema`, `FileUploadColumnRecommendationSchema` in `job.model.ts`
+- [x] Extend job processor Phase 3: invoke `analyzeFile()` per file sequentially with cumulative context
   - Progress: `30 + (fileIdx / fileCount) * 40` (maps to 30-70 range)
-- [ ] Extend job processor Phase 4: persist recommendations to job `result.recommendations`, transition to `awaiting_confirmation`
-- [ ] Add `job:recommendations` SSE event type — emitted once with full recommendation payload
-- [ ] Add error codes: `UPLOAD_AI_ANALYSIS_FAILED`, `UPLOAD_AI_TIMEOUT`
+- [x] Extend job processor Phase 4: persist recommendations to job `result.recommendations`, transition to `awaiting_confirmation`
+- [x] Add `job:recommendations` SSE event type — emitted once with full recommendation payload via `JobEventsService.publishCustomEvent()`
+- [x] Add error codes: `UPLOAD_AI_ANALYSIS_FAILED`, `UPLOAD_AI_TIMEOUT`
 
 #### Frontend
 
-- [ ] Extend `useUploadWorkflow.util.ts` — on `job:recommendations` SSE event, parse recommendation payload and auto-advance stepper from Step 1 ("Processing...") to Step 2 ("Confirm Entities")
-- [ ] Populate `EntityStep.component.tsx` with AI-recommended entities from recommendation payload
-- [ ] Populate `ColumnMappingStep.component.tsx` with AI-recommended column mappings, confidence scores, and sample values from recommendation payload
-- [ ] Populate `ReviewStep.component.tsx` connector instance name with AI-suggested default
-- [ ] Show parse summary (row counts, delimiters) as read-only context in `EntityStep` above entity list
+- [x] Extend `upload-workflow.util.ts` — on `job:recommendations` SSE event, parse recommendation payload and auto-advance stepper from Step 1 ("Processing...") to Step 2 ("Confirm Entities")
+- [x] Populate `EntityStep.component.tsx` with AI-recommended entities from recommendation payload
+- [x] Populate `ColumnMappingStep.component.tsx` with AI-recommended column mappings, confidence scores, and sample values from recommendation payload
+- [x] Populate `ReviewStep.component.tsx` connector instance name with AI-suggested default
+- [x] Show parse summary (row counts, delimiters) as read-only context in `EntityStep` above entity list
 
 #### Verification
 
@@ -1017,14 +1019,14 @@ AI analyzes parsed results, generates schema recommendations, and the frontend d
 
 #### Tests
 
-- [ ] **Unit — Backend** (`file-analysis.service.test.ts`): `analyzeFile()` returns valid `FileUploadRecommendationEntitySchema` output. Confidence scores are between 0-1. Existing column definitions produce `match_existing` actions. Unknown columns produce `create_new` actions. Cumulative context from prior files influences subsequent recommendations (shared columns matched). AI timeout (30s) triggers heuristic fallback. AI Zod validation failure retries once then falls back to heuristic
-- [ ] **Unit — Backend** (`file-analysis.service.test.ts` — heuristic fallback): Regex type inference detects dates, numbers, booleans, emails from sample values. Exact key/label match against existing column definitions works. Non-exact matches flagged `create_new` with `confidence: 0`. All columns returned with valid schema shape
-- [ ] **Unit — Backend** (`file-upload.processor.test.ts` — Phase 3): AI analysis invoked per file sequentially. Progress events emitted at 30-70 range. Recommendations persisted to job `result.recommendations`. Job transitions to `awaiting_confirmation`. `job:recommendations` SSE event emitted with full payload
+- [x] **Unit — Backend** (`file-analysis.service.test.ts`): `analyzeFile()` returns valid `FileUploadRecommendationEntitySchema` output. Confidence scores are between 0-1. Existing column definitions produce `match_existing` actions. Unknown columns produce `create_new` actions. Cumulative context from prior files influences subsequent recommendations (shared columns matched). AI timeout (30s) triggers heuristic fallback. AI Zod validation failure retries once then falls back to heuristic
+- [x] **Unit — Backend** (`heuristic-analyzer.util.test.ts`): `inferType()` detects dates, datetimes, numbers, booleans, emails from sample values. `toSnakeCase()` handles camelCase, PascalCase, spaces, hyphens, dots, special characters. `heuristicAnalyze()` exact key/label match against existing column definitions works. Non-exact matches flagged `create_new` with `confidence: 0`. Prior recommendation matching with confidence 0.9. Existing column match takes priority over prior. All columns returned with valid schema shape
+- [x] **Unit — Backend** (`file-upload.processor.test.ts` — Phase 3): AI analysis invoked per file sequentially. Progress events emitted at 30-70 range (updated to include Phase 3+4 progress: 10, 17, 23, 30, 43, 57, 70, 80 for 3 files). Recommendations persisted to job `result.recommendations`. Job transitions to `awaiting_confirmation`. `job:recommendations` SSE event emitted with full payload
 - [ ] **Unit — Frontend** (`EntityStep.test.tsx`): Entity list renders from recommendations. Entity key and label fields are editable. Source file name displays as read-only. `updateEntity` callback fires with correct index and updates. Validation prevents advancing with zero entities
 - [ ] **Unit — Frontend** (`ColumnMappingStep.test.tsx`): Tabbed layout renders one tab per entity. Column rows display source field, recommended key/label/type. Confidence badge renders with correct color (success ≥0.8, warning ≥0.5, error <0.5). Action toggle switches between `match_existing` and `create_new`. Primary key toggle updates correctly. `updateColumn` callback fires with correct entity and column indices
 - [ ] **Unit — Frontend** (`useUploadWorkflow.util.test.ts` — recommendations): `job:recommendations` event populates `recommendations` state, auto-advances to step 1, `updateEntity` / `updateColumn` override AI values, edited values persist across step navigation
 - [ ] **Integration — Backend** (`file-analysis.integration.test.ts`): Full analysis pipeline with real parse results — AI service returns valid recommendations, heuristic fallback produces valid output when AI is unavailable, multi-file analysis builds cumulative context correctly
-- [ ] All Phase 3 tests pass (`npm run test -- --testPathPattern="(file-analysis|file-upload.processor|EntityStep|ColumnMappingStep|useUploadWorkflow)"`) ✅
+- [ ] All Phase 3 tests pass (`npm run test -- --testPathPattern="(file-analysis|heuristic-analyzer|file-upload.processor|EntityStep|ColumnMappingStep|useUploadWorkflow)"`) ✅
 
 ---
 

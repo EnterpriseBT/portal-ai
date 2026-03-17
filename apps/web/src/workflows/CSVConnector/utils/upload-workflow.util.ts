@@ -32,6 +32,7 @@ export interface RecommendedColumn {
   };
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
+  sampleValues: string[];
 }
 
 export interface RecommendedEntity {
@@ -39,7 +40,16 @@ export interface RecommendedEntity {
     key: string;
     label: string;
   };
+  sourceFileName: string;
   columns: RecommendedColumn[];
+}
+
+export interface ParseSummary {
+  fileName: string;
+  rowCount: number;
+  delimiter: string;
+  encoding: string;
+  columnCount: number;
 }
 
 export interface Recommendations {
@@ -62,6 +72,7 @@ export interface WorkflowState {
   jobError: string | null;
   jobResult: Record<string, unknown> | null;
   recommendations: Recommendations | null;
+  parseResults: ParseSummary[] | null;
   uploadError: string | null;
   isProcessing: boolean;
 }
@@ -83,13 +94,84 @@ export interface UseUploadWorkflowReturn extends WorkflowState {
 
 // --- Helpers ---
 
+/** Backend recommendation shape (from FileUploadRecommendationSchema). */
+interface BackendRecommendation {
+  connectorInstanceName: string;
+  entities: Array<{
+    entityKey: string;
+    entityLabel: string;
+    sourceFileName: string;
+    columns: Array<{
+      sourceField: string;
+      key: string;
+      label: string;
+      type: string;
+      format: string | null;
+      isPrimaryKey: boolean;
+      required: boolean;
+      action: "match_existing" | "create_new";
+      existingColumnDefinitionId: string | null;
+      confidence: number;
+      sampleValues: string[];
+    }>;
+  }>;
+}
+
+function isBackendFormat(recs: Record<string, unknown>): boolean {
+  return "connectorInstanceName" in recs;
+}
+
+function mapBackendRecommendations(backend: BackendRecommendation): Recommendations {
+  return {
+    connectorInstance: { name: backend.connectorInstanceName, config: {} },
+    entities: backend.entities.map((entity) => ({
+      connectorEntity: { key: entity.entityKey, label: entity.entityLabel },
+      sourceFileName: entity.sourceFileName,
+      columns: entity.columns.map((col) => ({
+        action: col.action,
+        confidence: col.confidence,
+        existingColumnDefinitionId: col.existingColumnDefinitionId,
+        recommended: {
+          key: col.key,
+          label: col.label,
+          type: col.type,
+          required: col.required,
+          format: col.format,
+        },
+        sourceField: col.sourceField,
+        isPrimaryKeyCandidate: col.isPrimaryKey,
+        sampleValues: col.sampleValues,
+      })),
+    })),
+  };
+}
+
 function extractRecommendations(
   result: Record<string, unknown> | null,
 ): Recommendations | null {
   if (!result) return null;
   const recs = result.recommendations;
   if (!recs || typeof recs !== "object") return null;
+  const recsObj = recs as Record<string, unknown>;
+  if (isBackendFormat(recsObj)) {
+    return mapBackendRecommendations(recsObj as unknown as BackendRecommendation);
+  }
   return recs as Recommendations;
+}
+
+function extractParseResults(
+  result: Record<string, unknown> | null,
+): ParseSummary[] | null {
+  if (!result) return null;
+  const parseResults = result.parseResults;
+  if (!Array.isArray(parseResults)) return null;
+  return parseResults.map((pr: Record<string, unknown>) => ({
+    fileName: String(pr.fileName ?? ""),
+    rowCount: Number(pr.rowCount ?? 0),
+    delimiter: String(pr.delimiter ?? ","),
+    encoding: String(pr.encoding ?? "utf-8"),
+    columnCount: Array.isArray(pr.headers) ? pr.headers.length : 0,
+  }));
 }
 
 // --- Hook ---
@@ -118,6 +200,12 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
 
   // The active recommendations: user edits take priority over SSE-derived
   const recommendations = editedRecommendations ?? sseRecommendations;
+
+  // Derive parse results from SSE stream result
+  const parseResults = useMemo(
+    () => extractParseResults(stream.result),
+    [stream.result],
+  );
 
   const isProcessing =
     fileUpload.phase === "presigning" ||
@@ -250,6 +338,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
     jobError: stream.error ?? fileUpload.error,
     jobResult: stream.result,
     recommendations,
+    parseResults,
     uploadError: fileUpload.error,
     isProcessing,
     addFiles,
