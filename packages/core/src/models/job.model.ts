@@ -62,7 +62,36 @@ export const FileUploadMetadataSchema = z.object({
 });
 export type FileUploadMetadata = z.infer<typeof FileUploadMetadataSchema>;
 
-export const FileUploadResultSchema = z.object({});
+/** Per-column statistics accumulated during CSV parsing. */
+export const ColumnStatSchema = z.object({
+  name: z.string(),
+  nullCount: z.number(),
+  totalCount: z.number(),
+  nullRate: z.number(),
+  uniqueCount: z.number(),
+  uniqueCapped: z.boolean(),
+  minLength: z.number(),
+  maxLength: z.number(),
+  sampleValues: z.array(z.string()),
+});
+export type ColumnStat = z.infer<typeof ColumnStatSchema>;
+
+/** Per-file parse result produced by the CSV parsing phase. */
+export const FileParseResultSchema = z.object({
+  fileName: z.string(),
+  delimiter: z.string(),
+  hasHeader: z.boolean(),
+  encoding: z.string(),
+  rowCount: z.number(),
+  headers: z.array(z.string()),
+  sampleRows: z.array(z.array(z.string())),
+  columnStats: z.array(ColumnStatSchema),
+});
+export type FileParseResult = z.infer<typeof FileParseResultSchema>;
+
+export const FileUploadResultSchema = z.object({
+  parseResults: z.array(FileParseResultSchema).optional(),
+});
 export type FileUploadResult = z.infer<typeof FileUploadResultSchema>;
 
 // --- Type Map ---

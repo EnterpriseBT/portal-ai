@@ -9,6 +9,8 @@ import {
   FileUploader,
 } from "@portalai/core/ui";
 
+import type { JobStatus, FileParseResult } from "@portalai/core/models";
+
 import type { FileUploadProgress, UploadPhase } from "../../utils/file-upload.util";
 
 // --- Types ---
@@ -24,6 +26,8 @@ interface UploadStepProps {
   uploadError: string | null;
   isProcessing: boolean;
   connectionStatus: string;
+  jobStatus: JobStatus | null;
+  jobResult: Record<string, unknown> | null;
 }
 
 // --- Phase Labels ---
@@ -40,6 +44,7 @@ function getPhaseLabel(
     case "processing":
       return "Starting processing...";
     case "done":
+      if (jobProgress <= 10) return "Verifying files...";
       if (jobProgress < 30) return "Parsing CSV files...";
       if (jobProgress < 70) return "Analyzing schema...";
       if (jobProgress < 80) return "Generating recommendations...";
@@ -64,10 +69,15 @@ export const UploadStep: React.FC<UploadStepProps> = ({
   uploadError,
   isProcessing,
   connectionStatus,
+  jobStatus,
+  jobResult,
 }) => {
   const isUploading = uploadPhase === "uploading";
   const isActive = uploadPhase !== "idle" && uploadPhase !== "error";
   const error = jobError || uploadError;
+
+  // Extract parse results from job result for completed jobs
+  const parseResults = extractParseResults(jobResult);
 
   // Show file picker when idle or error (allow re-selection)
   if (uploadPhase === "idle" || (uploadPhase === "error" && !isProcessing)) {
@@ -86,6 +96,40 @@ export const UploadStep: React.FC<UploadStepProps> = ({
         {error && (
           <StatusMessage message={error} variant="error" />
         )}
+      </Stack>
+    );
+  }
+
+  // Show parse summary when job completed with results (Phase 2 temporary completion)
+  if (jobStatus === "completed" && parseResults && parseResults.length > 0) {
+    return (
+      <Stack spacing={2}>
+        <StatusMessage
+          message={`Successfully parsed ${parseResults.length} file${parseResults.length > 1 ? "s" : ""}`}
+          variant="success"
+        />
+        <Stack spacing={1.5}>
+          {parseResults.map((result) => (
+            <Box
+              key={result.fileName}
+              sx={{
+                p: 1.5,
+                borderRadius: 1,
+                bgcolor: "action.hover",
+              }}
+            >
+              <Typography variant="body2" fontWeight="medium">
+                {result.fileName}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {result.rowCount.toLocaleString()} rows
+                {" · "}delimiter: {formatDelimiter(result.delimiter)}
+                {" · "}encoding: {result.encoding}
+                {" · "}{result.headers.length} columns
+              </Typography>
+            </Box>
+          ))}
+        </Stack>
       </Stack>
     );
   }
@@ -145,7 +189,7 @@ export const UploadStep: React.FC<UploadStepProps> = ({
   );
 };
 
-// --- Utility ---
+// --- Utilities ---
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -153,4 +197,21 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function formatDelimiter(d: string): string {
+  if (d === ",") return "comma";
+  if (d === "\t") return "tab";
+  if (d === ";") return "semicolon";
+  if (d === "|") return "pipe";
+  return `"${d}"`;
+}
+
+function extractParseResults(
+  result: Record<string, unknown> | null,
+): FileParseResult[] | null {
+  if (!result) return null;
+  const pr = result.parseResults;
+  if (!Array.isArray(pr) || pr.length === 0) return null;
+  return pr as FileParseResult[];
 }

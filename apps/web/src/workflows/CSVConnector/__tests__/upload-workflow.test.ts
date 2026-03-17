@@ -513,6 +513,14 @@ describe("useUploadWorkflow", () => {
       expect(result.current.connectionStatus).toBe("error");
     });
 
+    it("exposes jobResult from stream", () => {
+      const mockResult = { parseResults: [{ fileName: "test.csv", rowCount: 100 }] };
+      mockStreamState = createMockStreamState({ result: mockResult });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+      expect(result.current.jobResult).toEqual(mockResult);
+    });
+
     it("exposes jobError from stream or fileUpload", () => {
       mockStreamState = createMockStreamState({ error: "Stream error" });
 

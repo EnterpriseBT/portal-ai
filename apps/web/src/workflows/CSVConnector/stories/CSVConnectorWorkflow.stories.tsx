@@ -166,6 +166,8 @@ const baseArgs: CSVConnectorWorkflowUIProps = {
   uploadError: null,
   isProcessing: false,
   connectionStatus: "idle",
+  jobStatus: null,
+  jobResult: null,
   recommendations: null,
   onUpdateEntity: fn(),
   onUpdateColumn: fn(),

@@ -10,6 +10,7 @@ import {
   StepPanel,
 } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
+import type { JobStatus } from "@portalai/core/models";
 
 import { UploadStep } from "./UploadStep.component";
 import { EntityStep } from "./EntityStep.component";
@@ -52,6 +53,8 @@ export interface CSVConnectorWorkflowUIProps {
   uploadError: string | null;
   isProcessing: boolean;
   connectionStatus: string;
+  jobStatus: JobStatus | null;
+  jobResult: Record<string, unknown> | null;
 
   // Entity step
   recommendations: Recommendations | null;
@@ -93,6 +96,8 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
   uploadError,
   isProcessing,
   connectionStatus,
+  jobStatus,
+  jobResult,
   recommendations,
   onUpdateEntity,
   onUpdateColumn,
@@ -127,6 +132,8 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
               uploadError={uploadError}
               isProcessing={isProcessing}
               connectionStatus={connectionStatus}
+              jobStatus={jobStatus}
+              jobResult={jobResult}
             />
           </StepPanel>
 
@@ -316,6 +323,8 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
       uploadError={workflow.uploadError}
       isProcessing={workflow.isProcessing}
       connectionStatus={workflow.connectionStatus}
+      jobStatus={workflow.jobStatus}
+      jobResult={workflow.jobResult}
       recommendations={workflow.recommendations}
       onUpdateEntity={workflow.updateEntity}
       onUpdateColumn={workflow.updateColumn}

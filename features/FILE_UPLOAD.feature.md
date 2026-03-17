@@ -921,29 +921,29 @@ Job processor streams CSV from S3, parses it, and the frontend shows real-time p
 
 #### Backend
 
-- [ ] Create `queues/processors/file-upload.processor.ts` — Phase 2 scope: S3 verification + CSV parsing only
-- [ ] Register `file_upload` processor in `processors/index.ts`
-- [ ] Implement Phase 1 (S3 verification): `headObject()` per file, validate sizes, check non-empty
-- [ ] Implement Phase 2 (CSV parsing): single-pass streaming parser per file
+- [x] Create `queues/processors/file-upload.processor.ts` — Phase 2 scope: S3 verification + CSV parsing only
+- [x] Register `file_upload` processor in `processors/index.ts`
+- [x] Implement Phase 1 (S3 verification): `headObject()` per file, validate sizes, check non-empty
+- [x] Implement Phase 2 (CSV parsing): single-pass streaming parser per file
   - Auto-detect delimiter from first 4KB
   - Detect encoding via `chardet` on first 4KB
   - Capture first 50 sample rows
   - Running accumulators: row count, null rate, unique count (capped at 1,000), min/max length, 10 sample values per column
   - Byte-based progress: `progress = 10 + (fileIdx / fileCount) * 20`
-- [ ] Extend `FileUploadResultSchema` with `parseResults[]` (per-file: fileName, delimiter, hasHeader, encoding, rowCount, headers, sampleRows, columnStats)
-- [ ] Persist `parseResults` to job `result` field after all files parsed
-- [ ] Add error codes: `UPLOAD_FILE_MISSING`, `UPLOAD_FILE_SIZE_MISMATCH`, `UPLOAD_EMPTY_FILE`, `UPLOAD_PARSE_FAILED`, `UPLOAD_ENCODING_ERROR`, `UPLOAD_S3_READ_ERROR`
-- [ ] After parsing completes, temporarily transition job to `completed` (Phase 3 will change this to `awaiting_confirmation`)
+- [x] Extend `FileUploadResultSchema` with `parseResults[]` (per-file: fileName, delimiter, hasHeader, encoding, rowCount, headers, sampleRows, columnStats)
+- [x] Persist `parseResults` to job `result` field after all files parsed
+- [x] Add error codes: `UPLOAD_FILE_MISSING`, `UPLOAD_FILE_SIZE_MISMATCH`, `UPLOAD_EMPTY_FILE`, `UPLOAD_PARSE_FAILED`, `UPLOAD_ENCODING_ERROR`, `UPLOAD_S3_READ_ERROR`
+- [x] After parsing completes, temporarily transition job to `completed` (Phase 3 will change this to `awaiting_confirmation`)
 
 #### Frontend
 
-- [ ] Extend `useUploadWorkflow.util.ts` — wire SSE subscription via existing `/sse/jobs/:id/events` endpoint into workflow state machine after `process()` call
-- [ ] Update `UploadStep.component.tsx` "Processing..." state:
+- [x] Extend `upload-workflow.util.ts` — wire SSE subscription via existing `/sse/jobs/:id/events` endpoint into workflow state machine after `process()` call
+- [x] Update `UploadStep.component.tsx` "Processing..." state:
   - Display overall progress bar driven by `job:update` events
   - Display current phase label ("Verifying files...", "Parsing contacts.csv...")
   - Handle `job:error` events — show error message with detail, allow dismiss
   - Handle SSE disconnect — auto-reconnect, show "Reconnecting..." indicator
-- [ ] On `job:complete` (temporary for Phase 2), show parse summary in `UploadStep`: files parsed, row counts, detected delimiters
+- [x] On `job:complete` (temporary for Phase 2), show parse summary in `UploadStep`: files parsed, row counts, detected delimiters
 
 #### Verification
 

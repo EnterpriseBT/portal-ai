@@ -60,6 +60,7 @@ export interface WorkflowState {
   jobStatus: JobStatus | null;
   jobProgress: number;
   jobError: string | null;
+  jobResult: Record<string, unknown> | null;
   recommendations: Recommendations | null;
   uploadError: string | null;
   isProcessing: boolean;
@@ -247,6 +248,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
     jobStatus: stream.status,
     jobProgress: stream.progress,
     jobError: stream.error ?? fileUpload.error,
+    jobResult: stream.result,
     recommendations,
     uploadError: fileUpload.error,
     isProcessing,

@@ -95,6 +95,8 @@ function makeProps(
     uploadError: null,
     isProcessing: false,
     connectionStatus: "idle",
+    jobStatus: null,
+    jobResult: null,
     recommendations: null,
     onUpdateEntity: jest.fn(),
     onUpdateColumn: jest.fn(),

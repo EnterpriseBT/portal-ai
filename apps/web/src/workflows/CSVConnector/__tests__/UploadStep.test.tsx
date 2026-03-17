@@ -2,6 +2,8 @@ import { jest } from "@jest/globals";
 
 import { render, screen } from "../../../__tests__/test-utils";
 
+import type { JobStatus } from "@portalai/core/models";
+
 import { UploadStep } from "../UploadStep.component";
 import type { FileUploadProgress, UploadPhase } from "../../../utils/file-upload.util";
 
@@ -20,6 +22,8 @@ interface UploadStepTestProps {
   uploadError?: string | null;
   isProcessing?: boolean;
   connectionStatus?: string;
+  jobStatus?: JobStatus | null;
+  jobResult?: Record<string, unknown> | null;
 }
 
 function makeProps(overrides: UploadStepTestProps = {}) {
@@ -34,6 +38,8 @@ function makeProps(overrides: UploadStepTestProps = {}) {
     uploadError: null,
     isProcessing: false,
     connectionStatus: "idle",
+    jobStatus: null,
+    jobResult: null,
     ...overrides,
   };
 }
@@ -141,7 +147,21 @@ describe("UploadStep", () => {
       expect(screen.getByText("Starting processing...")).toBeInTheDocument();
     });
 
-    it('shows "Parsing CSV files..." when done with jobProgress < 30', () => {
+    it('shows "Verifying files..." when done with jobProgress <= 10', () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: MOCK_FILES,
+            uploadPhase: "done",
+            jobProgress: 5,
+            isProcessing: true,
+          })}
+        />
+      );
+      expect(screen.getByText("Verifying files...")).toBeInTheDocument();
+    });
+
+    it('shows "Parsing CSV files..." when done with jobProgress 11-29', () => {
       render(
         <UploadStep
           {...makeProps({
@@ -394,6 +414,135 @@ describe("UploadStep", () => {
       );
 
       expect(screen.getByText("S3 timeout")).toBeInTheDocument();
+    });
+  });
+
+  describe("Parse summary on job completion", () => {
+    const PARSE_RESULTS = {
+      parseResults: [
+        {
+          fileName: "contacts.csv",
+          delimiter: ",",
+          hasHeader: true,
+          encoding: "utf-8",
+          rowCount: 1500,
+          headers: ["name", "email", "phone"],
+          sampleRows: [["Alice", "alice@example.com", "555-0001"]],
+          columnStats: [],
+        },
+        {
+          fileName: "products.csv",
+          delimiter: "\t",
+          hasHeader: true,
+          encoding: "utf-8",
+          rowCount: 300,
+          headers: ["id", "name"],
+          sampleRows: [["1", "Widget"]],
+          columnStats: [],
+        },
+      ],
+    };
+
+    it("shows parse summary when job completes with parseResults", () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: MOCK_FILES,
+            uploadPhase: "done",
+            isProcessing: false,
+            jobStatus: "completed",
+            jobResult: PARSE_RESULTS,
+          })}
+        />
+      );
+
+      expect(
+        screen.getByText("Successfully parsed 2 files")
+      ).toBeInTheDocument();
+      expect(screen.getByText("contacts.csv")).toBeInTheDocument();
+      expect(screen.getByText("products.csv")).toBeInTheDocument();
+    });
+
+    it("displays row count and delimiter for each file", () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: MOCK_FILES,
+            uploadPhase: "done",
+            isProcessing: false,
+            jobStatus: "completed",
+            jobResult: PARSE_RESULTS,
+          })}
+        />
+      );
+
+      expect(
+        screen.getByText(/1,500 rows/)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/delimiter: comma/)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/300 rows/)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/delimiter: tab/)
+      ).toBeInTheDocument();
+    });
+
+    it("displays column count and encoding for each file", () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: MOCK_FILES,
+            uploadPhase: "done",
+            isProcessing: false,
+            jobStatus: "completed",
+            jobResult: PARSE_RESULTS,
+          })}
+        />
+      );
+
+      expect(screen.getByText(/3 columns/)).toBeInTheDocument();
+      expect(screen.getByText(/2 columns/)).toBeInTheDocument();
+    });
+
+    it("shows singular 'file' for single-file parse result", () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: [MOCK_FILES[0]],
+            uploadPhase: "done",
+            isProcessing: false,
+            jobStatus: "completed",
+            jobResult: {
+              parseResults: [PARSE_RESULTS.parseResults[0]],
+            },
+          })}
+        />
+      );
+
+      expect(
+        screen.getByText("Successfully parsed 1 file")
+      ).toBeInTheDocument();
+    });
+
+    it("does not show parse summary when job is still active", () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: MOCK_FILES,
+            uploadPhase: "done",
+            isProcessing: true,
+            jobStatus: "active",
+            jobResult: null,
+          })}
+        />
+      );
+
+      expect(
+        screen.queryByText(/Successfully parsed/)
+      ).not.toBeInTheDocument();
     });
   });
 });

@@ -1,4 +1,6 @@
-import { S3Client, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { Readable } from "node:stream";
+
+import { S3Client, HeadObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -30,6 +32,27 @@ export class S3Service {
     const url = await getSignedUrl(s3Client, command, { expiresIn });
     logger.debug({ s3Key, expiresIn }, "Created presigned upload URL");
     return url;
+  }
+
+  /**
+   * Get a readable stream for an S3 object.
+   */
+  static async getObjectStream(
+    s3Key: string
+  ): Promise<{ stream: Readable; contentLength: number }> {
+    const command = new GetObjectCommand({
+      Bucket: environment.UPLOAD_S3_BUCKET,
+      Key: s3Key,
+    });
+
+    const response = await s3Client.send(command);
+    if (!response.Body) {
+      throw new Error(`Empty response body for S3 key: ${s3Key}`);
+    }
+    return {
+      stream: response.Body as unknown as Readable,
+      contentLength: response.ContentLength ?? 0,
+    };
   }
 
   /**

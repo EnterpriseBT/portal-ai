@@ -1,5 +1,6 @@
 import type { JobProcessor } from "../jobs.worker.js";
 import { systemCheckProcessor } from "./system-check.processor.js";
+import { fileUploadProcessor } from "./file-upload.processor.js";
 
 /**
  * Declarative processor map.
@@ -11,4 +12,5 @@ import { systemCheckProcessor } from "./system-check.processor.js";
  */
 export const processors: Record<string, JobProcessor> = {
   system_check: systemCheckProcessor,
+  file_upload: fileUploadProcessor,
 };
