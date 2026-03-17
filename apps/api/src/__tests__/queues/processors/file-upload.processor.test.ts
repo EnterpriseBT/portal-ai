@@ -47,10 +47,6 @@ function createMockBullJob(files: FileUploadFile[]): BullJob {
   } as unknown as BullJob;
 }
 
-function csvToStream(content: string): Readable {
-  return Readable.from(Buffer.from(content, "utf-8"));
-}
-
 function makeFile(name: string, sizeBytes = 100): FileUploadFile {
   return {
     originalName: name,
