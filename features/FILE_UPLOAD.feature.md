@@ -902,6 +902,17 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 - [x] Large file (50MB) uploads to S3 with progress feedback in the UI
 - [x] Multiple files upload in parallel with independent progress bars
 
+#### Tests
+
+- [x] **Unit — Frontend** (`CSVConnectorWorkflow.test.tsx`): Modal shell renders, stepper displays 4 steps, file selection updates state, upload progress bars render per-file, navigation buttons enable/disable correctly per step
+- [ ] **Unit — Frontend** (`UploadStep.test.tsx`): FileUploader accepts only `.csv`, `addFiles` callback fires on selection, `removeFile` removes correct file, upload phase labels display correctly for each phase (`idle`, `presigning`, `uploading`, `processing`, `done`, `error`), progress bars reflect `uploadProgress` map values
+- [ ] **Unit — Frontend** (`useFileUpload.util.test.ts`): `presign()` calls correct endpoint with file metadata, S3 PUT uploads fire with correct presigned URLs, per-file progress callbacks update correctly, `process()` calls correct endpoint with `jobId`, error states propagate on presign/upload/process failure
+- [ ] **Unit — Frontend** (`useUploadWorkflow.util.test.ts`): `addFiles` / `removeFile` manage file list, `startUpload` transitions `uploadPhase` through `presigning` → `uploading` → `processing` → `done`, `goNext` / `goBack` / `goToStep` enforce step bounds, `reset` clears all state
+- [ ] **Unit — Backend** (`uploads.router.test.ts`): `POST /presign` returns 400 for no files, invalid extensions, oversized files, too many files; returns 200 with `jobId` and presigned URLs for valid request. `POST /process` returns 400 if job not found, job not `pending`, or files missing from S3; returns 202 for valid request
+- [ ] **Unit — Backend** (`s3.service.test.ts`): `createPresignedUpload()` returns valid presigned URL structure, `headObject()` returns object metadata, both throw typed errors on S3 failure
+- [ ] **Integration — Backend** (`uploads.integration.test.ts`): Full presign → S3 upload → process flow creates job in DB with `pending` status, correct metadata, and enqueues BullMQ job. Verify S3 keys match expected pattern `uploads/{orgId}/{jobId}/{filename}`
+- [ ] All Phase 1 tests pass (`npm run test -- --testPathPattern="(uploads|UploadStep|useFileUpload|useUploadWorkflow|CSVConnector)"`) ✅
+
 ---
 
 ### Phase 2 — CSV Parsing & SSE Progress
@@ -946,6 +957,15 @@ Job processor streams CSV from S3, parses it, and the frontend shows real-time p
 - [ ] Empty CSV produces `UPLOAD_EMPTY_FILE` error visible in UI
 - [ ] SSE reconnect after network drop replays current state via `job:snapshot`
 - [ ] Job failure (e.g., S3 read error) triggers BullMQ retry (up to 3 attempts)
+
+#### Tests
+
+- [ ] **Unit — Backend** (`file-upload.processor.test.ts`): S3 verification phase calls `headObject()` per file and fails on missing/empty files. CSV parser detects correct delimiter from first 4KB. Encoding detection returns correct charset. Sample rows capped at 50. Column stats accumulate correctly (null rate, unique count capped at 1,000, min/max length). Progress events emitted at correct byte-based intervals. Parse results match `FileUploadResultSchema` shape
+- [ ] **Unit — Backend** (`file-upload.processor.test.ts` — error paths): Malformed CSV (unclosed quotes) throws `UPLOAD_PARSE_FAILED` with row/line detail. Empty CSV throws `UPLOAD_EMPTY_FILE`. S3 read error throws `UPLOAD_S3_READ_ERROR`. Encoding detection failure throws `UPLOAD_ENCODING_ERROR`
+- [ ] **Unit — Frontend** (`UploadStep.test.tsx` — SSE states): Progress bar updates on `job:update` events, phase label shows "Verifying files..." then "Parsing {filename}...", error message renders on `job:error`, "Reconnecting..." indicator shows on SSE disconnect
+- [ ] **Unit — Frontend** (`useUploadWorkflow.util.test.ts` — SSE): SSE subscription starts after `process()`, `job:update` events update `jobProgress`, `job:error` events set `jobError`, SSE disconnect sets `connectionStatus` to reconnecting
+- [ ] **Integration — Backend** (`file-upload.processor.integration.test.ts`): Full processor run with real CSV in S3 — parses file, emits progress events, persists `parseResults` to job `result` field, transitions job to `completed`. Multi-file sequential processing produces correct per-file results. 50MB CSV processes within memory limits
+- [ ] All Phase 2 tests pass (`npm run test -- --testPathPattern="(file-upload.processor|UploadStep|useUploadWorkflow)"`) ✅
 
 ---
 
@@ -994,6 +1014,17 @@ AI analyzes parsed results, generates schema recommendations, and the frontend d
 - [ ] AI timeout or failure falls back to heuristic mapper — columns appear with `confidence: 0` and all flagged for review
 - [ ] Heuristic correctly infers `date`, `number`, `boolean` types from sample values
 - [ ] Progress bar moves smoothly from 30→70 during analysis phase, then 70→80 during recommendation assembly
+
+#### Tests
+
+- [ ] **Unit — Backend** (`file-analysis.service.test.ts`): `analyzeFile()` returns valid `FileUploadRecommendationEntitySchema` output. Confidence scores are between 0-1. Existing column definitions produce `match_existing` actions. Unknown columns produce `create_new` actions. Cumulative context from prior files influences subsequent recommendations (shared columns matched). AI timeout (30s) triggers heuristic fallback. AI Zod validation failure retries once then falls back to heuristic
+- [ ] **Unit — Backend** (`file-analysis.service.test.ts` — heuristic fallback): Regex type inference detects dates, numbers, booleans, emails from sample values. Exact key/label match against existing column definitions works. Non-exact matches flagged `create_new` with `confidence: 0`. All columns returned with valid schema shape
+- [ ] **Unit — Backend** (`file-upload.processor.test.ts` — Phase 3): AI analysis invoked per file sequentially. Progress events emitted at 30-70 range. Recommendations persisted to job `result.recommendations`. Job transitions to `awaiting_confirmation`. `job:recommendations` SSE event emitted with full payload
+- [ ] **Unit — Frontend** (`EntityStep.test.tsx`): Entity list renders from recommendations. Entity key and label fields are editable. Source file name displays as read-only. `updateEntity` callback fires with correct index and updates. Validation prevents advancing with zero entities
+- [ ] **Unit — Frontend** (`ColumnMappingStep.test.tsx`): Tabbed layout renders one tab per entity. Column rows display source field, recommended key/label/type. Confidence badge renders with correct color (success ≥0.8, warning ≥0.5, error <0.5). Action toggle switches between `match_existing` and `create_new`. Primary key toggle updates correctly. `updateColumn` callback fires with correct entity and column indices
+- [ ] **Unit — Frontend** (`useUploadWorkflow.util.test.ts` — recommendations): `job:recommendations` event populates `recommendations` state, auto-advances to step 1, `updateEntity` / `updateColumn` override AI values, edited values persist across step navigation
+- [ ] **Integration — Backend** (`file-analysis.integration.test.ts`): Full analysis pipeline with real parse results — AI service returns valid recommendations, heuristic fallback produces valid output when AI is unavailable, multi-file analysis builds cumulative context correctly
+- [ ] All Phase 3 tests pass (`npm run test -- --testPathPattern="(file-analysis|file-upload.processor|EntityStep|ColumnMappingStep|useUploadWorkflow)"`) ✅
 
 ---
 
@@ -1050,6 +1081,16 @@ User confirms (or modifies) recommendations, backend persists all entities in a 
 - [ ] Transaction rollback on partial failure: no orphaned records, job stays in `awaiting_confirmation`
 - [ ] Referenced existing column definitions are validated — invalid IDs return 400
 
+#### Tests
+
+- [ ] **Unit — Backend** (`uploads.router.test.ts` — confirm): `POST /confirm` returns 409 if job not in `awaiting_confirmation`. Returns 400 for invalid request body. Returns 400 for invalid column definition references. Returns 200 with confirmed entity summary on success
+- [ ] **Unit — Backend** (`uploads.service.test.ts`): `confirm()` upserts connector instance, entities, column definitions, and field mappings. Shared column definitions across entities created once (not duplicated). Idempotent — re-calling with same payload returns same result. Job transitions to `completed`. `job:complete` SSE event emitted with confirmed entity IDs
+- [ ] **Unit — Backend** (`uploads.service.test.ts` — error paths): Transaction rolls back on DB error — no orphaned records, job stays `awaiting_confirmation`. Invalid column definition IDs throw `UPLOAD_INVALID_REFERENCE`. Confirm timeout throws `UPLOAD_CONFIRM_TIMEOUT`
+- [ ] **Unit — Frontend** (`ReviewStep.test.tsx`): Summary displays connector name, entity list with column counts, per-entity column table. "Confirm" button triggers confirm callback. Loading state disables confirm button. Completion summary renders created/updated counts. "Done" button triggers close. "Cancel" button triggers cancel callback
+- [ ] **Unit — Frontend** (`useUploadWorkflow.util.test.ts` — confirm): `confirm()` serializes edited entities and columns into correct request body. Success updates workflow to completion state. Failure sets error state. `cancel()` calls cancel endpoint when `jobId` exists
+- [ ] **Integration — Backend** (`uploads.confirm.integration.test.ts`): Full confirm flow — creates connector instance, entities, column definitions, field mappings in DB. Verify records match submitted edits. Re-submit same payload — no duplicate records created. Cancel flow — job transitions to `cancelled`, S3 files deleted. Verify transaction atomicity — simulate DB failure mid-confirm, verify no partial records
+- [ ] All Phase 4 tests pass (`npm run test -- --testPathPattern="(uploads|ReviewStep|useUploadWorkflow)"`) ✅
+
 ---
 
 ### Phase 5 — Error Handling, Edge Cases & Polish
@@ -1092,3 +1133,16 @@ Harden all paths, handle connectivity issues, and ensure graceful degradation.
 - [ ] Job cancellation during active processing stops the worker and cleans up S3
 - [ ] S3 files are deleted after cancellation, retained after failure
 - [ ] All three upload endpoints appear in Swagger docs with correct request/response schemas
+
+#### Tests
+
+- [ ] **Unit — Backend** (`s3.service.test.ts` — cleanup): `deletePrefix()` removes all objects under given prefix. Cancellation triggers `deletePrefix()` for job's S3 path. Failure retains files (no cleanup called)
+- [ ] **Unit — Backend** (`uploads.router.test.ts` — edge cases): Presigned URL expiry does not block `POST /process` if files already uploaded. Invalid job status transitions return appropriate error codes. BullMQ retry configuration verified (3 attempts, exponential backoff)
+- [ ] **Unit — Frontend** (`UploadStep.test.tsx` — validation): Non-CSV file rejected with inline error (no presign call). Oversized file rejected with inline error. Both errors clearable by user
+- [ ] **Unit — Frontend** (`UploadStep.test.tsx` — error recovery): S3 upload failure shows per-file retry option. SSE disconnect shows "Reconnecting..." banner. SSE reconnect re-renders current progress state
+- [ ] **Unit — Frontend** (`CSVConnectorWorkflow.test.tsx` — guards): Modal close during processing shows warning dialog. Double-click on confirm disabled by loading state. Cancel button available at every step when `jobId` exists
+- [ ] **Unit — Frontend** (`CSVConnectorWorkflow.test.tsx` — accessibility): Keyboard navigation through stepper steps. Screen reader labels on file drop zone, progress bars, and action buttons. Focus management on modal open/close
+- [ ] **Integration — Backend** (`uploads.edge-cases.integration.test.ts`): Job cancellation during active processing — worker stops, S3 files deleted, job status `cancelled`. Job failure after max retries — files retained, job status `failed`. Concurrent confirm requests — only one succeeds, no duplicate records. Full end-to-end: presign → upload → process → parse → analyze → confirm → verify all DB records
+- [ ] **Integration — Frontend** (`CSVConnectorWorkflow.integration.test.tsx`): Full workflow render with mocked API — file select → upload → SSE progress → recommendations → entity edits → column edits → review → confirm. Verify each step transition, data persistence across steps, and final confirm payload structure
+- [ ] All Phase 5 tests pass (`npm run test -- --testPathPattern="(uploads|s3.service|CSVConnector|UploadStep)"`) ✅
+- [ ] **Full suite**: All file upload tests pass (`npm run test`) with ≥60% coverage across branches, functions, lines, and statements ✅
