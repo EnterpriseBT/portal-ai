@@ -8,6 +8,7 @@ import { jobsRouter } from "./jobs.router.js";
 import { columnDefinitionRouter } from "./column-definition.router.js";
 import { connectorEntityRouter } from "./connector-entity.router.js";
 import { fieldMappingRouter } from "./field-mapping.router.js";
+import { uploadsRouter } from "./uploads.router.js";
 
 export const protectedRouter = Router();
 
@@ -23,3 +24,4 @@ protectedRouter.use("/jobs", jobsRouter);
 protectedRouter.use("/column-definitions", columnDefinitionRouter);
 protectedRouter.use("/connector-entities", connectorEntityRouter);
 protectedRouter.use("/field-mappings", fieldMappingRouter);
+protectedRouter.use("/uploads", uploadsRouter);

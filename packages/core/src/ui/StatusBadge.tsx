@@ -8,7 +8,8 @@ export type StatusBadgeVariant =
   | "completed"
   | "failed"
   | "stalled"
-  | "cancelled";
+  | "cancelled"
+  | "awaiting_confirmation";
 
 export interface StatusBadgeProps {
   /** The status to display. */
@@ -31,6 +32,7 @@ const statusColorMap: Record<
   failed: "error",
   stalled: "warning",
   cancelled: "default",
+  awaiting_confirmation: "warning",
 };
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

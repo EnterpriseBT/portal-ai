@@ -1,4 +1,15 @@
-import { JobModel, JobModelFactory, JobSchema, JobStatusEnum, JobTypeEnum } from "../../models/job.model.js";
+import {
+  JobModel,
+  JobModelFactory,
+  JobSchema,
+  JobStatusEnum,
+  JobTypeEnum,
+  FileUploadMetadataSchema,
+  FileUploadFileSchema,
+  FileUploadJobModel,
+  FileUploadJobModelFactory,
+  TERMINAL_JOB_STATUSES,
+} from "../../models/job.model.js";
 import {
   UUID_REGEX,
   StubIDFactory,
@@ -89,7 +100,7 @@ describe("JobSchema", () => {
 // ── JobStatusEnum ────────────────────────────────────────────────────
 
 describe("JobStatusEnum", () => {
-  it.each(["pending", "active", "completed", "failed", "stalled", "cancelled"])(
+  it.each(["pending", "active", "completed", "failed", "stalled", "cancelled", "awaiting_confirmation"])(
     "should accept '%s'",
     (status) => {
       expect(JobStatusEnum.safeParse(status).success).toBe(true);
@@ -98,6 +109,10 @@ describe("JobStatusEnum", () => {
 
   it("should reject an unknown status", () => {
     expect(JobStatusEnum.safeParse("running").success).toBe(false);
+  });
+
+  it("awaiting_confirmation should not be a terminal status", () => {
+    expect(TERMINAL_JOB_STATUSES).not.toContain("awaiting_confirmation");
   });
 });
 
@@ -269,5 +284,167 @@ describe("JobModelFactory", () => {
         expect(paths).toContain("organizationId");
       }
     });
+  });
+});
+
+// ── FileUploadFileSchema ──────────────────────────────────────────
+
+describe("FileUploadFileSchema", () => {
+  const validFile = {
+    originalName: "contacts.csv",
+    s3Key: "uploads/org_123/job_abc/contacts.csv",
+    sizeBytes: 2048,
+  };
+
+  it("should parse a valid file entry", () => {
+    expect(FileUploadFileSchema.safeParse(validFile).success).toBe(true);
+  });
+
+  it("should reject missing originalName", () => {
+    const { originalName: _, ...rest } = validFile;
+    expect(FileUploadFileSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it("should reject missing s3Key", () => {
+    const { s3Key: _, ...rest } = validFile;
+    expect(FileUploadFileSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it("should reject missing sizeBytes", () => {
+    const { sizeBytes: _, ...rest } = validFile;
+    expect(FileUploadFileSchema.safeParse(rest).success).toBe(false);
+  });
+});
+
+// ── FileUploadMetadataSchema ──────────────────────────────────────
+
+describe("FileUploadMetadataSchema", () => {
+  const validMetadata = {
+    files: [
+      {
+        originalName: "contacts.csv",
+        s3Key: "uploads/org_123/job_abc/contacts.csv",
+        sizeBytes: 2048,
+      },
+    ],
+    organizationId: "org_123",
+    connectorDefinitionId: "cdef_csv01",
+  };
+
+  it("should parse valid metadata", () => {
+    expect(FileUploadMetadataSchema.safeParse(validMetadata).success).toBe(true);
+  });
+
+  it("should parse metadata with multiple files", () => {
+    const result = FileUploadMetadataSchema.safeParse({
+      ...validMetadata,
+      files: [
+        { originalName: "a.csv", s3Key: "key/a.csv", sizeBytes: 100 },
+        { originalName: "b.csv", s3Key: "key/b.csv", sizeBytes: 200 },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject missing files", () => {
+    const { files: _, ...rest } = validMetadata;
+    expect(FileUploadMetadataSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it("should reject missing organizationId", () => {
+    const { organizationId: _, ...rest } = validMetadata;
+    expect(FileUploadMetadataSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it("should reject missing connectorDefinitionId", () => {
+    const { connectorDefinitionId: _, ...rest } = validMetadata;
+    expect(FileUploadMetadataSchema.safeParse(rest).success).toBe(false);
+  });
+});
+
+// ── FileUploadJobModelFactory ─────────────────────────────────────
+
+describe("FileUploadJobModelFactory", () => {
+  const uploadParams = {
+    organizationId: "org-1",
+    connectorDefinitionId: "cdef-csv",
+    files: [
+      { originalName: "data.csv", s3Key: "uploads/org-1/job-1/data.csv", sizeBytes: 1024 },
+    ],
+  };
+
+  it("should return a FileUploadJobModel instance", () => {
+    const factory = new FileUploadJobModelFactory({
+      coreModelFactory: buildCoreModelFactory(),
+    });
+    const model = factory.createForUpload("user-1", uploadParams);
+    expect(model).toBeInstanceOf(FileUploadJobModel);
+  });
+
+  it("should set type to file_upload", () => {
+    const factory = new FileUploadJobModelFactory({
+      coreModelFactory: buildCoreModelFactory(),
+    });
+    const model = factory.createForUpload("user-1", uploadParams);
+    expect(model.toJSON().type).toBe("file_upload");
+  });
+
+  it("should set status to pending", () => {
+    const factory = new FileUploadJobModelFactory({
+      coreModelFactory: buildCoreModelFactory(),
+    });
+    const model = factory.createForUpload("user-1", uploadParams);
+    expect(model.toJSON().status).toBe("pending");
+  });
+
+  it("should set organizationId from params", () => {
+    const factory = new FileUploadJobModelFactory({
+      coreModelFactory: buildCoreModelFactory(),
+    });
+    const model = factory.createForUpload("user-1", uploadParams);
+    expect(model.toJSON().organizationId).toBe("org-1");
+  });
+
+  it("should store typed metadata with files", () => {
+    const factory = new FileUploadJobModelFactory({
+      coreModelFactory: buildCoreModelFactory(),
+    });
+    const model = factory.createForUpload("user-1", uploadParams);
+    const metadata = model.fileUploadMetadata;
+    expect(metadata.files).toHaveLength(1);
+    expect(metadata.files[0].originalName).toBe("data.csv");
+    expect(metadata.connectorDefinitionId).toBe("cdef-csv");
+  });
+
+  it("should pass full validation after createForUpload", () => {
+    const factory = new FileUploadJobModelFactory({
+      coreModelFactory: buildCoreModelFactory(),
+    });
+    const model = factory.createForUpload("user-1", uploadParams);
+    const result = model.validate();
+    expect(result.success).toBe(true);
+  });
+
+  it("should produce a parseable Job for DB insertion", () => {
+    const factory = new FileUploadJobModelFactory({
+      coreModelFactory: buildCoreModelFactory(),
+    });
+    const model = factory.createForUpload("user-1", uploadParams);
+    const job = model.parse();
+    expect(job.id).toBeDefined();
+    expect(job.type).toBe("file_upload");
+    expect(job.status).toBe("pending");
+    expect(job.progress).toBe(0);
+    expect(job.attempts).toBe(0);
+    expect(job.maxAttempts).toBe(3);
+  });
+
+  it("fileUploadMetadata getter should throw on invalid metadata", () => {
+    const factory = new FileUploadJobModelFactory({
+      coreModelFactory: buildCoreModelFactory(),
+    });
+    const model = factory.create("user-1");
+    // model has no metadata set yet
+    expect(() => model.fileUploadMetadata).toThrow();
   });
 });

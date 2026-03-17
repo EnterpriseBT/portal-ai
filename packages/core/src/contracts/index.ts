@@ -36,3 +36,6 @@ export * from "./connector-entity.contract.js";
 
 /** Field Mapping contracts — schemas & types */
 export * from "./field-mapping.contract.js";
+
+/** Upload contracts — schemas & types */
+export * from "./upload.contract.js";

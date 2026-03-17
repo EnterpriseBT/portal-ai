@@ -8,6 +8,7 @@ export const jobStatusEnum = pgEnum("job_status", [
   "failed",
   "stalled",
   "cancelled",
+  "awaiting_confirmation",
 ]);
 
 export const jobTypeEnum = pgEnum("job_type", [

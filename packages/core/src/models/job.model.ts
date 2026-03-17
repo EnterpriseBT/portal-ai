@@ -21,6 +21,7 @@ export const JobStatusEnum = z.enum([
   "failed",
   "stalled",
   "cancelled",
+  "awaiting_confirmation",
 ]);
 export type JobStatus = z.infer<typeof JobStatusEnum>;
 
@@ -46,8 +47,19 @@ export const SystemCheckResultSchema = z.object({
 });
 export type SystemCheckResult = z.infer<typeof SystemCheckResultSchema>;
 
-/** file_upload — placeholder for future file-based import jobs. */
-export const FileUploadMetadataSchema = z.object({});
+/** file_upload — CSV file import jobs via S3 presigned uploads. */
+export const FileUploadFileSchema = z.object({
+  originalName: z.string(),
+  s3Key: z.string(),
+  sizeBytes: z.number(),
+});
+export type FileUploadFile = z.infer<typeof FileUploadFileSchema>;
+
+export const FileUploadMetadataSchema = z.object({
+  files: z.array(FileUploadFileSchema),
+  organizationId: z.string(),
+  connectorDefinitionId: z.string(),
+});
 export type FileUploadMetadata = z.infer<typeof FileUploadMetadataSchema>;
 
 export const FileUploadResultSchema = z.object({});
@@ -124,5 +136,83 @@ export class JobModelFactory extends ModelFactory<Job, JobModel> {
     const baseModel = this._coreModelFactory.create(createdBy);
     const jobModel = new JobModel(baseModel.toJSON());
     return jobModel;
+  }
+}
+
+// --- Typed Job: file_upload -----------------------------------------------
+
+/**
+ * A `Job` with `metadata` and `result` narrowed to the file_upload type.
+ * Use for construction and service-layer code; the DB layer still uses `Job`.
+ */
+export interface FileUploadJob extends Omit<Job, "type" | "metadata" | "result"> {
+  type: "file_upload";
+  metadata: FileUploadMetadata;
+  result: FileUploadResult | null;
+}
+
+/**
+ * Typed model for file_upload jobs.
+ *
+ * Provides a `fileUploadMetadata` getter that returns strongly-typed metadata
+ * without casting, and a `createForUpload()` static helper that pre-fills
+ * all job-level defaults so callers only supply the upload-specific fields.
+ */
+export class FileUploadJobModel extends JobModel {
+  /** Strongly-typed accessor for file_upload metadata. */
+  get fileUploadMetadata(): FileUploadMetadata {
+    return FileUploadMetadataSchema.parse(this._model.metadata);
+  }
+}
+
+export interface CreateFileUploadJobParams {
+  organizationId: string;
+  connectorDefinitionId: string;
+  files: FileUploadFile[];
+}
+
+/**
+ * Factory that produces a fully-initialised `FileUploadJobModel` from just
+ * the upload-specific fields.  All generic job defaults (`status`, `progress`,
+ * `attempts`, …) are set automatically.
+ */
+export class FileUploadJobModelFactory extends ModelFactory<Job, FileUploadJobModel> {
+  create(createdBy: string): FileUploadJobModel {
+    const baseModel = this._coreModelFactory.create(createdBy);
+    return new FileUploadJobModel(baseModel.toJSON());
+  }
+
+  /**
+   * Create a pending file_upload job with typed metadata.
+   * Returns a model ready to be `parse()`d and inserted into the DB.
+   */
+  createForUpload(
+    createdBy: string,
+    params: CreateFileUploadJobParams,
+  ): FileUploadJobModel {
+    const model = this.create(createdBy);
+
+    const metadata: FileUploadMetadata = {
+      files: params.files,
+      organizationId: params.organizationId,
+      connectorDefinitionId: params.connectorDefinitionId,
+    };
+
+    model.update({
+      organizationId: params.organizationId,
+      type: "file_upload",
+      status: "pending",
+      progress: 0,
+      metadata: metadata as Record<string, unknown>,
+      result: null,
+      error: null,
+      startedAt: null,
+      completedAt: null,
+      bullJobId: null,
+      attempts: 0,
+      maxAttempts: 3,
+    });
+
+    return model;
   }
 }

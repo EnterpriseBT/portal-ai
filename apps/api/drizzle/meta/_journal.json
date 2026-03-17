@@ -127,6 +127,13 @@
       "when": 1773695427557,
       "tag": "0017_add-organization-id-to-connector-entities",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1773705531380,
+      "tag": "0018_add_awaiting_confirmation_job_status",
+      "breakpoints": true
     }
   ]
 }

@@ -801,21 +801,21 @@ User selects files, uploads them to S3, and receives a confirmed job ID.
 
 #### Backend
 
-- [ ] Extend `job.model.ts`: add `awaiting_confirmation` to `JobStatusEnum`, flesh out `FileUploadMetadataSchema` with `files[]`, `organizationId`, `connectorDefinitionId`
-- [ ] Add upload-related error codes to `ApiCode` enum (`UPLOAD_NO_FILES`, `UPLOAD_INVALID_FILE_TYPE`, `UPLOAD_FILE_TOO_LARGE`, `UPLOAD_TOO_MANY_FILES`, `UPLOAD_S3_ERROR`)
-- [ ] Create `contracts/upload.contract.ts` with `PresignRequestBody`, `PresignResponsePayload`, `ProcessRequestParams`
-- [ ] Create `services/s3.service.ts` with `createPresignedUpload()` and `headObject()`
-- [ ] Create `routes/uploads.router.ts` with `POST /api/uploads/presign`:
+- [x] Extend `job.model.ts`: add `awaiting_confirmation` to `JobStatusEnum`, flesh out `FileUploadMetadataSchema` with `files[]`, `organizationId`, `connectorDefinitionId`
+- [x] Add upload-related error codes to `ApiCode` enum (`UPLOAD_NO_FILES`, `UPLOAD_INVALID_FILE_TYPE`, `UPLOAD_FILE_TOO_LARGE`, `UPLOAD_TOO_MANY_FILES`, `UPLOAD_S3_ERROR`)
+- [x] Create `contracts/upload.contract.ts` with `PresignRequestBody`, `PresignResponsePayload`, `ProcessRequestParams`
+- [x] Create `services/s3.service.ts` with `createPresignedUpload()` and `headObject()`
+- [x] Create `routes/uploads.router.ts` with `POST /api/uploads/presign`:
   - Validate file count, extensions, declared sizes
   - Create a `pending` job with `FileUploadMetadata`
   - Generate presigned PUT URLs per file
   - Return `{ jobId, uploads[] }`
-- [ ] Create `POST /api/uploads/:jobId/process`:
+- [x] Create `POST /api/uploads/:jobId/process`:
   - Verify job exists, is `pending`, belongs to caller's org
   - `HeadObject` each S3 key to confirm uploads landed
   - Enqueue job in BullMQ
   - Return `202 { job }`
-- [ ] Register route in `app.ts`
+- [x] Register route in `app.ts`
 
 #### Frontend
 

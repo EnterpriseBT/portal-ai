@@ -30,4 +30,12 @@ export const environment = {
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
+  // S3 configuration (file uploads)
+  UPLOAD_S3_BUCKET: process.env.UPLOAD_S3_BUCKET || "",
+  UPLOAD_S3_REGION: process.env.UPLOAD_S3_REGION || "us-east-1",
+  UPLOAD_S3_PREFIX: process.env.UPLOAD_S3_PREFIX || "uploads",
+  UPLOAD_S3_PRESIGN_EXPIRY_SEC: parseInt(process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "900", 10),
+  UPLOAD_MAX_FILE_SIZE_MB: parseInt(process.env.UPLOAD_MAX_FILE_SIZE_MB || "50", 10),
+  UPLOAD_MAX_FILES: parseInt(process.env.UPLOAD_MAX_FILES || "5", 10),
+  UPLOAD_ALLOWED_EXTENSIONS: (process.env.UPLOAD_ALLOWED_EXTENSIONS || ".csv").split(","),
 };
