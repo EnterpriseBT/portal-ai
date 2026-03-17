@@ -823,8 +823,8 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 
 ##### Hooks & Utilities
 
-- [ ] Create `useFileUpload.util.ts` hook — Phase 1 scope: `presign()` mutation, S3 PUT upload with progress tracking (per-file `XMLHttpRequest` with `onprogress`), `process()` mutation
-- [ ] Create `useUploadWorkflow.util.ts` hook — orchestrates the full workflow state machine:
+- [x] Create `useFileUpload.util.ts` hook — Phase 1 scope: `presign()` mutation, S3 PUT upload with progress tracking (per-file `XMLHttpRequest` with `onprogress`), `process()` mutation
+- [x] Create `useUploadWorkflow.util.ts` hook — orchestrates the full workflow state machine:
   - Tracks current step, selected files, `jobId`, SSE stream state, recommendations, user edits, and submission status
   - Exposes actions: `addFiles`, `removeFile`, `startUpload`, `updateEntity`, `updateColumn`, `confirm`, `cancel`
   - Manages step validation: Step 1 requires files selected + uploaded, Step 2 requires entities reviewed, Step 3 requires columns reviewed, Step 4 is read-only summary
@@ -832,7 +832,7 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 
 ##### Workflow Container
 
-- [ ] Create `CSVConnectorWorkflow.component.tsx` — container component:
+- [x] Create `CSVConnectorWorkflow.component.tsx` — container component:
   - Renders `<Modal>` wrapping a `<Stepper>` with 4 steps: **Upload CSV**, **Confirm Entities**, **Map Columns**, **Review & Import**
   - Consumes `useUploadWorkflow` hook and passes step-specific props down to each panel
   - Manages modal open/close state; resets workflow on close
@@ -840,7 +840,7 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 
 ##### Step 1 — Upload CSV (`UploadStep.component.tsx`)
 
-- [ ] Create `UploadStep.component.tsx`:
+- [x] Create `UploadStep.component.tsx`:
   - Renders `<FileUploader>` (from `@portalai/core`) configured for `.csv` files only
   - Displays selected file list with per-file size and remove button
   - On "Next": triggers presign → parallel S3 PUT uploads → process pipeline
@@ -850,7 +850,7 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 
 ##### Step 2 — Confirm Entities (`EntityStep.component.tsx`)
 
-- [ ] Create `EntityStep.component.tsx`:
+- [x] Create `EntityStep.component.tsx`:
   - Receives AI-recommended entities from `job:recommendations` SSE event (one entity per uploaded file)
   - Renders editable list of entities — each with:
     - Entity key (editable text field, pre-filled from AI suggestion)
@@ -862,7 +862,7 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 
 ##### Step 3 — Map Columns (`ColumnMappingStep.component.tsx`)
 
-- [ ] Create `ColumnMappingStep.component.tsx`:
+- [x] Create `ColumnMappingStep.component.tsx`:
   - Tabbed layout — one tab per confirmed entity from Step 2
   - Per column row:
     - Source field (CSV header, read-only)
@@ -876,7 +876,7 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 
 ##### Step 4 — Review & Import (`ReviewStep.component.tsx`)
 
-- [ ] Create `ReviewStep.component.tsx`:
+- [x] Create `ReviewStep.component.tsx`:
   - Read-only summary of the full configuration before submission:
     - Connector instance name (editable, AI-suggested default)
     - Entity list with column counts
@@ -889,7 +889,7 @@ Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnect
 
 ##### Wiring
 
-- [ ] Wire modal open to a "Connect" button (temporary placement in dashboard or connector list view)
+- [x] Wire modal open to a "Connect" button (temporary placement in dashboard or connector list view)
 
 #### Verification
 
