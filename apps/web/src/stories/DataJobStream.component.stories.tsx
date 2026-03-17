@@ -1,10 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { Job } from "@portalai/core/models";
 
-import {
-  JobDataStream,
-  JobDataStreamProps,
-} from "../components/JobDataStream.component";
+import { JobDataStream, JobDataStreamProps } from "../components/Job.component";
 import { JobCard } from "../components/Job.component";
 
 const baseJob: Job = {

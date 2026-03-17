@@ -1,9 +1,10 @@
 import { Navigate } from "@tanstack/react-router";
+import React from "react";
+
 import { PublicLayout } from "../layouts/Public.layout";
 import { LoadingView } from "../views/Loading.view";
-import React from "react";
 import { sdk } from "../api/sdk";
-import { BadRequestView } from "../views/BadRequest.view";
+import { handleAuthError } from "../utils/auth-error.util";
 
 export interface AuthorizedPageUIProps {
   loading: boolean;
@@ -25,9 +26,10 @@ export const AuthorizedUI: React.FC<AuthorizedPageUIProps> = ({
   }
 
   if (error) {
+    handleAuthError();
     return (
       <PublicLayout>
-        <BadRequestView description="Unable to process your request" />
+        <LoadingView />
       </PublicLayout>
     );
   }

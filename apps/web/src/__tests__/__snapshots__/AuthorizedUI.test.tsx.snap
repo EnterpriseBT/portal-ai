@@ -8,7 +8,7 @@ exports[`AuthorizedUI Component Authenticated State should render children when 
 </div>
 `;
 
-exports[`AuthorizedUI Component Error State should render ErrorView when error is present 1`] = `
+exports[`AuthorizedUI Component Error State should call handleAuthError and show loading when error is present 1`] = `
 <div>
   <div
     class="MuiBox-root css-s92abg"
@@ -63,61 +63,28 @@ exports[`AuthorizedUI Component Error State should render ErrorView when error i
       class="MuiBox-root css-9eeetu"
     >
       <div
-        class="MuiBox-root css-12crrv0"
+        class="MuiBox-root css-1l4w6pd"
+        data-testid="loading-view"
       >
-        <div
-          aria-hidden="true"
-          class="MuiBox-root css-19idom"
+        <span
+          class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-1t1ckwe-MuiCircularProgress-root"
+          role="progressbar"
+          style="width: 40px; height: 40px;"
         >
           <svg
-            aria-hidden="true"
-            class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1n2dx9w-MuiSvgIcon-root"
-            data-testid="WarningIcon"
-            focusable="false"
-            viewBox="0 0 24 24"
+            class="MuiCircularProgress-svg css-54pwck-MuiCircularProgress-svg"
+            viewBox="22 22 44 44"
           >
-            <path
-              d="M1 21h22L12 2zm12-3h-2v-2h2zm0-4h-2v-4h2z"
+            <circle
+              class="MuiCircularProgress-circle MuiCircularProgress-circleIndeterminate css-19t5dcl-MuiCircularProgress-circle"
+              cx="44"
+              cy="44"
+              fill="none"
+              r="20.2"
+              stroke-width="3.6"
             />
           </svg>
-        </div>
-        <h1
-          class="MuiTypography-root MuiTypography-h1 css-1hlpb9j-MuiTypography-root"
-          style="color: rgb(255, 86, 48); margin-bottom: 8px;"
-        >
-          400
-        </h1>
-        <h4
-          class="MuiTypography-root MuiTypography-h4 css-kp3j89-MuiTypography-root"
-          style="margin-bottom: 16px;"
-        >
-          Bad Request
-        </h4>
-        <p
-          class="MuiTypography-root MuiTypography-body1 css-wlsem8-MuiTypography-root"
-          style="color: rgb(107, 119, 140); max-width: 480px; margin-bottom: 32px;"
-        >
-          Unable to process your request
-        </p>
-        <div
-          class="MuiBox-root css-10egq61"
-        >
-          <button
-            class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary css-1ltjtnm-MuiButtonBase-root-MuiButton-root"
-            style="border-color: rgba(0, 82, 204, 0.5);"
-            tabindex="0"
-            type="button"
-          >
-            Go Back
-          </button>
-          <button
-            class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary css-1b8afgd-MuiButtonBase-root-MuiButton-root"
-            tabindex="0"
-            type="button"
-          >
-            Go Home
-          </button>
-        </div>
+        </span>
       </div>
     </div>
   </div>

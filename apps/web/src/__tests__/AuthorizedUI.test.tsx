@@ -1,6 +1,12 @@
 import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
-import { AuthorizedUI } from "../components/Authorized.component";
+
+const mockHandleAuthError = jest.fn();
+jest.unstable_mockModule("../utils/auth-error.util", () => ({
+  handleAuthError: mockHandleAuthError,
+}));
+
+const { AuthorizedUI } = await import("../components/Authorized.component");
 
 // Mock sdk to avoid import.meta.env in api.util.ts
 jest.mock("../api/sdk", () => ({
@@ -23,6 +29,10 @@ jest.mock("../api/sdk", () => ({
 
 describe("AuthorizedUI Component", () => {
   const mockChildren = <div>Protected Content</div>;
+
+  beforeEach(() => {
+    mockHandleAuthError.mockClear();
+  });
 
   describe("Loading State", () => {
     it("should render LoadingView when loading is true", () => {
@@ -47,7 +57,7 @@ describe("AuthorizedUI Component", () => {
   });
 
   describe("Error State", () => {
-    it("should render ErrorView when error is present", () => {
+    it("should call handleAuthError and show loading when error is present", () => {
       const mockError = new Error("Authentication failed");
       const { container } = render(
         <AuthorizedUI loading={false} error={mockError}>
@@ -55,6 +65,7 @@ describe("AuthorizedUI Component", () => {
         </AuthorizedUI>
       );
 
+      expect(mockHandleAuthError).toHaveBeenCalled();
       expect(container).toMatchSnapshot();
     });
 
@@ -69,7 +80,7 @@ describe("AuthorizedUI Component", () => {
       expect(screen.queryByText("Protected Content")).not.toBeInTheDocument();
     });
 
-    it("should display error description in ErrorView", () => {
+    it("should trigger auth error handling on error", () => {
       const mockError = new Error("Custom error message");
       render(
         <AuthorizedUI loading={false} error={mockError}>
@@ -77,9 +88,7 @@ describe("AuthorizedUI Component", () => {
         </AuthorizedUI>
       );
 
-      expect(
-        screen.getByText("Unable to process your request")
-      ).toBeInTheDocument();
+      expect(mockHandleAuthError).toHaveBeenCalledTimes(1);
     });
   });
 

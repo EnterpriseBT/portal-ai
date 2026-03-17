@@ -1,12 +1,24 @@
-import React, { StrictMode } from "react";
+import React, { StrictMode, useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeName, ThemeProvider } from "@portalai/core/ui";
-import { Auth0Provider } from "@auth0/auth0-react";
+import { Auth0Provider, useAuth0 } from "@auth0/auth0-react";
 
 import "@portalai/core/styles";
 import { queryClient } from "../client";
-import { useStorage } from "../utils";
+import { useStorage, registerAuthLogout } from "../utils";
 import { LayoutProvider } from "./Layout.provider";
+
+const AuthErrorHandler: React.FC = () => {
+  const { logout } = useAuth0();
+
+  useEffect(() => {
+    registerAuthLogout(() =>
+      logout({ logoutParams: { returnTo: window.location.origin } })
+    );
+  }, [logout]);
+
+  return null;
+};
 
 export interface ApplicationProviderProps {
   children: React.ReactNode;
@@ -35,6 +47,7 @@ export const ApplicationProvider: React.FC<ApplicationProviderProps> = ({
         cacheLocation="localstorage"
         useRefreshTokens={true}
       >
+        <AuthErrorHandler />
         <ThemeProvider defaultTheme={theme}>
           <LayoutProvider>
             <QueryClientProvider client={queryClient}>

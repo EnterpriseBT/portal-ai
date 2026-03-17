@@ -11,14 +11,17 @@ import type {
   ApiErrorResponse,
   ApiSuccessResponse,
 } from "@portalai/core/contracts";
+import { handleAuthError } from "./auth-error.util";
 
 export class ApiError extends Error {
   code: string;
+  status: number;
   success: false;
 
-  constructor(message: string, code: string) {
+  constructor(message: string, code: string, status: number = 0) {
     super(message);
     this.code = code;
+    this.status = status;
     this.success = false;
   }
 }
@@ -36,11 +39,17 @@ export const useAuthFetch = () => {
 
   const fetchWithAuth = useCallback(
     async <T>(url: string, options: RequestInit = {}): Promise<T> => {
-      const token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-        },
-      });
+      let token: string;
+      try {
+        token = await getAccessTokenSilently({
+          authorizationParams: {
+            audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+          },
+        });
+      } catch (error) {
+        handleAuthError();
+        throw error;
+      }
 
       const response = await fetch(url, {
         ...options,
@@ -53,7 +62,7 @@ export const useAuthFetch = () => {
 
       if (!response.ok) {
         const body = (await response.json()) as ApiErrorResponse;
-        throw new ApiError(body.message, body.code);
+        throw new ApiError(body.message, body.code, response.status);
       }
 
       return response.json() as Promise<T>;
