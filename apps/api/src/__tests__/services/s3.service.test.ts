@@ -8,6 +8,7 @@ jest.unstable_mockModule("@aws-sdk/client-s3", () => ({
   S3Client: jest.fn().mockImplementation(() => ({ send: mockSend })),
   HeadObjectCommand: jest.fn().mockImplementation((input: unknown) => ({ input })),
   PutObjectCommand: jest.fn().mockImplementation((input: unknown) => ({ input })),
+  GetObjectCommand: jest.fn().mockImplementation((input: unknown) => ({ input })),
 }));
 
 jest.unstable_mockModule("@aws-sdk/s3-request-presigner", () => ({
