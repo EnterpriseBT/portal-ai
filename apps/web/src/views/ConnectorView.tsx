@@ -1,3 +1,5 @@
+import { useCallback, useState } from "react";
+
 import {
   Box,
   Stack,
@@ -7,6 +9,9 @@ import {
   Typography,
   useTabs,
 } from "@portalai/core/ui";
+import type { ConnectorDefinition } from "@portalai/core/models";
+import type { ConnectorDefinitionListRequestQuery } from "@portalai/core/contracts";
+
 import {
   ConnectorDefinitionCardUI,
   ConnectorDefinitionDataList,
@@ -18,10 +23,27 @@ import {
   usePagination,
 } from "../components/PaginationToolbar.component";
 import { SyncTotal } from "../components/SyncTotal.component";
-import type { ConnectorDefinitionListRequestQuery } from "@portalai/core/contracts";
+import { sdk } from "../api/sdk";
+import { CSVConnectorWorkflow } from "../workflows/CSVConnector";
 
 export const ConnectorView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
+
+  const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [selectedConnectorDefinitionId, setSelectedConnectorDefinitionId] = useState<string | null>(null);
+
+  const { data: orgData } = sdk.organizations.current();
+  const organizationId = orgData?.organization.id ?? "";
+
+  const handleConnect = useCallback((cd: ConnectorDefinition) => {
+    setSelectedConnectorDefinitionId(cd.id);
+    setWorkflowOpen(true);
+  }, []);
+
+  const handleCloseWorkflow = useCallback(() => {
+    setWorkflowOpen(false);
+    setSelectedConnectorDefinitionId(null);
+  }, []);
 
   const pagination = usePagination({
     defaultSortBy: "display",
@@ -75,6 +97,7 @@ export const ConnectorView = () => {
                           <ConnectorDefinitionCardUI
                             key={cd.id}
                             connectorDefinition={cd}
+                            onConnect={handleConnect}
                           />
                         ))}
                       </Stack>
@@ -86,6 +109,15 @@ export const ConnectorView = () => {
           </ConnectorDefinitionDataList>
         </Stack>
       </TabPanel>
+
+      {selectedConnectorDefinitionId && (
+        <CSVConnectorWorkflow
+          open={workflowOpen}
+          onClose={handleCloseWorkflow}
+          organizationId={organizationId}
+          connectorDefinitionId={selectedConnectorDefinitionId}
+        />
+      )}
     </Box>
   );
 };

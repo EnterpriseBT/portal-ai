@@ -819,13 +819,77 @@ User selects files, uploads them to S3, and receives a confirmed job ID.
 
 #### Frontend
 
-- [ ] Create `useFileUpload.util.ts` hook — Phase 1 scope: `presign()` mutation, S3 PUT upload with progress, `process()` mutation
-- [ ] Create `FileUploadModal.component.tsx`:
-  - Drag-and-drop zone accepting `.csv` files
-  - File list with per-file size display and remove button
-  - Submit button triggers: presign → parallel S3 PUT uploads (with per-file progress bars) → process
-  - On success: store `jobId`, transition modal to "Processing..." state
-- [ ] Wire modal open to a "Connect" button (temporary placement)
+Build out the `CSVConnector.workflow` module (`apps/web/src/workflows/CSVConnector/`) — a modal-based, 4-step stepper workflow for uploading CSV files, reviewing AI-suggested entities and columns, and submitting the confirmed configuration.
+
+##### Hooks & Utilities
+
+- [ ] Create `useFileUpload.util.ts` hook — Phase 1 scope: `presign()` mutation, S3 PUT upload with progress tracking (per-file `XMLHttpRequest` with `onprogress`), `process()` mutation
+- [ ] Create `useUploadWorkflow.util.ts` hook — orchestrates the full workflow state machine:
+  - Tracks current step, selected files, `jobId`, SSE stream state, recommendations, user edits, and submission status
+  - Exposes actions: `addFiles`, `removeFile`, `startUpload`, `updateEntity`, `updateColumn`, `confirm`, `cancel`
+  - Manages step validation: Step 1 requires files selected + uploaded, Step 2 requires entities reviewed, Step 3 requires columns reviewed, Step 4 is read-only summary
+  - Connects to SSE on `jobId` after `process()` call; parses `job:update`, `job:recommendations`, `job:error`, and `job:complete` events to advance the workflow automatically
+
+##### Workflow Container
+
+- [ ] Create `CSVConnectorWorkflow.component.tsx` — container component:
+  - Renders `<Modal>` wrapping a `<Stepper>` with 4 steps: **Upload CSV**, **Confirm Entities**, **Map Columns**, **Review & Import**
+  - Consumes `useUploadWorkflow` hook and passes step-specific props down to each panel
+  - Manages modal open/close state; resets workflow on close
+  - Renders `<StepperNavigation>` with step-appropriate labels (e.g., "Upload" on Step 1, "Confirm" on Step 4)
+
+##### Step 1 — Upload CSV (`UploadStep.component.tsx`)
+
+- [ ] Create `UploadStep.component.tsx`:
+  - Renders `<FileUploader>` (from `@portalai/core`) configured for `.csv` files only
+  - Displays selected file list with per-file size and remove button
+  - On "Next": triggers presign → parallel S3 PUT uploads → process pipeline
+  - Shows per-file upload progress bars during S3 upload
+  - On success: stores `jobId`, auto-advances to Step 2 when SSE delivers recommendations
+  - Shows "Processing..." state with overall progress bar while waiting for backend parsing + AI analysis
+
+##### Step 2 — Confirm Entities (`EntityStep.component.tsx`)
+
+- [ ] Create `EntityStep.component.tsx`:
+  - Receives AI-recommended entities from `job:recommendations` SSE event (one entity per uploaded file)
+  - Renders editable list of entities — each with:
+    - Entity key (editable text field, pre-filled from AI suggestion)
+    - Entity label (editable text field, pre-filled from AI suggestion)
+    - Source file name (read-only)
+    - Row count and detected delimiter (read-only summary)
+  - User can rename, reorder, or remove entities
+  - Validation: at least one entity must remain before advancing
+
+##### Step 3 — Map Columns (`ColumnMappingStep.component.tsx`)
+
+- [ ] Create `ColumnMappingStep.component.tsx`:
+  - Tabbed layout — one tab per confirmed entity from Step 2
+  - Per column row:
+    - Source field (CSV header, read-only)
+    - Recommended column key / label / type (editable)
+    - Action toggle: `match_existing` (with searchable dropdown of existing org column definitions) or `create_new`
+    - Confidence badge (percentage) for matched columns; low-confidence (<0.8) highlighted
+    - Primary key toggle checkbox
+  - Sample values preview (expandable, shows up to 5 sample values from parse results)
+  - User can add, remove, or reorder column mappings
+  - Validation: each entity must have at least one column mapped and exactly one primary key selected
+
+##### Step 4 — Review & Import (`ReviewStep.component.tsx`)
+
+- [ ] Create `ReviewStep.component.tsx`:
+  - Read-only summary of the full configuration before submission:
+    - Connector instance name (editable, AI-suggested default)
+    - Entity list with column counts
+    - Per-entity column table: source field → target column key, type, action (match/create)
+    - Total row counts across all entities
+  - "Confirm" button triggers `POST /api/uploads/:jobId/confirm` with serialized user edits
+  - Shows loading/progress state during confirmation persist
+  - On success: displays completion summary (created/updated entities, column definitions, field mappings) with "Done" button to close modal
+  - "Cancel" button calls `POST /api/jobs/:id/cancel`, shows cancellation confirmation, and closes modal
+
+##### Wiring
+
+- [ ] Wire modal open to a "Connect" button (temporary placement in dashboard or connector list view)
 
 #### Verification
 
@@ -862,14 +926,13 @@ Job processor streams CSV from S3, parses it, and the frontend shows real-time p
 
 #### Frontend
 
-- [ ] Extend `useFileUpload.util.ts` — add SSE subscription via existing `/sse/jobs/:id/events` endpoint after process call
-- [ ] Update `FileUploadModal.component.tsx` "Processing..." state:
-  - Connect to SSE on `jobId`
+- [ ] Extend `useUploadWorkflow.util.ts` — wire SSE subscription via existing `/sse/jobs/:id/events` endpoint into workflow state machine after `process()` call
+- [ ] Update `UploadStep.component.tsx` "Processing..." state:
   - Display overall progress bar driven by `job:update` events
   - Display current phase label ("Verifying files...", "Parsing contacts.csv...")
   - Handle `job:error` events — show error message with detail, allow dismiss
   - Handle SSE disconnect — auto-reconnect, show "Reconnecting..." indicator
-- [ ] On `job:complete` (temporary for Phase 2), show parse summary: files parsed, row counts, detected delimiters
+- [ ] On `job:complete` (temporary for Phase 2), show parse summary in `UploadStep`: files parsed, row counts, detected delimiters
 
 #### Verification
 
@@ -911,18 +974,11 @@ AI analyzes parsed results, generates schema recommendations, and the frontend d
 
 #### Frontend
 
-- [ ] Create `RecommendationReview.component.tsx`:
-  - Tabbed or accordion layout — one section per file/entity
-  - Per entity: entity key and label (editable)
-  - Per column: source field (CSV header), recommended key/label/type (editable), action badge (`match_existing` with confidence %, or `create_new`), primary key toggle
-  - Existing column matches shown with link to existing definition
-  - Low-confidence matches (<0.8) highlighted for review
-  - "Create new" vs "Match existing" toggle per column with searchable dropdown of existing column definitions
-- [ ] Update `FileUploadModal.component.tsx`:
-  - On `job:recommendations` SSE event, transition from "Processing..." to recommendation review view
-  - Show connector instance name (editable, AI-suggested)
-  - Show parse summary (row counts, delimiters) as read-only context above recommendations
-  - "Confirm" and "Cancel" action buttons
+- [ ] Extend `useUploadWorkflow.util.ts` — on `job:recommendations` SSE event, parse recommendation payload and auto-advance stepper from Step 1 ("Processing...") to Step 2 ("Confirm Entities")
+- [ ] Populate `EntityStep.component.tsx` with AI-recommended entities from recommendation payload
+- [ ] Populate `ColumnMappingStep.component.tsx` with AI-recommended column mappings, confidence scores, and sample values from recommendation payload
+- [ ] Populate `ReviewStep.component.tsx` connector instance name with AI-suggested default
+- [ ] Show parse summary (row counts, delimiters) as read-only context in `EntityStep` above entity list
 
 #### Verification
 
@@ -966,17 +1022,18 @@ User confirms (or modifies) recommendations, backend persists all entities in a 
 
 #### Frontend
 
-- [ ] Wire "Confirm" button in `RecommendationReview.component.tsx`:
-  - Serialize edited recommendations into `ConfirmRequestBody`
+- [ ] Wire "Confirm" button in `ReviewStep.component.tsx`:
+  - Serialize edited entities and column mappings from Steps 2-3 into `ConfirmRequestBody`
   - Show loading state on button during request
-  - On success: transition to completion summary view
-- [ ] Completion summary view:
+  - On success: transition `ReviewStep` to completion summary view
+- [ ] Completion summary view (within `ReviewStep`):
   - Connector instance name and status
   - List of created/updated entities with row counts
   - List of created/updated column definitions
-  - "Done" button closes modal
-- [ ] Wire "Cancel" button:
-  - Calls existing `POST /api/jobs/:id/cancel` endpoint
+  - "Done" button closes workflow modal
+- [ ] Wire "Cancel" button in `CSVConnectorWorkflow.component.tsx`:
+  - Available at any step via modal header or stepper navigation
+  - Calls existing `POST /api/jobs/:id/cancel` endpoint (if `jobId` exists)
   - Triggers S3 cleanup (files deleted via `S3Service.deletePrefix()`)
   - Shows cancelled confirmation, closes modal
 

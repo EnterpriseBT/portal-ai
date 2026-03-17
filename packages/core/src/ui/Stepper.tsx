@@ -6,6 +6,8 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 
 export type StepValidateResult = boolean | string;
 
@@ -177,15 +179,27 @@ export function useStepper({
 
 export const Stepper = React.forwardRef<HTMLDivElement, StepperProps>(
   (
-    { steps, activeStep, orientation = "horizontal", alternativeLabel, children, className, ...rest },
+    {
+      steps,
+      activeStep,
+      orientation = "horizontal",
+      alternativeLabel,
+      children,
+      className,
+      ...rest
+    },
     ref
   ) => {
+    const theme = useTheme();
+    const isSmallScreen = useMediaQuery(theme.breakpoints.down("sm"));
+    const resolvedOrientation = isSmallScreen ? "vertical" : orientation;
+
     return (
       <Box ref={ref} className={className} {...rest}>
         <MuiStepper
           activeStep={activeStep}
-          orientation={orientation}
-          alternativeLabel={alternativeLabel}
+          orientation={resolvedOrientation}
+          alternativeLabel={!isSmallScreen && alternativeLabel}
         >
           {steps.map((step) => (
             <MuiStep key={step.label}>
@@ -272,7 +286,11 @@ export const StepperNavigation = React.forwardRef<
         className={className}
         {...rest}
       >
-        <Button onClick={onBack} disabled={isFirstStep || disabled} variant="text">
+        <Button
+          onClick={onBack}
+          disabled={isFirstStep || disabled}
+          variant="text"
+        >
           {backLabel}
         </Button>
         <Button onClick={onNext} disabled={disabled} variant="contained">

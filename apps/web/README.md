@@ -97,6 +97,7 @@ src/
 ├── stories/            # Storybook stories (*.stories.tsx)
 ├── utils/              # Utility functions and hooks
 ├── views/              # Page view components (*.view.tsx)
+├── workflows/          # Multi-step workflow modules (see below)
 ├── __tests__/          # Test files and setup
 ├── App.tsx             # Root app component with providers
 ├── client.ts           # TanStack Query client configuration
@@ -176,6 +177,36 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
   );
 };
 ```
+
+### Workflow Modules
+
+Multi-step user workflows (wizards, import flows, etc.) live in `src/workflows/<WorkflowName>/` as self-contained modules:
+
+```
+workflows/
+  CSVConnector/
+    index.ts                              # Barrel exports
+    CSVConnectorWorkflow.component.tsx     # Container + pure UI component
+    UploadStep.component.tsx              # Step 1 panel
+    EntityStep.component.tsx              # Step 2 panel
+    ColumnMappingStep.component.tsx       # Step 3 panel
+    ReviewStep.component.tsx              # Step 4 panel
+    utils/
+      upload-workflow.util.ts             # Workflow state machine hook
+    __tests__/
+      CSVConnectorWorkflow.test.tsx       # Unit tests for the workflow UI
+      UploadStep.test.tsx                 # Unit tests for step components
+    stories/
+      CSVConnectorWorkflow.stories.tsx    # Storybook stories for the workflow
+```
+
+**Key conventions:**
+- Components (`*.component.tsx`) in the workflow root
+- Hooks and helpers (`*.util.ts`) in the `utils/` subfolder
+- Tests (`*.test.tsx`) in the `__tests__/` subfolder — co-located with the workflow
+- Stories (`*.stories.tsx`) in the `stories/` subfolder — co-located with the workflow
+- Each workflow exports a **container** (wires hooks) and a **pure UI component** (props-only, no hooks) for Storybook/testing
+- `index.ts` re-exports the public API
 
 ### Import Organization
 

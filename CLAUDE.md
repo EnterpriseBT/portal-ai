@@ -93,6 +93,38 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 };
 ```
 
+## Workflow Module Pattern (apps/web)
+
+Multi-step user workflows (e.g., file upload, data import wizards) live in `apps/web/src/workflows/<WorkflowName>/`. Each workflow is a self-contained module with a strict internal structure:
+
+```
+workflows/
+  <WorkflowName>/
+    index.ts                            # Barrel exports
+    <WorkflowName>.component.tsx        # Container (hooks + state) and pure UI component
+    <StepName>Step.component.tsx         # Per-step presentational components
+    utils/
+      <feature>.util.ts                 # Hooks, state machines, helpers
+    __tests__/
+      <WorkflowName>.test.tsx           # Unit tests for the workflow
+      <StepName>Step.test.tsx           # Unit tests for individual step components
+    stories/
+      <WorkflowName>.stories.tsx        # Storybook stories for the workflow UI
+```
+
+### Rules
+
+- **Components** (`*.component.tsx`) go in the workflow root — these are the UI pieces (container, step panels)
+- **Hooks and helpers** (`*.util.ts`) go in the `utils/` subfolder — these are the data-fetching, state management, and business logic pieces
+- **Tests** (`*.test.tsx`) go in the `__tests__/` subfolder — co-located with the workflow, not in the top-level `src/__tests__/`
+- **Stories** (`*.stories.tsx`) go in the `stories/` subfolder — co-located with the workflow, not in the top-level `src/stories/`
+- **Container vs. UI**: Each workflow exports both a container component (wires hooks) and a pure `*UI` component (props-only, no hooks) for Storybook and testing
+- **Barrel export** (`index.ts`) re-exports the public API: container, UI component, UI props type, and hooks
+
+### Reference Implementation
+
+`workflows/CSVConnector/` — CSV file upload workflow with 4-step stepper
+
 ## Database Schema Workflow (Dual-Schema)
 
 This project enforces a dual-schema approach — Zod models in `@portalai/core` and Drizzle tables in the API. Compile-time type assertions prevent drift.
