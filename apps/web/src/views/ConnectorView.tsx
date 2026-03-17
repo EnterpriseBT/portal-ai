@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import type { ComponentType } from "react";
 
 import {
   Box,
@@ -26,23 +27,37 @@ import { SyncTotal } from "../components/SyncTotal.component";
 import { sdk } from "../api/sdk";
 import { CSVConnectorWorkflow } from "../workflows/CSVConnector";
 
+export interface ConnectorWorkflowProps {
+  open: boolean;
+  onClose: () => void;
+  organizationId: string;
+  connectorDefinitionId: string;
+}
+
+const WORKFLOW_REGISTRY: Record<string, ComponentType<ConnectorWorkflowProps>> = {
+  csv: CSVConnectorWorkflow,
+};
+
 export const ConnectorView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
 
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [selectedConnectorDefinitionId, setSelectedConnectorDefinitionId] = useState<string | null>(null);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const { data: orgData } = sdk.organizations.current();
   const organizationId = orgData?.organization.id ?? "";
 
   const handleConnect = useCallback((cd: ConnectorDefinition) => {
     setSelectedConnectorDefinitionId(cd.id);
+    setSelectedSlug(cd.slug);
     setWorkflowOpen(true);
   }, []);
 
   const handleCloseWorkflow = useCallback(() => {
     setWorkflowOpen(false);
     setSelectedConnectorDefinitionId(null);
+    setSelectedSlug(null);
   }, []);
 
   const pagination = usePagination({
@@ -110,14 +125,18 @@ export const ConnectorView = () => {
         </Stack>
       </TabPanel>
 
-      {selectedConnectorDefinitionId && (
-        <CSVConnectorWorkflow
-          open={workflowOpen}
-          onClose={handleCloseWorkflow}
-          organizationId={organizationId}
-          connectorDefinitionId={selectedConnectorDefinitionId}
-        />
-      )}
+      {selectedConnectorDefinitionId && selectedSlug && (() => {
+        const WorkflowComponent = WORKFLOW_REGISTRY[selectedSlug];
+        if (!WorkflowComponent) return null;
+        return (
+          <WorkflowComponent
+            open={workflowOpen}
+            onClose={handleCloseWorkflow}
+            organizationId={organizationId}
+            connectorDefinitionId={selectedConnectorDefinitionId}
+          />
+        );
+      })()}
     </Box>
   );
 };
