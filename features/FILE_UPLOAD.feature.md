@@ -947,25 +947,25 @@ Job processor streams CSV from S3, parses it, and the frontend shows real-time p
 
 #### Verification
 
-- [ ] Uploading a CSV triggers SSE progress events that update the UI progress bar in real time
-- [ ] Progress moves smoothly from 10→30 during parse phase (byte-based, not jumpy)
-- [ ] Parse results include correct delimiter, header detection, row count, and sample rows
-- [ ] A 50MB CSV parses without OOM (worker memory stays under 50MB)
-- [ ] Multi-file upload shows sequential per-file progress
-- [ ] Column stats show capped unique counts (marked `"capped"`) for high-cardinality columns
-- [ ] Malformed CSV (unclosed quotes) produces `UPLOAD_PARSE_FAILED` with row/line detail visible in UI
-- [ ] Empty CSV produces `UPLOAD_EMPTY_FILE` error visible in UI
-- [ ] SSE reconnect after network drop replays current state via `job:snapshot`
-- [ ] Job failure (e.g., S3 read error) triggers BullMQ retry (up to 3 attempts)
+- [x] Uploading a CSV triggers SSE progress events that update the UI progress bar in real time
+- [x] Progress moves smoothly from 10→30 during parse phase (byte-based, not jumpy)
+- [x] Parse results include correct delimiter, header detection, row count, and sample rows
+- [x] A 50MB CSV parses without OOM (worker memory stays under 50MB)
+- [x] Multi-file upload shows sequential per-file progress
+- [x] Column stats show capped unique counts (marked `"capped"`) for high-cardinality columns
+- [x] Malformed CSV (unclosed quotes) produces `UPLOAD_PARSE_FAILED` with row/line detail visible in UI
+- [x] Empty CSV produces `UPLOAD_EMPTY_FILE` error visible in UI
+- [x] SSE reconnect after network drop replays current state via `job:snapshot`
+- [x] Job failure (e.g., S3 read error) triggers BullMQ retry (up to 3 attempts)
 
 #### Tests
 
-- [ ] **Unit — Backend** (`file-upload.processor.test.ts`): S3 verification phase calls `headObject()` per file and fails on missing/empty files. CSV parser detects correct delimiter from first 4KB. Encoding detection returns correct charset. Sample rows capped at 50. Column stats accumulate correctly (null rate, unique count capped at 1,000, min/max length). Progress events emitted at correct byte-based intervals. Parse results match `FileUploadResultSchema` shape
-- [ ] **Unit — Backend** (`file-upload.processor.test.ts` — error paths): Malformed CSV (unclosed quotes) throws `UPLOAD_PARSE_FAILED` with row/line detail. Empty CSV throws `UPLOAD_EMPTY_FILE`. S3 read error throws `UPLOAD_S3_READ_ERROR`. Encoding detection failure throws `UPLOAD_ENCODING_ERROR`
-- [ ] **Unit — Frontend** (`UploadStep.test.tsx` — SSE states): Progress bar updates on `job:update` events, phase label shows "Verifying files..." then "Parsing {filename}...", error message renders on `job:error`, "Reconnecting..." indicator shows on SSE disconnect
-- [ ] **Unit — Frontend** (`useUploadWorkflow.util.test.ts` — SSE): SSE subscription starts after `process()`, `job:update` events update `jobProgress`, `job:error` events set `jobError`, SSE disconnect sets `connectionStatus` to reconnecting
-- [ ] **Integration — Backend** (`file-upload.processor.integration.test.ts`): Full processor run with real CSV in S3 — parses file, emits progress events, persists `parseResults` to job `result` field, transitions job to `completed`. Multi-file sequential processing produces correct per-file results. 50MB CSV processes within memory limits
-- [ ] All Phase 2 tests pass (`npm run test -- --testPathPattern="(file-upload.processor|UploadStep|useUploadWorkflow)"`) ✅
+- [x] **Unit — Backend** (`file-upload.processor.test.ts`): S3 verification phase calls `headObject()` per file and fails on missing/empty files. CSV parser detects correct delimiter from first 4KB. Encoding detection returns correct charset. Sample rows capped at 50. Column stats accumulate correctly (null rate, unique count capped at 1,000, min/max length). Progress events emitted at correct byte-based intervals. Parse results match `FileUploadResultSchema` shape
+- [x] **Unit — Backend** (`file-upload.processor.test.ts` — error paths): Malformed CSV (unclosed quotes) throws `UPLOAD_PARSE_FAILED` with row/line detail. Empty CSV throws `UPLOAD_EMPTY_FILE`. S3 read error throws `UPLOAD_S3_READ_ERROR`. Encoding detection failure throws `UPLOAD_ENCODING_ERROR`
+- [x] **Unit — Frontend** (`UploadStep.test.tsx` — SSE states): Progress bar updates on `job:update` events, phase label shows "Verifying files..." then "Parsing {filename}...", error message renders on `job:error`, "Reconnecting..." indicator shows on SSE disconnect
+- [x] **Unit — Frontend** (`useUploadWorkflow.util.test.ts` — SSE): SSE subscription starts after `process()`, `job:update` events update `jobProgress`, `job:error` events set `jobError`, SSE disconnect sets `connectionStatus` to reconnecting
+- [x] **Integration — Backend** (`file-upload.processor.integration.test.ts`): Full processor run with real CSV in S3 — parses file, emits progress events, persists `parseResults` to job `result` field, transitions job to `completed`. Multi-file sequential processing produces correct per-file results. 50MB CSV processes within memory limits
+- [x] All Phase 2 tests pass (`npm run test -- --testPathPattern="(file-upload.processor|UploadStep|useUploadWorkflow)"`) ✅
 
 ---
 
