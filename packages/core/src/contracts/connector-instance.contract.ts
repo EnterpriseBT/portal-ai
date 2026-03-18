@@ -17,6 +17,7 @@ export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;
 export const ConnectorInstanceListRequestQuerySchema = PaginationRequestQuerySchema.extend({
   connectorDefinitionId: z.string().optional(),
   status: z.enum(["active", "inactive", "error", "pending"]).optional(),
+  include: z.enum(["connectorDefinition"]).optional(),
 });
 
 export type ConnectorInstanceListRequestQuery = z.infer<typeof ConnectorInstanceListRequestQuerySchema>;
@@ -29,13 +30,19 @@ export const ConnectorInstanceWithDefinitionApiSchema = ConnectorInstanceApiSche
 export type ConnectorInstanceWithDefinitionApi = z.infer<typeof ConnectorInstanceWithDefinitionApiSchema>;
 
 export const ConnectorInstanceListResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  connectorInstances: z.array(ConnectorInstanceWithDefinitionApiSchema),
+  connectorInstances: z.array(ConnectorInstanceApiSchema),
 });
 
 export type ConnectorInstanceListResponsePayload = z.infer<typeof ConnectorInstanceListResponsePayloadSchema>;
 
+export const ConnectorInstanceListWithDefinitionResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
+  connectorInstances: z.array(ConnectorInstanceWithDefinitionApiSchema),
+});
+
+export type ConnectorInstanceListWithDefinitionResponsePayload = z.infer<typeof ConnectorInstanceListWithDefinitionResponsePayloadSchema>;
+
 export const ConnectorInstanceGetResponseSchema = z.object({
-  connectorInstance: ConnectorInstanceApiSchema,
+  connectorInstance: ConnectorInstanceWithDefinitionApiSchema,
 });
 
 export type ConnectorInstanceGetResponsePayload = z.infer<

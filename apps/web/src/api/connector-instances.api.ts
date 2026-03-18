@@ -2,6 +2,7 @@ import type {
   ConnectorInstanceGetResponsePayload,
   ConnectorInstanceListRequestQuery,
   ConnectorInstanceListResponsePayload,
+  ConnectorInstanceListWithDefinitionResponsePayload,
 } from "@portalai/core/contracts";
 import { useAuthQuery } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -16,6 +17,17 @@ export const connectorInstances = {
     useAuthQuery<ConnectorInstanceListResponsePayload>(
       queryKeys.connectorInstances.list(params),
       buildUrl("/api/connector-instances", params),
+      undefined,
+      options
+    ),
+
+  listWithDefinition: (
+    params?: ConnectorInstanceListRequestQuery,
+    options?: QueryOptions<ConnectorInstanceListWithDefinitionResponsePayload>
+  ) =>
+    useAuthQuery<ConnectorInstanceListWithDefinitionResponsePayload>(
+      queryKeys.connectorInstances.list(params),
+      buildUrl("/api/connector-instances", { ...params, include: "connectorDefinition" }),
       undefined,
       options
     ),

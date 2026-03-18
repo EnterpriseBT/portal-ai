@@ -5,6 +5,7 @@ import { ConnectorEntityModelFactory } from "@portalai/core/models";
 import {
   ConnectorEntityListRequestQuerySchema,
   type ConnectorEntityListResponsePayload,
+  type ConnectorEntityListWithMappingsResponsePayload,
   type ConnectorEntityGetResponsePayload,
   ConnectorEntityCreateRequestBodySchema,
   type ConnectorEntityCreateResponsePayload,
@@ -53,6 +54,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         schema:
  *           type: string
  *         description: Filter by connector instance ID
+ *       - in: query
+ *         name: include
+ *         schema:
+ *           type: string
+ *           enum: [fieldMappings]
+ *         description: Include related field mappings (with column definitions) in each result
  *     responses:
  *       200:
  *         description: Paginated list of connector entities
@@ -78,7 +85,7 @@ connectorEntityRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, connectorInstanceId } =
+      const { limit, offset, sortBy, sortOrder, connectorInstanceId, include } =
         ConnectorEntityListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -90,21 +97,20 @@ connectorEntityRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
 
       const [data, total] = await Promise.all([
-        DbService.repository.connectorEntities.findMany(where, {
-          limit,
-          offset,
-          orderBy: { column, direction: sortOrder },
-        }),
+        include === "fieldMappings"
+          ? DbService.repository.connectorEntities.findManyWithFieldMappings(where, listOpts)
+          : DbService.repository.connectorEntities.findMany(where, listOpts),
         DbService.repository.connectorEntities.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector entities");
       });
 
-      return HttpService.success<ConnectorEntityListResponsePayload>(res, {
-        connectorEntities: data as unknown as ConnectorEntityListResponsePayload["connectorEntities"],
+      return HttpService.success<ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload>(res, {
+        connectorEntities: data as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
         total,
         limit,
         offset,

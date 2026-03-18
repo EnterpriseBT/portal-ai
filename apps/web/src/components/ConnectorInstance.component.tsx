@@ -5,6 +5,7 @@ import type {
   ConnectorInstanceApi,
   ConnectorInstanceListRequestQuery,
   ConnectorInstanceListResponsePayload,
+  ConnectorInstanceListWithDefinitionResponsePayload,
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
 import type { ConnectorDefinition } from "@portalai/core/models";
@@ -33,6 +34,20 @@ export const ConnectorInstanceDataList = (
   props: ConnectorInstanceDataListProps
 ) => {
   const res = sdk.connectorInstances.list(props.query);
+  return props.children(res);
+};
+
+export interface ConnectorInstanceWithDefinitionDataListProps {
+  query: ConnectorInstanceListRequestQuery;
+  children: (
+    data: UseQueryResult<ConnectorInstanceListWithDefinitionResponsePayload, ApiError>
+  ) => React.ReactNode;
+}
+
+export const ConnectorInstanceWithDefinitionDataList = (
+  props: ConnectorInstanceWithDefinitionDataListProps
+) => {
+  const res = sdk.connectorInstances.listWithDefinition(props.query);
   return props.children(res);
 };
 

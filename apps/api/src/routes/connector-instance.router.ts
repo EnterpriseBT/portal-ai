@@ -9,6 +9,7 @@ import { connectorInstances } from "../db/schema/index.js";
 import {
   ConnectorInstanceListRequestQuerySchema,
   type ConnectorInstanceListResponsePayload,
+  type ConnectorInstanceListWithDefinitionResponsePayload,
   type ConnectorInstanceGetResponsePayload,
   ConnectorInstanceCreateRequestBodySchema,
   type ConnectorInstanceCreateResponsePayload,
@@ -71,6 +72,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         schema:
  *           type: string
  *         description: Case-insensitive search on instance name
+ *       - in: query
+ *         name: include
+ *         schema:
+ *           type: string
+ *           enum: [connectorDefinition]
+ *         description: Include related connector definition in each result
  *     responses:
  *       200:
  *         description: Paginated list of connector instances
@@ -96,7 +103,7 @@ connectorInstanceRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, connectorDefinitionId, status, search } =
+      const { limit, offset, sortBy, sortOrder, connectorDefinitionId, status, search, include } =
         ConnectorInstanceListRequestQuerySchema.parse(req.query);
 
       const filters: SQL[] = [eq(connectorInstances.organizationId, req.application?.metadata.organizationId as string)];
@@ -114,20 +121,20 @@ connectorInstanceRouter.get(
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
 
+      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
+
       const [data, total] = await Promise.all([
-        DbService.repository.connectorInstances.findManyWithDefinition(where, {
-          limit,
-          offset,
-          orderBy: { column, direction: sortOrder },
-        }),
+        include === "connectorDefinition"
+          ? DbService.repository.connectorInstances.findManyWithDefinition(where, listOpts)
+          : DbService.repository.connectorInstances.findMany(where, listOpts),
         DbService.repository.connectorInstances.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector instances");
       });
 
-      return HttpService.success<ConnectorInstanceListResponsePayload>(res, {
-        connectorInstances: data as unknown as ConnectorInstanceWithDefinitionApi[],
+      return HttpService.success<ConnectorInstanceListResponsePayload | ConnectorInstanceListWithDefinitionResponsePayload>(res, {
+        connectorInstances: data as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
         total,
         limit,
         offset,
@@ -207,8 +214,15 @@ connectorInstanceRouter.get(
         );
       }
 
+      const connectorDefinition = await DbService.repository.connectorDefinitions
+        .findById(connectorInstance.connectorDefinitionId)
+        .catch(() => null);
+
       return HttpService.success<ConnectorInstanceGetResponsePayload>(res, {
-        connectorInstance: connectorInstance as unknown as ConnectorInstanceApi,
+        connectorInstance: {
+          ...connectorInstance,
+          connectorDefinition: connectorDefinition ?? null,
+        } as unknown as ConnectorInstanceWithDefinitionApi,
       });
     } catch (error) {
       logger.error(

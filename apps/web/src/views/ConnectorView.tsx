@@ -24,7 +24,7 @@ import {
 } from "../components/ConnectorDefinition.component";
 import {
   ConnectorInstanceCardUI,
-  ConnectorInstanceDataList,
+  ConnectorInstanceWithDefinitionDataList,
 } from "../components/ConnectorInstance.component";
 import DataResult from "../components/DataResult.component";
 import { EmptyResults } from "../components/EmptyResults.component";
@@ -137,10 +137,8 @@ export const ConnectorView = () => {
       <TabPanel {...getTabPanelProps(0)}>
         <Stack spacing={2}>
           <PaginationToolbar {...instancePagination.toolbarProps} />
-          <ConnectorInstanceDataList
-            query={
-              instancePagination.queryParams as ConnectorInstanceListRequestQuery
-            }
+          <ConnectorInstanceWithDefinitionDataList
+            query={instancePagination.queryParams as ConnectorInstanceListRequestQuery}
           >
             {(response) => (
               <SyncTotal
@@ -157,7 +155,9 @@ export const ConnectorView = () => {
                           <ConnectorInstanceCardUI
                             key={ci.id}
                             connectorInstance={ci}
-                            connectorDefinition={ci.connectorDefinition ?? undefined}
+                            connectorDefinition={
+                              ci.connectorDefinition ?? undefined
+                            }
                             onClick={handleInstanceClick}
                           />
                         ))}
@@ -167,7 +167,7 @@ export const ConnectorView = () => {
                 </DataResult>
               </SyncTotal>
             )}
-          </ConnectorInstanceDataList>
+          </ConnectorInstanceWithDefinitionDataList>
         </Stack>
       </TabPanel>
 

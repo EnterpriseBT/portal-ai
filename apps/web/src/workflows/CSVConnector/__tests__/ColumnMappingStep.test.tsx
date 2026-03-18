@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-import { render, screen, within } from "../../../__tests__/test-utils";
+import { render, screen } from "../../../__tests__/test-utils";
 import userEvent from "@testing-library/user-event";
 
 import { ColumnMappingStep } from "../ColumnMappingStep.component";
@@ -86,11 +86,11 @@ const MOCK_ENTITY_B: RecommendedEntity = {
 describe("ColumnMappingStep", () => {
   describe("Empty state", () => {
     it("shows no-entities message when entities array is empty", () => {
-      render(
-        <ColumnMappingStep entities={[]} onUpdateColumn={jest.fn()} />
-      );
+      render(<ColumnMappingStep entities={[]} onUpdateColumn={jest.fn()} />);
       expect(
-        screen.getByText("No entities available. Please go back and review entities.")
+        screen.getByText(
+          "No entities available. Please go back and review entities."
+        )
       ).toBeInTheDocument();
     });
   });
@@ -189,9 +189,7 @@ describe("ColumnMappingStep", () => {
           onUpdateColumn={jest.fn()}
         />
       );
-      expect(
-        screen.getByText(/alice@example\.com/)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/alice@example\.com/)).toBeInTheDocument();
     });
   });
 
