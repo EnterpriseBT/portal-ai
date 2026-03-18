@@ -507,7 +507,7 @@ describe("UploadsService", () => {
 
     it("should roll back transaction on DB error — job stays awaiting_confirmation", async () => {
       const { DbService } = await import("../../services/db.service.js");
-      (DbService.transaction as jest.Mock).mockRejectedValueOnce(new Error("DB connection lost"));
+      (DbService.transaction as jest.Mock<() => Promise<unknown>>).mockRejectedValueOnce(new Error("DB connection lost"));
 
       await expect(
         UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, createConfirmBody())
