@@ -15,7 +15,9 @@ import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
+import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
 import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
+import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -47,37 +49,53 @@ const JobsIndexRoute = JobsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => JobsRoute,
 } as any)
+const ConnectorsIndexRoute = ConnectorsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ConnectorsRoute,
+} as any)
 const JobsJobIdRoute = JobsJobIdRouteImport.update({
   id: '/$jobId',
   path: '/$jobId',
   getParentRoute: () => JobsRoute,
 } as any)
+const ConnectorsConnectorInstanceIdRoute =
+  ConnectorsConnectorInstanceIdRouteImport.update({
+    id: '/$connectorInstanceId',
+    path: '/$connectorInstanceId',
+    getParentRoute: () => ConnectorsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/connectors': typeof ConnectorsRoute
+  '/connectors': typeof ConnectorsRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/connectors/': typeof ConnectorsIndexRoute
   '/jobs/': typeof JobsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/connectors': typeof ConnectorsRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/connectors': typeof ConnectorsIndexRoute
   '/jobs': typeof JobsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/connectors': typeof ConnectorsRoute
+  '/connectors': typeof ConnectorsRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/connectors/': typeof ConnectorsIndexRoute
   '/jobs/': typeof JobsIndexRoute
 }
 export interface FileRouteTypes {
@@ -88,10 +106,19 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/login'
     | '/settings'
+    | '/connectors/$connectorInstanceId'
     | '/jobs/$jobId'
+    | '/connectors/'
     | '/jobs/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/connectors' | '/login' | '/settings' | '/jobs/$jobId' | '/jobs'
+  to:
+    | '/'
+    | '/login'
+    | '/settings'
+    | '/connectors/$connectorInstanceId'
+    | '/jobs/$jobId'
+    | '/connectors'
+    | '/jobs'
   id:
     | '__root__'
     | '/'
@@ -99,13 +126,15 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/login'
     | '/settings'
+    | '/connectors/$connectorInstanceId'
     | '/jobs/$jobId'
+    | '/connectors/'
     | '/jobs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ConnectorsRoute: typeof ConnectorsRoute
+  ConnectorsRoute: typeof ConnectorsRouteWithChildren
   JobsRoute: typeof JobsRouteWithChildren
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
@@ -155,6 +184,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JobsIndexRouteImport
       parentRoute: typeof JobsRoute
     }
+    '/connectors/': {
+      id: '/connectors/'
+      path: '/'
+      fullPath: '/connectors/'
+      preLoaderRoute: typeof ConnectorsIndexRouteImport
+      parentRoute: typeof ConnectorsRoute
+    }
     '/jobs/$jobId': {
       id: '/jobs/$jobId'
       path: '/$jobId'
@@ -162,8 +198,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JobsJobIdRouteImport
       parentRoute: typeof JobsRoute
     }
+    '/connectors/$connectorInstanceId': {
+      id: '/connectors/$connectorInstanceId'
+      path: '/$connectorInstanceId'
+      fullPath: '/connectors/$connectorInstanceId'
+      preLoaderRoute: typeof ConnectorsConnectorInstanceIdRouteImport
+      parentRoute: typeof ConnectorsRoute
+    }
   }
 }
+
+interface ConnectorsRouteChildren {
+  ConnectorsConnectorInstanceIdRoute: typeof ConnectorsConnectorInstanceIdRoute
+  ConnectorsIndexRoute: typeof ConnectorsIndexRoute
+}
+
+const ConnectorsRouteChildren: ConnectorsRouteChildren = {
+  ConnectorsConnectorInstanceIdRoute: ConnectorsConnectorInstanceIdRoute,
+  ConnectorsIndexRoute: ConnectorsIndexRoute,
+}
+
+const ConnectorsRouteWithChildren = ConnectorsRoute._addFileChildren(
+  ConnectorsRouteChildren,
+)
 
 interface JobsRouteChildren {
   JobsJobIdRoute: typeof JobsJobIdRoute
@@ -179,7 +236,7 @@ const JobsRouteWithChildren = JobsRoute._addFileChildren(JobsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ConnectorsRoute: ConnectorsRoute,
+  ConnectorsRoute: ConnectorsRouteWithChildren,
   JobsRoute: JobsRouteWithChildren,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,

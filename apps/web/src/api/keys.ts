@@ -1,4 +1,5 @@
 import type { ConnectorDefinitionListRequestQuery } from "@portalai/core/contracts";
+import type { ConnectorInstanceListRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 
 export const queryKeys = {
@@ -20,6 +21,13 @@ export const queryKeys = {
       [...queryKeys.connectorDefinitions.root, "list", params] as const,
     get: (id: string) =>
       [...queryKeys.connectorDefinitions.root, "get", id] as const,
+  },
+  connectorInstances: {
+    root: ["connectorInstances"] as const,
+    list: (params?: ConnectorInstanceListRequestQuery) =>
+      [...queryKeys.connectorInstances.root, "list", params] as const,
+    get: (id: string) =>
+      [...queryKeys.connectorInstances.root, "get", id] as const,
   },
   jobs: {
     root: ["jobs"] as const,

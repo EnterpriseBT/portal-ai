@@ -3,5 +3,6 @@ export enum ApplicationRoute {
   Settings = "/settings",
   Login = "/login",
   Connectors = "/connectors",
+  ConnectorInstance = "/connectors/$connectorInstanceId",
   Jobs = "/jobs",
 }
