@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { JobSchema } from "../models/job.model.js";
+import { JobSchema, ColumnRecommendationActionEnum } from "../models/job.model.js";
 
 // --- Request Schemas ---
 
@@ -43,3 +43,57 @@ export const ProcessResponsePayloadSchema = z.object({
   job: JobSchema,
 });
 export type ProcessResponsePayload = z.infer<typeof ProcessResponsePayloadSchema>;
+
+// --- Confirm Schemas ---
+
+export const ConfirmColumnSchema = z.object({
+  sourceField: z.string(),
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "currency"]),
+  format: z.string().nullable(),
+  isPrimaryKey: z.boolean(),
+  required: z.boolean(),
+  action: ColumnRecommendationActionEnum,
+  existingColumnDefinitionId: z.string().nullable(),
+});
+export type ConfirmColumn = z.infer<typeof ConfirmColumnSchema>;
+
+export const ConfirmEntitySchema = z.object({
+  entityKey: z.string(),
+  entityLabel: z.string(),
+  sourceFileName: z.string(),
+  columns: z.array(ConfirmColumnSchema).min(1),
+});
+export type ConfirmEntity = z.infer<typeof ConfirmEntitySchema>;
+
+export const ConfirmRequestBodySchema = z.object({
+  connectorInstanceName: z.string().min(1),
+  entities: z.array(ConfirmEntitySchema).min(1),
+});
+export type ConfirmRequestBody = z.infer<typeof ConfirmRequestBodySchema>;
+
+export const ConfirmResponseEntitySchema = z.object({
+  connectorEntityId: z.string(),
+  entityKey: z.string(),
+  entityLabel: z.string(),
+  columnDefinitions: z.array(z.object({
+    id: z.string(),
+    key: z.string(),
+    label: z.string(),
+  })),
+  fieldMappings: z.array(z.object({
+    id: z.string(),
+    sourceField: z.string(),
+    columnDefinitionId: z.string(),
+    isPrimaryKey: z.boolean(),
+  })),
+});
+export type ConfirmResponseEntity = z.infer<typeof ConfirmResponseEntitySchema>;
+
+export const ConfirmResponsePayloadSchema = z.object({
+  connectorInstanceId: z.string(),
+  connectorInstanceName: z.string(),
+  confirmedEntities: z.array(ConfirmResponseEntitySchema),
+});
+export type ConfirmResponsePayload = z.infer<typeof ConfirmResponsePayloadSchema>;

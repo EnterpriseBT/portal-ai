@@ -11,14 +11,17 @@ import {
 } from "@portalai/core/models";
 import {
   PresignRequestBodySchema,
+  ConfirmRequestBodySchema,
   type PresignFile,
   type PresignResponsePayload,
   type PresignUploadItem,
   type ProcessResponsePayload,
+  type ConfirmResponsePayload,
 } from "@portalai/core/contracts";
 import { environment } from "../environment.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { jobsQueue } from "../queues/jobs.queue.js";
+import { UploadsService } from "../services/uploads.service.js";
 
 const logger = createLogger({ module: "uploads" });
 
@@ -307,6 +310,77 @@ uploadsRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(500, ApiCode.UPLOAD_S3_ERROR, "Failed to process upload")
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/uploads/{jobId}/confirm:
+ *   post:
+ *     tags:
+ *       - Uploads
+ *     summary: Confirm file upload recommendations and persist entities
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Confirmation successful
+ *       400:
+ *         description: Invalid request body or references
+ *       404:
+ *         description: Job not found
+ *       409:
+ *         description: Job not in awaiting_confirmation state
+ *       504:
+ *         description: Confirmation timed out
+ */
+uploadsRouter.post(
+  "/:jobId/confirm",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { jobId } = req.params;
+      const organizationId = req.application?.metadata.organizationId as string;
+      const userId = req.application?.metadata.userId as string;
+
+      const parsed = ConfirmRequestBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(400, ApiCode.UPLOAD_INVALID_PAYLOAD, "Invalid confirm request body")
+        );
+      }
+
+      const result = await UploadsService.confirm(
+        jobId,
+        organizationId,
+        userId,
+        parsed.data
+      );
+
+      return HttpService.success<ConfirmResponsePayload>(res, result);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to confirm upload"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.UPLOAD_S3_ERROR, "Failed to confirm upload")
       );
     }
   }

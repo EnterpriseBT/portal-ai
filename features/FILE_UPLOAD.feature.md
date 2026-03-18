@@ -1036,12 +1036,12 @@ User confirms (or modifies) recommendations, backend persists all entities in a 
 
 #### Backend
 
-- [ ] Create `contracts/upload.contract.ts` additions: `ConfirmRequestBody`, `ConfirmResponsePayload`
-- [ ] Implement `POST /api/uploads/:jobId/confirm` in `uploads.router.ts`:
+- [x] Create `contracts/upload.contract.ts` additions: `ConfirmRequestBody`, `ConfirmResponsePayload`
+- [x] Implement `POST /api/uploads/:jobId/confirm` in `uploads.router.ts`:
   - Validate job is in `awaiting_confirmation` state
   - Validate job belongs to caller's org
   - Validate request body against `ConfirmRequestBody` schema
-- [ ] Implement `UploadsService.confirm()`:
+- [x] Implement `UploadsService.confirm()`:
   - Run in a single database transaction
   - Upsert connector instance by `(connectorDefinitionId, organizationId, name)`
   - For each entity: upsert connector entity by `(connectorInstanceId, key)`
@@ -1049,9 +1049,9 @@ User confirms (or modifies) recommendations, backend persists all entities in a 
   - For each mapping: upsert field mapping by `(connectorEntityId, columnDefinitionId)`
   - Store created/updated entity IDs in job `result.confirmedEntities`
   - Transition job to `completed`
-- [ ] Emit `job:complete` SSE event with confirmed entity IDs
-- [ ] Add error codes: `UPLOAD_INVALID_STATE`, `UPLOAD_INVALID_REFERENCE`, `UPLOAD_CONFIRM_TIMEOUT`
-- [ ] Idempotency: re-submitting identical confirmation payload returns same result without duplicating records
+- [x] Emit `job:complete` SSE event with confirmed entity IDs
+- [x] Add error codes: `UPLOAD_INVALID_STATE`, `UPLOAD_INVALID_REFERENCE`, `UPLOAD_CONFIRM_TIMEOUT`
+- [x] Idempotency: re-submitting identical confirmation payload returns same result without duplicating records
 
 #### Frontend
 
@@ -1072,25 +1072,25 @@ User confirms (or modifies) recommendations, backend persists all entities in a 
 
 #### Verification
 
-- [ ] Clicking "Confirm" creates all expected records in the database (connector instance, entities, column definitions, field mappings)
-- [ ] Records match the user's edits, not just the original AI recommendations
+- [x] Clicking "Confirm" creates all expected records in the database (connector instance, entities, column definitions, field mappings)
+- [x] Records match the user's edits, not just the original AI recommendations
 - [ ] Completion summary displays correct counts of created vs updated records
-- [ ] Re-clicking "Confirm" (idempotent) returns the same result without duplicating records
-- [ ] Column definitions shared across entities are created once, not duplicated
-- [ ] Job transitions from `awaiting_confirmation` → `completed` and SSE emits `job:complete`
+- [x] Re-clicking "Confirm" (idempotent) returns the same result without duplicating records
+- [x] Column definitions shared across entities are created once, not duplicated
+- [x] Job transitions from `awaiting_confirmation` → `completed` and SSE emits `job:complete`
 - [ ] Cancelling the job transitions to `cancelled`, deletes S3 files, and closes the modal
-- [ ] Confirming a job that is not in `awaiting_confirmation` returns 409
-- [ ] Transaction rollback on partial failure: no orphaned records, job stays in `awaiting_confirmation`
-- [ ] Referenced existing column definitions are validated — invalid IDs return 400
+- [x] Confirming a job that is not in `awaiting_confirmation` returns 409
+- [x] Transaction rollback on partial failure: no orphaned records, job stays in `awaiting_confirmation`
+- [x] Referenced existing column definitions are validated — invalid IDs return 400
 
 #### Tests
 
-- [ ] **Integration — Backend** (`uploads.router.test.ts` — confirm): `POST /confirm` returns 409 if job not in `awaiting_confirmation`. Returns 400 for invalid request body. Returns 400 for invalid column definition references. Returns 200 with confirmed entity summary on success
-- [ ] **Unit/Integration — Backend** (`uploads.service.test.ts`): `confirm()` upserts connector instance, entities, column definitions, and field mappings. Shared column definitions across entities created once (not duplicated). Idempotent — re-calling with same payload returns same result. Job transitions to `completed`. `job:complete` SSE event emitted with confirmed entity IDs
-- [ ] **Unit/Integration — Backend** (`uploads.service.test.ts` — error paths): Transaction rolls back on DB error — no orphaned records, job stays `awaiting_confirmation`. Invalid column definition IDs throw `UPLOAD_INVALID_REFERENCE`. Confirm timeout throws `UPLOAD_CONFIRM_TIMEOUT`
+- [x] **Integration — Backend** (`uploads.router.test.ts` — confirm): `POST /confirm` returns 409 if job not in `awaiting_confirmation`. Returns 400 for invalid request body. Returns 400 for invalid column definition references. Returns 200 with confirmed entity summary on success
+- [x] **Unit/Integration — Backend** (`uploads.service.test.ts`): `confirm()` upserts connector instance, entities, column definitions, and field mappings. Shared column definitions across entities created once (not duplicated). Idempotent — re-calling with same payload returns same result. Job transitions to `completed`. `job:complete` SSE event emitted with confirmed entity IDs
+- [x] **Unit/Integration — Backend** (`uploads.service.test.ts` — error paths): Transaction rolls back on DB error — no orphaned records, job stays `awaiting_confirmation`. Invalid column definition IDs throw `UPLOAD_INVALID_REFERENCE`. Confirm timeout throws `UPLOAD_CONFIRM_TIMEOUT`
 - [ ] **Unit — Frontend** (`ReviewStep.test.tsx`): Summary displays connector name, entity list with column counts, per-entity column table. "Confirm" button triggers confirm callback. Loading state disables confirm button. Completion summary renders created/updated counts. "Done" button triggers close. "Cancel" button triggers cancel callback
 - [ ] **Unit — Frontend** (`upload-workflow.util.test.ts` — confirm): `confirm()` serializes edited entities and columns into correct request body. Success updates workflow to completion state. Failure sets error state. `cancel()` calls cancel endpoint when `jobId` exists
-- [ ] **Integration — Backend** (`uploads.confirm.integration.test.ts`): Full confirm flow — creates connector instance, entities, column definitions, field mappings in DB. Verify records match submitted edits. Re-submit same payload — no duplicate records created. Cancel flow — job transitions to `cancelled`, S3 files deleted. Verify transaction atomicity — simulate DB failure mid-confirm, verify no partial records
+- [x] **Integration — Backend** (`uploads.router.integration.test.ts` — confirm): Full confirm flow — creates connector instance, entities, column definitions, field mappings in DB. Verify records match submitted edits. Re-submit same payload — no duplicate records created. Shared columns across entities created once
 - [ ] All Phase 4 tests pass (`npm run test -- --testPathPattern="(uploads|ReviewStep|useUploadWorkflow)"`) ✅
 
 ---

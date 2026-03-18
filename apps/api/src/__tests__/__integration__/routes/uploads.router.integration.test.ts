@@ -79,9 +79,22 @@ jest.unstable_mockModule("../../../queues/jobs.queue.js", () => ({
   JOBS_QUEUE_NAME: "test-async-jobs",
 }));
 
+// Mock JobEventsService to avoid Redis dependency
+const mockTransition = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockPublishCustomEvent = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockUpdateProgress = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+jest.unstable_mockModule("../../../services/job-events.service.js", () => ({
+  JobEventsService: {
+    transition: mockTransition,
+    publishCustomEvent: mockPublishCustomEvent,
+    updateProgress: mockUpdateProgress,
+  },
+}));
+
 const { app } = await import("../../../app.js");
 
-const { jobs } = schema;
+const { jobs, connectorDefinitions, connectorInstances, connectorEntities, columnDefinitions, fieldMappings } = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -144,6 +157,8 @@ describe("Uploads Router", () => {
     mockCreatePresignedUpload.mockReset();
     mockHeadObject.mockReset();
     mockQueueAdd.mockReset();
+    mockTransition.mockReset().mockResolvedValue(undefined);
+    mockPublishCustomEvent.mockReset().mockResolvedValue(undefined);
 
     // Default mock implementations
     mockCreatePresignedUpload.mockResolvedValue("https://s3.amazonaws.com/test-presigned-url");
@@ -455,6 +470,445 @@ describe("Uploads Router", () => {
 
       expect(res.status).toBe(202);
       expect(res.body.payload.job.bullJobId).toBe("bull-job-1");
+    });
+  });
+
+  // ── POST /api/uploads/:jobId/confirm ────────────────────────────
+
+  describe("POST /api/uploads/:jobId/confirm", () => {
+    const CONNECTOR_DEF_ID = "cdef_csv01";
+
+    function createConfirmBody(overrides?: Partial<Record<string, unknown>>) {
+      return {
+        connectorInstanceName: "My CSV Import",
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Name",
+                key: "name",
+                label: "Name",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+              {
+                sourceField: "Email",
+                key: "email",
+                label: "Email",
+                type: "string",
+                format: "email",
+                isPrimaryKey: true,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+        ],
+        ...overrides,
+      };
+    }
+
+    async function seedConnectorDefinition(db: ReturnType<typeof drizzle>) {
+      await db.insert(connectorDefinitions).values({
+        id: CONNECTOR_DEF_ID,
+        slug: "csv",
+        display: "CSV Upload",
+        category: "file",
+        authType: "none",
+        configSchema: {},
+        capabilityFlags: { sync: false, query: false, write: true },
+        isActive: true,
+        version: "1.0.0",
+        iconUrl: null,
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+    }
+
+    function createAwaitingJob(
+      organizationId: string,
+      overrides?: Partial<Record<string, unknown>>
+    ) {
+      return createJob(organizationId, {
+        status: "awaiting_confirmation",
+        progress: 80,
+        result: {
+          parseResults: [],
+          recommendations: {
+            connectorInstanceName: "My CSV",
+            entities: [],
+          },
+        },
+        ...overrides,
+      });
+    }
+
+    it("should return 409 if job not in awaiting_confirmation", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const job = createJob(organizationId, { status: "completed" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(createConfirmBody());
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.UPLOAD_INVALID_STATE);
+    });
+
+    it("should return 400 for invalid request body", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.UPLOAD_INVALID_PAYLOAD);
+    });
+
+    it("should return 400 for invalid column definition references", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Name",
+                key: "name",
+                label: "Name",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: true,
+                action: "match_existing",
+                existingColumnDefinitionId: "nonexistent-col-def",
+              },
+            ],
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.UPLOAD_INVALID_REFERENCE);
+    });
+
+    it("should return 200 with confirmed entity summary on success", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(createConfirmBody());
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const payload = res.body.payload;
+      expect(payload.connectorInstanceId).toBeDefined();
+      expect(payload.connectorInstanceName).toBe("My CSV Import");
+      expect(payload.confirmedEntities).toHaveLength(1);
+
+      const entity = payload.confirmedEntities[0];
+      expect(entity.connectorEntityId).toBeDefined();
+      expect(entity.entityKey).toBe("contacts");
+      expect(entity.entityLabel).toBe("Contacts");
+      expect(entity.columnDefinitions).toHaveLength(2);
+      expect(entity.fieldMappings).toHaveLength(2);
+
+      // Verify column definitions created
+      expect(entity.columnDefinitions[0].key).toBe("name");
+      expect(entity.columnDefinitions[1].key).toBe("email");
+
+      // Verify field mappings
+      expect(entity.fieldMappings[0].sourceField).toBe("Name");
+      expect(entity.fieldMappings[0].isPrimaryKey).toBe(false);
+      expect(entity.fieldMappings[1].sourceField).toBe("Email");
+      expect(entity.fieldMappings[1].isPrimaryKey).toBe(true);
+
+      // Verify SSE events were emitted
+      expect(mockTransition).toHaveBeenCalledWith(
+        job.id,
+        "completed",
+        expect.objectContaining({ progress: 100 })
+      );
+      expect(mockPublishCustomEvent).toHaveBeenCalledWith(
+        job.id,
+        "complete",
+        expect.objectContaining({
+          confirmedEntities: expect.arrayContaining([entity.connectorEntityId]),
+        })
+      );
+    });
+
+    it("should create records in database on success", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(createConfirmBody());
+
+      expect(res.status).toBe(200);
+      const payload = res.body.payload;
+
+      // Verify connector instance in DB
+      const [ci] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(connectorInstances)
+        .where(
+          (await import("drizzle-orm")).eq(
+            connectorInstances.id,
+            payload.connectorInstanceId
+          )
+        );
+      expect(ci).toBeDefined();
+      expect(ci.name).toBe("My CSV Import");
+      expect(ci.organizationId).toBe(organizationId);
+
+      // Verify connector entity in DB
+      const ceRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(connectorEntities)
+        .where(
+          (await import("drizzle-orm")).eq(
+            connectorEntities.connectorInstanceId,
+            payload.connectorInstanceId
+          )
+        );
+      expect(ceRows).toHaveLength(1);
+      expect(ceRows[0].key).toBe("contacts");
+
+      // Verify column definitions in DB
+      const cdRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(columnDefinitions)
+        .where(
+          (await import("drizzle-orm")).eq(
+            columnDefinitions.organizationId,
+            organizationId
+          )
+        );
+      expect(cdRows.length).toBeGreaterThanOrEqual(2);
+      const cdKeys = cdRows.map((cd) => cd.key);
+      expect(cdKeys).toContain("name");
+      expect(cdKeys).toContain("email");
+
+      // Verify field mappings in DB
+      const fmRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(
+          (await import("drizzle-orm")).eq(
+            fieldMappings.connectorEntityId,
+            payload.confirmedEntities[0].connectorEntityId
+          )
+        );
+      expect(fmRows).toHaveLength(2);
+    });
+
+    it("should not duplicate records on idempotent re-submit", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const body = createConfirmBody();
+
+      // First confirm
+      const res1 = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(body);
+      expect(res1.status).toBe(200);
+
+      // Reset job back to awaiting_confirmation for re-submit
+      await (db as ReturnType<typeof drizzle>)
+        .update(jobs)
+        .set({ status: "awaiting_confirmation" } as never)
+        .where(
+          (await import("drizzle-orm")).eq(jobs.id, job.id)
+        );
+
+      // Second confirm (idempotent)
+      const res2 = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(body);
+      expect(res2.status).toBe(200);
+
+      // Verify no duplicates: only 1 connector entity, 2 column defs, 2 field mappings
+      const ceRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(connectorEntities)
+        .where(
+          (await import("drizzle-orm")).eq(
+            connectorEntities.connectorInstanceId,
+            res2.body.payload.connectorInstanceId
+          )
+        );
+      expect(ceRows).toHaveLength(1);
+
+      const cdRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(columnDefinitions)
+        .where(
+          (await import("drizzle-orm")).eq(
+            columnDefinitions.organizationId,
+            organizationId
+          )
+        );
+      // Should have exactly 2, not 4
+      expect(cdRows).toHaveLength(2);
+    });
+
+    it("should handle shared columns across entities without duplicates", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Name",
+                key: "full_name",
+                label: "Full Name",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+          {
+            entityKey: "leads",
+            entityLabel: "Leads",
+            sourceFileName: "leads.csv",
+            columns: [
+              {
+                sourceField: "Lead Name",
+                key: "full_name",
+                label: "Full Name",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(body);
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.confirmedEntities).toHaveLength(2);
+
+      // Verify only 1 column definition for "full_name"
+      const cdRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(columnDefinitions)
+        .where(
+          (await import("drizzle-orm")).eq(
+            columnDefinitions.organizationId,
+            organizationId
+          )
+        );
+      expect(cdRows).toHaveLength(1);
+      expect(cdRows[0].key).toBe("full_name");
+
+      // Both entities should reference the same column definition
+      const entity1ColDefId = res.body.payload.confirmedEntities[0].columnDefinitions[0].id;
+      const entity2ColDefId = res.body.payload.confirmedEntities[1].columnDefinitions[0].id;
+      expect(entity1ColDefId).toBe(entity2ColDefId);
     });
   });
 });

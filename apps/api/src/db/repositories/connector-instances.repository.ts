@@ -151,6 +151,28 @@ export class ConnectorInstancesRepository extends Repository<
     return decryptRows(rows);
   }
 
+  /** Find a specific instance by org + definition + name. */
+  async findByOrgDefinitionAndName(
+    organizationId: string,
+    connectorDefinitionId: string,
+    name: string,
+    client: DbClient = db
+  ): Promise<ConnectorInstanceSelect | undefined> {
+    const rows = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(connectorInstances.organizationId, organizationId),
+          eq(connectorInstances.connectorDefinitionId, connectorDefinitionId),
+          eq(connectorInstances.name, name),
+          this.notDeleted()
+        )
+      )
+      .limit(1);
+    return rows[0] ? decryptRow(rows[0]) : undefined;
+  }
+
   /** Find a specific instance by org + definition (useful for unique checks). */
   async findByOrgAndDefinition(
     organizationId: string,

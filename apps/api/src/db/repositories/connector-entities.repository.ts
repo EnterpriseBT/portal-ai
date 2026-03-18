@@ -6,6 +6,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
+import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { connectorEntities } from "../schema/index.js";
 import { db } from "../client.js";
@@ -58,6 +59,32 @@ export class ConnectorEntitiesRepository extends Repository<
       )
       .limit(1);
     return row as ConnectorEntitySelect | undefined;
+  }
+
+  /**
+   * Insert a connector entity or update it if a row with the same
+   * `(connector_instance_id, key)` already exists. Returns the resulting row.
+   */
+  async upsertByKey(
+    data: ConnectorEntityInsert,
+    client: DbClient = db
+  ): Promise<ConnectorEntitySelect> {
+    const [row] = await (client as typeof db)
+      .insert(this.table)
+      .values(data as never)
+      .onConflictDoUpdate({
+        target: [
+          connectorEntities.connectorInstanceId,
+          connectorEntities.key,
+        ] as IndexColumn[],
+        set: {
+          label: data.label,
+          updated: data.updated ?? Date.now(),
+          updatedBy: data.updatedBy,
+        } as never,
+      })
+      .returning();
+    return row as ConnectorEntitySelect;
   }
 }
 
