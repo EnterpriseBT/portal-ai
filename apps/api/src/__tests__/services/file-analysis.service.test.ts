@@ -10,10 +10,13 @@ import {
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockGenerateObject = jest.fn<() => Promise<{ object: unknown }>>();
+const mockGenerateText = jest.fn<() => Promise<{ output: unknown }>>();
 
 jest.unstable_mockModule("ai", () => ({
-  generateObject: mockGenerateObject,
+  generateText: mockGenerateText,
+  Output: {
+    object: ({ schema }: { schema: unknown }) => ({ type: "object", schema }),
+  },
 }));
 
 jest.unstable_mockModule("../../services/ai.service.js", () => ({
@@ -96,14 +99,14 @@ function makeAiRecommendation(parseResult: FileParseResult) {
 
 describe("FileAnalysisService", () => {
   beforeEach(() => {
-    mockGenerateObject.mockReset();
+    mockGenerateText.mockReset();
   });
 
   describe("getRecommendations() — AI path", () => {
     it("returns valid FileUploadRecommendationEntitySchema output", async () => {
       const parseResult = makeParseResult();
       const aiResult = makeAiRecommendation(parseResult);
-      mockGenerateObject.mockResolvedValue({ object: aiResult });
+      mockGenerateText.mockResolvedValue({ output: aiResult });
 
       const result = await FileAnalysisService.getRecommendations({
         parseResult,
@@ -118,7 +121,7 @@ describe("FileAnalysisService", () => {
     it("confidence scores are between 0 and 1", async () => {
       const parseResult = makeParseResult();
       const aiResult = makeAiRecommendation(parseResult);
-      mockGenerateObject.mockResolvedValue({ object: aiResult });
+      mockGenerateText.mockResolvedValue({ output: aiResult });
 
       const result = await FileAnalysisService.getRecommendations({
         parseResult,
@@ -136,7 +139,7 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult();
       const abortError = new Error("The operation was aborted");
       abortError.name = "AbortError";
-      mockGenerateObject.mockRejectedValue(abortError);
+      mockGenerateText.mockRejectedValue(abortError);
 
       const result = await FileAnalysisService.getRecommendations({
         parseResult,
@@ -157,9 +160,9 @@ describe("FileAnalysisService", () => {
     it("AI Zod validation failure retries once then falls back to heuristic", async () => {
       const parseResult = makeParseResult();
       // Return invalid object twice (missing required fields)
-      mockGenerateObject
-        .mockResolvedValueOnce({ object: { invalid: true } })
-        .mockResolvedValueOnce({ object: { invalid: true } });
+      mockGenerateText
+        .mockResolvedValueOnce({ output: { invalid: true } })
+        .mockResolvedValueOnce({ output: { invalid: true } });
 
       const result = await FileAnalysisService.getRecommendations({
         parseResult,
@@ -168,7 +171,7 @@ describe("FileAnalysisService", () => {
       });
 
       // Should have been called twice (initial + 1 retry)
-      expect(mockGenerateObject).toHaveBeenCalledTimes(2);
+      expect(mockGenerateText).toHaveBeenCalledTimes(2);
       // Fallback result is still valid
       const validated = FileUploadRecommendationEntitySchema.safeParse(result);
       expect(validated.success).toBe(true);
@@ -176,7 +179,7 @@ describe("FileAnalysisService", () => {
 
     it("AI error triggers heuristic fallback", async () => {
       const parseResult = makeParseResult();
-      mockGenerateObject.mockRejectedValue(new Error("API rate limit"));
+      mockGenerateText.mockRejectedValue(new Error("API rate limit"));
 
       const result = await FileAnalysisService.getRecommendations({
         parseResult,
