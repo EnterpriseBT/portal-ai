@@ -11,3 +11,4 @@ export * from "./jobs.repository.js";
 export * from "./column-definitions.repository.js";
 export * from "./connector-entities.repository.js";
 export * from "./field-mappings.repository.js";
+export * from "./entity-records.repository.js";

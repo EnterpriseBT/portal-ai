@@ -12,6 +12,11 @@ Introduce a connector-agnostic data layer that allows reading and viewing entity
 - As a user, I can see column headers derived from the entity's field mappings and column definitions.
 - As a user, I can see where the data came from (cached vs. live) for hybrid connectors.
 
+### Browsing Entities
+- As a user, I can view a list of all entities across my organization, regardless of which connector instance they belong to.
+- As a user, I can filter the entities list by connector instance.
+- As a user, I can paginate through the entities list.
+
 ### Syncing Data
 - As a user, I can trigger a manual sync/refresh for an entity to pull the latest data from the source.
 - As a user, I can see when an entity was last synced.
@@ -154,6 +159,14 @@ Uniform EntityDataResult → Frontend DataTable
 
 ### Frontend
 
+**New route:** `/entities`
+
+**New view:** `Entities.view.tsx`
+- Lists all connector entities across the organization
+- Paginated table showing entity label, key, connector instance name, and record count
+- Filter by connector instance (dropdown/select)
+- Clicking an entity row navigates to the entity detail view
+
 **New route:** `/connectors/:connectorInstanceId/entities/:connectorEntityId`
 
 **New view:** `ConnectorEntityDetail.view.tsx`
@@ -167,6 +180,8 @@ Uniform EntityDataResult → Frontend DataTable
 
 | Component | Purpose |
 |-----------|---------|
+| `EntitiesDataTable` | Data-fetching wrapper for the entities list (calls connector entities API) |
+| `EntitiesDataTableUI` | Pure presentational table (entity rows as props, connector instance filter) |
 | `EntityRecordDataTable` | Data-fetching wrapper (calls records API) |
 | `EntityRecordDataTableUI` | Pure presentational table (rows + column defs as props) |
 
@@ -194,11 +209,12 @@ class SyncService {
 | 5 | Unified records API endpoint | `apps/api/src/routes/` |
 | 6 | Sync service | `apps/api/src/services/` |
 | 7 | Frontend SDK hooks for entity records | `apps/web/src/api/` |
-| 8 | Frontend entity detail view + data table | `apps/web/src/views/`, `apps/web/src/components/` |
-| 9 | CSV workflow wire-up (ReviewStep calls import) | `apps/web/src/workflows/CSVConnector/` |
-| 10 | Airtable / HubSpot adapters | `apps/api/src/adapters/airtable/`, `hubspot/` |
+| 8 | Frontend entities list view (all entities across org) | `apps/web/src/views/`, `apps/web/src/components/` |
+| 9 | Frontend entity detail view + data table | `apps/web/src/views/`, `apps/web/src/components/` |
+| 10 | CSV workflow wire-up (ReviewStep calls import) | `apps/web/src/workflows/CSVConnector/` |
+| 11 | Airtable / HubSpot adapters | `apps/api/src/adapters/airtable/`, `hubspot/` |
 
-Phases 5-8 are built once and never change. Each new connector is a new adapter registered by slug.
+Phases 5-9 are built once and never change. Each new connector is a new adapter registered by slug.
 
 ## Acceptance Criteria
 
@@ -206,7 +222,7 @@ Phases 5-8 are built once and never change. Each new connector is a new adapter 
 - [x] Adapter registry maps connector definition slugs to adapter implementations
 - [x] `entity_records` table created with JSONB `data`/`normalizedData`, `sourceId`, `checksum`, `syncedAt`
 - [x] GIN index on `normalizedData` and unique constraint on `(connectorEntityId, sourceId)`
-- [ ] CSV adapter implements `ConnectorAdapter` with `accessMode: 'import'`
+- [x] CSV adapter implements `ConnectorAdapter` with `accessMode: 'import'`
 - [ ] `GET /api/connector-entities/:id/records` returns paginated records with column metadata
 - [ ] Records API supports `limit`, `offset`, `sort`, `columns` query params
 - [ ] `POST /api/connector-entities/:id/sync` triggers adapter sync and updates `lastSyncAt`
@@ -214,6 +230,9 @@ Phases 5-8 are built once and never change. Each new connector is a new adapter 
 - [ ] Data table supports sorting by column
 - [ ] Sync/refresh button visible for hybrid connectors
 - [ ] Soft-deleted records excluded from all queries
+- [ ] Entities list view renders all entities across organization with pagination
+- [ ] Entities list view supports filtering by connector instance
+- [ ] Clicking an entity in the list navigates to the entity detail view
 - [ ] All type checks pass (`npm run type-check`)
 
 ## Test Plan
@@ -226,16 +245,16 @@ Phases 5-8 are built once and never change. Each new connector is a new adapter 
 - [x] Each registered adapter exposes a valid `accessMode` (`import` | `live` | `hybrid`)
 
 #### CSV Adapter (`apps/api/src/adapters/csv/`)
-- [ ] `queryRows` returns rows from `entity_records` filtered by `connectorEntityId`
-- [ ] `queryRows` respects `limit` and `offset` pagination params
-- [ ] `queryRows` applies `sort` by column and direction on `normalizedData`
-- [ ] `queryRows` applies `filters` operators (`eq`, `neq`, `contains`, `gt`, `lt`) on `normalizedData`
-- [ ] `queryRows` returns only requested `columns` when specified
-- [ ] `queryRows` returns `source: 'cache'` for import-mode adapters
+- [x] `queryRows` returns rows from `entity_records` filtered by `connectorEntityId`
+- [x] `queryRows` respects `limit` and `offset` pagination params
+- [x] `queryRows` applies `sort` by column and direction on `normalizedData`
+- [x] `queryRows` applies `filters` operators (`eq`, `neq`, `contains`, `gt`, `lt`) on `normalizedData`
+- [x] `queryRows` returns only requested `columns` when specified
+- [x] `queryRows` returns `source: 'cache'` for import-mode adapters
 - [ ] `syncEntity` parses source CSV and bulk inserts rows with `normalizedData` mapped via field mappings
 - [ ] `syncEntity` computes `checksum` for each row and skips unchanged records on re-sync
 - [ ] `syncEntity` returns accurate `{ created, updated, unchanged, errors }` counts
-- [ ] `discoverEntities` / `discoverColumns` return empty or appropriate stubs for CSV
+- [x] `discoverEntities` / `discoverColumns` return empty or appropriate stubs for CSV
 
 #### Entity Records Repository (`apps/api/src/db/repositories/`)
 - [ ] `findMany` filters by `connectorEntityId` and excludes soft-deleted rows
@@ -270,6 +289,26 @@ Phases 5-8 are built once and never change. Each new connector is a new adapter 
 - [ ] Passes loading state to UI component while fetching
 - [ ] Passes error state to UI component on API failure
 - [ ] Maps API response to `EntityRecordDataTableUI` props correctly
+
+#### Frontend — EntitiesDataTableUI (`apps/web/`)
+- [ ] Renders entity rows with label, key, connector instance name, and record count columns
+- [ ] Renders connector instance filter dropdown with all available instances
+- [ ] Calls `onFilterByInstance` callback when a connector instance is selected
+- [ ] Calls `onPageChange` callback with new offset on pagination interaction
+- [ ] Renders empty state when no entities exist
+- [ ] Clicking an entity row calls `onEntityClick` with the entity ID
+
+#### Frontend — EntitiesDataTable (container) (`apps/web/`)
+- [ ] Calls connector entities API hook with correct organization ID and query params
+- [ ] Passes `connectorInstanceId` filter param to API when selected
+- [ ] Passes loading state to UI component while fetching
+- [ ] Passes error state to UI component on API failure
+- [ ] Maps API response to `EntitiesDataTableUI` props correctly
+
+#### Frontend — Entities View (`apps/web/`)
+- [ ] Renders page title and breadcrumbs
+- [ ] Renders `EntitiesDataTable` with pagination controls
+- [ ] Navigates to entity detail view on entity row click
 
 #### Frontend — ConnectorEntityDetail View (`apps/web/`)
 - [ ] Renders breadcrumbs: Connectors > Instance Name > Entity Label
@@ -322,6 +361,9 @@ Phases 5-8 are built once and never change. Each new connector is a new adapter 
 - [ ] `(connectorEntityId, syncedAt)` index supports staleness check queries
 
 ### Manual / E2E Tests
+- [ ] Navigate to entities list, verify all entities across organization are shown
+- [ ] Filter entities by connector instance, verify list updates correctly
+- [ ] Click an entity row, verify navigation to entity detail view
 - [ ] Navigate to entity detail, verify data table renders with correct columns and rows
 - [ ] Verify pagination controls work (next/prev page, page size)
 - [ ] Verify column sorting works (click header, verify order changes)

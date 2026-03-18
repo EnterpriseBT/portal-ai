@@ -16,6 +16,7 @@ import {
   columnDefinitionsRepo,
   connectorEntitiesRepo,
   fieldMappingsRepo,
+  entityRecordsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -76,6 +77,7 @@ export class DbService {
       columnDefinitions: columnDefinitionsRepo,
       connectorEntities: connectorEntitiesRepo,
       fieldMappings: fieldMappingsRepo,
+      entityRecords: entityRecordsRepo,
     };
   }
 }

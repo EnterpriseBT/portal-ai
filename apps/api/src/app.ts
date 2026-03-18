@@ -10,9 +10,14 @@ import { httpLogger } from "./middleware/logger.middleware.js";
 import { ApiError, HttpService } from "./services/http.service.js";
 import { createLogger } from "./utils/logger.util.js";
 
+import { registerAdapters } from "./adapters/register.js";
+
 const logger = createLogger({ module: "app" });
 
 export const app = express();
+
+// Register all connector adapters
+registerAdapters();
 
 // HTTP request/response logging - logs all incoming requests
 app.use(httpLogger);
