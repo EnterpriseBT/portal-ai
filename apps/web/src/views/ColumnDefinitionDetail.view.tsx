@@ -1,0 +1,241 @@
+import type {
+  ColumnDefinitionGetResponsePayload,
+  FieldMappingListRequestQuery,
+  FieldMappingListResponsePayload,
+} from "@portalai/core/contracts";
+import type { FieldMapping } from "@portalai/core/models";
+import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
+import { IconName } from "@portalai/core/ui";
+import Chip from "@mui/material/Chip";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import CheckIcon from "@mui/icons-material/Check";
+
+import { useNavigate } from "@tanstack/react-router";
+
+import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
+import { FieldMappingDataList } from "../components/FieldMapping.component";
+import DataResult from "../components/DataResult.component";
+import { SyncTotal } from "../components/SyncTotal.component";
+import {
+  usePagination,
+  PaginationToolbar,
+} from "../components/PaginationToolbar.component";
+
+const TYPE_COLOR: Record<string, "primary" | "secondary" | "success" | "warning" | "error" | "info" | "default"> = {
+  string: "primary",
+  number: "info",
+  boolean: "success",
+  date: "warning",
+  datetime: "warning",
+  enum: "secondary",
+  json: "default",
+  array: "default",
+  reference: "error",
+  currency: "info",
+};
+
+interface ColumnDefinitionDetailViewProps {
+  columnDefinitionId: string;
+}
+
+export const ColumnDefinitionDetailView: React.FC<ColumnDefinitionDetailViewProps> = ({
+  columnDefinitionId,
+}) => {
+  const navigate = useNavigate();
+
+  const mappingsPagination = usePagination({
+    sortFields: [
+      { field: "sourceField", label: "Source Field" },
+      { field: "created", label: "Created" },
+    ],
+    defaultSortBy: "created",
+    defaultSortOrder: "asc",
+  });
+
+  return (
+    <Box>
+      <ColumnDefinitionDataItem id={columnDefinitionId}>
+        {(itemResult) => (
+          <DataResult results={{ item: itemResult }}>
+            {({
+              item,
+            }: {
+              item: ColumnDefinitionGetResponsePayload;
+            }) => {
+              const cd = item.columnDefinition;
+              return (
+                <Stack spacing={4}>
+                  <Breadcrumbs
+                    items={[
+                      { label: "Dashboard", href: "/", icon: IconName.Home },
+                      {
+                        label: "Column Definitions",
+                        href: "/column-definitions",
+                      },
+                      { label: cd.label },
+                    ]}
+                    onNavigate={(href) => navigate({ to: href })}
+                  />
+
+                  {/* Metadata Section */}
+                  <Box>
+                    <Stack
+                      direction="row"
+                      spacing={2}
+                      alignItems="center"
+                      sx={{ mb: 2 }}
+                    >
+                      <Typography variant="h1">{cd.label}</Typography>
+                      <Chip
+                        label={cd.type}
+                        size="small"
+                        color={TYPE_COLOR[cd.type] ?? "default"}
+                        variant="outlined"
+                      />
+                      {cd.required && (
+                        <Chip label="Required" size="small" color="error" />
+                      )}
+                    </Stack>
+
+                    <Stack spacing={1}>
+                      <Typography variant="body2" color="text.secondary">
+                        Key:{" "}
+                        <Typography
+                          component="span"
+                          variant="body2"
+                          sx={{ fontFamily: "monospace" }}
+                        >
+                          {cd.key}
+                        </Typography>
+                      </Typography>
+
+                      {cd.description && (
+                        <Typography variant="body2" color="text.secondary">
+                          Description: {cd.description}
+                        </Typography>
+                      )}
+
+                      {cd.format && (
+                        <Typography variant="body2" color="text.secondary">
+                          Format: {cd.format}
+                        </Typography>
+                      )}
+
+                      {cd.defaultValue && (
+                        <Typography variant="body2" color="text.secondary">
+                          Default Value: {cd.defaultValue}
+                        </Typography>
+                      )}
+
+                      {cd.enumValues && cd.enumValues.length > 0 && (
+                        <Typography variant="body2" color="text.secondary">
+                          Enum Values: {cd.enumValues.join(", ")}
+                        </Typography>
+                      )}
+
+                      <Typography variant="body2" color="text.secondary">
+                        Created: {new Date(cd.created).toLocaleString()}
+                      </Typography>
+                    </Stack>
+                  </Box>
+
+                  {/* Field Mappings Section */}
+                  <Box>
+                    <Typography variant="h2" sx={{ mb: 2 }}>
+                      Field Mappings
+                    </Typography>
+
+                    <PaginationToolbar {...mappingsPagination.toolbarProps} />
+
+                    <Box sx={{ mt: 2 }}>
+                      <FieldMappingDataList
+                        query={{
+                          columnDefinitionId,
+                          ...mappingsPagination.queryParams,
+                        } as FieldMappingListRequestQuery}
+                      >
+                        {(mappingsResult) => (
+                          <SyncTotal
+                            total={mappingsResult.data?.total}
+                            setTotal={mappingsPagination.setTotal}
+                          >
+                            <DataResult results={{ mappings: mappingsResult }}>
+                              {({
+                                mappings,
+                              }: {
+                                mappings: FieldMappingListResponsePayload;
+                              }) => {
+                                if (mappings.fieldMappings.length === 0) {
+                                  return (
+                                    <Typography
+                                      variant="body1"
+                                      color="text.secondary"
+                                      sx={{ py: 4, textAlign: "center" }}
+                                    >
+                                      No field mappings reference this column
+                                      definition
+                                    </Typography>
+                                  );
+                                }
+
+                                return (
+                                  <FieldMappingTable
+                                    fieldMappings={mappings.fieldMappings}
+                                  />
+                                );
+                              }}
+                            </DataResult>
+                          </SyncTotal>
+                        )}
+                      </FieldMappingDataList>
+                    </Box>
+                  </Box>
+                </Stack>
+              );
+            }}
+          </DataResult>
+        )}
+      </ColumnDefinitionDataItem>
+    </Box>
+  );
+};
+
+// ── Field Mapping Table ─────────────────────────────────────────────
+
+interface FieldMappingTableProps {
+  fieldMappings: FieldMapping[];
+}
+
+const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
+  fieldMappings,
+}) => (
+  <TableContainer>
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell>Source Field</TableCell>
+          <TableCell>Connector Entity ID</TableCell>
+          <TableCell>Primary Key</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {fieldMappings.map((fm) => (
+          <TableRow key={fm.id}>
+            <TableCell>{fm.sourceField}</TableCell>
+            <TableCell sx={{ fontFamily: "monospace" }}>
+              {fm.connectorEntityId}
+            </TableCell>
+            <TableCell>
+              {fm.isPrimaryKey && <CheckIcon fontSize="small" />}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </TableContainer>
+);

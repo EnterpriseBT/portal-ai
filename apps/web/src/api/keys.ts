@@ -1,6 +1,8 @@
+import type { ColumnDefinitionListRequestQuery } from "@portalai/core/contracts";
 import type { ConnectorDefinitionListRequestQuery } from "@portalai/core/contracts";
 import type { ConnectorEntityListRequestQuery } from "@portalai/core/contracts";
 import type { ConnectorInstanceListRequestQuery } from "@portalai/core/contracts";
+import type { FieldMappingListRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 
 export const queryKeys = {
@@ -36,6 +38,18 @@ export const queryKeys = {
       [...queryKeys.connectorInstances.root, "list", params] as const,
     get: (id: string) =>
       [...queryKeys.connectorInstances.root, "get", id] as const,
+  },
+  columnDefinitions: {
+    root: ["columnDefinitions"] as const,
+    list: (params?: ColumnDefinitionListRequestQuery) =>
+      [...queryKeys.columnDefinitions.root, "list", params] as const,
+    get: (id: string) =>
+      [...queryKeys.columnDefinitions.root, "get", id] as const,
+  },
+  fieldMappings: {
+    root: ["fieldMappings"] as const,
+    list: (params?: FieldMappingListRequestQuery) =>
+      [...queryKeys.fieldMappings.root, "list", params] as const,
   },
   jobs: {
     root: ["jobs"] as const,

@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, type SQL, type Column } from "drizzle-orm";
+import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
 
 import { FieldMappingModelFactory } from "@portalai/core/models";
 import {
@@ -43,6 +43,11 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *       - $ref: '#/components/parameters/offsetParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
  *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive search on source field
+ *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
@@ -84,13 +89,17 @@ fieldMappingRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, connectorEntityId, columnDefinitionId } =
+      const { limit, offset, sortBy, sortOrder, search, connectorEntityId, columnDefinitionId } =
         FieldMappingListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [
         eq(fieldMappings.organizationId, organizationId),
       ];
+
+      if (search) {
+        filters.push(ilike(fieldMappings.sourceField, `%${search}%`));
+      }
 
       if (columnDefinitionId) {
         filters.push(eq(fieldMappings.columnDefinitionId, columnDefinitionId));

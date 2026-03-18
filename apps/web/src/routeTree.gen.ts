@@ -13,11 +13,14 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
+import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitions'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
 import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
+import { Route as ColumnDefinitionsIndexRouteImport } from './routes/column-definitions.index'
 import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
 import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
+import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './routes/column-definitions.$columnDefinitionId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -39,6 +42,11 @@ const ConnectorsRoute = ConnectorsRouteImport.update({
   path: '/connectors',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ColumnDefinitionsRoute = ColumnDefinitionsRouteImport.update({
+  id: '/column-definitions',
+  path: '/column-definitions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -54,6 +62,11 @@ const ConnectorsIndexRoute = ConnectorsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ConnectorsRoute,
 } as any)
+const ColumnDefinitionsIndexRoute = ColumnDefinitionsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ColumnDefinitionsRoute,
+} as any)
 const JobsJobIdRoute = JobsJobIdRouteImport.update({
   id: '/$jobId',
   path: '/$jobId',
@@ -65,15 +78,24 @@ const ConnectorsConnectorInstanceIdRoute =
     path: '/$connectorInstanceId',
     getParentRoute: () => ConnectorsRoute,
   } as any)
+const ColumnDefinitionsColumnDefinitionIdRoute =
+  ColumnDefinitionsColumnDefinitionIdRouteImport.update({
+    id: '/$columnDefinitionId',
+    path: '/$columnDefinitionId',
+    getParentRoute: () => ColumnDefinitionsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/column-definitions': typeof ColumnDefinitionsRouteWithChildren
   '/connectors': typeof ConnectorsRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/jobs/': typeof JobsIndexRoute
 }
@@ -81,20 +103,25 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/column-definitions': typeof ColumnDefinitionsIndexRoute
   '/connectors': typeof ConnectorsIndexRoute
   '/jobs': typeof JobsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/column-definitions': typeof ColumnDefinitionsRouteWithChildren
   '/connectors': typeof ConnectorsRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/jobs/': typeof JobsIndexRoute
 }
@@ -102,12 +129,15 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/column-definitions'
     | '/connectors'
     | '/jobs'
     | '/login'
     | '/settings'
+    | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/jobs/$jobId'
+    | '/column-definitions/'
     | '/connectors/'
     | '/jobs/'
   fileRoutesByTo: FileRoutesByTo
@@ -115,25 +145,31 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/settings'
+    | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/jobs/$jobId'
+    | '/column-definitions'
     | '/connectors'
     | '/jobs'
   id:
     | '__root__'
     | '/'
+    | '/column-definitions'
     | '/connectors'
     | '/jobs'
     | '/login'
     | '/settings'
+    | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/jobs/$jobId'
+    | '/column-definitions/'
     | '/connectors/'
     | '/jobs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ColumnDefinitionsRoute: typeof ColumnDefinitionsRouteWithChildren
   ConnectorsRoute: typeof ConnectorsRouteWithChildren
   JobsRoute: typeof JobsRouteWithChildren
   LoginRoute: typeof LoginRoute
@@ -170,6 +206,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectorsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/column-definitions': {
+      id: '/column-definitions'
+      path: '/column-definitions'
+      fullPath: '/column-definitions'
+      preLoaderRoute: typeof ColumnDefinitionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -191,6 +234,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectorsIndexRouteImport
       parentRoute: typeof ConnectorsRoute
     }
+    '/column-definitions/': {
+      id: '/column-definitions/'
+      path: '/'
+      fullPath: '/column-definitions/'
+      preLoaderRoute: typeof ColumnDefinitionsIndexRouteImport
+      parentRoute: typeof ColumnDefinitionsRoute
+    }
     '/jobs/$jobId': {
       id: '/jobs/$jobId'
       path: '/$jobId'
@@ -205,8 +255,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectorsConnectorInstanceIdRouteImport
       parentRoute: typeof ConnectorsRoute
     }
+    '/column-definitions/$columnDefinitionId': {
+      id: '/column-definitions/$columnDefinitionId'
+      path: '/$columnDefinitionId'
+      fullPath: '/column-definitions/$columnDefinitionId'
+      preLoaderRoute: typeof ColumnDefinitionsColumnDefinitionIdRouteImport
+      parentRoute: typeof ColumnDefinitionsRoute
+    }
   }
 }
+
+interface ColumnDefinitionsRouteChildren {
+  ColumnDefinitionsColumnDefinitionIdRoute: typeof ColumnDefinitionsColumnDefinitionIdRoute
+  ColumnDefinitionsIndexRoute: typeof ColumnDefinitionsIndexRoute
+}
+
+const ColumnDefinitionsRouteChildren: ColumnDefinitionsRouteChildren = {
+  ColumnDefinitionsColumnDefinitionIdRoute:
+    ColumnDefinitionsColumnDefinitionIdRoute,
+  ColumnDefinitionsIndexRoute: ColumnDefinitionsIndexRoute,
+}
+
+const ColumnDefinitionsRouteWithChildren =
+  ColumnDefinitionsRoute._addFileChildren(ColumnDefinitionsRouteChildren)
 
 interface ConnectorsRouteChildren {
   ConnectorsConnectorInstanceIdRoute: typeof ConnectorsConnectorInstanceIdRoute
@@ -236,6 +307,7 @@ const JobsRouteWithChildren = JobsRoute._addFileChildren(JobsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ColumnDefinitionsRoute: ColumnDefinitionsRouteWithChildren,
   ConnectorsRoute: ConnectorsRouteWithChildren,
   JobsRoute: JobsRouteWithChildren,
   LoginRoute: LoginRoute,

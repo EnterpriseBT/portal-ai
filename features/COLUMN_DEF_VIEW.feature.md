@@ -70,70 +70,70 @@ Two sections:
 
 ## Implementation Checklist
 
-### Phase 1: SDK & Routing Infrastructure
-- [ ] Add `columnDefinitions` query keys to `apps/web/src/api/keys.ts`
-- [ ] Add `fieldMappings` query keys to `apps/web/src/api/keys.ts`
-- [ ] Create `apps/web/src/api/column-definitions.api.ts` with `list()` and `get()` hooks
-- [ ] Create `apps/web/src/api/field-mappings.api.ts` with `list()` hook
-- [ ] Register both in `apps/web/src/api/sdk.ts`
-- [ ] Add `ColumnDefinitions` and `ColumnDefinition` to `ApplicationRoute` enum
+### Phase 1: SDK & Routing Infrastructure ✅
+- [x] Add `columnDefinitions` query keys to `apps/web/src/api/keys.ts`
+- [x] Add `fieldMappings` query keys to `apps/web/src/api/keys.ts`
+- [x] Create `apps/web/src/api/column-definitions.api.ts` with `list()` and `get()` hooks
+- [x] Create `apps/web/src/api/field-mappings.api.ts` with `list()` hook
+- [x] Register both in `apps/web/src/api/sdk.ts`
+- [x] Add `ColumnDefinitions` and `ColumnDefinition` to `ApplicationRoute` enum
 
-### Phase 2: Routes
-- [ ] Create `apps/web/src/routes/column-definitions.tsx` (parent route with auth guard)
-- [ ] Create `apps/web/src/routes/column-definitions.index.tsx` (list route)
-- [ ] Create `apps/web/src/routes/column-definitions.$columnDefinitionId.tsx` (detail route)
+### Phase 2: Routes ✅
+- [x] Create `apps/web/src/routes/column-definitions.tsx` (parent route with auth guard)
+- [x] Create `apps/web/src/routes/column-definitions.index.tsx` (list route)
+- [x] Create `apps/web/src/routes/column-definitions.$columnDefinitionId.tsx` (detail route)
 
-### Phase 3: Data Components
-- [ ] Create `apps/web/src/components/ColumnDefinition.component.tsx`
-  - [ ] `ColumnDefinitionDataList` — render-prop wrapper for paginated list
-  - [ ] `ColumnDefinitionDataItem` — render-prop wrapper for single item
-  - [ ] `ColumnDefinitionCardUI` — card component for list items
-- [ ] Create `apps/web/src/components/FieldMapping.component.tsx`
-  - [ ] `FieldMappingDataList` — render-prop wrapper for filtered field mappings list
+### Phase 3: Data Components ✅
+- [x] Create `apps/web/src/components/ColumnDefinition.component.tsx`
+  - [x] `ColumnDefinitionDataList` — render-prop wrapper for paginated list
+  - [x] `ColumnDefinitionDataItem` — render-prop wrapper for single item
+  - [x] `ColumnDefinitionCardUI` — card component for list items
+- [x] Create `apps/web/src/components/FieldMapping.component.tsx`
+  - [x] `FieldMappingDataList` — render-prop wrapper for filtered field mappings list
 
-### Phase 4: Views
-- [ ] Create `apps/web/src/views/ColumnDefinitionList.view.tsx`
-  - [ ] Breadcrumbs (Dashboard > Column Definitions)
-  - [ ] `usePagination` with sort fields: key, label, type, created
-  - [ ] Filters: type (select from ColumnDataType enum), required (boolean)
-  - [ ] `PaginationToolbar` + `ColumnDefinitionDataList` + `DataResult` + `SyncTotal`
-  - [ ] Map results to `ColumnDefinitionCardUI` cards with click-to-navigate
-  - [ ] Empty state when no results
-- [ ] Create `apps/web/src/views/ColumnDefinitionDetail.view.tsx`
-  - [ ] Breadcrumbs (Dashboard > Column Definitions > {label})
-  - [ ] Metadata section showing all column definition fields
-  - [ ] Field mappings section with `usePagination` + `FieldMappingDataList`
-  - [ ] Table showing source field, entity key/label, connector instance, isPrimaryKey
+### Phase 4: Views ✅
+- [x] Create `apps/web/src/views/ColumnDefinitionList.view.tsx`
+  - [x] Breadcrumbs (Dashboard > Column Definitions)
+  - [x] `usePagination` with sort fields: key, label, type, created
+  - [x] Filters: type (select from ColumnDataType enum), required (boolean)
+  - [x] `PaginationToolbar` + `ColumnDefinitionDataList` + `DataResult` + `SyncTotal`
+  - [x] Map results to `ColumnDefinitionCardUI` cards with click-to-navigate
+  - [x] Empty state when no results
+- [x] Create `apps/web/src/views/ColumnDefinitionDetail.view.tsx`
+  - [x] Breadcrumbs (Dashboard > Column Definitions > {label})
+  - [x] Metadata section showing all column definition fields
+  - [x] Field mappings section with `usePagination` + `FieldMappingDataList`
+  - [x] Table showing source field, entity key/label, connector instance, isPrimaryKey
 
-### Phase 5: Navigation
-- [ ] Add "Column Definitions" link to sidebar navigation
+### Phase 5: Navigation ✅
+- [x] Add "Column Definitions" link to sidebar navigation
 
-### Phase 6: Frontend Unit Tests
-- [ ] Create `apps/web/src/__tests__/ColumnDefinitionListView.test.tsx`
-  - [ ] Test loading state renders correctly
-  - [ ] Test list renders column definition cards with mock data
-  - [ ] Test empty state when no results
-  - [ ] Test error state rendering
-  - [ ] Test filter by type updates list
-  - [ ] Test filter by required updates list
-  - [ ] Test sort field changes
-  - [ ] Test card click navigates to detail route
-- [ ] Create `apps/web/src/__tests__/ColumnDefinitionDetailView.test.tsx`
-  - [ ] Test loading state renders correctly
-  - [ ] Test metadata section displays all column definition fields
-  - [ ] Test field mappings table renders with mock data
-  - [ ] Test empty state when no field mappings exist
-  - [ ] Test error state for invalid column definition ID
-  - [ ] Test breadcrumbs display correct label
-- [ ] Create `apps/web/src/__tests__/ColumnDefinition.component.test.tsx`
-  - [ ] Test `ColumnDefinitionCardUI` renders label, type chip, required badge
-  - [ ] Test `ColumnDefinitionCardUI` hides required badge when not required
-  - [ ] Test `ColumnDefinitionCardUI` renders key in monospace, description, metadata
-  - [ ] Test `ColumnDefinitionDataList` passes paginated data to render prop
-  - [ ] Test `ColumnDefinitionDataItem` passes single item to render prop
-- [ ] Create `apps/web/src/__tests__/FieldMapping.component.test.tsx`
-  - [ ] Test `FieldMappingDataList` passes filtered data to render prop
-  - [ ] Test renders source field, entity info, connector instance, primary key indicator
+### Phase 6: Frontend Unit Tests ✅
+- [x] Create `apps/web/src/__tests__/ColumnDefinitionListView.test.tsx`
+  - [x] Test loading state renders correctly
+  - [x] Test list renders column definition cards with mock data
+  - [x] Test empty state when no results
+  - [x] Test error state rendering
+  - [x] Test filter by type updates list
+  - [x] Test filter by required updates list
+  - [x] Test sort field changes
+  - [x] Test card click navigates to detail route
+- [x] Create `apps/web/src/__tests__/ColumnDefinitionDetailView.test.tsx`
+  - [x] Test loading state renders correctly
+  - [x] Test metadata section displays all column definition fields
+  - [x] Test field mappings table renders with mock data
+  - [x] Test empty state when no field mappings exist
+  - [x] Test error state for invalid column definition ID
+  - [x] Test breadcrumbs display correct label
+- [x] Create `apps/web/src/__tests__/ColumnDefinition.component.test.tsx`
+  - [x] Test `ColumnDefinitionCardUI` renders label, type chip, required badge
+  - [x] Test `ColumnDefinitionCardUI` hides required badge when not required
+  - [x] Test `ColumnDefinitionCardUI` renders key in monospace, description, metadata
+  - [x] Test `ColumnDefinitionDataList` passes paginated data to render prop
+  - [x] Test `ColumnDefinitionDataItem` passes single item to render prop
+- [x] Create `apps/web/src/__tests__/FieldMapping.component.test.tsx`
+  - [x] Test `FieldMappingDataList` passes filtered data to render prop
+  - [x] Test renders source field, entity info, connector instance, primary key indicator
 
 ### Phase 7: Backend Integration Tests
 - [ ] Verify existing `apps/api/src/__tests__/__integration__/routes/column-definition.router.integration.test.ts` covers list with `type` and `required` filters

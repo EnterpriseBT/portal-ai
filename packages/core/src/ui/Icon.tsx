@@ -36,6 +36,7 @@ import HeartIcon from "../assets/icons/heart.svg";
 import MemoryChip from "@mui/icons-material/Memory";
 import WorkIcon from "@mui/icons-material/Work";
 import LinkIcon from "@mui/icons-material/Link";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 
 export enum IconName {
   Home = "home",
@@ -74,6 +75,7 @@ export enum IconName {
   MemoryChip = "memory_chip",
   Work = "work",
   Link = "link",
+  ViewColumn = "view_column",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -160,6 +162,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <WorkIcon ref={ref} {...props} />;
       case IconName.Link:
         return <LinkIcon ref={ref} {...props} />;
+      case IconName.ViewColumn:
+        return <ViewColumnIcon ref={ref} {...props} />;
       default:
         // If no name is provided or the name doesn't match, render children as a custom icon
         throw new Error(

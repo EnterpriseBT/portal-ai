@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, type SQL, type Column } from "drizzle-orm";
+import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
 
 import { ColumnDefinitionModelFactory } from "@portalai/core/models";
 import {
@@ -45,6 +45,11 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *       - $ref: '#/components/parameters/offsetParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
  *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive search on label or key
+ *       - in: query
  *         name: sortBy
  *         schema:
  *           type: string
@@ -88,12 +93,20 @@ columnDefinitionRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, type, required } =
+      const { limit, offset, sortBy, sortOrder, search, type, required } =
         ColumnDefinitionListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [eq(columnDefinitions.organizationId, organizationId)];
 
+      if (search) {
+        filters.push(
+          or(
+            ilike(columnDefinitions.label, `%${search}%`),
+            ilike(columnDefinitions.key, `%${search}%`),
+          )!
+        );
+      }
       if (type) {
         filters.push(eq(columnDefinitions.type, type));
       }

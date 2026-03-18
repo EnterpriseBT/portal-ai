@@ -52,8 +52,8 @@ ConnectorInstance → ConnectorEntity[] (paginated) → FieldMapping[] → Colum
 - [x] All type checks pass (`npm run type-check`)
 
 ## Test Plan
-- [ ] **Unit**: ConnectorEntityCardUI renders label, key, mapping count; FieldMappingTableUI renders rows
-- [ ] **Unit**: ConnectorInstanceView renders instance details and entity list sections
+- [x] **Unit**: ConnectorEntityCardUI renders label, key, mapping count; FieldMappingTableUI renders rows
+- [x] **Unit**: ConnectorInstanceView renders instance details and entity list sections
 - [x] **Integration**: `GET /api/connector-entities?include=fieldMappings` returns nested data
 - [x] **Integration**: `GET /api/connector-entities` without include returns flat data
 - [x] **Integration**: `GET /api/connector-instances/:id` returns connectorDefinition
