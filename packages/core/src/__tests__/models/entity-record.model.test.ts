@@ -1,0 +1,176 @@
+import {
+  EntityRecordModel,
+  EntityRecordModelFactory,
+} from "../../models/entity-record.model.js";
+import {
+  UUID_REGEX,
+  StubIDFactory,
+  buildCoreModelFactory,
+} from "../test-utils.js";
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+const validRecordFields = {
+  organizationId: "org-1",
+  connectorEntityId: "ce-1",
+  data: { "First Name": "Jane", "Email Address": "jane@ex.com" },
+  normalizedData: { first_name: "Jane", email: "jane@ex.com" },
+  sourceId: "row-0",
+  checksum: "abc123",
+  syncedAt: Date.now(),
+  updated: null,
+  updatedBy: null,
+  deleted: null,
+  deletedBy: null,
+};
+
+// ── Tests ────────────────────────────────────────────────────────────
+
+describe("EntityRecordModelFactory", () => {
+  // ── Constructor ─────────────────────────────────────────────────
+
+  describe("constructor", () => {
+    it("should accept a CoreModelFactory", () => {
+      const coreModelFactory = buildCoreModelFactory();
+      const factory = new EntityRecordModelFactory({ coreModelFactory });
+      expect(factory).toBeInstanceOf(EntityRecordModelFactory);
+    });
+  });
+
+  // ── create ──────────────────────────────────────────────────────
+
+  describe("create", () => {
+    let factory: EntityRecordModelFactory;
+    let stubIdFactory: StubIDFactory;
+
+    beforeEach(() => {
+      stubIdFactory = new StubIDFactory("test-id");
+      factory = new EntityRecordModelFactory({
+        coreModelFactory: buildCoreModelFactory(stubIdFactory),
+      });
+    });
+
+    it("should return an EntityRecordModel instance", () => {
+      const model = factory.create("user-1");
+      expect(model).toBeInstanceOf(EntityRecordModel);
+    });
+
+    it("should assign the generated id from the underlying CoreModelFactory", () => {
+      const model = factory.create("user-1");
+      expect(model.toJSON().id).toBe("test-id-1");
+    });
+
+    it("should set the createdBy field to the provided value", () => {
+      const model = factory.create("admin-42");
+      expect(model.toJSON().createdBy).toBe("admin-42");
+    });
+
+    it("should set a created timestamp", () => {
+      const before = Date.now();
+      const model = factory.create("user-1");
+      const after = Date.now();
+      const created = model.toJSON().created;
+
+      expect(created).toBeDefined();
+      expect(created).toBeGreaterThanOrEqual(before);
+      expect(created).toBeLessThanOrEqual(after);
+    });
+
+    it("should not set updated, updatedBy, deleted, or deletedBy", () => {
+      const json = factory.create("user-1").toJSON();
+
+      expect(json.updated).toBeNull();
+      expect(json.updatedBy).toBeNull();
+      expect(json.deleted).toBeNull();
+      expect(json.deletedBy).toBeNull();
+    });
+
+    it("should produce unique ids across multiple calls", () => {
+      const defaultFactory = new EntityRecordModelFactory({
+        coreModelFactory: buildCoreModelFactory(),
+      });
+      const ids = new Set(
+        Array.from({ length: 50 }, () =>
+          defaultFactory.create("u").toJSON().id
+        )
+      );
+      expect(ids.size).toBe(50);
+    });
+
+    it("should produce ids matching UUID format when using the default IDFactory", () => {
+      const defaultFactory = new EntityRecordModelFactory({
+        coreModelFactory: buildCoreModelFactory(),
+      });
+      const model = defaultFactory.create("user-1");
+      expect(model.toJSON().id).toMatch(UUID_REGEX);
+    });
+
+    it("should return a different instance on each call", () => {
+      const a = factory.create("user-a");
+      const b = factory.create("user-b");
+
+      expect(a).not.toBe(b);
+      expect(a.toJSON().id).not.toBe(b.toJSON().id);
+    });
+
+    it("should expose the EntityRecordSchema via the schema getter", () => {
+      const model = factory.create("user-1");
+      const shape = model.schema.shape;
+      expect(shape).toHaveProperty("connectorEntityId");
+      expect(shape).toHaveProperty("data");
+      expect(shape).toHaveProperty("normalizedData");
+      expect(shape).toHaveProperty("sourceId");
+      expect(shape).toHaveProperty("checksum");
+      expect(shape).toHaveProperty("syncedAt");
+    });
+
+    it("should allow updating domain fields after creation", () => {
+      const model = factory.create("user-1");
+      model.update(validRecordFields);
+
+      const json = model.toJSON();
+      expect(json.connectorEntityId).toBe("ce-1");
+      expect(json.sourceId).toBe("row-0");
+      expect(json.data).toEqual({
+        "First Name": "Jane",
+        "Email Address": "jane@ex.com",
+      });
+      expect(json.normalizedData).toEqual({
+        first_name: "Jane",
+        email: "jane@ex.com",
+      });
+      // base fields preserved
+      expect(json.id).toBe("test-id-1");
+      expect(json.createdBy).toBe("user-1");
+    });
+
+    it("should pass validation when all required fields are set", () => {
+      const model = factory.create("system");
+      model.update(validRecordFields);
+
+      const result = model.validate();
+      expect(result.success).toBe(true);
+    });
+
+    it("should fail validation when domain-specific required fields are missing", () => {
+      const model = factory.create("user-1");
+      model.update({
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
+
+      const result = model.validate();
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
+        expect(paths).toContain("connectorEntityId");
+        expect(paths).toContain("data");
+        expect(paths).toContain("sourceId");
+      }
+    });
+  });
+});

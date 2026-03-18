@@ -27,3 +27,6 @@ export * from "./connector-entity.model.js";
 
 /** Field mapping model schema & type */
 export * from "./field-mapping.model.js";
+
+/** Entity record model schema & type */
+export * from "./entity-record.model.js";

@@ -12,8 +12,8 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, ColumnDefinition, ConnectorEntity, FieldMapping, Core } from "@portalai/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect, ColumnDefinitionSelect, ConnectorEntitySelect, FieldMappingSelect } from "./zod.js";
+import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, ColumnDefinition, ConnectorEntity, FieldMapping, EntityRecord, Core } from "@portalai/core/models";
+import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect, ColumnDefinitionSelect, ConnectorEntitySelect, FieldMappingSelect, EntityRecordSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
@@ -24,6 +24,7 @@ import type { jobs } from "./jobs.table.js";
 import type { columnDefinitions } from "./column-definitions.table.js";
 import type { connectorEntities } from "./connector-entities.table.js";
 import type { fieldMappings } from "./field-mappings.table.js";
+import type { entityRecords } from "./entity-records.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -181,3 +182,18 @@ const _fieldMapModelToDrizzle: _FieldMapModelToDrizzle = true;
 type _FieldMapInferredRow = InferSelectModel<typeof fieldMappings>;
 type _FieldMapInferredToModel = IsAssignable<_FieldMapInferredRow, FieldMapping>;
 const _fieldMapInferredToModel: _FieldMapInferredToModel = true;
+
+// ── EntityRecord ────────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _EntRecDrizzleToModel = IsAssignable<EntityRecordSelect, EntityRecord>;
+const _entRecDrizzleToModel: _EntRecDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _EntRecModelToDrizzle = IsAssignable<EntityRecord, EntityRecordSelect>;
+const _entRecModelToDrizzle: _EntRecModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _EntRecInferredRow = InferSelectModel<typeof entityRecords>;
+type _EntRecInferredToModel = IsAssignable<_EntRecInferredRow, EntityRecord>;
+const _entRecInferredToModel: _EntRecInferredToModel = true;

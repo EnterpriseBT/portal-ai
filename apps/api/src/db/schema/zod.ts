@@ -16,6 +16,7 @@ import { jobs } from "./jobs.table.js";
 import { columnDefinitions } from "./column-definitions.table.js";
 import { connectorEntities } from "./connector-entities.table.js";
 import { fieldMappings } from "./field-mappings.table.js";
+import { entityRecords } from "./entity-records.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -154,3 +155,15 @@ export const FieldMappingInsertSchema = createInsertSchema(fieldMappings);
 /** Inferred types */
 export type FieldMappingSelect = z.infer<typeof FieldMappingSelectSchema>;
 export type FieldMappingInsert = z.infer<typeof FieldMappingInsertSchema>;
+
+// ── Entity Records ──────────────────────────────────────────────────
+
+/** Zod schema for an `entity_records` row returned by SELECT. */
+export const EntityRecordSelectSchema = createSelectSchema(entityRecords);
+
+/** Zod schema for inserting into `entity_records`. */
+export const EntityRecordInsertSchema = createInsertSchema(entityRecords);
+
+/** Inferred types */
+export type EntityRecordSelect = z.infer<typeof EntityRecordSelectSchema>;
+export type EntityRecordInsert = z.infer<typeof EntityRecordInsertSchema>;

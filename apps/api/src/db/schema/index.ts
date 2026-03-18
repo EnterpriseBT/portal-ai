@@ -7,6 +7,7 @@ export { connectorInstances } from "./connector-instances.table.js";
 export { columnDefinitions, columnDataTypeEnum } from "./column-definitions.table.js";
 export { connectorEntities } from "./connector-entities.table.js";
 export { fieldMappings } from "./field-mappings.table.js";
+export { entityRecords } from "./entity-records.table.js";
 export { jobs, jobStatusEnum, jobTypeEnum } from "./jobs.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
