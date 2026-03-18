@@ -1004,18 +1004,18 @@ AI analyzes parsed results, generates schema recommendations, and the frontend d
 
 #### Verification
 
-- [ ] AI recommendations appear in the UI after parsing completes
-- [ ] Each file produces a separate entity tab/section with its own column mappings
-- [ ] Existing column definitions are matched with confidence scores displayed
-- [ ] Low-confidence matches (<0.8) are visually highlighted
-- [ ] User can change a column from "match existing" to "create new" and vice versa
-- [ ] User can edit recommended key, label, type, and format for any column
-- [ ] User can edit entity key and label
-- [ ] User can edit connector instance name
-- [ ] Multi-file upload: columns shared across files (e.g., `email`) show as `match_existing` in the second file referencing the first file's recommendation
-- [ ] AI timeout or failure falls back to heuristic mapper — columns appear with `confidence: 0` and all flagged for review
-- [ ] Heuristic correctly infers `date`, `number`, `boolean` types from sample values
-- [ ] Progress bar moves smoothly from 30→70 during analysis phase, then 70→80 during recommendation assembly
+- [x] AI recommendations appear in the UI after parsing completes
+- [x] Each file produces a separate entity tab/section with its own column mappings
+- [x] Existing column definitions are matched with confidence scores displayed
+- [x] Low-confidence matches (<0.8) are visually highlighted
+- [x] User can change a column from "match existing" to "create new" and vice versa
+- [x] User can edit recommended key, label, type, and format for any column
+- [x] User can edit entity key and label
+- [x] User can edit connector instance name
+- [x] Multi-file upload: columns shared across files (e.g., `email`) show as `match_existing` in the second file referencing the first file's recommendation
+- [x] AI timeout or failure falls back to heuristic mapper — columns appear with `confidence: 0` and all flagged for review
+- [x] Heuristic correctly infers `date`, `number`, `boolean` types from sample values
+- [x] Progress bar moves smoothly from 30→70 during analysis phase, then 70→80 during recommendation assembly
 
 #### Tests
 
