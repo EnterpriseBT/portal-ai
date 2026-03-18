@@ -33,9 +33,9 @@ ${parseResult.sampleRows.slice(0, 5).map((r) => r.join(" | ")).join("\n")}
   if (existingColumns.length > 0) {
     prompt += `
 ## Existing Column Definitions (match these when appropriate)
-${existingColumns.map((c) => `- key: "${c.key}", label: "${c.label}", type: ${c.type}`).join("\n")}
+${existingColumns.map((c) => `- id: "${c.id}", key: "${c.key}", label: "${c.label}", type: ${c.type}`).join("\n")}
 
-When a CSV column clearly maps to an existing column definition, set action to "match_existing" and provide the existingColumnDefinitionId. Set confidence based on how strong the match is (1.0 for exact key/label match, 0.8-0.99 for semantic match).
+When a CSV column clearly maps to an existing column definition, set action to "match_existing" and set existingColumnDefinitionId to the id value from the list above (e.g., "${existingColumns[0]?.id ?? "uuid-here"}"). Set confidence based on how strong the match is (1.0 for exact key/label match, 0.8-0.99 for semantic match).
 `;
   }
 

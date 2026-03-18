@@ -42,8 +42,14 @@ function createMockStreamState(overrides: Partial<JobStreamState> = {}): JobStre
   };
 }
 
+const mockFetchWithAuth = jest.fn<(url: string, options?: RequestInit) => Promise<unknown>>();
+
 jest.unstable_mockModule("../../../utils/file-upload.util", () => ({
   useFileUpload: () => mockFileUploadState,
+}));
+
+jest.unstable_mockModule("../../../utils/api.util", () => ({
+  useAuthFetch: () => ({ fetchWithAuth: mockFetchWithAuth }),
 }));
 
 jest.unstable_mockModule("../../../api/sdk", () => ({
@@ -105,6 +111,7 @@ describe("useUploadWorkflow", () => {
     jest.clearAllMocks();
     mockFileUploadState = createMockFileUploadState();
     mockStreamState = createMockStreamState();
+    mockFetchWithAuth.mockReset();
   });
 
   describe("WORKFLOW_STEPS", () => {
@@ -538,6 +545,219 @@ describe("useUploadWorkflow", () => {
     });
   });
 
+  describe("confirm", () => {
+    it("serializes edited entities and columns into correct request body", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_123",
+      });
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+      mockFetchWithAuth.mockResolvedValue({
+        payload: {
+          connectorInstanceId: "ci_001",
+          connectorInstanceName: "My CSV Import",
+          confirmedEntities: [],
+        },
+      });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      await act(async () => {
+        await result.current.confirm();
+      });
+
+      expect(mockFetchWithAuth).toHaveBeenCalledTimes(1);
+      const [url, options] = mockFetchWithAuth.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("/api/uploads/job_123/confirm");
+      expect(options.method).toBe("POST");
+
+      const body = JSON.parse(options.body as string);
+      expect(body.connectorInstanceName).toBe("My CSV Import");
+      expect(body.entities).toHaveLength(1);
+      expect(body.entities[0].entityKey).toBe("contacts");
+      expect(body.entities[0].entityLabel).toBe("Contacts");
+      expect(body.entities[0].columns).toHaveLength(1);
+      expect(body.entities[0].columns[0].sourceField).toBe("Email Address");
+      expect(body.entities[0].columns[0].key).toBe("email");
+      expect(body.entities[0].columns[0].action).toBe("match_existing");
+    });
+
+    it("uses edited recommendations when user has made changes", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_123",
+      });
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+      mockFetchWithAuth.mockResolvedValue({
+        payload: {
+          connectorInstanceId: "ci_001",
+          connectorInstanceName: "Renamed",
+          confirmedEntities: [],
+        },
+      });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      act(() => {
+        result.current.updateConnectorName("Renamed");
+      });
+
+      await act(async () => {
+        await result.current.confirm();
+      });
+
+      const body = JSON.parse(
+        (mockFetchWithAuth.mock.calls[0] as [string, RequestInit])[1].body as string,
+      );
+      expect(body.connectorInstanceName).toBe("Renamed");
+    });
+
+    it("sets confirmResult on success", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_123",
+      });
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+
+      const mockPayload = {
+        connectorInstanceId: "ci_001",
+        connectorInstanceName: "My CSV Import",
+        confirmedEntities: [
+          {
+            connectorEntityId: "ce_001",
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            columnDefinitions: [{ id: "cd_001", key: "email", label: "Email" }],
+            fieldMappings: [
+              { id: "fm_001", sourceField: "Email Address", columnDefinitionId: "cd_001", isPrimaryKey: true },
+            ],
+          },
+        ],
+      };
+      mockFetchWithAuth.mockResolvedValue({ payload: mockPayload });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      await act(async () => {
+        await result.current.confirm();
+      });
+
+      expect(result.current.confirmResult).toEqual(mockPayload);
+      expect(result.current.isConfirming).toBe(false);
+      expect(result.current.confirmError).toBeNull();
+    });
+
+    it("sets confirmError on failure", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_123",
+      });
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+      mockFetchWithAuth.mockRejectedValue(new Error("Transaction timed out"));
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      await act(async () => {
+        await result.current.confirm();
+      });
+
+      expect(result.current.confirmResult).toBeNull();
+      expect(result.current.isConfirming).toBe(false);
+      expect(result.current.confirmError).toBe("Transaction timed out");
+    });
+
+    it("does nothing when no recommendations are available", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_123",
+      });
+      mockStreamState = createMockStreamState({ status: "active" });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      await act(async () => {
+        await result.current.confirm();
+      });
+
+      expect(mockFetchWithAuth).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when no jobId exists", async () => {
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      await act(async () => {
+        await result.current.confirm();
+      });
+
+      expect(mockFetchWithAuth).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("cancel", () => {
+    it("calls cancel endpoint when jobId exists", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_456",
+      });
+      mockFetchWithAuth.mockResolvedValue({});
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      await act(async () => {
+        await result.current.cancel();
+      });
+
+      expect(mockFetchWithAuth).toHaveBeenCalledTimes(1);
+      const [url, options] = mockFetchWithAuth.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("/api/jobs/job_456/cancel");
+      expect(options.method).toBe("POST");
+    });
+
+    it("does nothing when no jobId exists", async () => {
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      await act(async () => {
+        await result.current.cancel();
+      });
+
+      expect(mockFetchWithAuth).not.toHaveBeenCalled();
+    });
+
+    it("swallows errors silently (best-effort cancellation)", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_456",
+      });
+      mockFetchWithAuth.mockRejectedValue(new Error("Network error"));
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      // Should not throw
+      await act(async () => {
+        await result.current.cancel();
+      });
+
+      expect(result.current.isCancelling).toBe(false);
+    });
+  });
+
   describe("reset", () => {
     it("clears all state back to initial", () => {
       const { result } = renderHook(() => useUploadWorkflow());
@@ -556,6 +776,10 @@ describe("useUploadWorkflow", () => {
 
       expect(result.current.files).toEqual([]);
       expect(result.current.step).toBe(0);
+      expect(result.current.isConfirming).toBe(false);
+      expect(result.current.confirmError).toBeNull();
+      expect(result.current.confirmResult).toBeNull();
+      expect(result.current.isCancelling).toBe(false);
       expect(mockFileUploadReset).toHaveBeenCalledTimes(1);
     });
   });

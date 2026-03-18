@@ -1055,16 +1055,16 @@ User confirms (or modifies) recommendations, backend persists all entities in a 
 
 #### Frontend
 
-- [ ] Wire "Confirm" button in `ReviewStep.component.tsx`:
+- [x] Wire "Confirm" button in `ReviewStep.component.tsx`:
   - Serialize edited entities and column mappings from Steps 2-3 into `ConfirmRequestBody`
   - Show loading state on button during request
   - On success: transition `ReviewStep` to completion summary view
-- [ ] Completion summary view (within `ReviewStep`):
+- [x] Completion summary view (within `ReviewStep`):
   - Connector instance name and status
   - List of created/updated entities with row counts
   - List of created/updated column definitions
   - "Done" button closes workflow modal
-- [ ] Wire "Cancel" button in `CSVConnectorWorkflow.component.tsx`:
+- [x] Wire "Cancel" button in `CSVConnectorWorkflow.component.tsx`:
   - Available at any step via modal header or stepper navigation
   - Calls existing `POST /api/jobs/:id/cancel` endpoint (if `jobId` exists)
   - Triggers S3 cleanup (files deleted via `S3Service.deletePrefix()`)
@@ -1074,11 +1074,11 @@ User confirms (or modifies) recommendations, backend persists all entities in a 
 
 - [x] Clicking "Confirm" creates all expected records in the database (connector instance, entities, column definitions, field mappings)
 - [x] Records match the user's edits, not just the original AI recommendations
-- [ ] Completion summary displays correct counts of created vs updated records
+- [x] Completion summary displays correct counts of created vs updated records
 - [x] Re-clicking "Confirm" (idempotent) returns the same result without duplicating records
 - [x] Column definitions shared across entities are created once, not duplicated
 - [x] Job transitions from `awaiting_confirmation` → `completed` and SSE emits `job:complete`
-- [ ] Cancelling the job transitions to `cancelled`, deletes S3 files, and closes the modal
+- [x] Cancelling the job transitions to `cancelled`, deletes S3 files, and closes the modal
 - [x] Confirming a job that is not in `awaiting_confirmation` returns 409
 - [x] Transaction rollback on partial failure: no orphaned records, job stays in `awaiting_confirmation`
 - [x] Referenced existing column definitions are validated — invalid IDs return 400
@@ -1088,10 +1088,10 @@ User confirms (or modifies) recommendations, backend persists all entities in a 
 - [x] **Integration — Backend** (`uploads.router.test.ts` — confirm): `POST /confirm` returns 409 if job not in `awaiting_confirmation`. Returns 400 for invalid request body. Returns 400 for invalid column definition references. Returns 200 with confirmed entity summary on success
 - [x] **Unit/Integration — Backend** (`uploads.service.test.ts`): `confirm()` upserts connector instance, entities, column definitions, and field mappings. Shared column definitions across entities created once (not duplicated). Idempotent — re-calling with same payload returns same result. Job transitions to `completed`. `job:complete` SSE event emitted with confirmed entity IDs
 - [x] **Unit/Integration — Backend** (`uploads.service.test.ts` — error paths): Transaction rolls back on DB error — no orphaned records, job stays `awaiting_confirmation`. Invalid column definition IDs throw `UPLOAD_INVALID_REFERENCE`. Confirm timeout throws `UPLOAD_CONFIRM_TIMEOUT`
-- [ ] **Unit — Frontend** (`ReviewStep.test.tsx`): Summary displays connector name, entity list with column counts, per-entity column table. "Confirm" button triggers confirm callback. Loading state disables confirm button. Completion summary renders created/updated counts. "Done" button triggers close. "Cancel" button triggers cancel callback
-- [ ] **Unit — Frontend** (`upload-workflow.util.test.ts` — confirm): `confirm()` serializes edited entities and columns into correct request body. Success updates workflow to completion state. Failure sets error state. `cancel()` calls cancel endpoint when `jobId` exists
+- [x] **Unit — Frontend** (`ReviewStep.test.tsx`): Summary displays connector name, entity list with column counts, per-entity column table. "Confirm" button triggers confirm callback. Loading state disables confirm button. Completion summary renders created/updated counts. "Done" button triggers close. "Cancel" button triggers cancel callback
+- [x] **Unit — Frontend** (`upload-workflow.util.test.ts` — confirm): `confirm()` serializes edited entities and columns into correct request body. Success updates workflow to completion state. Failure sets error state. `cancel()` calls cancel endpoint when `jobId` exists
 - [x] **Integration — Backend** (`uploads.router.integration.test.ts` — confirm): Full confirm flow — creates connector instance, entities, column definitions, field mappings in DB. Verify records match submitted edits. Re-submit same payload — no duplicate records created. Shared columns across entities created once
-- [ ] All Phase 4 tests pass (`npm run test -- --testPathPattern="(uploads|ReviewStep|useUploadWorkflow)"`) ✅
+- [x] All Phase 4 tests pass (`npm run test -- --testPathPattern="(uploads|ReviewStep|useUploadWorkflow)"`) ✅
 
 ---
 

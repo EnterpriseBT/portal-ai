@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 
 import type { JobStatus } from "@portalai/core/models";
+import type { ConfirmRequestBody, ConfirmResponsePayload } from "@portalai/core/contracts";
 
 import { sdk } from "../../../api/sdk";
+import { useAuthFetch } from "../../../utils/api.util";
 import { useFileUpload } from "../../../utils/file-upload.util";
 import type { FileUploadProgress, UploadPhase } from "../../../utils/file-upload.util";
 
@@ -75,6 +77,10 @@ export interface WorkflowState {
   parseResults: ParseSummary[] | null;
   uploadError: string | null;
   isProcessing: boolean;
+  isConfirming: boolean;
+  confirmError: string | null;
+  confirmResult: ConfirmResponsePayload | null;
+  isCancelling: boolean;
 }
 
 export interface UseUploadWorkflowReturn extends WorkflowState {
@@ -87,6 +93,8 @@ export interface UseUploadWorkflowReturn extends WorkflowState {
   updateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
   updateColumn: (entityIndex: number, columnIndex: number, updates: Partial<RecommendedColumn>) => void;
   updateConnectorName: (name: string) => void;
+  confirm: () => Promise<void>;
+  cancel: () => Promise<void>;
   reset: () => void;
   canAdvance: boolean;
   connectionStatus: string;
@@ -182,7 +190,12 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
   const [files, setFiles] = useState<File[]>([]);
   // User edits override the initial recommendations from SSE.
   const [editedRecommendations, setEditedRecommendations] = useState<Recommendations | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirmResult, setConfirmResult] = useState<ConfirmResponsePayload | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
+  const { fetchWithAuth } = useAuthFetch();
   const fileUpload = useFileUpload();
 
   // SSE subscription — activates once we have a jobId and upload is done
@@ -302,10 +315,72 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
     [sseRecommendations],
   );
 
+  const confirm = useCallback(async () => {
+    const activeRecs = editedRecommendations ?? sseRecommendations;
+    const jobId = fileUpload.jobId;
+    if (!activeRecs || !jobId) return;
+
+    const body: ConfirmRequestBody = {
+      connectorInstanceName: activeRecs.connectorInstance.name,
+      entities: activeRecs.entities.map((entity) => ({
+        entityKey: entity.connectorEntity.key,
+        entityLabel: entity.connectorEntity.label,
+        sourceFileName: entity.sourceFileName,
+        columns: entity.columns.map((col) => ({
+          sourceField: col.sourceField,
+          key: col.recommended.key,
+          label: col.recommended.label,
+          type: col.recommended.type as ConfirmRequestBody["entities"][number]["columns"][number]["type"],
+          format: col.recommended.format ?? null,
+          isPrimaryKey: col.isPrimaryKeyCandidate,
+          required: col.recommended.required ?? false,
+          action: col.action,
+          existingColumnDefinitionId: col.existingColumnDefinitionId,
+        })),
+      })),
+    };
+
+    setIsConfirming(true);
+    setConfirmError(null);
+    try {
+      const response = await fetchWithAuth<{ payload: ConfirmResponsePayload }>(
+        `/api/uploads/${encodeURIComponent(jobId)}/confirm`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      setConfirmResult(response.payload);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Confirmation failed";
+      setConfirmError(message);
+    } finally {
+      setIsConfirming(false);
+    }
+  }, [editedRecommendations, sseRecommendations, fileUpload.jobId, fetchWithAuth]);
+
+  const cancel = useCallback(async () => {
+    const jobId = fileUpload.jobId;
+    if (!jobId) return;
+
+    setIsCancelling(true);
+    try {
+      await fetchWithAuth(
+        `/api/jobs/${encodeURIComponent(jobId)}/cancel`,
+        { method: "POST" },
+      );
+    } catch {
+      // Best-effort cancellation
+    } finally {
+      setIsCancelling(false);
+    }
+  }, [fileUpload.jobId, fetchWithAuth]);
+
   const reset = useCallback(() => {
     setUserStep(null);
     setFiles([]);
     setEditedRecommendations(null);
+    setIsConfirming(false);
+    setConfirmError(null);
+    setConfirmResult(null);
+    setIsCancelling(false);
     fileUpload.reset();
   }, [fileUpload]);
 
@@ -341,6 +416,10 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
     parseResults,
     uploadError: fileUpload.error,
     isProcessing,
+    isConfirming,
+    confirmError,
+    confirmResult,
+    isCancelling,
     addFiles,
     removeFile,
     startUpload,
@@ -350,6 +429,8 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
     updateEntity,
     updateColumn,
     updateConnectorName,
+    confirm,
+    cancel,
     reset,
     canAdvance,
     connectionStatus: stream.connectionStatus,

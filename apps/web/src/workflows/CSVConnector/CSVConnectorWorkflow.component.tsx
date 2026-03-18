@@ -20,6 +20,8 @@ import {
   useUploadWorkflow,
   WORKFLOW_STEPS,
 } from "./utils/upload-workflow.util";
+import type { ConfirmResponsePayload } from "@portalai/core/contracts";
+
 import type {
   UseUploadWorkflowReturn,
   Recommendations,
@@ -71,6 +73,13 @@ export interface CSVConnectorWorkflowUIProps {
 
   // Review step
   onConnectorNameChange: (name: string) => void;
+  onConfirm: () => void;
+  isConfirming: boolean;
+  confirmError: string | null;
+  confirmResult: ConfirmResponsePayload | null;
+  onDone: () => void;
+  onCancel: () => void;
+  isCancelling: boolean;
 
   // Navigation
   onBack: () => void;
@@ -105,6 +114,13 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
   onUpdateEntity,
   onUpdateColumn,
   onConnectorNameChange,
+  onConfirm,
+  isConfirming,
+  confirmError,
+  confirmResult,
+  onDone,
+  onCancel,
+  isCancelling,
   onBack,
   onNext,
   backLabel,
@@ -172,10 +188,17 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
 
           {/* Step 3: Review & Import */}
           <StepPanel index={3} activeStep={step}>
-            {recommendations ? (
+            {recommendations || confirmResult ? (
               <ReviewStep
                 recommendations={recommendations}
                 onConnectorNameChange={onConnectorNameChange}
+                onConfirm={onConfirm}
+                isConfirming={isConfirming}
+                confirmError={confirmError}
+                confirmResult={confirmResult}
+                onDone={onDone}
+                onCancel={onCancel}
+                isCancelling={isCancelling}
               />
             ) : (
               <Typography color="text.secondary">
@@ -185,23 +208,25 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
           </StepPanel>
         </Stepper>
 
-        {/* Navigation */}
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          sx={{ pt: 2, px: 2 }}
-        >
-          <Button onClick={onBack} disabled={isBackDisabled} variant="text">
-            {backLabel}
-          </Button>
-          <Button
-            onClick={onNext}
-            disabled={isNextDisabled}
-            variant="contained"
+        {/* Navigation — hidden on step 3 where ReviewStep has its own actions */}
+        {step !== 3 && (
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            sx={{ pt: 2, px: 2 }}
           >
-            {nextLabel}
-          </Button>
-        </Stack>
+            <Button onClick={onBack} disabled={isBackDisabled} variant="text">
+              {backLabel}
+            </Button>
+            <Button
+              onClick={onNext}
+              disabled={isNextDisabled}
+              variant="contained"
+            >
+              {nextLabel}
+            </Button>
+          </Stack>
+        )}
       </Box>
     </Modal>
   );
@@ -309,6 +334,15 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
     }
   }, [workflow, handleClose]);
 
+  const handleConfirm = useCallback(async () => {
+    await workflow.confirm();
+  }, [workflow]);
+
+  const handleCancel = useCallback(async () => {
+    await workflow.cancel();
+    handleClose();
+  }, [workflow, handleClose]);
+
   const stepConfigs = useMemo(() => deriveStepConfigs(workflow), [workflow]);
 
   return (
@@ -334,6 +368,13 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
       onUpdateEntity={workflow.updateEntity}
       onUpdateColumn={workflow.updateColumn}
       onConnectorNameChange={workflow.updateConnectorName}
+      onConfirm={handleConfirm}
+      isConfirming={workflow.isConfirming}
+      confirmError={workflow.confirmError}
+      confirmResult={workflow.confirmResult}
+      onDone={handleClose}
+      onCancel={handleCancel}
+      isCancelling={workflow.isCancelling}
       onBack={handleBack}
       onNext={handleNext}
       backLabel={workflow.step === 0 ? "Cancel" : "Back"}
