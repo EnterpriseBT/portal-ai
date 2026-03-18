@@ -324,6 +324,43 @@ describe("Connector Instance Router", () => {
 
       expect(res.status).toBe(404);
     });
+
+    it("should return connectorDefinition in the response", async () => {
+      const def = createConnectorDefinition({
+        display: "Salesforce CRM",
+        slug: `sf-${generateId()}`,
+      });
+      const orgId = generateId();
+      const instance = createConnectorInstance(def.id, orgId, {
+        name: "SF Production",
+      });
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(instance as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const returned = res.body.payload.connectorInstance;
+      expect(returned.connectorDefinition).toBeDefined();
+      expect(returned.connectorDefinition).toEqual(
+        expect.objectContaining({
+          id: def.id,
+          display: "Salesforce CRM",
+          slug: def.slug,
+          category: def.category,
+          authType: def.authType,
+        })
+      );
+    });
   });
 
   // ── POST /api/connector-instances ───────────────────────────────

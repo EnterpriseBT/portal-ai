@@ -42,20 +42,20 @@ ConnectorInstance → ConnectorEntity[] (paginated) → FieldMapping[] → Colum
 6. **Frontend View** — Wire together in ConnectorInstanceView
 
 ## Acceptance Criteria
-- [ ] Instance detail page shows name, status chip, connector definition name, config, sync info
-- [ ] Paginated entity list renders below instance details
-- [ ] Pagination toolbar supports sort (key/label/created), page size, and page navigation
-- [ ] Expanding an entity reveals field mapping table with column metadata
-- [ ] Empty states for no entities and no field mappings
-- [ ] `include=fieldMappings` is opt-in; without it, entity list returns flat data (backward compat)
-- [ ] Soft-deleted field mappings and column definitions are excluded
-- [ ] All type checks pass (`npm run type-check`)
+- [x] Instance detail page shows name, status chip, connector definition name, config, sync info
+- [x] Paginated entity list renders below instance details
+- [x] Pagination toolbar supports sort (key/label/created), page size, and page navigation
+- [x] Expanding an entity reveals field mapping table with column metadata
+- [x] Empty states for no entities and no field mappings
+- [x] `include=fieldMappings` is opt-in; without it, entity list returns flat data (backward compat)
+- [x] Soft-deleted field mappings and column definitions are excluded
+- [x] All type checks pass (`npm run type-check`)
 
 ## Test Plan
 - [ ] **Unit**: ConnectorEntityCardUI renders label, key, mapping count; FieldMappingTableUI renders rows
 - [ ] **Unit**: ConnectorInstanceView renders instance details and entity list sections
-- [ ] **Integration**: `GET /api/connector-entities?include=fieldMappings` returns nested data
-- [ ] **Integration**: `GET /api/connector-entities` without include returns flat data
-- [ ] **Integration**: `GET /api/connector-instances/:id` returns connectorDefinition
-- [ ] **Integration**: Pagination (limit/offset) applies to entities, not flattened join rows
-- [ ] **Manual**: Navigate to instance detail, verify all sections render, pagination works, expansion works
+- [x] **Integration**: `GET /api/connector-entities?include=fieldMappings` returns nested data
+- [x] **Integration**: `GET /api/connector-entities` without include returns flat data
+- [x] **Integration**: `GET /api/connector-instances/:id` returns connectorDefinition
+- [x] **Integration**: Pagination (limit/offset) applies to entities, not flattened join rows
+- [x] **Manual**: Navigate to instance detail, verify all sections render, pagination works, expansion works
