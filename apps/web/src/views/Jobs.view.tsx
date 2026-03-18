@@ -1,5 +1,7 @@
-import { Box, Stack, Typography } from "@portalai/core/ui";
+import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
+import { IconName } from "@portalai/core/ui";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
+import { useNavigate } from "@tanstack/react-router";
 
 import { JobDataStream } from "../components/Job.component";
 import DataResult from "../components/DataResult.component";
@@ -12,6 +14,8 @@ import {
 import { SyncTotal } from "../components/SyncTotal.component";
 
 export const JobsView = () => {
+  const navigate = useNavigate();
+
   const pagination = usePagination({
     defaultSortBy: "created",
     defaultSortOrder: "desc",
@@ -48,6 +52,13 @@ export const JobsView = () => {
 
   return (
     <Box>
+      <Breadcrumbs
+        items={[
+          { label: "Dashboard", href: "/", icon: IconName.Home },
+          { label: "Jobs" },
+        ]}
+        onNavigate={(href) => navigate({ to: href })}
+      />
       <Typography variant="h1" gutterBottom>
         Jobs
       </Typography>

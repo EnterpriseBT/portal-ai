@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { ConnectorView } from "../views/ConnectorView";
+import { ConnectorView } from "../views/Connector.view";
 
 const meta = {
   title: "Views/ConnectorView",

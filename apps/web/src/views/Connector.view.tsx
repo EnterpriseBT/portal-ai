@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 
 import {
   Box,
+  Breadcrumbs,
   Stack,
   Tab,
   TabPanel,
@@ -10,6 +11,7 @@ import {
   Typography,
   useTabs,
 } from "@portalai/core/ui";
+import { IconName } from "@portalai/core/ui";
 import type { ConnectorDefinition } from "@portalai/core/models";
 import type {
   ConnectorDefinitionListRequestQuery,
@@ -128,6 +130,13 @@ export const ConnectorView = () => {
 
   return (
     <Box>
+      <Breadcrumbs
+        items={[
+          { label: "Dashboard", href: "/", icon: IconName.Home },
+          { label: "Connectors" },
+        ]}
+        onNavigate={(href) => navigate({ to: href })}
+      />
       <Typography variant="h1">Connectors</Typography>
       <Tabs {...tabsProps}>
         <Tab label="Connected" {...getTabProps(0)} />

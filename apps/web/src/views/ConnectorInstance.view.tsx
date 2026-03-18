@@ -3,9 +3,12 @@ import type {
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Stack, Typography } from "@portalai/core/ui";
+import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
+import { IconName } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import { upperFirst } from "lodash-es";
+
+import { useNavigate } from "@tanstack/react-router";
 
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
 import {
@@ -36,6 +39,8 @@ interface ConnectorInstanceViewProps {
 export const ConnectorInstanceView = ({
   connectorInstanceId,
 }: ConnectorInstanceViewProps) => {
+  const navigate = useNavigate();
+
   const pagination = usePagination({
     sortFields: [
       { field: "key", label: "Key" },
@@ -59,6 +64,14 @@ export const ConnectorInstanceView = ({
               const ci = instance.connectorInstance;
               return (
                 <Stack spacing={4}>
+                  <Breadcrumbs
+                    items={[
+                      { label: "Dashboard", href: "/", icon: IconName.Home },
+                      { label: "Connectors", href: "/connectors" },
+                      { label: ci.name },
+                    ]}
+                    onNavigate={(href) => navigate({ to: href })}
+                  />
                   {/* Section 1: Instance Details */}
                   <Box>
                     <Stack

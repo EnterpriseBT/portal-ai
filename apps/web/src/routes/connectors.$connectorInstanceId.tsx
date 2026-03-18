@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ConnectorInstanceView } from "../views/ConnectorInstanceView";
+import { ConnectorInstanceView } from "../views/ConnectorInstance.view";
 
 export const Route = createFileRoute("/connectors/$connectorInstanceId")({
   component: RouteComponent,
