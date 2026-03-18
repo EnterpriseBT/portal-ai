@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, type SQL, type Column } from "drizzle-orm";
+import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
 
 import { ConnectorEntityModelFactory } from "@portalai/core/models";
 import {
@@ -85,7 +85,7 @@ connectorEntityRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, connectorInstanceId, include } =
+      const { limit, offset, sortBy, sortOrder, search, connectorInstanceId, include } =
         ConnectorEntityListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -93,6 +93,13 @@ connectorEntityRouter.get(
 
       if (connectorInstanceId) {
         filters.push(eq(connectorEntities.connectorInstanceId, connectorInstanceId));
+      }
+
+      if (search) {
+        filters.push(or(
+          ilike(connectorEntities.key, `%${search}%`),
+          ilike(connectorEntities.label, `%${search}%`),
+        )!);
       }
 
       const where = and(...filters);

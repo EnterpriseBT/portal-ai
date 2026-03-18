@@ -379,6 +379,140 @@ describe("Connector Entity Router", () => {
       );
     });
 
+    it("should filter entities by search matching label", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const { connectorInstanceId } = await seedConnectorInstance(
+        db as ReturnType<typeof drizzle>,
+        organizationId
+      );
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values([
+          createConnEntity(organizationId, connectorInstanceId, {
+            key: "contacts",
+            label: "Contacts",
+          }),
+          createConnEntity(organizationId, connectorInstanceId, {
+            key: "deals",
+            label: "Deals",
+          }),
+          createConnEntity(organizationId, connectorInstanceId, {
+            key: "accounts",
+            label: "Accounts",
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get(
+          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&search=deal`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorEntities).toHaveLength(1);
+      expect(res.body.payload.connectorEntities[0].label).toBe("Deals");
+      expect(res.body.payload.total).toBe(1);
+    });
+
+    it("should filter entities by search matching key", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const { connectorInstanceId } = await seedConnectorInstance(
+        db as ReturnType<typeof drizzle>,
+        organizationId
+      );
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values([
+          createConnEntity(organizationId, connectorInstanceId, {
+            key: "contacts",
+            label: "People",
+          }),
+          createConnEntity(organizationId, connectorInstanceId, {
+            key: "deals",
+            label: "Opportunities",
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get(
+          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&search=contacts`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorEntities).toHaveLength(1);
+      expect(res.body.payload.connectorEntities[0].key).toBe("contacts");
+      expect(res.body.payload.total).toBe(1);
+    });
+
+    it("should be case-insensitive when filtering by search", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const { connectorInstanceId } = await seedConnectorInstance(
+        db as ReturnType<typeof drizzle>,
+        organizationId
+      );
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(
+          createConnEntity(organizationId, connectorInstanceId, {
+            key: "contacts",
+            label: "Contacts",
+          }) as never
+        );
+
+      const res = await request(app)
+        .get(
+          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&search=CONTACTS`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorEntities).toHaveLength(1);
+      expect(res.body.payload.total).toBe(1);
+    });
+
+    it("should return no results when search does not match any entity", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const { connectorInstanceId } = await seedConnectorInstance(
+        db as ReturnType<typeof drizzle>,
+        organizationId
+      );
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(
+          createConnEntity(organizationId, connectorInstanceId, {
+            key: "contacts",
+            label: "Contacts",
+          }) as never
+        );
+
+      const res = await request(app)
+        .get(
+          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&search=zzzznotfound`
+        )
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorEntities).toHaveLength(0);
+      expect(res.body.payload.total).toBe(0);
+    });
+
     it("should exclude soft-deleted field mappings from include=fieldMappings", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
