@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ConnectorDefinitionSchema } from "../models/connector-definition.model.js";
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
 
@@ -20,8 +21,15 @@ export const ConnectorInstanceListRequestQuerySchema = PaginationRequestQuerySch
 
 export type ConnectorInstanceListRequestQuery = z.infer<typeof ConnectorInstanceListRequestQuerySchema>;
 
+/** API schema for connector instances with their associated definition attached. */
+export const ConnectorInstanceWithDefinitionApiSchema = ConnectorInstanceApiSchema.extend({
+  connectorDefinition: ConnectorDefinitionSchema.nullable(),
+});
+
+export type ConnectorInstanceWithDefinitionApi = z.infer<typeof ConnectorInstanceWithDefinitionApiSchema>;
+
 export const ConnectorInstanceListResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  connectorInstances: z.array(ConnectorInstanceApiSchema),
+  connectorInstances: z.array(ConnectorInstanceWithDefinitionApiSchema),
 });
 
 export type ConnectorInstanceListResponsePayload = z.infer<typeof ConnectorInstanceListResponsePayloadSchema>;

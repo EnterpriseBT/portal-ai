@@ -13,6 +13,7 @@ import {
   ConnectorInstanceCreateRequestBodySchema,
   type ConnectorInstanceCreateResponsePayload,
   type ConnectorInstanceApi,
+  type ConnectorInstanceWithDefinitionApi,
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -114,7 +115,7 @@ connectorInstanceRouter.get(
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
 
       const [data, total] = await Promise.all([
-        DbService.repository.connectorInstances.findMany(where, {
+        DbService.repository.connectorInstances.findManyWithDefinition(where, {
           limit,
           offset,
           orderBy: { column, direction: sortOrder },
@@ -126,7 +127,7 @@ connectorInstanceRouter.get(
       });
 
       return HttpService.success<ConnectorInstanceListResponsePayload>(res, {
-        connectorInstances: data as unknown as ConnectorInstanceApi[],
+        connectorInstances: data as unknown as ConnectorInstanceWithDefinitionApi[],
         total,
         limit,
         offset,

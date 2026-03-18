@@ -5,13 +5,15 @@
  * and transparent encryption/decryption of the `credentials` column.
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc, desc, getTableColumns, type SQL } from "drizzle-orm";
 import { connectorInstances } from "../schema/index.js";
+import { connectorDefinitions } from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient } from "./base.repository.js";
+import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
 import type {
   ConnectorInstanceSelect,
   ConnectorInstanceInsert,
+  ConnectorDefinitionSelect,
 } from "../schema/zod.js";
 import {
   encryptCredentials,
@@ -110,6 +112,59 @@ export class ConnectorInstancesRepository extends Repository<
   ): Promise<ConnectorInstanceSelect> {
     const row = await super.upsert(encryptInsert(data), client);
     return decryptRow(row);
+  }
+
+  // ── Join queries ─────────────────────────────────────────────
+
+  /** Row shape returned by the LEFT JOIN query. */
+
+  /**
+   * Return instances with their associated connector definition attached.
+   * Uses a LEFT JOIN so instances are returned even if the definition is missing.
+   */
+  async findManyWithDefinition(
+    where: SQL | undefined,
+    opts: ListOptions = {},
+    client: DbClient = db
+  ): Promise<
+    (ConnectorInstanceSelect & {
+      connectorDefinition: ConnectorDefinitionSelect | null;
+    })[]
+  > {
+    const conditions = this.withSoftDelete(where, opts.includeDeleted);
+
+    let query = (client as typeof db)
+      .select({
+        instance: getTableColumns(connectorInstances),
+        definition: getTableColumns(connectorDefinitions),
+      })
+      .from(connectorInstances)
+      .leftJoin(
+        connectorDefinitions,
+        eq(
+          connectorInstances.connectorDefinitionId,
+          connectorDefinitions.id
+        )
+      )
+      .where(conditions)
+      .$dynamic();
+
+    if (opts.orderBy) {
+      const orderFn = opts.orderBy.direction === "desc" ? desc : asc;
+      query = query.orderBy(orderFn(opts.orderBy.column));
+    }
+    if (opts.limit !== undefined) query = query.limit(opts.limit);
+    if (opts.offset !== undefined) query = query.offset(opts.offset);
+
+    const rows = await query;
+
+    return rows.map((row) => {
+      const decrypted = decryptRow(row.instance);
+      return {
+        ...decrypted,
+        connectorDefinition: row.definition,
+      };
+    });
   }
 
   // ── Custom queries ──────────────────────────────────────────

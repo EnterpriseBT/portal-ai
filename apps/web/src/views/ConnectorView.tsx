@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import type { ComponentType } from "react";
 
 import {
@@ -99,24 +99,6 @@ export const ConnectorView = () => {
     ],
   });
 
-  // Bulk-fetch all definitions for icon/display lookup
-  const { data: allDefinitionsData } = sdk.connectorDefinitions.list({
-    limit: 1000,
-    offset: 0,
-    sortBy: "display",
-    sortOrder: "asc",
-  });
-
-  const definitionMap = useMemo(() => {
-    const map = new Map<string, ConnectorDefinition>();
-    if (allDefinitionsData?.connectorDefinitions) {
-      for (const cd of allDefinitionsData.connectorDefinitions) {
-        map.set(cd.id, cd);
-      }
-    }
-    return map;
-  }, [allDefinitionsData]);
-
   const handleInstanceClick = useCallback(
     (ci: ConnectorInstanceApi) => {
       navigate({ to: `/connectors/${ci.id}` });
@@ -175,9 +157,7 @@ export const ConnectorView = () => {
                           <ConnectorInstanceCardUI
                             key={ci.id}
                             connectorInstance={ci}
-                            connectorDefinition={definitionMap.get(
-                              ci.connectorDefinitionId
-                            )}
+                            connectorDefinition={ci.connectorDefinition ?? undefined}
                             onClick={handleInstanceClick}
                           />
                         ))}
