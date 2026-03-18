@@ -116,6 +116,11 @@ export const WithDisabledOption: Story = {
 };
 
 export const Interactive: Story = {
+  args: {
+    label: "Fruit",
+    options: sampleOptions,
+    value: "",
+  },
   render: () => {
     const [value, setValue] = useState("");
     return (

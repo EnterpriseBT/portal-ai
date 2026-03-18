@@ -42,6 +42,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     open: true,
+    onClose: () => {},
     title: "Modal Title",
     children: (
       <Typography>This is the modal content.</Typography>
@@ -52,6 +53,7 @@ export const Default: Story = {
 export const WithActions: Story = {
   args: {
     open: true,
+    onClose: () => {},
     title: "Confirm Action",
     children: (
       <Typography>Are you sure you want to proceed?</Typography>
@@ -68,6 +70,7 @@ export const WithActions: Story = {
 export const NoCloseButton: Story = {
   args: {
     open: true,
+    onClose: () => {},
     title: "Important Notice",
     showCloseButton: false,
     children: (
@@ -77,30 +80,36 @@ export const NoCloseButton: Story = {
   },
 };
 
+const InteractiveRender = () => {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Open Modal</Button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Interactive Modal"
+        actions={
+          <>
+            <Button variant="text" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="contained" onClick={() => setOpen(false)}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        <Typography>Click the buttons to interact with this modal.</Typography>
+      </Modal>
+    </>
+  );
+};
+
 export const Interactive: Story = {
-  render: () => {
-    const [open, setOpen] = useState(false);
-    return (
-      <>
-        <Button onClick={() => setOpen(true)}>Open Modal</Button>
-        <Modal
-          open={open}
-          onClose={() => setOpen(false)}
-          title="Interactive Modal"
-          actions={
-            <>
-              <Button variant="text" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="contained" onClick={() => setOpen(false)}>
-                Save
-              </Button>
-            </>
-          }
-        >
-          <Typography>Click the buttons to interact with this modal.</Typography>
-        </Modal>
-      </>
-    );
+  args: {
+    open: false,
+    onClose: () => {},
   },
+  render: InteractiveRender,
 };

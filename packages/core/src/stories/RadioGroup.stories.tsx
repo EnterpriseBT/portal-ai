@@ -81,6 +81,10 @@ export const WithDisabledOption: Story = {
 };
 
 export const Interactive: Story = {
+  args: {
+    label: "Size",
+    options: sampleOptions,
+  },
   render: () => {
     const [value, setValue] = useState("medium");
     return (

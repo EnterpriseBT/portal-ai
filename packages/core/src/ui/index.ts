@@ -15,6 +15,7 @@ export * from "./Select.js";
 export * from "./RadioGroup.js";
 export * from "./FileUploader.js";
 export * from "./Stepper.js";
+export * from "./Breadcrumbs.js";
 
 /** Material UI */
 export {
