@@ -107,7 +107,7 @@ export const SidebarNavUI = ({
             top: 0,
             right: 0,
             translate: "50% -50%",
-            zIndex: 9999,
+            zIndex: 1300,
           }}
         >
           <Box

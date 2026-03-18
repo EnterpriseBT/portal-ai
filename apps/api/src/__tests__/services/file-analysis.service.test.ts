@@ -99,13 +99,13 @@ describe("FileAnalysisService", () => {
     mockGenerateObject.mockReset();
   });
 
-  describe("analyzeFile() — AI path", () => {
+  describe("getRecommendations() — AI path", () => {
     it("returns valid FileUploadRecommendationEntitySchema output", async () => {
       const parseResult = makeParseResult();
       const aiResult = makeAiRecommendation(parseResult);
       mockGenerateObject.mockResolvedValue({ object: aiResult });
 
-      const result = await FileAnalysisService.analyzeFile({
+      const result = await FileAnalysisService.getRecommendations({
         parseResult,
         existingColumns: [],
         priorRecommendations: [],
@@ -120,7 +120,7 @@ describe("FileAnalysisService", () => {
       const aiResult = makeAiRecommendation(parseResult);
       mockGenerateObject.mockResolvedValue({ object: aiResult });
 
-      const result = await FileAnalysisService.analyzeFile({
+      const result = await FileAnalysisService.getRecommendations({
         parseResult,
         existingColumns: [],
         priorRecommendations: [],
@@ -138,7 +138,7 @@ describe("FileAnalysisService", () => {
       abortError.name = "AbortError";
       mockGenerateObject.mockRejectedValue(abortError);
 
-      const result = await FileAnalysisService.analyzeFile({
+      const result = await FileAnalysisService.getRecommendations({
         parseResult,
         existingColumns: [],
         priorRecommendations: [],
@@ -161,7 +161,7 @@ describe("FileAnalysisService", () => {
         .mockResolvedValueOnce({ object: { invalid: true } })
         .mockResolvedValueOnce({ object: { invalid: true } });
 
-      const result = await FileAnalysisService.analyzeFile({
+      const result = await FileAnalysisService.getRecommendations({
         parseResult,
         existingColumns: [],
         priorRecommendations: [],
@@ -178,7 +178,7 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult();
       mockGenerateObject.mockRejectedValue(new Error("API rate limit"));
 
-      const result = await FileAnalysisService.analyzeFile({
+      const result = await FileAnalysisService.getRecommendations({
         parseResult,
         existingColumns: [],
         priorRecommendations: [],

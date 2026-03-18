@@ -7,7 +7,7 @@
  * Vercel AI SDK for structured LLM output.
  */
 
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 
 import type {
   FileParseResult,
@@ -55,14 +55,14 @@ export interface AnalyzeFileInput {
 async function aiAnalyze(input: AnalyzeFileInput): Promise<FileUploadRecommendationEntity> {
   const prompt = buildFileAnalysisPrompt(input);
 
-  const { object } = await generateObject({
+  const result = await generateText({
     model: AiService.providers.anthropic(AiService.DEFAULT_MODEL),
-    schema: FileUploadRecommendationEntitySchema,
+    output: Output.object({ schema: FileUploadRecommendationEntitySchema }),
     prompt,
     abortSignal: globalThis.AbortSignal.timeout(AI_TIMEOUT_MS),
   });
 
-  return object;
+  return result.output!;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ export class FileAnalysisService {
    * - AI error
    * - Zod validation failure (after 1 retry)
    */
-  static async analyzeFile(input: AnalyzeFileInput): Promise<FileUploadRecommendationEntity> {
+  static async getRecommendations(input: AnalyzeFileInput): Promise<FileUploadRecommendationEntity> {
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= MAX_AI_RETRIES; attempt++) {

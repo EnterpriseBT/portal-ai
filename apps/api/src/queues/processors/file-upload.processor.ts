@@ -395,7 +395,7 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
       `Analyzing file ${i + 1}/${parseResults.length}`
     );
 
-    const recommendation = await FileAnalysisService.analyzeFile({
+    const recommendation = await FileAnalysisService.getRecommendations({
       parseResult,
       existingColumns,
       priorRecommendations: entityRecommendations,

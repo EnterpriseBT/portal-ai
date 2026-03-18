@@ -19,7 +19,7 @@ const mockGetObjectStream = jest.fn<
 
 const mockFindByOrganizationId = jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]);
 
-const mockAnalyzeFile = jest.fn<(input: unknown) => Promise<unknown>>();
+const mockGetRecommendations = jest.fn<(input: unknown) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../../services/s3.service.js", () => ({
   S3Service: {
@@ -40,7 +40,7 @@ jest.unstable_mockModule("../../../services/db.service.js", () => ({
 
 jest.unstable_mockModule("../../../services/file-analysis.service.js", () => ({
   FileAnalysisService: {
-    analyzeFile: mockAnalyzeFile,
+    getRecommendations: mockGetRecommendations,
   },
 }));
 
@@ -119,7 +119,7 @@ describe("fileUploadProcessor", () => {
     mockHeadObject.mockReset();
     mockGetObjectStream.mockReset();
     mockFindByOrganizationId.mockReset().mockResolvedValue([]);
-    mockAnalyzeFile.mockReset().mockImplementation(async (raw: unknown) => {
+    mockGetRecommendations.mockReset().mockImplementation(async (raw: unknown) => {
       const input = raw as { parseResult: { fileName: string; columnStats: Array<{ name: string; sampleValues: string[] }> } };
       return {
         entityKey: input.parseResult.fileName.replace(/\.[^.]+$/, "").toLowerCase(),
