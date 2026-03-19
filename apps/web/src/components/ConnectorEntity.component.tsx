@@ -20,6 +20,8 @@ import TableRow from "@mui/material/TableRow";
 import CheckIcon from "@mui/icons-material/Check";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import { Link } from "@tanstack/react-router";
 
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
@@ -92,7 +94,9 @@ export const FieldMappingTableUI: React.FC<FieldMappingTableUIProps> = ({
                 {fm.columnDefinition?.type ?? "—"}
               </TableCell>
               <TableCell>
-                {fm.columnDefinition?.required && <CheckIcon fontSize="small" />}
+                {fm.columnDefinition?.required && (
+                  <CheckIcon fontSize="small" />
+                )}
               </TableCell>
               <TableCell>
                 {fm.isPrimaryKey && <CheckIcon fontSize="small" />}
@@ -147,6 +151,22 @@ export const ConnectorEntityCardUI: React.FC<ConnectorEntityCardUIProps> = ({
       </CardContent>
       <Collapse in={expanded}>
         <Box sx={{ px: 2, pb: 2 }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={0.5}
+            sx={{ mb: 1 }}
+          >
+            <Link
+              to="/entities/$entityId"
+              params={{ entityId: entity.id }}
+              onClick={(e) => e.stopPropagation()}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
+              <OpenInNewIcon fontSize="small" />
+              <Typography variant="body2">View Records</Typography>
+            </Link>
+          </Stack>
           <FieldMappingTableUI fieldMappings={mappings} />
         </Box>
       </Collapse>
