@@ -9,12 +9,13 @@ import { eq, and, inArray, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { connectorEntities, fieldMappings, columnDefinitions } from "../schema/index.js";
+import { connectorEntities, connectorInstances, fieldMappings, columnDefinitions } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
 import type {
   ConnectorEntitySelect,
   ConnectorEntityInsert,
+  ConnectorInstanceSelect,
   FieldMappingSelect,
   ColumnDefinitionSelect,
 } from "../schema/zod.js";
@@ -134,6 +135,43 @@ export class ConnectorEntitiesRepository extends Repository<
       ...entity,
       fieldMappings: mappingsByEntity.get(entity.id) ?? [],
     }));
+  }
+
+  /**
+   * Return entities with their full connector instance attached.
+   * Uses batch-loading to avoid N+1 queries.
+   */
+  async findManyWithInstance(
+    where: SQL | undefined,
+    opts: ListOptions = {},
+    client: DbClient = db
+  ): Promise<
+    (ConnectorEntitySelect & {
+      connectorInstance: ConnectorInstanceSelect;
+    })[]
+  > {
+    const entities = await this.findMany(where, opts, client);
+    if (entities.length === 0) return [];
+
+    const instanceIds = [
+      ...new Set(entities.map((e) => e.connectorInstanceId)),
+    ];
+
+    const instances = await (client as typeof db)
+      .select()
+      .from(connectorInstances)
+      .where(inArray(connectorInstances.id, instanceIds));
+
+    const instanceMap = new Map(instances.map((i) => [i.id, i]));
+
+    return entities
+      .filter((e) => instanceMap.has(e.connectorInstanceId))
+      .map((entity) => ({
+        ...entity,
+        connectorInstance: instanceMap.get(
+          entity.connectorInstanceId
+        )! as ConnectorInstanceSelect,
+      }));
   }
 
   /**

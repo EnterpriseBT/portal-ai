@@ -6,6 +6,7 @@ import {
   ConnectorEntityListRequestQuerySchema,
   type ConnectorEntityListResponsePayload,
   type ConnectorEntityListWithMappingsResponsePayload,
+  type ConnectorEntityListWithInstanceResponsePayload,
   type ConnectorEntityGetResponsePayload,
   ConnectorEntityCreateRequestBodySchema,
   type ConnectorEntityCreateResponsePayload,
@@ -110,17 +111,26 @@ connectorEntityRouter.get(
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
       const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
 
+      const fetchEntities = () => {
+        if (include === "fieldMappings") {
+          return DbService.repository.connectorEntities.findManyWithFieldMappings(where, listOpts);
+        }
+        if (include === "connectorInstance") {
+          return DbService.repository.connectorEntities.findManyWithInstance(where, listOpts);
+        }
+        return DbService.repository.connectorEntities.findMany(where, listOpts);
+      };
+
       const [data, total] = await Promise.all([
-        include === "fieldMappings"
-          ? DbService.repository.connectorEntities.findManyWithFieldMappings(where, listOpts)
-          : DbService.repository.connectorEntities.findMany(where, listOpts),
+        fetchEntities(),
         DbService.repository.connectorEntities.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector entities");
       });
 
-      return HttpService.success<ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload>(res, {
+      type ResponsePayload = ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload | ConnectorEntityListWithInstanceResponsePayload;
+      return HttpService.success<ResponsePayload>(res, {
         connectorEntities: data as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
         total,
         limit,

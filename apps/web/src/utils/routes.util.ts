@@ -4,6 +4,8 @@ export enum ApplicationRoute {
   Login = "/login",
   Connectors = "/connectors",
   ConnectorInstance = "/connectors/$connectorInstanceId",
+  Entities = "/entities",
+  Entity = "/entities/$entityId",
   ColumnDefinitions = "/column-definitions",
   ColumnDefinition = "/column-definitions/$columnDefinitionId",
   Jobs = "/jobs",

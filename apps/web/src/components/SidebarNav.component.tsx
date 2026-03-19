@@ -193,6 +193,12 @@ export const SidebarNav = () => {
         onClick={() => handleClick(ApplicationRoute.Connectors)}
       />
       <SidebarNavItem
+        icon={IconName.DataObject}
+        label="Entities"
+        selected={pathname.startsWith(ApplicationRoute.Entities)}
+        onClick={() => handleClick(ApplicationRoute.Entities)}
+      />
+      <SidebarNavItem
         icon={IconName.ViewColumn}
         label="Column Definitions"
         selected={pathname.startsWith(ApplicationRoute.ColumnDefinitions)}

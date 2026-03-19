@@ -230,9 +230,9 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [ ] Data table supports sorting by column
 - [ ] Sync/refresh button visible for hybrid connectors
 - [x] Soft-deleted records excluded from all queries
-- [ ] Entities list view renders all entities across organization with pagination
-- [ ] Entities list view supports filtering by connector instance
-- [ ] Clicking an entity in the list navigates to the entity detail view
+- [x] Entities list view renders all entities across organization with pagination
+- [x] Entities list view supports filtering by connector instance
+- [x] Clicking an entity in the list navigates to the entity detail view
 - [ ] All type checks pass (`npm run type-check`)
 
 ## Test Plan
@@ -291,24 +291,24 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [ ] Maps API response to `EntityRecordDataTableUI` props correctly
 
 #### Frontend — EntitiesDataTableUI (`apps/web/`)
-- [ ] Renders entity rows with label, key, connector instance name, and record count columns
-- [ ] Renders connector instance filter dropdown with all available instances
+- [x] Renders entity rows with label, key, connector instance name, and record count columns
+- [x] Renders connector instance filter dropdown with all available instances
 - [ ] Calls `onFilterByInstance` callback when a connector instance is selected
 - [ ] Calls `onPageChange` callback with new offset on pagination interaction
-- [ ] Renders empty state when no entities exist
-- [ ] Clicking an entity row calls `onEntityClick` with the entity ID
+- [x] Renders empty state when no entities exist
+- [x] Clicking an entity row calls `onEntityClick` with the entity ID
 
 #### Frontend — EntitiesDataTable (container) (`apps/web/`)
-- [ ] Calls connector entities API hook with correct organization ID and query params
-- [ ] Passes `connectorInstanceId` filter param to API when selected
+- [x] Calls connector entities API hook with correct organization ID and query params
+- [x] Passes `connectorInstanceId` filter param to API when selected
 - [ ] Passes loading state to UI component while fetching
 - [ ] Passes error state to UI component on API failure
-- [ ] Maps API response to `EntitiesDataTableUI` props correctly
+- [x] Maps API response to `EntitiesDataTableUI` props correctly
 
 #### Frontend — Entities View (`apps/web/`)
-- [ ] Renders page title and breadcrumbs
-- [ ] Renders `EntitiesDataTable` with pagination controls
-- [ ] Navigates to entity detail view on entity row click
+- [x] Renders page title and breadcrumbs
+- [x] Renders `EntitiesDataTable` with pagination controls
+- [x] Navigates to entity detail view on entity row click
 
 #### Frontend — ConnectorEntityDetail View (`apps/web/`)
 - [ ] Renders breadcrumbs: Connectors > Instance Name > Entity Label

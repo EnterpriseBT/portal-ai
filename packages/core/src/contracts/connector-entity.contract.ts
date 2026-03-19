@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { ColumnDefinitionSchema } from "../models/column-definition.model.js";
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
+import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import { FieldMappingSchema } from "../models/field-mapping.model.js";
 import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
 
@@ -19,11 +20,19 @@ export const ConnectorEntityWithMappingsSchema = ConnectorEntitySchema.extend({
 
 export type ConnectorEntityWithMappings = z.infer<typeof ConnectorEntityWithMappingsSchema>;
 
+// ── Enriched schema (entity + connector instance name) ───────────────
+
+export const ConnectorEntityWithInstanceSchema = ConnectorEntitySchema.extend({
+  connectorInstance: ConnectorInstanceSchema,
+});
+
+export type ConnectorEntityWithInstance = z.infer<typeof ConnectorEntityWithInstanceSchema>;
+
 // ── List ──────────────────────────────────────────────────────────────
 
 export const ConnectorEntityListRequestQuerySchema = PaginationRequestQuerySchema.extend({
   connectorInstanceId: z.string().optional(),
-  include: z.enum(["fieldMappings"]).optional(),
+  include: z.enum(["fieldMappings", "connectorInstance"]).optional(),
 });
 
 export type ConnectorEntityListRequestQuery = z.infer<typeof ConnectorEntityListRequestQuerySchema>;
@@ -39,6 +48,12 @@ export const ConnectorEntityListWithMappingsResponsePayloadSchema = PaginatedRes
 });
 
 export type ConnectorEntityListWithMappingsResponsePayload = z.infer<typeof ConnectorEntityListWithMappingsResponsePayloadSchema>;
+
+export const ConnectorEntityListWithInstanceResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
+  connectorEntities: z.array(ConnectorEntityWithInstanceSchema),
+});
+
+export type ConnectorEntityListWithInstanceResponsePayload = z.infer<typeof ConnectorEntityListWithInstanceResponsePayloadSchema>;
 
 // ── Get ───────────────────────────────────────────────────────────────
 
