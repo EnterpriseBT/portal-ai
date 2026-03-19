@@ -1,9 +1,9 @@
 import type {
   ColumnDefinitionGetResponsePayload,
   FieldMappingListRequestQuery,
-  FieldMappingListResponsePayload,
+  FieldMappingListWithConnectorEntityResponsePayload,
+  FieldMappingWithConnectorEntity,
 } from "@portalai/core/contracts";
-import type { FieldMapping } from "@portalai/core/models";
 import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
@@ -14,8 +14,9 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import CheckIcon from "@mui/icons-material/Check";
+import React from "react";
 
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
 import { FieldMappingDataList } from "../components/FieldMapping.component";
@@ -26,7 +27,10 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 
-const TYPE_COLOR: Record<string, "primary" | "secondary" | "success" | "warning" | "error" | "info" | "default"> = {
+const TYPE_COLOR: Record<
+  string,
+  "primary" | "secondary" | "success" | "warning" | "error" | "info" | "default"
+> = {
   string: "primary",
   number: "info",
   boolean: "success",
@@ -43,9 +47,9 @@ interface ColumnDefinitionDetailViewProps {
   columnDefinitionId: string;
 }
 
-export const ColumnDefinitionDetailView: React.FC<ColumnDefinitionDetailViewProps> = ({
-  columnDefinitionId,
-}) => {
+export const ColumnDefinitionDetailView: React.FC<
+  ColumnDefinitionDetailViewProps
+> = ({ columnDefinitionId }) => {
   const navigate = useNavigate();
 
   const mappingsPagination = usePagination({
@@ -62,11 +66,7 @@ export const ColumnDefinitionDetailView: React.FC<ColumnDefinitionDetailViewProp
       <ColumnDefinitionDataItem id={columnDefinitionId}>
         {(itemResult) => (
           <DataResult results={{ item: itemResult }}>
-            {({
-              item,
-            }: {
-              item: ColumnDefinitionGetResponsePayload;
-            }) => {
+            {({ item }: { item: ColumnDefinitionGetResponsePayload }) => {
               const cd = item.columnDefinition;
               return (
                 <Stack spacing={4}>
@@ -153,11 +153,14 @@ export const ColumnDefinitionDetailView: React.FC<ColumnDefinitionDetailViewProp
                     <PaginationToolbar {...mappingsPagination.toolbarProps} />
 
                     <Box sx={{ mt: 2 }}>
-                      <FieldMappingDataList
-                        query={{
-                          columnDefinitionId,
-                          ...mappingsPagination.queryParams,
-                        } as FieldMappingListRequestQuery}
+                      <FieldMappingDataList<FieldMappingListWithConnectorEntityResponsePayload>
+                        query={
+                          {
+                            columnDefinitionId,
+                            include: "connectorEntity",
+                            ...mappingsPagination.queryParams,
+                          } as FieldMappingListRequestQuery
+                        }
                       >
                         {(mappingsResult) => (
                           <SyncTotal
@@ -168,7 +171,7 @@ export const ColumnDefinitionDetailView: React.FC<ColumnDefinitionDetailViewProp
                               {({
                                 mappings,
                               }: {
-                                mappings: FieldMappingListResponsePayload;
+                                mappings: FieldMappingListWithConnectorEntityResponsePayload;
                               }) => {
                                 if (mappings.fieldMappings.length === 0) {
                                   return (
@@ -208,7 +211,7 @@ export const ColumnDefinitionDetailView: React.FC<ColumnDefinitionDetailViewProp
 // ── Field Mapping Table ─────────────────────────────────────────────
 
 interface FieldMappingTableProps {
-  fieldMappings: FieldMapping[];
+  fieldMappings: FieldMappingWithConnectorEntity[];
 }
 
 const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
@@ -219,7 +222,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
       <TableHead>
         <TableRow>
           <TableCell>Source Field</TableCell>
-          <TableCell>Connector Entity ID</TableCell>
+          <TableCell>Connector Entity</TableCell>
           <TableCell>Primary Key</TableCell>
         </TableRow>
       </TableHead>
@@ -227,8 +230,17 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
         {fieldMappings.map((fm) => (
           <TableRow key={fm.id}>
             <TableCell>{fm.sourceField}</TableCell>
-            <TableCell sx={{ fontFamily: "monospace" }}>
-              {fm.connectorEntityId}
+            <TableCell>
+              {fm.connectorEntity ? (
+                <Link
+                  to="/entities/$entityId"
+                  params={{ entityId: fm.connectorEntity.id }}
+                >
+                  {fm.connectorEntity.label}
+                </Link>
+              ) : (
+                fm.connectorEntityId
+              )}
             </TableCell>
             <TableCell>
               {fm.isPrimaryKey && <CheckIcon fontSize="small" />}

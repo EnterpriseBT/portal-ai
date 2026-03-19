@@ -5,6 +5,7 @@ import { FieldMappingModelFactory } from "@portalai/core/models";
 import {
   FieldMappingListRequestQuerySchema,
   type FieldMappingListResponsePayload,
+  type FieldMappingListWithConnectorEntityResponsePayload,
   type FieldMappingGetResponsePayload,
   FieldMappingCreateRequestBodySchema,
   type FieldMappingCreateResponsePayload,
@@ -89,7 +90,7 @@ fieldMappingRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, connectorEntityId, columnDefinitionId } =
+      const { limit, offset, sortBy, sortOrder, search, connectorEntityId, columnDefinitionId, include } =
         FieldMappingListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -111,21 +112,26 @@ fieldMappingRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
+
+      const fetchMappings = () => {
+        if (include === "connectorEntity") {
+          return DbService.repository.fieldMappings.findManyWithConnectorEntity(where, listOpts);
+        }
+        return DbService.repository.fieldMappings.findMany(where, listOpts);
+      };
 
       const [data, total] = await Promise.all([
-        DbService.repository.fieldMappings.findMany(where, {
-          limit,
-          offset,
-          orderBy: { column, direction: sortOrder },
-        }),
+        fetchMappings(),
         DbService.repository.fieldMappings.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.FIELD_MAPPING_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list field mappings");
       });
 
-      return HttpService.success<FieldMappingListResponsePayload>(res, {
-        fieldMappings: data as unknown as FieldMappingListResponsePayload["fieldMappings"],
+      type ResponsePayload = FieldMappingListResponsePayload | FieldMappingListWithConnectorEntityResponsePayload;
+      return HttpService.success<ResponsePayload>(res, {
+        fieldMappings: data as unknown as FieldMappingListWithConnectorEntityResponsePayload["fieldMappings"],
         total,
         limit,
         offset,

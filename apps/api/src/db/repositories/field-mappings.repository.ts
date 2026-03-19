@@ -5,15 +5,16 @@
  * column-definition-scoped queries and composite-key upserts.
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc, desc, getTableColumns, type SQL } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { fieldMappings } from "../schema/index.js";
+import { fieldMappings, connectorEntities } from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient } from "./base.repository.js";
+import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
 import type {
   FieldMappingSelect,
   FieldMappingInsert,
+  ConnectorEntitySelect,
 } from "../schema/zod.js";
 
 export class FieldMappingsRepository extends Repository<
@@ -55,6 +56,47 @@ export class FieldMappingsRepository extends Repository<
           this.notDeleted()
         )
       )) as FieldMappingSelect[];
+  }
+
+  /**
+   * Return field mappings with their associated connector entity attached.
+   * Uses a LEFT JOIN so mappings are returned even if the entity is missing.
+   */
+  async findManyWithConnectorEntity(
+    where: SQL | undefined,
+    opts: ListOptions = {},
+    client: DbClient = db
+  ): Promise<
+    (FieldMappingSelect & { connectorEntity: ConnectorEntitySelect | null })[]
+  > {
+    const conditions = this.withSoftDelete(where, opts.includeDeleted);
+
+    let query = (client as typeof db)
+      .select({
+        fieldMapping: getTableColumns(fieldMappings),
+        connectorEntity: getTableColumns(connectorEntities),
+      })
+      .from(fieldMappings)
+      .leftJoin(
+        connectorEntities,
+        eq(fieldMappings.connectorEntityId, connectorEntities.id)
+      )
+      .where(conditions)
+      .$dynamic();
+
+    if (opts.orderBy) {
+      const orderFn = opts.orderBy.direction === "desc" ? desc : asc;
+      query = query.orderBy(orderFn(opts.orderBy.column));
+    }
+    if (opts.limit !== undefined) query = query.limit(opts.limit);
+    if (opts.offset !== undefined) query = query.offset(opts.offset);
+
+    const rows = await query;
+
+    return rows.map((row) => ({
+      ...(row.fieldMapping as FieldMappingSelect),
+      connectorEntity: row.connectorEntity as ConnectorEntitySelect | null,
+    }));
   }
 
   /**
