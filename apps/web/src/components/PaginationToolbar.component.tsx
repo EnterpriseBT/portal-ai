@@ -12,6 +12,7 @@ import Switch from "@mui/material/Switch";
 import Divider from "@mui/material/Divider";
 import SearchIcon from "@mui/icons-material/Search";
 import FilterListIcon from "@mui/icons-material/FilterList";
+import TuneIcon from "@mui/icons-material/Tune";
 import SortIcon from "@mui/icons-material/Sort";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
@@ -24,6 +25,20 @@ import IconButton from "@mui/material/IconButton";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import { Button, Typography } from "@portalai/core/ui";
+
+import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/contracts";
+import {
+  serializeFilterExpression,
+  isFilterExpressionEmpty,
+  countActiveConditions,
+  createEmptyExpression,
+  collectConditions,
+  removeConditionByIndex,
+  getOperatorLabel,
+} from "../utils/advanced-filter-builder.util";
+const AdvancedFilterBuilderLazy = React.lazy(
+  () => import("./AdvancedFilterBuilder.component").then((m) => ({ default: m.AdvancedFilterBuilder }))
+);
 
 // --- Configuration Types ---
 
@@ -78,6 +93,7 @@ export interface PaginationPersistedState {
   sortBy: string;
   sortOrder: "asc" | "desc";
   limit: number;
+  advancedFilters?: FilterExpression;
 }
 
 export interface UsePaginationConfig {
@@ -91,11 +107,14 @@ export interface UsePaginationConfig {
   initialValue?: PaginationPersistedState;
   /** Called whenever persisted state changes — use to save to storage. */
   onPersist?: (state: PaginationPersistedState) => void;
+  /** Column definitions for the advanced filter builder. When provided, the builder UI is shown. */
+  columnDefinitions?: ColumnDefinitionSummary[];
 }
 
 export interface UsePaginationReturn {
   search: string;
   filters: Record<string, string[]>;
+  advancedFilters: FilterExpression;
   sortBy: string;
   sortOrder: "asc" | "desc";
   offset: number;
@@ -104,6 +123,8 @@ export interface UsePaginationReturn {
   setSearch: (value: string) => void;
   setFilter: (field: string, values: string[]) => void;
   setFilterValue: (field: string, value: string) => void;
+  setAdvancedFilters: (expr: FilterExpression) => void;
+  clearAdvancedFilters: () => void;
   setSortBy: (field: string) => void;
   setSortOrder: (order: "asc" | "desc") => void;
   toggleSortOrder: () => void;
@@ -126,6 +147,7 @@ export function usePagination(
     limitOptions = [5, 10, 20, 50, 100],
     initialValue,
     onPersist,
+    columnDefinitions = [],
   } = config;
 
   const [search, setSearchRaw] = React.useState(initialValue?.search ?? "");
@@ -150,8 +172,11 @@ export function usePagination(
     initialValue?.limit ?? defaultLimit
   );
   const [total, setTotal] = React.useState(0);
+  const [advancedFilters, setAdvancedFiltersRaw] = React.useState<FilterExpression>(
+    () => initialValue?.advancedFilters ?? createEmptyExpression()
+  );
 
-  const persistRef = React.useRef({ search, filters, sortBy, sortOrder, limit });
+  const persistRef = React.useRef({ search, filters, sortBy, sortOrder, limit, advancedFilters });
 
   const persist = React.useCallback(
     (patch: Partial<PaginationPersistedState>) => {
@@ -260,8 +285,11 @@ export function usePagination(
         params[field] = values[0];
       }
     }
+    if (!isFilterExpressionEmpty(advancedFilters)) {
+      params.filters = serializeFilterExpression(advancedFilters);
+    }
     return params;
-  }, [search, filters, filterConfigs, sortBy, sortOrder, offset, limit]);
+  }, [search, filters, filterConfigs, advancedFilters, sortBy, sortOrder, offset, limit]);
 
   const activeFilterCount = Object.values(filters).reduce(
     (count, values) => count + values.length,
@@ -279,6 +307,24 @@ export function usePagination(
     },
     [resetOffset, persist]
   );
+
+  const setAdvancedFilters = React.useCallback(
+    (expr: FilterExpression) => {
+      setAdvancedFiltersRaw(expr);
+      persist({ advancedFilters: expr });
+      resetOffset();
+    },
+    [resetOffset, persist]
+  );
+
+  const clearAdvancedFilters = React.useCallback(() => {
+    const empty = createEmptyExpression();
+    setAdvancedFiltersRaw(empty);
+    persist({ advancedFilters: empty });
+    resetOffset();
+  }, [resetOffset, persist]);
+
+  const advancedFilterConditionCount = countActiveConditions(advancedFilters);
 
   const toolbarProps: PaginationToolbarProps = {
     search,
@@ -303,11 +349,17 @@ export function usePagination(
     onPrev: goToPrev,
     onNext: goToNext,
     onLast: goToLast,
+    advancedFilters,
+    onAdvancedFiltersChange: setAdvancedFilters,
+    onAdvancedFiltersClear: clearAdvancedFilters,
+    advancedFilterConditionCount,
+    columnDefinitions,
   };
 
   return {
     search,
     filters,
+    advancedFilters,
     sortBy,
     sortOrder,
     offset,
@@ -316,6 +368,8 @@ export function usePagination(
     setSearch,
     setFilter,
     setFilterValue,
+    setAdvancedFilters,
+    clearAdvancedFilters,
     setSortBy,
     setSortOrder,
     toggleSortOrder,
@@ -352,6 +406,16 @@ export interface PaginationToolbarProps {
   onPrev: () => void;
   onNext: () => void;
   onLast: () => void;
+  /** Advanced filter expression state. */
+  advancedFilters?: FilterExpression;
+  /** Called when advanced filters change. */
+  onAdvancedFiltersChange?: (expr: FilterExpression) => void;
+  /** Clear all advanced filters. */
+  onAdvancedFiltersClear?: () => void;
+  /** Number of active advanced filter conditions. */
+  advancedFilterConditionCount?: number;
+  /** Column definitions for the advanced filter builder. */
+  columnDefinitions?: ColumnDefinitionSummary[];
 }
 
 export const PaginationToolbar = React.forwardRef<
@@ -381,6 +445,11 @@ export const PaginationToolbar = React.forwardRef<
       onPrev,
       onNext,
       onLast,
+      advancedFilters,
+      onAdvancedFiltersChange,
+      onAdvancedFiltersClear,
+      advancedFilterConditionCount = 0,
+      columnDefinitions,
     },
     ref
   ) => {
@@ -390,9 +459,15 @@ export const PaginationToolbar = React.forwardRef<
     const [sortAnchor, setSortAnchor] = React.useState<HTMLElement | null>(
       null
     );
+    const [advFilterAnchor, setAdvFilterAnchor] = React.useState<HTMLElement | null>(
+      null
+    );
 
     const filterOpen = Boolean(filterAnchor);
     const sortOpen = Boolean(sortAnchor);
+    const advFilterOpen = Boolean(advFilterAnchor);
+
+    const showAdvancedFilters = columnDefinitions && columnDefinitions.length > 0;
 
     return (
       <Box ref={ref} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -606,6 +681,41 @@ export const PaginationToolbar = React.forwardRef<
             </>
           )}
 
+          {/* Advanced Filters Button */}
+          {showAdvancedFilters && (
+            <>
+              <Badge badgeContent={advancedFilterConditionCount} color="secondary">
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<TuneIcon />}
+                  onClick={(e) => setAdvFilterAnchor(e.currentTarget)}
+                >
+                  Advanced Filters
+                </Button>
+              </Badge>
+
+              <Popover
+                open={advFilterOpen}
+                anchorEl={advFilterAnchor}
+                onClose={() => setAdvFilterAnchor(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                transformOrigin={{ vertical: "top", horizontal: "left" }}
+                slotProps={{ paper: { sx: { maxHeight: "70vh", overflow: "auto" } } }}
+              >
+                {advancedFilters && onAdvancedFiltersChange && (
+                  <React.Suspense fallback={<Box sx={{ p: 2 }}><Typography variant="body2">Loading...</Typography></Box>}>
+                    <AdvancedFilterBuilderLazy
+                      expression={advancedFilters}
+                      onChange={onAdvancedFiltersChange}
+                      columnDefinitions={columnDefinitions!}
+                    />
+                  </React.Suspense>
+                )}
+              </Popover>
+            </>
+          )}
+
           {/* Spacer */}
           <Box sx={{ flex: 1 }} />
 
@@ -703,6 +813,49 @@ export const PaginationToolbar = React.forwardRef<
                 />
               );
             })}
+          </Box>
+        )}
+
+        {/* Advanced filter chips */}
+        {advancedFilters && advancedFilterConditionCount > 0 && onAdvancedFiltersChange && (
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+            {collectConditions(advancedFilters).map((cond, idx) => {
+              const colDef = columnDefinitions?.find((c) => c.key === cond.field);
+              const label = colDef?.label ?? cond.field;
+              const opLabel = getOperatorLabel(cond.operator);
+              const valueStr = cond.value == null
+                ? ""
+                : Array.isArray(cond.value)
+                  ? cond.value.join(", ")
+                  : String(cond.value);
+              const chipLabel = valueStr
+                ? `${label} ${opLabel} ${valueStr}`
+                : `${label} ${opLabel}`;
+
+              return (
+                <Chip
+                  key={`adv-${idx}`}
+                  label={chipLabel}
+                  size="small"
+                  color="secondary"
+                  variant="outlined"
+                  onDelete={() => {
+                    const updated = removeConditionByIndex(advancedFilters, idx);
+                    onAdvancedFiltersChange(updated);
+                  }}
+                />
+              );
+            })}
+            {onAdvancedFiltersClear && (
+              <Chip
+                label="Clear all"
+                size="small"
+                variant="outlined"
+                onClick={onAdvancedFiltersClear}
+                onDelete={onAdvancedFiltersClear}
+                deleteIcon={<CloseIcon />}
+              />
+            )}
           </Box>
         )}
       </Box>

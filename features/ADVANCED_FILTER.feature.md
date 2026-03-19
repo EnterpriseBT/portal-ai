@@ -89,33 +89,33 @@ Frontend FilterBuilder UI
 
 ### Phase 3: Frontend Filter Builder UI (`apps/web`)
 
-- [ ] **3.1** Create `src/components/AdvancedFilterBuilder.component.tsx` — recursive filter group/condition builder
+- [x] **3.1** Create `src/components/AdvancedFilterBuilder.component.tsx` — recursive filter group/condition builder
   - Top-level group with AND/OR toggle
   - "Add condition" and "Add group" buttons
   - Each condition row: column select → operator select (filtered by column type) → value input (type-aware)
   - Remove button per condition/group
   - Max depth / max conditions enforcement with disabled add buttons
-- [ ] **3.2** Create type-aware value inputs:
+- [x] **3.2** Create type-aware value inputs:
   - `string`: text field
   - `number`/`currency`: number input (two inputs for `between`)
   - `boolean`: true/false toggle
   - `date`/`datetime`: date picker (two pickers for `between`)
   - `enum`: select/multi-select from `enumValues` on the column definition
-- [ ] **3.3** Create `src/components/AdvancedFilterBuilder.util.ts`:
+- [x] **3.3** Create `src/components/AdvancedFilterBuilder.util.ts`:
   - `serializeFilterExpression(expr: FilterExpression): string` — base64 encode
   - `deserializeFilterExpression(str: string): FilterExpression | null` — decode + validate
   - `isFilterExpressionEmpty(expr: FilterExpression): boolean`
   - `countActiveConditions(expr: FilterExpression): number`
-- [ ] **3.4** Extend `PaginationPersistedState` with optional `advancedFilters?: FilterExpression`
-- [ ] **3.5** Extend `usePagination` hook:
+- [x] **3.4** Extend `PaginationPersistedState` with optional `advancedFilters?: FilterExpression`
+- [x] **3.5** Extend `usePagination` hook:
   - Add `advancedFilters` state, `setAdvancedFilters()` setter
   - Serialize into `queryParams.filters` when non-empty
   - Persist/restore from localStorage
   - Reset offset on filter change
-- [ ] **3.6** Integrate `AdvancedFilterBuilder` into `PaginationToolbar` — add "Advanced Filters" button that opens a popover/drawer with the filter builder
-- [ ] **3.7** Show active advanced filter count badge on the button
-- [ ] **3.8** Show summary chips for active conditions below toolbar (consistent with existing filter chip pattern)
-- [ ] **3.9** Add "Clear all filters" action
+- [x] **3.6** Integrate `AdvancedFilterBuilder` into `PaginationToolbar` — add "Advanced Filters" button that opens a popover/drawer with the filter builder
+- [x] **3.7** Show active advanced filter count badge on the button
+- [x] **3.8** Show summary chips for active conditions below toolbar (consistent with existing filter chip pattern)
+- [x] **3.9** Add "Clear all filters" action
 
 ### Phase 4: Entity Detail View Integration (`apps/web`)
 
