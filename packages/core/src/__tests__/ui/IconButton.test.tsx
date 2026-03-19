@@ -15,7 +15,7 @@ describe("IconButton Component", () => {
 
   describe("Icon Display", () => {
     it("should display the correct icon", () => {
-      const { container } = render(
+      const { container: _container } = render(
         <IconButton icon={IconName.Home} aria-label="home button" />
       );
 

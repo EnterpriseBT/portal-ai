@@ -1,5 +1,5 @@
-import React from "react";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import React, { useEffect } from "react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
 import {
@@ -31,7 +31,9 @@ const UseStepperExample = ({
   const { stepperProps, getStepPanelProps, navigationProps, validationError } =
     useStepper({ steps, onComplete, onStepChange });
 
-  lastValidationError = validationError;
+  useEffect(() => {
+    lastValidationError = validationError;
+  });
 
   return (
     <>

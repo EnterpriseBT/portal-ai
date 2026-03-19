@@ -1,4 +1,3 @@
-import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { Breadcrumbs } from "../ui/Breadcrumbs";
 import { IconName } from "../ui/Icon";

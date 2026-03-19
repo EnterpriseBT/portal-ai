@@ -85,7 +85,7 @@ export const Interactive: Story = {
     label: "Size",
     options: sampleOptions,
   },
-  render: () => {
+  render: function InteractiveRadioGroup() {
     const [value, setValue] = useState("medium");
     return (
       <RadioGroup

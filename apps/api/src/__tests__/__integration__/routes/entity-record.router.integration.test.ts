@@ -1328,8 +1328,8 @@ describe("Entity Record Router — GIN Index Performance", () => {
         AND indexname = 'entity_records_normalized_data_gin'
     `);
 
-    expect(result.rows.length).toBe(1);
-    const indexDef = (result.rows[0] as { indexdef: string }).indexdef.toLowerCase();
+    expect(result.length).toBe(1);
+    const indexDef = (result[0] as { indexdef: string }).indexdef.toLowerCase();
     expect(indexDef).toContain("gin");
     expect(indexDef).toContain("normalized_data");
   });
@@ -1383,8 +1383,8 @@ describe("Entity Record Router — GIN Index Performance", () => {
     `);
 
     // The query plan should exist and be valid JSON
-    expect(explainResult.rows.length).toBeGreaterThan(0);
-    const plan = JSON.stringify(explainResult.rows[0]);
+    expect(explainResult.length).toBeGreaterThan(0);
+    const plan = JSON.stringify(explainResult[0]);
     // With only 10 rows the planner may choose a sequential scan,
     // which is correct behavior — the GIN index is for larger datasets.
     // We verify the index exists (previous test) and the query executes without error.

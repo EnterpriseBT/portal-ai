@@ -121,7 +121,7 @@ export const Interactive: Story = {
     options: sampleOptions,
     value: "",
   },
-  render: () => {
+  render: function InteractiveSelect() {
     const [value, setValue] = useState("");
     return (
       <Select

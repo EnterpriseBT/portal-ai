@@ -77,7 +77,7 @@ export const Disabled: Story = {
 };
 
 export const Interactive: Story = {
-  render: () => {
+  render: function InteractiveCheckbox() {
     const [checked, setChecked] = useState(false);
     return (
       <Checkbox
