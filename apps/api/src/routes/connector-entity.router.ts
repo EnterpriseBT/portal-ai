@@ -16,10 +16,14 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { connectorEntities } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { entityRecordRouter } from "./entity-record.router.js";
 
 const logger = createLogger({ module: "connector-entity" });
 
 export const connectorEntityRouter = Router();
+
+// Nest the entity records router under /:connectorEntityId/records
+connectorEntityRouter.use("/:connectorEntityId/records", entityRecordRouter);
 
 /** Map of sortable field names to their Drizzle columns. */
 const SORTABLE_COLUMNS: Record<string, Column> = {

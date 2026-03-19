@@ -223,13 +223,13 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [x] `entity_records` table created with JSONB `data`/`normalizedData`, `sourceId`, `checksum`, `syncedAt`
 - [x] GIN index on `normalizedData` and unique constraint on `(connectorEntityId, sourceId)`
 - [x] CSV adapter implements `ConnectorAdapter` with `accessMode: 'import'`
-- [ ] `GET /api/connector-entities/:id/records` returns paginated records with column metadata
-- [ ] Records API supports `limit`, `offset`, `sort`, `columns` query params
-- [ ] `POST /api/connector-entities/:id/sync` triggers adapter sync and updates `lastSyncAt`
+- [x] `GET /api/connector-entities/:id/records` returns paginated records with column metadata
+- [x] Records API supports `limit`, `offset`, `sort`, `columns` query params
+- [x] `POST /api/connector-entities/:id/sync` triggers adapter sync and updates `lastSyncAt`
 - [ ] Entity detail view renders paginated data table with column headers from field mappings
 - [ ] Data table supports sorting by column
 - [ ] Sync/refresh button visible for hybrid connectors
-- [ ] Soft-deleted records excluded from all queries
+- [x] Soft-deleted records excluded from all queries
 - [ ] Entities list view renders all entities across organization with pagination
 - [ ] Entities list view supports filtering by connector instance
 - [ ] Clicking an entity in the list navigates to the entity detail view

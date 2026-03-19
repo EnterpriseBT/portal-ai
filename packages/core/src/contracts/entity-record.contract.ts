@@ -1,0 +1,81 @@
+import { z } from "zod";
+
+import { ColumnDataTypeEnum } from "../models/column-definition.model.js";
+import { EntityRecordSchema } from "../models/entity-record.model.js";
+import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
+
+// ── Column summary (returned alongside record rows) ─────────────────
+
+export const ColumnDefinitionSummarySchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: ColumnDataTypeEnum,
+});
+
+export type ColumnDefinitionSummary = z.infer<typeof ColumnDefinitionSummarySchema>;
+
+// ── List records ────────────────────────────────────────────────────
+
+export const EntityRecordListRequestQuerySchema = PaginationRequestQuerySchema.extend({
+  columns: z.string().optional(),
+});
+
+export type EntityRecordListRequestQuery = z.infer<typeof EntityRecordListRequestQuerySchema>;
+
+export const EntityRecordListResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
+  records: z.array(EntityRecordSchema),
+  columns: z.array(ColumnDefinitionSummarySchema),
+  source: z.enum(["cache", "live"]),
+});
+
+export type EntityRecordListResponsePayload = z.infer<typeof EntityRecordListResponsePayloadSchema>;
+
+// ── Count records ───────────────────────────────────────────────────
+
+export const EntityRecordCountResponsePayloadSchema = z.object({
+  total: z.number(),
+});
+
+export type EntityRecordCountResponsePayload = z.infer<typeof EntityRecordCountResponsePayloadSchema>;
+
+// ── Bulk import ─────────────────────────────────────────────────────
+
+export const EntityRecordImportRowSchema = z.object({
+  data: z.record(z.string(), z.unknown()),
+  normalizedData: z.record(z.string(), z.unknown()),
+  sourceId: z.string(),
+  checksum: z.string(),
+});
+
+export const EntityRecordImportRequestBodySchema = z.object({
+  records: z.array(EntityRecordImportRowSchema).min(1),
+});
+
+export type EntityRecordImportRequestBody = z.infer<typeof EntityRecordImportRequestBodySchema>;
+
+export const EntityRecordImportResponsePayloadSchema = z.object({
+  created: z.number(),
+  updated: z.number(),
+  unchanged: z.number(),
+});
+
+export type EntityRecordImportResponsePayload = z.infer<typeof EntityRecordImportResponsePayloadSchema>;
+
+// ── Sync ────────────────────────────────────────────────────────────
+
+export const EntityRecordSyncResponsePayloadSchema = z.object({
+  created: z.number(),
+  updated: z.number(),
+  unchanged: z.number(),
+  errors: z.number(),
+});
+
+export type EntityRecordSyncResponsePayload = z.infer<typeof EntityRecordSyncResponsePayloadSchema>;
+
+// ── Delete (clear) ──────────────────────────────────────────────────
+
+export const EntityRecordDeleteResponsePayloadSchema = z.object({
+  deleted: z.number(),
+});
+
+export type EntityRecordDeleteResponsePayload = z.infer<typeof EntityRecordDeleteResponsePayloadSchema>;
