@@ -272,8 +272,8 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 #### Zod Model (`packages/core/`)
 - [x] `EntityRecord` schema validates required fields (`connectorEntityId`, `data`, `sourceId`)
 - [x] `EntityRecord` schema rejects missing or malformed fields
-- [ ] `EntityDataQuery` schema validates `limit`, `offset`, `sort`, `filters`
-- [ ] `EntityDataResult` schema validates `rows`, `total`, `columns`, `source`
+- [x] `EntityDataQuery` schema validates `limit`, `offset`, `sort`, `filters`
+- [x] `EntityDataResult` schema validates `rows`, `total`, `columns`, `source`
 
 #### Frontend — EntityRecordDataTableUI (`apps/web/`)
 - [ ] Renders column headers from `columns` prop (label, key, type)
