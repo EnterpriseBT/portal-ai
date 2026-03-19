@@ -126,11 +126,11 @@ Frontend FilterBuilder UI
 
 ### Phase 5: Testing & Polish
 
-- [ ] **5.1** Unit tests for `AdvancedFilterBuilder` — renders conditions, adds/removes, operator filtering by type
-- [ ] **5.2** Unit tests for serialization/deserialization round-trip
-- [ ] **5.3** Storybook stories for `AdvancedFilterBuilder` — empty state, populated state, max depth reached
-- [ ] **5.4** End-to-end validation: create filters in UI → verify correct API call → verify correct SQL → verify correct results
-- [ ] **5.5** Performance test: verify GIN index is used for JSONB containment queries via `EXPLAIN ANALYZE`
+- [x] **5.1** Unit tests for `AdvancedFilterBuilder` — renders conditions, adds/removes, operator filtering by type
+- [x] **5.2** Unit tests for serialization/deserialization round-trip
+- [x] **5.3** Storybook stories for `AdvancedFilterBuilder` — empty state, populated state, max depth reached
+- [x] **5.4** End-to-end validation: create filters in UI → verify correct API call → verify correct SQL → verify correct results
+- [x] **5.5** Performance test: verify GIN index is used for JSONB containment queries via `EXPLAIN ANALYZE`
 
 ---
 
