@@ -69,6 +69,13 @@ const CompletionSummary: React.FC<{
                 <Typography variant="body2" color="text.secondary">
                   {entity.fieldMappings.length} field mapping{entity.fieldMappings.length !== 1 ? "s" : ""} created
                 </Typography>
+                {entity.importResult && (
+                  <Typography variant="body2" color="text.secondary">
+                    {entity.importResult.created} record{entity.importResult.created !== 1 ? "s" : ""} imported
+                    {entity.importResult.updated > 0 && `, ${entity.importResult.updated} updated`}
+                    {entity.importResult.unchanged > 0 && `, ${entity.importResult.unchanged} unchanged`}
+                  </Typography>
+                )}
               </Stack>
             </Box>
           ))}

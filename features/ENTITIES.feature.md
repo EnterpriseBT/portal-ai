@@ -212,7 +212,7 @@ class SyncService {
 | 8 | Frontend entities list view (all entities across org) | `apps/web/src/views/`, `apps/web/src/components/` |
 | 9 | Frontend entity detail view + data table | `apps/web/src/views/`, `apps/web/src/components/` |
 | 10 | CSV workflow wire-up (ReviewStep calls import) | `apps/web/src/workflows/CSVConnector/` |
-| 11 | Airtable / HubSpot adapters | `apps/api/src/adapters/airtable/`, `hubspot/` |
+
 
 Phases 5-9 are built once and never change. Each new connector is a new adapter registered by slug.
 
@@ -233,7 +233,7 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [x] Entities list view renders all entities across organization with pagination
 - [x] Entities list view supports filtering by connector instance
 - [x] Clicking an entity in the list navigates to the entity detail view
-- [ ] All type checks pass (`npm run type-check`)
+- [x] All type checks pass (`npm run type-check`)
 
 ## Test Plan
 
@@ -251,9 +251,9 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [x] `queryRows` applies `filters` operators (`eq`, `neq`, `contains`, `gt`, `lt`) on `normalizedData`
 - [x] `queryRows` returns only requested `columns` when specified
 - [x] `queryRows` returns `source: 'cache'` for import-mode adapters
-- [ ] `syncEntity` parses source CSV and bulk inserts rows with `normalizedData` mapped via field mappings
-- [ ] `syncEntity` computes `checksum` for each row and skips unchanged records on re-sync
-- [ ] `syncEntity` returns accurate `{ created, updated, unchanged, errors }` counts
+- [x] `syncEntity` parses source CSV and bulk inserts rows with `normalizedData` mapped via field mappings
+- [x] `syncEntity` computes `checksum` for each row and skips unchanged records on re-sync
+- [x] `syncEntity` returns accurate `{ created, updated, unchanged, errors }` counts
 - [x] `discoverEntities` / `discoverColumns` return empty or appropriate stubs for CSV
 
 #### Entity Records Repository (`apps/api/src/db/repositories/`)

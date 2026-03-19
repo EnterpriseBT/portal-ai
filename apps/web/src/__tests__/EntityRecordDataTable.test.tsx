@@ -23,6 +23,8 @@ const { EntityRecordDataTableUI } = await import(
 // ── Tests ───────────────────────────────────────────────────────────
 
 describe("EntityRecordDataTableUI", () => {
+  const connectorEntityId = "test-entity-id";
+
   const columns = [
     { key: "first_name", label: "First Name", type: "string" as const },
     { key: "email", label: "Email", type: "string" as const },
@@ -37,6 +39,7 @@ describe("EntityRecordDataTableUI", () => {
   it("renders column headers from columns prop", () => {
     render(
       <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
         rows={rows}
         columns={columns}
         source="cache"
@@ -50,6 +53,7 @@ describe("EntityRecordDataTableUI", () => {
   it("renders correct number of rows", () => {
     render(
       <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
         rows={rows}
         columns={columns}
         source="cache"
@@ -64,6 +68,7 @@ describe("EntityRecordDataTableUI", () => {
   it("renders type-aware cells for booleans", () => {
     render(
       <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
         rows={rows}
         columns={columns}
         source="cache"
@@ -76,6 +81,7 @@ describe("EntityRecordDataTableUI", () => {
   it("renders empty state when rows is empty", () => {
     render(
       <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
         rows={[]}
         columns={[]}
         source="cache"
@@ -87,6 +93,7 @@ describe("EntityRecordDataTableUI", () => {
   it("displays source badge for cache", () => {
     render(
       <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
         rows={rows}
         columns={columns}
         source="cache"
@@ -98,6 +105,7 @@ describe("EntityRecordDataTableUI", () => {
   it("displays source badge for live", () => {
     render(
       <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
         rows={rows}
         columns={columns}
         source="live"
@@ -110,6 +118,7 @@ describe("EntityRecordDataTableUI", () => {
     const onSort = jest.fn();
     render(
       <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
         rows={rows}
         columns={columns}
         source="cache"
@@ -124,6 +133,7 @@ describe("EntityRecordDataTableUI", () => {
   it("renders null values as dash", () => {
     render(
       <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
         rows={[{ first_name: null, email: "a@b.com", active: null }]}
         columns={columns}
         source="cache"

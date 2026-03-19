@@ -72,6 +72,14 @@ export interface SortFieldConfig {
 
 // --- Hook ---
 
+export interface PaginationPersistedState {
+  search: string;
+  filters: Record<string, string[]>;
+  sortBy: string;
+  sortOrder: "asc" | "desc";
+  limit: number;
+}
+
 export interface UsePaginationConfig {
   filters?: FilterConfig[];
   sortFields?: SortFieldConfig[];
@@ -79,6 +87,10 @@ export interface UsePaginationConfig {
   defaultSortOrder?: "asc" | "desc";
   limit?: number;
   limitOptions?: number[];
+  /** Pre-loaded state (e.g. from storage). Takes precedence over defaults. */
+  initialValue?: PaginationPersistedState;
+  /** Called whenever persisted state changes — use to save to storage. */
+  onPersist?: (state: PaginationPersistedState) => void;
 }
 
 export interface UsePaginationReturn {
@@ -112,10 +124,13 @@ export function usePagination(
     defaultSortOrder = "asc",
     limit: defaultLimit = 10,
     limitOptions = [5, 10, 20, 50, 100],
+    initialValue,
+    onPersist,
   } = config;
 
-  const [search, setSearchRaw] = React.useState("");
+  const [search, setSearchRaw] = React.useState(initialValue?.search ?? "");
   const [filters, setFilters] = React.useState<Record<string, string[]>>(() => {
+    if (initialValue) return initialValue.filters;
     const initial: Record<string, string[]> = {};
     for (const fc of filterConfigs) {
       if (fc.defaultValue && fc.defaultValue.length > 0) {
@@ -124,42 +139,83 @@ export function usePagination(
     }
     return initial;
   });
-  const [sortBy, setSortBy] = React.useState(defaultSortBy);
-  const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">(
-    defaultSortOrder
+  const [sortBy, setSortByRaw] = React.useState(
+    initialValue?.sortBy ?? defaultSortBy
+  );
+  const [sortOrder, setSortOrderRaw] = React.useState<"asc" | "desc">(
+    initialValue?.sortOrder ?? defaultSortOrder
   );
   const [offset, setOffset] = React.useState(0);
-  const [limit, setLimitRaw] = React.useState(defaultLimit);
+  const [limit, setLimitRaw] = React.useState(
+    initialValue?.limit ?? defaultLimit
+  );
   const [total, setTotal] = React.useState(0);
+
+  const persistRef = React.useRef({ search, filters, sortBy, sortOrder, limit });
+
+  const persist = React.useCallback(
+    (patch: Partial<PaginationPersistedState>) => {
+      const next = { ...persistRef.current, ...patch };
+      persistRef.current = next;
+      onPersist?.(next);
+    },
+    [onPersist]
+  );
 
   const resetOffset = React.useCallback(() => setOffset(0), []);
 
   const setSearch = React.useCallback(
     (value: string) => {
       setSearchRaw(value);
+      persist({ search: value });
       resetOffset();
     },
-    [resetOffset]
+    [resetOffset, persist]
   );
 
   const setFilter = React.useCallback(
     (field: string, values: string[]) => {
-      setFilters((prev) => ({ ...prev, [field]: values }));
+      setFilters((prev) => {
+        const next = { ...prev, [field]: values };
+        persist({ filters: next });
+        return next;
+      });
       resetOffset();
     },
-    [resetOffset]
+    [resetOffset, persist]
+  );
+
+  const setSortBy = React.useCallback(
+    (field: string) => {
+      setSortByRaw(field);
+      persist({ sortBy: field });
+    },
+    [persist]
+  );
+
+  const setSortOrder = React.useCallback(
+    (order: "asc" | "desc") => {
+      setSortOrderRaw(order);
+      persist({ sortOrder: order });
+    },
+    [persist]
   );
 
   const toggleSortOrder = React.useCallback(() => {
-    setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
-  }, []);
+    setSortOrderRaw((prev) => {
+      const next = prev === "asc" ? "desc" : "asc";
+      persist({ sortOrder: next });
+      return next;
+    });
+  }, [persist]);
 
   const setLimit = React.useCallback(
     (value: number) => {
       setLimitRaw(value);
+      persist({ limit: value });
       resetOffset();
     },
-    [resetOffset]
+    [resetOffset, persist]
   );
 
   const currentPage = Math.floor(offset / limit) + 1;
@@ -214,13 +270,14 @@ export function usePagination(
 
   const setFilterValue = React.useCallback(
     (field: string, value: string) => {
-      setFilters((prev) => ({
-        ...prev,
-        [field]: value ? [value] : [],
-      }));
+      setFilters((prev) => {
+        const next = { ...prev, [field]: value ? [value] : [] };
+        persist({ filters: next });
+        return next;
+      });
       resetOffset();
     },
-    [resetOffset]
+    [resetOffset, persist]
   );
 
   const toolbarProps: PaginationToolbarProps = {

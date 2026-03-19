@@ -20,7 +20,9 @@ import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
   PaginationToolbar,
+  type PaginationPersistedState,
 } from "../components/PaginationToolbar.component";
+import { useStorage } from "../utils/storage.util";
 import {
   EntityRecordDataTable,
   EntityRecordDataTableUI,
@@ -51,10 +53,24 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
 
   const showSyncButton = accessMode === "import" || accessMode === "hybrid";
 
+  const { value: storedPagination, setValue: persistPagination } =
+    useStorage<PaginationPersistedState>({
+      key: `pagination:entity-records:${entity.id}`,
+      defaultValue: {
+        search: "",
+        filters: {},
+        sortBy: "created",
+        sortOrder: "asc",
+        limit: 10,
+      },
+    });
+
   const pagination = usePagination({
     sortFields: [{ field: "created", label: "Created" }],
     defaultSortBy: "created",
     defaultSortOrder: "asc",
+    initialValue: storedPagination,
+    onPersist: persistPagination,
   });
 
   const handleSort = (column: string) => {
@@ -154,6 +170,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                       );
                       return (
                         <EntityRecordDataTableUI
+                          connectorEntityId={entity.id}
                           rows={rows}
                           columns={records.columns}
                           source={records.source}

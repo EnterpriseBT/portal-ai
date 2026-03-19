@@ -82,20 +82,31 @@ export interface ColumnConfig {
 
 // ── Hook ────────────────────────────────────────────────────────────
 
+export interface UseColumnConfigOptions {
+  /** Pre-loaded config (e.g. from storage). Takes precedence over deriving from columns. */
+  initialValue?: ColumnConfig[];
+  /** Called whenever the config changes — use to persist to storage. */
+  onPersist?: (config: ColumnConfig[]) => void;
+}
+
 /**
  * Manages column visibility and order state.
  * Initialise from a `DataTableColumn[]` array — all columns visible by default.
+ * Pass `initialValue` to restore from storage, and `onPersist` to save changes.
  */
 export function useColumnConfig(
-  columns: DataTableColumn[]
+  columns: DataTableColumn[],
+  options?: UseColumnConfigOptions
 ): [ColumnConfig[], (config: ColumnConfig[]) => void] {
-  const [config, setConfig] = React.useState<ColumnConfig[]>(() =>
-    columns.map((c) => ({ key: c.key, visible: true }))
+  const { initialValue, onPersist } = options ?? {};
+
+  const [config, setConfigState] = React.useState<ColumnConfig[]>(
+    () => initialValue ?? columns.map((c) => ({ key: c.key, visible: true }))
   );
 
   // Sync when the column set changes (new columns appear, old ones removed)
   React.useEffect(() => {
-    setConfig((prev) => {
+    setConfigState((prev) => {
       const existing = new Map(prev.map((c) => [c.key, c]));
       const incoming = new Set(columns.map((c) => c.key));
 
@@ -107,6 +118,14 @@ export function useColumnConfig(
       return [...kept, ...added];
     });
   }, [columns]);
+
+  const setConfig = React.useCallback(
+    (next: ColumnConfig[]) => {
+      setConfigState(next);
+      onPersist?.(next);
+    },
+    [onPersist]
+  );
 
   return [config, setConfig];
 }
@@ -314,18 +333,19 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
           <Box
             sx={{
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              flexDirection: "column",
               mb: 1,
             }}
           >
             <Box sx={{ flex: 1 }}>{header}</Box>
             {columnConfig && onColumnConfigChange && (
-              <ColumnConfigMenu
-                columns={columns}
-                config={columnConfig}
-                onChange={onColumnConfigChange}
-              />
+              <Box alignSelf={"flex-end"}>
+                <ColumnConfigMenu
+                  columns={columns}
+                  config={columnConfig}
+                  onChange={onColumnConfigChange}
+                />
+              </Box>
             )}
           </Box>
         )}
@@ -355,21 +375,34 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map((row, idx) => (
-                <TableRow key={idx}>
-                  {visibleColumns.map((col) => (
-                    <TableCell key={col.key}>
-                      {col.render
-                        ? col.render(row[col.key], row)
-                        : col.format
-                          ? col.format(row[col.key])
-                          : row[col.key] == null
-                            ? "—"
-                            : String(row[col.key])}
-                    </TableCell>
-                  ))}
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={visibleColumns.length}
+                    sx={{ textAlign: "center", py: 4 }}
+                  >
+                    <Typography variant="body1" color="text.secondary">
+                      {emptyMessage}
+                    </Typography>
+                  </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                rows.map((row, idx) => (
+                  <TableRow key={idx}>
+                    {visibleColumns.map((col) => (
+                      <TableCell key={col.key}>
+                        {col.render
+                          ? col.render(row[col.key], row)
+                          : col.format
+                            ? col.format(row[col.key])
+                            : row[col.key] == null
+                              ? "—"
+                              : String(row[col.key])}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </TableContainer>

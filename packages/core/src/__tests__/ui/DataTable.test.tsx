@@ -1,7 +1,12 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { jest } from "@jest/globals";
-import { DataTable, useColumnConfig, type DataTableColumn, type ColumnConfig } from "../../ui/DataTable";
+import {
+  DataTable,
+  useColumnConfig,
+  type DataTableColumn,
+  type ColumnConfig,
+} from "../../ui/DataTable";
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -18,16 +23,29 @@ const rows = [
 
 // ── Helper to test useColumnConfig ──────────────────────────────────
 
-function ConfigHarness({ columns: cols }: { columns: DataTableColumn[] }) {
-  const [config, setConfig] = useColumnConfig(cols);
+function ConfigHarness({
+  columns: cols,
+  initialValue,
+  onPersist,
+}: {
+  columns: DataTableColumn[];
+  initialValue?: ColumnConfig[];
+  onPersist?: (config: ColumnConfig[]) => void;
+}) {
+  const [config, setConfig] = useColumnConfig(cols, {
+    initialValue,
+    onPersist,
+  });
   return (
     <div>
       <div data-testid="config">{JSON.stringify(config)}</div>
       <button
         onClick={() =>
-          setConfig(config.map((c) =>
-            c.key === "email" ? { ...c, visible: false } : c
-          ))
+          setConfig(
+            config.map((c) =>
+              c.key === "email" ? { ...c, visible: false } : c
+            )
+          )
         }
       >
         hide-email
@@ -70,7 +88,10 @@ describe("DataTable", () => {
         },
       ];
       render(
-        <DataTable columns={cols} rows={[{ status: true }, { status: false }]} />
+        <DataTable
+          columns={cols}
+          rows={[{ status: true }, { status: false }]}
+        />
       );
       const cells = screen.getAllByTestId("custom-cell");
       expect(cells).toHaveLength(2);
@@ -97,26 +118,16 @@ describe("DataTable", () => {
         {
           key: "name",
           label: "Name",
-          render: (value, row) => (
-            <span>{`${value} (${row.age})`}</span>
-          ),
+          render: (value, row) => <span>{`${value} (${row.age})`}</span>,
         },
       ];
-      render(
-        <DataTable
-          columns={cols}
-          rows={[{ name: "Alice", age: 30 }]}
-        />
-      );
+      render(<DataTable columns={cols} rows={[{ name: "Alice", age: 30 }]} />);
       expect(screen.getByText("Alice (30)")).toBeInTheDocument();
     });
 
     it("renders null values as dash when no format", () => {
       render(
-        <DataTable
-          columns={[{ key: "x", label: "X" }]}
-          rows={[{ x: null }]}
-        />
+        <DataTable columns={[{ key: "x", label: "X" }]} rows={[{ x: null }]} />
       );
       expect(screen.getByText("—")).toBeInTheDocument();
     });
@@ -127,19 +138,31 @@ describe("DataTable", () => {
     });
 
     it("renders custom empty message", () => {
-      render(
-        <DataTable columns={[]} rows={[]} emptyMessage="Nothing here" />
-      );
+      render(<DataTable columns={[]} rows={[]} emptyMessage="Nothing here" />);
       expect(screen.getByText("Nothing here")).toBeInTheDocument();
+    });
+
+    it("renders empty message inside table when columns exist but rows are empty", () => {
+      render(
+        <DataTable
+          columns={columns}
+          rows={[]}
+          emptyMessage="No records found"
+        />
+      );
+      // Column headers should still render
+      expect(screen.getByText("Name")).toBeInTheDocument();
+      expect(screen.getByText("Email")).toBeInTheDocument();
+      expect(screen.getByText("Age")).toBeInTheDocument();
+      // Empty message should appear in a table cell
+      expect(screen.getByText("No records found")).toBeInTheDocument();
     });
   });
 
   describe("sorting", () => {
     it("calls onSort with column key when header clicked", () => {
       const onSort = jest.fn();
-      render(
-        <DataTable columns={columns} rows={rows} onSort={onSort} />
-      );
+      render(<DataTable columns={columns} rows={rows} onSort={onSort} />);
       fireEvent.click(screen.getByText("Name"));
       expect(onSort).toHaveBeenCalledWith("name");
     });
@@ -239,9 +262,7 @@ describe("DataTable", () => {
           onColumnConfigChange={jest.fn()}
         />
       );
-      expect(
-        screen.getByLabelText("Configure columns")
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Configure columns")).toBeInTheDocument();
     });
 
     it("does not show configure button when config is not provided", () => {
@@ -284,9 +305,7 @@ describe("DataTable", () => {
     });
 
     it("does not render header bar when header is not provided and no config", () => {
-      const { container } = render(
-        <DataTable columns={columns} rows={rows} />
-      );
+      const { container } = render(<DataTable columns={columns} rows={rows} />);
       // The table should be the first child — no header bar above it
       const firstChild = container.firstElementChild?.firstElementChild;
       expect(firstChild?.tagName).toBe("DIV"); // TableContainer wraps a div
@@ -297,9 +316,7 @@ describe("DataTable", () => {
 describe("useColumnConfig", () => {
   it("initialises all columns as visible", () => {
     render(<ConfigHarness columns={columns} />);
-    const config = JSON.parse(
-      screen.getByTestId("config").textContent!
-    );
+    const config = JSON.parse(screen.getByTestId("config").textContent!);
     expect(config).toEqual([
       { key: "name", visible: true },
       { key: "email", visible: true },
@@ -310,12 +327,40 @@ describe("useColumnConfig", () => {
   it("allows toggling visibility", () => {
     render(<ConfigHarness columns={columns} />);
     fireEvent.click(screen.getByText("hide-email"));
-    const config = JSON.parse(
-      screen.getByTestId("config").textContent!
-    );
-    const email = config.find(
-      (c: ColumnConfig) => c.key === "email"
-    );
+    const config = JSON.parse(screen.getByTestId("config").textContent!);
+    const email = config.find((c: ColumnConfig) => c.key === "email");
+    expect(email.visible).toBe(false);
+  });
+
+  it("uses initialValue when provided", () => {
+    const initial: ColumnConfig[] = [
+      { key: "age", visible: true },
+      { key: "name", visible: false },
+      { key: "email", visible: true },
+    ];
+    render(<ConfigHarness columns={columns} initialValue={initial} />);
+    const config = JSON.parse(screen.getByTestId("config").textContent!);
+    expect(config).toEqual(initial);
+  });
+
+  it("calls onPersist when config changes", () => {
+    const onPersist = jest.fn();
+    render(<ConfigHarness columns={columns} onPersist={onPersist} />);
+    fireEvent.click(screen.getByText("hide-email"));
+    expect(onPersist).toHaveBeenCalledTimes(1);
+    expect(onPersist).toHaveBeenCalledWith([
+      { key: "name", visible: true },
+      { key: "email", visible: false },
+      { key: "age", visible: true },
+    ]);
+  });
+
+  it("does not call onPersist when not provided", () => {
+    render(<ConfigHarness columns={columns} />);
+    // Should not throw when toggling without onPersist
+    fireEvent.click(screen.getByText("hide-email"));
+    const config = JSON.parse(screen.getByTestId("config").textContent!);
+    const email = config.find((c: ColumnConfig) => c.key === "email");
     expect(email.visible).toBe(false);
   });
 });

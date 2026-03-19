@@ -128,6 +128,14 @@ export const Empty: Story = {
   },
 };
 
+export const EmptyWithColumns: Story = {
+  args: {
+    columns,
+    rows: [],
+    emptyMessage: "No records found",
+  },
+};
+
 export const CustomEmptyMessage: Story = {
   args: {
     columns,

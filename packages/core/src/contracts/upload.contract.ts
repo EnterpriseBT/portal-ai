@@ -88,6 +88,11 @@ export const ConfirmResponseEntitySchema = z.object({
     columnDefinitionId: z.string(),
     isPrimaryKey: z.boolean(),
   })),
+  importResult: z.object({
+    created: z.number(),
+    updated: z.number(),
+    unchanged: z.number(),
+  }).optional(),
 });
 export type ConfirmResponseEntity = z.infer<typeof ConfirmResponseEntitySchema>;
 

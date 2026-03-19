@@ -11,12 +11,14 @@ import {
   DataTable,
   useColumnConfig,
   type DataTableColumn,
+  type ColumnConfig,
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
 import { Formatter } from "../utils/format.util";
+import { useStorage } from "../utils/storage.util";
 
 // ── Data component ──────────────────────────────────────────────────
 
@@ -57,6 +59,7 @@ function toDataTableColumns(
 // ── Pure UI component ───────────────────────────────────────────────
 
 export interface EntityRecordDataTableUIProps {
+  connectorEntityId: string;
   rows: Record<string, unknown>[];
   columns: ColumnDefinitionSummary[];
   source: "cache" | "live";
@@ -67,12 +70,22 @@ export interface EntityRecordDataTableUIProps {
 
 export const EntityRecordDataTableUI: React.FC<
   EntityRecordDataTableUIProps
-> = ({ rows, columns, source, sortColumn, sortDirection, onSort }) => {
+> = ({ connectorEntityId, rows, columns, source, sortColumn, sortDirection, onSort }) => {
   const dataTableColumns = React.useMemo(
     () => toDataTableColumns(columns),
     [columns]
   );
-  const [columnConfig, setColumnConfig] = useColumnConfig(dataTableColumns);
+
+  const { value: storedConfig, setValue: persistConfig } =
+    useStorage<ColumnConfig[]>({
+      key: `column-config:entity-records:${connectorEntityId}`,
+      defaultValue: [],
+    });
+
+  const [columnConfig, setColumnConfig] = useColumnConfig(dataTableColumns, {
+    initialValue: storedConfig.length > 0 ? storedConfig : undefined,
+    onPersist: persistConfig,
+  });
 
   return (
     <Stack spacing={1}>

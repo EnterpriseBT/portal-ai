@@ -58,6 +58,15 @@ jest.unstable_mockModule("../../services/job-events.service.js", () => ({
   },
 }));
 
+const mockImportFromS3 = jest.fn<() => Promise<{ created: number; updated: number; unchanged: number }>>()
+  .mockResolvedValue({ created: 10, updated: 0, unchanged: 0 });
+
+jest.unstable_mockModule("../../services/csv-import.service.js", () => ({
+  CsvImportService: {
+    importFromS3: mockImportFromS3,
+  },
+}));
+
 const { UploadsService } = await import("../../services/uploads.service.js");
 
 // ---------------------------------------------------------------------------
@@ -277,6 +286,45 @@ describe("UploadsService", () => {
 
       // Column definition upsertByKey should only be called once for "full_name"
       expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledTimes(1);
+    });
+
+    it("should import CSV records from S3 after confirmation", async () => {
+      const body = createConfirmBody();
+      const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockImportFromS3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          s3Key: "uploads/org-001/job-001/contacts.csv",
+          connectorEntityId: "ce-001",
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          fieldMappings: expect.arrayContaining([
+            expect.objectContaining({ sourceField: "Name", columnDefinitionKey: "name" }),
+            expect.objectContaining({ sourceField: "Email", columnDefinitionKey: "email" }),
+          ]),
+        })
+      );
+
+      // Import result should be on the confirmed entity
+      expect(result.confirmedEntities[0].importResult).toEqual({
+        created: 10,
+        updated: 0,
+        unchanged: 0,
+      });
+    });
+
+    it("should still succeed if CSV import fails", async () => {
+      mockImportFromS3.mockRejectedValueOnce(new Error("S3 read error"));
+
+      const body = createConfirmBody();
+      const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      // Confirm should still succeed with empty import result
+      expect(result.confirmedEntities[0].importResult).toEqual({
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+      });
     });
 
     it("should transition job to completed", async () => {
