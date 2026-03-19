@@ -42,3 +42,6 @@ export * from "./entity-record.contract.js";
 
 /** Upload contracts — schemas & types */
 export * from "./upload.contract.js";
+
+/** Filter contracts — schemas & types */
+export * from "./filter.contract.js";

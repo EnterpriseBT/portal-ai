@@ -18,6 +18,8 @@ export type ColumnDefinitionSummary = z.infer<typeof ColumnDefinitionSummarySche
 
 export const EntityRecordListRequestQuerySchema = PaginationRequestQuerySchema.extend({
   columns: z.string().optional(),
+  /** Base64-encoded JSON string containing a FilterExpression. Decoded and validated at the API layer. */
+  filters: z.string().optional(),
 });
 
 export type EntityRecordListRequestQuery = z.infer<typeof EntityRecordListRequestQuerySchema>;
