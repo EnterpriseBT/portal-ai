@@ -6,6 +6,7 @@ import type {
   EntityRecordListResponsePayload,
   ColumnDefinitionSummary,
 } from "@portalai/core/contracts";
+import { SORTABLE_COLUMN_TYPES } from "@portalai/core/models";
 import { Stack } from "@portalai/core/ui";
 import {
   DataTable,
@@ -14,6 +15,8 @@ import {
   type ColumnConfig,
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
@@ -36,14 +39,6 @@ export const EntityRecordDataTable = (props: EntityRecordDataTableProps) => {
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-const SORTABLE_COLUMN_TYPES = new Set([
-  "string",
-  "number",
-  "date",
-  "datetime",
-  "currency",
-]);
 
 function toDataTableColumns(
   columns: ColumnDefinitionSummary[]
@@ -71,6 +66,9 @@ export interface EntityRecordDataTableUIProps {
 export const EntityRecordDataTableUI: React.FC<
   EntityRecordDataTableUIProps
 > = ({ connectorEntityId, rows, columns, source, sortColumn, sortDirection, onSort }) => {
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
+
   const dataTableColumns = React.useMemo(
     () => toDataTableColumns(columns),
     [columns]
@@ -85,6 +83,7 @@ export const EntityRecordDataTableUI: React.FC<
   const [columnConfig, setColumnConfig] = useColumnConfig(dataTableColumns, {
     initialValue: storedConfig.length > 0 ? storedConfig : undefined,
     onPersist: persistConfig,
+    defaultVisibleCount: isSmallScreen ? 5 : 8,
   });
 
   return (

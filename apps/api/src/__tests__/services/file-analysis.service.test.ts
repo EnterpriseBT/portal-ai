@@ -177,6 +177,105 @@ describe("FileAnalysisService", () => {
       expect(validated.success).toBe(true);
     });
 
+    it("resolves existingColumnDefinitionId when AI returns key instead of UUID", async () => {
+      const existingColumns: ExistingColumnDefinition[] = [
+        { id: "uuid-123", key: "is_active", label: "Is Active", type: "boolean" },
+        { id: "uuid-456", key: "email", label: "Email", type: "string" },
+      ];
+      const parseResult = makeParseResult({
+        headers: ["is_active", "email"],
+        columnStats: [
+          makeColumnStat({ name: "is_active", sampleValues: ["true", "false"] }),
+          makeColumnStat({ name: "email", sampleValues: ["a@b.com"] }),
+        ],
+      });
+      const aiResult = {
+        entityKey: "contacts",
+        entityLabel: "Contacts",
+        sourceFileName: parseResult.fileName,
+        columns: [
+          {
+            sourceField: "is_active",
+            key: "is_active",
+            label: "Is Active",
+            type: "boolean",
+            format: null,
+            isPrimaryKey: false,
+            required: true,
+            action: "match_existing",
+            existingColumnDefinitionId: "is_active", // Key instead of UUID!
+            confidence: 1,
+            sampleValues: ["true", "false"],
+          },
+          {
+            sourceField: "email",
+            key: "email",
+            label: "Email",
+            type: "string",
+            format: null,
+            isPrimaryKey: false,
+            required: true,
+            action: "match_existing",
+            existingColumnDefinitionId: "uuid-456", // Correct UUID
+            confidence: 1,
+            sampleValues: ["a@b.com"],
+          },
+        ],
+      };
+      mockGenerateText.mockResolvedValue({ output: aiResult });
+
+      const result = await FileAnalysisService.getRecommendations({
+        parseResult,
+        existingColumns,
+        priorRecommendations: [],
+      });
+
+      // Key "is_active" should be resolved to UUID "uuid-123"
+      expect(result.columns[0].existingColumnDefinitionId).toBe("uuid-123");
+      expect(result.columns[0].action).toBe("match_existing");
+      // Already-correct UUID should be unchanged
+      expect(result.columns[1].existingColumnDefinitionId).toBe("uuid-456");
+    });
+
+    it("demotes to create_new when existingColumnDefinitionId is unresolvable", async () => {
+      const parseResult = makeParseResult({
+        headers: ["mystery"],
+        columnStats: [
+          makeColumnStat({ name: "mystery", sampleValues: ["x"] }),
+        ],
+      });
+      const aiResult = {
+        entityKey: "data",
+        entityLabel: "Data",
+        sourceFileName: parseResult.fileName,
+        columns: [
+          {
+            sourceField: "mystery",
+            key: "mystery",
+            label: "Mystery",
+            type: "string",
+            format: null,
+            isPrimaryKey: false,
+            required: false,
+            action: "match_existing",
+            existingColumnDefinitionId: "nonexistent_key",
+            confidence: 0.8,
+            sampleValues: ["x"],
+          },
+        ],
+      };
+      mockGenerateText.mockResolvedValue({ output: aiResult });
+
+      const result = await FileAnalysisService.getRecommendations({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(result.columns[0].action).toBe("create_new");
+      expect(result.columns[0].existingColumnDefinitionId).toBeNull();
+    });
+
     it("AI error triggers heuristic fallback", async () => {
       const parseResult = makeParseResult();
       mockGenerateText.mockRejectedValue(new Error("API rate limit"));

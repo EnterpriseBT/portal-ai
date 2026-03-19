@@ -28,6 +28,7 @@
     "db:push": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs push",
     "db:studio": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs studio",
     "db:seed": "dotenv -e .env -- tsx src/db/seed.ts",
+    "db:reset": "dotenv -e .env -- tsx src/db/reset.ts",
     "tunnel": "dotenv -e .env -- ngrok http 3001"
   },
   "dependencies": {

@@ -87,6 +87,11 @@ export interface UseColumnConfigOptions {
   initialValue?: ColumnConfig[];
   /** Called whenever the config changes — use to persist to storage. */
   onPersist?: (config: ColumnConfig[]) => void;
+  /**
+   * When no `initialValue` is provided, only the first N columns will be
+   * visible by default. If omitted or `undefined`, all columns are visible.
+   */
+  defaultVisibleCount?: number;
 }
 
 /**
@@ -98,10 +103,15 @@ export function useColumnConfig(
   columns: DataTableColumn[],
   options?: UseColumnConfigOptions
 ): [ColumnConfig[], (config: ColumnConfig[]) => void] {
-  const { initialValue, onPersist } = options ?? {};
+  const { initialValue, onPersist, defaultVisibleCount } = options ?? {};
 
   const [config, setConfigState] = React.useState<ColumnConfig[]>(
-    () => initialValue ?? columns.map((c) => ({ key: c.key, visible: true }))
+    () =>
+      initialValue ??
+      columns.map((c, i) => ({
+        key: c.key,
+        visible: defaultVisibleCount == null || i < defaultVisibleCount,
+      }))
   );
 
   // Sync when the column set changes (new columns appear, old ones removed)
@@ -111,13 +121,17 @@ export function useColumnConfig(
       const incoming = new Set(columns.map((c) => c.key));
 
       const kept = prev.filter((c) => incoming.has(c.key));
+      const visibleCount = kept.filter((c) => c.visible).length;
       const added = columns
         .filter((c) => !existing.has(c.key))
-        .map((c) => ({ key: c.key, visible: true }));
+        .map((c) => ({
+          key: c.key,
+          visible: defaultVisibleCount == null || visibleCount < defaultVisibleCount,
+        }));
 
       return [...kept, ...added];
     });
-  }, [columns]);
+  }, [columns, defaultVisibleCount]);
 
   const setConfig = React.useCallback(
     (next: ColumnConfig[]) => {

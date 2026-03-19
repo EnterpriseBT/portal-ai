@@ -32,7 +32,7 @@ import {
   isNull,
   inArray,
   count,
-  type Column,
+  Column,
   asc,
   desc,
 } from "drizzle-orm";
@@ -69,7 +69,7 @@ export interface ListOptions {
   offset?: number;
   includeDeleted?: boolean;
   organizationId?: string;
-  orderBy?: { column: Column; direction?: "asc" | "desc" };
+  orderBy?: { column: Column | SQL; direction?: "asc" | "desc" };
 }
 
 /** Payload shape for bulk-updating records with per-row data. */
@@ -148,8 +148,18 @@ export class Repository<
       .where(conditions)
       .$dynamic();
     if (opts.orderBy) {
-      const orderFn = opts.orderBy.direction === "desc" ? desc : asc;
-      query = query.orderBy(orderFn(opts.orderBy.column));
+      const { column: orderCol, direction = "asc" } = opts.orderBy;
+      if (orderCol instanceof Column) {
+        const orderFn = direction === "desc" ? desc : asc;
+        query = query.orderBy(orderFn(orderCol));
+      } else {
+        // Raw SQL expression — wrap with direction and push NULLs to end
+        query = query.orderBy(
+          direction === "desc"
+            ? sql`${orderCol} DESC NULLS LAST`
+            : sql`${orderCol} ASC NULLS LAST`
+        );
+      }
     }
     if (opts.limit !== undefined) query = query.limit(opts.limit);
     if (opts.offset !== undefined) query = query.offset(opts.offset);

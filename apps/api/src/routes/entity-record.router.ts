@@ -6,9 +6,9 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, type Column } from "drizzle-orm";
+import { eq, and, sql, type SQL } from "drizzle-orm";
 
-import { EntityRecordModelFactory } from "@portalai/core/models";
+import { EntityRecordModelFactory, SORTABLE_COLUMN_TYPES } from "@portalai/core/models";
 import {
   EntityRecordListRequestQuerySchema,
   type EntityRecordListResponsePayload,
@@ -29,6 +29,7 @@ import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
 import type { ColumnDefinitionSummary } from "../adapters/adapter.interface.js";
 import type { ColumnDataType } from "@portalai/core/models";
+import type { Column } from "drizzle-orm";
 
 const logger = createLogger({ module: "entity-record" });
 
@@ -41,6 +42,34 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
   syncedAt: entityRecords.syncedAt,
   sourceId: entityRecords.sourceId,
 };
+
+/**
+ * Build a SQL expression that extracts a JSONB field with safe, type-aware
+ * casting.  Values that cannot be cast to the target type resolve to NULL
+ * rather than raising a query error.
+ */
+function buildJsonbSortExpression(
+  key: string,
+  dataType: ColumnDataType
+): SQL {
+  const raw = sql`${entityRecords.normalizedData}->>${sql.raw(`'${key}'`)}`;
+  const val = sql`NULLIF(${raw}, '')`;
+
+  switch (dataType) {
+    case "number":
+    case "currency":
+      // Guard with a regex so non-numeric text becomes NULL
+      return sql`CASE WHEN ${raw} ~ '^-?[0-9]*\\.?[0-9]+([eE][+-]?[0-9]+)?$' THEN (${val})::numeric ELSE NULL END`;
+    case "date":
+      // ISO dates (YYYY-MM-DD) are lexicographically sortable as text
+      return val;
+    case "datetime":
+      // ISO timestamps are lexicographically sortable as text
+      return val;
+    default:
+      return val;
+  }
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -101,18 +130,45 @@ entityRecordRouter.get(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      const { limit, offset, sortBy, sortOrder, columns } =
+      const { limit, offset, sortBy, sortOrder, columns, search } =
         EntityRecordListRequestQuerySchema.parse(req.query);
 
-      const where = eq(
-        entityRecords.connectorEntityId,
-        connectorEntityId
-      );
-      const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
+      const conditions: SQL[] = [
+        eq(entityRecords.connectorEntityId, connectorEntityId),
+      ];
+
+      if (search) {
+        // Cast normalizedData JSONB values to text and search across all values
+        conditions.push(
+          sql`EXISTS (
+            SELECT 1 FROM jsonb_each_text(${entityRecords.normalizedData}) AS kv
+            WHERE kv.value ILIKE ${"%" + search + "%"}
+          )`
+        );
+      }
+
+      const where = and(...conditions)!;
+
+      // Resolve column definitions early so we can use them for JSONB sorting
+      const columnDefs = await resolveColumns(connectorEntityId);
+
+      // Determine sort expression: table column or JSONB field with type casting
+      let orderByExpr: Column | SQL;
+      if (SORTABLE_COLUMNS[sortBy]) {
+        orderByExpr = SORTABLE_COLUMNS[sortBy];
+      } else {
+        const colDef = columnDefs.find(
+          (c) => c.key === sortBy && SORTABLE_COLUMN_TYPES.has(c.type)
+        );
+        orderByExpr = colDef
+          ? buildJsonbSortExpression(sortBy, colDef.type)
+          : SORTABLE_COLUMNS.created;
+      }
+
       const listOpts = {
         limit,
         offset,
-        orderBy: { column, direction: sortOrder },
+        orderBy: { column: orderByExpr, direction: sortOrder },
       };
 
       const [records, total] = await Promise.all([
@@ -126,8 +182,6 @@ entityRecordRouter.get(
           error instanceof Error ? error.message : "Failed to list records"
         );
       });
-
-      const columnDefs = await resolveColumns(connectorEntityId);
 
       // If columns param is set, filter to requested columns only
       const requestedKeys = columns

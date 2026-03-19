@@ -66,6 +66,58 @@ async function aiAnalyze(input: AnalyzeFileInput): Promise<FileUploadRecommendat
 }
 
 // ---------------------------------------------------------------------------
+// Post-processing
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve existingColumnDefinitionId values from AI output.
+ *
+ * The LLM sometimes returns the column key or label instead of the UUID.
+ * This function looks up the correct ID from the existing columns list,
+ * and clears invalid references (setting action to "create_new").
+ */
+function resolveColumnDefinitionIds(
+  recommendation: FileUploadRecommendationEntity,
+  existingColumns: ExistingColumnDefinition[]
+): FileUploadRecommendationEntity {
+  const byId = new Map(existingColumns.map((c) => [c.id, c]));
+  const byKey = new Map(existingColumns.map((c) => [c.key, c]));
+  const byLabel = new Map(existingColumns.map((c) => [c.label.toLowerCase(), c]));
+
+  return {
+    ...recommendation,
+    columns: recommendation.columns.map((col) => {
+      if (col.action !== "match_existing" || !col.existingColumnDefinitionId) {
+        return col;
+      }
+
+      const rawId = col.existingColumnDefinitionId;
+
+      // Already a valid ID
+      if (byId.has(rawId)) return col;
+
+      // LLM returned a key instead of UUID — resolve it
+      const matchByKey = byKey.get(rawId);
+      if (matchByKey) {
+        logger.debug({ sourceField: col.sourceField, rawId, resolvedId: matchByKey.id }, "Resolved column definition ID from key");
+        return { ...col, existingColumnDefinitionId: matchByKey.id };
+      }
+
+      // LLM returned a label instead of UUID — resolve it
+      const matchByLabel = byLabel.get(rawId.toLowerCase());
+      if (matchByLabel) {
+        logger.debug({ sourceField: col.sourceField, rawId, resolvedId: matchByLabel.id }, "Resolved column definition ID from label");
+        return { ...col, existingColumnDefinitionId: matchByLabel.id };
+      }
+
+      // Unresolvable — demote to create_new
+      logger.warn({ sourceField: col.sourceField, rawId }, "Could not resolve existingColumnDefinitionId — demoting to create_new");
+      return { ...col, action: "create_new" as const, existingColumnDefinitionId: null };
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -101,11 +153,13 @@ export class FileAnalysisService {
           continue;
         }
 
+        const resolved = resolveColumnDefinitionIds(parsed.data, input.existingColumns);
+
         logger.info(
-          { fileName: input.parseResult.fileName, columnCount: parsed.data.columns.length },
+          { fileName: input.parseResult.fileName, columnCount: resolved.columns.length },
           "AI analysis completed"
         );
-        return parsed.data;
+        return resolved;
       } catch (err) {
         lastError = err;
         const isTimeout = err instanceof Error && (
