@@ -24,7 +24,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
-import { ConnectorAdapterRegistry } from "../adapters/index.js";
+import { SyncService } from "../services/sync.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
 import type { ColumnDefinitionSummary } from "../adapters/adapter.interface.js";
@@ -352,57 +352,10 @@ entityRecordRouter.post(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      // Load the connector instance and its definition to find the adapter
-      const instance = await DbService.repository.connectorInstances.findById(
-        entity.connectorInstanceId
-      );
-      if (!instance) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-            "Connector instance not found"
-          )
-        );
-      }
-
-      const definition =
-        await DbService.repository.connectorDefinitions.findById(
-          instance.connectorDefinitionId
-        );
-      if (!definition) {
-        return next(
-          new ApiError(
-            404,
-            ApiCode.CONNECTOR_DEFINITION_NOT_FOUND,
-            "Connector definition not found"
-          )
-        );
-      }
-
-      if (!ConnectorAdapterRegistry.has(definition.slug)) {
-        return next(
-          new ApiError(
-            500,
-            ApiCode.ENTITY_RECORD_SYNC_FAILED,
-            `No adapter registered for connector "${definition.slug}"`
-          )
-        );
-      }
-
-      const adapter = ConnectorAdapterRegistry.get(definition.slug);
-      const result = await adapter.syncEntity(instance, entity.key);
-
-      // Update lastSyncAt on the connector instance
       const { userId } = req.application!.metadata;
-      await DbService.repository.connectorInstances.update(instance.id, {
-        lastSyncAt: Date.now(),
-        updatedBy: userId,
-      });
-
-      logger.info(
-        { connectorEntityId, slug: definition.slug, result },
-        "Entity sync completed"
+      const result = await SyncService.syncEntity(
+        connectorEntityId,
+        userId
       );
 
       return HttpService.success<EntityRecordSyncResponsePayload>(res, result);

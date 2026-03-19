@@ -264,10 +264,10 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [ ] `count` returns correct total scoped to `connectorEntityId`
 
 #### Sync Service (`apps/api/src/services/`)
-- [ ] `syncEntity` loads entity → instance → definition → adapter chain correctly
-- [ ] `syncEntity` delegates to the adapter's `syncEntity` method
-- [ ] `syncEntity` updates `connectorInstance.lastSyncAt` after successful sync
-- [ ] `syncEntity` propagates adapter errors without masking them
+- [x] `syncEntity` loads entity → instance → definition → adapter chain correctly
+- [x] `syncEntity` delegates to the adapter's `syncEntity` method
+- [x] `syncEntity` updates `connectorInstance.lastSyncAt` after successful sync
+- [x] `syncEntity` propagates adapter errors without masking them
 
 #### Zod Model (`packages/core/`)
 - [x] `EntityRecord` schema validates required fields (`connectorEntityId`, `data`, `sourceId`)
