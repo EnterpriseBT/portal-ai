@@ -143,3 +143,36 @@ export function removeConditionByIndex(
 
   return walkGroup(expr);
 }
+
+/**
+ * Remove conditions that reference columns not in the provided set.
+ * Empty groups are pruned after stripping.
+ * Returns [cleanedExpression, removedFieldKeys].
+ */
+export function stripInvalidColumns(
+  expr: FilterExpression,
+  validKeys: ReadonlySet<string>,
+): [FilterExpression, string[]] {
+  const removed: string[] = [];
+
+  function walkGroup(group: FilterGroup): FilterGroup {
+    const newConditions: FilterGroup["conditions"] = [];
+    for (const item of group.conditions) {
+      if ("combinator" in item) {
+        const pruned = walkGroup(item);
+        if (pruned.conditions.length > 0) {
+          newConditions.push(pruned);
+        }
+      } else {
+        if (validKeys.has(item.field)) {
+          newConditions.push(item);
+        } else {
+          removed.push(item.field);
+        }
+      }
+    }
+    return { ...group, conditions: newConditions };
+  }
+
+  return [walkGroup(expr), removed];
+}

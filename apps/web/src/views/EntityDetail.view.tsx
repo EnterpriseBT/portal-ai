@@ -2,6 +2,7 @@ import React from "react";
 
 import type {
   ConnectorEntityGetResponsePayload,
+  ColumnDefinitionSummary,
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
@@ -17,12 +18,17 @@ import { useNavigate } from "@tanstack/react-router";
 import { sdk } from "../api/sdk";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
+import { SyncColumns } from "../components/SyncColumns.component";
 import {
   usePagination,
   PaginationToolbar,
   type PaginationPersistedState,
 } from "../components/PaginationToolbar.component";
 import { useStorage } from "../utils/storage.util";
+import {
+  stripInvalidColumns,
+  isFilterExpressionEmpty,
+} from "../utils/advanced-filter-builder.util";
 import {
   EntityRecordDataTable,
   EntityRecordDataTableUI,
@@ -53,6 +59,10 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
 
   const showSyncButton = accessMode === "import" || accessMode === "hybrid";
 
+  // Column definitions captured from the first successful API response.
+  // Used to populate the advanced filter builder and validate persisted filters.
+  const [columnDefs, setColumnDefs] = React.useState<ColumnDefinitionSummary[]>([]);
+
   const { value: storedPagination, setValue: persistPagination } =
     useStorage<PaginationPersistedState>({
       key: `pagination:entity-records:${entity.id}`,
@@ -65,12 +75,37 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
       },
     });
 
+  // 4.4 — Strip persisted filters that reference removed columns on load.
+  const cleanedInitialValue = React.useMemo(() => {
+    if (
+      !storedPagination.advancedFilters ||
+      isFilterExpressionEmpty(storedPagination.advancedFilters) ||
+      columnDefs.length === 0
+    ) {
+      return storedPagination;
+    }
+    const validKeys = new Set(columnDefs.map((c) => c.key));
+    const [cleaned, removed] = stripInvalidColumns(
+      storedPagination.advancedFilters,
+      validKeys,
+    );
+    if (removed.length > 0) {
+      console.warn(
+        `[AdvancedFilters] Stripped filters for removed columns: ${removed.join(", ")}`,
+      );
+      // Persist the cleaned state immediately so the stale refs don't reload
+      persistPagination({ ...storedPagination, advancedFilters: cleaned });
+    }
+    return { ...storedPagination, advancedFilters: cleaned };
+  }, [storedPagination, columnDefs, persistPagination]);
+
   const pagination = usePagination({
     sortFields: [{ field: "created", label: "Created" }],
     defaultSortBy: "created",
     defaultSortOrder: "asc",
-    initialValue: storedPagination,
+    initialValue: cleanedInitialValue,
     onPersist: persistPagination,
+    columnDefinitions: columnDefs,
   });
 
   const handleSort = (column: string) => {
@@ -169,15 +204,20 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                           (r.normalizedData ?? {}) as Record<string, unknown>
                       );
                       return (
-                        <EntityRecordDataTableUI
-                          connectorEntityId={entity.id}
-                          rows={rows}
+                        <SyncColumns
                           columns={records.columns}
-                          source={records.source}
-                          sortColumn={pagination.sortBy}
-                          sortDirection={pagination.sortOrder}
-                          onSort={handleSort}
-                        />
+                          setColumns={setColumnDefs}
+                        >
+                          <EntityRecordDataTableUI
+                            connectorEntityId={entity.id}
+                            rows={rows}
+                            columns={records.columns}
+                            source={records.source}
+                            sortColumn={pagination.sortBy}
+                            sortDirection={pagination.sortOrder}
+                            onSort={handleSort}
+                          />
+                        </SyncColumns>
                       );
                     }}
                   </DataResult>
@@ -190,6 +230,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
     </Box>
   );
 };
+
 
 // ── Container ───────────────────────────────────────────────────────
 

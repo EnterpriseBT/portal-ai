@@ -119,10 +119,10 @@ Frontend FilterBuilder UI
 
 ### Phase 4: Entity Detail View Integration (`apps/web`)
 
-- [ ] **4.1** Pass `ColumnDefinitionSummary[]` (already returned by the API) to the filter builder so it can populate column dropdowns and determine available operators
-- [ ] **4.2** Extend `EntityDetail.view.tsx` to wire `advancedFilters` from `usePagination` into the record list query
-- [ ] **4.3** Persist advanced filter state to localStorage alongside existing pagination state (keyed by `entityId`)
-- [ ] **4.4** Handle column definition changes gracefully — if a saved filter references a column that no longer exists, strip it on load and show a toast notification
+- [x] **4.1** Pass `ColumnDefinitionSummary[]` (already returned by the API) to the filter builder so it can populate column dropdowns and determine available operators
+- [x] **4.2** Extend `EntityDetail.view.tsx` to wire `advancedFilters` from `usePagination` into the record list query
+- [x] **4.3** Persist advanced filter state to localStorage alongside existing pagination state (keyed by `entityId`)
+- [x] **4.4** Handle column definition changes gracefully — if a saved filter references a column that no longer exists, strip it on load and show a toast notification
 
 ### Phase 5: Testing & Polish
 

@@ -9,6 +9,7 @@ import {
   getOperatorLabel,
   collectConditions,
   removeConditionByIndex,
+  stripInvalidColumns,
 } from "../utils/advanced-filter-builder.util";
 
 import type { FilterExpression } from "@portalai/core/contracts";
@@ -286,5 +287,98 @@ describe("removeConditionByIndex", () => {
     };
     const result = removeConditionByIndex(expr, 1);
     expect(collectConditions(result).map((c) => c.field)).toEqual(["a"]);
+  });
+});
+
+// ── stripInvalidColumns ─────────────────────────────────────────────
+
+describe("stripInvalidColumns", () => {
+  const validKeys = new Set(["name", "age", "status"]);
+
+  it("should keep conditions with valid fields", () => {
+    const expr: FilterExpression = {
+      combinator: "and",
+      conditions: [
+        { field: "name", operator: "eq", value: "Alice" },
+        { field: "age", operator: "gt", value: 18 },
+      ],
+    };
+    const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
+    expect(collectConditions(cleaned).map((c) => c.field)).toEqual(["name", "age"]);
+    expect(removed).toEqual([]);
+  });
+
+  it("should remove conditions with invalid fields", () => {
+    const expr: FilterExpression = {
+      combinator: "and",
+      conditions: [
+        { field: "name", operator: "eq", value: "Alice" },
+        { field: "deleted_col", operator: "eq", value: "x" },
+        { field: "age", operator: "gt", value: 18 },
+      ],
+    };
+    const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
+    expect(collectConditions(cleaned).map((c) => c.field)).toEqual(["name", "age"]);
+    expect(removed).toEqual(["deleted_col"]);
+  });
+
+  it("should remove nested conditions with invalid fields", () => {
+    const expr: FilterExpression = {
+      combinator: "and",
+      conditions: [
+        { field: "name", operator: "eq", value: "Alice" },
+        {
+          combinator: "or",
+          conditions: [
+            { field: "gone", operator: "eq", value: "x" },
+            { field: "status", operator: "eq", value: "active" },
+          ],
+        },
+      ],
+    };
+    const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
+    expect(collectConditions(cleaned).map((c) => c.field)).toEqual(["name", "status"]);
+    expect(removed).toEqual(["gone"]);
+  });
+
+  it("should prune empty groups after stripping", () => {
+    const expr: FilterExpression = {
+      combinator: "and",
+      conditions: [
+        {
+          combinator: "or",
+          conditions: [
+            { field: "gone1", operator: "eq", value: "x" },
+            { field: "gone2", operator: "eq", value: "y" },
+          ],
+        },
+        { field: "name", operator: "eq", value: "Alice" },
+      ],
+    };
+    const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
+    // The entire OR group should be pruned
+    expect(cleaned.conditions).toHaveLength(1);
+    expect(collectConditions(cleaned).map((c) => c.field)).toEqual(["name"]);
+    expect(removed).toEqual(["gone1", "gone2"]);
+  });
+
+  it("should return all removed fields when everything is invalid", () => {
+    const expr: FilterExpression = {
+      combinator: "and",
+      conditions: [
+        { field: "x", operator: "eq", value: "1" },
+        { field: "y", operator: "eq", value: "2" },
+      ],
+    };
+    const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
+    expect(cleaned.conditions).toHaveLength(0);
+    expect(removed).toEqual(["x", "y"]);
+  });
+
+  it("should handle empty expression", () => {
+    const expr: FilterExpression = { combinator: "and", conditions: [] };
+    const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
+    expect(cleaned.conditions).toHaveLength(0);
+    expect(removed).toEqual([]);
   });
 });
