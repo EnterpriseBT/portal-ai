@@ -19,6 +19,7 @@ import {
   type EntityRecordDeleteResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
+import { parseAndBuildFilterSQL, isFilterError } from "../utils/filter-sql.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
@@ -130,8 +131,11 @@ entityRecordRouter.get(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      const { limit, offset, sortBy, sortOrder, columns, search } =
+      const { limit, offset, sortBy, sortOrder, columns, search, filters } =
         EntityRecordListRequestQuerySchema.parse(req.query);
+
+      // Resolve column definitions early — needed for JSONB sorting and filter validation
+      const columnDefs = await resolveColumns(connectorEntityId);
 
       const conditions: SQL[] = [
         eq(entityRecords.connectorEntityId, connectorEntityId),
@@ -147,10 +151,22 @@ entityRecordRouter.get(
         );
       }
 
-      const where = and(...conditions)!;
+      // Parse and apply advanced filters from base64-encoded query param
+      if (filters) {
+        const filterResult = parseAndBuildFilterSQL(filters, columnDefs);
+        if (isFilterError(filterResult)) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.ENTITY_RECORD_INVALID_FILTER,
+              filterResult.message,
+            )
+          );
+        }
+        conditions.push(filterResult.where);
+      }
 
-      // Resolve column definitions early so we can use them for JSONB sorting
-      const columnDefs = await resolveColumns(connectorEntityId);
+      const where = and(...conditions)!;
 
       // Determine sort expression: table column or JSONB field with type casting
       let orderByExpr: Column | SQL;

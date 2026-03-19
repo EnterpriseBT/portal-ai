@@ -70,8 +70,8 @@ Frontend FilterBuilder UI
 
 ### Phase 2: Backend SQL Generation (`apps/api`)
 
-- [ ] **2.1** Create `src/utils/filter-sql.util.ts` with `buildFilterSQL(expression: FilterExpression, columnDefs: ColumnDefinitionSummary[]): SQL` function
-- [ ] **2.2** Implement `buildConditionSQL()` — maps each operator to parameterized SQL against `normalized_data->>'field'` with type-aware casting (reuse patterns from existing `buildJsonbSortExpression`)
+- [x] **2.1** Create `src/utils/filter-sql.util.ts` with `buildFilterSQL(expression: FilterExpression, columnDefs: ColumnDefinitionSummary[]): SQL` function
+- [x] **2.2** Implement `buildConditionSQL()` — maps each operator to parameterized SQL against `normalized_data->>'field'` with type-aware casting (reuse patterns from existing `buildJsonbSortExpression`)
   - String ops: `ILIKE`, `NOT ILIKE`, text equality
   - Numeric ops: cast to `::numeric` with regex guard (same pattern as sort)
   - Date ops: text comparison (ISO format is lexicographically sortable)
@@ -79,13 +79,13 @@ Frontend FilterBuilder UI
   - Empty/not-empty: `IS NULL OR = ''` / `IS NOT NULL AND <> ''`
   - `between`: two-value AND range
   - `in`/`not_in`: `= ANY(...)` / `<> ALL(...)`
-- [ ] **2.3** Implement `buildGroupSQL()` — recursively combines child conditions with `AND`/`OR`, enforces depth limit
-- [ ] **2.4** Validate operator-type compatibility using `OPERATORS_BY_COLUMN_TYPE` — return 400 for mismatches
-- [ ] **2.5** Validate that all referenced `field` keys exist in the entity's column definitions — return 400 for unknown fields
-- [ ] **2.6** Integrate into `entity-record.router.ts` GET `/` handler — parse `filters` query param, call `buildFilterSQL()`, append to existing `conditions[]` array
-- [ ] **2.7** Add `ENTITY_RECORD_INVALID_FILTER` to `ApiCode` enum
-- [ ] **2.8** Write unit tests for SQL generation — each operator type, nested groups, edge cases (empty values, special characters, SQL injection prevention)
-- [ ] **2.9** Write integration test — apply filters via API, verify correct records returned
+- [x] **2.3** Implement `buildGroupSQL()` — recursively combines child conditions with `AND`/`OR`, enforces depth limit
+- [x] **2.4** Validate operator-type compatibility using `OPERATORS_BY_COLUMN_TYPE` — return 400 for mismatches
+- [x] **2.5** Validate that all referenced `field` keys exist in the entity's column definitions — return 400 for unknown fields
+- [x] **2.6** Integrate into `entity-record.router.ts` GET `/` handler — parse `filters` query param, call `buildFilterSQL()`, append to existing `conditions[]` array
+- [x] **2.7** Add `ENTITY_RECORD_INVALID_FILTER` to `ApiCode` enum
+- [x] **2.8** Write unit tests for SQL generation — each operator type, nested groups, edge cases (empty values, special characters, SQL injection prevention)
+- [x] **2.9** Write integration test — apply filters via API, verify correct records returned
 
 ### Phase 3: Frontend Filter Builder UI (`apps/web`)
 

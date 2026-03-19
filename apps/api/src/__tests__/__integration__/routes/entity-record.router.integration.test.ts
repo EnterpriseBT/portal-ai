@@ -12,6 +12,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
+import type { FilterExpression } from "@portalai/core/contracts";
 import {
   generateId,
   seedUserAndOrg,
@@ -635,6 +636,663 @@ describe("Entity Record Router — Sorting", () => {
         (r: { sourceId: string }) => r.sourceId
       );
       expect(ids).toEqual(["2", "1"]);
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Advanced Filters integration tests
+// ═══════════════════════════════════════════════════════════════════
+
+describe("Entity Record Router — Advanced Filters", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: DbClient;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+
+    await teardownOrg(db as ReturnType<typeof drizzle>);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  const recordsUrl = (connectorEntityId: string) =>
+    `/api/connector-entities/${connectorEntityId}/records`;
+
+  /** Base64-encode a FilterExpression. */
+  function encodeFilters(expr: FilterExpression): string {
+    return Buffer.from(JSON.stringify(expr)).toString("base64");
+  }
+
+  /** Seed the full stack + a standard set of records for filter tests. */
+  async function seedFilterData() {
+    const { userId, organizationId, connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
+    );
+
+    const records = [
+      { user_id: "1", name: "Alice", score: "90", is_active: "true", signup_date: "2023-01-15", last_login: "2023-01-15T10:00:00Z" },
+      { user_id: "2", name: "Bob", score: "75", is_active: "false", signup_date: "2023-06-20", last_login: "2023-06-20T14:30:00Z" },
+      { user_id: "3", name: "Charlie", score: "60", is_active: "true", signup_date: "2024-01-10", last_login: "2024-01-10T08:00:00Z" },
+      { user_id: "4", name: "Diana", score: "85", is_active: "false", signup_date: "2022-11-05", last_login: "2022-11-05T16:45:00Z" },
+      { user_id: "5", name: "Eve", score: "", is_active: "true", signup_date: "", last_login: "" },
+    ];
+
+    const rows = records.map((data, i) =>
+      createEntityRecord(organizationId, connectorEntityId, data, String(i + 1), userId)
+    );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(entityRecords)
+      .values(rows as never);
+
+    return { connectorEntityId };
+  }
+
+  /** Extract sorted names from response. */
+  function names(res: request.Response): string[] {
+    return res.body.payload.records.map(
+      (r: { normalizedData: Record<string, unknown> }) => r.normalizedData.name
+    );
+  }
+
+  // ── String filters ──────────────────────────────────────────────
+
+  describe("string filters", () => {
+    it("should filter by eq on string column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "name", operator: "eq", value: "Alice" }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(names(res)).toEqual(["Alice"]);
+    });
+
+    it("should filter by contains (case-insensitive)", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "name", operator: "contains", value: "ali" }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(names(res)).toEqual(["Alice"]);
+    });
+
+    it("should filter by starts_with", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "name", operator: "starts_with", value: "Ch" }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(names(res)).toEqual(["Charlie"]);
+    });
+
+    it("should filter by ends_with", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "name", operator: "ends_with", value: "na" }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(names(res)).toEqual(["Diana"]);
+    });
+
+    it("should filter by neq on string column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "name", operator: "neq", value: "Alice" }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(names(res)).not.toContain("Alice");
+      expect(res.body.payload.total).toBe(4);
+    });
+
+    it("should filter by not_contains", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "name", operator: "not_contains", value: "li" }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // "Alice" and "Charlie" contain "li"
+      const result = names(res);
+      expect(result).not.toContain("Alice");
+      expect(result).not.toContain("Charlie");
+    });
+  });
+
+  // ── Numeric filters ─────────────────────────────────────────────
+
+  describe("numeric filters", () => {
+    it("should filter by gt on number column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "score", operator: "gt", value: 80 }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // scores > 80: Alice(90), Diana(85)
+      const result = names(res);
+      expect(result).toHaveLength(2);
+      expect(result).toContain("Alice");
+      expect(result).toContain("Diana");
+    });
+
+    it("should filter by lte on number column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "score", operator: "lte", value: 75 }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // scores <= 75: Bob(75), Charlie(60)
+      const result = names(res);
+      expect(result).toHaveLength(2);
+      expect(result).toContain("Bob");
+      expect(result).toContain("Charlie");
+    });
+
+    it("should filter by between on number column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "score", operator: "between", value: ["70", "90"] }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // 70 <= score <= 90: Alice(90), Bob(75), Diana(85)
+      const result = names(res);
+      expect(result).toHaveLength(3);
+      expect(result).toContain("Alice");
+      expect(result).toContain("Bob");
+      expect(result).toContain("Diana");
+    });
+
+    it("should filter by eq on number column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "score", operator: "eq", value: 60 }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(names(res)).toEqual(["Charlie"]);
+    });
+  });
+
+  // ── Boolean filters ─────────────────────────────────────────────
+
+  describe("boolean filters", () => {
+    it("should filter by eq true on boolean column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "is_active", operator: "eq", value: true }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // active: Alice, Charlie, Eve
+      const result = names(res);
+      expect(result).toHaveLength(3);
+      expect(result).toContain("Alice");
+      expect(result).toContain("Charlie");
+      expect(result).toContain("Eve");
+    });
+
+    it("should filter by eq false on boolean column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "is_active", operator: "eq", value: false }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // inactive: Bob, Diana
+      const result = names(res);
+      expect(result).toHaveLength(2);
+      expect(result).toContain("Bob");
+      expect(result).toContain("Diana");
+    });
+  });
+
+  // ── Date filters ────────────────────────────────────────────────
+
+  describe("date filters", () => {
+    it("should filter by gte on date column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "signup_date", operator: "gte", value: "2023-06-01" }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // signup >= 2023-06-01: Bob(2023-06-20), Charlie(2024-01-10)
+      const result = names(res);
+      expect(result).toHaveLength(2);
+      expect(result).toContain("Bob");
+      expect(result).toContain("Charlie");
+    });
+
+    it("should filter by between on date column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "signup_date", operator: "between", value: ["2023-01-01", "2023-12-31"] }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // 2023-01-01 to 2023-12-31: Alice(2023-01-15), Bob(2023-06-20)
+      const result = names(res);
+      expect(result).toHaveLength(2);
+      expect(result).toContain("Alice");
+      expect(result).toContain("Bob");
+    });
+  });
+
+  // ── is_empty / is_not_empty ─────────────────────────────────────
+
+  describe("empty/not-empty filters", () => {
+    it("should filter by is_empty on string column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "score", operator: "is_empty", value: null }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // Only Eve has empty score
+      expect(names(res)).toEqual(["Eve"]);
+    });
+
+    it("should filter by is_not_empty on string column", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "score", operator: "is_not_empty", value: null }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // 4 records with non-empty scores
+      expect(res.body.payload.total).toBe(4);
+      expect(names(res)).not.toContain("Eve");
+    });
+  });
+
+  // ── AND / OR combinators ────────────────────────────────────────
+
+  describe("AND / OR combinators", () => {
+    it("should combine conditions with AND", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [
+              { field: "is_active", operator: "eq", value: true },
+              { field: "score", operator: "gt", value: 80 },
+            ],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // active AND score>80: only Alice(90, active)
+      expect(names(res)).toEqual(["Alice"]);
+    });
+
+    it("should combine conditions with OR", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "or",
+            conditions: [
+              { field: "name", operator: "eq", value: "Alice" },
+              { field: "name", operator: "eq", value: "Bob" },
+            ],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const result = names(res);
+      expect(result).toHaveLength(2);
+      expect(result).toContain("Alice");
+      expect(result).toContain("Bob");
+    });
+
+    it("should support nested AND inside OR", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "or",
+            conditions: [
+              // Group 1: active AND score > 80 → Alice
+              {
+                combinator: "and",
+                conditions: [
+                  { field: "is_active", operator: "eq", value: true },
+                  { field: "score", operator: "gt", value: 80 },
+                ],
+              },
+              // Group 2: signup before 2023 → Diana
+              {
+                combinator: "and",
+                conditions: [
+                  { field: "signup_date", operator: "lt", value: "2023-01-01" },
+                ],
+              },
+            ],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const result = names(res);
+      expect(result).toHaveLength(2);
+      expect(result).toContain("Alice");
+      expect(result).toContain("Diana");
+    });
+  });
+
+  // ── Pagination reset with filters ───────────────────────────────
+
+  describe("pagination with filters", () => {
+    it("should return correct total count for filtered results", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 2,
+          offset: 0,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "is_active", operator: "eq", value: true }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.total).toBe(3); // Alice, Charlie, Eve
+      expect(res.body.payload.records).toHaveLength(2); // limited to 2
+    });
+
+    it("should paginate filtered results with offset", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 2,
+          offset: 2,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "is_active", operator: "eq", value: true }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.total).toBe(3);
+      expect(res.body.payload.records).toHaveLength(1); // 3rd of 3
+    });
+  });
+
+  // ── Filters combined with search ────────────────────────────────
+
+  describe("filters combined with search", () => {
+    it("should apply both search and advanced filters", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          search: "Bob",
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "is_active", operator: "eq", value: false }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // search matches Bob, filter restricts to inactive → Bob
+      expect(names(res)).toEqual(["Bob"]);
+    });
+
+    it("should return empty when search and filters are mutually exclusive", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          search: "Alice",
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "is_active", operator: "eq", value: false }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      // Alice is active, filter is inactive → no results
+      expect(res.body.payload.total).toBe(0);
+      expect(res.body.payload.records).toHaveLength(0);
+    });
+  });
+
+  // ── No filters (backwards compatibility) ────────────────────────
+
+  describe("backwards compatibility", () => {
+    it("should return all records when filters param is absent", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({ limit: 100 })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.total).toBe(5);
+    });
+  });
+
+  // ── Error handling ──────────────────────────────────────────────
+
+  describe("error handling", () => {
+    it("should return 400 for invalid base64 filters", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({ limit: 100, filters: "not-valid{{{" })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("ENTITY_RECORD_INVALID_FILTER");
+    });
+
+    it("should return 400 for invalid filter schema", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const bad = Buffer.from(JSON.stringify({ bad: "data" })).toString("base64");
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({ limit: 100, filters: bad })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("ENTITY_RECORD_INVALID_FILTER");
+    });
+
+    it("should return 400 for unknown field in filter", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "nonexistent_col", operator: "eq", value: "x" }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("ENTITY_RECORD_INVALID_FILTER");
+    });
+
+    it("should return 400 for invalid operator/type combo", async () => {
+      const { connectorEntityId } = await seedFilterData();
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({
+          limit: 100,
+          filters: encodeFilters({
+            combinator: "and",
+            conditions: [{ field: "is_active", operator: "gt", value: 1 }],
+          }),
+        })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("ENTITY_RECORD_INVALID_FILTER");
+    });
+
+    it("should return 400 when filter depth exceeds limit", async () => {
+      const { connectorEntityId } = await seedFilterData();
+
+      // Build depth-5 nesting (exceeds MAX_FILTER_DEPTH=4)
+      let inner: FilterExpression = {
+        combinator: "and",
+        conditions: [{ field: "name", operator: "eq", value: "x" }],
+      };
+      for (let i = 0; i < 4; i++) {
+        inner = { combinator: "and", conditions: [inner] };
+      }
+
+      const res = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .query({ limit: 100, filters: encodeFilters(inner) })
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("ENTITY_RECORD_INVALID_FILTER");
     });
   });
 });
