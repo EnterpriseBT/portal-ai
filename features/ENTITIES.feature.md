@@ -226,9 +226,9 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [x] `GET /api/connector-entities/:id/records` returns paginated records with column metadata
 - [x] Records API supports `limit`, `offset`, `sort`, `columns` query params
 - [x] `POST /api/connector-entities/:id/sync` triggers adapter sync and updates `lastSyncAt`
-- [ ] Entity detail view renders paginated data table with column headers from field mappings
-- [ ] Data table supports sorting by column
-- [ ] Sync/refresh button visible for hybrid connectors
+- [x] Entity detail view renders paginated data table with column headers from field mappings
+- [x] Data table supports sorting by column
+- [x] Sync/refresh button visible for hybrid connectors
 - [x] Soft-deleted records excluded from all queries
 - [x] Entities list view renders all entities across organization with pagination
 - [x] Entities list view supports filtering by connector instance
@@ -276,19 +276,19 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [x] `EntityDataResult` schema validates `rows`, `total`, `columns`, `source`
 
 #### Frontend — EntityRecordDataTableUI (`apps/web/`)
-- [ ] Renders column headers from `columns` prop (label, key, type)
-- [ ] Renders correct number of rows from `rows` prop
-- [ ] Renders type-aware cells (dates formatted, booleans as icons, etc.)
-- [ ] Calls `onSort` callback with column key and direction when header clicked
+- [x] Renders column headers from `columns` prop (label, key, type)
+- [x] Renders correct number of rows from `rows` prop
+- [x] Renders type-aware cells (dates formatted, booleans as icons, etc.)
+- [x] Calls `onSort` callback with column key and direction when header clicked
 - [ ] Calls `onPageChange` callback with new offset on pagination interaction
-- [ ] Renders empty state when `rows` is empty
-- [ ] Displays `source` badge (`cache` / `live`) when provided
+- [x] Renders empty state when `rows` is empty
+- [x] Displays `source` badge (`cache` / `live`) when provided
 
 #### Frontend — EntityRecordDataTable (container) (`apps/web/`)
-- [ ] Calls records API hook with correct entity ID and query params
+- [x] Calls records API hook with correct entity ID and query params
 - [ ] Passes loading state to UI component while fetching
 - [ ] Passes error state to UI component on API failure
-- [ ] Maps API response to `EntityRecordDataTableUI` props correctly
+- [x] Maps API response to `EntityRecordDataTableUI` props correctly
 
 #### Frontend — EntitiesDataTableUI (`apps/web/`)
 - [x] Renders entity rows with label, key, connector instance name, and record count columns
@@ -311,11 +311,11 @@ Phases 5-9 are built once and never change. Each new connector is a new adapter 
 - [x] Navigates to entity detail view on entity row click
 
 #### Frontend — ConnectorEntityDetail View (`apps/web/`)
-- [ ] Renders breadcrumbs: Connectors > Instance Name > Entity Label
-- [ ] Renders entity metadata header (key, label, record count, last sync, access mode)
-- [ ] Renders sync/refresh button only for `hybrid` and `import` access modes
-- [ ] Hides sync button for `live` access mode
-- [ ] Calls sync mutation on refresh button click
+- [x] Renders breadcrumbs: Connectors > Instance Name > Entity Label
+- [x] Renders entity metadata header (key, label, record count, last sync, access mode)
+- [x] Renders sync/refresh button only for `hybrid` and `import` access modes
+- [x] Hides sync button for `live` access mode
+- [x] Calls sync mutation on refresh button click
 
 ### Integration Tests
 

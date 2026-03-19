@@ -1,0 +1,135 @@
+import { jest } from "@jest/globals";
+
+// ── Mocks ───────────────────────────────────────────────────────────
+
+jest.unstable_mockModule("../api/sdk", () => ({
+  sdk: {
+    entityRecords: {
+      list: jest.fn().mockReturnValue({
+        data: null,
+        isLoading: false,
+        isError: false,
+        error: null,
+      }),
+    },
+  },
+}));
+
+const { render, screen } = await import("./test-utils");
+const { EntityRecordDataTableUI } = await import(
+  "../components/EntityRecordDataTable.component"
+);
+
+// ── Tests ───────────────────────────────────────────────────────────
+
+describe("EntityRecordDataTableUI", () => {
+  const columns = [
+    { key: "first_name", label: "First Name", type: "string" as const },
+    { key: "email", label: "Email", type: "string" as const },
+    { key: "active", label: "Active", type: "boolean" as const },
+  ];
+
+  const rows = [
+    { first_name: "Jane", email: "jane@ex.com", active: true },
+    { first_name: "Bob", email: "bob@ex.com", active: false },
+  ];
+
+  it("renders column headers from columns prop", () => {
+    render(
+      <EntityRecordDataTableUI
+        rows={rows}
+        columns={columns}
+        source="cache"
+      />
+    );
+    expect(screen.getByText("First Name")).toBeInTheDocument();
+    expect(screen.getByText("Email")).toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+  });
+
+  it("renders correct number of rows", () => {
+    render(
+      <EntityRecordDataTableUI
+        rows={rows}
+        columns={columns}
+        source="cache"
+      />
+    );
+    expect(screen.getByText("Jane")).toBeInTheDocument();
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+    expect(screen.getByText("jane@ex.com")).toBeInTheDocument();
+    expect(screen.getByText("bob@ex.com")).toBeInTheDocument();
+  });
+
+  it("renders type-aware cells for booleans", () => {
+    render(
+      <EntityRecordDataTableUI
+        rows={rows}
+        columns={columns}
+        source="cache"
+      />
+    );
+    expect(screen.getByText("Yes")).toBeInTheDocument();
+    expect(screen.getByText("No")).toBeInTheDocument();
+  });
+
+  it("renders empty state when rows is empty", () => {
+    render(
+      <EntityRecordDataTableUI
+        rows={[]}
+        columns={[]}
+        source="cache"
+      />
+    );
+    expect(screen.getByText("No records found")).toBeInTheDocument();
+  });
+
+  it("displays source badge for cache", () => {
+    render(
+      <EntityRecordDataTableUI
+        rows={rows}
+        columns={columns}
+        source="cache"
+      />
+    );
+    expect(screen.getByText("Cached")).toBeInTheDocument();
+  });
+
+  it("displays source badge for live", () => {
+    render(
+      <EntityRecordDataTableUI
+        rows={rows}
+        columns={columns}
+        source="live"
+      />
+    );
+    expect(screen.getByText("Live")).toBeInTheDocument();
+  });
+
+  it("calls onSort when column header is clicked", async () => {
+    const onSort = jest.fn();
+    render(
+      <EntityRecordDataTableUI
+        rows={rows}
+        columns={columns}
+        source="cache"
+        onSort={onSort}
+      />
+    );
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.click(screen.getByText("First Name"));
+    expect(onSort).toHaveBeenCalledWith("first_name");
+  });
+
+  it("renders null values as dash", () => {
+    render(
+      <EntityRecordDataTableUI
+        rows={[{ first_name: null, email: "a@b.com", active: null }]}
+        columns={columns}
+        source="cache"
+      />
+    );
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(2);
+  });
+});

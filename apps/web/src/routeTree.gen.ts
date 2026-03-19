@@ -21,6 +21,7 @@ import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
 import { Route as ColumnDefinitionsIndexRouteImport } from './routes/column-definitions.index'
 import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
+import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
 import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
 import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './routes/column-definitions.$columnDefinitionId'
 
@@ -84,6 +85,11 @@ const JobsJobIdRoute = JobsJobIdRouteImport.update({
   path: '/$jobId',
   getParentRoute: () => JobsRoute,
 } as any)
+const EntitiesEntityIdRoute = EntitiesEntityIdRouteImport.update({
+  id: '/$entityId',
+  path: '/$entityId',
+  getParentRoute: () => EntitiesRoute,
+} as any)
 const ConnectorsConnectorInstanceIdRoute =
   ConnectorsConnectorInstanceIdRouteImport.update({
     id: '/$connectorInstanceId',
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
+  '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
+  '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions': typeof ColumnDefinitionsIndexRoute
   '/connectors': typeof ConnectorsIndexRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
+  '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
+    | '/entities/$entityId'
     | '/jobs/$jobId'
     | '/column-definitions/'
     | '/connectors/'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
+    | '/entities/$entityId'
     | '/jobs/$jobId'
     | '/column-definitions'
     | '/connectors'
@@ -182,6 +193,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
+    | '/entities/$entityId'
     | '/jobs/$jobId'
     | '/column-definitions/'
     | '/connectors/'
@@ -285,6 +297,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JobsJobIdRouteImport
       parentRoute: typeof JobsRoute
     }
+    '/entities/$entityId': {
+      id: '/entities/$entityId'
+      path: '/$entityId'
+      fullPath: '/entities/$entityId'
+      preLoaderRoute: typeof EntitiesEntityIdRouteImport
+      parentRoute: typeof EntitiesRoute
+    }
     '/connectors/$connectorInstanceId': {
       id: '/connectors/$connectorInstanceId'
       path: '/$connectorInstanceId'
@@ -331,10 +350,12 @@ const ConnectorsRouteWithChildren = ConnectorsRoute._addFileChildren(
 )
 
 interface EntitiesRouteChildren {
+  EntitiesEntityIdRoute: typeof EntitiesEntityIdRoute
   EntitiesIndexRoute: typeof EntitiesIndexRoute
 }
 
 const EntitiesRouteChildren: EntitiesRouteChildren = {
+  EntitiesEntityIdRoute: EntitiesEntityIdRoute,
   EntitiesIndexRoute: EntitiesIndexRoute,
 }
 
