@@ -48,14 +48,14 @@ refColumnDefinitionId: z.string().nullable().optional(), // for existing DB colu
 ### Phase 2 — Frontend util (`upload-workflow.util.ts`)
 
 #### Checklist
-- [ ] Add `refEntityKey`, `refColumnKey`, `refColumnDefinitionId` to `RecommendedColumn.recommended`
-- [ ] Update `mapBackendRecommendations()` to carry over ref fields
-- [ ] Update `confirm()` to include ref fields in request body
-- [ ] Update/add tests in `__tests__/upload-workflow.test.ts`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
+- [x] Add `refEntityKey`, `refColumnKey`, `refColumnDefinitionId` to `RecommendedColumn.recommended`
+- [x] Update `mapBackendRecommendations()` to carry over ref fields
+- [x] Update `confirm()` to include ref fields in request body
+- [x] Update/add tests in `__tests__/upload-workflow.test.ts`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
+- [x] `npm run build` passes
 
 **`RecommendedColumn.recommended`** — add ref fields:
 

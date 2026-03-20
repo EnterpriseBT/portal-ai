@@ -758,6 +758,168 @@ describe("useUploadWorkflow", () => {
     });
   });
 
+  describe("Reference column fields", () => {
+    it("updateColumn persists ref fields when type is changed to reference", () => {
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      act(() => {
+        result.current.updateColumn(0, 0, {
+          recommended: {
+            ...MOCK_RECOMMENDATIONS.entities[0].columns[0].recommended,
+            type: "reference",
+            refEntityKey: "roles",
+            refColumnKey: "id",
+          },
+        });
+      });
+
+      const col = result.current.recommendations?.entities[0].columns[0].recommended;
+      expect(col?.type).toBe("reference");
+      expect(col?.refEntityKey).toBe("roles");
+      expect(col?.refColumnKey).toBe("id");
+    });
+
+    it("updateColumn can set refColumnDefinitionId for an existing DB column", () => {
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      act(() => {
+        result.current.updateColumn(0, 0, {
+          recommended: {
+            ...MOCK_RECOMMENDATIONS.entities[0].columns[0].recommended,
+            type: "reference",
+            refEntityKey: "roles",
+            refColumnDefinitionId: "coldef_roles_id",
+          },
+        });
+      });
+
+      const col = result.current.recommendations?.entities[0].columns[0].recommended;
+      expect(col?.refColumnDefinitionId).toBe("coldef_roles_id");
+    });
+
+    it("confirm() includes ref fields in request body", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_123",
+      });
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+      mockFetchWithAuth.mockResolvedValue({
+        payload: { connectorInstanceId: "ci_001", connectorInstanceName: "My CSV Import", confirmedEntities: [] },
+      });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      act(() => {
+        result.current.updateColumn(0, 0, {
+          recommended: {
+            ...MOCK_RECOMMENDATIONS.entities[0].columns[0].recommended,
+            type: "reference",
+            refEntityKey: "roles",
+            refColumnKey: "id",
+          },
+        });
+      });
+
+      await act(async () => {
+        await result.current.confirm();
+      });
+
+      const body = JSON.parse(
+        (mockFetchWithAuth.mock.calls[0] as [string, RequestInit])[1].body as string,
+      );
+      const col = body.entities[0].columns[0];
+      expect(col.type).toBe("reference");
+      expect(col.refEntityKey).toBe("roles");
+      expect(col.refColumnKey).toBe("id");
+      expect(col.refColumnDefinitionId).toBeNull();
+    });
+
+    it("confirm() sends null ref fields when column is not a reference", async () => {
+      mockFileUploadState = createMockFileUploadState({
+        phase: "done",
+        jobId: "job_123",
+      });
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: MOCK_RECOMMENDATIONS },
+      });
+      mockFetchWithAuth.mockResolvedValue({
+        payload: { connectorInstanceId: "ci_001", connectorInstanceName: "My CSV Import", confirmedEntities: [] },
+      });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      await act(async () => {
+        await result.current.confirm();
+      });
+
+      const body = JSON.parse(
+        (mockFetchWithAuth.mock.calls[0] as [string, RequestInit])[1].body as string,
+      );
+      const col = body.entities[0].columns[0];
+      expect(col.refEntityKey).toBeNull();
+      expect(col.refColumnKey).toBeNull();
+      expect(col.refColumnDefinitionId).toBeNull();
+    });
+
+    it("mapBackendRecommendations carries over ref fields provided by the AI", () => {
+      const backendRecs = {
+        connectorInstanceName: "AI Import",
+        entities: [
+          {
+            entityKey: "users",
+            entityLabel: "Users",
+            sourceFileName: "users.csv",
+            columns: [
+              {
+                sourceField: "role_id",
+                key: "role_id",
+                label: "Role ID",
+                type: "reference",
+                format: null,
+                isPrimaryKey: false,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                confidence: 0.9,
+                sampleValues: ["1", "2"],
+                refEntityKey: "roles",
+                refColumnKey: "id",
+                refColumnDefinitionId: null,
+              },
+            ],
+          },
+        ],
+      };
+
+      mockStreamState = createMockStreamState({
+        status: "awaiting_confirmation",
+        result: { recommendations: backendRecs },
+      });
+
+      const { result } = renderHook(() => useUploadWorkflow());
+
+      const col = result.current.recommendations?.entities[0].columns[0].recommended;
+      expect(col?.type).toBe("reference");
+      expect(col?.refEntityKey).toBe("roles");
+      expect(col?.refColumnKey).toBe("id");
+      expect(col?.refColumnDefinitionId).toBeNull();
+    });
+  });
+
   describe("reset", () => {
     it("clears all state back to initial", () => {
       const { result } = renderHook(() => useUploadWorkflow());
