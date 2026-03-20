@@ -162,16 +162,16 @@ role_id → role_id (reference → roles.id)
 Allow users to reference column definitions that already exist in the database, not just entities in the current upload batch.
 
 #### Checklist
-- [ ] Add API endpoint or reuse `GET /api/column-definitions` to search existing column definitions by entity key
-- [ ] Extend `ReferenceEditor` entity select to include existing DB entities alongside batch entities
-- [ ] Fetch column definitions for a selected existing entity (lazy, on entity select change)
-- [ ] Populate column select from fetched results; set `refColumnDefinitionId` directly (skip `refColumnKey`)
-- [ ] Handle loading/error states in the reference editor
-- [ ] Update/add tests in `__tests__/ColumnMappingStep.test.tsx`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
+- [x] Add API endpoint or reuse `GET /api/column-definitions` to search existing column definitions by entity key
+- [x] Extend `ReferenceEditor` entity select to include existing DB entities alongside batch entities
+- [x] Fetch column definitions for a selected existing entity (lazy, on entity select change)
+- [x] Populate column select from fetched results; set `refColumnDefinitionId` directly (skip `refColumnKey`)
+- [x] Handle loading/error states in the reference editor
+- [x] Update/add tests in `__tests__/ColumnMappingStep.test.tsx`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
+- [x] `npm run build` passes
 
 ---
 
@@ -180,11 +180,11 @@ Allow users to reference column definitions that already exist in the database, 
 Allow users to edit the `format` field for column types that support it (`date`, `datetime`, `string`).
 
 #### Checklist
-- [ ] Show a `format` `TextInput` in `ColumnRow` when `type` is `date`, `datetime`, or `string`
-- [ ] Pre-populate with AI-recommended value (e.g., `YYYY-MM-DD`, `ISO8601`, `email`)
-- [ ] Clear `format` when type changes to a type that doesn't support it
-- [ ] Update/add tests in `__tests__/ColumnMappingStep.test.tsx`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
+- [x] Show a `format` `TextInput` in `ColumnRow` when `type` is `date`, `datetime`, or `string`
+- [x] Pre-populate with AI-recommended value (e.g., `YYYY-MM-DD`, `ISO8601`, `email`)
+- [x] Clear `format` when type changes to a type that doesn't support it
+- [x] Update/add tests in `__tests__/ColumnMappingStep.test.tsx`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
+- [x] `npm run build` passes

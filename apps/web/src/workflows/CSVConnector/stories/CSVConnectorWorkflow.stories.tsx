@@ -178,6 +178,8 @@ const baseArgs: CSVConnectorWorkflowUIProps = {
   recommendations: null,
   parseResults: null,
   onUpdateEntity: fn(),
+  dbEntities: [],
+  isLoadingDbEntities: false,
   onUpdateColumn: fn(),
   onConnectorNameChange: fn(),
   onConfirm: fn(),
