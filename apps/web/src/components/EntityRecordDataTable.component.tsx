@@ -51,7 +51,10 @@ function toDataTableColumns(
         label: col.label,
         sortable: SORTABLE_COLUMN_TYPES.has(col.type),
         render: (value: unknown) => (
-          <EntityRecordCellCode value={value} type={col.type as "json" | "array"} />
+          <EntityRecordCellCode
+            value={value}
+            type={col.type as "json" | "array"}
+          />
         ),
       };
     }
@@ -79,7 +82,16 @@ export interface EntityRecordDataTableUIProps {
 
 export const EntityRecordDataTableUI: React.FC<
   EntityRecordDataTableUIProps
-> = ({ connectorEntityId, rows, columns, source, sortColumn, sortDirection, onSort, onRowClick }) => {
+> = ({
+  connectorEntityId,
+  rows,
+  columns,
+  source,
+  sortColumn,
+  sortDirection,
+  onSort,
+  onRowClick,
+}) => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
 
@@ -88,11 +100,12 @@ export const EntityRecordDataTableUI: React.FC<
     [columns]
   );
 
-  const { value: storedConfig, setValue: persistConfig } =
-    useStorage<ColumnConfig[]>({
-      key: `column-config:entity-records:${connectorEntityId}`,
-      defaultValue: [],
-    });
+  const { value: storedConfig, setValue: persistConfig } = useStorage<
+    ColumnConfig[]
+  >({
+    key: `column-config:entity-records:${connectorEntityId}`,
+    defaultValue: [],
+  });
 
   const [columnConfig, setColumnConfig] = useColumnConfig(dataTableColumns, {
     initialValue: storedConfig.length > 0 ? storedConfig : undefined,
@@ -119,7 +132,11 @@ export const EntityRecordDataTableUI: React.FC<
         emptyMessage="No records found"
         columnConfig={columnConfig}
         onColumnConfigChange={setColumnConfig}
-        onRowClick={onRowClick ? (row: Record<string, unknown>) => onRowClick(row) : undefined}
+        onRowClick={
+          onRowClick
+            ? (row: Record<string, unknown>) => onRowClick(row)
+            : undefined
+        }
       />
     </Stack>
   );

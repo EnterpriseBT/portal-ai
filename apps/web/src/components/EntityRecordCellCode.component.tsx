@@ -2,6 +2,7 @@ import React from "react";
 
 import Box from "@mui/material/Box";
 import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -18,13 +19,29 @@ export const EntityRecordCellCode: React.FC<EntityRecordCellCodeProps> = ({
   type,
   maxLength = 80,
 }) => {
-  const serialized =
-    type === "json"
-      ? JSON.stringify(value, null, 0)
-      : JSON.stringify(value);
+  if (value == null) {
+    return (
+      <Typography variant="body2" color="text.disabled">
+        —
+      </Typography>
+    );
+  }
 
-  const truncated = serialized.length > maxLength;
-  const display = truncated ? serialized.slice(0, maxLength) + "…" : serialized;
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      // leave as-is
+    }
+  }
+
+  const serialized =
+    type === "json" ? JSON.stringify(parsed, null, 0) : JSON.stringify(parsed);
+
+  const safe = serialized ?? "";
+  const truncated = safe.length > maxLength;
+  const display = truncated ? safe.slice(0, maxLength) + "…" : safe;
 
   const cell = (
     <Box
@@ -38,7 +55,6 @@ export const EntityRecordCellCode: React.FC<EntityRecordCellCodeProps> = ({
         py: 0.25,
         overflow: "hidden",
         textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
         maxWidth: 320,
         display: "inline-block",
       }}
@@ -50,7 +66,7 @@ export const EntityRecordCellCode: React.FC<EntityRecordCellCodeProps> = ({
   if (!truncated) return cell;
 
   return (
-    <Tooltip title={serialized} placement="top">
+    <Tooltip title={safe} placement="top">
       {cell}
     </Tooltip>
   );

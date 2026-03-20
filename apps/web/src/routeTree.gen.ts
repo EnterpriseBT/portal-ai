@@ -24,6 +24,7 @@ import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
 import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
 import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './routes/column-definitions.$columnDefinitionId'
+import { Route as EntitiesEntityIdIndexRouteImport } from './routes/entities.$entityId.index'
 import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -103,6 +104,11 @@ const ColumnDefinitionsColumnDefinitionIdRoute =
     path: '/$columnDefinitionId',
     getParentRoute: () => ColumnDefinitionsRoute,
   } as any)
+const EntitiesEntityIdIndexRoute = EntitiesEntityIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => EntitiesEntityIdRoute,
+} as any)
 const EntitiesEntityIdRecordsRecordIdRoute =
   EntitiesEntityIdRecordsRecordIdRouteImport.update({
     id: '/records/$recordId',
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRoutesByTo {
@@ -134,12 +141,12 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
-  '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions': typeof ColumnDefinitionsIndexRoute
   '/connectors': typeof ConnectorsIndexRoute
   '/entities': typeof EntitiesIndexRoute
   '/jobs': typeof JobsIndexRoute
+  '/entities/$entityId': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRoutesById {
@@ -159,6 +166,7 @@ export interface FileRoutesById {
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRouteTypes {
@@ -179,6 +187,7 @@ export interface FileRouteTypes {
     | '/connectors/'
     | '/entities/'
     | '/jobs/'
+    | '/entities/$entityId/'
     | '/entities/$entityId/records/$recordId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -187,12 +196,12 @@ export interface FileRouteTypes {
     | '/settings'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
-    | '/entities/$entityId'
     | '/jobs/$jobId'
     | '/column-definitions'
     | '/connectors'
     | '/entities'
     | '/jobs'
+    | '/entities/$entityId'
     | '/entities/$entityId/records/$recordId'
   id:
     | '__root__'
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
     | '/connectors/'
     | '/entities/'
     | '/jobs/'
+    | '/entities/$entityId/'
     | '/entities/$entityId/records/$recordId'
   fileRoutesById: FileRoutesById
 }
@@ -331,6 +341,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ColumnDefinitionsColumnDefinitionIdRouteImport
       parentRoute: typeof ColumnDefinitionsRoute
     }
+    '/entities/$entityId/': {
+      id: '/entities/$entityId/'
+      path: '/'
+      fullPath: '/entities/$entityId/'
+      preLoaderRoute: typeof EntitiesEntityIdIndexRouteImport
+      parentRoute: typeof EntitiesEntityIdRoute
+    }
     '/entities/$entityId/records/$recordId': {
       id: '/entities/$entityId/records/$recordId'
       path: '/records/$recordId'
@@ -370,10 +387,12 @@ const ConnectorsRouteWithChildren = ConnectorsRoute._addFileChildren(
 )
 
 interface EntitiesEntityIdRouteChildren {
+  EntitiesEntityIdIndexRoute: typeof EntitiesEntityIdIndexRoute
   EntitiesEntityIdRecordsRecordIdRoute: typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 
 const EntitiesEntityIdRouteChildren: EntitiesEntityIdRouteChildren = {
+  EntitiesEntityIdIndexRoute: EntitiesEntityIdIndexRoute,
   EntitiesEntityIdRecordsRecordIdRoute: EntitiesEntityIdRecordsRecordIdRoute,
 }
 

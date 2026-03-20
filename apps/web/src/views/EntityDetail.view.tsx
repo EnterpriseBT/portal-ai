@@ -64,7 +64,9 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
 
   // Column definitions captured from the first successful API response.
   // Used to populate the advanced filter builder and validate persisted filters.
-  const [columnDefs, setColumnDefs] = React.useState<ColumnDefinitionSummary[]>([]);
+  const [columnDefs, setColumnDefs] = React.useState<ColumnDefinitionSummary[]>(
+    []
+  );
 
   const { value: storedPagination, setValue: persistPagination } =
     useStorage<PaginationPersistedState>({
@@ -90,11 +92,11 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
     const validKeys = new Set(columnDefs.map((c) => c.key));
     const [cleaned, removed] = stripInvalidColumns(
       storedPagination.advancedFilters,
-      validKeys,
+      validKeys
     );
     if (removed.length > 0) {
       console.warn(
-        `[AdvancedFilters] Stripped filters for removed columns: ${removed.join(", ")}`,
+        `[AdvancedFilters] Stripped filters for removed columns: ${removed.join(", ")}`
       );
       // Persist the cleaned state immediately so the stale refs don't reload
       persistPagination({ ...storedPagination, advancedFilters: cleaned });
@@ -202,9 +204,15 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                     }: {
                       records: EntityRecordListResponsePayload;
                     }) => {
-                      const rowRecordId = new Map<Record<string, unknown>, string>();
+                      const rowRecordId = new Map<
+                        Record<string, unknown>,
+                        string
+                      >();
                       const rows = records.records.map((r) => {
-                        const row = (r.normalizedData ?? {}) as Record<string, unknown>;
+                        const row = (r.normalizedData ?? {}) as Record<
+                          string,
+                          unknown
+                        >;
                         rowRecordId.set(row, r.id);
                         return row;
                       });
@@ -247,7 +255,6 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
     </Box>
   );
 };
-
 
 // ── Container ───────────────────────────────────────────────────────
 

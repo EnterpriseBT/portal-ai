@@ -1,12 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-
-import { EntityDetailView } from "../views/EntityDetail.view";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/entities/$entityId")({
   component: RouteComponent,
 });
 
 function RouteComponent() {
-  const { entityId } = Route.useParams();
-  return <EntityDetailView entityId={entityId} />;
+  return <Outlet />;
 }

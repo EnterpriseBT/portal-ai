@@ -186,53 +186,36 @@ Build the `EntityRecordDetailView` — a container + pure UI component that show
 ### Checklist
 
 #### `EntityRecordFieldValue` component
-- [ ] Create `apps/web/src/components/EntityRecordFieldValue.component.tsx`
+- [x] Create `apps/web/src/components/EntityRecordFieldValue.component.tsx`
   - Props: `value: unknown`, `type: ColumnDataType`
   - For `json`: render pretty-printed `JSON.stringify(value, null, 2)` inside a `<Box component="pre">` code block (full, no truncation)
   - For `array`: render `JSON.stringify(value, null, 2)` inside a `<Box component="pre">` code block
   - For all other types: render `Formatter.format(value, type)` as `<Typography>`
   - Null/undefined: render `"—"` as muted text
-- [ ] Unit tests:
-  - Each type renders correctly
-  - Null renders dash
-- [ ] Storybook story with all column types
+- [x] Unit tests: each type, null, pre indentation verified
+- [x] Storybook story with all column types
 
 #### `EntityRecordMetadata` component
-- [ ] Create `apps/web/src/components/EntityRecordMetadata.component.tsx`
+- [x] Create `apps/web/src/components/EntityRecordMetadata.component.tsx`
   - Props: `record: EntityRecord`
   - Displays: `id`, `sourceId`, `checksum`, `syncedAt` (formatted datetime), `created` (formatted datetime), `updated` (formatted datetime or "—"), `connectorEntityId`
   - Uses a definition-list-style layout (label + value rows) using MUI `Stack`/`Typography`
   - Monospace font for ID/checksum values
-- [ ] Unit tests: renders all fields
-- [ ] Storybook story
+- [x] Unit tests: renders all fields, null syncedAt/updated shows —
+- [x] Storybook story
 
 #### `EntityRecordDetailView` (container + pure UI)
-- [ ] Create `apps/web/src/views/EntityRecordDetail.view.tsx`
-  - `EntityRecordDetailViewUIProps`:
-    - `entity: ConnectorEntity`
-    - `record: EntityRecord`
-    - `columns: ColumnDefinitionSummary[]`
-  - `EntityRecordDetailViewUI`:
-    - Breadcrumbs: Dashboard → Entities → `{entity.label}` → Record `{record.sourceId}`
-    - Section 1 "Metadata": renders `<EntityRecordMetadata record={record} />`
-    - Section 2 "Fields": renders a two-column grid (label | value) for each column definition, showing `<EntityRecordFieldValue value={record.normalizedData[col.key]} type={col.type} />`; columns not present in `normalizedData` are shown as `"—"`
-    - Uses `<Stack>` and `<Box>` from `@portalai/core/ui`
-  - `EntityRecordDetailView` container:
-    - Accepts `{ entityId, recordId }`
-    - Calls `sdk.connectorEntities.get(entityId)` and `sdk.entityRecords.get(entityId, recordId)` in parallel
-    - Uses `<DataResult>` for loading / error states
-    - Renders `EntityRecordDetailViewUI` once both resolve
-- [ ] Unit tests for `EntityRecordDetailViewUI`:
-  - Renders entity label in breadcrumbs
-  - Renders `sourceId` in breadcrumbs
-  - Renders all metadata fields
-  - Renders all field values formatted by type
-  - JSON fields render as `<pre>` code blocks
-  - Array fields render as `<pre>` code blocks
-- [ ] Storybook story with multiple column types including `json` and `array`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Create `apps/web/src/views/EntityRecordDetail.view.tsx`
+  - `EntityRecordDetailViewUIProps`: `entity`, `record`, `columns`
+  - Breadcrumbs: Dashboard → Entities → `{entity.label}` → Record `{record.sourceId}`
+  - Section "Metadata": `<EntityRecordMetadata record={record} />`
+  - Section "Fields": two-column grid via `<EntityRecordFieldValue>` for each column; missing fields show "—"
+  - Container: parallel `sdk.connectorEntities.get` + `sdk.entityRecords.get`, `<DataResult>` for loading/error
+- [x] Unit tests: breadcrumbs, metadata, field values, json/array as `<pre>`, missing fields
+- [x] Storybook story with multiple column types including `json` and `array`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 
