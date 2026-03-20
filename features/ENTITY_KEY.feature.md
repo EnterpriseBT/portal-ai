@@ -130,12 +130,12 @@ This is safe because:
 ### Phase 5 — `ReviewStep` display
 
 #### Checklist
-- [ ] Show ref target in column list (e.g., `reference → roles.id`)
-- [ ] Update/add tests in `__tests__/ReviewStep.test.tsx`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
+- [x] Show ref target in column list (e.g., `reference → roles.id`)
+- [x] Update/add tests in `__tests__/ReviewStep.test.tsx`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
+- [x] `npm run build` passes
 
 Extend the per-column row in `ReviewForm` to show reference details:
 

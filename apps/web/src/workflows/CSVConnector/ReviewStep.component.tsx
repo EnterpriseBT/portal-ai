@@ -93,6 +93,23 @@ const CompletionSummary: React.FC<{
   );
 };
 
+// --- Helpers ---
+
+function formatColumnType(recommended: {
+  type: string;
+  refEntityKey?: string | null;
+  refColumnKey?: string | null;
+}): string {
+  if (recommended.type !== "reference") return recommended.type;
+  if (recommended.refEntityKey && recommended.refColumnKey) {
+    return `reference → ${recommended.refEntityKey}.${recommended.refColumnKey}`;
+  }
+  if (recommended.refEntityKey) {
+    return `reference → ${recommended.refEntityKey}`;
+  }
+  return "reference";
+}
+
 // --- Review Form ---
 
 const ReviewForm: React.FC<{
@@ -189,7 +206,7 @@ const ReviewForm: React.FC<{
                   →
                 </Typography>
                 <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
-                  {col.recommended.key} ({col.recommended.type})
+                  {col.recommended.key} ({formatColumnType(col.recommended)})
                 </Typography>
                 <Typography
                   variant="caption"

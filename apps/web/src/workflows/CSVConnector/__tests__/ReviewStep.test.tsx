@@ -35,6 +35,9 @@ type RecommendedColumn = {
     format?: string | null;
     enumValues?: string[] | null;
     description?: string | null;
+    refEntityKey?: string | null;
+    refColumnKey?: string | null;
+    refColumnDefinitionId?: string | null;
   };
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
@@ -184,6 +187,123 @@ describe("ReviewStep", () => {
       expect(screen.getByText("Phone Number")).toBeInTheDocument();
       expect(screen.getByText("phone (string)")).toBeInTheDocument();
       expect(screen.getByText("new")).toBeInTheDocument();
+    });
+
+    it("shows reference target as 'entity.column' when refEntityKey and refColumnKey are set", () => {
+      const refColumn: RecommendedColumn = {
+        action: "create_new",
+        confidence: 0.9,
+        existingColumnDefinitionId: null,
+        recommended: {
+          key: "role_id",
+          label: "Role ID",
+          type: "reference",
+          refEntityKey: "roles",
+          refColumnKey: "id",
+        },
+        sourceField: "role_id",
+        isPrimaryKeyCandidate: false,
+        sampleValues: [],
+      };
+
+      render(
+        <ReviewStep
+          {...makeProps({
+            recommendations: {
+              ...MOCK_RECOMMENDATIONS,
+              entities: [
+                {
+                  connectorEntity: { key: "users", label: "Users" },
+                  sourceFileName: "users.csv",
+                  columns: [refColumn],
+                },
+              ],
+            },
+          })}
+        />
+      );
+
+      expect(
+        screen.getByText("role_id (reference → roles.id)")
+      ).toBeInTheDocument();
+    });
+
+    it("shows 'reference → entity' when only refEntityKey is set", () => {
+      const refColumn: RecommendedColumn = {
+        action: "create_new",
+        confidence: 0.9,
+        existingColumnDefinitionId: null,
+        recommended: {
+          key: "role_id",
+          label: "Role ID",
+          type: "reference",
+          refEntityKey: "roles",
+          refColumnKey: null,
+        },
+        sourceField: "role_id",
+        isPrimaryKeyCandidate: false,
+        sampleValues: [],
+      };
+
+      render(
+        <ReviewStep
+          {...makeProps({
+            recommendations: {
+              ...MOCK_RECOMMENDATIONS,
+              entities: [
+                {
+                  connectorEntity: { key: "users", label: "Users" },
+                  sourceFileName: "users.csv",
+                  columns: [refColumn],
+                },
+              ],
+            },
+          })}
+        />
+      );
+
+      expect(
+        screen.getByText("role_id (reference → roles)")
+      ).toBeInTheDocument();
+    });
+
+    it("shows plain 'reference' when no ref fields are set", () => {
+      const refColumn: RecommendedColumn = {
+        action: "create_new",
+        confidence: 0.9,
+        existingColumnDefinitionId: null,
+        recommended: {
+          key: "role_id",
+          label: "Role ID",
+          type: "reference",
+          refEntityKey: null,
+          refColumnKey: null,
+        },
+        sourceField: "role_id",
+        isPrimaryKeyCandidate: false,
+        sampleValues: [],
+      };
+
+      render(
+        <ReviewStep
+          {...makeProps({
+            recommendations: {
+              ...MOCK_RECOMMENDATIONS,
+              entities: [
+                {
+                  connectorEntity: { key: "users", label: "Users" },
+                  sourceFileName: "users.csv",
+                  columns: [refColumn],
+                },
+              ],
+            },
+          })}
+        />
+      );
+
+      expect(
+        screen.getByText("role_id (reference)")
+      ).toBeInTheDocument();
     });
 
     it("renders Confirm Import button", () => {
