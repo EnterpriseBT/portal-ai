@@ -55,9 +55,6 @@ export const ColumnDefinitionSchema = CoreSchema.extend({
   enumValues: z.array(z.string()).nullable(),
   description: z.string().nullable(),
 
-  // Reference fields (when type is "reference")
-  refColumnDefinitionId: z.string().nullable(),
-  refEntityKey: z.string().nullable(),
 });
 
 export type ColumnDefinition = z.infer<typeof ColumnDefinitionSchema>;

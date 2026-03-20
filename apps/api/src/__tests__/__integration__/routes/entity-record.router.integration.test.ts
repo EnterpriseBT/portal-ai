@@ -134,8 +134,6 @@ function createColumnDef(
     format: null,
     enumValues: null,
     description: null,
-    refColumnDefinitionId: null,
-    refEntityKey: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,

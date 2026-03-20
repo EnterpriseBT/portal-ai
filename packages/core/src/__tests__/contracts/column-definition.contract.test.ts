@@ -21,8 +21,6 @@ const validColumnDefinition = {
   format: "email",
   enumValues: null,
   description: "Primary email",
-  refColumnDefinitionId: null,
-  refEntityKey: null,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,
@@ -157,8 +155,6 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
     expect(result.format).toBeNull();
     expect(result.enumValues).toBeNull();
     expect(result.description).toBeNull();
-    expect(result.refColumnDefinitionId).toBeNull();
-    expect(result.refEntityKey).toBeNull();
   });
 
   it("should accept all optional fields", () => {
@@ -171,8 +167,6 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
       format: null,
       enumValues: ["active", "inactive"],
       description: "Account status",
-      refColumnDefinitionId: null,
-      refEntityKey: null,
     });
     expect(result.success).toBe(true);
   });
@@ -248,8 +242,6 @@ describe("ColumnDefinitionUpdateRequestBodySchema", () => {
       format: null,
       enumValues: ["active", "inactive"],
       description: "Updated description",
-      refColumnDefinitionId: null,
-      refEntityKey: null,
     });
     expect(result.success).toBe(true);
   });

@@ -22,22 +22,10 @@ const validColumnFields = {
   format: "email",
   enumValues: null,
   description: "Primary email address",
-  refColumnDefinitionId: null,
-  refEntityKey: null,
   updated: null,
   updatedBy: null,
   deleted: null,
   deletedBy: null,
-};
-
-const validReferenceFields = {
-  ...validColumnFields,
-  key: "account_owner",
-  label: "Account Owner",
-  type: "reference" as const,
-  refColumnDefinitionId: "col-id-1",
-  refEntityKey: "users",
-  format: null,
 };
 
 // ── ColumnDataType enum ──────────────────────────────────────────────
@@ -185,8 +173,6 @@ describe("ColumnDefinitionModelFactory", () => {
       expect(shape).toHaveProperty("format");
       expect(shape).toHaveProperty("enumValues");
       expect(shape).toHaveProperty("description");
-      expect(shape).toHaveProperty("refColumnDefinitionId");
-      expect(shape).toHaveProperty("refEntityKey");
     });
 
     it("should allow updating domain fields after creation", () => {
@@ -202,8 +188,6 @@ describe("ColumnDefinitionModelFactory", () => {
       expect(json.format).toBe("email");
       expect(json.enumValues).toBeNull();
       expect(json.description).toBe("Primary email address");
-      expect(json.refColumnDefinitionId).toBeNull();
-      expect(json.refEntityKey).toBeNull();
       // base fields preserved
       expect(json.id).toBe("test-id-1");
       expect(json.createdBy).toBe("user-1");
@@ -215,19 +199,6 @@ describe("ColumnDefinitionModelFactory", () => {
 
       const result = model.validate();
       expect(result.success).toBe(true);
-    });
-
-    it("should pass validation for a reference column with ref fields set", () => {
-      const model = factory.create("system");
-      model.update(validReferenceFields);
-
-      const result = model.validate();
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.type).toBe("reference");
-        expect(result.data.refColumnDefinitionId).toBe("col-id-1");
-        expect(result.data.refEntityKey).toBe("users");
-      }
     });
 
     it("should pass validation for an enum column with enumValues set", () => {
@@ -254,8 +225,6 @@ describe("ColumnDefinitionModelFactory", () => {
         format: null,
         enumValues: null,
         description: null,
-        refColumnDefinitionId: null,
-        refEntityKey: null,
       });
 
       const result = model.validate();

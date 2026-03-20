@@ -119,6 +119,8 @@ export class FieldMappingsRepository extends Repository<
         set: {
           sourceField: data.sourceField,
           isPrimaryKey: data.isPrimaryKey,
+          refColumnDefinitionId: data.refColumnDefinitionId,
+          refEntityKey: data.refEntityKey,
           updated: data.updated ?? Date.now(),
           updatedBy: data.updatedBy,
         } as never,

@@ -40,8 +40,6 @@ export const ColumnDefinitionCreateRequestBodySchema = z.object({
   format: z.string().nullable().optional().default(null),
   enumValues: z.array(z.string()).nullable().optional().default(null),
   description: z.string().nullable().optional().default(null),
-  refColumnDefinitionId: z.string().nullable().optional().default(null),
-  refEntityKey: z.string().nullable().optional().default(null),
 });
 
 export type ColumnDefinitionCreateRequestBody = z.infer<typeof ColumnDefinitionCreateRequestBodySchema>;
@@ -62,8 +60,6 @@ export const ColumnDefinitionUpdateRequestBodySchema = z.object({
   format: z.string().nullable().optional(),
   enumValues: z.array(z.string()).nullable().optional(),
   description: z.string().nullable().optional(),
-  refColumnDefinitionId: z.string().nullable().optional(),
-  refEntityKey: z.string().nullable().optional(),
 });
 
 export type ColumnDefinitionUpdateRequestBody = z.infer<typeof ColumnDefinitionUpdateRequestBodySchema>;

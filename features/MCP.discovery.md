@@ -71,9 +71,9 @@ The MCP server exposes discrete tools that Claude selects based on the user's na
 
 > **Note:** The `entity` parameter refers to a `connectorEntity.key` (e.g., `"orders"`, `"customers"`), which is the table name registered in AlaSQL when the station is loaded. For `sql_query` and `visualize`, the entity is referenced directly in the SQL statement rather than as a separate parameter.
 
-### Stations — Entity Grouping for Chat Queries
+### Stations and Portals
 
-In order for the agent to know which entity records to query, users create **Stations**. A Station is a named grouping of one or more connector entities that defines the data context for a chat session.
+A **Station** is a named grouping of one or more connector instances. Users create stations to define a data context, then spawn **Portals** (chat sessions) from a station. All connector entities across every instance in the station are available to the agent during a portal session.
 
 #### Database Schema
 
@@ -90,47 +90,151 @@ In order for the agent to know which entity records to query, users create **Sta
 | `updated` | timestamp | |
 | `deleted` | timestamp | Soft delete |
 
-**`stationEntities` join table** — maps stations to their constituent connector entities
+**`station_instances` join table** — maps stations to their constituent connector instances
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | uuid | Primary key |
 | `stationId` | uuid | FK → stations |
-| `connectorEntityId` | uuid | FK → connector_entities |
+| `connectorInstanceId` | uuid | FK → connector_instances |
 | `created` | timestamp | |
 
-A Station with connector entities for "orders", "customers", and "products" means the agent can query across all three during a chat session — enabling cross-entity SQL joins, correlations, and visualizations.
+A Station referencing two connector instances (e.g., a CRM instance with "contacts" and "deals", and a CSV instance with "products") means the agent can query across all of their entities within a portal — enabling cross-entity SQL joins, correlations, and visualizations.
+
+**`portals` table** — a chat session opened from a station
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `organizationId` | uuid | FK → organizations |
+| `stationId` | uuid | FK → stations |
+| `name` | text | Auto-generated (e.g. "Portal — Mar 20 2026") or user-renamed |
+| `createdBy` | uuid | FK → users |
+| `created` | timestamp | |
+| `updated` | timestamp | |
+| `deleted` | timestamp | Soft delete |
+
+**`portal_messages` table** — ordered message history for a portal
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `portalId` | uuid | FK → portals |
+| `organizationId` | uuid | FK → organizations |
+| `role` | enum (`user` \| `assistant`) | |
+| `blocks` | jsonb | Ordered `ContentBlock[]` — `{ type: "text", content: string }` or `{ type: "vega-lite", spec: object }` |
+| `created` | timestamp | Insertion order defines message sequence |
+
+The user turn is written immediately on receipt. The assistant turn is written once the SSE stream completes — the full `blocks` array is assembled server-side before flush.
+
+**`portal_results` table** — user-pinned content blocks from portal messages
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | uuid | Primary key |
+| `organizationId` | uuid | FK → organizations |
+| `stationId` | uuid | FK → stations (denormalized — allows listing without joining portals) |
+| `portalId` | uuid | FK → portals (nullable — result survives portal deletion) |
+| `name` | text | User-given name (e.g. "Q4 Revenue by Tier") |
+| `type` | enum (`text` \| `vega-lite`) | Content block type |
+| `content` | jsonb | Full block payload (Vega-Lite spec or text string) |
+| `createdBy` | uuid | FK → users |
+| `created` | timestamp | |
+| `updated` | timestamp | |
+| `deleted` | timestamp | Soft delete |
+
+Saved results are stored denormalized so they survive portal deletion. Users pin any individual assistant content block (chart, table, stat summary) and give it a name.
 
 ### Data Loading Pattern
 
-When a chat session is started against a Station, the MCP server loads all connector entities associated with that station. Each tool's `entity` parameter refers to a `connectorEntity.key` — one of the station's registered connector entities.
+When a portal is opened from a Station, the server loads all connector instances associated with that station, then all connector entities belonging to each instance. Each tool's `entity` parameter refers to a `connectorEntity.key` — one of the station's registered connector entities.
 
 ```
 stationId → StationRepository.findById() → station
-  → StationEntityRepository.findByStationId() → stationEntities[]
-  → For each stationEntity.connectorEntityId:
-      1. Schema discovery:
-         connectorEntity → fieldMappings → columnDefinitions
-           → { columnKey, label, type, required }[]  (typed column catalog for system prompt)
-      2. Data loading:
-         EntityRecordRepository.findMany({ connectorEntityId, organizationId }) → records[]
-           → Use normalizedData (already mapped via fieldMappings)
-           → AlaSQL: register as named table (using connectorEntity.key as table name) for cross-entity joins
-           → Arquero: aq.from(records)
-           → ml.js: extract numeric columns into feature matrix
+  → StationInstanceRepository.findByStationId() → stationInstances[]
+  → For each stationInstance.connectorInstanceId:
+      ConnectorEntityRepository.findByConnectorInstanceId() → connectorEntities[]
+      → For each connectorEntity:
+          1. Schema discovery:
+             connectorEntity → fieldMappings → columnDefinitions
+               → { columnKey, label, type, required }[]  (typed column catalog for system prompt)
+          2. Data loading:
+             EntityRecordRepository.findMany({ connectorEntityId, organizationId }) → records[]
+               → Use normalizedData (already mapped via fieldMappings)
+               → AlaSQL: register as named table (using connectorEntity.key as table name) for cross-entity joins
+               → Arquero: aq.from(records)
+               → ml.js: extract numeric columns into feature matrix
 ```
 
 The field mappings and column definitions are derived from each entity record's associated `connectorEntity`. Since entity records store both raw `data` and `normalizedData` (mapped via `fieldMappings` to the organization's `columnDefinitions`), the analytics layer operates on `normalizedData` — which uses the standardized column keys. This means the schema passed to the LLM in the system prompt matches the actual column names in the data, enabling accurate SQL and tool parameter generation.
 
-All connector entities in the station are loaded as named tables in AlaSQL (using `connectorEntity.key` as the table name), allowing the agent to write cross-entity SQL joins (e.g., `SELECT c.name, SUM(o.amount) FROM customers c JOIN orders o ON c.id = o.customerId`).
+All connector entities across all station instances are loaded as named tables in AlaSQL (using `connectorEntity.key` as the table name), allowing the agent to write cross-entity SQL joins (e.g., `SELECT c.name, SUM(o.amount) FROM customers c JOIN orders o ON c.id = o.customerId`).
 
 ---
 
 ## Integration into Portal.ai
 
-### Frontend: Chat UI Route
+### Default Station
 
-**Route:** `/chat` (or embedded as a drawer/panel accessible from any page)
+Each organization can designate one station as its **default station** — the pre-selected station in the "Create Portal" flow and the one highlighted on the dashboard. This is stored as a nullable FK on the `organizations` table.
+
+**Schema change — `organizations` table:** add `defaultStationId text REFERENCES stations(id)` (nullable).
+
+The station list page allows any org member to update the default station. On `PATCH /api/organizations/:id` the `defaultStationId` field is updated.
+
+---
+
+### Frontend: Dashboard
+
+**Route:** `/` (existing `DashboardView`)
+
+The existing dashboard is a placeholder. It gains three new sections:
+
+**1. Default station card** — shows the current default station name, description, and its connector instances. Includes a "Launch Portal" button (creates a portal from the default station and navigates to it) and a "Change default" link that navigates to `/stations`.
+
+**2. Recent portals list** — the 5 most recently created portals across all stations, showing portal name, station name, and created-at. Clicking any row navigates to `/portals/:portalId`.
+
+**3. Create portal button** — a prominent CTA in the header area. Opens a `CreatePortalDialog` — a small modal with:
+- A station select pre-populated with the default station (if set)
+- A confirm button that calls `POST /api/portals { stationId }` and navigates to the new portal
+
+**New components:**
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| `DefaultStationCard.component.tsx` | `apps/web/src/components/` | Displays default station info + "Launch Portal" button |
+| `RecentPortalsList.component.tsx` | `apps/web/src/components/` | Fetches and renders the 5 most recent portals |
+| `CreatePortalDialog.component.tsx` | `apps/web/src/components/` | Modal with station select + confirm; navigates to new portal on success |
+
+---
+
+### Frontend: Station List
+
+**Route:** `/stations`
+
+Paginated list of all stations in the organization. Each row shows station name, description, number of connector instances, and a "Default" badge if it is the current default station. A "Set as default" action on each row calls `PATCH /api/organizations/:id { defaultStationId }`.
+
+Includes a "New Station" button to create a station (name + description + connector instance picker).
+
+**New components:**
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| `StationList.component.tsx` | `apps/web/src/components/` | Data-fetching wrapper + pure UI table for stations |
+| `StationsView.tsx` | `apps/web/src/views/` | Page view — breadcrumbs, `StationList`, "New Station" button |
+
+**Route files:**
+
+| File | Purpose |
+|------|---------|
+| `apps/web/src/routes/_authorized/stations.tsx` | Index route rendering `StationsView` |
+| `apps/web/src/routes/_authorized/stations.$stationId.tsx` | Station detail — portal history + instance list for one station |
+
+---
+
+### Frontend: Portal UI
+
+**Route:** `/portals/:portalId`
 
 **Approach:** Leverage the existing `ChatWindowUI` component (`apps/web/src/components/ChatWindow.component.tsx`) which already provides:
 - Multiline text input with Enter-to-submit
@@ -141,9 +245,9 @@ All connector entities in the station are loaded as named tables in AlaSQL (usin
 
 | Component | Path | Purpose |
 |-----------|------|---------|
-| `ChatSession.component.tsx` | `apps/web/src/components/` | Container that manages message state, streams responses, renders message history above `ChatWindowUI` |
-| `ChatMessage.component.tsx` | `apps/web/src/components/` | Single message bubble — supports text, tables, and chart placeholders |
-| `ChatRoute` | `apps/web/src/routes/_authorized/chat.tsx` | TanStack Router route, wraps `ChatSession` in `AuthorizedLayout` |
+| `PortalSession.component.tsx` | `apps/web/src/components/` | Container that manages message state, streams responses, renders message history above `ChatWindowUI` |
+| `PortalMessage.component.tsx` | `apps/web/src/components/` | Single message bubble — supports text, tables, and chart placeholders; includes pin button on assistant blocks |
+| `PortalRoute` | `apps/web/src/routes/_authorized/portals.$portalId.tsx` | TanStack Router route, wraps `PortalSession` in `AuthorizedLayout` |
 
 **Message rendering considerations:**
 - Claude's markdown responses handle tabular data natively (markdown tables rendered by `react-markdown` + `remark-gfm`)
@@ -241,7 +345,8 @@ Skip the separate MCP server process. Implement the analytics tools directly as 
 
 ```
 Frontend
-  ↓ POST /api/chat  { message, sessionId?, stationId }
+  ↓ POST /api/portals  { stationId }  →  portalId
+  ↓ POST /api/portals/:portalId/messages  { message }
   ↓ GET  /api/sse/chat/:sessionId/stream  (SSE, query-param auth)
 API Server
   ├── ChatService        → manages sessions, message history, Claude orchestration
@@ -267,16 +372,27 @@ API Server
 
 | File | Path | Purpose |
 |------|------|---------|
+| `organizations.table.ts` | `apps/api/src/db/schema/` | Add `defaultStationId` (nullable FK → stations) |
 | `stations.table.ts` | `apps/api/src/db/schema/` | Drizzle table definition for `stations` |
-| `station-entities.table.ts` | `apps/api/src/db/schema/` | Drizzle table definition for `stationEntities` join table |
-| `stations.repository.ts` | `apps/api/src/db/repositories/` | Repository for station CRUD + loading associated connector entities |
+| `station-instances.table.ts` | `apps/api/src/db/schema/` | Drizzle table definition for `station_instances` join table |
+| `portals.table.ts` | `apps/api/src/db/schema/` | Drizzle table definition for `portals` |
+| `portal-messages.table.ts` | `apps/api/src/db/schema/` | Drizzle table definition for `portal_messages` |
+| `portal-results.table.ts` | `apps/api/src/db/schema/` | Drizzle table definition for `portal_results` |
+| `stations.repository.ts` | `apps/api/src/db/repositories/` | Repository for station CRUD + loading associated connector instances |
+| `station-instances.repository.ts` | `apps/api/src/db/repositories/` | Repository for the station↔instance join table |
+| `portals.repository.ts` | `apps/api/src/db/repositories/` | Repository for portal CRUD + listing portals by station |
+| `portal-messages.repository.ts` | `apps/api/src/db/repositories/` | Repository for appending and loading portal message history |
+| `portal-results.repository.ts` | `apps/api/src/db/repositories/` | Repository for pinned result CRUD |
 | `station.model.ts` | `packages/core/src/models/` | Zod model for Station (follows dual-schema pattern) |
+| `portal.model.ts` | `packages/core/src/models/` | Zod model for Portal |
+| `portal-result.model.ts` | `packages/core/src/models/` | Zod model for PortalResult |
 | `analytics.service.ts` | `apps/api/src/services/` | Static methods for each analytics operation (SQL, stats, clustering, visualization) |
 | `analytics.tools.ts` | `apps/api/src/services/` | Vercel AI SDK `tool()` definitions that wrap `AnalyticsService` methods — registered alongside existing tools |
-| `chat.service.ts` | `apps/api/src/services/` | Session management, message history, Claude API agentic loop orchestration |
-| `chat.router.ts` | `apps/api/src/routes/` | `POST /api/chat` — accepts message, creates/continues session, triggers Claude |
-| `chat-events.router.ts` | `apps/api/src/routes/` | `GET /api/sse/chat/:sessionId/stream` — SSE endpoint for streaming responses |
-| `chat.contract.ts` | `packages/core/src/contracts/` | Zod schemas for chat request/response payloads and SSE event types |
+| `portal.service.ts` | `apps/api/src/services/` | Portal management, message persistence, Claude API agentic loop orchestration |
+| `portal.router.ts` | `apps/api/src/routes/` | `POST /api/portals` — opens a portal from a station; `POST /api/portals/:portalId/messages` — sends a message |
+| `portal-results.router.ts` | `apps/api/src/routes/` | `POST /api/portal-results` — pin a result; `GET /api/portal-results` — list saved results by station |
+| `portal-events.router.ts` | `apps/api/src/routes/` | `GET /api/sse/portals/:portalId/stream` — SSE endpoint for streaming responses |
+| `portal.contract.ts` | `packages/core/src/contracts/` | Zod schemas for portal request/response payloads, SSE event types, and saved result payloads |
 
 #### AnalyticsService
 
@@ -290,12 +406,13 @@ import { kmeans } from "ml-kmeans";
 
 export class AnalyticsService {
 
-  /** Load all connector entities for a station into memory */
+  /** Load all connector entities for a station into memory (called when a portal is opened) */
   private static async loadStation(stationId: string, organizationId: string): Promise<{
     entities: Array<{ key: string; label: string; schema: Record<string, string> }>;
     records: Map<string, Record<string, unknown>[]>;
   }> {
-    // 1. Resolve stationId → stationEntities → connectorEntityIds
+    // 1. Resolve stationId → stationInstances → connectorInstanceIds
+    //    → For each connectorInstanceId: ConnectorEntityRepository.findByConnectorInstanceId()
     // 2. For each connectorEntity:
     //    a. Derive schema: connectorEntity → fieldMappings → columnDefinitions
     //       → produces { columnKey, label, type }[] for the system prompt
@@ -316,7 +433,7 @@ export class AnalyticsService {
     sql: string;
     organizationId: string;
   }): Promise<{ columns: string[]; rows: Record<string, unknown>[] }> {
-    // Tables are pre-registered in AlaSQL by connectorEntity.key when station is loaded
+    // Tables are pre-registered in AlaSQL by connectorEntity.key when the portal is opened
     const rows = alasql(params.sql);
     const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
     return { columns, rows };
@@ -506,7 +623,7 @@ export function buildAnalyticsTools(organizationId: string) {
 }
 ```
 
-#### ChatService — Agentic Tool Loop
+#### PortalService — Agentic Tool Loop
 
 The core orchestration layer. Calls Claude with the analytics tools, handles the tool_use loop (Claude may call multiple tools in sequence), and streams results to the frontend via SSE.
 
@@ -516,9 +633,9 @@ import { AiService } from "./ai.service.js";
 import { buildAnalyticsTools } from "./analytics.tools.js";
 import { SseUtil } from "../utils/sse.util.js";
 
-export class ChatService {
+export class PortalService {
 
-  /** Run a chat turn: stream Claude's response while executing tool calls */
+  /** Run a portal turn: stream Claude's response while executing tool calls */
   static async streamResponse(params: {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
     stationContext: { stationId: string; stationName: string; entities: Array<{ key: string; label: string; schema: Record<string, string> }> };
@@ -579,33 +696,33 @@ export class ChatService {
 }
 ```
 
-#### Chat SSE Router
+#### Portal SSE Router
 
 Follows the same pattern as `job-events.router.ts` — mounted outside `protectedRouter`, uses query-param auth via `sseAuth` middleware.
 
 ```typescript
-// apps/api/src/routes/chat-events.router.ts
+// apps/api/src/routes/portal-events.router.ts
 import { Router, Request, Response, NextFunction } from "express";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
 import { SseUtil } from "../utils/sse.util.js";
-import { ChatService } from "../services/chat.service.js";
+import { PortalService } from "../services/portal.service.js";
 
-export const chatEventsRouter = Router();
+export const portalEventsRouter = Router();
 
-chatEventsRouter.get(
-  "/:sessionId/stream",
+portalEventsRouter.get(
+  "/:portalId/stream",
   sseAuth,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const sse = new SseUtil(res);
 
-      // Load session messages and station context from session store
-      const session = await ChatService.getSession(req.params.sessionId);
+      // Load portal messages and station context
+      const portal = await PortalService.getPortal(req.params.portalId);
 
-      await ChatService.streamResponse({
-        messages: session.messages,
-        stationContext: session.stationContext,
-        organizationId: session.organizationId,
+      await PortalService.streamResponse({
+        messages: portal.messages,
+        stationContext: portal.stationContext,
+        organizationId: portal.organizationId,
         sse,
       });
     } catch (error) {
@@ -619,39 +736,39 @@ Mounted in `app.ts` alongside the existing SSE route:
 
 ```typescript
 app.use("/api/sse/jobs", jobEventsRouter);
-app.use("/api/sse/chat", chatEventsRouter);  // new
+app.use("/api/sse/portals", portalEventsRouter);  // new
 ```
 
-#### Chat REST Router
+#### Portal REST Router
 
-Handles session creation and message submission. The POST triggers the SSE stream — the client immediately connects to the SSE endpoint after submitting.
+Handles portal creation and message submission. The POST triggers the SSE stream — the client immediately connects to the SSE endpoint after submitting.
 
 ```typescript
-// apps/api/src/routes/chat.router.ts
+// apps/api/src/routes/portal.router.ts
 import { Router } from "express";
-import { ChatService } from "../services/chat.service.js";
+import { PortalService } from "../services/portal.service.js";
 
-export const chatRouter = Router();
+export const portalRouter = Router();
 
-/** Create a new chat session scoped to a station */
-chatRouter.post("/sessions", async (req, res, next) => {
+/** Open a new portal from a station */
+portalRouter.post("/", async (req, res, next) => {
   try {
     const { stationId } = req.body;
     const organizationId = req.auth!.payload.org_id as string;
-    const session = await ChatService.createSession({ stationId, organizationId });
-    res.json({ sessionId: session.id });
+    const portal = await PortalService.createPortal({ stationId, organizationId });
+    res.json({ portalId: portal.id });
   } catch (error) {
     next(error);
   }
 });
 
-/** Send a message — appends to session history, returns sessionId for SSE connection */
-chatRouter.post("/sessions/:sessionId/messages", async (req, res, next) => {
+/** Send a message — appends to portal history, returns portalId for SSE connection */
+portalRouter.post("/:portalId/messages", async (req, res, next) => {
   try {
     const { message } = req.body;
-    await ChatService.addMessage(req.params.sessionId, { role: "user", content: message });
-    res.json({ sessionId: req.params.sessionId, status: "streaming" });
-    // Client connects to GET /api/sse/chat/:sessionId/stream to receive the response
+    await PortalService.addMessage(req.params.portalId, { role: "user", content: message });
+    res.json({ portalId: req.params.portalId, status: "streaming" });
+    // Client connects to GET /api/sse/portals/:portalId/stream to receive the response
   } catch (error) {
     next(error);
   }
@@ -661,7 +778,7 @@ chatRouter.post("/sessions/:sessionId/messages", async (req, res, next) => {
 Mounted on the protected router:
 
 ```typescript
-protectedRouter.use("/chat", chatRouter);  // new
+protectedRouter.use("/portals", portalRouter);  // new
 ```
 
 ---
@@ -669,11 +786,11 @@ protectedRouter.use("/chat", chatRouter);  // new
 #### Frontend Data Flow
 
 ```
-1. User selects a Station (e.g., "Sales Pipeline" with entities: orders, customers, products)
-2. POST /api/chat/sessions { stationId } → { sessionId }
+1. User opens a Station and clicks "New Portal"
+2. POST /api/portals { stationId } → { portalId }
 3. User types: "Show me revenue trends by quarter"
-4. POST /api/chat/sessions/:id/messages { message }
-5. Connect to GET /api/sse/chat/:id/stream?token=<jwt>
+4. POST /api/portals/:portalId/messages { message }
+5. Connect to GET /api/sse/portals/:portalId/stream?token=<jwt>
 6. Receive SSE events:
      event: delta    → data: {"content": "Here are the revenue"}
      event: delta    → data: {"content": " trends by quarter:\n\n"}
@@ -717,11 +834,11 @@ Added to `apps/api/package.json`. Note: `ml-kmeans` is the specific ml.js sub-pa
 
 ## Open Questions
 
-1. ~~**Entity schema discovery**~~ — **Resolved.** Each entity record is associated with a `connectorEntity`, which has `fieldMappings` that map source fields to the organization's `columnDefinitions`. When a station is loaded, the schema for each connector entity is derived by walking `connectorEntity → fieldMappings → columnDefinitions` to produce a typed column catalog (name, type, required, etc.) for the system prompt.
-2. **Data size limits** — In-memory analytics work well for thousands of records. For larger datasets, consider pre-aggregation, sampling (pass a `LIMIT` in the data load), or pushing queries to PostgreSQL directly.
-3. **Chat persistence** — Should chat sessions and message history be stored in the database for recall, or kept ephemeral (in-memory / Redis with TTL)?
-4. **Authorization** — Entity data is scoped to `organizationId`. Should there be finer-grained access control (e.g., per-station or per-connector-entity permissions)?
-5. **Result caching** — Cache loaded entity records in-memory (or Redis) for the duration of a chat session to avoid repeated DB round-trips when Claude calls multiple tools.
-6. **SQL injection in AlaSQL** — AlaSQL executes against in-memory arrays (not a real database), so traditional SQL injection risks are limited. However, validate that generated SQL cannot trigger AlaSQL file I/O operations (`SELECT INTO`, `ATTACH`). Consider an allowlist of SQL operations.
-7. **Vega-Lite spec validation** — Validate Claude-generated specs against the Vega-Lite JSON schema before sending to the frontend, to prevent rendering errors.
-8. **Station management UI** — Where should station CRUD live in the frontend? Dedicated settings page, or inline creation from the chat interface?
+1. ~~**Entity schema discovery**~~ — **Resolved.** Each entity record is associated with a `connectorEntity`, which has `fieldMappings` that map source fields to the organization's `columnDefinitions`. When a portal is opened, the schema for each connector entity is derived by walking `connectorEntity → fieldMappings → columnDefinitions` to produce a typed column catalog (name, type, required, etc.) for the system prompt.
+2. ~~**Portal persistence**~~ — **Resolved.** Portals and their message history are persisted in `portals` and `portal_messages` tables. Users can pin individual content blocks to `portal_results` for named, durable references. See schema above.
+3. **Data size limits** — In-memory analytics work well for thousands of records. For larger datasets, consider pre-aggregation, sampling (pass a `LIMIT` in the data load), or pushing queries to PostgreSQL directly.
+4. **Authorization** — Entity data is scoped to `organizationId`. Should there be finer-grained access control (e.g., per-station or per-portal permissions)?
+5. **Station management UI** — Where should station CRUD live in the frontend? Dedicated settings page, or inline from the portal creation flow?
+6. **Result caching** — Cache loaded entity records in-memory (or Redis) for the duration of a portal session to avoid repeated DB round-trips when Claude calls multiple tools.
+7. **SQL injection in AlaSQL** — AlaSQL executes against in-memory arrays (not a real database), so traditional SQL injection risks are limited. However, validate that generated SQL cannot trigger AlaSQL file I/O operations (`SELECT INTO`, `ATTACH`). Consider an allowlist of SQL operations.
+8. **Vega-Lite spec validation** — Validate Claude-generated specs against the Vega-Lite JSON schema before sending to the frontend, to prevent rendering errors.

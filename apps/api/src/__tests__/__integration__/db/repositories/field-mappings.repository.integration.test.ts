@@ -118,8 +118,6 @@ describe("FieldMappingsRepository Integration Tests", () => {
         format: null,
         enumValues: null,
         description: null,
-        refColumnDefinitionId: null,
-        refEntityKey: null,
         created: now,
         createdBy: "test-system",
         updated: null,
@@ -138,8 +136,6 @@ describe("FieldMappingsRepository Integration Tests", () => {
         format: "email",
         enumValues: null,
         description: null,
-        refColumnDefinitionId: null,
-        refEntityKey: null,
         created: now,
         createdBy: "test-system",
         updated: null,
@@ -167,6 +163,8 @@ describe("FieldMappingsRepository Integration Tests", () => {
       columnDefinitionId,
       sourceField: "source_name",
       isPrimaryKey: false,
+      refColumnDefinitionId: null,
+      refEntityKey: null,
       created: now,
       createdBy: "test-system",
       updated: null,
@@ -331,6 +329,42 @@ describe("FieldMappingsRepository Integration Tests", () => {
 
     it("should reject invalid column_definition_id", async () => {
       const data = makeMapping({ columnDefinitionId: "invalid-id" });
+      await expect(repo.create(data, db)).rejects.toThrow();
+    });
+  });
+
+  // ── Reference metadata ─────────────────────────────────────────
+
+  describe("reference metadata", () => {
+    it("should store and retrieve refColumnDefinitionId and refEntityKey", async () => {
+      const data = makeMapping({
+        refColumnDefinitionId: columnDefinitionId2,
+        refEntityKey: "contacts",
+      });
+      const created = await repo.create(data, db);
+      expect(created.refColumnDefinitionId).toBe(columnDefinitionId2);
+      expect(created.refEntityKey).toBe("contacts");
+    });
+
+    it("should update ref fields via upsert", async () => {
+      const data = makeMapping({ sourceField: "owner_id" });
+      await repo.upsertByEntityAndColumn(data, db);
+
+      const updated = await repo.upsertByEntityAndColumn(
+        {
+          ...data,
+          id: generateId(),
+          refColumnDefinitionId: columnDefinitionId2,
+          refEntityKey: "owners",
+        },
+        db
+      );
+      expect(updated.refColumnDefinitionId).toBe(columnDefinitionId2);
+      expect(updated.refEntityKey).toBe("owners");
+    });
+
+    it("should reject invalid refColumnDefinitionId", async () => {
+      const data = makeMapping({ refColumnDefinitionId: "non-existent-id" });
       await expect(repo.create(data, db)).rejects.toThrow();
     });
   });

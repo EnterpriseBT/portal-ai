@@ -231,14 +231,6 @@ export class UploadsService {
     // Track column definitions by key to avoid duplicates across entities
     const columnDefCache = new Map<string, { id: string; key: string; label: string }>();
 
-    // Track reference columns whose refColumnDefinitionId must be resolved
-    // after all column definitions in this batch have been created (second pass).
-    const pendingRefResolutions: Array<{
-      colDefId: string;
-      refColumnKey: string;
-      refEntityKey: string | null;
-    }> = [];
-
     for (const entity of body.entities) {
       // Upsert connector entity
       const connectorEntity = await DbService.repository.connectorEntities.upsertByKey(
@@ -273,18 +265,15 @@ export class UploadsService {
         );
         entityColumnDefs.push(colDef);
 
-        // Queue within-batch reference columns for second-pass resolution.
-        // These have refColumnKey but no refColumnDefinitionId because the
-        // referenced column may not have been created yet at this point.
-        if (col.type === "reference" && col.refColumnKey && !col.refColumnDefinitionId) {
-          pendingRefResolutions.push({
-            colDefId: colDef.id,
-            refColumnKey: col.refColumnKey,
-            refEntityKey: col.refEntityKey ?? null,
-          });
-        }
+        // For reference columns, resolve the target column definition ID.
+        // Priority: pre-resolved ID from client → cache (same batch) → DB lookup.
+        const refColumnDefinitionId = col.type === "reference"
+          ? await UploadsService.resolveRefColumnDefinitionId(
+              organizationId, col.refColumnKey, col.refColumnDefinitionId, columnDefCache, tx
+            )
+          : null;
 
-        // Upsert field mapping
+        // Upsert field mapping (ref metadata stored here, not on the column def)
         const fieldMapping = await DbService.repository.fieldMappings.upsertByEntityAndColumn(
           {
             id: crypto.randomUUID(),
@@ -293,6 +282,8 @@ export class UploadsService {
             columnDefinitionId: colDef.id,
             sourceField: col.sourceField,
             isPrimaryKey: col.isPrimaryKey,
+            refColumnDefinitionId: refColumnDefinitionId ?? null,
+            refEntityKey: col.type === "reference" ? (col.refEntityKey ?? null) : null,
             created: now,
             createdBy: userId,
             updated: null,
@@ -320,29 +311,32 @@ export class UploadsService {
       });
     }
 
-    // Second pass: resolve within-batch reference column definitions.
-    // All column defs are now in the cache, so refColumnKey can be looked up.
-    for (const pending of pendingRefResolutions) {
-      const resolved = columnDefCache.get(`${organizationId}:${pending.refColumnKey}`);
-      if (resolved) {
-        await DbService.repository.columnDefinitions.update(
-          pending.colDefId,
-          {
-            refColumnDefinitionId: resolved.id,
-            refEntityKey: pending.refEntityKey,
-            updated: now,
-            updatedBy: userId,
-          },
-          tx
-        );
-      }
-    }
-
     return {
       connectorInstanceId: connectorInstance.id,
       connectorInstanceName: connectorInstance.name,
       confirmedEntities,
     };
+  }
+
+  /**
+   * Resolve the column definition ID that a reference column points to.
+   * Checks in order: pre-resolved ID from client, in-batch cache, then DB.
+   */
+  private static async resolveRefColumnDefinitionId(
+    organizationId: string,
+    refColumnKey: string | null | undefined,
+    refColumnDefinitionId: string | null | undefined,
+    columnDefCache: Map<string, { id: string; key: string; label: string }>,
+    tx: DbTransaction
+  ): Promise<string | null> {
+    if (refColumnDefinitionId) return refColumnDefinitionId;
+    if (!refColumnKey) return null;
+
+    const cached = columnDefCache.get(`${organizationId}:${refColumnKey}`);
+    if (cached) return cached.id;
+
+    const existing = await DbService.repository.columnDefinitions.findByKey(organizationId, refColumnKey, tx);
+    return existing?.id ?? null;
   }
 
   /**
@@ -385,8 +379,6 @@ export class UploadsService {
           format: col.format,
           enumValues: null,
           description: null,
-          refColumnDefinitionId: col.refColumnDefinitionId ?? null,
-          refEntityKey: col.refEntityKey ?? null,
           created: now,
           createdBy: userId,
           updated: null,

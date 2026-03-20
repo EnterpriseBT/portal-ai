@@ -268,12 +268,6 @@ columnDefinitionRouter.get(
  *               description:
  *                 type: string
  *                 nullable: true
- *               refColumnDefinitionId:
- *                 type: string
- *                 nullable: true
- *               refEntityKey:
- *                 type: string
- *                 nullable: true
  *     responses:
  *       201:
  *         description: Column definition created
@@ -326,8 +320,6 @@ columnDefinitionRouter.post(
         format: parsed.data.format,
         enumValues: parsed.data.enumValues,
         description: parsed.data.description,
-        refColumnDefinitionId: parsed.data.refColumnDefinitionId,
-        refEntityKey: parsed.data.refEntityKey,
       });
 
       const columnDefinition = await DbService.repository.columnDefinitions.create(
@@ -400,12 +392,6 @@ columnDefinitionRouter.post(
  *                   type: string
  *                 nullable: true
  *               description:
- *                 type: string
- *                 nullable: true
- *               refColumnDefinitionId:
- *                 type: string
- *                 nullable: true
- *               refEntityKey:
  *                 type: string
  *                 nullable: true
  *     responses:

@@ -141,6 +141,13 @@
       "when": 1773932716454,
       "tag": "0019_create_entity_records",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1774037364246,
+      "tag": "0020_move_ref_fields_to_field_mappings",
+      "breakpoints": true
     }
   ]
 }

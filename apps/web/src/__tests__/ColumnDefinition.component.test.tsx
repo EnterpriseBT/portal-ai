@@ -49,8 +49,6 @@ const makeColumnDefinition = (
   format: null,
   enumValues: null,
   description: null,
-  refColumnDefinitionId: null,
-  refEntityKey: null,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,

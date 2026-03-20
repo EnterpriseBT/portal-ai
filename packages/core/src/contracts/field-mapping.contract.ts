@@ -49,6 +49,8 @@ export const FieldMappingCreateRequestBodySchema = z.object({
   columnDefinitionId: z.string(),
   sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional().default(false),
+  refColumnDefinitionId: z.string().nullable().optional().default(null),
+  refEntityKey: z.string().nullable().optional().default(null),
 });
 
 export type FieldMappingCreateRequestBody = z.infer<typeof FieldMappingCreateRequestBodySchema>;

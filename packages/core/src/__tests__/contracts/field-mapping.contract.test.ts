@@ -17,6 +17,8 @@ const validFieldMapping = {
   columnDefinitionId: "cd-1",
   sourceField: "account_name",
   isPrimaryKey: false,
+  refColumnDefinitionId: null,
+  refEntityKey: null,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,

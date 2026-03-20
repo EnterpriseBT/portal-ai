@@ -831,7 +831,7 @@ describe("Uploads Router", () => {
       expect(cdRows).toHaveLength(2);
     });
 
-    it("should persist refEntityKey and refColumnDefinitionId for directly specified references", async () => {
+    it("should persist refEntityKey and refColumnDefinitionId on field mapping for directly specified references", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -853,8 +853,6 @@ describe("Uploads Router", () => {
           format: null,
           enumValues: null,
           description: null,
-          refColumnDefinitionId: null,
-          refEntityKey: null,
           created: now,
           createdBy: "SYSTEM_TEST",
           updated: null,
@@ -901,6 +899,8 @@ describe("Uploads Router", () => {
       expect(res.status).toBe(200);
 
       const { eq } = await import("drizzle-orm");
+
+      // Column definition itself should NOT carry ref metadata
       const [cdRow] = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(columnDefinitions)
@@ -908,11 +908,19 @@ describe("Uploads Router", () => {
 
       expect(cdRow).toBeDefined();
       expect(cdRow.type).toBe("reference");
-      expect(cdRow.refEntityKey).toBe("roles");
-      expect(cdRow.refColumnDefinitionId).toBe(refColDefId);
+
+      // The field mapping should carry the ref metadata
+      const [fmRow] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.columnDefinitionId, cdRow.id));
+
+      expect(fmRow).toBeDefined();
+      expect(fmRow.refEntityKey).toBe("roles");
+      expect(fmRow.refColumnDefinitionId).toBe(refColDefId);
     });
 
-    it("should resolve within-batch refColumnKey to refColumnDefinitionId after creation", async () => {
+    it("should resolve within-batch refColumnKey and store ref metadata on field mapping", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -976,13 +984,12 @@ describe("Uploads Router", () => {
 
       const { eq } = await import("drizzle-orm");
 
-      // Find the referenced column definition (role_pk)
+      // Find both column definitions
       const [rolePkCd] = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(columnDefinitions)
         .where(eq(columnDefinitions.key, "role_pk"));
 
-      // Find the reference column definition (user_role_id)
       const [userRoleIdCd] = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(columnDefinitions)
@@ -991,8 +998,20 @@ describe("Uploads Router", () => {
       expect(rolePkCd).toBeDefined();
       expect(userRoleIdCd).toBeDefined();
       expect(userRoleIdCd.type).toBe("reference");
-      expect(userRoleIdCd.refEntityKey).toBe("roles");
-      expect(userRoleIdCd.refColumnDefinitionId).toBe(rolePkCd.id);
+
+      // Column definition itself should NOT carry ref metadata
+      expect((userRoleIdCd as Record<string, unknown>).refEntityKey).toBeUndefined();
+      expect((userRoleIdCd as Record<string, unknown>).refColumnDefinitionId).toBeUndefined();
+
+      // The field mapping for user_role_id should carry the resolved ref
+      const [fmRow] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.columnDefinitionId, userRoleIdCd.id));
+
+      expect(fmRow).toBeDefined();
+      expect(fmRow.refEntityKey).toBe("roles");
+      expect(fmRow.refColumnDefinitionId).toBe(rolePkCd.id);
     });
 
     it("should handle shared columns across entities without duplicates", async () => {

@@ -329,6 +329,8 @@ fieldMappingRouter.post(
         columnDefinitionId: parsed.data.columnDefinitionId,
         sourceField: parsed.data.sourceField,
         isPrimaryKey: parsed.data.isPrimaryKey,
+        refColumnDefinitionId: parsed.data.refColumnDefinitionId,
+        refEntityKey: parsed.data.refEntityKey,
       });
 
       const fieldMapping = await DbService.repository.fieldMappings.create(

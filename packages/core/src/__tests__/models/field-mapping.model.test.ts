@@ -16,6 +16,8 @@ const validMappingFields = {
   columnDefinitionId: "col-1",
   sourceField: "full_name",
   isPrimaryKey: false,
+  refColumnDefinitionId: null,
+  refEntityKey: null,
   updated: null,
   updatedBy: null,
   deleted: null,

@@ -17,6 +17,10 @@ export const FieldMappingSchema = CoreSchema.extend({
   columnDefinitionId: z.string(),
   sourceField: z.string(),
   isPrimaryKey: z.boolean(),
+
+  // Reference fields (populated when the mapped column has type "reference")
+  refColumnDefinitionId: z.string().nullable(),
+  refEntityKey: z.string().nullable(),
 });
 
 export type FieldMapping = z.infer<typeof FieldMappingSchema>;

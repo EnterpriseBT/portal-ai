@@ -69,8 +69,6 @@ describe("ColumnDefinitionsRepository Integration Tests", () => {
       format: null,
       enumValues: null,
       description: null,
-      refColumnDefinitionId: null,
-      refEntityKey: null,
       created: now,
       createdBy: "test-system",
       updated: null,
@@ -212,31 +210,4 @@ describe("ColumnDefinitionsRepository Integration Tests", () => {
     });
   });
 
-  // ── Self-referencing FK ────────────────────────────────────────
-
-  describe("self-referencing FK", () => {
-    it("should allow refColumnDefinitionId pointing to a valid column def", async () => {
-      const target = makeColumnDef({ key: "target_id", type: "string" });
-      await repo.create(target, db);
-
-      const ref = makeColumnDef({
-        key: "owner",
-        type: "reference",
-        refColumnDefinitionId: target.id,
-        refEntityKey: "users",
-      });
-      const created = await repo.create(ref, db);
-      expect(created.refColumnDefinitionId).toBe(target.id);
-      expect(created.refEntityKey).toBe("users");
-    });
-
-    it("should reject refColumnDefinitionId pointing to non-existent column", async () => {
-      const ref = makeColumnDef({
-        key: "bad_ref",
-        type: "reference",
-        refColumnDefinitionId: "non-existent-id",
-      });
-      await expect(repo.create(ref, db)).rejects.toThrow();
-    });
-  });
 });

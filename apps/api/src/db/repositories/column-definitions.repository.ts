@@ -85,8 +85,6 @@ export class ColumnDefinitionsRepository extends Repository<
           format: data.format,
           enumValues: data.enumValues,
           description: data.description,
-          refColumnDefinitionId: data.refColumnDefinitionId,
-          refEntityKey: data.refEntityKey,
           updated: data.updated ?? Date.now(),
           updatedBy: data.updatedBy,
         } as never,
