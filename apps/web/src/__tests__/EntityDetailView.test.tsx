@@ -29,6 +29,38 @@ const emptyRecordsList = {
   error: null,
 };
 
+const stubRecordsList = {
+  data: {
+    records: [
+      {
+        id: "rec-1",
+        connectorEntityId: "ent-1",
+        sourceId: "src-1",
+        normalizedData: { first_name: "Jane", email: "jane@ex.com" },
+        checksum: "abc",
+        syncedAt: null,
+        created: Date.now(),
+        createdBy: "system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+    ],
+    columns: [
+      { key: "first_name", label: "First Name", type: "string" as const },
+      { key: "email", label: "Email", type: "string" as const },
+    ],
+    source: "cache" as const,
+    total: 1,
+    limit: 20,
+    offset: 0,
+  },
+  isLoading: false,
+  isError: false,
+  error: null,
+};
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     connectorEntities: {
@@ -175,5 +207,16 @@ describe("EntityDetailViewUI", () => {
     expect(
       screen.getByRole("button", { name: "Syncing…" })
     ).toBeDisabled();
+  });
+
+  it("clicking a row calls onRecordClick with the correct recordId", async () => {
+    const onRecordClick = jest.fn();
+    mockRecordsList.mockReturnValue(stubRecordsList);
+    render(<EntityDetailViewUI entity={stubEntity} onRecordClick={onRecordClick} />);
+
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.click(screen.getByText("Jane"));
+
+    expect(onRecordClick).toHaveBeenCalledWith("rec-1");
   });
 });

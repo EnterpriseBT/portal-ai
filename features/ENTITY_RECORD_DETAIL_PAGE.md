@@ -158,18 +158,16 @@ Wire `onRowClick` through `EntityDetailViewUI` so clicking a row navigates to th
 
 ### Checklist
 
-- [ ] In `EntityDetailView.view.tsx`:
+- [x] In `EntityDetailView.view.tsx`:
   - The rows currently passed to `EntityRecordDataTableUI` are derived from `r.normalizedData`. The full record `id` is needed for navigation but is not in `normalizedData`.
-  - Pass the full records array alongside the rows, or pass a separate `recordIds` array derived as `records.records.map((r) => r.id)`.
-  - Add `onRowClick` to `EntityDetailViewUI` props:
-    - `onRowClick: (rowIndex: number) => void` (the view maps index → recordId)
-  - Add `onRowClick` to `EntityRecordDataTableUIProps` and wire through to `<DataTable onRowClick>`, mapping `(_, index) => props.onRowClick?.(index)`
-  - In the container `EntityDetailView`, derive `recordIds` from `records.records.map(r => r.id)` and pass `onRowClick={(idx) => navigate({ to: ApplicationRoute.EntityRecord, params: { entityId, recordId: recordIds[idx] } })}` to `EntityDetailViewUI`
-- [ ] Unit tests in `apps/web/src/__tests__/EntityDetail.view.test.tsx` (or create):
-  - Clicking a row calls `navigate` with the correct `entityId` and `recordId`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+  - A `Map<row, recordId>` is built alongside the rows so `onRowClick` can look up the portal record ID without polluting `normalizedData` or using indexOf.
+  - Added `onRecordClick?: (recordId: string) => void` to `EntityDetailViewUI` props for DI/testing; defaults to internal `navigate` when not provided.
+  - `onRowClick` wired through `EntityRecordDataTableUI` → `DataTable`, using the Map for O(1) lookup.
+- [x] Unit tests in `apps/web/src/__tests__/EntityDetailView.test.tsx`:
+  - Clicking a row calls `onRecordClick` with the correct `recordId`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 

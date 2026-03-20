@@ -44,6 +44,8 @@ export interface EntityDetailViewUIProps {
   accessMode?: string;
   onSync?: () => void;
   isSyncing?: boolean;
+  /** Called when a record row is clicked. Overrides the default navigation behaviour — useful for testing. */
+  onRecordClick?: (recordId: string) => void;
 }
 
 export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
@@ -54,6 +56,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   accessMode,
   onSync,
   isSyncing,
+  onRecordClick,
 }) => {
   const navigate = useNavigate();
 
@@ -199,10 +202,23 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                     }: {
                       records: EntityRecordListResponsePayload;
                     }) => {
-                      const rows = records.records.map(
-                        (r) =>
-                          (r.normalizedData ?? {}) as Record<string, unknown>
-                      );
+                      const rowRecordId = new Map<Record<string, unknown>, string>();
+                      const rows = records.records.map((r) => {
+                        const row = (r.normalizedData ?? {}) as Record<string, unknown>;
+                        rowRecordId.set(row, r.id);
+                        return row;
+                      });
+                      const handleRowClick = (row: Record<string, unknown>) => {
+                        const recordId = rowRecordId.get(row);
+                        if (!recordId) return;
+                        if (onRecordClick) {
+                          onRecordClick(recordId);
+                        } else {
+                          void navigate({
+                            to: `/entities/${entity.id}/records/${recordId}`,
+                          });
+                        }
+                      };
                       return (
                         <SyncColumns
                           columns={records.columns}
@@ -216,6 +232,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                             sortColumn={pagination.sortBy}
                             sortDirection={pagination.sortOrder}
                             onSort={handleSort}
+                            onRowClick={handleRowClick}
                           />
                         </SyncColumns>
                       );
