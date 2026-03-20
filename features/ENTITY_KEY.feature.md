@@ -101,16 +101,16 @@ The `ColumnRow` sub-component gets the most significant changes:
 ### Phase 4 — API service (`apps/api/src/services/uploads.service.ts`)
 
 #### Checklist
-- [ ] Read `refEntityKey`, `refColumnKey`, `refColumnDefinitionId` from confirm request body
-- [ ] Pass ref fields through to `resolveColumnDefinition()`
-- [ ] Implement second pass: resolve `refColumnKey` → `refColumnDefinitionId` from cache after first pass
-- [ ] Handle `refColumnDefinitionId` passed directly (pre-existing DB column)
-- [ ] Update/add tests in `__tests__/services/uploads.service.test.ts`
-- [ ] Update/add integration tests in `__tests__/__integration__/routes/uploads.router.integration.test.ts`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
+- [x] Read `refEntityKey`, `refColumnKey`, `refColumnDefinitionId` from confirm request body
+- [x] Pass ref fields through to `resolveColumnDefinition()`
+- [x] Implement second pass: resolve `refColumnKey` → `refColumnDefinitionId` from cache after first pass
+- [x] Handle `refColumnDefinitionId` passed directly (pre-existing DB column)
+- [x] Update/add tests in `__tests__/services/uploads.service.test.ts`
+- [x] Update/add integration tests in `__tests__/__integration__/routes/uploads.router.integration.test.ts`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
+- [x] `npm run build` passes
 
 `resolveColumnDefinition()` currently always sets `refColumnDefinitionId: null`. Changes needed:
 
