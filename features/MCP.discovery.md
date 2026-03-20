@@ -832,6 +832,177 @@ Added to `apps/api/package.json`. Note: `ml-kmeans` is the specific ml.js sub-pa
 
 ---
 
+---
+
+## Custom Tool Extensibility
+
+The built-in analytics tools (SQL, stats, clustering, visualization) cover common patterns, but users may need domain-specific analysis beyond what the platform hard-codes — custom scoring models, industry-specific metrics, proprietary algorithms, or integrations with external computation services. This section explores how to support user-defined tools within the existing architecture.
+
+---
+
+### The Extension Point
+
+`buildAnalyticsTools()` is already a factory function that composes a tool map at portal-open time. It accepts `organizationId` for scoping and returns a plain object consumed by the Vercel AI SDK's `tools` parameter. This is the natural extension point: the factory can be made async and extended to merge in station-scoped custom tools alongside the built-ins.
+
+```typescript
+// Current signature
+export function buildAnalyticsTools(organizationId: string): Record<string, Tool>
+
+// Extended signature
+export async function buildAnalyticsTools(organizationId: string, stationId: string): Promise<Record<string, Tool>>
+```
+
+The result is still merged at the call site in `PortalService.streamResponse()`:
+
+```typescript
+const tools = {
+  ...AiService.tools,
+  ...await buildAnalyticsTools(organizationId, stationId),
+};
+```
+
+Custom tools are invisible to the platform — Claude sees them exactly like built-ins, with the user-provided name and description guiding tool selection.
+
+---
+
+### Three Implementation Options
+
+#### Option A: Webhook-based custom tools (recommended)
+
+Users register a tool definition per station: a name, description, JSON Schema for input parameters, and a webhook URL. When Claude selects the tool, the API POSTs the resolved parameters to the URL and returns the JSON response to Claude.
+
+**Best for:** Domain-specific computation hosted externally, integration with existing internal services, language-agnostic implementations.
+
+```
+Claude calls "score_lead" tool
+  → API POSTs { lead_score_id, entity, column } to https://internal.company.com/lead-scorer
+  → Webhook returns { score: 0.87, factors: [...] }
+  → Claude narrates the result
+```
+
+**Pros:** No code execution on the server, clear security boundary, language-agnostic, webhook owner controls rate limits and auth.
+
+**Cons:** Requires the user to host and maintain an endpoint, introduces network latency and availability dependency.
+
+#### Option B: Sandboxed JavaScript snippets
+
+Users write a JavaScript function body stored as a string in the DB. At execution time the API runs it in an isolated sandbox (`isolated-vm` or `vm.runInNewContext`) with a read-only `data` context (the pre-loaded entity records map) and no access to network or filesystem.
+
+**Best for:** Power users who want custom logic without deploying infrastructure.
+
+```typescript
+// User-authored snippet (stored in DB)
+const values = data.orders.map(r => r.revenue);
+return { total: values.reduce((a, b) => a + b, 0), count: values.length };
+```
+
+**Pros:** Self-contained, no external dependencies, executes in-process alongside entity data.
+
+**Cons:** Requires robust sandboxing to prevent resource exhaustion and escapes; users must know JavaScript; harder to test and version.
+
+#### Option C: Curated tool packs (opt-in library extensions)
+
+Additional algorithms implemented by the Portal.ai team — ARIMA time-series forecasting (`ml-arima`), text sentiment (`natural`), geospatial analysis (`@turf/turf`) — surfaced as optional "packs" that can be toggled on per station.
+
+**Best for:** Common use cases that are too niche for all stations but safe to offer as a library.
+
+**Pros:** Fully vetted and tested, no user code, consistent behavior.
+
+**Cons:** Each new capability requires an engineering release; users cannot add their own logic.
+
+---
+
+### Recommended Approach: Webhook-first with curated packs
+
+**Phase 1 — Curated packs.** Implement `regression` and `trend` (already in the MCP tool table but not in the built-in service) as additional `AnalyticsService` methods. Activate per station via a `stationToolPacks` array stored on the `stations` table. This covers the highest-value gaps without introducing code execution.
+
+**Phase 2 — Webhook-based custom tools.** Add the `station_tools` table and extend `buildAnalyticsTools()` to load and wrap registered webhooks. This gives users full extensibility without any sandboxing complexity.
+
+**Phase 3 — Sandboxed JS snippets.** Revisit once the webhook pattern is validated; JS snippets can be offered as an alternative implementation type within the same `station_tools` schema.
+
+---
+
+### Database Schema: `station_tools`
+
+```sql
+-- One row per user-defined tool, scoped to a station
+id                  uuid PRIMARY KEY
+organization_id     uuid REFERENCES organizations(id)
+station_id          uuid REFERENCES stations(id)
+name                text NOT NULL   -- used as the tool key, e.g. "score_lead" (must be unique within a station, cannot shadow built-in names)
+description         text NOT NULL   -- Claude uses this to decide when to call the tool
+parameter_schema    jsonb NOT NULL  -- JSON Schema object describing input parameters
+implementation      jsonb NOT NULL  -- { type: "webhook", url: string, headers?: Record<string,string> }
+                                    -- future: { type: "script", code: string }
+created             timestamp
+updated             timestamp
+deleted             timestamp       -- soft delete
+```
+
+Dual-schema model in `packages/core`: `StationToolSchema` + `StationToolModel` + `StationToolModelFactory` following the existing pattern.
+
+---
+
+### Updated `buildAnalyticsTools()` Flow
+
+```typescript
+export async function buildAnalyticsTools(organizationId: string, stationId: string) {
+  const builtIns = {
+    sql_query: ...,
+    describe_column: ...,
+    correlate: ...,
+    detect_outliers: ...,
+    cluster: ...,
+    visualize: ...,
+  };
+
+  // Load user-defined tools for this station
+  const customToolDefs = await StationToolsRepository.findByStation(stationId, organizationId);
+
+  const customTools = Object.fromEntries(
+    customToolDefs.map((def) => [
+      def.name,
+      tool({
+        description: def.description,
+        inputSchema: jsonSchemaToZod(def.parameterSchema),
+        execute: async (input) => callWebhook(def.implementation, input),
+      }),
+    ])
+  );
+
+  return { ...builtIns, ...customTools };
+}
+```
+
+`callWebhook()` handles: POST to the URL with the input payload, injects optional auth headers, enforces a 30 s timeout (matching AI analysis timeout), and validates that the response is JSON. If the webhook returns `{ type: "vega-lite", spec: {...} }`, `PortalService.streamResponse()` emits it as a `tool_result` SSE event for chart rendering — same as the `visualize` built-in.
+
+---
+
+### Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Tool names must not shadow built-in names | Prevent user tools silently overriding platform tools; validate at creation time via `StationToolsRepository.create()` |
+| Custom tool descriptions are injected into the system prompt | `PortalService` assembles a list of available custom tools alongside entity schemas so Claude understands what's callable |
+| `buildAnalyticsTools()` becomes async | Only affects `PortalService.createPortal()` which is already async; no call-site friction |
+| Webhook auth headers stored encrypted | Tool definitions may include API keys; store `headers` field encrypted at rest using the same mechanism as connector credentials |
+| Webhook response schema is open | Claude narrates arbitrary JSON tool results; only `{ type: "vega-lite", spec }` responses get special frontend rendering |
+
+---
+
+### New Files
+
+| Action | File | Purpose |
+|--------|------|---------|
+| Create | `packages/core/src/models/station-tool.model.ts` | Zod model for StationTool |
+| Create | `apps/api/src/db/schema/station-tools.table.ts` | Drizzle table definition |
+| Create | `apps/api/src/db/repositories/station-tools.repository.ts` | CRUD + findByStation |
+| Create | `apps/api/src/routes/station-tools.router.ts` | REST endpoints: list, create, update, delete |
+| Modify | `apps/api/src/services/analytics.tools.ts` | Extend `buildAnalyticsTools()` to accept `stationId`, load and wrap custom tools |
+| Modify | `apps/api/src/services/portal.service.ts` | Pass `stationId` into `buildAnalyticsTools()` |
+
+---
+
 ## Open Questions
 
 1. ~~**Entity schema discovery**~~ — **Resolved.** Each entity record is associated with a `connectorEntity`, which has `fieldMappings` that map source fields to the organization's `columnDefinitions`. When a portal is opened, the schema for each connector entity is derived by walking `connectorEntity → fieldMappings → columnDefinitions` to produce a typed column catalog (name, type, required, etc.) for the system prompt.
@@ -842,3 +1013,5 @@ Added to `apps/api/package.json`. Note: `ml-kmeans` is the specific ml.js sub-pa
 6. **Result caching** — Cache loaded entity records in-memory (or Redis) for the duration of a portal session to avoid repeated DB round-trips when Claude calls multiple tools.
 7. **SQL injection in AlaSQL** — AlaSQL executes against in-memory arrays (not a real database), so traditional SQL injection risks are limited. However, validate that generated SQL cannot trigger AlaSQL file I/O operations (`SELECT INTO`, `ATTACH`). Consider an allowlist of SQL operations.
 8. **Vega-Lite spec validation** — Validate Claude-generated specs against the Vega-Lite JSON schema before sending to the frontend, to prevent rendering errors.
+9. **Custom tool response rendering** — Webhook-based custom tools can return arbitrary JSON. If a custom tool returns a `{ type: "vega-lite", spec }` payload, `PortalService` can emit it as a `tool_result` SSE event for chart rendering. How should other rich response types (tables, images, custom UI blocks) be handled? Define a response envelope standard now, or evolve it as needs arise?
+10. **JSON Schema → Zod conversion** — `buildAnalyticsTools()` will need to convert user-supplied JSON Schema parameter definitions into Zod schemas at runtime (for the Vercel AI SDK `inputSchema`). Evaluate `json-schema-to-zod` or `zod-from-json-schema`; alternatively, constrain `parameter_schema` to a limited subset of JSON Schema types (string, number, boolean, enum, array of primitives) and map them manually to keep the conversion trivial and predictable.

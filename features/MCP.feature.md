@@ -4,20 +4,26 @@
 
 Stations, Portals, and an embedded analytics engine that lets users query their connector entity data using natural language. Claude orchestrates a set of analytics tools (SQL via AlaSQL, stats via simple-statistics, clustering via ml-kmeans, visualization via Vega-Lite) embedded directly in the API. Results are streamed to a chat-like Portal UI and can be pinned as named saved results.
 
+**Architecture decision — Option 2: Analytics Tools Embedded in API.** Analytics tools are implemented as static `AnalyticsService` methods and registered as Vercel AI SDK `tool()` definitions in `analytics.tools.ts`, alongside the existing `AiService.tools`. No separate MCP server process is needed. The MCP protocol can be adopted later by wrapping the same service methods in MCP tool handlers.
+
+**Custom tooling — Option A: Webhook-based custom tools.** Users can register per-station custom tools that point to external webhook endpoints. Phase 1 ships curated built-in tool packs (`regression`, `trend`) via `AnalyticsService`. Phase 2 adds the `station_tools` database table, `StationToolsRepository`, and station-tools REST routes so users can register arbitrary webhook tools. `buildAnalyticsTools(organizationId, stationId)` is async from the start to accommodate Phase 2 without a future signature break.
+
 Reference discovery doc: `features/MCP.discovery.md`
 
 ---
 
 ## Phase 1 — Core models (`packages/core`)
 
-Add Zod models for all new domain objects following the existing dual-schema pattern.
+Add Zod models for all new domain objects following the existing dual-schema pattern. Includes the `StationTool` model needed for webhook-based custom tools (Phase 2 DB + routes, but model defined here to keep the dual-schema pattern intact).
 
 ### Checklist
 - [ ] Add `StationSchema` + `StationModel` + `StationModelFactory` in `station.model.ts`
 - [ ] Add `PortalSchema` + `PortalModel` + `PortalModelFactory` in `portal.model.ts`
 - [ ] Add `PortalResultSchema` + `PortalResultModel` + `PortalResultModelFactory` in `portal-result.model.ts`
+- [ ] Add `StationToolSchema` + `StationToolModel` + `StationToolModelFactory` in `station-tool.model.ts` — fields: `id`, `organizationId`, `stationId`, `name`, `description`, `parameterSchema` (jsonb), `implementation` (jsonb: `{ type: "webhook", url: string, headers?: Record<string,string> }`) + baseColumns
 - [ ] Add `portal.contract.ts` — Zod schemas for `CreatePortalBody`, `SendMessageBody`, `PinResultBody`, `PortalMessageResponse`, SSE event payloads (`DeltaEvent`, `ToolResultEvent`, `DoneEvent`)
 - [ ] Add `station.contract.ts` — Zod schemas for `CreateStationBody`, `UpdateStationBody`, `StationListResponse`
+- [ ] Add `station-tool.contract.ts` — Zod schemas for `CreateStationToolBody`, `UpdateStationToolBody`, `StationToolListResponse`
 - [ ] Export all new models and contracts from `packages/core/src/index.ts`
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
@@ -30,15 +36,17 @@ Add Zod models for all new domain objects following the existing dual-schema pat
 | Create | `packages/core/src/models/station.model.ts` |
 | Create | `packages/core/src/models/portal.model.ts` |
 | Create | `packages/core/src/models/portal-result.model.ts` |
+| Create | `packages/core/src/models/station-tool.model.ts` |
 | Create | `packages/core/src/contracts/station.contract.ts` |
 | Create | `packages/core/src/contracts/portal.contract.ts` |
+| Create | `packages/core/src/contracts/station-tool.contract.ts` |
 | Modify | `packages/core/src/index.ts` |
 
 ---
 
 ## Phase 2 — Database schema + migrations (`apps/api`)
 
-Define Drizzle tables for all new entities, update `organizations`, add type-check assertions, and generate + apply migrations.
+Define Drizzle tables for all new entities, update `organizations`, add type-check assertions, and generate + apply migrations. Includes the `station_tools` table for webhook-based custom tools.
 
 ### Checklist
 - [ ] Create `stations.table.ts` — `id`, `organizationId`, `name`, `description`, `createdBy` + baseColumns
@@ -46,6 +54,7 @@ Define Drizzle tables for all new entities, update `organizations`, add type-che
 - [ ] Create `portals.table.ts` — `id`, `organizationId`, `stationId`, `name`, `createdBy` + baseColumns
 - [ ] Create `portal-messages.table.ts` — `id`, `portalId`, `organizationId`, `role` enum (`user`|`assistant`), `blocks` jsonb, `created`
 - [ ] Create `portal-results.table.ts` — `id`, `organizationId`, `stationId`, `portalId` (nullable), `name`, `type` enum (`text`|`vega-lite`), `content` jsonb, `createdBy` + baseColumns
+- [ ] Create `station-tools.table.ts` — `id`, `organizationId`, `stationId`, `name`, `description`, `parameterSchema` jsonb, `implementation` jsonb + baseColumns
 - [ ] Modify `organizations.table.ts` — add `defaultStationId` (nullable text FK → stations)
 - [ ] Add drizzle-zod `createSelectSchema` / `createInsertSchema` entries in `zod.ts`
 - [ ] Add bidirectional `IsAssignable` type guards in `type-checks.ts` for all new tables
@@ -63,6 +72,7 @@ Define Drizzle tables for all new entities, update `organizations`, add type-che
 | Create | `apps/api/src/db/schema/portals.table.ts` |
 | Create | `apps/api/src/db/schema/portal-messages.table.ts` |
 | Create | `apps/api/src/db/schema/portal-results.table.ts` |
+| Create | `apps/api/src/db/schema/station-tools.table.ts` |
 | Modify | `apps/api/src/db/schema/organizations.table.ts` |
 | Modify | `apps/api/src/db/schema/zod.ts` |
 | Modify | `apps/api/src/db/schema/type-checks.ts` |
@@ -80,6 +90,7 @@ One repository per new table, extending the base `Repository` class.
 - [ ] `PortalsRepository` — `findById`, `findByStation`, `findRecentByOrg(limit)`, `create`, `update`, `softDelete`
 - [ ] `PortalMessagesRepository` — `findByPortal` (ordered by `created` asc), `create`
 - [ ] `PortalResultsRepository` — `findById`, `findByStation`, `create`, `update`, `softDelete`
+- [ ] `StationToolsRepository` — `findById`, `findByStation(stationId, organizationId)`, `create` (validate name does not shadow a built-in tool name), `update`, `softDelete`
 - [ ] Register all new repositories on `DbService.repository` in `db.service.ts`
 - [ ] `npm run type-check` passes
 - [ ] `npm run build` passes
@@ -92,13 +103,14 @@ One repository per new table, extending the base `Repository` class.
 | Create | `apps/api/src/db/repositories/portals.repository.ts` |
 | Create | `apps/api/src/db/repositories/portal-messages.repository.ts` |
 | Create | `apps/api/src/db/repositories/portal-results.repository.ts` |
+| Create | `apps/api/src/db/repositories/station-tools.repository.ts` |
 | Modify | `apps/api/src/services/db.service.ts` |
 
 ---
 
 ## Phase 4 — Analytics Service (`apps/api`)
 
-Stateless service with static methods. Each method receives pre-loaded records and runs the analysis. Install new dependencies first.
+Stateless service with static methods. Each method receives pre-loaded records and runs the analysis. Install new dependencies first. Curated tool packs (`regression`, `trend`) are implemented here alongside the core tools so they are available as built-ins from day one.
 
 ### Checklist
 - [ ] Install dependencies: `alasql`, `arquero`, `simple-statistics`, `ml-kmeans` in `apps/api/package.json`
@@ -117,6 +129,8 @@ Stateless service with static methods. Each method receives pre-loaded records a
 - [ ] Implement `AnalyticsService.detectOutliers({ entity, column, method, organizationId })` — IQR or Z-score
 - [ ] Implement `AnalyticsService.cluster({ entity, columns, k, organizationId })` — k-means via ml-kmeans
 - [ ] Implement `AnalyticsService.visualize({ sql, vegaLiteSpec, organizationId })` — runs SQL then injects rows into spec
+- [ ] **Curated pack — `AnalyticsService.regression({ entity, x, y, type, organizationId })`** — linear or polynomial regression via simple-statistics; returns coefficients and R-squared
+- [ ] **Curated pack — `AnalyticsService.trend({ entity, dateColumn, valueColumn, interval, organizationId })`** — time-series aggregation via Arquero + linear trend line via simple-statistics
 - [ ] Unit tests for each method with fixture records
 - [ ] Validate AlaSQL SQL against an allowlist of operations (block `SELECT INTO`, `ATTACH`)
 - [ ] `npm run type-check` passes
@@ -134,17 +148,27 @@ Stateless service with static methods. Each method receives pre-loaded records a
 
 ## Phase 5 — Analytics Tool Definitions (`apps/api`)
 
-Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods. Registered per-portal so each tool call is org-scoped.
+Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods and user-registered webhook tools. The factory is **async** and accepts `stationId` so it can load station-scoped custom tools alongside built-ins. This signature is established now so Phase 6+ never requires a breaking change.
 
 ### Checklist
-- [ ] Implement `buildAnalyticsTools(organizationId)` factory in `analytics.tools.ts`
-- [ ] Define `sql_query` tool — Zod input `{ sql: string }`
-- [ ] Define `describe_column` tool — Zod input `{ entity, column }`
-- [ ] Define `correlate` tool — Zod input `{ entity, columnA, columnB }`
-- [ ] Define `detect_outliers` tool — Zod input `{ entity, column, method }`
-- [ ] Define `cluster` tool — Zod input `{ entity, columns, k }`
-- [ ] Define `visualize` tool — Zod input `{ sql, vegaLiteSpec }`
-- [ ] Unit tests: each tool's `execute` delegates to the correct `AnalyticsService` method with `organizationId` injected
+- [ ] Implement `buildAnalyticsTools(organizationId, stationId)` as an **async** factory in `analytics.tools.ts`
+- [ ] Define built-in tools wrapping `AnalyticsService` methods:
+  - [ ] `sql_query` — Zod input `{ sql: string }`
+  - [ ] `describe_column` — Zod input `{ entity, column }`
+  - [ ] `correlate` — Zod input `{ entity, columnA, columnB }`
+  - [ ] `detect_outliers` — Zod input `{ entity, column, method }`
+  - [ ] `cluster` — Zod input `{ entity, columns, k }`
+  - [ ] `visualize` — Zod input `{ sql, vegaLiteSpec }`
+  - [ ] `regression` — Zod input `{ entity, x, y, type }` (curated pack)
+  - [ ] `trend` — Zod input `{ entity, dateColumn, valueColumn, interval }` (curated pack)
+- [ ] Load station custom tools via `StationToolsRepository.findByStation(stationId, organizationId)` and append as webhook-backed `tool()` entries:
+  - [ ] Convert each tool's `parameterSchema` (JSON Schema) to a Zod schema at runtime
+  - [ ] Tool `execute` calls `callWebhook(def.implementation, input)` with a 30 s timeout
+  - [ ] If webhook response contains `{ type: "vega-lite", spec }`, propagate as a chart result
+  - [ ] Validate custom tool names do not shadow any built-in tool name (throw on conflict)
+- [ ] Implement `callWebhook(implementation, input)` helper — POST to URL, inject auth headers, enforce timeout, return parsed JSON
+- [ ] Unit tests: each built-in tool delegates to the correct `AnalyticsService` method with `organizationId` injected
+- [ ] Unit tests: `callWebhook` called with correct URL + headers for a webhook tool; timeout enforced; response returned
 - [ ] `npm run type-check` passes
 - [ ] `npm run test` passes
 
@@ -169,10 +193,11 @@ Orchestrates portal lifecycle: creation, message persistence, Claude agentic str
 - [ ] Implement `PortalService.getPortal(portalId)` — loads portal + full message history from DB
 - [ ] Implement `PortalService.addMessage(portalId, { role, content })` — persists message row; assembles `blocks[]` for assistant turns
 - [ ] Implement `PortalService.streamResponse({ portalId, messages, stationContext, organizationId, sse })`:
-  - [ ] Build system prompt from station name + entity schemas
-  - [ ] Call `streamText()` with `buildAnalyticsTools(organizationId)` + existing `AiService.tools`
+  - [ ] Build system prompt from station name + entity schemas; append list of custom tool names + descriptions if any are registered on the station
+  - [ ] Call `await buildAnalyticsTools(organizationId, stationContext.stationId)` to get merged built-in + custom tool map
+  - [ ] Call `streamText()` with merged tools + existing `AiService.tools`
   - [ ] Stream `delta` SSE events for text chunks
-  - [ ] Stream `tool_result` SSE events for `visualize` results only
+  - [ ] Stream `tool_result` SSE events for `visualize` results and any webhook tool results returning `{ type: "vega-lite", spec }`
   - [ ] On stream complete: assemble full assistant `blocks[]` and persist via `PortalMessagesRepository.create()`
   - [ ] Send `done` SSE event
 - [ ] Unit tests for `createPortal`, `addMessage`, `streamResponse` (mock AiService + AnalyticsService)
@@ -220,10 +245,16 @@ Wire all new routes into the Express app. All except the SSE stream use the exis
 - [ ] `PATCH /api/portal-results/:id` — rename a saved result
 - [ ] `DELETE /api/portal-results/:id` — soft delete
 
+#### Station tool routes (`station-tools.router.ts`)
+- [ ] `GET /api/stations/:stationId/tools` — list custom tools registered on a station
+- [ ] `POST /api/stations/:stationId/tools` — register a new webhook tool; validate name does not shadow a built-in
+- [ ] `PATCH /api/stations/:stationId/tools/:toolId` — update name / description / parameterSchema / implementation URL
+- [ ] `DELETE /api/stations/:stationId/tools/:toolId` — soft delete
+
 #### Wire-up
 - [ ] Register all new routers in `apps/api/src/app.ts`
-- [ ] Add new `ApiCode` error codes: `STATION_NOT_FOUND`, `PORTAL_NOT_FOUND`, `PORTAL_RESULT_NOT_FOUND`, `PORTAL_INVALID_STATION`
-- [ ] Integration tests for station CRUD, portal create + message, portal-results pin + list
+- [ ] Add new `ApiCode` error codes: `STATION_NOT_FOUND`, `PORTAL_NOT_FOUND`, `PORTAL_RESULT_NOT_FOUND`, `PORTAL_INVALID_STATION`, `STATION_TOOL_NOT_FOUND`, `STATION_TOOL_NAME_CONFLICT`
+- [ ] Integration tests for station CRUD, portal create + message, portal-results pin + list, station-tools CRUD
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
 - [ ] `npm run test` passes
@@ -235,12 +266,14 @@ Wire all new routes into the Express app. All except the SSE stream use the exis
 | Create | `apps/api/src/routes/portal.router.ts` |
 | Create | `apps/api/src/routes/portal-events.router.ts` |
 | Create | `apps/api/src/routes/portal-results.router.ts` |
+| Create | `apps/api/src/routes/station-tools.router.ts` |
 | Modify | `apps/api/src/routes/organization.router.ts` |
 | Modify | `apps/api/src/app.ts` |
 | Modify | `apps/api/src/constants/api-codes.constants.ts` |
 | Create | `apps/api/src/__tests__/__integration__/routes/station.router.integration.test.ts` |
 | Create | `apps/api/src/__tests__/__integration__/routes/portal.router.integration.test.ts` |
 | Create | `apps/api/src/__tests__/__integration__/routes/portal-results.router.integration.test.ts` |
+| Create | `apps/api/src/__tests__/__integration__/routes/station-tools.router.integration.test.ts` |
 
 ---
 
@@ -250,10 +283,11 @@ API hooks following the existing `useAuthQuery` / `useAuthMutation` pattern. Ins
 
 ### Checklist
 - [ ] Install frontend dependencies in `apps/web/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
-- [ ] Add query key namespaces to `apps/web/src/api/keys.ts`: `stations`, `portals`, `portalResults`
+- [ ] Add query key namespaces to `apps/web/src/api/keys.ts`: `stations`, `portals`, `portalResults`, `stationTools`
 - [ ] Create `stations.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `update(id, body)`, `setDefault(orgId, stationId)`
 - [ ] Create `portals.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `sendMessage(portalId, message)`
 - [ ] Create `portal-results.api.ts` — `list(params?, options?)`, `pin(body)`, `rename(id, name)`, `remove(id)`
+- [ ] Create `station-tools.api.ts` — `list(stationId, params?, options?)`, `create(stationId, body)`, `update(stationId, toolId, body)`, `remove(stationId, toolId)`
 - [ ] Register all new API modules on `sdk` in `apps/web/src/api/sdk.ts`
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
@@ -264,6 +298,7 @@ API hooks following the existing `useAuthQuery` / `useAuthMutation` pattern. Ins
 | Create | `apps/web/src/api/stations.api.ts` |
 | Create | `apps/web/src/api/portals.api.ts` |
 | Create | `apps/web/src/api/portal-results.api.ts` |
+| Create | `apps/web/src/api/station-tools.api.ts` |
 | Modify | `apps/web/src/api/keys.ts` |
 | Modify | `apps/web/src/api/sdk.ts` |
 | Modify | `apps/web/package.json` |
@@ -394,14 +429,17 @@ Extends the existing `DashboardView` placeholder with portal-aware sections.
 | `packages/core/src/models/station.model.ts` | Create | 1 |
 | `packages/core/src/models/portal.model.ts` | Create | 1 |
 | `packages/core/src/models/portal-result.model.ts` | Create | 1 |
+| `packages/core/src/models/station-tool.model.ts` | Create | 1 |
 | `packages/core/src/contracts/station.contract.ts` | Create | 1 |
 | `packages/core/src/contracts/portal.contract.ts` | Create | 1 |
+| `packages/core/src/contracts/station-tool.contract.ts` | Create | 1 |
 | `packages/core/src/index.ts` | Modify | 1 |
 | `apps/api/src/db/schema/stations.table.ts` | Create | 2 |
 | `apps/api/src/db/schema/station-instances.table.ts` | Create | 2 |
 | `apps/api/src/db/schema/portals.table.ts` | Create | 2 |
 | `apps/api/src/db/schema/portal-messages.table.ts` | Create | 2 |
 | `apps/api/src/db/schema/portal-results.table.ts` | Create | 2 |
+| `apps/api/src/db/schema/station-tools.table.ts` | Create | 2 |
 | `apps/api/src/db/schema/organizations.table.ts` | Modify | 2 |
 | `apps/api/src/db/schema/zod.ts` | Modify | 2 |
 | `apps/api/src/db/schema/type-checks.ts` | Modify | 2 |
@@ -411,6 +449,7 @@ Extends the existing `DashboardView` placeholder with portal-aware sections.
 | `apps/api/src/db/repositories/portals.repository.ts` | Create | 3 |
 | `apps/api/src/db/repositories/portal-messages.repository.ts` | Create | 3 |
 | `apps/api/src/db/repositories/portal-results.repository.ts` | Create | 3 |
+| `apps/api/src/db/repositories/station-tools.repository.ts` | Create | 3 |
 | `apps/api/src/services/db.service.ts` | Modify | 3 |
 | `apps/api/src/services/analytics.service.ts` | Create | 4 |
 | `apps/api/src/services/analytics.tools.ts` | Create | 5 |
@@ -419,12 +458,14 @@ Extends the existing `DashboardView` placeholder with portal-aware sections.
 | `apps/api/src/routes/portal.router.ts` | Create | 7 |
 | `apps/api/src/routes/portal-events.router.ts` | Create | 7 |
 | `apps/api/src/routes/portal-results.router.ts` | Create | 7 |
+| `apps/api/src/routes/station-tools.router.ts` | Create | 7 |
 | `apps/api/src/routes/organization.router.ts` | Modify | 7 |
 | `apps/api/src/app.ts` | Modify | 7 |
 | `apps/api/src/constants/api-codes.constants.ts` | Modify | 7 |
 | `apps/web/src/api/stations.api.ts` | Create | 8 |
 | `apps/web/src/api/portals.api.ts` | Create | 8 |
 | `apps/web/src/api/portal-results.api.ts` | Create | 8 |
+| `apps/web/src/api/station-tools.api.ts` | Create | 8 |
 | `apps/web/src/api/keys.ts` | Modify | 8 |
 | `apps/web/src/api/sdk.ts` | Modify | 8 |
 | `apps/web/package.json` | Modify | 8 |
