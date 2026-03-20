@@ -52,6 +52,8 @@ export interface DataTableColumn {
    * returns arbitrary React content. Takes precedence over `format`.
    */
   render?: (value: unknown, row: Record<string, unknown>) => React.ReactNode;
+  /** Called when this cell is clicked. Stops propagation so the row handler does not fire. */
+  onCellClick?: (value: unknown, column: DataTableColumn, row: Record<string, unknown>) => void;
 }
 
 export interface DataTableProps {
@@ -73,6 +75,8 @@ export interface DataTableProps {
   columnConfig?: ColumnConfig[];
   /** Called when the user changes column visibility or order. */
   onColumnConfigChange?: (config: ColumnConfig[]) => void;
+  /** Called when a row is clicked. Does not fire if the clicked cell's column defines `onCellClick`. */
+  onRowClick?: (row: Record<string, unknown>, index: number) => void;
 }
 
 export interface ColumnConfig {
@@ -316,6 +320,7 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
       header,
       columnConfig,
       onColumnConfigChange,
+      onRowClick,
     },
     ref
   ) => {
@@ -402,9 +407,38 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                 </TableRow>
               ) : (
                 rows.map((row, idx) => (
-                  <TableRow key={idx}>
+                  <TableRow
+                    key={idx}
+                    onClick={onRowClick ? () => onRowClick(row, idx) : undefined}
+                    sx={
+                      onRowClick
+                        ? {
+                            cursor: "pointer",
+                            "&:hover": { backgroundColor: "action.hover" },
+                          }
+                        : undefined
+                    }
+                  >
                     {visibleColumns.map((col) => (
-                      <TableCell key={col.key}>
+                      <TableCell
+                        key={col.key}
+                        onClick={
+                          col.onCellClick
+                            ? (e) => {
+                                e.stopPropagation();
+                                col.onCellClick!(row[col.key], col, row);
+                              }
+                            : undefined
+                        }
+                        sx={
+                          col.onCellClick
+                            ? {
+                                cursor: "pointer",
+                                "&:hover": { backgroundColor: "action.selected" },
+                              }
+                            : undefined
+                        }
+                      >
                         {col.render
                           ? col.render(row[col.key], row)
                           : col.format

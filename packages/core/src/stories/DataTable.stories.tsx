@@ -224,3 +224,29 @@ export const FewColumns: Story = {
     rows: rows.map(({ name, email }) => ({ name, email })),
   },
 };
+
+export const ClickableRows: Story = {
+  args: {
+    columns,
+    rows,
+    onRowClick: (row: Record<string, unknown>, index: number) =>
+      console.log(`Row ${index} clicked:`, row),
+  },
+};
+
+export const CellClick: Story = {
+  args: {
+    columns: columns.map((col) =>
+      col.key === "name" || col.key === "email"
+        ? {
+            ...col,
+            onCellClick: (value: unknown, column: DataTableColumn) =>
+              console.log(`Cell clicked — column: ${column.key}, value:`, value),
+          }
+        : col
+    ),
+    rows,
+    onRowClick: (row: Record<string, unknown>, index: number) =>
+      console.log(`Row ${index} clicked (non-clickable cell):`, row),
+  },
+};

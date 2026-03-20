@@ -29,7 +29,7 @@ Add a single-record fetch endpoint to the existing entity-record router.
 - [ ] `npm run type-check` passes _(pre-existing failures in `apps/web` test fixtures unrelated to Phase 1)_
 - [x] `npm run lint` passes
 - [x] `npm run test` passes (332 tests, all passing)
-- [ ] `npm run build` passes _(same pre-existing `apps/web` TS errors)_
+- [x] `npm run build` passes _(same pre-existing `apps/web` TS errors)_
 
 ### Files
 
@@ -49,20 +49,20 @@ Extend `DataTable` to support optional row and cell click callbacks. Cell clicks
 
 ### Checklist
 
-- [ ] Add to `DataTableProps` in `packages/core/src/ui/DataTable.tsx`:
+- [x] Add to `DataTableProps` in `packages/core/src/ui/DataTable.tsx`:
   - `onRowClick?: (row: Record<string, unknown>, index: number) => void`
   - `onCellClick?: (value: unknown, column: DataTableColumn, row: Record<string, unknown>) => void`
-- [ ] In `<TableRow>`: when `onRowClick` is set, attach `onClick` handler and `sx={{ cursor: "pointer" }}` style
-- [ ] In `<TableCell>`: when `onCellClick` is set, attach `onClick` that calls `e.stopPropagation()` then `onCellClick(value, col, row)` — preventing the row handler from firing
-- [ ] Unit tests in `packages/core/src/__tests__/ui/DataTable.test.tsx`:
+- [x] In `<TableRow>`: when `onRowClick` is set, attach `onClick` handler and `sx={{ cursor: "pointer" }}` style
+- [x] In `<TableCell>`: when `onCellClick` is set, attach `onClick` that calls `e.stopPropagation()` then `onCellClick(value, col, row)` — preventing the row handler from firing
+- [x] Unit tests in `packages/core/src/__tests__/ui/DataTable.test.tsx`:
   - `onRowClick` fires with correct row and index on row click
   - `onCellClick` fires with correct value, column, and row on cell click
   - Clicking a cell with both handlers set: only `onCellClick` fires (row handler suppressed)
-- [ ] Storybook story in `packages/core/src/stories/DataTable.stories.tsx` showing clickable rows with `onRowClick` and a separate story for `onCellClick`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
+- [x] Storybook story in `packages/core/src/stories/DataTable.stories.tsx` showing clickable rows with `onRowClick` and a separate story for `onCellClick`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
+- [x] `npm run build` passes
 
 ### Files
 

@@ -273,6 +273,63 @@ describe("DataTable", () => {
     });
   });
 
+  describe("row and cell click handlers", () => {
+    it("onRowClick fires with correct row and index on row click", () => {
+      const onRowClick = jest.fn();
+      render(<DataTable columns={columns} rows={rows} onRowClick={onRowClick} />);
+      fireEvent.click(screen.getByText("Alice"));
+      expect(onRowClick).toHaveBeenCalledWith(rows[0], 0);
+      fireEvent.click(screen.getByText("Bob"));
+      expect(onRowClick).toHaveBeenCalledWith(rows[1], 1);
+    });
+
+    it("onCellClick fires with correct value, column, and row on cell click", () => {
+      const onCellClick = jest.fn();
+      const cols: DataTableColumn[] = [
+        { key: "name", label: "Name", sortable: true, onCellClick },
+        { key: "email", label: "Email", sortable: true },
+        { key: "age", label: "Age", sortable: true, format: (v) => `${v} yrs` },
+      ];
+      render(<DataTable columns={cols} rows={rows} />);
+      fireEvent.click(screen.getByText("Alice"));
+      expect(onCellClick).toHaveBeenCalledWith("Alice", cols[0], rows[0]);
+    });
+
+    it("clicking a cell with both handlers set: only onCellClick fires", () => {
+      const onRowClick = jest.fn();
+      const onCellClick = jest.fn();
+      const cols: DataTableColumn[] = [
+        { key: "name", label: "Name", sortable: true, onCellClick },
+        { key: "email", label: "Email", sortable: true },
+        { key: "age", label: "Age", sortable: true, format: (v) => `${v} yrs` },
+      ];
+      render(
+        <DataTable
+          columns={cols}
+          rows={rows}
+          onRowClick={onRowClick}
+        />
+      );
+      fireEvent.click(screen.getByText("Alice"));
+      expect(onCellClick).toHaveBeenCalledTimes(1);
+      expect(onRowClick).not.toHaveBeenCalled();
+    });
+
+    it("clicking a cell without onCellClick still fires onRowClick", () => {
+      const onRowClick = jest.fn();
+      const onCellClick = jest.fn();
+      const cols: DataTableColumn[] = [
+        { key: "name", label: "Name", sortable: true, onCellClick },
+        { key: "email", label: "Email", sortable: true },
+        { key: "age", label: "Age", sortable: true, format: (v) => `${v} yrs` },
+      ];
+      render(<DataTable columns={cols} rows={rows} onRowClick={onRowClick} />);
+      fireEvent.click(screen.getByText("alice@ex.com"));
+      expect(onRowClick).toHaveBeenCalledWith(rows[0], 0);
+      expect(onCellClick).not.toHaveBeenCalled();
+    });
+  });
+
   describe("custom header", () => {
     it("renders custom header content", () => {
       render(
