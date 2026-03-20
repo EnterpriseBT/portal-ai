@@ -6,6 +6,7 @@ import type {
   EntityRecordImportResponsePayload,
   EntityRecordSyncResponsePayload,
   EntityRecordDeleteResponsePayload,
+  EntityRecordGetResponsePayload,
 } from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
@@ -59,4 +60,16 @@ export const entityRecords = {
       url: recordsUrl(connectorEntityId),
       method: "DELETE",
     }),
+
+  get: (
+    connectorEntityId: string,
+    recordId: string,
+    options?: QueryOptions<EntityRecordGetResponsePayload>
+  ) =>
+    useAuthQuery<EntityRecordGetResponsePayload>(
+      queryKeys.entityRecords.get(connectorEntityId, recordId),
+      recordsUrl(connectorEntityId, `/${encodeURIComponent(recordId)}`),
+      undefined,
+      options
+    ),
 };

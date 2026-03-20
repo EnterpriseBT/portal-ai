@@ -24,6 +24,7 @@ import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
 import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
 import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './routes/column-definitions.$columnDefinitionId'
+import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -102,6 +103,12 @@ const ColumnDefinitionsColumnDefinitionIdRoute =
     path: '/$columnDefinitionId',
     getParentRoute: () => ColumnDefinitionsRoute,
   } as any)
+const EntitiesEntityIdRecordsRecordIdRoute =
+  EntitiesEntityIdRecordsRecordIdRouteImport.update({
+    id: '/records/$recordId',
+    path: '/records/$recordId',
+    getParentRoute: () => EntitiesEntityIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -113,12 +120,13 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
-  '/entities/$entityId': typeof EntitiesEntityIdRoute
+  '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -126,12 +134,13 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
-  '/entities/$entityId': typeof EntitiesEntityIdRoute
+  '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions': typeof ColumnDefinitionsIndexRoute
   '/connectors': typeof ConnectorsIndexRoute
   '/entities': typeof EntitiesIndexRoute
   '/jobs': typeof JobsIndexRoute
+  '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -144,12 +153,13 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
-  '/entities/$entityId': typeof EntitiesEntityIdRoute
+  '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -169,6 +179,7 @@ export interface FileRouteTypes {
     | '/connectors/'
     | '/entities/'
     | '/jobs/'
+    | '/entities/$entityId/records/$recordId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -182,6 +193,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/entities'
     | '/jobs'
+    | '/entities/$entityId/records/$recordId'
   id:
     | '__root__'
     | '/'
@@ -199,6 +211,7 @@ export interface FileRouteTypes {
     | '/connectors/'
     | '/entities/'
     | '/jobs/'
+    | '/entities/$entityId/records/$recordId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -318,6 +331,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ColumnDefinitionsColumnDefinitionIdRouteImport
       parentRoute: typeof ColumnDefinitionsRoute
     }
+    '/entities/$entityId/records/$recordId': {
+      id: '/entities/$entityId/records/$recordId'
+      path: '/records/$recordId'
+      fullPath: '/entities/$entityId/records/$recordId'
+      preLoaderRoute: typeof EntitiesEntityIdRecordsRecordIdRouteImport
+      parentRoute: typeof EntitiesEntityIdRoute
+    }
   }
 }
 
@@ -349,13 +369,24 @@ const ConnectorsRouteWithChildren = ConnectorsRoute._addFileChildren(
   ConnectorsRouteChildren,
 )
 
+interface EntitiesEntityIdRouteChildren {
+  EntitiesEntityIdRecordsRecordIdRoute: typeof EntitiesEntityIdRecordsRecordIdRoute
+}
+
+const EntitiesEntityIdRouteChildren: EntitiesEntityIdRouteChildren = {
+  EntitiesEntityIdRecordsRecordIdRoute: EntitiesEntityIdRecordsRecordIdRoute,
+}
+
+const EntitiesEntityIdRouteWithChildren =
+  EntitiesEntityIdRoute._addFileChildren(EntitiesEntityIdRouteChildren)
+
 interface EntitiesRouteChildren {
-  EntitiesEntityIdRoute: typeof EntitiesEntityIdRoute
+  EntitiesEntityIdRoute: typeof EntitiesEntityIdRouteWithChildren
   EntitiesIndexRoute: typeof EntitiesIndexRoute
 }
 
 const EntitiesRouteChildren: EntitiesRouteChildren = {
-  EntitiesEntityIdRoute: EntitiesEntityIdRoute,
+  EntitiesEntityIdRoute: EntitiesEntityIdRouteWithChildren,
   EntitiesIndexRoute: EntitiesIndexRoute,
 }
 

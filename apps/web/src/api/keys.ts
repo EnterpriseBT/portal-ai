@@ -58,6 +58,8 @@ export const queryKeys = {
       [...queryKeys.entityRecords.root, "list", connectorEntityId, params] as const,
     count: (connectorEntityId: string) =>
       [...queryKeys.entityRecords.root, "count", connectorEntityId] as const,
+    get: (connectorEntityId: string, recordId: string) =>
+      [...queryKeys.entityRecords.root, "get", connectorEntityId, recordId] as const,
   },
   jobs: {
     root: ["jobs"] as const,

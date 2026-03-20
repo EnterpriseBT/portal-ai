@@ -127,19 +127,19 @@ Add the `get` query to the entity-records API module and register the new nested
 
 ### Checklist
 
-- [ ] Add `get(connectorEntityId, recordId, options?)` to `apps/web/src/api/entity-records.api.ts`
+- [x] Add `get(connectorEntityId, recordId, options?)` to `apps/web/src/api/entity-records.api.ts`
   - URL: `/api/connector-entities/:connectorEntityId/records/:recordId`
   - Uses `useAuthQuery` with `queryKeys.entityRecords.get(connectorEntityId, recordId)`
   - Returns `EntityRecordGetResponsePayload`
-- [ ] Add `get` query key to `queryKeys.entityRecords` in `apps/web/src/api/keys.ts`
-- [ ] Add `EntityRecord = "/entities/$entityId/records/$recordId"` to `ApplicationRoute` enum in `apps/web/src/utils/routes.util.ts`
-- [ ] Create route file `apps/web/src/routes/entities.$entityId.records.$recordId.tsx`
+- [x] Add `get` query key to `queryKeys.entityRecords` in `apps/web/src/api/keys.ts`
+- [x] Add `EntityRecord = "/entities/$entityId/records/$recordId"` to `ApplicationRoute` enum in `apps/web/src/utils/routes.util.ts`
+- [x] Create route file `apps/web/src/routes/entities.$entityId.records.$recordId.tsx`
   - `createFileRoute("/entities/$entityId/records/$recordId")`
   - Reads `entityId` and `recordId` from params
   - Renders `<EntityRecordDetailView entityId={entityId} recordId={recordId} />`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run build` passes
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run build` passes
 
 ### Files
 
