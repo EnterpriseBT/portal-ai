@@ -74,6 +74,15 @@ export const EntityRecordSyncResponsePayloadSchema = z.object({
 
 export type EntityRecordSyncResponsePayload = z.infer<typeof EntityRecordSyncResponsePayloadSchema>;
 
+// ── Get single record ────────────────────────────────────────────────
+
+export const EntityRecordGetResponsePayloadSchema = z.object({
+  record: EntityRecordSchema,
+  columns: z.array(ColumnDefinitionSummarySchema),
+});
+
+export type EntityRecordGetResponsePayload = z.infer<typeof EntityRecordGetResponsePayloadSchema>;
+
 // ── Delete (clear) ──────────────────────────────────────────────────
 
 export const EntityRecordDeleteResponsePayloadSchema = z.object({

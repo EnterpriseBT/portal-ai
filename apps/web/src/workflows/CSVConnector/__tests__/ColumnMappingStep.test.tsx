@@ -647,6 +647,8 @@ describe("ColumnMappingStep", () => {
             sourceField: "id",
             columnDefinitionId: "cd_001",
             isPrimaryKey: true,
+            refColumnDefinitionId: null,
+            refEntityKey: null,
             created: 0,
             updated: null,
             createdBy: "system",

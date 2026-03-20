@@ -60,6 +60,8 @@ const makeFieldMapping = (
   columnDefinitionId: "cd-1",
   sourceField: "email",
   isPrimaryKey: false,
+  refColumnDefinitionId: null,
+  refEntityKey: null,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,

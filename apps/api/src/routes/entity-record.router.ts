@@ -13,6 +13,7 @@ import {
   EntityRecordListRequestQuerySchema,
   type EntityRecordListResponsePayload,
   type EntityRecordCountResponsePayload,
+  type EntityRecordGetResponsePayload,
   EntityRecordImportRequestBodySchema,
   type EntityRecordImportResponsePayload,
   type EntityRecordSyncResponsePayload,
@@ -289,6 +290,48 @@ entityRecordRouter.get(
               error instanceof Error
                 ? error.message
                 : "Failed to count entity records"
+            )
+      );
+    }
+  }
+);
+
+// ── GET /:recordId — Get single record ──────────────────────────────
+
+entityRecordRouter.get(
+  "/:recordId",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { connectorEntityId, recordId } = req.params;
+      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      if (!entity) return;
+
+      const record = await DbService.repository.entityRecords.findById(recordId);
+      if (!record || record.connectorEntityId !== connectorEntityId) {
+        return next(
+          new ApiError(404, ApiCode.ENTITY_RECORD_NOT_FOUND, "Entity record not found")
+        );
+      }
+
+      const columns = await resolveColumns(connectorEntityId);
+
+      return HttpService.success<EntityRecordGetResponsePayload>(res, {
+        record: record as unknown as EntityRecordGetResponsePayload["record"],
+        columns,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to get entity record"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_RECORD_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to get entity record"
             )
       );
     }

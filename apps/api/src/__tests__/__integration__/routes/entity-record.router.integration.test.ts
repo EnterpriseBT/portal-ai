@@ -1389,3 +1389,86 @@ describe("Entity Record Router — GIN Index Performance", () => {
     expect(plan).toBeTruthy();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// GET /:recordId — Single record fetch
+// ═══════════════════════════════════════════════════════════════════
+
+describe("Entity Record Router — GET /:recordId", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  const recordUrl = (connectorEntityId: string, recordId: string) =>
+    `/api/connector-entities/${connectorEntityId}/records/${recordId}`;
+
+  it("should return 200 with the record and columns", async () => {
+    const { userId, organizationId, connectorEntityId } = await seedFullStack(db);
+
+    const row = createEntityRecord(
+      organizationId,
+      connectorEntityId,
+      { user_id: "1", name: "Alice", score: "90", is_active: "true", signup_date: "2023-01-15", last_login: "2023-01-15T10:00:00Z" },
+      "src-1",
+      userId
+    );
+    await db.insert(entityRecords).values(row as never);
+
+    const res = await request(app)
+      .get(recordUrl(connectorEntityId, row.id))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.payload.record.id).toBe(row.id);
+    expect(res.body.payload.record.sourceId).toBe("src-1");
+    expect(res.body.payload.columns).toBeInstanceOf(Array);
+    expect(res.body.payload.columns.length).toBeGreaterThan(0);
+  });
+
+  it("should return 404 when record does not exist", async () => {
+    const { connectorEntityId } = await seedFullStack(db);
+
+    const res = await request(app)
+      .get(recordUrl(connectorEntityId, generateId()))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("ENTITY_RECORD_NOT_FOUND");
+  });
+
+  it("should return 404 when record belongs to a different entity", async () => {
+    const { userId, organizationId, connectorEntityId } = await seedFullStack(db);
+
+    const stack2 = await seedFullStack(db);
+
+    const row = createEntityRecord(
+      organizationId,
+      connectorEntityId,
+      { user_id: "2", name: "Bob", score: "75", is_active: "false", signup_date: "2023-06-20", last_login: "2023-06-20T14:30:00Z" },
+      "src-2",
+      userId
+    );
+    await db.insert(entityRecords).values(row as never);
+
+    // Request the record under the *other* entity
+    const res = await request(app)
+      .get(recordUrl(stack2.connectorEntityId, row.id))
+      .set("Authorization", "Bearer test-token");
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("ENTITY_RECORD_NOT_FOUND");
+  });
+});
