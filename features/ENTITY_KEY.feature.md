@@ -73,16 +73,16 @@ refColumnDefinitionId?: string | null;
 ### Phase 3 — `ColumnMappingStep` UI
 
 #### Checklist
-- [ ] Replace disabled `Type` `TextInput` with an editable `Select` in `ColumnRow`
-- [ ] Clear ref fields on type change away from `reference`
-- [ ] Add `ReferenceEditor` sub-component (entity select + dependent column select)
-- [ ] Pass `allEntities` prop through `ColumnMappingStep` → `ColumnRow`
-- [ ] Add inline `enumValues` editor when `type === "enum"`
-- [ ] Update/add tests in `__tests__/ColumnMappingStep.test.tsx`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
+- [x] Replace disabled `Type` `TextInput` with an editable `Select` in `ColumnRow`
+- [x] Clear ref fields on type change away from `reference`
+- [x] Add `ReferenceEditor` sub-component (entity select + dependent column select)
+- [x] Pass `allEntities` prop through `ColumnMappingStep` → `ColumnRow`
+- [x] Add inline `enumValues` editor when `type === "enum"`
+- [x] Update/add tests in `__tests__/ColumnMappingStep.test.tsx`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
+- [x] `npm run build` passes
 
 The `ColumnRow` sub-component gets the most significant changes:
 

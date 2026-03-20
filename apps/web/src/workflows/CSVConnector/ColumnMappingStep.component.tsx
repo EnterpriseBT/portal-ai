@@ -11,12 +11,29 @@ import {
   useTabs,
   Divider,
   Checkbox,
+  Select,
 } from "@portalai/core/ui";
+import type { SelectOption } from "@portalai/core/ui";
 
 import type {
   RecommendedColumn,
   RecommendedEntity,
 } from "./utils/upload-workflow.util";
+
+// --- Constants ---
+
+const COLUMN_TYPE_OPTIONS: SelectOption[] = [
+  { value: "string", label: "String" },
+  { value: "number", label: "Number" },
+  { value: "boolean", label: "Boolean" },
+  { value: "date", label: "Date" },
+  { value: "datetime", label: "Date & Time" },
+  { value: "enum", label: "Enum" },
+  { value: "json", label: "JSON" },
+  { value: "array", label: "Array" },
+  { value: "reference", label: "Reference" },
+  { value: "currency", label: "Currency" },
+];
 
 // --- Types ---
 
@@ -57,12 +74,101 @@ const ConfidenceChip: React.FC<{ confidence: number }> = ({ confidence }) => {
   );
 };
 
+// --- Reference Editor ---
+
+interface ReferenceEditorProps {
+  column: RecommendedColumn;
+  entityIndex: number;
+  columnIndex: number;
+  allEntities: RecommendedEntity[];
+  onUpdate: (
+    entityIndex: number,
+    columnIndex: number,
+    updates: Partial<RecommendedColumn>
+  ) => void;
+}
+
+const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
+  column,
+  entityIndex,
+  columnIndex,
+  allEntities,
+  onUpdate,
+}) => {
+  const entityOptions: SelectOption[] = allEntities.map((e) => ({
+    value: e.connectorEntity.key,
+    label: `${e.connectorEntity.label} (${e.connectorEntity.key})`,
+  }));
+
+  const selectedEntity = allEntities.find(
+    (e) => e.connectorEntity.key === column.recommended.refEntityKey
+  );
+
+  const columnOptions: SelectOption[] = selectedEntity
+    ? selectedEntity.columns.map((c) => ({
+        value: c.recommended.key,
+        label: `${c.recommended.label} (${c.recommended.key})`,
+      }))
+    : [];
+
+  const handleEntityChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate(entityIndex, columnIndex, {
+        recommended: {
+          ...column.recommended,
+          refEntityKey: e.target.value || null,
+          refColumnKey: null,
+          refColumnDefinitionId: null,
+        },
+      });
+    },
+    [entityIndex, columnIndex, column.recommended, onUpdate]
+  );
+
+  const handleColumnChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate(entityIndex, columnIndex, {
+        recommended: {
+          ...column.recommended,
+          refColumnKey: e.target.value || null,
+        },
+      });
+    },
+    [entityIndex, columnIndex, column.recommended, onUpdate]
+  );
+
+  return (
+    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+      <Select
+        label="Reference Entity"
+        value={column.recommended.refEntityKey ?? ""}
+        onChange={handleEntityChange}
+        options={entityOptions}
+        size="small"
+        fullWidth
+        placeholder="Select entity..."
+      />
+      <Select
+        label="Reference Column"
+        value={column.recommended.refColumnKey ?? ""}
+        onChange={handleColumnChange}
+        options={columnOptions}
+        size="small"
+        fullWidth
+        disabled={!column.recommended.refEntityKey}
+        placeholder="Select column..."
+      />
+    </Stack>
+  );
+};
+
 // --- Column Row ---
 
 interface ColumnRowProps {
   column: RecommendedColumn;
   entityIndex: number;
   columnIndex: number;
+  allEntities: RecommendedEntity[];
   onUpdate: (
     entityIndex: number,
     columnIndex: number,
@@ -74,6 +180,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
   column,
   entityIndex,
   columnIndex,
+  allEntities,
   onUpdate,
 }) => {
   const handleKeyChange = useCallback(
@@ -89,6 +196,41 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       onUpdate(entityIndex, columnIndex, {
         recommended: { ...column.recommended, label: e.target.value },
+      });
+    },
+    [entityIndex, columnIndex, column.recommended, onUpdate]
+  );
+
+  const handleTypeChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newType = e.target.value;
+      const isReference = newType === "reference";
+      onUpdate(entityIndex, columnIndex, {
+        recommended: {
+          ...column.recommended,
+          type: newType,
+          ...(!isReference && {
+            refEntityKey: null,
+            refColumnKey: null,
+            refColumnDefinitionId: null,
+          }),
+        },
+      });
+    },
+    [entityIndex, columnIndex, column.recommended, onUpdate]
+  );
+
+  const handleEnumValuesChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const values = e.target.value
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+      onUpdate(entityIndex, columnIndex, {
+        recommended: {
+          ...column.recommended,
+          enumValues: values.length > 0 ? values : null,
+        },
       });
     },
     [entityIndex, columnIndex, column.recommended, onUpdate]
@@ -129,10 +271,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
           </Stack>
         </Stack>
 
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={2}
-        >
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
           <TextInput
             label="Key"
             value={column.recommended.key}
@@ -147,14 +286,35 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             size="small"
             fullWidth
           />
-          <TextInput
+          <Select
             label="Type"
             value={column.recommended.type}
+            onChange={handleTypeChange}
+            options={COLUMN_TYPE_OPTIONS}
             size="small"
             fullWidth
-            disabled
           />
         </Stack>
+
+        {column.recommended.type === "reference" && (
+          <ReferenceEditor
+            column={column}
+            entityIndex={entityIndex}
+            columnIndex={columnIndex}
+            allEntities={allEntities}
+            onUpdate={onUpdate}
+          />
+        )}
+
+        {column.recommended.type === "enum" && (
+          <TextInput
+            label="Enum Values (comma-separated)"
+            value={column.recommended.enumValues?.join(", ") ?? ""}
+            onChange={handleEnumValuesChange}
+            size="small"
+            fullWidth
+          />
+        )}
 
         <Checkbox
           label="Primary Key"
@@ -218,6 +378,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                 column={column}
                 entityIndex={entityIndex}
                 columnIndex={columnIndex}
+                allEntities={entities}
                 onUpdate={onUpdateColumn}
               />
             ))}

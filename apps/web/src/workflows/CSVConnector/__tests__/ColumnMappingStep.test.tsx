@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 
 import { render, screen } from "../../../__tests__/test-utils";
+import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ColumnMappingStep } from "../ColumnMappingStep.component";
@@ -159,16 +160,17 @@ describe("ColumnMappingStep", () => {
       expect(screen.getByDisplayValue("Phone")).toBeInTheDocument();
     });
 
-    it("displays type field as disabled", () => {
+    it("displays type as an enabled select", () => {
       render(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           onUpdateColumn={jest.fn()}
         />
       );
+      // MUI Select renders a hidden input holding the value
       const typeInputs = screen.getAllByDisplayValue("string");
       for (const input of typeInputs) {
-        expect(input).toBeDisabled();
+        expect(input).not.toBeDisabled();
       }
     });
 
@@ -297,6 +299,309 @@ describe("ColumnMappingStep", () => {
         0, // columnIndex
         expect.objectContaining({
           isPrimaryKeyCandidate: expect.any(Boolean),
+        })
+      );
+    });
+
+    it("type select fires onUpdateColumn with new type", async () => {
+      const user = userEvent.setup();
+      const onUpdateColumn = jest.fn();
+
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          onUpdateColumn={onUpdateColumn}
+        />
+      );
+
+      // Open the first type select (for MOCK_COLUMN_HIGH)
+      const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
+      await user.click(typeSelects[0]);
+      await user.click(screen.getByRole("option", { name: "Currency" }));
+
+      expect(onUpdateColumn).toHaveBeenCalledWith(
+        0,
+        0,
+        expect.objectContaining({
+          recommended: expect.objectContaining({ type: "currency" }),
+        })
+      );
+    });
+
+    it("switching type away from reference clears ref fields", async () => {
+      const user = userEvent.setup();
+      const onUpdateColumn = jest.fn();
+
+      const refColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: {
+          ...MOCK_COLUMN_HIGH.recommended,
+          type: "reference",
+          refEntityKey: "products",
+          refColumnKey: "id",
+        },
+      };
+
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
+          onUpdateColumn={onUpdateColumn}
+        />
+      );
+
+      const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
+      await user.click(typeSelects[0]);
+      await user.click(screen.getByRole("option", { name: "Number" }));
+
+      expect(onUpdateColumn).toHaveBeenCalledWith(
+        0,
+        0,
+        expect.objectContaining({
+          recommended: expect.objectContaining({
+            type: "number",
+            refEntityKey: null,
+            refColumnKey: null,
+            refColumnDefinitionId: null,
+          }),
+        })
+      );
+    });
+  });
+
+  describe("Reference editor", () => {
+    const refColumn: RecommendedColumn = {
+      action: "create_new",
+      confidence: 0.9,
+      existingColumnDefinitionId: null,
+      recommended: {
+        key: "role_id",
+        label: "Role ID",
+        type: "reference",
+        required: false,
+        format: null,
+        enumValues: null,
+        description: null,
+        refEntityKey: null,
+        refColumnKey: null,
+      },
+      sourceField: "role_id",
+      isPrimaryKeyCandidate: false,
+      sampleValues: ["1", "2"],
+    };
+
+    it("shows reference entity and column selects when type is reference", () => {
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      expect(
+        screen.getByRole("combobox", { name: /reference entity/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("combobox", { name: /reference column/i })
+      ).toBeInTheDocument();
+    });
+
+    it("does not show reference editor for non-reference columns", () => {
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      expect(
+        screen.queryByRole("combobox", { name: /reference entity/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("entity select is populated with all entities", async () => {
+      const user = userEvent.setup();
+      render(
+        <ColumnMappingStep
+          entities={[
+            { ...MOCK_ENTITY_A, columns: [refColumn] },
+            MOCK_ENTITY_B,
+          ]}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      const entitySelect = screen.getByRole("combobox", {
+        name: /reference entity/i,
+      });
+      await user.click(entitySelect);
+
+      expect(
+        screen.getByRole("option", { name: /Contacts/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: /Products/i })
+      ).toBeInTheDocument();
+    });
+
+    it("selecting a reference entity fires onUpdateColumn with refEntityKey", async () => {
+      const user = userEvent.setup();
+      const onUpdateColumn = jest.fn();
+
+      render(
+        <ColumnMappingStep
+          entities={[
+            { ...MOCK_ENTITY_A, columns: [refColumn] },
+            MOCK_ENTITY_B,
+          ]}
+          onUpdateColumn={onUpdateColumn}
+        />
+      );
+
+      const entitySelect = screen.getByRole("combobox", {
+        name: /reference entity/i,
+      });
+      await user.click(entitySelect);
+      await user.click(screen.getByRole("option", { name: /Products/i }));
+
+      expect(onUpdateColumn).toHaveBeenCalledWith(
+        0,
+        0,
+        expect.objectContaining({
+          recommended: expect.objectContaining({
+            refEntityKey: "products",
+            refColumnKey: null,
+            refColumnDefinitionId: null,
+          }),
+        })
+      );
+    });
+
+    it("column select is disabled when no entity is selected", () => {
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      const columnSelect = screen.getByRole("combobox", {
+        name: /reference column/i,
+      });
+      expect(columnSelect).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("selecting a reference column fires onUpdateColumn with refColumnKey", async () => {
+      const user = userEvent.setup();
+      const onUpdateColumn = jest.fn();
+
+      const refColumnWithEntity: RecommendedColumn = {
+        ...refColumn,
+        recommended: {
+          ...refColumn.recommended,
+          refEntityKey: "contacts",
+        },
+      };
+
+      // Include MOCK_COLUMN_HIGH so the "contacts" entity has a selectable column
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [refColumnWithEntity, MOCK_COLUMN_HIGH] }]}
+          onUpdateColumn={onUpdateColumn}
+        />
+      );
+
+      const columnSelect = screen.getByRole("combobox", {
+        name: /reference column/i,
+      });
+      await user.click(columnSelect);
+      await user.click(screen.getByRole("option", { name: /Email/i }));
+
+      expect(onUpdateColumn).toHaveBeenCalledWith(
+        0,
+        0,
+        expect.objectContaining({
+          recommended: expect.objectContaining({ refColumnKey: "email" }),
+        })
+      );
+    });
+  });
+
+  describe("Enum values editor", () => {
+    const enumColumn: RecommendedColumn = {
+      action: "create_new",
+      confidence: 0.85,
+      existingColumnDefinitionId: null,
+      recommended: {
+        key: "status",
+        label: "Status",
+        type: "enum",
+        required: false,
+        format: null,
+        enumValues: ["active", "inactive"],
+        description: null,
+      },
+      sourceField: "Status",
+      isPrimaryKeyCandidate: false,
+      sampleValues: ["active", "inactive"],
+    };
+
+    it("shows enum values input when type is enum", () => {
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [enumColumn] }]}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      expect(
+        screen.getByLabelText(/enum values/i)
+      ).toBeInTheDocument();
+    });
+
+    it("does not show enum values input for non-enum columns", () => {
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      expect(screen.queryByLabelText(/enum values/i)).not.toBeInTheDocument();
+    });
+
+    it("displays existing enum values as comma-separated string", () => {
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [enumColumn] }]}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      expect(
+        screen.getByDisplayValue("active, inactive")
+      ).toBeInTheDocument();
+    });
+
+    it("fires onUpdateColumn with parsed enum values array on change", () => {
+      const onUpdateColumn = jest.fn();
+
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [enumColumn] }]}
+          onUpdateColumn={onUpdateColumn}
+        />
+      );
+
+      const enumInput = screen.getByLabelText(/enum values/i);
+      fireEvent.change(enumInput, { target: { value: "a, b, c" } });
+
+      expect(onUpdateColumn).toHaveBeenLastCalledWith(
+        0,
+        0,
+        expect.objectContaining({
+          recommended: expect.objectContaining({
+            enumValues: ["a", "b", "c"],
+          }),
         })
       );
     });
