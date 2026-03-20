@@ -231,6 +231,14 @@ export class UploadsService {
     // Track column definitions by key to avoid duplicates across entities
     const columnDefCache = new Map<string, { id: string; key: string; label: string }>();
 
+    // Track reference columns whose refColumnDefinitionId must be resolved
+    // after all column definitions in this batch have been created (second pass).
+    const pendingRefResolutions: Array<{
+      colDefId: string;
+      refColumnKey: string;
+      refEntityKey: string | null;
+    }> = [];
+
     for (const entity of body.entities) {
       // Upsert connector entity
       const connectorEntity = await DbService.repository.connectorEntities.upsertByKey(
@@ -264,6 +272,17 @@ export class UploadsService {
           tx, organizationId, userId, col, columnDefCache, now
         );
         entityColumnDefs.push(colDef);
+
+        // Queue within-batch reference columns for second-pass resolution.
+        // These have refColumnKey but no refColumnDefinitionId because the
+        // referenced column may not have been created yet at this point.
+        if (col.type === "reference" && col.refColumnKey && !col.refColumnDefinitionId) {
+          pendingRefResolutions.push({
+            colDefId: colDef.id,
+            refColumnKey: col.refColumnKey,
+            refEntityKey: col.refEntityKey ?? null,
+          });
+        }
 
         // Upsert field mapping
         const fieldMapping = await DbService.repository.fieldMappings.upsertByEntityAndColumn(
@@ -299,6 +318,24 @@ export class UploadsService {
         columnDefinitions: entityColumnDefs,
         fieldMappings: entityFieldMappings,
       });
+    }
+
+    // Second pass: resolve within-batch reference column definitions.
+    // All column defs are now in the cache, so refColumnKey can be looked up.
+    for (const pending of pendingRefResolutions) {
+      const resolved = columnDefCache.get(`${organizationId}:${pending.refColumnKey}`);
+      if (resolved) {
+        await DbService.repository.columnDefinitions.update(
+          pending.colDefId,
+          {
+            refColumnDefinitionId: resolved.id,
+            refEntityKey: pending.refEntityKey,
+            updated: now,
+            updatedBy: userId,
+          },
+          tx
+        );
+      }
     }
 
     return {
@@ -348,8 +385,8 @@ export class UploadsService {
           format: col.format,
           enumValues: null,
           description: null,
-          refColumnDefinitionId: null,
-          refEntityKey: null,
+          refColumnDefinitionId: col.refColumnDefinitionId ?? null,
+          refEntityKey: col.refEntityKey ?? null,
           created: now,
           createdBy: userId,
           updated: null,

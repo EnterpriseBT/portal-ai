@@ -103,6 +103,8 @@ function makeProps(
     recommendations: null,
     parseResults: null,
     onUpdateEntity: jest.fn(),
+    dbEntities: [],
+    isLoadingDbEntities: false,
     onUpdateColumn: jest.fn(),
     onConnectorNameChange: jest.fn(),
     onConfirm: jest.fn(),

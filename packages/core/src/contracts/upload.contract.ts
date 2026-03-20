@@ -56,6 +56,10 @@ export const ConfirmColumnSchema = z.object({
   required: z.boolean(),
   action: ColumnRecommendationActionEnum,
   existingColumnDefinitionId: z.string().nullable(),
+  // Reference fields (populated when type === "reference")
+  refEntityKey: z.string().nullable().optional(),
+  refColumnKey: z.string().nullable().optional(),
+  refColumnDefinitionId: z.string().nullable().optional(),
 });
 export type ConfirmColumn = z.infer<typeof ConfirmColumnSchema>;
 

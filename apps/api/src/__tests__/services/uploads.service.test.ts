@@ -17,6 +17,7 @@ const mockConnectorEntitiesUpsertByKey = jest.fn<(data: unknown, tx?: unknown) =
 
 const mockColumnDefinitionsFindById = jest.fn<(id: string, tx?: unknown) => Promise<unknown>>();
 const mockColumnDefinitionsUpsertByKey = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
+const mockColumnDefinitionsUpdate = jest.fn<(id: string, data: unknown, tx?: unknown) => Promise<unknown>>();
 
 const mockFieldMappingsUpsertByEntityAndColumn = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
 
@@ -41,6 +42,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       columnDefinitions: {
         findById: mockColumnDefinitionsFindById,
         upsertByKey: mockColumnDefinitionsUpsertByKey,
+        update: mockColumnDefinitionsUpdate,
       },
       fieldMappings: {
         upsertByEntityAndColumn: mockFieldMappingsUpsertByEntityAndColumn,
@@ -180,6 +182,8 @@ describe("UploadsService", () => {
       columnDefinitionId: (data as Record<string, unknown>).columnDefinitionId,
       isPrimaryKey: (data as Record<string, unknown>).isPrimaryKey,
     }));
+
+    mockColumnDefinitionsUpdate.mockImplementation(async (id: string) => ({ id }));
   });
 
   describe("confirm()", () => {
@@ -439,6 +443,151 @@ describe("UploadsService", () => {
       // Should NOT call upsertByKey for match_existing columns
       expect(mockColumnDefinitionsUpsertByKey).not.toHaveBeenCalled();
       expect(result.confirmedEntities[0].columnDefinitions[0].id).toBe("cd-existing-123");
+    });
+  });
+
+  describe("confirm() — reference columns", () => {
+    it("passes refEntityKey and refColumnDefinitionId to upsertByKey for direct DB references", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "users",
+            entityLabel: "Users",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "role_id",
+                key: "role_id",
+                label: "Role ID",
+                type: "reference",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                refEntityKey: "roles",
+                refColumnDefinitionId: "cd-existing-roles-id",
+              },
+            ],
+          },
+        ],
+      });
+
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: "role_id",
+          type: "reference",
+          refEntityKey: "roles",
+          refColumnDefinitionId: "cd-existing-roles-id",
+        }),
+        "mock-tx"
+      );
+      // No second-pass update needed when refColumnDefinitionId is provided directly
+      expect(mockColumnDefinitionsUpdate).not.toHaveBeenCalled();
+    });
+
+    it("resolves within-batch refColumnKey to refColumnDefinitionId in the second pass", async () => {
+      let entityCounter = 0;
+      mockConnectorEntitiesUpsertByKey.mockImplementation(async (data: unknown) => {
+        entityCounter++;
+        return {
+          ...(data as Record<string, unknown>),
+          id: `ce-${entityCounter}`,
+          key: (data as Record<string, unknown>).key,
+          label: (data as Record<string, unknown>).label,
+        };
+      });
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "roles",
+            entityLabel: "Roles",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "id",
+                key: "id",
+                label: "ID",
+                type: "string",
+                format: null,
+                isPrimaryKey: true,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+          {
+            entityKey: "users",
+            entityLabel: "Users",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "role_id",
+                key: "role_id",
+                label: "Role ID",
+                type: "reference",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                refEntityKey: "roles",
+                refColumnKey: "id",
+              },
+            ],
+          },
+        ],
+      });
+
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      // The second-pass update should resolve "id" → "cd-id" from the cache
+      expect(mockColumnDefinitionsUpdate).toHaveBeenCalledWith(
+        "cd-role_id",
+        expect.objectContaining({
+          refColumnDefinitionId: "cd-id",
+          refEntityKey: "roles",
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("skips second-pass update when refColumnKey does not match any batch column", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "users",
+            entityLabel: "Users",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "role_id",
+                key: "role_id",
+                label: "Role ID",
+                type: "reference",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                refEntityKey: "roles",
+                refColumnKey: "nonexistent_key",
+              },
+            ],
+          },
+        ],
+      });
+
+      // Should not throw — unresolvable refs are silently skipped
+      await expect(
+        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
+      ).resolves.toBeDefined();
+
+      expect(mockColumnDefinitionsUpdate).not.toHaveBeenCalled();
     });
   });
 

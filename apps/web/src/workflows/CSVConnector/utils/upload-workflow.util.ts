@@ -31,6 +31,9 @@ export interface RecommendedColumn {
     format?: string | null;
     enumValues?: string[] | null;
     description?: string | null;
+    refEntityKey?: string | null;
+    refColumnKey?: string | null;
+    refColumnDefinitionId?: string | null;
   };
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
@@ -121,6 +124,9 @@ interface BackendRecommendation {
       existingColumnDefinitionId: string | null;
       confidence: number;
       sampleValues: string[];
+      refEntityKey?: string | null;
+      refColumnKey?: string | null;
+      refColumnDefinitionId?: string | null;
     }>;
   }>;
 }
@@ -145,6 +151,9 @@ function mapBackendRecommendations(backend: BackendRecommendation): Recommendati
           type: col.type,
           required: col.required,
           format: col.format,
+          refEntityKey: col.refEntityKey ?? null,
+          refColumnKey: col.refColumnKey ?? null,
+          refColumnDefinitionId: col.refColumnDefinitionId ?? null,
         },
         sourceField: col.sourceField,
         isPrimaryKeyCandidate: col.isPrimaryKey,
@@ -336,6 +345,9 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
           required: col.recommended.required ?? false,
           action: col.action,
           existingColumnDefinitionId: col.existingColumnDefinitionId,
+          refEntityKey: col.recommended.refEntityKey ?? null,
+          refColumnKey: col.recommended.refColumnKey ?? null,
+          refColumnDefinitionId: col.recommended.refColumnDefinitionId ?? null,
         })),
       })),
     };

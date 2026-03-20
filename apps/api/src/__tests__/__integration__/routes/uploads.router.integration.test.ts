@@ -831,6 +831,170 @@ describe("Uploads Router", () => {
       expect(cdRows).toHaveLength(2);
     });
 
+    it("should persist refEntityKey and refColumnDefinitionId for directly specified references", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+
+      // Pre-create the referenced column definition
+      const refColDefId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values({
+          id: refColDefId,
+          organizationId,
+          key: "role_tag",
+          label: "Role Tag",
+          type: "string",
+          required: false,
+          defaultValue: null,
+          format: null,
+          enumValues: null,
+          description: null,
+          refColumnDefinitionId: null,
+          refEntityKey: null,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "users",
+            entityLabel: "Users",
+            sourceFileName: "test.csv",
+            columns: [
+              {
+                sourceField: "role_id",
+                key: "role_id",
+                label: "Role ID",
+                type: "reference",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                refEntityKey: "roles",
+                refColumnDefinitionId: refColDefId,
+              },
+            ],
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(body);
+
+      expect(res.status).toBe(200);
+
+      const { eq } = await import("drizzle-orm");
+      const [cdRow] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(columnDefinitions)
+        .where(eq(columnDefinitions.key, "role_id"));
+
+      expect(cdRow).toBeDefined();
+      expect(cdRow.type).toBe("reference");
+      expect(cdRow.refEntityKey).toBe("roles");
+      expect(cdRow.refColumnDefinitionId).toBe(refColDefId);
+    });
+
+    it("should resolve within-batch refColumnKey to refColumnDefinitionId after creation", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "roles",
+            entityLabel: "Roles",
+            sourceFileName: "test.csv",
+            columns: [
+              {
+                sourceField: "id",
+                key: "role_pk",
+                label: "Role PK",
+                type: "string",
+                format: null,
+                isPrimaryKey: true,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+          {
+            entityKey: "users",
+            entityLabel: "Users",
+            sourceFileName: "test.csv",
+            columns: [
+              {
+                sourceField: "role_id",
+                key: "user_role_id",
+                label: "User Role ID",
+                type: "reference",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                refEntityKey: "roles",
+                refColumnKey: "role_pk",
+              },
+            ],
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(body);
+
+      expect(res.status).toBe(200);
+
+      const { eq } = await import("drizzle-orm");
+
+      // Find the referenced column definition (role_pk)
+      const [rolePkCd] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(columnDefinitions)
+        .where(eq(columnDefinitions.key, "role_pk"));
+
+      // Find the reference column definition (user_role_id)
+      const [userRoleIdCd] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(columnDefinitions)
+        .where(eq(columnDefinitions.key, "user_role_id"));
+
+      expect(rolePkCd).toBeDefined();
+      expect(userRoleIdCd).toBeDefined();
+      expect(userRoleIdCd.type).toBe("reference");
+      expect(userRoleIdCd.refEntityKey).toBe("roles");
+      expect(userRoleIdCd.refColumnDefinitionId).toBe(rolePkCd.id);
+    });
+
     it("should handle shared columns across entities without duplicates", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

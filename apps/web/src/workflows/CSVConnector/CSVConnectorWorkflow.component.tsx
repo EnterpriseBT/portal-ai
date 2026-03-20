@@ -1,5 +1,8 @@
 import React, { useCallback, useMemo } from "react";
 
+import { sdk } from "../../api/sdk";
+import type { ConnectorEntityListWithMappingsResponsePayload, ConnectorEntityWithMappings } from "@portalai/core/contracts";
+
 import {
   Box,
   Stack,
@@ -65,6 +68,8 @@ export interface CSVConnectorWorkflowUIProps {
   onUpdateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
 
   // Column mapping step
+  dbEntities: ConnectorEntityWithMappings[];
+  isLoadingDbEntities: boolean;
   onUpdateColumn: (
     entityIndex: number,
     columnIndex: number,
@@ -112,6 +117,8 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
   recommendations,
   parseResults,
   onUpdateEntity,
+  dbEntities,
+  isLoadingDbEntities,
   onUpdateColumn,
   onConnectorNameChange,
   onConfirm,
@@ -177,6 +184,8 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
             {recommendations ? (
               <ColumnMappingStep
                 entities={recommendations.entities}
+                dbEntities={dbEntities}
+                isLoadingDbEntities={isLoadingDbEntities}
                 onUpdateColumn={onUpdateColumn}
               />
             ) : (
@@ -309,6 +318,15 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
 }) => {
   const workflow = useUploadWorkflow();
 
+  const { data: dbEntitiesData, isLoading: isLoadingDbEntities } =
+    sdk.connectorEntities.list(
+      { include: "fieldMappings" } as Parameters<typeof sdk.connectorEntities.list>[0],
+      { staleTime: 30_000 }
+    );
+  const dbEntities: ConnectorEntityWithMappings[] =
+    (dbEntitiesData as ConnectorEntityListWithMappingsResponsePayload | undefined)
+      ?.connectorEntities ?? [];
+
   const handleClose = useCallback(() => {
     workflow.reset();
     onClose();
@@ -366,6 +384,8 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
       recommendations={workflow.recommendations}
       parseResults={workflow.parseResults}
       onUpdateEntity={workflow.updateEntity}
+      dbEntities={dbEntities}
+      isLoadingDbEntities={isLoadingDbEntities}
       onUpdateColumn={workflow.updateColumn}
       onConnectorNameChange={workflow.updateConnectorName}
       onConfirm={handleConfirm}
