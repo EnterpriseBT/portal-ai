@@ -6,6 +6,7 @@ import {
   ProcessRequestParamsSchema,
   PresignUploadItemSchema,
   PresignResponsePayloadSchema,
+  ConfirmColumnSchema,
 } from "../../contracts/upload.contract.js";
 
 // ── PresignFileSchema ─────────────────────────────────────────────
@@ -113,6 +114,82 @@ describe("ProcessRequestParamsSchema", () => {
 
   it("should reject missing jobId", () => {
     const result = ProcessRequestParamsSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── ConfirmColumnSchema ───────────────────────────────────────────
+
+describe("ConfirmColumnSchema", () => {
+  const validColumn = {
+    sourceField: "role_id",
+    key: "role_id",
+    label: "Role ID",
+    type: "number",
+    format: null,
+    isPrimaryKey: false,
+    required: true,
+    action: "create_new",
+    existingColumnDefinitionId: null,
+  };
+
+  it("should parse a valid column without ref fields", () => {
+    const result = ConfirmColumnSchema.safeParse(validColumn);
+    expect(result.success).toBe(true);
+  });
+
+  it("should parse a reference column with refEntityKey and refColumnKey", () => {
+    const result = ConfirmColumnSchema.safeParse({
+      ...validColumn,
+      type: "reference",
+      refEntityKey: "roles",
+      refColumnKey: "id",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.refEntityKey).toBe("roles");
+      expect(result.data.refColumnKey).toBe("id");
+    }
+  });
+
+  it("should parse a reference column with refColumnDefinitionId for an existing DB column", () => {
+    const result = ConfirmColumnSchema.safeParse({
+      ...validColumn,
+      type: "reference",
+      refEntityKey: "roles",
+      refColumnDefinitionId: "coldef_abc123",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.refColumnDefinitionId).toBe("coldef_abc123");
+    }
+  });
+
+  it("should parse with null ref fields", () => {
+    const result = ConfirmColumnSchema.safeParse({
+      ...validColumn,
+      refEntityKey: null,
+      refColumnKey: null,
+      refColumnDefinitionId: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should parse when ref fields are omitted", () => {
+    const result = ConfirmColumnSchema.safeParse(validColumn);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.refEntityKey).toBeUndefined();
+      expect(result.data.refColumnKey).toBeUndefined();
+      expect(result.data.refColumnDefinitionId).toBeUndefined();
+    }
+  });
+
+  it("should reject an invalid type", () => {
+    const result = ConfirmColumnSchema.safeParse({
+      ...validColumn,
+      type: "uuid",
+    });
     expect(result.success).toBe(false);
   });
 });
