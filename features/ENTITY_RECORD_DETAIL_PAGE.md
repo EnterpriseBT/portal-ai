@@ -81,33 +81,33 @@ Add `<code>` block rendering for `json` and `array` column types in the entity r
 ### Checklist
 
 #### `EntityRecordCellCode` component
-- [ ] Create `apps/web/src/components/EntityRecordCellCode.component.tsx`
+- [x] Create `apps/web/src/components/EntityRecordCellCode.component.tsx`
   - Props: `value: unknown`, `type: "json" | "array"`, `maxLength?: number` (default: 80)
   - Serialise: `JSON.stringify(value, null, 0)` for `json`, `JSON.stringify(value)` for `array`
   - If serialised string exceeds `maxLength`, truncate and append `…`
   - Render as `<code>` inside a `<Box component="code">` with monospace font, muted background, and `overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px`
   - Tooltip showing full serialised value when truncated
-- [ ] Unit tests in `apps/web/src/__tests__/EntityRecordCellCode.test.tsx`:
+- [x] Unit tests in `apps/web/src/__tests__/EntityRecordCellCode.test.tsx`:
   - Renders JSON object as inline code
   - Renders array as inline code
   - Truncates long values and shows tooltip
   - Does not show tooltip when value is short
-- [ ] Storybook story in `apps/web/src/stories/EntityRecordCellCode.component.stories.tsx`
+- [x] Storybook story in `apps/web/src/stories/EntityRecordCellCode.component.stories.tsx`
 
 #### `EntityRecordDataTableUI` updates
-- [ ] In `toDataTableColumns` helper in `EntityRecordDataTable.component.tsx`:
+- [x] In `toDataTableColumns` helper in `EntityRecordDataTable.component.tsx`:
   - For `col.type === "json"` or `col.type === "array"`, set `render: (value) => <EntityRecordCellCode value={value} type={col.type} />` instead of `format`
   - All other types continue using `format: (value) => Formatter.format(value, col.type)`
-- [ ] Add `onRowClick?: (row: Record<string, unknown>) => void` to `EntityRecordDataTableUIProps`
-- [ ] Pass `onRowClick` down to `<DataTable>`
-- [ ] Unit tests in existing `EntityRecordDataTable` test file:
+- [x] Add `onRowClick?: (row: Record<string, unknown>) => void` to `EntityRecordDataTableUIProps`
+- [x] Pass `onRowClick` down to `<DataTable>`
+- [x] Unit tests in existing `EntityRecordDataTable` test file:
   - `json` column renders a `<code>` element
   - `array` column renders a `<code>` element
   - `onRowClick` fires when a row is clicked
-- [ ] Update `apps/web/src/stories/` (or create if missing) Storybook story for `EntityRecordDataTableUI` with `onRowClick`
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Update `apps/web/src/stories/` (or create if missing) Storybook story for `EntityRecordDataTableUI` with `onRowClick`
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 

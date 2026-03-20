@@ -22,6 +22,7 @@ import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
 import { Formatter } from "../utils/format.util";
 import { useStorage } from "../utils/storage.util";
+import { EntityRecordCellCode } from "./EntityRecordCellCode.component";
 
 // ── Data component ──────────────────────────────────────────────────
 
@@ -43,12 +44,24 @@ export const EntityRecordDataTable = (props: EntityRecordDataTableProps) => {
 function toDataTableColumns(
   columns: ColumnDefinitionSummary[]
 ): DataTableColumn[] {
-  return columns.map((col) => ({
-    key: col.key,
-    label: col.label,
-    sortable: SORTABLE_COLUMN_TYPES.has(col.type),
-    format: (value: unknown) => Formatter.format(value, col.type),
-  }));
+  return columns.map((col) => {
+    if (col.type === "json" || col.type === "array") {
+      return {
+        key: col.key,
+        label: col.label,
+        sortable: SORTABLE_COLUMN_TYPES.has(col.type),
+        render: (value: unknown) => (
+          <EntityRecordCellCode value={value} type={col.type as "json" | "array"} />
+        ),
+      };
+    }
+    return {
+      key: col.key,
+      label: col.label,
+      sortable: SORTABLE_COLUMN_TYPES.has(col.type),
+      format: (value: unknown) => Formatter.format(value, col.type),
+    };
+  });
 }
 
 // ── Pure UI component ───────────────────────────────────────────────
@@ -61,11 +74,12 @@ export interface EntityRecordDataTableUIProps {
   sortColumn?: string;
   sortDirection?: "asc" | "desc";
   onSort?: (column: string) => void;
+  onRowClick?: (row: Record<string, unknown>) => void;
 }
 
 export const EntityRecordDataTableUI: React.FC<
   EntityRecordDataTableUIProps
-> = ({ connectorEntityId, rows, columns, source, sortColumn, sortDirection, onSort }) => {
+> = ({ connectorEntityId, rows, columns, source, sortColumn, sortDirection, onSort, onRowClick }) => {
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
 
@@ -105,6 +119,7 @@ export const EntityRecordDataTableUI: React.FC<
         emptyMessage="No records found"
         columnConfig={columnConfig}
         onColumnConfigChange={setColumnConfig}
+        onRowClick={onRowClick ? (row: Record<string, unknown>) => onRowClick(row) : undefined}
       />
     </Stack>
   );

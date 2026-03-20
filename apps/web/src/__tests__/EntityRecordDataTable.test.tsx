@@ -15,6 +15,12 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
+jest.unstable_mockModule("../components/EntityRecordCellCode.component", () => ({
+  EntityRecordCellCode: ({ value, type }: { value: unknown; type: string }) => (
+    <code data-testid="cell-code" data-type={type}>{JSON.stringify(value)}</code>
+  ),
+}));
+
 const { render, screen } = await import("./test-utils");
 const { EntityRecordDataTableUI } = await import(
   "../components/EntityRecordDataTable.component"
@@ -128,6 +134,48 @@ describe("EntityRecordDataTableUI", () => {
     const { fireEvent } = await import("@testing-library/react");
     fireEvent.click(screen.getByText("First Name"));
     expect(onSort).toHaveBeenCalledWith("first_name");
+  });
+
+  it("renders json column as a <code> element", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[{ data: { id: 1 } }]}
+        columns={[{ key: "data", label: "Data", type: "json" as const }]}
+        source="cache"
+      />
+    );
+    expect(screen.getByTestId("cell-code")).toBeInTheDocument();
+    expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "json");
+  });
+
+  it("renders array column as a <code> element", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[{ tags: ["a", "b"] }]}
+        columns={[{ key: "tags", label: "Tags", type: "array" as const }]}
+        source="cache"
+      />
+    );
+    expect(screen.getByTestId("cell-code")).toBeInTheDocument();
+    expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "array");
+  });
+
+  it("calls onRowClick when a row is clicked", async () => {
+    const onRowClick = jest.fn();
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={rows}
+        columns={columns}
+        source="cache"
+        onRowClick={onRowClick}
+      />
+    );
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.click(screen.getByText("Jane"));
+    expect(onRowClick).toHaveBeenCalledWith(rows[0]);
   });
 
   it("renders null values as dash", () => {
