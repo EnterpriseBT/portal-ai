@@ -19,6 +19,7 @@ const validFieldMapping = {
   isPrimaryKey: false,
   refColumnDefinitionId: null,
   refEntityKey: null,
+  refBidirectionalFieldMappingId: null,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,

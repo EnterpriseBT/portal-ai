@@ -649,6 +649,7 @@ describe("ColumnMappingStep", () => {
             isPrimaryKey: true,
             refColumnDefinitionId: null,
             refEntityKey: null,
+            refBidirectionalFieldMappingId: null,
             created: 0,
             updated: null,
             createdBy: "system",

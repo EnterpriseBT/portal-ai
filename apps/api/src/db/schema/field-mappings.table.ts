@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, unique, foreignKey } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { connectorEntities } from "./connector-entities.table.js";
@@ -28,16 +28,21 @@ export const fieldMappings = pgTable(
     sourceField: text("source_field").notNull(),
     isPrimaryKey: boolean("is_primary_key").notNull(),
 
-    // Reference fields (populated when the mapped column has type "reference")
+    // Reference fields (populated when the mapped column has type "reference" or "reference-array")
     refColumnDefinitionId: text("ref_column_definition_id").references(
       () => columnDefinitions.id,
     ),
     refEntityKey: text("ref_entity_key"),
+    refBidirectionalFieldMappingId: text("ref_bidirectional_field_mapping_id"),
   },
   (table) => [
     unique("field_mappings_entity_column_unique").on(
       table.connectorEntityId,
       table.columnDefinitionId,
     ),
+    foreignKey({
+      columns: [table.refBidirectionalFieldMappingId],
+      foreignColumns: [table.id],
+    }),
   ],
 );

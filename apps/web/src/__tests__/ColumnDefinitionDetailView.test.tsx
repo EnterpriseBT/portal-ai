@@ -62,6 +62,7 @@ const makeFieldMapping = (
   isPrimaryKey: false,
   refColumnDefinitionId: null,
   refEntityKey: null,
+  refBidirectionalFieldMappingId: null,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,

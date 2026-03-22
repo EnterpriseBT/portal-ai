@@ -18,6 +18,7 @@ const validMappingFields = {
   isPrimaryKey: false,
   refColumnDefinitionId: null,
   refEntityKey: null,
+  refBidirectionalFieldMappingId: null,
   updated: null,
   updatedBy: null,
   deleted: null,

@@ -51,12 +51,13 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### 2. Core — Field Mapping Model
 
-- [ ] In `packages/core/src/models/field-mapping.model.ts`, add the optional back-reference field to `FieldMappingSchema`:
+- [x] In `packages/core/src/models/field-mapping.model.ts`, add the optional back-reference field to `FieldMappingSchema`:
   ```ts
   refBidirectionalFieldMappingId: z.string().nullable(),
   ```
   Place it alongside the existing ref fields (`refColumnDefinitionId`, `refEntityKey`).
-- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
+- [x] Also updated fixtures in `packages/core/src/__tests__/contracts/field-mapping.contract.test.ts`, `packages/core/src/__tests__/models/field-mapping.model.test.ts`, `apps/web/src/__tests__/ColumnDefinitionDetailView.test.tsx`, and `apps/web/src/workflows/CSVConnector/__tests__/ColumnMappingStep.test.tsx` to include `refBidirectionalFieldMappingId: null`.
+- [x] Verify: `npm run type-check && npm run lint && npm run test && npm run build` — all passed
 
 ---
 
@@ -102,14 +103,14 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### 5. DB Schema — Field Mappings Table
 
-- [ ] In `apps/api/src/db/schema/field-mappings.table.ts`, add the nullable self-referential FK:
+- [x] In `apps/api/src/db/schema/field-mappings.table.ts`, add the nullable column and declare the self-referential FK as a table-level `foreignKey` constraint (column-level `.references(() => fieldMappings.id)` causes a circular type inference error in TypeScript):
   ```ts
-  refBidirectionalFieldMappingId: text("ref_bidirectional_field_mapping_id").references(
-    () => fieldMappings.id,
-  ),
+  refBidirectionalFieldMappingId: text("ref_bidirectional_field_mapping_id"),
+  // ...in table constraints:
+  foreignKey({ columns: [table.refBidirectionalFieldMappingId], foreignColumns: [table.id] }),
   ```
-  Place it after `refEntityKey` in the column list.
-- [ ] Verify: `npm run type-check && npm run lint && npm run build`
+  > Note: done alongside step 2 — the `IsAssignable` assertions in `type-checks.ts` require both core model and Drizzle table to be updated together.
+- [x] Verify: `npm run type-check && npm run lint && npm run build` — passed as part of step 2 verification
 
 ---
 
