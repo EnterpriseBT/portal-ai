@@ -308,6 +308,75 @@ describe("FieldMappingsRepository Integration Tests", () => {
     });
   });
 
+  // ── findBidirectionalPair ──────────────────────────────────────────
+
+  describe("findBidirectionalPair", () => {
+    it("returns { mapping, counterpart: null } when refBidirectionalFieldMappingId is null", async () => {
+      const data = makeMapping({ refBidirectionalFieldMappingId: null });
+      await repo.create(data, db);
+
+      const result = await repo.findBidirectionalPair(data.id, db);
+      expect(result.mapping.id).toBe(data.id);
+      expect(result.counterpart).toBeNull();
+    });
+
+    it("returns both mappings when the link is set", async () => {
+      // Create mapping A with no back-ref first (FK requires target exists)
+      const dataA = makeMapping({ columnDefinitionId, sourceField: "tags_a" });
+      await repo.create(dataA, db);
+
+      // Create mapping B pointing at A
+      const dataB = makeMapping({
+        columnDefinitionId: columnDefinitionId2,
+        sourceField: "tags_b",
+        refBidirectionalFieldMappingId: dataA.id,
+      });
+      await repo.create(dataB, db);
+
+      // Update A to point back at B
+      await repo.update(dataA.id, { refBidirectionalFieldMappingId: dataB.id }, db);
+
+      const result = await repo.findBidirectionalPair(dataA.id, db);
+      expect(result.mapping.id).toBe(dataA.id);
+      expect(result.counterpart?.id).toBe(dataB.id);
+    });
+  });
+
+  // ── upsertByEntityAndColumn refBidirectionalFieldMappingId ─────────
+
+  describe("upsertByEntityAndColumn refBidirectionalFieldMappingId round-trip", () => {
+    it("round-trips refBidirectionalFieldMappingId through upsert", async () => {
+      // Insert a target mapping to satisfy the self-FK
+      const target = makeMapping({ columnDefinitionId: columnDefinitionId2, sourceField: "target" });
+      await repo.create(target, db);
+
+      const data = makeMapping({
+        sourceField: "owner",
+        refBidirectionalFieldMappingId: target.id,
+      });
+      const result = await repo.upsertByEntityAndColumn(data, db);
+      expect(result.refBidirectionalFieldMappingId).toBe(target.id);
+    });
+
+    it("upsert can clear refBidirectionalFieldMappingId back to null", async () => {
+      const target = makeMapping({ columnDefinitionId: columnDefinitionId2, sourceField: "target" });
+      await repo.create(target, db);
+
+      const data = makeMapping({
+        sourceField: "owner",
+        refBidirectionalFieldMappingId: target.id,
+      });
+      await repo.upsertByEntityAndColumn(data, db);
+
+      // Upsert again with null to clear
+      const cleared = await repo.upsertByEntityAndColumn(
+        { ...data, id: generateId(), refBidirectionalFieldMappingId: null },
+        db
+      );
+      expect(cleared.refBidirectionalFieldMappingId).toBeNull();
+    });
+  });
+
   // ── Unique constraint ──────────────────────────────────────────
 
   describe("unique constraint", () => {

@@ -137,6 +137,25 @@ describe("FieldMappingCreateRequestBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("should default refBidirectionalFieldMappingId to null when omitted", () => {
+    const result = FieldMappingCreateRequestBodySchema.parse({
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "account_name",
+    });
+    expect(result.refBidirectionalFieldMappingId).toBeNull();
+  });
+
+  it("should accept refBidirectionalFieldMappingId as a string ID", () => {
+    const result = FieldMappingCreateRequestBodySchema.parse({
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "account_name",
+      refBidirectionalFieldMappingId: "fm-42",
+    });
+    expect(result.refBidirectionalFieldMappingId).toBe("fm-42");
+  });
+
   it("should default isPrimaryKey to false", () => {
     const result = FieldMappingCreateRequestBodySchema.parse({
       connectorEntityId: "ce-1",
@@ -201,6 +220,20 @@ describe("FieldMappingUpdateRequestBodySchema", () => {
       sourceField: "new_field",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("should allow partial update with refBidirectionalFieldMappingId set to a string", () => {
+    const result = FieldMappingUpdateRequestBodySchema.parse({
+      refBidirectionalFieldMappingId: "fm-42",
+    });
+    expect(result.refBidirectionalFieldMappingId).toBe("fm-42");
+  });
+
+  it("should allow partial update clearing refBidirectionalFieldMappingId to null", () => {
+    const result = FieldMappingUpdateRequestBodySchema.parse({
+      refBidirectionalFieldMappingId: null,
+    });
+    expect(result.refBidirectionalFieldMappingId).toBeNull();
   });
 
   it("should accept a partial update with isPrimaryKey only", () => {

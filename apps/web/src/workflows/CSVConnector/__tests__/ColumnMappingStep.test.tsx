@@ -441,6 +441,28 @@ describe("ColumnMappingStep", () => {
       ).toBeInTheDocument();
     });
 
+    it("shows reference entity and column selects when type is reference-array", () => {
+      const refArrayColumn: RecommendedColumn = {
+        ...refColumn,
+        recommended: { ...refColumn.recommended, type: "reference-array" },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [refArrayColumn] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      expect(
+        screen.getByRole("combobox", { name: /reference entity/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("combobox", { name: /reference column/i })
+      ).toBeInTheDocument();
+    });
+
     it("does not show reference editor for non-reference columns", () => {
       render(
         <ColumnMappingStep

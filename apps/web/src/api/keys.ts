@@ -51,6 +51,8 @@ export const queryKeys = {
     root: ["fieldMappings"] as const,
     list: (params?: FieldMappingListRequestQuery) =>
       [...queryKeys.fieldMappings.root, "list", params] as const,
+    validateBidirectional: (id: string) =>
+      [...queryKeys.fieldMappings.root, "validateBidirectional", id] as const,
   },
   entityRecords: {
     root: ["entityRecords"] as const,

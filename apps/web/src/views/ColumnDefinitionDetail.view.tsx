@@ -40,6 +40,7 @@ const TYPE_COLOR: Record<
   json: "default",
   array: "default",
   reference: "error",
+  "reference-array": "error",
   currency: "info",
 };
 

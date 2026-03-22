@@ -6,6 +6,7 @@ const mockEntityGet = jest.fn();
 const mockRecordsList = jest.fn();
 const mockRecordsCount = jest.fn();
 const mockRecordsSync = jest.fn();
+const mockFieldMappingsValidate = jest.fn();
 
 const emptyQueryResult = {
   data: undefined,
@@ -71,11 +72,17 @@ jest.unstable_mockModule("../api/sdk", () => ({
       count: mockRecordsCount,
       sync: mockRecordsSync,
     },
+    fieldMappings: {
+      validateBidirectional: mockFieldMappingsValidate,
+    },
   },
 }));
 
 const { render, screen } = await import("./test-utils");
 const { EntityDetailViewUI } = await import("../views/EntityDetail.view");
+const { BidirectionalConsistencyBannerUI } = await import(
+  "../components/BidirectionalConsistencyBanner.component"
+);
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -101,6 +108,7 @@ describe("EntityDetailViewUI", () => {
     mockRecordsCount.mockReturnValue(emptyQueryResult);
     mockRecordsSync.mockReturnValue({ mutate: jest.fn(), isPending: false });
     mockEntityGet.mockReturnValue(emptyQueryResult);
+    mockFieldMappingsValidate.mockReturnValue({ data: undefined });
   });
 
   it("renders breadcrumbs with Dashboard, Entities, and entity label", () => {
@@ -218,5 +226,80 @@ describe("EntityDetailViewUI", () => {
     fireEvent.click(screen.getByText("Jane"));
 
     expect(onRecordClick).toHaveBeenCalledWith("rec-1");
+  });
+
+  it("does not render any warning banners when no bidirectionalFieldMappings are provided", () => {
+    render(<EntityDetailViewUI entity={stubEntity} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("renders a warning banner when isConsistent is false for a bidirectional field mapping", () => {
+    mockFieldMappingsValidate.mockReturnValue({
+      data: {
+        isConsistent: false,
+        inconsistentRecordIds: ["rec-1"],
+        totalChecked: 5,
+      },
+    });
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        bidirectionalFieldMappings={[
+          { id: "fm-1", sourceField: "related_contacts" },
+        ]}
+      />
+    );
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(/related_contacts/)).toBeInTheDocument();
+  });
+
+  it("does not render warning banners when isConsistent is true", () => {
+    mockFieldMappingsValidate.mockReturnValue({
+      data: { isConsistent: true, inconsistentRecordIds: [], totalChecked: 5 },
+    });
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        bidirectionalFieldMappings={[{ id: "fm-1", sourceField: "tags" }]}
+      />
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not block record display when a warning banner is shown", () => {
+    mockFieldMappingsValidate.mockReturnValue({
+      data: {
+        isConsistent: false,
+        inconsistentRecordIds: ["rec-1"],
+        totalChecked: 5,
+      },
+    });
+    mockRecordsList.mockReturnValue(stubRecordsList);
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        bidirectionalFieldMappings={[{ id: "fm-1", sourceField: "tags" }]}
+        onRecordClick={jest.fn()}
+      />
+    );
+    // Warning is shown
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    // Records are still displayed
+    expect(screen.getByText("Jane")).toBeInTheDocument();
+  });
+});
+
+describe("BidirectionalConsistencyBannerUI (in EntityDetailView context)", () => {
+  it("renders directly as a standalone component", () => {
+    render(
+      <BidirectionalConsistencyBannerUI
+        sourceField="friends"
+        inconsistentRecordCount={2}
+        totalChecked={10}
+      />
+    );
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(/friends/)).toBeInTheDocument();
+    expect(screen.getByText(/2 of 10/)).toBeInTheDocument();
   });
 });

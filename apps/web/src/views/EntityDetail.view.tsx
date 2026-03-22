@@ -6,6 +6,7 @@ import type {
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
+  FieldMappingListResponsePayload,
 } from "@portalai/core/contracts";
 import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
@@ -17,6 +18,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk } from "../api/sdk";
 import DataResult from "../components/DataResult.component";
+import { BidirectionalConsistencyBanner } from "../components/BidirectionalConsistencyBanner.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { SyncColumns } from "../components/SyncColumns.component";
 import {
@@ -36,6 +38,11 @@ import {
 
 // ── Pure UI ─────────────────────────────────────────────────────────
 
+export interface BidirectionalFieldMappingRef {
+  id: string;
+  sourceField: string;
+}
+
 export interface EntityDetailViewUIProps {
   entity: ConnectorEntityGetResponsePayload["connectorEntity"];
   connectorInstanceName?: string;
@@ -44,6 +51,8 @@ export interface EntityDetailViewUIProps {
   accessMode?: string;
   onSync?: () => void;
   isSyncing?: boolean;
+  /** Field mappings of type reference-array that have a back-reference configured. */
+  bidirectionalFieldMappings?: BidirectionalFieldMappingRef[];
   /** Called when a record row is clicked. Overrides the default navigation behaviour — useful for testing. */
   onRecordClick?: (recordId: string) => void;
 }
@@ -56,6 +65,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   accessMode,
   onSync,
   isSyncing,
+  bidirectionalFieldMappings,
   onRecordClick,
 }) => {
   const navigate = useNavigate();
@@ -184,6 +194,19 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           )}
         </Box>
 
+        {/* Bidirectional consistency warnings */}
+        {bidirectionalFieldMappings && bidirectionalFieldMappings.length > 0 && (
+          <Stack spacing={1}>
+            {bidirectionalFieldMappings.map((fm) => (
+              <BidirectionalConsistencyBanner
+                key={fm.id}
+                fieldMappingId={fm.id}
+                sourceField={fm.sourceField}
+              />
+            ))}
+          </Stack>
+        )}
+
         {/* Data table */}
         <Box>
           <PaginationToolbar {...pagination.toolbarProps} />
@@ -268,6 +291,13 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const entityResult = sdk.connectorEntities.get(entityId);
   const countResult = sdk.entityRecords.count(entityId);
   const syncMutation = sdk.entityRecords.sync(entityId);
+  const fieldMappingsResult = sdk.fieldMappings.list<FieldMappingListResponsePayload>({
+    connectorEntityId: entityId,
+    limit: 100,
+    offset: 0,
+    sortBy: "created",
+    sortOrder: "asc",
+  });
 
   return (
     <DataResult results={{ entity: entityResult }}>
@@ -281,12 +311,23 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
           | EntityRecordCountResponsePayload
           | undefined;
 
+        const bidirectionalFieldMappings = (
+          fieldMappingsResult.data?.fieldMappings ?? []
+        )
+          .filter((fm) => fm.refBidirectionalFieldMappingId !== null)
+          .map((fm) => ({ id: fm.id, sourceField: fm.sourceField }));
+
         return (
           <EntityDetailViewUI
             entity={entity}
             recordCount={countData?.total}
             onSync={() => syncMutation.mutate(undefined)}
             isSyncing={syncMutation.isPending}
+            bidirectionalFieldMappings={
+              bidirectionalFieldMappings.length > 0
+                ? bidirectionalFieldMappings
+                : undefined
+            }
           />
         );
       }}

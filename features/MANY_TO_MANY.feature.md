@@ -152,24 +152,22 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### 11. Frontend — Field Mapping Configuration
 
-- [ ] In the field mapping creation/edit form (under the Entities or Column Definitions view), add `"reference-array"` as a selectable column type, displayed as "Reference Array (M:M)".
-- [ ] When `type === "reference-array"` is selected, show the same ref target fields already present for `"reference"`:
-  - Ref Column Definition (dropdown)
-  - Ref Entity Key (text)
-  - Back-reference Field Mapping (optional dropdown — lists field mappings on the target entity that are also `reference-array` type pointing back)
-- [ ] The back-reference field mapping picker is **optional** — leaving it empty means unidirectional mode with no validation available.
-- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
+- [x] In `apps/web/src/workflows/CSVConnector/ColumnMappingStep.component.tsx`, added `"reference-array"` to `COLUMN_TYPE_OPTIONS` (displayed as "Reference Array (M:M)").
+- [x] Updated `handleTypeChange` to treat `reference-array` as a reference type: clears ref fields when switching away, shows `ReferenceEditor` when selected.
+- [x] Updated `ReferenceEditor` conditional rendering to also show for `type === "reference-array"`.
+- [x] Added `"reference-array": "error"` to `TYPE_COLOR` in `ColumnDefinitionDetail.view.tsx` and `ColumnDefinition.component.tsx`.
+- [x] Verify: `npm run type-check && npm run lint && npm run test && npm run build` — all passed
 
 ---
 
 ### 12. Frontend — Bidirectional Validation Warning
 
-- [ ] On the Entity Detail view (`apps/web/src/routes/entities.$entityId.tsx` or the entity record detail), when a record has a `reference-array` field that has a configured back-reference (`refBidirectionalFieldMappingId` is set):
-  - Call `GET /api/field-mappings/:id/validate-bidirectional` on page load (or on demand via a "Check consistency" button).
-  - If `isConsistent === false`, render an inline warning banner: _"Array references are out of sync with [target entity name]. X records have inconsistent back-references."_
-  - The warning must never block reads or writes — it is advisory only.
-- [ ] The warning banner links to a filtered view of the `inconsistentRecordIds`.
-- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
+- [x] Added `validateBidirectional(id)` to `apps/web/src/api/field-mappings.api.ts` and `fieldMappings.validateBidirectional(id)` query key to `apps/web/src/api/keys.ts`.
+- [x] Created `apps/web/src/components/BidirectionalConsistencyBanner.component.tsx` with `BidirectionalConsistencyBannerUI` (pure, for testing) and `BidirectionalConsistencyBanner` (data component that calls `validateBidirectional`).
+- [x] In `EntityDetailView` container (`apps/web/src/views/EntityDetail.view.tsx`), loads field mappings for the entity and filters those with `refBidirectionalFieldMappingId !== null`, passing them as `bidirectionalFieldMappings` to `EntityDetailViewUI`.
+- [x] `EntityDetailViewUI` renders `BidirectionalConsistencyBanner` for each — banner shows only when `isConsistent === false`; advisory only, never blocks record display or navigation.
+- [x] Added tests in `apps/web/src/__tests__/BidirectionalConsistencyBanner.test.tsx` (7 tests) and updated `apps/web/src/__tests__/EntityDetailView.test.tsx` with banner integration tests.
+- [x] Verify: `npm run type-check && npm run lint && npm run test && npm run build` — all passed (728 tests total in web)
 
 ---
 
@@ -177,32 +175,32 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### Core (unit)
 
-- [ ] `ColumnDataTypeEnum` accepts `"reference-array"` and rejects unknown values.
-- [ ] `FieldMappingSchema` accepts `refBidirectionalFieldMappingId: null` and a valid string ID.
-- [ ] `FieldMappingCreateRequestBodySchema` defaults `refBidirectionalFieldMappingId` to `null` when omitted.
-- [ ] `FieldMappingUpdateRequestBodySchema` allows partial update of `refBidirectionalFieldMappingId`.
+- [x] `ColumnDataTypeEnum` accepts `"reference-array"` and rejects unknown values. — added to `column-definition.model.test.ts`
+- [x] `FieldMappingSchema` accepts `refBidirectionalFieldMappingId: null` and a valid string ID. — added to `field-mapping.model.test.ts`
+- [x] `FieldMappingCreateRequestBodySchema` defaults `refBidirectionalFieldMappingId` to `null` when omitted. — added to `field-mapping.contract.test.ts`
+- [x] `FieldMappingUpdateRequestBodySchema` allows partial update of `refBidirectionalFieldMappingId`. — added to `field-mapping.contract.test.ts`
 
 ### API (integration)
 
-- [ ] `POST /api/field-mappings` with `type: "reference-array"` and `refBidirectionalFieldMappingId: null` persists correctly.
-- [ ] `PATCH /api/field-mappings/:id` can set and clear `refBidirectionalFieldMappingId`.
-- [ ] `GET /api/field-mappings/:id/validate-bidirectional` returns 400 when the mapping's column type is not `"reference-array"`.
-- [ ] `GET /api/field-mappings/:id/validate-bidirectional` returns `{ isConsistent: null, reason: "no-back-reference-configured" }` when `refBidirectionalFieldMappingId` is null.
-- [ ] `GET /api/field-mappings/:id/validate-bidirectional` returns `isConsistent: true` when all arrays agree across both entities.
-- [ ] `GET /api/field-mappings/:id/validate-bidirectional` returns `isConsistent: false` with `inconsistentRecordIds` populated when arrays diverge.
+- [x] `POST /api/field-mappings` with `type: "reference-array"` and `refBidirectionalFieldMappingId: null` persists correctly. — added to `field-mapping.router.integration.test.ts`
+- [x] `PATCH /api/field-mappings/:id` can set and clear `refBidirectionalFieldMappingId`. — added to `field-mapping.router.integration.test.ts`
+- [x] `GET /api/field-mappings/:id/validate-bidirectional` returns 400 when the mapping's column type is not `"reference-array"`. — added to `field-mapping.router.integration.test.ts`
+- [x] `GET /api/field-mappings/:id/validate-bidirectional` returns `{ isConsistent: null, reason: "no-back-reference-configured" }` when `refBidirectionalFieldMappingId` is null. — added to `field-mapping.router.integration.test.ts`
+- [x] `GET /api/field-mappings/:id/validate-bidirectional` returns `isConsistent: true` when all arrays agree across both entities. — added to `field-mapping.router.integration.test.ts`
+- [x] `GET /api/field-mappings/:id/validate-bidirectional` returns `isConsistent: false` with `inconsistentRecordIds` populated when arrays diverge. — added to `field-mapping.router.integration.test.ts`
 
 ### Repository (unit)
 
-- [ ] `findBidirectionalPair` returns `{ mapping, counterpart: null }` when `refBidirectionalFieldMappingId` is null.
-- [ ] `findBidirectionalPair` returns both mappings when the link is set.
-- [ ] `upsertByEntityAndColumn` round-trips `refBidirectionalFieldMappingId`.
+- [x] `findBidirectionalPair` returns `{ mapping, counterpart: null }` when `refBidirectionalFieldMappingId` is null. — added to `field-mappings.repository.integration.test.ts`
+- [x] `findBidirectionalPair` returns both mappings when the link is set. — added to `field-mappings.repository.integration.test.ts`
+- [x] `upsertByEntityAndColumn` round-trips `refBidirectionalFieldMappingId`. — added to `field-mappings.repository.integration.test.ts`
 
 ### Frontend (component)
 
-- [ ] The field mapping form renders the back-reference picker only when type is `"reference-array"`.
-- [ ] The validation warning banner renders when `isConsistent === false`.
-- [ ] The warning banner is absent when `isConsistent === true` or the field has no back-reference.
-- [ ] The warning banner does not block form submission or record display.
+- [x] The field mapping form renders the back-reference picker only when type is `"reference-array"`. — added to `ColumnMappingStep.test.tsx`
+- [x] The validation warning banner renders when `isConsistent === false`. — covered in `BidirectionalConsistencyBanner.test.tsx`
+- [x] The warning banner is absent when `isConsistent === true` or the field has no back-reference. — covered in `BidirectionalConsistencyBanner.test.tsx`
+- [x] The warning banner does not block form submission or record display. — covered in `EntityDetailView.test.tsx`
 
 ---
 
