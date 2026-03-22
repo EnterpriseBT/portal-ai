@@ -349,12 +349,13 @@ visualize: {
 
 #### Frontend Content Block Renderer
 
-The `ChatMessage` component switches on block type. Only two block types are needed initially — more can be added later by extending the union and adding a new case to the renderer.
+Primitive content-block rendering components (`ContentBlockRenderer`, `DataTableBlock`) live in `packages/core` alongside the shared `ContentBlock` type — no business logic, no API calls, no hooks. `apps/web` imports these from `@portalai/core`.
+
+`ContentBlockRenderer` switches on block type. Only two block types are needed initially — more can be added later by extending the `ContentBlock` union in `portal.contract.ts` and adding a new case to `ContentBlockRenderer`.
 
 ```tsx
-type ContentBlock =
-  | { type: "text"; content: string }
-  | { type: "vega-lite"; spec: VisualizationSpec }
+// packages/core/src/components/ContentBlockRenderer.component.tsx
+import type { ContentBlock } from '../contracts/portal.contract';
 
 const ContentBlockRenderer: React.FC<{ block: ContentBlock }> = ({ block }) => {
   switch (block.type) {
@@ -369,6 +370,7 @@ const ContentBlockRenderer: React.FC<{ block: ContentBlock }> = ({ block }) => {
 #### Frontend Dependencies
 
 ```json
+// packages/core/package.json (additions)
 {
   "react-markdown": "^9.x",
   "remark-gfm": "^4.x",
@@ -378,7 +380,7 @@ const ContentBlockRenderer: React.FC<{ block: ContentBlock }> = ({ block }) => {
 }
 ```
 
-Added to `apps/web/package.json`.
+Added to `packages/core/package.json`. `apps/web/package.json` already depends on `@portalai/core`.
 
 ### Backend: API + MCP Server
 

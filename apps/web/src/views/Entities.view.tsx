@@ -57,7 +57,12 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
             <Typography variant="caption" color="text.secondary">
               {entity.connectorInstance.name}
             </Typography>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{ mt: 0.5 }}
+            >
               <Chip label={entity.key} size="small" variant="outlined" />
             </Stack>
           </Box>
@@ -99,15 +104,17 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Breadcrumbs
-          items={[
-            { label: "Dashboard", href: "/", icon: IconName.Home },
-            { label: "Entities" },
-          ]}
-          onNavigate={(href) => navigate({ to: href })}
-        />
+        <Box>
+          <Breadcrumbs
+            items={[
+              { label: "Dashboard", href: "/", icon: IconName.Home },
+              { label: "Entities" },
+            ]}
+            onNavigate={(href) => navigate({ to: href })}
+          />
 
-        <Typography variant="h1">Entities</Typography>
+          <Typography variant="h1">Entities</Typography>
+        </Box>
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
@@ -127,7 +134,8 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
               >
                 <DataResult results={{ list: listResult }}>
                   {(data) => {
-                    const list = data.list as unknown as ConnectorEntityListWithInstanceResponsePayload;
+                    const list =
+                      data.list as unknown as ConnectorEntityListWithInstanceResponsePayload;
                     if (list.connectorEntities.length === 0) {
                       return (
                         <Typography

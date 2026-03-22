@@ -331,11 +331,20 @@ API hooks following the existing `useAuthQuery` / `useAuthMutation` pattern. Ins
 
 The core chat interface. Loads message history on mount, streams new responses via SSE, renders content blocks, supports pinning.
 
+Primitive content-block rendering components (`ContentBlockRenderer`, and later `DataTableBlock`) live in `packages/core` alongside the shared `ContentBlock` type — no business logic, no API calls, no hooks. `apps/web` imports these from `@portalai/core`.
+
 ### Checklist
-- [ ] Implement `ContentBlockRenderer` — switches on `block.type`: `"text"` → `<ReactMarkdown>`, `"vega-lite"` → `<VegaLite>`
+
+#### `packages/core` — content-block rendering components
+- [ ] Install peer dependencies in `packages/core/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
+- [ ] Implement `ContentBlockRenderer.component.tsx` in `packages/core/src/components/` — switches on `block.type`: `"text"` → `<ReactMarkdown>`, `"vega-lite"` → `<VegaLite>`; uses `ContentBlock` type from `packages/core/src/contracts/portal.contract.ts`
+- [ ] Export `ContentBlockRenderer` from `packages/core/src/index.ts`
+
+#### `apps/web` — Portal UI
+- [ ] Install frontend visualization dependencies in `apps/web/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
 - [ ] Implement `PortalMessage.component.tsx` (container + UI):
   - [ ] Renders user messages as plain text bubbles
-  - [ ] Renders assistant messages as a sequence of `ContentBlockRenderer` instances
+  - [ ] Renders assistant messages as a sequence of `<ContentBlockRenderer>` instances imported from `@portalai/core`
   - [ ] Shows a pin icon button on each assistant block; clicking opens a name dialog → calls `sdk.portalResults.pin()`
 - [ ] Implement `PortalSession.component.tsx` (container + UI):
   - [ ] On mount: calls `sdk.portals.get(portalId)` to load message history
@@ -355,10 +364,14 @@ The core chat interface. Loads message history on mount, streams new responses v
 ### Files
 | Action | File |
 |--------|------|
+| Create | `packages/core/src/components/ContentBlockRenderer.component.tsx` |
+| Modify | `packages/core/src/index.ts` |
+| Modify | `packages/core/package.json` |
 | Create | `apps/web/src/components/PortalMessage.component.tsx` |
 | Create | `apps/web/src/components/PortalSession.component.tsx` |
 | Create | `apps/web/src/routes/_authorized/portals.$portalId.tsx` |
 | Modify | `apps/web/src/utils/routes.util.ts` |
+| Modify | `apps/web/package.json` |
 
 ---
 
@@ -464,8 +477,8 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 
 #### Frontend
 
-- [ ] **`DataTableBlock` component** — Implement `DataTableBlock.component.tsx`: a compact, non-paginated MUI table that renders a `data-table` content block inline in the chat thread. Columns auto-sized; truncates at 50 rows with a "showing N of M rows" label.
-- [ ] **Extend `ContentBlockRenderer`** — Add a `case "data-table"` branch that renders `<DataTableBlock>`.
+- [ ] **`DataTableBlock` component** — Implement `DataTableBlock.component.tsx` in `packages/core/src/components/`: a compact, non-paginated MUI table that renders a `data-table` content block inline in the chat thread. Columns auto-sized; truncates at 50 rows with a "showing N of M rows" label. Export from `packages/core/src/index.ts`.
+- [ ] **Extend `ContentBlockRenderer`** — Add a `case "data-table"` branch in `packages/core/src/components/ContentBlockRenderer.component.tsx` that renders `<DataTableBlock>`.
 - [ ] **Progressive block rendering** — Update `PortalSession` SSE handler to insert `data-table` and `vega-lite` blocks inline as they arrive from `tool_result` events, before the final `done` event. The user sees charts and tables appear while Claude is still composing its narrative text.
 - [ ] **Unit tests** — `DataTableBlock`: renders columns and rows, truncates at 50 rows, shows row count label. `ContentBlockRenderer`: renders `data-table` block via `DataTableBlock`. `PortalSession`: `tool_result` events insert blocks at correct position in the streaming message.
 - [ ] `npm run type-check` passes
@@ -479,8 +492,10 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 | Modify | `apps/api/src/services/portal.service.ts` | Full CoreMessage[] persistence + reconstruction; data-table SSE events; LangGraph seam comment |
 | Modify | `packages/core/src/contracts/portal.contract.ts` | Add `data-table` to ContentBlock union |
 | Modify | `apps/api/src/__tests__/services/portal.service.test.ts` | Updated unit tests |
-| Create | `apps/web/src/components/DataTableBlock.component.tsx` | Compact inline data table renderer |
-| Modify | `apps/web/src/components/PortalMessage.component.tsx` | Add `data-table` case to ContentBlockRenderer |
+| Create | `packages/core/src/components/DataTableBlock.component.tsx` | Compact inline data table renderer (primitive, no business logic) |
+| Modify | `packages/core/src/components/ContentBlockRenderer.component.tsx` | Add `data-table` case that renders `DataTableBlock` |
+| Modify | `packages/core/src/index.ts` | Export `DataTableBlock` |
+| Modify | `apps/web/src/components/PortalMessage.component.tsx` | No renderer changes — imports `ContentBlockRenderer` from `@portalai/core` |
 | Modify | `apps/web/src/components/PortalSession.component.tsx` | Progressive block insertion from SSE tool_result events |
 
 ---
@@ -533,6 +548,7 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 | `apps/web/src/api/sdk.ts` | Modify | 8 |
 | `apps/web/package.json` | Modify | 8 |
 | `apps/api/package.json` | Modify | 4 |
+| `packages/core/src/components/ContentBlockRenderer.component.tsx` | Create | 9 |
 | `apps/web/src/components/PortalMessage.component.tsx` | Create | 9 |
 | `apps/web/src/components/PortalSession.component.tsx` | Create | 9 |
 | `apps/web/src/routes/_authorized/portals.$portalId.tsx` | Create | 9 |
@@ -551,6 +567,7 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 | `apps/api/src/services/portal.service.ts` | Modify | 12 |
 | `packages/core/src/contracts/portal.contract.ts` | Modify | 12 |
 | `apps/api/src/__tests__/services/portal.service.test.ts` | Modify | 12 |
-| `apps/web/src/components/DataTableBlock.component.tsx` | Create | 12 |
+| `packages/core/src/components/DataTableBlock.component.tsx` | Create | 12 |
+| `packages/core/src/components/ContentBlockRenderer.component.tsx` | Modify | 12 |
 | `apps/web/src/components/PortalMessage.component.tsx` | Modify | 12 |
 | `apps/web/src/components/PortalSession.component.tsx` | Modify | 12 |

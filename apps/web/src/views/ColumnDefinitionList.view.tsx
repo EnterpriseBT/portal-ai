@@ -56,15 +56,17 @@ export const ColumnDefinitionListView: React.FC = () => {
   return (
     <Box>
       <Stack spacing={4}>
-        <Breadcrumbs
-          items={[
-            { label: "Dashboard", href: "/", icon: IconName.Home },
-            { label: "Column Definitions" },
-          ]}
-          onNavigate={(href) => navigate({ to: href })}
-        />
+        <Box>
+          <Breadcrumbs
+            items={[
+              { label: "Dashboard", href: "/", icon: IconName.Home },
+              { label: "Column Definitions" },
+            ]}
+            onNavigate={(href) => navigate({ to: href })}
+          />
 
-        <Typography variant="h1">Column Definitions</Typography>
+          <Typography variant="h1">Column Definitions</Typography>
+        </Box>
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
