@@ -140,26 +140,13 @@ describe("useLayout", () => {
         {
           isMobileCollapsed: true,
           isMobileExpanded: false,
-          isMobileExpandedActive: false,
-          isMobileExpandedPassive: false,
         },
       ],
       [
-        "expanded:active",
+        "expanded",
         {
           isMobileCollapsed: false,
           isMobileExpanded: true,
-          isMobileExpandedActive: true,
-          isMobileExpandedPassive: false,
-        },
-      ],
-      [
-        "expanded:passive",
-        {
-          isMobileCollapsed: false,
-          isMobileExpanded: true,
-          isMobileExpandedActive: false,
-          isMobileExpandedPassive: true,
         },
       ],
     ])(
@@ -181,12 +168,6 @@ describe("useLayout", () => {
         expect(result.current.isMobileExpanded).toBe(
           expected.isMobileExpanded
         );
-        expect(result.current.isMobileExpandedActive).toBe(
-          expected.isMobileExpandedActive
-        );
-        expect(result.current.isMobileExpandedPassive).toBe(
-          expected.isMobileExpandedPassive
-        );
       }
     );
   });
@@ -198,26 +179,13 @@ describe("useLayout", () => {
         {
           isTabletCollapsed: true,
           isTabletExpanded: false,
-          isTabletExpandedActive: false,
-          isTabletExpandedPassive: false,
         },
       ],
       [
-        "expanded:active",
+        "expanded",
         {
           isTabletCollapsed: false,
           isTabletExpanded: true,
-          isTabletExpandedActive: true,
-          isTabletExpandedPassive: false,
-        },
-      ],
-      [
-        "expanded:passive",
-        {
-          isTabletCollapsed: false,
-          isTabletExpanded: true,
-          isTabletExpandedActive: false,
-          isTabletExpandedPassive: true,
         },
       ],
     ])(
@@ -239,12 +207,6 @@ describe("useLayout", () => {
         expect(result.current.isTabletExpanded).toBe(
           expected.isTabletExpanded
         );
-        expect(result.current.isTabletExpandedActive).toBe(
-          expected.isTabletExpandedActive
-        );
-        expect(result.current.isTabletExpandedPassive).toBe(
-          expected.isTabletExpandedPassive
-        );
       }
     );
   });
@@ -256,26 +218,13 @@ describe("useLayout", () => {
         {
           isDesktopCollapsed: true,
           isDesktopExpanded: false,
-          isDesktopExpandedActive: false,
-          isDesktopExpandedPassive: false,
         },
       ],
       [
-        "expanded:active",
+        "expanded",
         {
           isDesktopCollapsed: false,
           isDesktopExpanded: true,
-          isDesktopExpandedActive: true,
-          isDesktopExpandedPassive: false,
-        },
-      ],
-      [
-        "expanded:passive",
-        {
-          isDesktopCollapsed: false,
-          isDesktopExpanded: true,
-          isDesktopExpandedActive: false,
-          isDesktopExpandedPassive: true,
         },
       ],
     ])(
@@ -297,12 +246,6 @@ describe("useLayout", () => {
         expect(result.current.isDesktopExpanded).toBe(
           expected.isDesktopExpanded
         );
-        expect(result.current.isDesktopExpandedActive).toBe(
-          expected.isDesktopExpandedActive
-        );
-        expect(result.current.isDesktopExpandedPassive).toBe(
-          expected.isDesktopExpandedPassive
-        );
       }
     );
   });
@@ -312,7 +255,7 @@ describe("useLayout", () => {
       // Default matchMedia returns false for all queries
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify("expanded:active")
+        JSON.stringify("expanded")
       );
 
       const { result } = renderHook(() => useLayout(), {
@@ -321,16 +264,10 @@ describe("useLayout", () => {
 
       expect(result.current.isMobileCollapsed).toBe(false);
       expect(result.current.isMobileExpanded).toBe(false);
-      expect(result.current.isMobileExpandedActive).toBe(false);
-      expect(result.current.isMobileExpandedPassive).toBe(false);
       expect(result.current.isTabletCollapsed).toBe(false);
       expect(result.current.isTabletExpanded).toBe(false);
-      expect(result.current.isTabletExpandedActive).toBe(false);
-      expect(result.current.isTabletExpandedPassive).toBe(false);
       expect(result.current.isDesktopCollapsed).toBe(false);
       expect(result.current.isDesktopExpanded).toBe(false);
-      expect(result.current.isDesktopExpandedActive).toBe(false);
-      expect(result.current.isDesktopExpandedPassive).toBe(false);
     });
   });
 
@@ -344,43 +281,26 @@ describe("useLayout", () => {
 
       // Default: collapsed
       expect(result.current.isDesktopCollapsed).toBe(true);
-      expect(result.current.isDesktopExpandedActive).toBe(false);
+      expect(result.current.isDesktopExpanded).toBe(false);
 
       act(() => {
-        result.current.setSidebarState("expanded:active");
+        result.current.setSidebarState("expanded");
       });
 
-      expect(result.current.isDesktopExpandedActive).toBe(true);
+      expect(result.current.isDesktopExpanded).toBe(true);
       expect(result.current.isDesktopCollapsed).toBe(false);
-      expect(result.current.isDesktopExpandedPassive).toBe(false);
 
       act(() => {
-        result.current.setSidebarState("expanded:passive");
+        result.current.setSidebarState("collapsed");
       });
 
-      expect(result.current.isDesktopExpandedPassive).toBe(true);
-      expect(result.current.isDesktopCollapsed).toBe(false);
-      expect(result.current.isDesktopExpandedActive).toBe(false);
+      expect(result.current.isDesktopCollapsed).toBe(true);
+      expect(result.current.isDesktopExpanded).toBe(false);
     });
   });
 
   describe("toggle", () => {
-    it("should expand actively from collapsed by default", () => {
-      const { result } = renderHook(() => useLayout(), {
-        wrapper: createWrapper(),
-      });
-
-      // Default is collapsed
-      expect(result.current.isCollapsed).toBe(true);
-
-      act(() => {
-        result.current.toggle();
-      });
-
-      expect(result.current.sidebarState).toBe("expanded:active");
-    });
-
-    it("should expand passively from collapsed when active is false", () => {
+    it("should expand from collapsed", () => {
       const { result } = renderHook(() => useLayout(), {
         wrapper: createWrapper(),
       });
@@ -388,23 +308,20 @@ describe("useLayout", () => {
       expect(result.current.isCollapsed).toBe(true);
 
       act(() => {
-        result.current.toggle({ active: false });
+        result.current.toggle();
       });
 
-      expect(result.current.sidebarState).toBe("expanded:passive");
+      expect(result.current.sidebarState).toBe("expanded");
     });
 
-    it("should collapse from expanded:active", () => {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify("expanded:active")
-      );
+    it("should collapse from expanded", () => {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify("expanded"));
 
       const { result } = renderHook(() => useLayout(), {
         wrapper: createWrapper(),
       });
 
-      expect(result.current.isExpandedActive).toBe(true);
+      expect(result.current.isExpanded).toBe(true);
 
       act(() => {
         result.current.toggle();
@@ -413,26 +330,7 @@ describe("useLayout", () => {
       expect(result.current.sidebarState).toBe("collapsed");
     });
 
-    it("should collapse from expanded:passive", () => {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify("expanded:passive")
-      );
-
-      const { result } = renderHook(() => useLayout(), {
-        wrapper: createWrapper(),
-      });
-
-      expect(result.current.isExpandedPassive).toBe(true);
-
-      act(() => {
-        result.current.toggle();
-      });
-
-      expect(result.current.sidebarState).toBe("collapsed");
-    });
-
-    it("should cycle collapsed -> expanded:active -> collapsed", () => {
+    it("should cycle collapsed -> expanded -> collapsed", () => {
       const { result } = renderHook(() => useLayout(), {
         wrapper: createWrapper(),
       });
@@ -443,7 +341,7 @@ describe("useLayout", () => {
         result.current.toggle();
       });
 
-      expect(result.current.sidebarState).toBe("expanded:active");
+      expect(result.current.sidebarState).toBe("expanded");
 
       act(() => {
         result.current.toggle();

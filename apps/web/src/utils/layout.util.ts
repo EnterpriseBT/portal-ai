@@ -9,8 +9,6 @@ import {
 export interface LayoutApi extends LayoutContextValue {
   isCollapsed: boolean;
   isExpanded: boolean;
-  isExpandedActive: boolean;
-  isExpandedPassive: boolean;
   breakpoints: Breakpoints;
   isMobile: boolean;
   isTablet: boolean;
@@ -21,13 +19,7 @@ export interface LayoutApi extends LayoutContextValue {
   isTabletExpanded: boolean;
   isDesktopCollapsed: boolean;
   isDesktopExpanded: boolean;
-  isMobileExpandedActive: boolean;
-  isMobileExpandedPassive: boolean;
-  isTabletExpandedActive: boolean;
-  isTabletExpandedPassive: boolean;
-  isDesktopExpandedActive: boolean;
-  isDesktopExpandedPassive: boolean;
-  toggle: (options?: { active: boolean }) => void;
+  toggle: () => void;
 }
 
 export const useLayout = (): LayoutApi => {
@@ -43,17 +35,10 @@ export const useLayout = (): LayoutApi => {
   const isTablet = useMediaQuery(breakpoints.between("sm", "md"));
   const isDesktop = useMediaQuery(breakpoints.up("md"));
 
-  const { isCollapsed, isExpanded, isExpandedActive, isExpandedPassive } =
-    context;
+  const { isCollapsed, isExpanded } = context;
 
-  const toggle = (options: { active: boolean } = { active: true }) => {
-    if (isCollapsed) {
-      context.setSidebarState(
-        options.active ? "expanded:active" : "expanded:passive"
-      );
-    } else {
-      context.setSidebarState("collapsed");
-    }
+  const toggle = () => {
+    context.setSidebarState(isCollapsed ? "expanded" : "collapsed");
   };
 
   return {
@@ -65,19 +50,11 @@ export const useLayout = (): LayoutApi => {
     isDesktop,
     isCollapsed,
     isExpanded,
-    isExpandedActive,
-    isExpandedPassive,
     isMobileCollapsed: isMobile && isCollapsed,
     isMobileExpanded: isMobile && isExpanded,
     isTabletCollapsed: isTablet && isCollapsed,
     isTabletExpanded: isTablet && isExpanded,
     isDesktopCollapsed: isDesktop && isCollapsed,
     isDesktopExpanded: isDesktop && isExpanded,
-    isMobileExpandedActive: isMobile && isExpandedActive,
-    isMobileExpandedPassive: isMobile && isExpandedPassive,
-    isTabletExpandedActive: isTablet && isExpandedActive,
-    isTabletExpandedPassive: isTablet && isExpandedPassive,
-    isDesktopExpandedActive: isDesktop && isExpandedActive,
-    isDesktopExpandedPassive: isDesktop && isExpandedPassive,
   };
 };

@@ -29,6 +29,8 @@ import InfoIcon from "@mui/icons-material/Info";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
+import KeyboardArrowLeftIcon from "@mui/icons-material/KeyboardArrowLeft";
+import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -70,6 +72,8 @@ export enum IconName {
   CheckCircle = "check_circle",
   KeyboardDoubleArrowLeft = "keyboard_double_arrow_left",
   KeyboardDoubleArrowRight = "keyboard_double_arrow_right",
+  KeyboardArrowLeft = "keyboard_arrow_left",
+  KeyboardArrowRight = "keyboard_arrow_right",
   ExpandMore = "expand_more",
   ExpandLess = "expand_less",
   Refresh = "refresh",
@@ -146,6 +150,10 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <KeyboardDoubleArrowLeftIcon ref={ref} {...props} />;
       case IconName.KeyboardDoubleArrowRight:
         return <KeyboardDoubleArrowRightIcon ref={ref} {...props} />;
+      case IconName.KeyboardArrowLeft:
+        return <KeyboardArrowLeftIcon ref={ref} {...props} />;
+      case IconName.KeyboardArrowRight:
+        return <KeyboardArrowRightIcon ref={ref} {...props} />;
       case IconName.ExpandMore:
         return <ExpandMoreIcon ref={ref} {...props} />;
       case IconName.ExpandLess:

@@ -10,8 +10,8 @@ export interface SidebarNavToggleProps {
 
 export const SidebarNavToggleUI = ({
   collapsed,
-  collapsedIcon = IconName.KeyboardDoubleArrowRight,
-  expandedIcon = IconName.KeyboardDoubleArrowLeft,
+  collapsedIcon = IconName.KeyboardArrowRight,
+  expandedIcon = IconName.KeyboardArrowLeft,
   onClick,
 }: SidebarNavToggleProps) => {
   return (
@@ -33,7 +33,7 @@ export const SidebarNavToggle = () => {
       collapsed={isCollapsed}
       collapsedIcon={isMobile ? IconName.Menu : undefined}
       expandedIcon={isMobile ? IconName.Close : undefined}
-      onClick={() => toggle({ active: false })}
+      onClick={() => toggle()}
     />
   );
 };

@@ -10,7 +10,7 @@ describe("SidebarNavToggleUI", () => {
     );
 
     expect(
-      container.querySelector("[data-testid='KeyboardDoubleArrowRightIcon']")
+      container.querySelector("[data-testid='KeyboardArrowRightIcon']")
     ).toBeInTheDocument();
   });
 
@@ -20,7 +20,7 @@ describe("SidebarNavToggleUI", () => {
     );
 
     expect(
-      container.querySelector("[data-testid='KeyboardDoubleArrowLeftIcon']")
+      container.querySelector("[data-testid='KeyboardArrowLeftIcon']")
     ).toBeInTheDocument();
   });
 
