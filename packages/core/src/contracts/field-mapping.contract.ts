@@ -51,6 +51,7 @@ export const FieldMappingCreateRequestBodySchema = z.object({
   isPrimaryKey: z.boolean().optional().default(false),
   refColumnDefinitionId: z.string().nullable().optional().default(null),
   refEntityKey: z.string().nullable().optional().default(null),
+  refBidirectionalFieldMappingId: z.string().nullable().optional().default(null),
 });
 
 export type FieldMappingCreateRequestBody = z.infer<typeof FieldMappingCreateRequestBodySchema>;
@@ -66,6 +67,7 @@ export type FieldMappingCreateResponsePayload = z.infer<typeof FieldMappingCreat
 export const FieldMappingUpdateRequestBodySchema = z.object({
   sourceField: z.string().min(1).optional(),
   isPrimaryKey: z.boolean().optional(),
+  refBidirectionalFieldMappingId: z.string().nullable().optional(),
 });
 
 export type FieldMappingUpdateRequestBody = z.infer<typeof FieldMappingUpdateRequestBodySchema>;
@@ -75,3 +77,14 @@ export const FieldMappingUpdateResponsePayloadSchema = z.object({
 });
 
 export type FieldMappingUpdateResponsePayload = z.infer<typeof FieldMappingUpdateResponsePayloadSchema>;
+
+// ── Bidirectional Validation ──────────────────────────────────────────
+
+export const FieldMappingBidirectionalValidationResponsePayloadSchema = z.object({
+  isConsistent: z.boolean().nullable(),
+  inconsistentRecordIds: z.array(z.string()),
+  totalChecked: z.number(),
+  reason: z.string().optional(),
+});
+
+export type FieldMappingBidirectionalValidationResponsePayload = z.infer<typeof FieldMappingBidirectionalValidationResponsePayloadSchema>;

@@ -63,24 +63,17 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### 3. Core — Field Mapping Contract
 
-- [ ] In `packages/core/src/contracts/field-mapping.contract.ts`, expose `refBidirectionalFieldMappingId` on the create and update request body schemas:
+- [x] In `packages/core/src/contracts/field-mapping.contract.ts`, exposed `refBidirectionalFieldMappingId` on the create and update request body schemas:
   ```ts
   // FieldMappingCreateRequestBodySchema
   refBidirectionalFieldMappingId: z.string().nullable().optional().default(null),
 
-  // FieldMappingUpdateRequestBodySchema — add alongside existing ref fields
+  // FieldMappingUpdateRequestBodySchema
   refBidirectionalFieldMappingId: z.string().nullable().optional(),
   ```
-- [ ] Add a new response contract for the bidirectional validation check:
-  ```ts
-  export const FieldMappingBidirectionalValidationResponsePayloadSchema = z.object({
-    isConsistent: z.boolean(),
-    inconsistentRecordIds: z.array(z.string()),
-    totalChecked: z.number(),
-  });
-  export type FieldMappingBidirectionalValidationResponsePayload = z.infer<...>;
-  ```
-- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
+- [x] Added `FieldMappingBidirectionalValidationResponsePayloadSchema` and its inferred type to the contract. `isConsistent` typed as `z.boolean().nullable()` to represent the three states: consistent, inconsistent, and unconfigured (null). `reason` is an optional string for the unconfigured case.
+- [x] New types are auto-exported via the existing `export * from "./field-mapping.contract.js"` in `packages/core/src/contracts/index.ts` — no barrel change needed.
+- [x] Verify: `npm run type-check && npm run lint && npm run test && npm run build` — all passed (631 tests)
 
 ---
 
