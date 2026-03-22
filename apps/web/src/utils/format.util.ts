@@ -178,6 +178,7 @@ export class Formatter {
     json: Formatter.json,
     array: Formatter.array,
     reference: Formatter.reference,
+    "reference-array": Formatter.array,
     currency: Formatter.currency,
   };
 }

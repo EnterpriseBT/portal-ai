@@ -33,7 +33,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### 1. Core — Column Definition Model
 
-- [ ] In `packages/core/src/models/column-definition.model.ts`, add `"reference-array"` to `ColumnDataTypeEnum`:
+- [x] In `packages/core/src/models/column-definition.model.ts`, add `"reference-array"` to `ColumnDataTypeEnum`:
   ```ts
   export const ColumnDataTypeEnum = z.enum([
     ...,
@@ -42,8 +42,10 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
     "currency",
   ]);
   ```
-- [ ] `SORTABLE_COLUMN_TYPES` — no change needed; `"reference-array"` is not sortable.
-- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
+- [x] `SORTABLE_COLUMN_TYPES` — no change needed; `"reference-array"` is not sortable.
+- [x] Also added `"reference-array": ["contains", "not_contains", "is_empty", "is_not_empty"]` to `OPERATORS_BY_COLUMN_TYPE` in `packages/core/src/contracts/filter.contract.ts` (exhaustive `Record<ColumnDataType, ...>` required it).
+- [x] Also added `"reference-array": Formatter.array` to `formatters` in `apps/web/src/utils/format.util.ts` (exhaustive `Record<ColumnDataType, ...>` required it).
+- [x] Verify: `npm run type-check && npm run lint && npm run test && npm run build` — all passed
 
 ---
 
@@ -83,7 +85,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### 4. DB Schema — Drizzle pgEnum
 
-- [ ] In `apps/api/src/db/schema/column-definitions.table.ts`, add `"reference-array"` to `columnDataTypeEnum`:
+- [x] In `apps/api/src/db/schema/column-definitions.table.ts`, add `"reference-array"` to `columnDataTypeEnum`:
   ```ts
   export const columnDataTypeEnum = pgEnum("column_data_type", [
     ...,
@@ -93,7 +95,8 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   ]);
   ```
   > The enum value order must match `ColumnDataTypeEnum` in core to keep the dual-schema type checks green.
-- [ ] Verify: `npm run type-check && npm run lint && npm run build`
+  > Note: this was done alongside step 1 — the `type-checks.ts` assertions compare core against Drizzle, so both must be updated together for the monorepo to type-check cleanly.
+- [x] Verify: `npm run type-check && npm run lint && npm run build` — passed as part of step 1 verification
 
 ---
 

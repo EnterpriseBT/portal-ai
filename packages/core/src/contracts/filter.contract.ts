@@ -45,6 +45,7 @@ export const OPERATORS_BY_COLUMN_TYPE: Record<ColumnDataType, FilterOperator[]> 
   array: ["contains", "not_contains", "is_empty", "is_not_empty"],
   json: ["is_empty", "is_not_empty"],
   reference: ["eq", "neq", "is_empty", "is_not_empty"],
+  "reference-array": ["contains", "not_contains", "is_empty", "is_not_empty"],
 };
 
 // ── Compile-time exhaustiveness check ───────────────────────────────
