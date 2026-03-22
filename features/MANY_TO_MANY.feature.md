@@ -107,7 +107,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### 6. DB Migration
 
-- [ ] Run `npm run db:generate` from `apps/api/` to produce a migration for:
+- [ ] Run `npm run db:generate --name=add_reference_array_type_and_bidirectional_field_mapping` from `apps/api/` to produce a migration for:
   - `ALTER TYPE column_data_type ADD VALUE 'reference-array'`
   - `ALTER TABLE field_mappings ADD COLUMN ref_bidirectional_field_mapping_id text REFERENCES field_mappings(id)`
 - [ ] Review the generated SQL before applying.
