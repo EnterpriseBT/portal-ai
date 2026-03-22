@@ -43,6 +43,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   ]);
   ```
 - [ ] `SORTABLE_COLUMN_TYPES` — no change needed; `"reference-array"` is not sortable.
+- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
 
 ---
 
@@ -53,6 +54,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   refBidirectionalFieldMappingId: z.string().nullable(),
   ```
   Place it alongside the existing ref fields (`refColumnDefinitionId`, `refEntityKey`).
+- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
 
 ---
 
@@ -75,6 +77,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   });
   export type FieldMappingBidirectionalValidationResponsePayload = z.infer<...>;
   ```
+- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
 
 ---
 
@@ -90,6 +93,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   ]);
   ```
   > The enum value order must match `ColumnDataTypeEnum` in core to keep the dual-schema type checks green.
+- [ ] Verify: `npm run type-check && npm run lint && npm run build`
 
 ---
 
@@ -102,6 +106,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   ),
   ```
   Place it after `refEntityKey` in the column list.
+- [ ] Verify: `npm run type-check && npm run lint && npm run build`
 
 ---
 
@@ -112,12 +117,14 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   - `ALTER TABLE field_mappings ADD COLUMN ref_bidirectional_field_mapping_id text REFERENCES field_mappings(id)`
 - [ ] Review the generated SQL before applying.
 - [ ] Run `npm run db:migrate` to apply.
+- [ ] Verify: `npm run type-check && npm run lint && npm run build`
 
 ---
 
 ### 7. Type-Check Assertions
 
 - [ ] In `apps/api/src/db/schema/type-checks.ts`, verify existing `FieldMapping` assertions still compile after the new column is added to both sides. No new assertion blocks required — the existing bidirectional `IsAssignable` checks for `FieldMapping` ↔ `FieldMappingSelect` will catch any drift automatically.
+- [ ] Verify: `npm run type-check && npm run lint && npm run build`
 
 ---
 
@@ -142,6 +149,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
     client: DbClient = db
   ): Promise<{ mapping: FieldMappingSelect; counterpart: FieldMappingSelect | null }>
   ```
+- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
 
 ---
 
@@ -152,6 +160,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED = "FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED",
   FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND = "FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND",
   ```
+- [ ] Verify: `npm run type-check && npm run lint && npm run build`
 
 ---
 
@@ -167,6 +176,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   5. Returns `FieldMappingBidirectionalValidationResponsePayload`.
 
   > The GIN index on `entity_records.normalized_data` already supports this via `normalizedData @> '{"field_key": [id]}'::jsonb`. No schema change to `entity_records` is needed.
+- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
 
 ---
 
@@ -178,6 +188,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   - Ref Entity Key (text)
   - Back-reference Field Mapping (optional dropdown — lists field mappings on the target entity that are also `reference-array` type pointing back)
 - [ ] The back-reference field mapping picker is **optional** — leaving it empty means unidirectional mode with no validation available.
+- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
 
 ---
 
@@ -188,6 +199,7 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
   - If `isConsistent === false`, render an inline warning banner: _"Array references are out of sync with [target entity name]. X records have inconsistent back-references."_
   - The warning must never block reads or writes — it is advisory only.
 - [ ] The warning banner links to a filtered view of the `inconsistentRecordIds`.
+- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
 
 ---
 
