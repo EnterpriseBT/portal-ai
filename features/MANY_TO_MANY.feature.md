@@ -109,71 +109,44 @@ Add a `"reference-array"` column data type that lets a field hold an array of fo
 
 ### 6. DB Migration
 
-- [ ] Run `npm run db:generate --name=add_reference_array_type_and_bidirectional_field_mapping` from `apps/api/` to produce a migration for:
-  - `ALTER TYPE column_data_type ADD VALUE 'reference-array'`
-  - `ALTER TABLE field_mappings ADD COLUMN ref_bidirectional_field_mapping_id text REFERENCES field_mappings(id)`
-- [ ] Review the generated SQL before applying.
-- [ ] Run `npm run db:migrate` to apply.
-- [ ] Verify: `npm run type-check && npm run lint && npm run build`
+- [x] Generated migration `drizzle/0021_add_reference_array_type_and_bidirectional_field_mapping.sql` containing:
+  - `ALTER TYPE "public"."column_data_type" ADD VALUE 'reference-array' BEFORE 'currency'`
+  - `ALTER TABLE "field_mappings" ADD COLUMN "ref_bidirectional_field_mapping_id" text`
+  - `ALTER TABLE "field_mappings" ADD CONSTRAINT ... FOREIGN KEY (...) REFERENCES "field_mappings"("id")`
+  > FK constraint name was auto-truncated by PostgreSQL to 63 chars — expected and harmless.
+- [x] Reviewed generated SQL — correct.
+- [x] Migration applied successfully via `npm run db:migrate`.
+- [x] Verify: `npm run type-check && npm run lint && npm run build` — all passed
 
 ---
 
 ### 7. Type-Check Assertions
 
-- [ ] In `apps/api/src/db/schema/type-checks.ts`, verify existing `FieldMapping` assertions still compile after the new column is added to both sides. No new assertion blocks required — the existing bidirectional `IsAssignable` checks for `FieldMapping` ↔ `FieldMappingSelect` will catch any drift automatically.
-- [ ] Verify: `npm run type-check && npm run lint && npm run build`
+- [x] Confirmed — existing `IsAssignable<FieldMapping, FieldMappingSelect>` and `IsAssignable<FieldMappingSelect, FieldMapping>` assertions in `type-checks.ts` caught drift immediately in steps 2/5 and forced both sides to stay in sync. No new assertion blocks needed.
+- [x] Verify: `npm run type-check && npm run lint && npm run build` — all passed
 
 ---
 
 ### 8. Repository — Field Mappings
 
-- [ ] In `apps/api/src/db/repositories/field-mappings.repository.ts`, include `refBidirectionalFieldMappingId` in the `upsertByEntityAndColumn` conflict resolution `set` block:
-  ```ts
-  set: {
-    sourceField: data.sourceField,
-    isPrimaryKey: data.isPrimaryKey,
-    refColumnDefinitionId: data.refColumnDefinitionId,
-    refEntityKey: data.refEntityKey,
-    refBidirectionalFieldMappingId: data.refBidirectionalFieldMappingId,  // ← add
-    updated: data.updated ?? Date.now(),
-    updatedBy: data.updatedBy,
-  }
-  ```
-- [ ] Add a method `findBidirectionalPair(fieldMappingId: string)` that returns the mapping and its linked counterpart (used by the validation endpoint):
-  ```ts
-  async findBidirectionalPair(
-    fieldMappingId: string,
-    client: DbClient = db
-  ): Promise<{ mapping: FieldMappingSelect; counterpart: FieldMappingSelect | null }>
-  ```
-- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
+- [x] Added `refBidirectionalFieldMappingId` to `upsertByEntityAndColumn` conflict resolution `set` block.
+- [x] Added `findBidirectionalPair(fieldMappingId, client?)` — fetches both mappings in a single query using `OR` on IDs; returns `{ mapping, counterpart: null }` when `refBidirectionalFieldMappingId` is null.
+- [x] Verify: `npm run type-check && npm run lint && npm run test && npm run build` — all passed
 
 ---
 
 ### 9. API — Error Codes
 
-- [ ] In `apps/api/src/constants/api-codes.constants.ts`, add under the Field Mappings section:
-  ```ts
-  FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED = "FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED",
-  FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND = "FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND",
-  ```
-- [ ] Verify: `npm run type-check && npm run lint && npm run build`
+- [x] Added `FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED` and `FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND` to `ApiCode` enum in `apps/api/src/constants/api-codes.constants.ts`.
+- [x] Verify: `npm run type-check && npm run lint && npm run build` — all passed
 
 ---
 
 ### 10. API Router — Field Mappings
 
-- [ ] In `apps/api/src/routes/field-mapping.router.ts`, update the `PATCH /:id` handler to accept and persist `refBidirectionalFieldMappingId` (it flows through the existing `parsed.data` spread once the contract is updated).
-
-- [ ] Add a new `GET /:id/validate-bidirectional` endpoint that:
-  1. Loads the field mapping; 404 if missing.
-  2. Checks that the column type is `"reference-array"`; returns a 400 with `FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED` if not.
-  3. Resolves `refBidirectionalFieldMappingId`; if null, returns `{ isConsistent: null, reason: "no-back-reference-configured" }`.
-  4. Queries `entity_records.normalizedData` on both sides using the GIN index (`@>` containment) to find records whose arrays are out of sync.
-  5. Returns `FieldMappingBidirectionalValidationResponsePayload`.
-
-  > The GIN index on `entity_records.normalized_data` already supports this via `normalizedData @> '{"field_key": [id]}'::jsonb`. No schema change to `entity_records` is needed.
-- [ ] Verify: `npm run type-check && npm run lint && npm run test && npm run build`
+- [x] `PATCH /:id` handler: `refBidirectionalFieldMappingId` flows through the existing `...parsed.data` spread automatically. Also added `refBidirectionalFieldMappingId` to the `model.update()` call in `POST /` so the factory-created model passes Zod validation (`z.string().nullable()` rejects `undefined`).
+- [x] Added `GET /:id/validate-bidirectional` endpoint implementing the full validation flow: type guard → unidirectional short-circuit → `findBidirectionalPair` → load both entities' records → build sourceId→Set lookup for entity B → scan entity A records for any IDs missing the back-reference → return `FieldMappingBidirectionalValidationResponsePayload`.
+- [x] Verify: `npm run type-check && npm run lint && npm run test && npm run build` — all passed (1954 tests total across all packages)
 
 ---
 

@@ -148,6 +148,13 @@
       "when": 1774037364246,
       "tag": "0020_move_ref_fields_to_field_mappings",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1774212939048,
+      "tag": "0021_add_reference_array_type_and_bidirectional_field_mapping",
+      "breakpoints": true
     }
   ]
 }

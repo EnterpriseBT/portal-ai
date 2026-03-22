@@ -1,0 +1,3 @@
+ALTER TYPE "public"."column_data_type" ADD VALUE 'reference-array' BEFORE 'currency';--> statement-breakpoint
+ALTER TABLE "field_mappings" ADD COLUMN "ref_bidirectional_field_mapping_id" text;--> statement-breakpoint
+ALTER TABLE "field_mappings" ADD CONSTRAINT "field_mappings_ref_bidirectional_field_mapping_id_field_mappings_id_fk" FOREIGN KEY ("ref_bidirectional_field_mapping_id") REFERENCES "public"."field_mappings"("id") ON DELETE no action ON UPDATE no action;
