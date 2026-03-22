@@ -53,23 +53,76 @@ simple-statistics computes IQR bounds → flags outliers
 
 ---
 
-## MCP Tool Definitions
+## Tool Packs
 
-The MCP server exposes discrete tools that Claude selects based on the user's natural language query. This avoids arbitrary code generation — Claude only picks tools and passes typed parameters.
+All tools are organized into named packs. A station must have at least one pack selected before a portal can be opened — there are no implicit or always-on tools. The tools available to Claude during a portal session are the exact union of tools from the station's selected packs plus any custom webhook tools registered on the station.
+
+Tools are grouped into five curated packs, each addressing a distinct analytical domain. Users select packs per station from a palette in the station settings UI.
+
+---
+
+### Pack: `data_query`
+
+SQL querying and chart visualization against in-memory entity records.
 
 | Tool | Backed By | Input Parameters | Use Case |
-|------|-----------|------------------|----------|
-| `sql_query` | AlaSQL | `{ sql: string }` | Flexible querying: aggregations, filters, joins, pivots. Tables are pre-registered by `connectorEntity.key`. |
-| `describe_column` | simple-statistics | `{ entity: string, column: string }` | Summary stats: count, mean, median, stddev, min, max, percentiles |
+|------|-----------|-----------------|----------|
+| `sql_query` | AlaSQL | `{ sql: string }` | Flexible querying: aggregations, filters, joins, pivots. Tables named by `connectorEntity.key`. |
+| `visualize` | AlaSQL + Vega-Lite | `{ sql: string, vegaLiteSpec: object }` | Run a SQL query and render the result as any chart type (bar, line, scatter, heatmap, etc.) |
+
+> The `entity` key (e.g. `"orders"`, `"customers"`) is the table name registered in AlaSQL when the portal opens. For `sql_query` and `visualize`, reference it directly in the SQL statement.
+
+---
+
+### Pack: `statistics`
+
+Descriptive statistics, correlation, outlier detection, and clustering.
+
+| Tool | Backed By | Input Parameters | Use Case |
+|------|-----------|-----------------|----------|
+| `describe_column` | simple-statistics | `{ entity: string, column: string }` | Summary stats: count, mean, median, stddev, min, max, p25, p75 |
 | `correlate` | simple-statistics | `{ entity: string, columnA: string, columnB: string }` | Pearson correlation between two numeric columns |
 | `detect_outliers` | simple-statistics | `{ entity: string, column: string, method: "iqr" \| "zscore" }` | Flag records with anomalous values |
-| `regression` | simple-statistics | `{ entity: string, x: string, y: string, type: "linear" \| "polynomial" }` | Fit regression model, return coefficients and R-squared |
-| `cluster` | ml.js (k-means) | `{ entity: string, columns: string[], k: number }` | Segment records into k groups based on selected features |
-| `transform` | Arquero | `{ entity: string, operations: TransformOp[] }` | Chain of data transforms: filter, derive, rollup, pivot, join |
-| `trend` | simple-statistics + Arquero | `{ entity: string, dateColumn: string, valueColumn: string, interval: string }` | Time-series aggregation with trend line |
-| `visualize` | AlaSQL + Vega-Lite | `{ sql: string, vegaLiteSpec: object }` | Claude generates a Vega-Lite spec for any chart type — bar, line, scatter, heatmap, etc. |
+| `cluster` | ml-kmeans | `{ entity: string, columns: string[], k: number }` | Segment records into k groups based on selected numeric features |
 
-> **Note:** The `entity` parameter refers to a `connectorEntity.key` (e.g., `"orders"`, `"customers"`), which is the table name registered in AlaSQL when the station is loaded. For `sql_query` and `visualize`, the entity is referenced directly in the SQL statement rather than as a separate parameter.
+---
+
+### Pack: `regression`
+
+Regression modelling and time-series trend analysis.
+
+| Tool | Backed By | Input Parameters | Use Case |
+|------|-----------|-----------------|----------|
+| `regression` | simple-statistics | `{ entity: string, x: string, y: string, type: "linear" \| "polynomial" }` | Fit a regression model; returns coefficients and R-squared |
+| `trend` | simple-statistics + Arquero | `{ entity: string, dateColumn: string, valueColumn: string, interval: string }` | Time-series aggregation with a linear trend line overlay |
+
+---
+
+### Pack: `financial`
+
+Technical indicators, capital budgeting math, and risk metrics.
+
+| Tool | Backed By | Input Parameters | Use Case |
+|------|-----------|-----------------|----------|
+| `technical_indicator` | technicalindicators | `{ entity, dateColumn, valueColumn, indicator: "SMA"\|"EMA"\|"RSI"\|"MACD"\|"BB"\|"ATR"\|"OBV", params? }` | Price/time-series technical analysis |
+| `npv` | financial | `{ rate: number, cashFlows: number[] }` | Net present value of a cash flow series |
+| `irr` | financial | `{ cashFlows: number[] }` | Internal rate of return |
+| `amortize` | financial | `{ principal: number, annualRate: number, periods: number }` | Loan amortization schedule — returns one row per period |
+| `sharpe_ratio` | simple-statistics | `{ entity, valueColumn, riskFreeRate?: number, annualize?: boolean }` | Risk-adjusted return: (mean − risk-free rate) / stddev |
+| `max_drawdown` | Arquero | `{ entity, dateColumn, valueColumn }` | Peak-to-trough decline as a percentage of peak value |
+| `rolling_returns` | Arquero | `{ entity, dateColumn, valueColumn, window: number }` | Period-over-period return series within a rolling window |
+
+---
+
+### Pack: `web_search`
+
+Real-time web search via Tavily. Wraps the existing `AiService.buildWebSearchTool()` — the same tool used elsewhere in the platform, exposed here as an opt-in pack.
+
+| Tool | Backed By | Input Parameters | Use Case |
+|------|-----------|-----------------|----------|
+| `web_search` | Tavily | `{ query: string }` | Search the web for current information to supplement entity data analysis |
+
+---
 
 ### Stations and Portals
 
@@ -560,66 +613,181 @@ Registered on `AiService` alongside the existing `webSearch` tool. Each tool wra
 import { tool } from "ai";
 import { z } from "zod";
 import { AnalyticsService } from "./analytics.service.js";
+import { AiService } from "./ai.service.js";
+import { stationToolsRepo, stationsRepo } from "../db/index.js";
 
-/** Factory that creates org-scoped analytics tools for a given chat session */
-export function buildAnalyticsTools(organizationId: string) {
-  return {
-    sql_query: tool({
-      description: "Execute a SQL query against entity records. Supports SELECT, JOIN, GROUP BY, HAVING, ORDER BY, aggregation functions, and subqueries. Tables are named by connectorEntity.key (e.g., SELECT * FROM orders).",
+/**
+ * Build the complete tool map for a portal session.
+ *
+ * Every tool available to Claude is determined exclusively by:
+ *   1. The packs selected on the station (station.toolPacks)
+ *   2. The custom webhook tools registered on the station (station_tools rows)
+ *
+ * There are no implicit or always-on tools. If a station has no packs selected,
+ * this function throws — portal creation should have already blocked that case.
+ */
+export async function buildAnalyticsTools(
+  organizationId: string,
+  stationId: string
+): Promise<Record<string, ReturnType<typeof tool>>> {
+  const station = await stationsRepo.findById(stationId);
+  const packs = new Set(station.toolPacks);
+
+  if (packs.size === 0) {
+    throw new Error("Station has no tool packs selected — cannot open a portal");
+  }
+
+  const tools: Record<string, ReturnType<typeof tool>> = {};
+
+  // ── Pack: data_query ────────────────────────────────────────────────
+  if (packs.has("data_query")) {
+    tools.sql_query = tool({
+      description: "Execute a SQL query against entity records. Supports SELECT, JOIN, GROUP BY, HAVING, ORDER BY, aggregation functions, and subqueries. Tables are named by connectorEntity.key.",
       inputSchema: z.object({
         sql: z.string().describe("SQL query — reference tables by their connectorEntity.key, e.g. SELECT * FROM orders"),
       }),
       execute: (input) => AnalyticsService.sqlQuery({ ...input, organizationId }),
-    }),
+    });
+    tools.visualize = tool({
+      description: "Query entity data and render a chart. Generate a complete Vega-Lite specification for the desired chart type. Data is injected automatically — do not include a data property in the spec.",
+      inputSchema: z.object({
+        sql: z.string().describe("SQL query to fetch chart data — reference tables by connectorEntity.key"),
+        vegaLiteSpec: z.record(z.unknown()).describe("Vega-Lite spec without data — include mark, encoding, and any transforms"),
+      }),
+      execute: (input) => AnalyticsService.visualize({ ...input, organizationId }),
+    });
+  }
 
-    describe_column: tool({
+  // ── Pack: statistics ────────────────────────────────────────────────
+  if (packs.has("statistics")) {
+    tools.describe_column = tool({
       description: "Get descriptive statistics for a numeric column: count, mean, median, standard deviation, min, max, and percentiles.",
       inputSchema: z.object({
         entity: z.string().describe("The connectorEntity.key identifying which entity to analyze"),
         column: z.string().describe("The numeric column to analyze"),
       }),
       execute: (input) => AnalyticsService.describeColumn({ ...input, organizationId }),
-    }),
-
-    detect_outliers: tool({
-      description: "Detect outlier records in a numeric column using IQR or Z-score method.",
-      inputSchema: z.object({
-        entity: z.string().describe("The connectorEntity.key identifying which entity to analyze"),
-        column: z.string(),
-        method: z.enum(["iqr", "zscore"]).default("iqr"),
-      }),
-      execute: (input) => AnalyticsService.detectOutliers({ ...input, organizationId }),
-    }),
-
-    correlate: tool({
+    });
+    tools.correlate = tool({
       description: "Calculate the Pearson correlation coefficient between two numeric columns.",
       inputSchema: z.object({
-        entity: z.string().describe("The connectorEntity.key identifying which entity to analyze"),
+        entity: z.string(),
         columnA: z.string(),
         columnB: z.string(),
       }),
       execute: (input) => AnalyticsService.correlate({ ...input, organizationId }),
-    }),
-
-    cluster: tool({
+    });
+    tools.detect_outliers = tool({
+      description: "Detect outlier records in a numeric column using IQR or Z-score method.",
+      inputSchema: z.object({
+        entity: z.string(),
+        column: z.string(),
+        method: z.enum(["iqr", "zscore"]).default("iqr"),
+      }),
+      execute: (input) => AnalyticsService.detectOutliers({ ...input, organizationId }),
+    });
+    tools.cluster = tool({
       description: "Segment records into k groups using k-means clustering on selected numeric columns.",
       inputSchema: z.object({
-        entity: z.string().describe("The connectorEntity.key identifying which entity to analyze"),
+        entity: z.string(),
         columns: z.array(z.string()).describe("Numeric columns to cluster on"),
         k: z.number().int().min(2).max(20).describe("Number of clusters"),
       }),
       execute: (input) => AnalyticsService.cluster({ ...input, organizationId }),
-    }),
+    });
+  }
 
-    visualize: tool({
-      description: "Query entity data and render a chart. Generate a complete Vega-Lite specification for the desired chart type (bar, line, scatter, heatmap, histogram, area, pie, etc). The data will be injected automatically from the SQL query results — do not include a data property in the spec.",
+  // ── Pack: regression ────────────────────────────────────────────────
+  if (packs.has("regression")) {
+    tools.regression = tool({
+      description: "Fit a linear or polynomial regression model between two numeric columns. Returns coefficients and R-squared.",
       inputSchema: z.object({
-        sql: z.string().describe("SQL query to fetch chart data — reference tables by connectorEntity.key"),
-        vegaLiteSpec: z.record(z.unknown()).describe("Vega-Lite spec without data — include mark, encoding, and any transforms"),
+        entity: z.string(),
+        x: z.string().describe("Independent variable column"),
+        y: z.string().describe("Dependent variable column"),
+        type: z.enum(["linear", "polynomial"]).default("linear"),
       }),
-      execute: (input) => AnalyticsService.visualize({ ...input, organizationId }),
-    }),
-  };
+      execute: (input) => AnalyticsService.regression({ ...input, organizationId }),
+    });
+    tools.trend = tool({
+      description: "Aggregate a numeric value over time intervals and fit a linear trend line.",
+      inputSchema: z.object({
+        entity: z.string(),
+        dateColumn: z.string(),
+        valueColumn: z.string(),
+        interval: z.enum(["day", "week", "month", "quarter", "year"]),
+      }),
+      execute: (input) => AnalyticsService.trend({ ...input, organizationId }),
+    });
+  }
+
+  // ── Pack: financial ─────────────────────────────────────────────────
+  if (packs.has("financial")) {
+    tools.technical_indicator = tool({
+      description: "Compute a technical indicator (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV) over a time-series value column.",
+      inputSchema: z.object({
+        entity: z.string(),
+        dateColumn: z.string(),
+        valueColumn: z.string(),
+        indicator: z.enum(["SMA", "EMA", "RSI", "MACD", "BB", "ATR", "OBV"]),
+        params: z.record(z.unknown()).optional().describe("Indicator-specific parameters, e.g. { period: 14 }"),
+      }),
+      execute: (input) => AnalyticsService.technicalIndicator({ ...input, organizationId }),
+    });
+    tools.npv = tool({
+      description: "Calculate the net present value of a series of cash flows at a given discount rate.",
+      inputSchema: z.object({ rate: z.number(), cashFlows: z.array(z.number()) }),
+      execute: (input) => AnalyticsService.npv(input),
+    });
+    tools.irr = tool({
+      description: "Calculate the internal rate of return for a series of cash flows.",
+      inputSchema: z.object({ cashFlows: z.array(z.number()) }),
+      execute: (input) => AnalyticsService.irr(input),
+    });
+    tools.amortize = tool({
+      description: "Generate a full loan amortization schedule. Returns one row per period.",
+      inputSchema: z.object({ principal: z.number(), annualRate: z.number(), periods: z.number().int() }),
+      execute: (input) => AnalyticsService.amortize(input),
+    });
+    tools.sharpe_ratio = tool({
+      description: "Compute the Sharpe ratio (risk-adjusted return) for a return series. Optionally annualize by multiplying by √252.",
+      inputSchema: z.object({
+        entity: z.string(),
+        valueColumn: z.string(),
+        riskFreeRate: z.number().default(0),
+        annualize: z.boolean().default(false),
+      }),
+      execute: (input) => AnalyticsService.sharpeRatio({ ...input, organizationId }),
+    });
+    tools.max_drawdown = tool({
+      description: "Calculate the maximum peak-to-trough decline as a percentage of peak value.",
+      inputSchema: z.object({ entity: z.string(), dateColumn: z.string(), valueColumn: z.string() }),
+      execute: (input) => AnalyticsService.maxDrawdown({ ...input, organizationId }),
+    });
+    tools.rolling_returns = tool({
+      description: "Compute a period-over-period return series within a rolling window.",
+      inputSchema: z.object({ entity: z.string(), dateColumn: z.string(), valueColumn: z.string(), window: z.number().int() }),
+      execute: (input) => AnalyticsService.rollingReturns({ ...input, organizationId }),
+    });
+  }
+
+  // ── Pack: web_search ────────────────────────────────────────────────
+  if (packs.has("web_search")) {
+    tools.web_search = AiService.buildWebSearchTool();
+  }
+
+  // ── Custom webhook tools ────────────────────────────────────────────
+  // Appended from station_tools rows — always included regardless of packs
+  const customToolDefs = await stationToolsRepo.findByStation(stationId, organizationId);
+  for (const def of customToolDefs) {
+    tools[def.name] = tool({
+      description: def.description,
+      inputSchema: jsonSchemaToZod(def.parameterSchema),
+      execute: async (input) => callWebhook(def.implementation, input),
+    });
+  }
+
+  return tools;
 }
 ```
 
@@ -644,28 +812,25 @@ export class PortalService {
   }): Promise<void> {
     const { messages, stationContext, organizationId, sse } = params;
 
-    const tools = {
-      ...AiService.tools,
-      ...buildAnalyticsTools(organizationId),
-    };
+    // All tools come exclusively from the station's selected packs and custom webhook tools.
+    // No implicit tools are included — AiService.tools is NOT merged here.
+    const tools = await buildAnalyticsTools(organizationId, stationContext.stationId);
 
     const entitySchemas = stationContext.entities
       .map((e) => `### ${e.label} (table: \`${e.key}\`)\n${JSON.stringify(e.schema, null, 2)}`)
       .join("\n\n");
 
+    const availableToolNames = Object.keys(tools).join(", ");
+
     const systemPrompt = [
-      "You are a data analyst assistant. You have access to tools that query and analyze entity records.",
+      "You are a data analyst assistant.",
       `The user is working with station "${stationContext.stationName}" which contains the following entities:`,
       "",
       entitySchemas,
       "",
-      "Guidelines:",
-      "- Use sql_query for filtering, aggregation, grouping, and joins. Each entity is registered as a named table by its key — you can join across them.",
-      "- Use describe_column, detect_outliers, correlate for statistical analysis. Pass the entity key to identify which entity to analyze.",
-      "- Use cluster for segmentation tasks.",
-      "- Use visualize when the user asks for a chart — generate a Vega-Lite spec appropriate to the data and question.",
-      "- Respond in markdown. Keep explanations concise.",
-      "- When presenting tabular results, format them as markdown tables.",
+      `You have access to the following tools: ${availableToolNames}`,
+      "Use only the tools listed above. Respond in markdown. Keep explanations concise.",
+      "When presenting tabular results, format them as markdown tables.",
     ].join("\n");
 
     const result = streamText({
@@ -914,11 +1079,49 @@ Additional algorithms implemented by the Portal.ai team — ARIMA time-series fo
 
 ### Recommended Approach: Webhook-first with curated packs
 
-**Phase 1 — Curated packs.** Implement `regression` and `trend` (already in the MCP tool table but not in the built-in service) as additional `AnalyticsService` methods. Activate per station via a `stationToolPacks` array stored on the `stations` table. This covers the highest-value gaps without introducing code execution.
+**Phase 1 — Curated packs.** Implement `regression`, `trend`, and the financial analytics pack as additional `AnalyticsService` methods. This covers the highest-value gaps without introducing code execution.
 
 **Phase 2 — Webhook-based custom tools.** Add the `station_tools` table and extend `buildAnalyticsTools()` to load and wrap registered webhooks. This gives users full extensibility without any sandboxing complexity.
 
 **Phase 3 — Sandboxed JS snippets.** Revisit once the webhook pattern is validated; JS snippets can be offered as an alternative implementation type within the same `station_tools` schema.
+
+---
+
+### Financial Analytics Pack
+
+A curated set of tools for financial time-series analysis, capital budgeting math, and risk metrics. Implemented as additional `AnalyticsService` static methods registered in `buildAnalyticsTools()` alongside the core tools.
+
+#### New dependencies
+
+**`technicalindicators`** — the most complete technical indicator library for Node.js. Pure JS, no native bindings, TypeScript types included. Covers 30+ indicators: SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV, Stochastic, Williams %R, CCI, and more.
+
+**`financial`** — TypeScript port of Python's `numpy-financial`. Covers time-value-of-money and capital budgeting math: `npv`, `irr`, `pmt` (loan payment), `pv`, `fv`, `mirr`, `nper`, `rate`. Pure ESM, zero deps.
+
+Risk metrics (Sharpe ratio, VaR, drawdown, rolling returns) are derived from `simple-statistics` and `arquero`, which are already in the dependency set — no additional library is needed.
+
+#### Tool surface
+
+| Tool | Library | Input Parameters | Use Case |
+|------|---------|-----------------|----------|
+| `technical_indicator` | `technicalindicators` | `{ entity, dateColumn, valueColumn, indicator: "SMA"\|"EMA"\|"RSI"\|"MACD"\|"BB"\|"ATR"\|"OBV", params }` | Price/time-series technical analysis |
+| `npv` | `financial` | `{ rate: number, cashFlows: number[] }` | Net present value of a cash flow series |
+| `irr` | `financial` | `{ cashFlows: number[] }` | Internal rate of return |
+| `amortize` | `financial` | `{ principal, annualRate, periods }` | Loan amortization schedule — returns one row per period |
+| `sharpe_ratio` | `simple-statistics` | `{ entity, valueColumn, riskFreeRate?, annualize? }` | Risk-adjusted return (mean − risk-free rate) / stddev |
+| `max_drawdown` | `arquero` | `{ entity, dateColumn, valueColumn }` | Peak-to-trough decline as a percentage of peak value |
+| `rolling_returns` | `arquero` | `{ entity, dateColumn, valueColumn, window }` | Period-over-period return series within a rolling window |
+
+`technical_indicator` exposes the full indicator library through a single tool — Claude selects the appropriate indicator via the `indicator` enum param based on the user's intent, keeping the tool count manageable.
+
+#### What is covered by existing deps
+
+| Capability | How |
+|---|---|
+| Sharpe ratio | `ss.mean(returns)` and `ss.standardDeviation(returns)` from `simple-statistics` |
+| Value at Risk (VaR) | `ss.quantile(returns, 0.05)` from `simple-statistics` |
+| Max drawdown | Rolling max window then `(peak − trough) / peak` via `arquero` |
+| Rolling returns | `aq.window()` on a date-sorted value column via `arquero` |
+| Period-over-period growth | `arquero` derive with lag — no new dep |
 
 ---
 
@@ -943,38 +1146,9 @@ Dual-schema model in `packages/core`: `StationToolSchema` + `StationToolModel` +
 
 ---
 
-### Updated `buildAnalyticsTools()` Flow
+### `callWebhook()` behaviour
 
-```typescript
-export async function buildAnalyticsTools(organizationId: string, stationId: string) {
-  const builtIns = {
-    sql_query: ...,
-    describe_column: ...,
-    correlate: ...,
-    detect_outliers: ...,
-    cluster: ...,
-    visualize: ...,
-  };
-
-  // Load user-defined tools for this station
-  const customToolDefs = await StationToolsRepository.findByStation(stationId, organizationId);
-
-  const customTools = Object.fromEntries(
-    customToolDefs.map((def) => [
-      def.name,
-      tool({
-        description: def.description,
-        inputSchema: jsonSchemaToZod(def.parameterSchema),
-        execute: async (input) => callWebhook(def.implementation, input),
-      }),
-    ])
-  );
-
-  return { ...builtIns, ...customTools };
-}
-```
-
-`callWebhook()` handles: POST to the URL with the input payload, injects optional auth headers, enforces a 30 s timeout (matching AI analysis timeout), and validates that the response is JSON. If the webhook returns `{ type: "vega-lite", spec: {...} }`, `PortalService.streamResponse()` emits it as a `tool_result` SSE event for chart rendering — same as the `visualize` built-in.
+`callWebhook()` handles: POST to the URL with the input payload, injects optional auth headers, enforces a 30 s timeout (matching AI analysis timeout), and validates that the response is JSON. If the webhook returns `{ type: "vega-lite", spec: {...} }`, `PortalService.streamResponse()` emits it as a `tool_result` SSE event for chart rendering — same as the `visualize` pack tool.
 
 ---
 
@@ -982,11 +1156,14 @@ export async function buildAnalyticsTools(organizationId: string, stationId: str
 
 | Decision | Rationale |
 |----------|-----------|
-| Tool names must not shadow built-in names | Prevent user tools silently overriding platform tools; validate at creation time via `StationToolsRepository.create()` |
-| Custom tool descriptions are injected into the system prompt | `PortalService` assembles a list of available custom tools alongside entity schemas so Claude understands what's callable |
-| `buildAnalyticsTools()` becomes async | Only affects `PortalService.createPortal()` which is already async; no call-site friction |
-| Webhook auth headers stored encrypted | Tool definitions may include API keys; store `headers` field encrypted at rest using the same mechanism as connector credentials |
-| Webhook response schema is open | Claude narrates arbitrary JSON tool results; only `{ type: "vega-lite", spec }` responses get special frontend rendering |
+| No implicit tools | Every tool Claude can call is explicitly selected by the station operator. There is no platform-wide default set. |
+| Station must have ≥1 pack | `buildAnalyticsTools()` throws if no packs are selected; portal creation validates this before writing the row. Enforced in the Zod model (`toolPacks: z.array(StationToolPackSchema).min(1)`) and at the API layer. |
+| Packs are the selection unit, not individual tools | Users choose capabilities (financial analysis, regression, etc.), not individual function names. This keeps the station setup UI simple and prevents partial/broken configurations. |
+| Tool names must not shadow pack tool names | Prevent custom webhook tools silently overriding curated pack tools; validated at `station_tools` creation time via `StationToolsRepository.create()`. |
+| `web_search` is a pack, not a platform default | Web access is opt-in per station. A support-ticket station should not be able to search the web; a research station should. Explicit selection makes this auditable. |
+| System prompt lists only available tools | The system prompt is generated from `Object.keys(tools)` — Claude is told exactly what it can call and never invents tools that aren't in the map. |
+| Webhook auth headers stored encrypted | Tool definitions may include API keys; store `headers` field encrypted at rest using the same mechanism as connector credentials. |
+| Webhook response schema is open | Claude narrates arbitrary JSON tool results; only `{ type: "vega-lite", spec }` responses get special frontend rendering. |
 
 ---
 
@@ -1000,6 +1177,73 @@ export async function buildAnalyticsTools(organizationId: string, stationId: str
 | Create | `apps/api/src/routes/station-tools.router.ts` | REST endpoints: list, create, update, delete |
 | Modify | `apps/api/src/services/analytics.tools.ts` | Extend `buildAnalyticsTools()` to accept `stationId`, load and wrap custom tools |
 | Modify | `apps/api/src/services/portal.service.ts` | Pass `stationId` into `buildAnalyticsTools()` |
+
+---
+
+## Agentic Architecture: Deeper Interaction Design
+
+The current design handles a single turn well: user sends a message, Claude calls tools, streams a response. This section documents the decisions that keep the architecture open to richer, multi-turn agentic interaction in the future — without adding that complexity now.
+
+---
+
+### Conversation Thread as a Future-Proof Checkpoint Store
+
+The `portal_messages` table is not just a display history — it is the agent's memory. The schema stores a full ordered sequence of `role` + `blocks` per turn, but `PortalService` should reconstruct the `CoreMessage[]` array (Vercel AI SDK format) when loading a portal for a new turn. This means:
+
+- **User turns** map directly to `{ role: "user", content: string }`
+- **Assistant turns** map to `{ role: "assistant", content: ContentBlock[] }` including inline tool-call and tool-result pairs as they were produced by `streamText`
+- The full sequence — including tool calls and their results — is passed back to Claude on every new turn so it can reason about prior analysis steps
+
+This is the same structure that [LangGraph's `MessagesAnnotation`](https://langchain-ai.github.io/langgraphjs/concepts/low_level/#messagesannotation) uses for its state. If LangGraph is introduced later, `portal_messages` rows become the PostgreSQL checkpoint store with a schema rename, not a rewrite.
+
+**What this means in practice:** `PortalService.streamResponse()` must store assistant turns as the full Vercel AI SDK `CoreMessage[]` representation (including `toolCall` and `toolResult` content parts), not just the rendered text output. The `blocks` JSONB field should hold this full structure. `ContentBlockRenderer` handles rendering — the storage format is the source of truth.
+
+---
+
+### Tool Results as Interactive UI Objects
+
+The current plan renders vega-lite tool results as charts and all other tool output as Claude's narrated markdown. For deeper interaction, tool results that return structured data should be rendered directly as UI objects the user can read and follow up on — not just described in prose.
+
+**Extended `ContentBlock` union:**
+
+```typescript
+type ContentBlock =
+  | { type: "text"; content: string }
+  | { type: "vega-lite"; spec: VisualizationSpec }
+  | { type: "data-table"; columns: string[]; rows: Record<string, unknown>[] }
+```
+
+The `data-table` block type covers results from `sql_query`, `detect_outliers`, `cluster`, and any tool returning a row set. The frontend renders it as a compact, non-paginated mini-table directly in the chat thread. This matters because:
+
+- Users can see the exact data Claude reasoned about, building trust
+- Users can ask follow-up questions referencing specific rows ("why is record X flagged?")
+- The interaction feels like analysis, not conversation
+
+The `PortalService` decides which tool results warrant a `data-table` block vs. passing results silently to Claude for narration. Simple scalar results (correlation coefficient, cluster count) are narrated; row sets are surfaced as blocks.
+
+---
+
+### Multi-step Tool Use Within a Single Turn
+
+`streamText` with `maxSteps: 10` already enables multi-step tool use — Claude can call `sql_query` to filter records, then `describe_column` on the results, then `visualize` to chart them, all within a single user message. This is the single-turn equivalent of a LangGraph cycle and covers most analytical workflows without requiring a graph.
+
+The `onStepFinish` callback in `PortalService.streamResponse()` is the hook for emitting intermediate tool results as SSE events before the final text response arrives. Clients should render these blocks progressively — the user sees the chart appear as Claude is still composing its narrative.
+
+---
+
+### LangGraph Migration Path
+
+When the feature needs to evolve beyond single-turn multi-step — for example, branching analysis paths, parallel subgraph execution, or human-in-the-loop pauses mid-analysis — LangGraph can be introduced without changing the API contract or the database schema.
+
+| Current (Vercel AI SDK) | LangGraph equivalent |
+|---|---|
+| `portal_messages.blocks: CoreMessage[]` | `MessagesAnnotation` state |
+| Each `tool()` definition in `analytics.tools.ts` | A node in `StateGraph` |
+| `streamText({ maxSteps })` | `graph.stream()` |
+| `POST /api/portals/:id/messages` | Same endpoint — swap `PortalService` internals |
+| `portal_messages` rows in PostgreSQL | PostgreSQL checkpointer (`@langchain/langgraph-checkpoint-postgres`) |
+
+**Nothing about the API contract, the DB schema, or the frontend changes.** The migration scope is entirely inside `PortalService.streamResponse()` and `analytics.tools.ts`. The tool definitions move from Vercel AI SDK `tool()` wrappers to LangGraph nodes; the conversation history in Postgres is already the checkpoint store.
 
 ---
 

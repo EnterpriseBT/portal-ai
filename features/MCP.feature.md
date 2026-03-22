@@ -110,10 +110,10 @@ One repository per new table, extending the base `Repository` class.
 
 ## Phase 4 — Analytics Service (`apps/api`)
 
-Stateless service with static methods. Each method receives pre-loaded records and runs the analysis. Install new dependencies first. Curated tool packs (`regression`, `trend`) are implemented here alongside the core tools so they are available as built-ins from day one.
+Stateless service with static methods. Each method receives pre-loaded records and runs the analysis. All methods are organized by pack — there is no distinction between "core" and "curated" at the service layer. Pack membership only affects whether a tool is registered in `buildAnalyticsTools()`.
 
 ### Checklist
-- [ ] Install dependencies: `alasql`, `arquero`, `simple-statistics`, `ml-kmeans` in `apps/api/package.json`
+- [ ] Install dependencies: `alasql`, `arquero`, `simple-statistics`, `ml-kmeans`, `technicalindicators`, `financial` in `apps/api/package.json`
 - [ ] Install type stubs where needed (`@types/alasql`, `@types/simple-statistics`)
 - [ ] Implement `AnalyticsService.loadStation(stationId, organizationId)`:
   - [ ] Resolve `stationId → station_instances → connectorInstanceIds`
@@ -123,16 +123,22 @@ Stateless service with static methods. Each method receives pre-loaded records a
   - [ ] Register each entity as a named AlaSQL table (`connectorEntity.key`)
   - [ ] Return `{ entities: EntitySchema[], records: Map<key, rows[]> }`
 - [ ] Implement `AnalyticsService.loadRecords(entityKey, organizationId)` — resolves key → records
-- [ ] Implement `AnalyticsService.sqlQuery({ sql, organizationId })` — executes against AlaSQL
-- [ ] Implement `AnalyticsService.describeColumn({ entity, column, organizationId })` — count, mean, median, stddev, min, max, p25, p75
-- [ ] Implement `AnalyticsService.correlate({ entity, columnA, columnB, organizationId })` — Pearson correlation
-- [ ] Implement `AnalyticsService.detectOutliers({ entity, column, method, organizationId })` — IQR or Z-score
-- [ ] Implement `AnalyticsService.cluster({ entity, columns, k, organizationId })` — k-means via ml-kmeans
-- [ ] Implement `AnalyticsService.visualize({ sql, vegaLiteSpec, organizationId })` — runs SQL then injects rows into spec
-- [ ] **Curated pack — `AnalyticsService.regression({ entity, x, y, type, organizationId })`** — linear or polynomial regression via simple-statistics; returns coefficients and R-squared
-- [ ] **Curated pack — `AnalyticsService.trend({ entity, dateColumn, valueColumn, interval, organizationId })`** — time-series aggregation via Arquero + linear trend line via simple-statistics
+- [ ] **Pack `data_query` — `AnalyticsService.sqlQuery({ sql, organizationId })`** — executes against AlaSQL; validates SQL against an allowlist (block `SELECT INTO`, `ATTACH`)
+- [ ] **Pack `data_query` — `AnalyticsService.visualize({ sql, vegaLiteSpec, organizationId })`** — runs SQL then injects rows into spec
+- [ ] **Pack `statistics` — `AnalyticsService.describeColumn({ entity, column, organizationId })`** — count, mean, median, stddev, min, max, p25, p75
+- [ ] **Pack `statistics` — `AnalyticsService.correlate({ entity, columnA, columnB, organizationId })`** — Pearson correlation
+- [ ] **Pack `statistics` — `AnalyticsService.detectOutliers({ entity, column, method, organizationId })`** — IQR or Z-score
+- [ ] **Pack `statistics` — `AnalyticsService.cluster({ entity, columns, k, organizationId })`** — k-means via ml-kmeans
+- [ ] **Pack `regression` — `AnalyticsService.regression({ entity, x, y, type, organizationId })`** — linear or polynomial regression via simple-statistics; returns coefficients and R-squared
+- [ ] **Pack `regression` — `AnalyticsService.trend({ entity, dateColumn, valueColumn, interval, organizationId })`** — time-series aggregation via Arquero + linear trend line via simple-statistics
+- [ ] **Pack `financial` — `AnalyticsService.technicalIndicator({ entity, dateColumn, valueColumn, indicator, params, organizationId })`** — SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV via `technicalindicators`; returns `{ dates: string[], values: number[] | object[] }` aligned to input series
+- [ ] **Pack `financial` — `AnalyticsService.npv({ rate, cashFlows })`** — net present value via `financial`; returns `{ npv: number }`
+- [ ] **Pack `financial` — `AnalyticsService.irr({ cashFlows })`** — internal rate of return via `financial`; returns `{ irr: number }`
+- [ ] **Pack `financial` — `AnalyticsService.amortize({ principal, annualRate, periods })`** — loan amortization schedule via `financial`; returns one row per period with `{ period, payment, principal, interest, balance }`
+- [ ] **Pack `financial` — `AnalyticsService.sharpeRatio({ entity, valueColumn, riskFreeRate, annualize, organizationId })`** — `(mean − riskFreeRate) / stddev` via simple-statistics; `annualize: boolean` multiplies by `√252` for daily data
+- [ ] **Pack `financial` — `AnalyticsService.maxDrawdown({ entity, dateColumn, valueColumn, organizationId })`** — rolling peak then `(peak − trough) / peak` via Arquero; returns `{ maxDrawdown: number, peakDate, troughDate }`
+- [ ] **Pack `financial` — `AnalyticsService.rollingReturns({ entity, dateColumn, valueColumn, window, organizationId })`** — period-over-period return series within a rolling window via Arquero; returns `{ dates: string[], returns: number[] }`
 - [ ] Unit tests for each method with fixture records
-- [ ] Validate AlaSQL SQL against an allowlist of operations (block `SELECT INTO`, `ATTACH`)
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
 - [ ] `npm run test` passes
@@ -148,27 +154,42 @@ Stateless service with static methods. Each method receives pre-loaded records a
 
 ## Phase 5 — Analytics Tool Definitions (`apps/api`)
 
-Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods and user-registered webhook tools. The factory is **async** and accepts `stationId` so it can load station-scoped custom tools alongside built-ins. This signature is established now so Phase 6+ never requires a breaking change.
+Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods and user-registered webhook tools. Every tool is conditional on a pack being selected for the station — there are no always-on tools. `web_search` is a first-class pack, not a platform default.
 
 ### Checklist
-- [ ] Implement `buildAnalyticsTools(organizationId, stationId)` as an **async** factory in `analytics.tools.ts`
-- [ ] Define built-in tools wrapping `AnalyticsService` methods:
+- [ ] Define `StationToolPack` enum in `packages/core/src/models/station.model.ts`: `"data_query" | "statistics" | "regression" | "financial" | "web_search"`
+- [ ] Update `StationSchema` to include `toolPacks: z.array(StationToolPackSchema).min(1)` — enforces the ≥1 pack requirement at the model layer
+- [ ] Implement `buildAnalyticsTools(organizationId, stationId)` as an **async** factory in `analytics.tools.ts`; throw if `station.toolPacks` is empty
+- [ ] Pack `data_query` — register tools only when `packs.has("data_query")`:
   - [ ] `sql_query` — Zod input `{ sql: string }`
+  - [ ] `visualize` — Zod input `{ sql, vegaLiteSpec }`
+- [ ] Pack `statistics` — register tools only when `packs.has("statistics")`:
   - [ ] `describe_column` — Zod input `{ entity, column }`
   - [ ] `correlate` — Zod input `{ entity, columnA, columnB }`
   - [ ] `detect_outliers` — Zod input `{ entity, column, method }`
   - [ ] `cluster` — Zod input `{ entity, columns, k }`
-  - [ ] `visualize` — Zod input `{ sql, vegaLiteSpec }`
-  - [ ] `regression` — Zod input `{ entity, x, y, type }` (curated pack)
-  - [ ] `trend` — Zod input `{ entity, dateColumn, valueColumn, interval }` (curated pack)
-- [ ] Load station custom tools via `StationToolsRepository.findByStation(stationId, organizationId)` and append as webhook-backed `tool()` entries:
+- [ ] Pack `regression` — register tools only when `packs.has("regression")`:
+  - [ ] `regression` — Zod input `{ entity, x, y, type }`
+  - [ ] `trend` — Zod input `{ entity, dateColumn, valueColumn, interval }`
+- [ ] Pack `financial` — register tools only when `packs.has("financial")`:
+  - [ ] `technical_indicator` — Zod input `{ entity, dateColumn, valueColumn, indicator: enum["SMA","EMA","RSI","MACD","BB","ATR","OBV"], params? }`
+  - [ ] `npv` — Zod input `{ rate: number, cashFlows: number[] }`
+  - [ ] `irr` — Zod input `{ cashFlows: number[] }`
+  - [ ] `amortize` — Zod input `{ principal: number, annualRate: number, periods: number }`
+  - [ ] `sharpe_ratio` — Zod input `{ entity, valueColumn, riskFreeRate?: number, annualize?: boolean }`
+  - [ ] `max_drawdown` — Zod input `{ entity, dateColumn, valueColumn }`
+  - [ ] `rolling_returns` — Zod input `{ entity, dateColumn, valueColumn, window: number }`
+- [ ] Pack `web_search` — register tool only when `packs.has("web_search")`:
+  - [ ] `web_search` — delegate to `AiService.buildWebSearchTool()` (no `organizationId` scoping needed)
+- [ ] Custom webhook tools — always appended from `StationToolsRepository.findByStation(stationId, organizationId)`:
   - [ ] Convert each tool's `parameterSchema` (JSON Schema) to a Zod schema at runtime
   - [ ] Tool `execute` calls `callWebhook(def.implementation, input)` with a 30 s timeout
   - [ ] If webhook response contains `{ type: "vega-lite", spec }`, propagate as a chart result
-  - [ ] Validate custom tool names do not shadow any built-in tool name (throw on conflict)
+  - [ ] Validate custom tool names do not shadow any pack tool name (throw on conflict)
 - [ ] Implement `callWebhook(implementation, input)` helper — POST to URL, inject auth headers, enforce timeout, return parsed JSON
-- [ ] Unit tests: each built-in tool delegates to the correct `AnalyticsService` method with `organizationId` injected
+- [ ] Unit tests: each pack's tools are present only when the pack is in `station.toolPacks`; absent otherwise
 - [ ] Unit tests: `callWebhook` called with correct URL + headers for a webhook tool; timeout enforced; response returned
+- [ ] Unit tests: throws when `station.toolPacks` is empty
 - [ ] `npm run type-check` passes
 - [ ] `npm run test` passes
 
@@ -187,6 +208,7 @@ Orchestrates portal lifecycle: creation, message persistence, Claude agentic str
 ### Checklist
 - [ ] Implement `PortalService.createPortal({ stationId, organizationId, userId })`:
   - [ ] Validate station exists and belongs to org
+  - [ ] Validate `station.toolPacks.length >= 1` — return `PORTAL_STATION_NO_TOOLS` error if not
   - [ ] Create `portals` row with auto-generated name (`Portal — <date>`)
   - [ ] Call `AnalyticsService.loadStation()` and cache result in memory keyed by `portalId`
   - [ ] Return `{ portalId, stationContext }`
@@ -194,8 +216,8 @@ Orchestrates portal lifecycle: creation, message persistence, Claude agentic str
 - [ ] Implement `PortalService.addMessage(portalId, { role, content })` — persists message row; assembles `blocks[]` for assistant turns
 - [ ] Implement `PortalService.streamResponse({ portalId, messages, stationContext, organizationId, sse })`:
   - [ ] Build system prompt from station name + entity schemas; append list of custom tool names + descriptions if any are registered on the station
-  - [ ] Call `await buildAnalyticsTools(organizationId, stationContext.stationId)` to get merged built-in + custom tool map
-  - [ ] Call `streamText()` with merged tools + existing `AiService.tools`
+  - [ ] Call `await buildAnalyticsTools(organizationId, stationContext.stationId)` — the returned map is the complete and exclusive tool set for this session
+  - [ ] Call `streamText()` with the tool map only — do **not** merge `AiService.tools`; `web_search` is available via the `web_search` pack
   - [ ] Stream `delta` SSE events for text chunks
   - [ ] Stream `tool_result` SSE events for `visualize` results and any webhook tool results returning `{ type: "vega-lite", spec }`
   - [ ] On stream complete: assemble full assistant `blocks[]` and persist via `PortalMessagesRepository.create()`
@@ -253,7 +275,7 @@ Wire all new routes into the Express app. All except the SSE stream use the exis
 
 #### Wire-up
 - [ ] Register all new routers in `apps/api/src/app.ts`
-- [ ] Add new `ApiCode` error codes: `STATION_NOT_FOUND`, `PORTAL_NOT_FOUND`, `PORTAL_RESULT_NOT_FOUND`, `PORTAL_INVALID_STATION`, `STATION_TOOL_NOT_FOUND`, `STATION_TOOL_NAME_CONFLICT`
+- [ ] Add new `ApiCode` error codes: `STATION_NOT_FOUND`, `PORTAL_NOT_FOUND`, `PORTAL_RESULT_NOT_FOUND`, `PORTAL_INVALID_STATION`, `PORTAL_STATION_NO_TOOLS`, `STATION_TOOL_NOT_FOUND`, `STATION_TOOL_NAME_CONFLICT`
 - [ ] Integration tests for station CRUD, portal create + message, portal-results pin + list, station-tools CRUD
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
@@ -422,6 +444,47 @@ Extends the existing `DashboardView` placeholder with portal-aware sections.
 
 ---
 
+## Phase 12 — Deeper Interaction & Agentic Readiness
+
+Extends the Portal UI and `PortalService` to support richer in-session interaction: tool results rendered as live data objects (not just narrated text), full conversation history reconstructed in Vercel AI SDK format for multi-turn continuity, and explicit LangGraph migration seams documented in code. No LangGraph dependency is introduced — this phase lays the structural groundwork so it can be swapped in later without API or schema changes.
+
+### Checklist
+
+#### Backend
+
+- [ ] **Full CoreMessage[] persistence** — Update `PortalService.streamResponse()` to assemble and persist the complete Vercel AI SDK `CoreMessage[]` representation of the assistant turn (including `toolCall` and `toolResult` content parts) in `portal_messages.blocks`. This is the LangGraph checkpoint format; storing only rendered text blocks now would require a migration later.
+- [ ] **Full CoreMessage[] reconstruction on load** — Update `PortalService.getPortal()` to reconstruct the full `CoreMessage[]` array (user + assistant turns, including tool call/result pairs) from `portal_messages` rows. Pass the full array to `streamText` on each new turn so Claude can reason about prior analysis steps.
+- [ ] **`data-table` SSE event** — Extend the `onStepFinish` handler in `PortalService.streamResponse()` to emit a `tool_result` SSE event with `type: "data-table"` for tool calls that return row sets: `sql_query`, `detect_outliers`, `cluster`. Scalar results (correlation, describe_column) continue to be narrated; only row sets surface as structured blocks.
+- [ ] **`data-table` ContentBlock type** — Add `{ type: "data-table"; columns: string[]; rows: Record<string, unknown>[] }` to the `ContentBlock` union in `portal.contract.ts`. Update `portal-messages.table.ts` comment to document that `blocks` stores full CoreMessage[] parts.
+- [ ] **LangGraph seam comment** — Add a comment block in `portal.service.ts` above `streamResponse()` documenting the swap plan: what changes (swap `streamText` for `graph.stream()`), what stays the same (API contract, DB schema, tool definitions), and the mapping table from current primitives to LangGraph equivalents.
+- [ ] **Unit tests** — Update `portal.service.test.ts`: verify that assistant turns persist tool-call + tool-result content parts; verify `data-table` SSE events are emitted for row-returning tools; verify `getPortal()` reconstructs full CoreMessage[] including tool turns.
+- [ ] `npm run type-check` passes
+- [ ] `npm run lint` passes
+- [ ] `npm run test` passes
+
+#### Frontend
+
+- [ ] **`DataTableBlock` component** — Implement `DataTableBlock.component.tsx`: a compact, non-paginated MUI table that renders a `data-table` content block inline in the chat thread. Columns auto-sized; truncates at 50 rows with a "showing N of M rows" label.
+- [ ] **Extend `ContentBlockRenderer`** — Add a `case "data-table"` branch that renders `<DataTableBlock>`.
+- [ ] **Progressive block rendering** — Update `PortalSession` SSE handler to insert `data-table` and `vega-lite` blocks inline as they arrive from `tool_result` events, before the final `done` event. The user sees charts and tables appear while Claude is still composing its narrative text.
+- [ ] **Unit tests** — `DataTableBlock`: renders columns and rows, truncates at 50 rows, shows row count label. `ContentBlockRenderer`: renders `data-table` block via `DataTableBlock`. `PortalSession`: `tool_result` events insert blocks at correct position in the streaming message.
+- [ ] `npm run type-check` passes
+- [ ] `npm run lint` passes
+- [ ] `npm run test` passes
+
+### Files
+
+| Action | File | Purpose |
+|--------|------|---------|
+| Modify | `apps/api/src/services/portal.service.ts` | Full CoreMessage[] persistence + reconstruction; data-table SSE events; LangGraph seam comment |
+| Modify | `packages/core/src/contracts/portal.contract.ts` | Add `data-table` to ContentBlock union |
+| Modify | `apps/api/src/__tests__/services/portal.service.test.ts` | Updated unit tests |
+| Create | `apps/web/src/components/DataTableBlock.component.tsx` | Compact inline data table renderer |
+| Modify | `apps/web/src/components/PortalMessage.component.tsx` | Add `data-table` case to ContentBlockRenderer |
+| Modify | `apps/web/src/components/PortalSession.component.tsx` | Progressive block insertion from SSE tool_result events |
+
+---
+
 ## File Change Summary
 
 | File | Action | Phase |
@@ -485,3 +548,9 @@ Extends the existing `DashboardView` placeholder with portal-aware sections.
 | `apps/web/src/views/Dashboard.view.tsx` | Modify | 11 |
 | `apps/web/src/utils/routes.util.ts` | Modify | 9–10 |
 | `apps/web/src/components/SidebarNav.component.tsx` | Modify | 10 |
+| `apps/api/src/services/portal.service.ts` | Modify | 12 |
+| `packages/core/src/contracts/portal.contract.ts` | Modify | 12 |
+| `apps/api/src/__tests__/services/portal.service.test.ts` | Modify | 12 |
+| `apps/web/src/components/DataTableBlock.component.tsx` | Create | 12 |
+| `apps/web/src/components/PortalMessage.component.tsx` | Modify | 12 |
+| `apps/web/src/components/PortalSession.component.tsx` | Modify | 12 |

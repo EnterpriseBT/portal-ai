@@ -2,7 +2,7 @@
 
 ## Overview
 
-Portal.ai is a Turborepo monorepo for displaying dynamic UI content from a Model-Controller-Presenter architecture. It consists of a React frontend, an Express API server, a shared component/model library, and a JSON-Render registry for dynamic UI catalogs.
+Portal.ai is a Turborepo monorepo for displaying dynamic UI content from a Model-Controller-Presenter architecture. It consists of a React frontend, an Express API server, and a shared component/model library.
 
 ## Monorepo Structure
 
@@ -11,7 +11,6 @@ Portal.ai is a Turborepo monorepo for displaying dynamic UI content from a Model
 | `@portalai/web` | `apps/web/` | Vite + React 19 frontend with Auth0, TanStack Router/Query, MUI |
 | `@portalai/api` | `apps/api/` | Express + TypeScript API with Auth0 JWT, Drizzle ORM, PostgreSQL |
 | `@portalai/core` | `packages/core/` | Shared UI components, MUI themes, Zod domain models, utilities |
-| `@portalai/registry` | `packages/registry/` | Dynamic UI catalog registry using @json-render |
 
 ## Key Scripts
 
@@ -64,7 +63,7 @@ Organize imports in this order (separated by blank lines):
 
 1. React and React-related libraries
 2. Third-party libraries (`@mui`, `@tanstack`, `@auth0`, `zod`, etc.)
-3. Monorepo packages (`@portalai/core`, `@portalai/registry`)
+3. Monorepo packages (`@portalai/core`)
 4. Local components and utilities (relative imports)
 5. Types, interfaces, styles, and assets
 
@@ -176,10 +175,6 @@ TanStack Router with file-based routing in `apps/web/src/routes/`. Route tree au
 
 Three themes via `@portalai/core`: Brand (default), Light, Dark. Persisted in localStorage. Fonts: Noto Sans (body), Playfair Display (headings), Cutive Mono (monospace).
 
-## Registry (packages/registry)
-
-Dynamic UI catalog system using `@json-render`. Each catalog defines components with Zod-validated props and React implementations. Register new catalogs in `src/catalogs/` and add to `src/registry.ts`. See `catalogs/Blog/` as the reference implementation.
-
 ## Environment URLs
 
 | Service | URL |
@@ -196,4 +191,3 @@ Each package has its own README with deeper documentation:
 - `apps/web/README.md` — routing, auth flow, theming, testing, storybook
 - `apps/api/README.md` — DB schema workflow, repositories, transactions, API style guide
 - `packages/core/README.md` — model architecture, component library, theme system
-- `packages/registry/README.md` — catalog system, adding new catalogs
