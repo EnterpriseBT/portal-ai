@@ -12,6 +12,11 @@ describe("EntityRecordCellCode", () => {
     expect(screen.getByText(/\["a","b","c"\]/)).toBeInTheDocument();
   });
 
+  it("renders a reference-array as inline code", () => {
+    render(<EntityRecordCellCode value={["id-1", "id-2"]} type="reference-array" />);
+    expect(screen.getByText(/\["id-1","id-2"\]/)).toBeInTheDocument();
+  });
+
   it("does not show a tooltip when value is short", () => {
     render(<EntityRecordCellCode value={{ x: 1 }} type="json" />);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();

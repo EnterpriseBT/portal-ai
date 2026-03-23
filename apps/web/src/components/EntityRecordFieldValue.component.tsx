@@ -33,7 +33,7 @@ export const EntityRecordFieldValue: React.FC<EntityRecordFieldValueProps> = ({
     );
   }
 
-  if (type === "json" || type === "array") {
+  if (type === "json" || type === "array" || type === "reference-array") {
     let parsed = value;
     if (typeof value === "string") {
       try {

@@ -8,7 +8,7 @@ import Typography from "@mui/material/Typography";
 
 export interface EntityRecordCellCodeProps {
   value: unknown;
-  type: "json" | "array";
+  type: "json" | "array" | "reference-array";
   maxLength?: number;
 }
 

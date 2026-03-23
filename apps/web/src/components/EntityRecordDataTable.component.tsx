@@ -45,7 +45,7 @@ function toDataTableColumns(
   columns: ColumnDefinitionSummary[]
 ): DataTableColumn[] {
   return columns.map((col) => {
-    if (col.type === "json" || col.type === "array") {
+    if (col.type === "json" || col.type === "array" || col.type === "reference-array") {
       return {
         key: col.key,
         label: col.label,
@@ -53,7 +53,7 @@ function toDataTableColumns(
         render: (value: unknown) => (
           <EntityRecordCellCode
             value={value}
-            type={col.type as "json" | "array"}
+            type={col.type as "json" | "array" | "reference-array"}
           />
         ),
       };

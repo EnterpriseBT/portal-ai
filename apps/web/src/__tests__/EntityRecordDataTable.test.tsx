@@ -162,6 +162,19 @@ describe("EntityRecordDataTableUI", () => {
     expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "array");
   });
 
+  it("renders reference-array column as a <code> element", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[{ refs: ["id-1", "id-2"] }]}
+        columns={[{ key: "refs", label: "Refs", type: "reference-array" as const }]}
+        source="cache"
+      />
+    );
+    expect(screen.getByTestId("cell-code")).toBeInTheDocument();
+    expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "reference-array");
+  });
+
   it("calls onRowClick when a row is clicked", async () => {
     const onRowClick = jest.fn();
     render(
