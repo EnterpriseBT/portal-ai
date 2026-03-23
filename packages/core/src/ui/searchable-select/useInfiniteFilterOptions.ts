@@ -38,22 +38,25 @@ export function useInfiniteFilterOptions<TResponse, TItem>(
   config: InfiniteFilterOptionsConfig<TResponse, TItem>
 ): InfiniteFilterOptionsResult {
   const [labelMap, setLabelMap] = React.useState<Record<string, string>>({});
+  const configRef = React.useRef(config);
+  configRef.current = config;
 
   const fetchPage = React.useCallback(
     async (params: FetchPageParams): Promise<FetchPageResult> => {
+      const cfg = configRef.current;
       const query: Record<string, string | number> = {
         limit: params.pageSize,
         offset: params.page * params.pageSize,
-        sortBy: config.sortBy ?? "name",
-        sortOrder: config.sortOrder ?? "asc",
+        sortBy: cfg.sortBy ?? "name",
+        sortOrder: cfg.sortOrder ?? "asc",
       };
       if (params.search) query.search = params.search;
 
-      const url = `${config.url}${buildQueryString(query)}`;
-      const data = await config.fetcher(url);
-      const items = config.getItems(data);
-      const total = config.getTotal(data);
-      const options: SelectOption[] = items.map(config.mapItem);
+      const url = `${cfg.url}${buildQueryString(query)}`;
+      const data = await cfg.fetcher(url);
+      const items = cfg.getItems(data);
+      const total = cfg.getTotal(data);
+      const options: SelectOption[] = items.map(cfg.mapItem);
 
       setLabelMap((prev) => {
         const next = { ...prev };
@@ -66,7 +69,7 @@ export function useInfiniteFilterOptions<TResponse, TItem>(
       const hasMore = params.page * params.pageSize + options.length < total;
       return { options, hasMore };
     },
-    [config]
+    [] // stable — reads latest config via ref
   );
 
   return { fetchPage, labelMap };

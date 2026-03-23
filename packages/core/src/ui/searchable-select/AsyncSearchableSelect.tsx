@@ -60,7 +60,9 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
       options={options}
       value={selectedOption}
       inputValue={inputValue}
-      onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
+      onInputChange={(_event, newInputValue, reason) => {
+        if (reason !== "reset") setInputValue(newInputValue);
+      }}
       onChange={(_event, option) => onChange(option ? String(option.value) : null)}
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}

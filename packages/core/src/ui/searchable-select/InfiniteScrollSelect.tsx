@@ -133,7 +133,9 @@ export const InfiniteScrollSelect: React.FC<InfiniteScrollSelectProps> = ({
             open={open}
             onOpen={() => setOpen(true)}
             onClose={() => setOpen(false)}
-            onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
+            onInputChange={(_event, newInputValue, reason) => {
+              if (reason !== "reset") setInputValue(newInputValue);
+            }}
             onChange={(_event, option) => onChange(option ? String(option.value) : null)}
             isOptionEqualToValue={(option, val) => option.value === val.value}
             getOptionLabel={(option) => option.label}

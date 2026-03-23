@@ -147,7 +147,9 @@ export const MultiInfiniteScrollSelect: React.FC<MultiInfiniteScrollSelectProps>
             open={open}
             onOpen={() => setOpen(true)}
             onClose={() => setOpen(false)}
-            onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
+            onInputChange={(_event, newInputValue, reason) => {
+              if (reason !== "reset") setInputValue(newInputValue);
+            }}
             onChange={(_event, selected) => {
               setSelectedOptions(selected);
               onChange(selected.map((o) => String(o.value)));

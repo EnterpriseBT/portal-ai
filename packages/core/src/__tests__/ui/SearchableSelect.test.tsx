@@ -215,6 +215,32 @@ describe("AsyncSearchableSelect", () => {
     // Resolve the search
     await act(async () => { resolveSearch([{ value: "banana", label: "Banana" }]); });
   });
+
+  it("retains input value after search results are loaded", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
+      { value: "banana", label: "Banana" },
+    ]);
+
+    render(
+      <AsyncSearchableSelect
+        label="Fruit"
+        value={null}
+        onChange={() => {}}
+        onSearch={onSearch}
+        debounceMs={300}
+      />
+    );
+
+    const input = screen.getByRole("combobox");
+    await user.type(input, "ban");
+    act(() => { jest.advanceTimersByTime(300); });
+
+    await waitFor(() => expect(screen.getByText("Banana")).toBeInTheDocument());
+
+    // Input must not be reset by MUI's internal "reset" event when options load
+    expect(input).toHaveValue("ban");
+  });
 });
 
 // ── InfiniteScrollSelect (search + paginated scroll) ──────────────────────────
@@ -328,6 +354,41 @@ describe("InfiniteScrollSelect", () => {
 
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
     expect(fetchPage).toHaveBeenLastCalledWith({ search: "app", page: 0, pageSize: 20 });
+
+    act(() => { jest.runOnlyPendingTimers(); });
+    jest.useRealTimers();
+  });
+
+  it("retains input value after search results are loaded", async () => {
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+      .mockResolvedValue({ options: [{ value: "apple", label: "Apple" }], hasMore: false });
+
+    render(
+      <InfiniteScrollSelect
+        label="Fruit"
+        value={null}
+        onChange={() => {}}
+        fetchPage={fetchPage}
+        pageSize={20}
+        debounceMs={300}
+      />
+    );
+
+    await user.click(screen.getByRole("combobox"));
+    await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(1));
+
+    const input = screen.getByRole("combobox");
+    await user.type(input, "app");
+    act(() => { jest.advanceTimersByTime(300); });
+
+    await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText("Apple")).toBeInTheDocument());
+
+    // Input must not be reset by MUI's internal "reset" event when options load
+    expect(input).toHaveValue("app");
 
     act(() => { jest.runOnlyPendingTimers(); });
     jest.useRealTimers();

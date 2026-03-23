@@ -76,7 +76,9 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
       options={mergedOptions}
       value={selectedOptions}
       inputValue={inputValue}
-      onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
+      onInputChange={(_event, newInputValue, reason) => {
+        if (reason !== "reset") setInputValue(newInputValue);
+      }}
       onChange={(_event, selected) => {
         setSelectedOptions(selected);
         onChange(selected.map((o) => String(o.value)));
