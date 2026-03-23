@@ -99,6 +99,7 @@ const meta = {
   args: {
     onSearchChange: fn(),
     onFilterValueChange: fn(),
+    onFilterChange: fn(),
     onSortByChange: fn(),
     onSortOrderChange: fn(),
     onLimitChange: fn(),

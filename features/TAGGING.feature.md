@@ -398,25 +398,25 @@ The existing `FilterConfig` union in `PaginationToolbar.component.tsx` supports 
 
 ### Checklist
 
-- [ ] Add `MultiSelectFilterConfig` interface to the `FilterConfig` union:
+- [x] Add `MultiSelectFilterConfig` interface to the `FilterConfig` union:
   ```ts
   export interface MultiSelectFilterConfig extends BaseFilterConfig {
     type: "multi-select";
     options: FilterOption[];
   }
   ```
-- [ ] Add `"multi-select"` to the `FilterConfig` type union
-- [ ] In the filter popover render block, add a branch for `config.type === "multi-select"` that renders a `SearchableSelect` (synchronous variant from Step 9) inside the popover; the currently selected values are shown as chips below the select; selecting an option adds it to the values array if not already present; `onChange` fires `setFilter(field, updatedValues)`
-- [ ] In `queryParams` building inside `usePagination`, add a branch for `multi-select`: serialize the selected values array as a comma-separated string — `params[field] = values.join(",")` — so the API receives `tagIds=id1,id2`
-- [ ] In the active filter chips row, add a branch for `multi-select` that renders one chip per selected value (showing the option label, not the raw ID), each with its own `onDelete` that removes just that value from the array
-- [ ] Update `PaginationToolbarProps` JSDoc to document the new type
+- [x] Add `"multi-select"` to the `FilterConfig` type union
+- [x] In the filter popover render block, add a branch for `config.type === "multi-select"` that renders a `SearchableSelect` (synchronous variant from Step 9) inside the popover; the currently selected values are shown as chips below the select; selecting an option adds it to the values array if not already present; `onChange` fires `setFilter(field, updatedValues)`
+- [x] In `queryParams` building inside `usePagination`, add a branch for `multi-select`: serialize the selected values array as a comma-separated string — `params[field] = values.join(",")` — so the API receives `tagIds=id1,id2`
+- [x] In the active filter chips row, add a branch for `multi-select` that renders one chip per selected value (showing the option label, not the raw ID), each with its own `onDelete` that removes just that value from the array
+- [x] Update `PaginationToolbarProps` JSDoc to document the new type
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from repo root (update `PaginationToolbar.test.tsx` to cover multi-select behaviour)
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from repo root (update `PaginationToolbar.test.tsx` to cover multi-select behaviour)
 
 ---
 

@@ -24,7 +24,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import IconButton from "@mui/material/IconButton";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
-import { Button, Typography } from "@portalai/core/ui";
+import { Button, Typography, SearchableSelect } from "@portalai/core/ui";
 
 import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/contracts";
 import {
@@ -74,11 +74,17 @@ export interface TextFilterConfig extends BaseFilterConfig {
   placeholder?: string;
 }
 
+export interface MultiSelectFilterConfig extends BaseFilterConfig {
+  type: "multi-select";
+  options: FilterOption[];
+}
+
 export type FilterConfig =
   | SelectFilterConfig
   | BooleanFilterConfig
   | NumberFilterConfig
-  | TextFilterConfig;
+  | TextFilterConfig
+  | MultiSelectFilterConfig;
 
 export interface SortFieldConfig {
   field: string;
@@ -281,6 +287,8 @@ export function usePagination(
               : undefined;
       } else if (config?.type === "number") {
         params[field] = Number(values[0]);
+      } else if (config?.type === "multi-select") {
+        params[field] = values.join(",");
       } else {
         params[field] = values[0];
       }
@@ -332,6 +340,7 @@ export function usePagination(
     filterConfigs,
     filters,
     onFilterValueChange: setFilterValue,
+    onFilterChange: setFilter,
     activeFilterCount,
     sortFields,
     sortBy,
@@ -389,6 +398,8 @@ export interface PaginationToolbarProps {
   filterConfigs: FilterConfig[];
   filters: Record<string, string[]>;
   onFilterValueChange: (field: string, value: string) => void;
+  /** Set the full values array for a filter field (used by multi-select). */
+  onFilterChange: (field: string, values: string[]) => void;
   activeFilterCount: number;
   sortFields: SortFieldConfig[];
   sortBy: string;
@@ -429,6 +440,7 @@ export const PaginationToolbar = React.forwardRef<
       filterConfigs,
       filters,
       onFilterValueChange,
+      onFilterChange,
       activeFilterCount,
       sortFields,
       sortBy,
@@ -609,6 +621,47 @@ export const PaginationToolbar = React.forwardRef<
                           }
                         />
                       )}
+
+                      {config.type === "multi-select" && (() => {
+                        const selected = filters[config.field] ?? [];
+                        return (
+                          <Box>
+                            <SearchableSelect
+                              options={config.options.filter(
+                                (o) => !selected.includes(o.value)
+                              )}
+                              value={null}
+                              onChange={(val) => {
+                                if (val && !selected.includes(val)) {
+                                  onFilterChange(config.field, [...selected, val]);
+                                }
+                              }}
+                              placeholder={`Select ${config.label.toLowerCase()}...`}
+                              size="small"
+                            />
+                            {selected.length > 0 && (
+                              <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap", mt: 1 }}>
+                                {selected.map((val) => {
+                                  const opt = config.options.find((o) => o.value === val);
+                                  return (
+                                    <Chip
+                                      key={val}
+                                      label={opt?.label ?? val}
+                                      size="small"
+                                      onDelete={() =>
+                                        onFilterChange(
+                                          config.field,
+                                          selected.filter((v) => v !== val)
+                                        )
+                                      }
+                                    />
+                                  );
+                                })}
+                              </Box>
+                            )}
+                          </Box>
+                        );
+                      })()}
                     </Box>
                   ))}
                 </Box>
@@ -787,6 +840,25 @@ export const PaginationToolbar = React.forwardRef<
                     onDelete={() => onFilterValueChange(field, "")}
                   />
                 );
+              }
+
+              if (config?.type === "multi-select") {
+                return values.map((val) => {
+                  const opt = config.options.find((o) => o.value === val);
+                  return (
+                    <Chip
+                      key={`${field}-${val}`}
+                      label={`${label}: ${opt?.label ?? val}`}
+                      size="small"
+                      onDelete={() =>
+                        onFilterChange(
+                          field,
+                          values.filter((v) => v !== val)
+                        )
+                      }
+                    />
+                  );
+                });
               }
 
               if (config?.type === "number" || config?.type === "text") {
