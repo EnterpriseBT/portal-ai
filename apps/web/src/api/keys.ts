@@ -71,6 +71,11 @@ export const queryKeys = {
     get: (id: string) =>
       [...queryKeys.entityTags.root, "get", id] as const,
   },
+  entityTagAssignments: {
+    root: ["entityTagAssignments"] as const,
+    listByEntity: (connectorEntityId: string) =>
+      [...queryKeys.entityTagAssignments.root, "listByEntity", connectorEntityId] as const,
+  },
   jobs: {
     root: ["jobs"] as const,
     list: (params?: JobListRequestQuery) =>

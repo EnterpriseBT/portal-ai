@@ -6,6 +6,9 @@ import type {
   EntityTagListResponsePayload,
   EntityTagUpdateRequestBody,
   EntityTagUpdateResponsePayload,
+  EntityTagAssignmentCreateRequestBody,
+  EntityTagAssignmentCreateResponsePayload,
+  EntityTagAssignmentListResponsePayload,
 } from "@portalai/core/contracts";
 import { useInfiniteFilterOptions } from "@portalai/core/ui";
 import type { InfiniteFilterOptionsConfig } from "@portalai/core/ui";
@@ -56,6 +59,37 @@ export const entityTags = {
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `${ENTITY_TAGS_URL}/${encodeURIComponent(id)}`,
+      method: "DELETE",
+    }),
+};
+
+const entityTagAssignmentUrl = (connectorEntityId: string) =>
+  `/api/connector-entities/${encodeURIComponent(connectorEntityId)}/tags`;
+
+export const entityTagAssignments = {
+  listByEntity: (
+    connectorEntityId: string,
+    options?: QueryOptions<EntityTagAssignmentListResponsePayload>
+  ) =>
+    useAuthQuery<EntityTagAssignmentListResponsePayload>(
+      queryKeys.entityTagAssignments.listByEntity(connectorEntityId),
+      buildUrl(entityTagAssignmentUrl(connectorEntityId)),
+      undefined,
+      options
+    ),
+
+  assign: (connectorEntityId: string) =>
+    useAuthMutation<
+      EntityTagAssignmentCreateResponsePayload,
+      EntityTagAssignmentCreateRequestBody
+    >({
+      url: entityTagAssignmentUrl(connectorEntityId),
+      method: "POST",
+    }),
+
+  remove: (connectorEntityId: string, assignmentId: string) =>
+    useAuthMutation<void, void>({
+      url: `${entityTagAssignmentUrl(connectorEntityId)}/${encodeURIComponent(assignmentId)}`,
       method: "DELETE",
     }),
 };

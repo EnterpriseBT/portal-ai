@@ -454,32 +454,25 @@ The existing `FilterConfig` union in `PaginationToolbar.component.tsx` supports 
 
 ---
 
-## Step 12: Frontend — Entity detail & Settings
+## Step 12: Frontend — Entity detail
 
 **Files:**
 - `apps/web/src/views/EntityDetail.view.tsx` (update)
-- `apps/web/src/routes/settings/tags.tsx` (new)
 
 ### Checklist
 
-- [ ] Entity detail view (`EntityDetail.view.tsx`)
-  - [ ] Fetch assigned tags via `GET /api/connector-entities/:id/tags` on load
-  - [ ] Display assigned tags as MUI `Chip` components in the entity metadata section
-  - [ ] Add inline tag assignment using `AsyncSearchableSelect`: `onSearch` calls `GET /api/entity-tags?search=<query>` and returns matching tags as options; selecting an option calls `POST /api/connector-entities/:id/tags`; reset the select value after a successful assignment
-  - [ ] Clicking chip X calls `DELETE /api/connector-entities/:id/tags/:assignmentId` and removes the chip optimistically
-- [ ] Settings Tags page (`settings/tags.tsx`)
-  - [ ] Create route file; add "Tags" link to the settings sidebar nav
-  - [ ] Render a table listing all org tags: name, color swatch, assignment count, edit and delete actions; use `InfiniteScrollSelect` as a reference pattern for the paginated fetch but the table itself uses standard pagination
-  - [ ] "New tag" opens a modal/drawer with name, color picker, and description fields; submits to `POST /api/entity-tags`
-  - [ ] Edit action opens the same modal pre-populated; submits to `PATCH /api/entity-tags/:id`
-  - [ ] Delete action shows a confirmation dialog warning that all assignments will also be removed; calls `DELETE /api/entity-tags/:id`
+- [x] Entity detail view (`EntityDetail.view.tsx`)
+  - [x] Fetch assigned tags via `GET /api/connector-entities/:id/tags` on load
+  - [x] Display assigned tags as MUI `Chip` components in the entity metadata section
+  - [x] Add inline tag assignment using `AsyncSearchableSelect`: `onSearch` calls `GET /api/entity-tags?search=<query>` and returns matching tags as options; selecting an option calls `POST /api/connector-entities/:id/tags`; reset the select value after a successful assignment
+
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from repo root
 
 ---
 
@@ -491,140 +484,3 @@ Run all checks from the repo root in order:
 - [ ] `npm run lint`
 - [ ] `npm run build`
 - [ ] `npm run test`
-
----
-
-## SearchableSelect Migration Plan
-
-Audit of existing places in the app where the new `SearchableSelect` family (built in Step 9) should replace the current `Select` or raw MUI `Select`. Ordered by priority.
-
-### Candidates
-
-| # | File | Location | Current | Variant | Reason |
-|---|------|----------|---------|---------|--------|
-| 1 | `AdvancedFilterBuilder.component.tsx` | Column field picker in `FilterConditionEditor` | Raw MUI `Select` + `MenuItem` | `SearchableSelect` (sync) | Column defs grow with entity size; hard to scroll to the right field when an entity has 20+ mapped columns. Also the only place in the app still using raw MUI `Select` instead of the core wrapper. |
-| 2 | `ColumnMappingStep.component.tsx` | "Reference Entity" select in `ReferenceEditor` | Core `Select` | `SearchableSelect` (sync) | Combines current-import entities and all DB entities into one list; the DB entity list can grow unboundedly as the org imports more connectors. |
-| 3 | `ColumnMappingStep.component.tsx` | "Reference Column" select in `ReferenceEditor` | Core `Select` | `SearchableSelect` (sync) | Columns of the selected entity; low urgency but consistent with candidate 2 since both selects sit side-by-side. |
-| 4 | `PaginationToolbar.component.tsx` | `select` filter type rendering inside the filter popover | `RadioGroup` | `SearchableSelect` (sync) | Radio groups stop scaling visually beyond ~8 options. Current uses include the "Connector Instance" filter (`Entities.view.tsx`) and others. Replacing with a searchable select makes the filter usable as option counts grow. |
-
----
-
-### Candidate 1 — `AdvancedFilterBuilder`: column field picker
-
-**File:** `apps/web/src/components/AdvancedFilterBuilder.component.tsx`
-
-**Current code (line ~280):**
-```tsx
-<FormControl size="small" sx={{ minWidth: 130 }}>
-  <Select
-    value={condition.field}
-    onChange={(e) => handleFieldChange(e.target.value)}
-    displayEmpty
-  >
-    {columnDefinitions.map((col) => (
-      <MenuItem key={col.key} value={col.key}>{col.label}</MenuItem>
-    ))}
-  </Select>
-</FormControl>
-```
-
-#### Checklist
-
-- [ ] Replace `FormControl` + raw MUI `Select` + `MenuItem` with `SearchableSelect`
-- [ ] Map `columnDefinitions` to `SelectOption[]` (`value: col.key`, `label: col.label`) — inline or memoised
-- [ ] Change handler: `onChange={(value) => handleFieldChange(value ?? "")}` — `SearchableSelect` passes `string | null`, not a synthetic event
-- [ ] Remove the `FormControl` wrapper (no longer needed)
-- [ ] Remove the `Select` and `MenuItem` imports from `@mui/material` if no longer used elsewhere in the file
-- [ ] Update `AdvancedFilterBuilder.test.tsx` / stories to reflect the new input behaviour (type into the field to filter column options)
-
-#### Verification
-
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run test` passes from repo root
-
----
-
-### Candidate 2 & 3 — `ColumnMappingStep`: Reference Entity and Reference Column selects
-
-**File:** `apps/web/src/workflows/CSVConnector/ColumnMappingStep.component.tsx`
-
-**Current code (lines ~236–255):**
-```tsx
-<Select
-  label="Reference Entity"
-  value={currentEntityValue}
-  onChange={handleEntityChange}  // expects e.target.value
-  options={entityOptions}
-  ...
-/>
-<Select
-  label="Reference Column"
-  value={currentColumnValue}
-  onChange={handleColumnChange}  // expects e.target.value
-  options={columnOptions}
-  ...
-/>
-```
-
-#### Checklist
-
-- [ ] Replace both `Select` components in `ReferenceEditor` with `SearchableSelect`
-- [ ] Update `handleEntityChange`: change signature from `(e: React.ChangeEvent<HTMLInputElement>) => void` to `(value: string | null) => void`; replace `e.target.value` references with `value ?? ""`
-- [ ] Update `handleColumnChange`: same signature change; replace `e.target.value || null` with `value`
-- [ ] The `placeholder` prop becomes `placeholder` on `SearchableSelect` (no functional change needed)
-- [ ] The `disabled` prop passes through unchanged
-- [ ] `fullWidth` passes through unchanged
-- [ ] Update `ColumnMappingStep.test.tsx` to use `SearchableSelect` interaction pattern (type + select from dropdown) rather than `Select` change events
-- [ ] Update `CSVConnectorWorkflow.stories.tsx` if stories exercise the reference editor
-
-#### Verification
-
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run test` passes from repo root
-
----
-
-### Candidate 4 — `PaginationToolbar`: `select` filter type rendering
-
-**File:** `apps/web/src/components/PaginationToolbar.component.tsx`
-
-**Current code (line ~540–556):**
-```tsx
-{config.type === "select" && (
-  <RadioGroup
-    value={(filters[config.field] ?? [])[0] ?? ""}
-    onChange={(e) => onFilterValueChange(config.field, e.target.value)}
-  >
-    {config.options.map((option) => (
-      <FormControlLabel
-        key={option.value}
-        value={option.value}
-        control={<Radio size="small" />}
-        label={option.label}
-      />
-    ))}
-  </RadioGroup>
-)}
-```
-
-This currently renders a radio list — single-select, no search. It works for small fixed-enum filters (e.g. "Type" on ColumnDefinitionList which has 12 options) but breaks down for dynamic lists like connector instances.
-
-#### Checklist
-
-- [ ] Replace the `RadioGroup`/`FormControlLabel`/`Radio` block for `config.type === "select"` with a `SearchableSelect`
-- [ ] Pass `options={config.options}`, `value={(filters[config.field] ?? [])[0] ?? null}` (convert empty string to null)
-- [ ] `onChange={(value) => onFilterValueChange(config.field, value ?? "")}` — passing empty string clears the filter (matches existing `setFilterValue` contract which uses `""` to mean "clear")
-- [ ] Set `size="small"` and `fullWidth`
-- [ ] Remove `RadioGroup`, `Radio`, `FormControlLabel` imports from `PaginationToolbar.component.tsx` if no longer used (check `boolean` filter type still uses `Switch`/`FormControlLabel` before removing)
-- [ ] The active filter chip for `select` type is already rendered correctly (uses `option?.label ?? values[0]`) — no change needed there
-- [ ] Update `PaginationToolbar.test.tsx` to use `SearchableSelect` interaction instead of radio button clicks for `select` type filter tests
-- [ ] Verify `ColumnDefinitionListView` (type filter), `Entities.view.tsx` (connector instance filter), and `ConnectorInstance.view.tsx` (status filter) all still work correctly
-
-#### Verification
-
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from repo root

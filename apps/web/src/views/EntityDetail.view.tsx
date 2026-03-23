@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 
 import type {
   ConnectorEntityGetResponsePayload,
@@ -7,16 +7,22 @@ import type {
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
   FieldMappingListResponsePayload,
+  EntityTagListResponsePayload,
+  ApiSuccessResponse,
 } from "@portalai/core/contracts";
+import type { EntityTag } from "@portalai/core/models";
 import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { IconName, AsyncSearchableSelect } from "@portalai/core/ui";
+import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
-import { sdk } from "../api/sdk";
+import { sdk, queryKeys } from "../api/sdk";
+import { useAuthFetch } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
 import { BidirectionalConsistencyBanner } from "../components/BidirectionalConsistencyBanner.component";
 import { SyncTotal } from "../components/SyncTotal.component";
@@ -35,6 +41,40 @@ import {
   EntityRecordDataTable,
   EntityRecordDataTableUI,
 } from "../components/EntityRecordDataTable.component";
+
+// ── Tag assignment select ────────────────────────────────────────────
+
+interface TagAssignSelectProps {
+  onSearch: (query: string) => Promise<SelectOption[]>;
+  onAssign: (entityTagId: string) => void;
+}
+
+const TagAssignSelect: React.FC<TagAssignSelectProps> = ({
+  onSearch,
+  onAssign,
+}) => {
+  const [value, setValue] = React.useState<string | null>(null);
+
+  const handleChange = (newValue: string | null) => {
+    if (newValue) {
+      onAssign(newValue);
+      setValue(null);
+    } else {
+      setValue(null);
+    }
+  };
+
+  return (
+    <AsyncSearchableSelect
+      value={value}
+      onChange={handleChange}
+      onSearch={onSearch}
+      label="Add tag"
+      placeholder="Search tags…"
+      size="small"
+    />
+  );
+};
 
 // ── Pure UI ─────────────────────────────────────────────────────────
 
@@ -55,6 +95,12 @@ export interface EntityDetailViewUIProps {
   bidirectionalFieldMappings?: BidirectionalFieldMappingRef[];
   /** Called when a record row is clicked. Overrides the default navigation behaviour — useful for testing. */
   onRecordClick?: (recordId: string) => void;
+  /** Tags currently assigned to this entity. */
+  tags?: EntityTag[];
+  /** Called when a tag is selected for assignment. */
+  onAssignTag?: (entityTagId: string) => void;
+  /** Search callback for the tag assignment autocomplete. */
+  onSearchTags?: (query: string) => Promise<SelectOption[]>;
 }
 
 export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
@@ -67,6 +113,9 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   isSyncing,
   bidirectionalFieldMappings,
   onRecordClick,
+  tags,
+  onAssignTag,
+  onSearchTags,
 }) => {
   const navigate = useNavigate();
 
@@ -179,6 +228,40 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
             )}
           </Stack>
 
+          {/* Tags */}
+          {tags && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Tags
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {tags.map((tag) => (
+                  <Chip
+                    key={tag.id}
+                    label={tag.name}
+                    size="small"
+                    sx={
+                      tag.color
+                        ? {
+                            backgroundColor: tag.color,
+                            color: "white",
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
+              </Stack>
+              {onSearchTags && onAssignTag && (
+                <Box sx={{ mt: 1, maxWidth: 300 }}>
+                  <TagAssignSelect
+                    onSearch={onSearchTags}
+                    onAssign={onAssignTag}
+                  />
+                </Box>
+              )}
+            </Box>
+          )}
+
           {showSyncButton && (
             <Box sx={{ mt: 2 }}>
               <Button
@@ -288,6 +371,9 @@ interface EntityDetailViewProps {
 export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   entityId,
 }) => {
+  const queryClient = useQueryClient();
+  const { fetchWithAuth } = useAuthFetch();
+
   const entityResult = sdk.connectorEntities.get(entityId);
   const countResult = sdk.entityRecords.count(entityId);
   const syncMutation = sdk.entityRecords.sync(entityId);
@@ -298,6 +384,40 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
     sortBy: "created",
     sortOrder: "asc",
   });
+
+  const tagsResult = sdk.entityTagAssignments.listByEntity(entityId);
+  const assignMutation = sdk.entityTagAssignments.assign(entityId);
+
+  const invalidateTags = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.entityTagAssignments.listByEntity(entityId),
+    });
+  }, [queryClient, entityId]);
+
+  const handleAssignTag = useCallback(
+    (entityTagId: string) => {
+      assignMutation.mutate(
+        { entityTagId },
+        { onSuccess: invalidateTags }
+      );
+    },
+    [assignMutation, invalidateTags]
+  );
+
+  const handleSearchTags = useCallback(
+    async (query: string): Promise<SelectOption[]> => {
+      const res = await fetchWithAuth<
+        ApiSuccessResponse<EntityTagListResponsePayload>
+      >(
+        `/api/entity-tags?search=${encodeURIComponent(query)}&limit=20&offset=0&sortBy=name&sortOrder=asc`
+      );
+      return res.payload.entityTags.map((tag) => ({
+        value: tag.id,
+        label: tag.name,
+      }));
+    },
+    [fetchWithAuth]
+  );
 
   return (
     <DataResult results={{ entity: entityResult }}>
@@ -328,6 +448,9 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
                 ? bidirectionalFieldMappings
                 : undefined
             }
+            tags={tagsResult.data?.tags}
+            onAssignTag={handleAssignTag}
+            onSearchTags={handleSearchTags}
           />
         );
       }}

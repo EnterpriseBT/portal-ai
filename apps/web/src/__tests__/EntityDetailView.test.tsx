@@ -76,6 +76,12 @@ jest.unstable_mockModule("../api/sdk", () => ({
       validateBidirectional: mockFieldMappingsValidate,
     },
   },
+  queryKeys: {
+    entityTagAssignments: {
+      root: ["entityTagAssignments"],
+      listByEntity: (id: string) => ["entityTagAssignments", "listByEntity", id],
+    },
+  },
 }));
 
 const { render, screen } = await import("./test-utils");
@@ -264,6 +270,58 @@ describe("EntityDetailViewUI", () => {
       />
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("renders assigned tags as chips when tags are provided", () => {
+    const tags = [
+      {
+        id: "tag-1",
+        organizationId: "org-1",
+        name: "Important",
+        color: "#ff0000",
+        description: null,
+        created: Date.now(),
+        createdBy: "system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+      {
+        id: "tag-2",
+        organizationId: "org-1",
+        name: "Archive",
+        color: null,
+        description: null,
+        created: Date.now(),
+        createdBy: "system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      },
+    ];
+    render(<EntityDetailViewUI entity={stubEntity} tags={tags} />);
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+    expect(screen.getByText("Important")).toBeInTheDocument();
+    expect(screen.getByText("Archive")).toBeInTheDocument();
+  });
+
+  it("does not render tags section when tags prop is not provided", () => {
+    render(<EntityDetailViewUI entity={stubEntity} />);
+    expect(screen.queryByText("Tags")).not.toBeInTheDocument();
+  });
+
+  it("renders the tag assignment autocomplete when onSearchTags and onAssignTag are provided", () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        tags={[]}
+        onSearchTags={jest.fn<() => Promise<never[]>>().mockResolvedValue([])}
+        onAssignTag={jest.fn()}
+      />
+    );
+    expect(screen.getByLabelText("Add tag")).toBeInTheDocument();
   });
 
   it("does not block record display when a warning banner is shown", () => {
