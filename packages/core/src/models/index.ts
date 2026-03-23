@@ -30,3 +30,9 @@ export * from "./field-mapping.model.js";
 
 /** Entity record model schema & type */
 export * from "./entity-record.model.js";
+
+/** Entity tag model schema & type */
+export * from "./entity-tag.model.js";
+
+/** Entity tag assignment model schema & type */
+export * from "./entity-tag-assignment.model.js";

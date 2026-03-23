@@ -13,23 +13,23 @@ Flat, org-scoped tags that can be assigned to `connector_entities` for organizat
 
 ### Checklist
 
-- [ ] Create `entity-tag.model.ts`
-  - [ ] Define `EntityTagSchema` extending `CoreSchema` with fields: `organizationId`, `name` (min 1), `color` (nullable), `description` (nullable)
-  - [ ] Export `EntityTag` type inferred from schema
-  - [ ] Export `EntityTagModel` class extending `CoreModel<EntityTag>` with `get schema()`, `parse()`, `validate()`
-  - [ ] Export `EntityTagModelFactory` class extending `ModelFactory<EntityTag, EntityTagModel>` with `create(createdBy)`
-- [ ] Create `entity-tag-assignment.model.ts`
-  - [ ] Define `EntityTagAssignmentSchema` extending `CoreSchema` with fields: `organizationId`, `connectorEntityId`, `entityTagId`
-  - [ ] Export `EntityTagAssignment` type inferred from schema
-  - [ ] Export `EntityTagAssignmentModel` class extending `CoreModel<EntityTagAssignment>` with `get schema()`, `parse()`, `validate()`
-  - [ ] Export `EntityTagAssignmentModelFactory` class extending `ModelFactory<EntityTagAssignment, EntityTagAssignmentModel>` with `create(createdBy)`
-- [ ] Update `models/index.ts`
-  - [ ] Add `export * from "./entity-tag.model.js"`
-  - [ ] Add `export * from "./entity-tag-assignment.model.js"`
+- [x] Create `entity-tag.model.ts`
+  - [x] Define `EntityTagSchema` extending `CoreSchema` with fields: `organizationId`, `name` (min 1), `color` (nullable), `description` (nullable)
+  - [x] Export `EntityTag` type inferred from schema
+  - [x] Export `EntityTagModel` class extending `CoreModel<EntityTag>` with `get schema()`, `parse()`, `validate()`
+  - [x] Export `EntityTagModelFactory` class extending `ModelFactory<EntityTag, EntityTagModel>` with `create(createdBy)`
+- [x] Create `entity-tag-assignment.model.ts`
+  - [x] Define `EntityTagAssignmentSchema` extending `CoreSchema` with fields: `organizationId`, `connectorEntityId`, `entityTagId`
+  - [x] Export `EntityTagAssignment` type inferred from schema
+  - [x] Export `EntityTagAssignmentModel` class extending `CoreModel<EntityTagAssignment>` with `get schema()`, `parse()`, `validate()`
+  - [x] Export `EntityTagAssignmentModelFactory` class extending `ModelFactory<EntityTagAssignment, EntityTagAssignmentModel>` with `create(createdBy)`
+- [x] Update `models/index.ts`
+  - [x] Add `export * from "./entity-tag.model.js"`
+  - [x] Add `export * from "./entity-tag-assignment.model.js"`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
+- [x] `npm run type-check` passes from repo root
 
 ---
 
