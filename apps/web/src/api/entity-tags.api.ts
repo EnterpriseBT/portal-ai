@@ -1,4 +1,5 @@
 import type {
+  ApiSuccessResponse,
   EntityTagCreateRequestBody,
   EntityTagCreateResponsePayload,
   EntityTagGetResponsePayload,
@@ -6,20 +7,16 @@ import type {
   EntityTagListResponsePayload,
   EntityTagUpdateRequestBody,
   EntityTagUpdateResponsePayload,
-  EntityTagAssignmentCreateRequestBody,
-  EntityTagAssignmentCreateResponsePayload,
-  EntityTagAssignmentListResponsePayload,
 } from "@portalai/core/contracts";
-import { useMutation } from "@tanstack/react-query";
 import { useInfiniteFilterOptions } from "@portalai/core/ui";
 import type { InfiniteFilterOptionsConfig } from "@portalai/core/ui";
-
-import { useAuthFetch, useAuthMutation, useAuthQuery } from "../utils/api.util";
+import { useAuthMutation, useAuthQuery, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
+import { EntityTag } from "@portalai/core/models";
 
-const ENTITY_TAGS_URL = "/api/entity-tags";
+export const ENTITY_TAGS_URL = "/api/entity-tags";
 
 export const entityTags = {
   list: (
@@ -64,49 +61,12 @@ export const entityTags = {
     }),
 };
 
-const entityTagAssignmentUrl = (connectorEntityId: string) =>
-  `/api/connector-entities/${encodeURIComponent(connectorEntityId)}/tags`;
-
-export const entityTagAssignments = {
-  listByEntity: (
-    connectorEntityId: string,
-    options?: QueryOptions<EntityTagAssignmentListResponsePayload>
-  ) =>
-    useAuthQuery<EntityTagAssignmentListResponsePayload>(
-      queryKeys.entityTagAssignments.listByEntity(connectorEntityId),
-      buildUrl(entityTagAssignmentUrl(connectorEntityId)),
-      undefined,
-      options
-    ),
-
-  assign: (connectorEntityId: string) =>
-    useAuthMutation<
-      EntityTagAssignmentCreateResponsePayload,
-      EntityTagAssignmentCreateRequestBody
-    >({
-      url: entityTagAssignmentUrl(connectorEntityId),
-      method: "POST",
-    }),
-
-  unassign: (connectorEntityId: string) => {
-    const { fetchWithAuth } = useAuthFetch();
-
-    return useMutation<void, unknown, { assignmentId: string }>({
-      mutationFn: async ({ assignmentId }) => {
-        await fetchWithAuth(
-          `${entityTagAssignmentUrl(connectorEntityId)}/${encodeURIComponent(assignmentId)}`,
-          { method: "DELETE" }
-        );
-      },
-    });
-  },
-};
 
 const ENTITY_TAG_FILTER_BASE = {
   url: ENTITY_TAGS_URL,
-  getItems: (res: EntityTagListResponsePayload) => res.entityTags,
-  getTotal: (res: EntityTagListResponsePayload) => res.total,
-  mapItem: (tag: EntityTagListResponsePayload["entityTags"][number]) => ({
+  getItems: (res: ApiSuccessResponse<EntityTagListResponsePayload>) => res.payload.entityTags,
+  getTotal: (res: ApiSuccessResponse<EntityTagListResponsePayload>) => res.payload.total,
+  mapItem: (tag: EntityTag) => ({
     value: tag.id,
     label: tag.name,
   }),
@@ -117,11 +77,11 @@ export function useEntityTagFilter() {
   const { fetchWithAuth } = useAuthFetch();
 
   const config: InfiniteFilterOptionsConfig<
-    EntityTagListResponsePayload,
-    EntityTagListResponsePayload["entityTags"][number]
+    ApiSuccessResponse<EntityTagListResponsePayload>,
+    EntityTag
   > = {
     ...ENTITY_TAG_FILTER_BASE,
-    fetcher: fetchWithAuth,
+    fetcher: fetchWithAuth
   };
 
   return useInfiniteFilterOptions(config);
