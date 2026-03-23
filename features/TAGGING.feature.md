@@ -188,25 +188,25 @@ Flat, org-scoped tags that can be assigned to `connector_entities` for organizat
 
 ### Checklist
 
-- [ ] Add Entity Tag codes:
-  - [ ] `ENTITY_TAG_NOT_FOUND`
-  - [ ] `ENTITY_TAG_FETCH_FAILED`
-  - [ ] `ENTITY_TAG_INVALID_PAYLOAD`
-  - [ ] `ENTITY_TAG_CREATE_FAILED`
-  - [ ] `ENTITY_TAG_UPDATE_FAILED`
-  - [ ] `ENTITY_TAG_DELETE_FAILED`
-  - [ ] `ENTITY_TAG_DUPLICATE_NAME`
-  - [ ] `ENTITY_TAG_USER_NOT_FOUND`
-- [ ] Add Entity Tag Assignment codes:
-  - [ ] `ENTITY_TAG_ASSIGNMENT_NOT_FOUND`
-  - [ ] `ENTITY_TAG_ASSIGNMENT_FETCH_FAILED`
-  - [ ] `ENTITY_TAG_ASSIGNMENT_CREATE_FAILED`
-  - [ ] `ENTITY_TAG_ASSIGNMENT_DELETE_FAILED`
-  - [ ] `ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS`
+- [x] Add Entity Tag codes:
+  - [x] `ENTITY_TAG_NOT_FOUND`
+  - [x] `ENTITY_TAG_FETCH_FAILED`
+  - [x] `ENTITY_TAG_INVALID_PAYLOAD`
+  - [x] `ENTITY_TAG_CREATE_FAILED`
+  - [x] `ENTITY_TAG_UPDATE_FAILED`
+  - [x] `ENTITY_TAG_DELETE_FAILED`
+  - [x] `ENTITY_TAG_DUPLICATE_NAME`
+  - [x] `ENTITY_TAG_USER_NOT_FOUND`
+- [x] Add Entity Tag Assignment codes:
+  - [x] `ENTITY_TAG_ASSIGNMENT_NOT_FOUND`
+  - [x] `ENTITY_TAG_ASSIGNMENT_FETCH_FAILED`
+  - [x] `ENTITY_TAG_ASSIGNMENT_CREATE_FAILED`
+  - [x] `ENTITY_TAG_ASSIGNMENT_DELETE_FAILED`
+  - [x] `ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
+- [x] `npm run type-check` passes from repo root
 
 ---
 
