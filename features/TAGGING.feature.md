@@ -220,32 +220,32 @@ Flat, org-scoped tags that can be assigned to `connector_entities` for organizat
 
 ### Checklist
 
-- [ ] Create `entity-tag.router.ts`
-  - [ ] `GET /` — list tags scoped to org; support `search` (ilike on `name`), `limit`, `offset`, `sortBy` (name/created), `sortOrder`; use `EntityTagListRequestQuerySchema` to parse query
-  - [ ] `GET /:id` — fetch single tag by ID; 404 with `ENTITY_TAG_NOT_FOUND` if missing
-  - [ ] `POST /` — create tag; validate with `EntityTagCreateRequestBodySchema`; call `findByName` to detect duplicate name within org, return 409 with `ENTITY_TAG_DUPLICATE_NAME` if found; use `EntityTagModelFactory` to build the record
-  - [ ] `PATCH /:id` — update tag; validate with `EntityTagUpdateRequestBodySchema`; if `name` is changing, re-run `findByName` duplicate check; 404 if tag not found
-  - [ ] `DELETE /:id` — soft-delete tag; also soft-delete all its assignments by calling `entityTagAssignmentsRepo.softDeleteMany` filtered by `entityTagId`; wrap both in a `DbService.transaction`; 404 if tag not found
-  - [ ] Add OpenAPI JSDoc comments for all routes
-- [ ] Create `entity-tag-assignment.router.ts`
-  - [ ] `GET /` — list tags assigned to `:connectorEntityId`; returns `EntityTagAssignmentListResponsePayload`
-  - [ ] `POST /` — assign a tag to `:connectorEntityId`; validate `EntityTagAssignmentCreateRequestBodySchema`; verify the tag exists and belongs to the same org; call `findExisting` to detect duplicate, return 409 with `ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS` if found; use `EntityTagAssignmentModelFactory` to build the record
-  - [ ] `DELETE /:assignmentId` — soft-delete the assignment; 404 if assignment not found
-  - [ ] Add OpenAPI JSDoc comments for all routes
-- [ ] Update `connector-entity.router.ts`
-  - [ ] Import and mount: `connectorEntityRouter.use("/:connectorEntityId/tags", entityTagAssignmentRouter)`
-  - [ ] Add `"tags"` to the `include` query param enum
-  - [ ] In the `GET /` handler, add a branch for `include === "tags"` that calls `findManyWithTags` and returns `ConnectorEntityListWithTagsResponsePayload`
-  - [ ] Add `tagIds` filter handling: if `tagIds` is present in the query, split on commas and call `findManyByTagIds` instead of `findMany`; the two approaches (`include=tags` and `tagIds` filter) are composable — when both are present, filter by tag IDs first then batch-load full tag arrays onto the results
-- [ ] Update `protected.router.ts`
-  - [ ] Import `entityTagRouter`
-  - [ ] Add `protectedRouter.use("/entity-tags", entityTagRouter)`
+- [x] Create `entity-tag.router.ts`
+  - [x] `GET /` — list tags scoped to org; support `search` (ilike on `name`), `limit`, `offset`, `sortBy` (name/created), `sortOrder`; use `EntityTagListRequestQuerySchema` to parse query
+  - [x] `GET /:id` — fetch single tag by ID; 404 with `ENTITY_TAG_NOT_FOUND` if missing
+  - [x] `POST /` — create tag; validate with `EntityTagCreateRequestBodySchema`; call `findByName` to detect duplicate name within org, return 409 with `ENTITY_TAG_DUPLICATE_NAME` if found; use `EntityTagModelFactory` to build the record
+  - [x] `PATCH /:id` — update tag; validate with `EntityTagUpdateRequestBodySchema`; if `name` is changing, re-run `findByName` duplicate check; 404 if tag not found
+  - [x] `DELETE /:id` — soft-delete tag; also soft-delete all its assignments by calling `entityTagAssignmentsRepo.softDeleteMany` filtered by `entityTagId`; wrap both in a `DbService.transaction`; 404 if tag not found
+  - [x] Add OpenAPI JSDoc comments for all routes
+- [x] Create `entity-tag-assignment.router.ts`
+  - [x] `GET /` — list tags assigned to `:connectorEntityId`; returns `EntityTagAssignmentListResponsePayload`
+  - [x] `POST /` — assign a tag to `:connectorEntityId`; validate `EntityTagAssignmentCreateRequestBodySchema`; verify the tag exists and belongs to the same org; call `findExisting` to detect duplicate, return 409 with `ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS` if found; use `EntityTagAssignmentModelFactory` to build the record
+  - [x] `DELETE /:assignmentId` — soft-delete the assignment; 404 if assignment not found
+  - [x] Add OpenAPI JSDoc comments for all routes
+- [x] Update `connector-entity.router.ts`
+  - [x] Import and mount: `connectorEntityRouter.use("/:connectorEntityId/tags", entityTagAssignmentRouter)`
+  - [x] Add `"tags"` to the `include` query param enum
+  - [x] In the `GET /` handler, add a branch for `include === "tags"` that calls `findManyWithTags` and returns `ConnectorEntityListWithTagsResponsePayload`
+  - [x] Add `tagIds` filter handling: if `tagIds` is present in the query, split on commas and call `findManyByTagIds` instead of `findMany`; the two approaches (`include=tags` and `tagIds` filter) are composable — when both are present, filter by tag IDs first then batch-load full tag arrays onto the results
+- [x] Update `protected.router.ts`
+  - [x] Import `entityTagRouter`
+  - [x] Add `protectedRouter.use("/entity-tags", entityTagRouter)`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root
+- [x] `npm run build` passes from repo root
 - [ ] Manually verify routes are visible in Swagger UI at `http://localhost:3001/api-docs`
 
 ---

@@ -7,6 +7,7 @@ import {
   type ConnectorEntityListResponsePayload,
   type ConnectorEntityListWithMappingsResponsePayload,
   type ConnectorEntityListWithInstanceResponsePayload,
+  type ConnectorEntityListWithTagsResponsePayload,
   type ConnectorEntityGetResponsePayload,
   ConnectorEntityCreateRequestBodySchema,
   type ConnectorEntityCreateResponsePayload,
@@ -18,6 +19,7 @@ import { DbService } from "../services/db.service.js";
 import { connectorEntities } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { entityRecordRouter } from "./entity-record.router.js";
+import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
 
 const logger = createLogger({ module: "connector-entity" });
 
@@ -25,6 +27,9 @@ export const connectorEntityRouter = Router();
 
 // Nest the entity records router under /:connectorEntityId/records
 connectorEntityRouter.use("/:connectorEntityId/records", entityRecordRouter);
+
+// Nest the entity tag assignments router under /:connectorEntityId/tags
+connectorEntityRouter.use("/:connectorEntityId/tags", entityTagAssignmentRouter);
 
 /** Map of sortable field names to their Drizzle columns. */
 const SORTABLE_COLUMNS: Record<string, Column> = {
@@ -63,8 +68,13 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: include
  *         schema:
  *           type: string
- *           enum: [fieldMappings]
- *         description: Include related field mappings (with column definitions) in each result
+ *           enum: [fieldMappings, connectorInstance, tags]
+ *         description: Include related data in each result — fieldMappings (with column definitions), connectorInstance, or tags
+ *       - in: query
+ *         name: tagIds
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of entity tag IDs to filter by; returns only entities assigned at least one of the given tags (composable with include=tags)
  *     responses:
  *       200:
  *         description: Paginated list of connector entities
@@ -90,7 +100,7 @@ connectorEntityRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, connectorInstanceId, include } =
+      const { limit, offset, sortBy, sortOrder, search, connectorInstanceId, include, tagIds: tagIdsRaw } =
         ConnectorEntityListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -107,32 +117,56 @@ connectorEntityRouter.get(
         )!);
       }
 
+      const tagIds = tagIdsRaw ? tagIdsRaw.split(",").map((id) => id.trim()).filter(Boolean) : undefined;
+
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
       const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
 
-      const fetchEntities = () => {
+      const fetchEntities = async () => {
+        if (tagIds && tagIds.length > 0) {
+          // Filter by tag IDs — fetch only entities assigned any of the given tags
+          const filtered = await DbService.repository.connectorEntities.findManyByTagIds(
+            organizationId,
+            tagIds,
+            listOpts
+          );
+          if (include === "tags" && filtered.length > 0) {
+            const ids = filtered.map((e) => e.id);
+            const tagsByEntity = await DbService.repository.entityTagAssignments.findByConnectorEntityIds(ids);
+            return filtered.map((entity) => ({ ...entity, tags: tagsByEntity.get(entity.id) ?? [] }));
+          }
+          return filtered;
+        }
         if (include === "fieldMappings") {
           return DbService.repository.connectorEntities.findManyWithFieldMappings(where, listOpts);
         }
         if (include === "connectorInstance") {
           return DbService.repository.connectorEntities.findManyWithInstance(where, listOpts);
         }
+        if (include === "tags") {
+          return DbService.repository.connectorEntities.findManyWithTags(where, listOpts);
+        }
         return DbService.repository.connectorEntities.findMany(where, listOpts);
       };
 
       const [data, total] = await Promise.all([
         fetchEntities(),
-        DbService.repository.connectorEntities.count(where),
+        tagIds && tagIds.length > 0
+          ? Promise.resolve(0) // resolved below from data.length
+          : DbService.repository.connectorEntities.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector entities");
       });
 
-      type ResponsePayload = ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload | ConnectorEntityListWithInstanceResponsePayload;
+      // When filtering by tagIds, total reflects the filtered result set length
+      const resolvedTotal = tagIds && tagIds.length > 0 ? data.length : total;
+
+      type ResponsePayload = ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload | ConnectorEntityListWithInstanceResponsePayload | ConnectorEntityListWithTagsResponsePayload;
       return HttpService.success<ResponsePayload>(res, {
         connectorEntities: data as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
-        total,
+        total: resolvedTotal,
         limit,
         offset,
       });
