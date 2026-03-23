@@ -334,57 +334,57 @@ interface SearchableSelectBaseProps {
 
 #### `SearchableSelect` (synchronous)
 
-- [ ] Accepts `options: SelectOption[]` — the full list is passed in; filtering is done client-side by MUI `Autocomplete`
-- [ ] Wraps `MuiAutocomplete` with `options`, `value` resolved to the matching `SelectOption` object, `onChange` mapped to emit `option.value` (string) or `null`
-- [ ] Renders `TextField` as the input; forwards `label`, `placeholder`, `helperText`, `error`, `disabled`, `required`, `size`
-- [ ] `isOptionEqualToValue` compares by `option.value`
-- [ ] `getOptionLabel` returns `option.label`
-- [ ] Export `SearchableSelect` and `SearchableSelectProps`
+- [x] Accepts `options: SelectOption[]` — the full list is passed in; filtering is done client-side by MUI `Autocomplete`
+- [x] Wraps `MuiAutocomplete` with `options`, `value` resolved to the matching `SelectOption` object, `onChange` mapped to emit `option.value` (string) or `null`
+- [x] Renders `TextField` as the input; forwards `label`, `placeholder`, `helperText`, `error`, `disabled`, `required`, `size`
+- [x] `isOptionEqualToValue` compares by `option.value`
+- [x] `getOptionLabel` returns `option.label`
+- [x] Export `SearchableSelect` and `SearchableSelectProps`
 
 #### `AsyncSearchableSelect` (search-on-type)
 
-- [ ] Accepts `onSearch: (query: string) => Promise<SelectOption[]>` — called with the current input value; replaces the options list with each result
-- [ ] Accepts `debounceMs?: number` (default `300`) — debounces calls to `onSearch`
-- [ ] Manages internal `options` state (replaced, not appended, on each search result)
-- [ ] Shows a loading indicator in the listbox while the search is in-flight (`loading` prop on `MuiAutocomplete`)
-- [ ] Sets `filterOptions={(x) => x}` to disable client-side filtering (server already filtered)
-- [ ] Clears options to `[]` when input is cleared
-- [ ] `inputValue` is controlled so the text field always reflects the current query
-- [ ] Export `AsyncSearchableSelect` and `AsyncSearchableSelectProps`
+- [x] Accepts `onSearch: (query: string) => Promise<SelectOption[]>` — called with the current input value; replaces the options list with each result
+- [x] Accepts `debounceMs?: number` (default `300`) — debounces calls to `onSearch`
+- [x] Manages internal `options` state (replaced, not appended, on each search result)
+- [x] Shows a loading indicator in the listbox while the search is in-flight (`loading` prop on `MuiAutocomplete`)
+- [x] Sets `filterOptions={(x) => x}` to disable client-side filtering (server already filtered)
+- [x] Clears options to `[]` when input is cleared
+- [x] `inputValue` is controlled so the text field always reflects the current query
+- [x] Export `AsyncSearchableSelect` and `AsyncSearchableSelectProps`
 
 #### `InfiniteScrollSelect` (search + paginated scroll)
 
-- [ ] Accepts `fetchPage: (params: { search: string; page: number; pageSize: number }) => Promise<{ options: SelectOption[]; hasMore: boolean }>` — called on open, on search change (resets to page 0), and when the bottom sentinel is reached
-- [ ] Accepts `pageSize?: number` (default `20`)
-- [ ] Accepts `debounceMs?: number` (default `300`) for search input debouncing
-- [ ] Manages internal state: `options` (accumulated across pages), `page`, `hasMore`, `loading`
-- [ ] When search input changes: resets `options` to `[]`, `page` to `0`, calls `fetchPage({ search, page: 0, pageSize })`
-- [ ] When dropdown opens with no options loaded yet: calls `fetchPage({ search: "", page: 0, pageSize })`
-- [ ] Renders a custom `ListboxComponent` that appends a bottom sentinel `<div>` after the last option; attaches an `IntersectionObserver` to it — when the sentinel enters the viewport and `hasMore` is true and not currently loading, increments `page` and calls `fetchPage` to append the next batch to `options`
-- [ ] Shows a loading spinner item at the bottom of the list while fetching a new page
-- [ ] Sets `filterOptions={(x) => x}` (server-side filtering)
-- [ ] `inputValue` is controlled
-- [ ] Export `InfiniteScrollSelect` and `InfiniteScrollSelectProps`
+- [x] Accepts `fetchPage: (params: { search: string; page: number; pageSize: number }) => Promise<{ options: SelectOption[]; hasMore: boolean }>` — called on open, on search change (resets to page 0), and when the bottom sentinel is reached
+- [x] Accepts `pageSize?: number` (default `20`)
+- [x] Accepts `debounceMs?: number` (default `300`) for search input debouncing
+- [x] Manages internal state: `options` (accumulated across pages), `page`, `hasMore`, `loading`
+- [x] When search input changes: resets `options` to `[]`, `page` to `0`, calls `fetchPage({ search, page: 0, pageSize })`
+- [x] When dropdown opens with no options loaded yet: calls `fetchPage({ search: "", page: 0, pageSize })`
+- [x] Renders a custom `ListboxComponent` that appends a bottom sentinel `<div>` after the last option; attaches an `IntersectionObserver` to it — when the sentinel enters the viewport and `hasMore` is true and not currently loading, increments `page` and calls `fetchPage` to append the next batch to `options`
+- [x] Shows a loading spinner item at the bottom of the list while fetching a new page
+- [x] Sets `filterOptions={(x) => x}` (server-side filtering)
+- [x] `inputValue` is controlled
+- [x] Export `InfiniteScrollSelect` and `InfiniteScrollSelectProps`
 
 #### Shared / housekeeping
 
-- [ ] All three components re-export `SelectOption` from `Select.tsx` (or move the type to a shared location if needed)
-- [ ] Update `packages/core/src/ui/index.ts` — add `export * from "./SearchableSelect.js"`
-- [ ] Stories (`SearchableSelect.stories.tsx`):
-  - [ ] `SearchableSelect` story with a static list of 20+ options demonstrating client-side search
-  - [ ] `AsyncSearchableSelect` story with a mock `onSearch` that simulates a network delay and filters a large dataset
-  - [ ] `InfiniteScrollSelect` story with a mock `fetchPage` returning 20 items per page from a 200-item dataset, demonstrating scroll-to-load
-- [ ] Tests (`SearchableSelect.test.tsx`):
-  - [ ] `SearchableSelect`: renders options, filters on type, calls `onChange` with correct value, calls `onChange(null)` on clear
-  - [ ] `AsyncSearchableSelect`: calls `onSearch` after debounce, shows loading state, replaces options on new search, does not call `onSearch` synchronously on every keystroke
-  - [ ] `InfiniteScrollSelect`: calls `fetchPage` on open, appends results on scroll-to-bottom (mock `IntersectionObserver`), resets on search change, does not fetch next page when `hasMore` is false
+- [x] All three components re-export `SelectOption` from `Select.tsx` (or move the type to a shared location if needed)
+- [x] Update `packages/core/src/ui/index.ts` — add `export * from "./SearchableSelect.js"`
+- [x] Stories (`SearchableSelect.stories.tsx`):
+  - [x] `SearchableSelect` story with a static list of 20+ options demonstrating client-side search
+  - [x] `AsyncSearchableSelect` story with a mock `onSearch` that simulates a network delay and filters a large dataset
+  - [x] `InfiniteScrollSelect` story with a mock `fetchPage` returning 20 items per page from a 200-item dataset, demonstrating scroll-to-load
+- [x] Tests (`SearchableSelect.test.tsx`):
+  - [x] `SearchableSelect`: renders options, filters on type, calls `onChange` with correct value, calls `onChange(null)` on clear
+  - [x] `AsyncSearchableSelect`: calls `onSearch` after debounce, shows loading state, replaces options on new search, does not call `onSearch` synchronously on every keystroke
+  - [x] `InfiniteScrollSelect`: calls `fetchPage` on open, appends results on scroll-to-bottom (mock `IntersectionObserver`), resets on search change, does not fetch next page when `hasMore` is false
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from repo root
 - [ ] All three stories render correctly in Storybook (`npm run storybook` from repo root, core at `:7006`)
 
 ---
