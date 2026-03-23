@@ -17,6 +17,8 @@ import { columnDefinitions } from "./column-definitions.table.js";
 import { connectorEntities } from "./connector-entities.table.js";
 import { fieldMappings } from "./field-mappings.table.js";
 import { entityRecords } from "./entity-records.table.js";
+import { entityTags } from "./entity-tags.table.js";
+import { entityTagAssignments } from "./entity-tag-assignments.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -167,3 +169,33 @@ export const EntityRecordInsertSchema = createInsertSchema(entityRecords);
 /** Inferred types */
 export type EntityRecordSelect = z.infer<typeof EntityRecordSelectSchema>;
 export type EntityRecordInsert = z.infer<typeof EntityRecordInsertSchema>;
+
+// ── Entity Tags ─────────────────────────────────────────────────────
+
+/** Zod schema for an `entity_tags` row returned by SELECT. */
+export const EntityTagSelectSchema = createSelectSchema(entityTags);
+
+/** Zod schema for inserting into `entity_tags`. */
+export const EntityTagInsertSchema = createInsertSchema(entityTags);
+
+/** Inferred types */
+export type EntityTagSelect = z.infer<typeof EntityTagSelectSchema>;
+export type EntityTagInsert = z.infer<typeof EntityTagInsertSchema>;
+
+// ── Entity Tag Assignments ───────────────────────────────────────────
+
+/** Zod schema for an `entity_tag_assignments` row returned by SELECT. */
+export const EntityTagAssignmentSelectSchema =
+  createSelectSchema(entityTagAssignments);
+
+/** Zod schema for inserting into `entity_tag_assignments`. */
+export const EntityTagAssignmentInsertSchema =
+  createInsertSchema(entityTagAssignments);
+
+/** Inferred types */
+export type EntityTagAssignmentSelect = z.infer<
+  typeof EntityTagAssignmentSelectSchema
+>;
+export type EntityTagAssignmentInsert = z.infer<
+  typeof EntityTagAssignmentInsertSchema
+>;

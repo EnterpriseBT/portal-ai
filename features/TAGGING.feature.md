@@ -77,25 +77,25 @@ Flat, org-scoped tags that can be assigned to `connector_entities` for organizat
 
 ### Checklist
 
-- [ ] Update `zod.ts`
-  - [ ] Import `entityTags` and `entityTagAssignments` from their table files
-  - [ ] Add `EntityTagSelectSchema = createSelectSchema(entityTags)` and `EntityTagInsertSchema = createInsertSchema(entityTags)`
-  - [ ] Export `EntityTagSelect` and `EntityTagInsert` types
-  - [ ] Add `EntityTagAssignmentSelectSchema = createSelectSchema(entityTagAssignments)` and `EntityTagAssignmentInsertSchema = createInsertSchema(entityTagAssignments)`
-  - [ ] Export `EntityTagAssignmentSelect` and `EntityTagAssignmentInsert` types
-- [ ] Update `type-checks.ts`
-  - [ ] Import `EntityTag` and `EntityTagAssignment` from `@portalai/core/models`
-  - [ ] Import `EntityTagSelect`, `EntityTagAssignmentSelect` from `./zod.js`
-  - [ ] Import `entityTags` and `entityTagAssignments` table types
-  - [ ] Add bidirectional `IsAssignable` checks for `EntityTagSelect` ↔ `EntityTag`
-  - [ ] Add `InferSelectModel` check for `entityTags` → `EntityTag`
-  - [ ] Add bidirectional `IsAssignable` checks for `EntityTagAssignmentSelect` ↔ `EntityTagAssignment`
-  - [ ] Add `InferSelectModel` check for `entityTagAssignments` → `EntityTagAssignment`
+- [x] Update `zod.ts`
+  - [x] Import `entityTags` and `entityTagAssignments` from their table files
+  - [x] Add `EntityTagSelectSchema = createSelectSchema(entityTags)` and `EntityTagInsertSchema = createInsertSchema(entityTags)`
+  - [x] Export `EntityTagSelect` and `EntityTagInsert` types
+  - [x] Add `EntityTagAssignmentSelectSchema = createSelectSchema(entityTagAssignments)` and `EntityTagAssignmentInsertSchema = createInsertSchema(entityTagAssignments)`
+  - [x] Export `EntityTagAssignmentSelect` and `EntityTagAssignmentInsert` types
+- [x] Update `type-checks.ts`
+  - [x] Import `EntityTag` and `EntityTagAssignment` from `@portalai/core/models`
+  - [x] Import `EntityTagSelect`, `EntityTagAssignmentSelect` from `./zod.js`
+  - [x] Import `entityTags` and `entityTagAssignments` table types
+  - [x] Add bidirectional `IsAssignable` checks for `EntityTagSelect` ↔ `EntityTag`
+  - [x] Add `InferSelectModel` check for `entityTags` → `EntityTag`
+  - [x] Add bidirectional `IsAssignable` checks for `EntityTagAssignmentSelect` ↔ `EntityTagAssignment`
+  - [x] Add `InferSelectModel` check for `entityTagAssignments` → `EntityTagAssignment`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root — confirms core models are in sync with Drizzle tables
-- [ ] `npm run build` passes from repo root
+- [x] `npm run type-check` passes from repo root — confirms core models are in sync with Drizzle tables
+- [x] `npm run build` passes from repo root
 
 ---
 
