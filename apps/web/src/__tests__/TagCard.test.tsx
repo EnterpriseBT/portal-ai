@@ -50,29 +50,21 @@ describe("TagCardUI", () => {
   });
 
   it("should render color dot when color is set", () => {
-    const { container } = render(
+    render(
       <TagCardUI tag={makeTag()} onEdit={jest.fn()} onDelete={jest.fn()} />
     );
-    // MUI sx props render via CSS classes, not inline styles.
-    // The card content has two children in the row: the dot Box + the text Box.
-    const cardContent = container.querySelector(".MuiCardContent-root");
-    const row = cardContent?.querySelector(".MuiStack-root");
-    // When color is present, the row has 3 children: dot, text box
-    expect(row?.children.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId("tag-color-dot")).toBeInTheDocument();
   });
 
   it("should not render color dot when color is null", () => {
-    const { container } = render(
+    render(
       <TagCardUI
         tag={makeTag({ color: null })}
         onEdit={jest.fn()}
         onDelete={jest.fn()}
       />
     );
-    const cardContent = container.querySelector(".MuiCardContent-root");
-    const row = cardContent?.querySelector(".MuiStack-root");
-    // When color is null, the row has only 1 child: the text box
-    expect(row?.children.length).toBe(1);
+    expect(screen.queryByTestId("tag-color-dot")).not.toBeInTheDocument();
   });
 
   it("should call onEdit with tag when edit button is clicked", () => {

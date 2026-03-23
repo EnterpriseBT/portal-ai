@@ -34,6 +34,7 @@ export const TagCardUI: React.FC<TagCardUIProps> = ({
         >
           {tag.color && (
             <Box
+              data-testid="tag-color-dot"
               sx={{
                 width: 16,
                 height: 16,
