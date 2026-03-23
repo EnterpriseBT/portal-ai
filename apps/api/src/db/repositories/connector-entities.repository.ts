@@ -9,15 +9,17 @@ import { eq, and, inArray, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { connectorEntities, connectorInstances, fieldMappings, columnDefinitions } from "../schema/index.js";
+import { connectorEntities, connectorInstances, fieldMappings, columnDefinitions, entityTagAssignments } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+import { entityTagAssignmentsRepo } from "./entity-tag-assignments.repository.js";
 import type {
   ConnectorEntitySelect,
   ConnectorEntityInsert,
   ConnectorInstanceSelect,
   FieldMappingSelect,
   ColumnDefinitionSelect,
+  EntityTagSelect,
 } from "../schema/zod.js";
 
 export class ConnectorEntitiesRepository extends Repository<
@@ -172,6 +174,67 @@ export class ConnectorEntitiesRepository extends Repository<
           entity.connectorInstanceId
         )! as ConnectorInstanceSelect,
       }));
+  }
+
+  /**
+   * Return entities with their assigned tags batch-loaded.
+   * Fetches paginated entities then calls entityTagAssignmentsRepo.findByConnectorEntityIds
+   * to batch-load tags in a second query.
+   */
+  async findManyWithTags(
+    where: SQL | undefined,
+    opts: ListOptions = {},
+    client: DbClient = db
+  ): Promise<(ConnectorEntitySelect & { tags: EntityTagSelect[] })[]> {
+    const entities = await this.findMany(where, opts, client);
+    if (entities.length === 0) return [];
+
+    const entityIds = entities.map((e) => e.id);
+    const tagsByEntity = await entityTagAssignmentsRepo.findByConnectorEntityIds(
+      entityIds,
+      client
+    );
+
+    return entities.map((entity) => ({
+      ...entity,
+      tags: tagsByEntity.get(entity.id) ?? [],
+    }));
+  }
+
+  /**
+   * Return entities in an organization that have at least one assignment
+   * matching any of the given tag IDs.
+   */
+  async findManyByTagIds(
+    organizationId: string,
+    tagIds: string[],
+    opts: ListOptions = {},
+    client: DbClient = db
+  ): Promise<ConnectorEntitySelect[]> {
+    if (tagIds.length === 0) return [];
+
+    const assignedRows = await (client as typeof db)
+      .selectDistinct({ id: entityTagAssignments.connectorEntityId })
+      .from(entityTagAssignments)
+      .where(
+        and(
+          inArray(entityTagAssignments.entityTagId, tagIds),
+          isNull(entityTagAssignments.deleted)
+        )
+      );
+
+    if (assignedRows.length === 0) return [];
+
+    const assignedIds = assignedRows.map((r) => r.id);
+
+    return this.findMany(
+      and(
+        eq(connectorEntities.organizationId, organizationId),
+        inArray(connectorEntities.id, assignedIds)
+      ),
+      opts,
+      client
+    );
   }
 
   /**

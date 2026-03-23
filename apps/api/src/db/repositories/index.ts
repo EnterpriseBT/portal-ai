@@ -12,3 +12,5 @@ export * from "./column-definitions.repository.js";
 export * from "./connector-entities.repository.js";
 export * from "./field-mappings.repository.js";
 export * from "./entity-records.repository.js";
+export * from "./entity-tags.repository.js";
+export * from "./entity-tag-assignments.repository.js";

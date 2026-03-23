@@ -110,33 +110,33 @@ Flat, org-scoped tags that can be assigned to `connector_entities` for organizat
 
 ### Checklist
 
-- [ ] Create `entity-tags.repository.ts`
-  - [ ] Extend `Repository<typeof entityTags, EntityTagSelect, EntityTagInsert>`
-  - [ ] Implement `findByOrganizationId(organizationId, opts?)` — filters by org + not deleted, ordered by `name` ASC
-  - [ ] Implement `findByName(organizationId, name)` — exact match within org, returns single row or undefined (used for duplicate name validation)
-  - [ ] Export singleton `entityTagsRepo`
-- [ ] Create `entity-tag-assignments.repository.ts`
-  - [ ] Extend `Repository<typeof entityTagAssignments, EntityTagAssignmentSelect, EntityTagAssignmentInsert>`
-  - [ ] Implement `findByConnectorEntityId(connectorEntityId)` — returns assignments with their tag details batch-loaded (two-query pattern matching existing repos)
-  - [ ] Implement `findByEntityTagId(entityTagId)` — all assignments for a given tag
-  - [ ] Implement `findByConnectorEntityIds(ids[])` — batch-loads assignments + tag details for a set of entity IDs; returns a `Map<connectorEntityId, EntityTagSelect[]>` for efficient assembly in list responses
-  - [ ] Implement `findExisting(connectorEntityId, entityTagId)` — returns existing non-deleted assignment or undefined (used for duplicate detection before create)
-  - [ ] Export singleton `entityTagAssignmentsRepo`
-- [ ] Update `connector-entities.repository.ts`
-  - [ ] Add `findManyWithTags(where, opts?)` — fetches paginated entities then calls `entityTagAssignmentsRepo.findByConnectorEntityIds` to batch-load tags; returns `(ConnectorEntitySelect & { tags: EntityTagSelect[] })[]`
-  - [ ] Add `findManyByTagIds(organizationId, tagIds[], opts?)` — returns entities that have at least one assignment matching any of the given tag IDs; uses a subquery or join on `entity_tag_assignments`
-- [ ] Update `repositories/index.ts`
-  - [ ] Add `export * from "./entity-tags.repository.js"`
-  - [ ] Add `export * from "./entity-tag-assignments.repository.js"`
-- [ ] Update `db.service.ts`
-  - [ ] Import `entityTagsRepo` and `entityTagAssignmentsRepo`
-  - [ ] Add `entityTags: entityTagsRepo` to `DbService.repository`
-  - [ ] Add `entityTagAssignments: entityTagAssignmentsRepo` to `DbService.repository`
+- [x] Create `entity-tags.repository.ts`
+  - [x] Extend `Repository<typeof entityTags, EntityTagSelect, EntityTagInsert>`
+  - [x] Implement `findByOrganizationId(organizationId, opts?)` — filters by org + not deleted, ordered by `name` ASC
+  - [x] Implement `findByName(organizationId, name)` — exact match within org, returns single row or undefined (used for duplicate name validation)
+  - [x] Export singleton `entityTagsRepo`
+- [x] Create `entity-tag-assignments.repository.ts`
+  - [x] Extend `Repository<typeof entityTagAssignments, EntityTagAssignmentSelect, EntityTagAssignmentInsert>`
+  - [x] Implement `findByConnectorEntityId(connectorEntityId)` — returns assignments with their tag details batch-loaded (two-query pattern matching existing repos)
+  - [x] Implement `findByEntityTagId(entityTagId)` — all assignments for a given tag
+  - [x] Implement `findByConnectorEntityIds(ids[])` — batch-loads assignments + tag details for a set of entity IDs; returns a `Map<connectorEntityId, EntityTagSelect[]>` for efficient assembly in list responses
+  - [x] Implement `findExisting(connectorEntityId, entityTagId)` — returns existing non-deleted assignment or undefined (used for duplicate detection before create)
+  - [x] Export singleton `entityTagAssignmentsRepo`
+- [x] Update `connector-entities.repository.ts`
+  - [x] Add `findManyWithTags(where, opts?)` — fetches paginated entities then calls `entityTagAssignmentsRepo.findByConnectorEntityIds` to batch-load tags; returns `(ConnectorEntitySelect & { tags: EntityTagSelect[] })[]`
+  - [x] Add `findManyByTagIds(organizationId, tagIds[], opts?)` — returns entities that have at least one assignment matching any of the given tag IDs; uses a subquery or join on `entity_tag_assignments`
+- [x] Update `repositories/index.ts`
+  - [x] Add `export * from "./entity-tags.repository.js"`
+  - [x] Add `export * from "./entity-tag-assignments.repository.js"`
+- [x] Update `db.service.ts`
+  - [x] Import `entityTagsRepo` and `entityTagAssignmentsRepo`
+  - [x] Add `entityTags: entityTagsRepo` to `DbService.repository`
+  - [x] Add `entityTagAssignments: entityTagAssignmentsRepo` to `DbService.repository`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run build` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run build` passes from repo root
 
 ---
 
