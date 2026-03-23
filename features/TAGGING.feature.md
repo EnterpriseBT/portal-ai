@@ -260,39 +260,39 @@ Flat, org-scoped tags that can be assigned to `connector_entities` for organizat
 
 ### Checklist
 
-- [ ] `entity-tags.repository.integration.test.ts`
-  - [ ] `findByOrganizationId` returns tags scoped to org, excludes soft-deleted
-  - [ ] `findByName` returns correct row on match, undefined on miss
-  - [ ] `create` inserts and returns full row
-  - [ ] `update` modifies fields correctly
-  - [ ] `softDelete` sets `deleted` and excludes row from subsequent reads
-- [ ] `entity-tag-assignments.repository.integration.test.ts`
-  - [ ] `findByConnectorEntityId` returns enriched assignments with tag details
-  - [ ] `findByConnectorEntityIds` batch-loads correctly for multiple entity IDs
-  - [ ] `findExisting` detects existing assignment, returns undefined for non-existent
-  - [ ] Unique constraint prevents duplicate `(connectorEntityId, entityTagId)` at DB level
-- [ ] `entity-tag.router.integration.test.ts`
-  - [ ] `GET /api/entity-tags` returns paginated list scoped to org
-  - [ ] `GET /api/entity-tags` with `search` filters by name
-  - [ ] `GET /api/entity-tags/:id` returns 200 for valid ID, 404 for unknown
-  - [ ] `POST /api/entity-tags` creates tag, returns 201
-  - [ ] `POST /api/entity-tags` returns 409 on duplicate name within org
-  - [ ] `PATCH /api/entity-tags/:id` updates fields, returns 200
-  - [ ] `PATCH /api/entity-tags/:id` returns 409 if new name conflicts with existing tag
-  - [ ] `DELETE /api/entity-tags/:id` soft-deletes tag and its assignments, returns 200
-  - [ ] `DELETE /api/entity-tags/:id` returns 404 for unknown ID
-- [ ] `entity-tag-assignment.router.integration.test.ts`
-  - [ ] `GET /api/connector-entities/:id/tags` returns assigned tags
-  - [ ] `POST /api/connector-entities/:id/tags` assigns a tag, returns 201
-  - [ ] `POST /api/connector-entities/:id/tags` returns 409 if already assigned
-  - [ ] `DELETE /api/connector-entities/:id/tags/:assignmentId` removes assignment, returns 200
-  - [ ] `GET /api/connector-entities?include=tags` returns entities with tags array populated
-  - [ ] `GET /api/connector-entities?tagIds=id1,id2` returns only entities assigned to those tags
-  - [ ] `GET /api/connector-entities?tagIds=id1&include=tags` returns filtered entities with full tags array
+- [x] `entity-tags.repository.integration.test.ts`
+  - [x] `findByOrganizationId` returns tags scoped to org, excludes soft-deleted
+  - [x] `findByName` returns correct row on match, undefined on miss
+  - [x] `create` inserts and returns full row
+  - [x] `update` modifies fields correctly
+  - [x] `softDelete` sets `deleted` and excludes row from subsequent reads
+- [x] `entity-tag-assignments.repository.integration.test.ts`
+  - [x] `findByConnectorEntityId` returns enriched assignments with tag details
+  - [x] `findByConnectorEntityIds` batch-loads correctly for multiple entity IDs
+  - [x] `findExisting` detects existing assignment, returns undefined for non-existent
+  - [x] Unique constraint prevents duplicate `(connectorEntityId, entityTagId)` at DB level
+- [x] `entity-tag.router.integration.test.ts`
+  - [x] `GET /api/entity-tags` returns paginated list scoped to org
+  - [x] `GET /api/entity-tags` with `search` filters by name
+  - [x] `GET /api/entity-tags/:id` returns 200 for valid ID, 404 for unknown
+  - [x] `POST /api/entity-tags` creates tag, returns 201
+  - [x] `POST /api/entity-tags` returns 409 on duplicate name within org
+  - [x] `PATCH /api/entity-tags/:id` updates fields, returns 200
+  - [x] `PATCH /api/entity-tags/:id` returns 409 if new name conflicts with existing tag
+  - [x] `DELETE /api/entity-tags/:id` soft-deletes tag and its assignments, returns 200
+  - [x] `DELETE /api/entity-tags/:id` returns 404 for unknown ID
+- [x] `entity-tag-assignment.router.integration.test.ts`
+  - [x] `GET /api/connector-entities/:id/tags` returns assigned tags
+  - [x] `POST /api/connector-entities/:id/tags` assigns a tag, returns 201
+  - [x] `POST /api/connector-entities/:id/tags` returns 409 if already assigned
+  - [x] `DELETE /api/connector-entities/:id/tags/:assignmentId` removes assignment, returns 200
+  - [x] `GET /api/connector-entities?include=tags` returns entities with tags array populated
+  - [x] `GET /api/connector-entities?tagIds=id1,id2` returns only entities assigned to those tags
+  - [x] `GET /api/connector-entities?tagIds=id1&include=tags` returns filtered entities with full tags array
 
 ### Verification
 
-- [ ] `npm run test` passes from repo root
+- [x] `npm run test` passes from repo root
 
 ---
 
