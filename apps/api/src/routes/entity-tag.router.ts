@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
 
 import { EntityTagModelFactory } from "@portalai/core/models";
 import {
@@ -46,7 +46,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: search
  *         schema:
  *           type: string
- *         description: Case-insensitive search on tag name
+ *         description: Case-insensitive search on tag name or description
  *       - in: query
  *         name: sortBy
  *         schema:
@@ -97,7 +97,12 @@ entityTagRouter.get(
       const filters: SQL[] = [eq(entityTags.organizationId, organizationId)];
 
       if (search) {
-        filters.push(ilike(entityTags.name, `%${search}%`));
+        filters.push(
+          or(
+            ilike(entityTags.name, `%${search}%`),
+            ilike(entityTags.description, `%${search}%`)
+          )!
+        );
       }
 
       const where = and(...filters);

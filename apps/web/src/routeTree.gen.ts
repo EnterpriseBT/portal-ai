@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TagsRouteImport } from './routes/tags'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JobsRouteImport } from './routes/jobs'
@@ -16,6 +17,7 @@ import { Route as EntitiesRouteImport } from './routes/entities'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitions'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TagsIndexRouteImport } from './routes/tags.index'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
@@ -27,6 +29,11 @@ import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './route
 import { Route as EntitiesEntityIdIndexRouteImport } from './routes/entities.$entityId.index'
 import { Route as EntitiesEntityIdRecordsRecordIdRouteImport } from './routes/entities.$entityId.records.$recordId'
 
+const TagsRoute = TagsRouteImport.update({
+  id: '/tags',
+  path: '/tags',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -61,6 +68,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const TagsIndexRoute = TagsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TagsRoute,
 } as any)
 const JobsIndexRoute = JobsIndexRouteImport.update({
   id: '/',
@@ -124,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/tags': typeof TagsRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
@@ -132,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/tags/': typeof TagsIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
@@ -146,6 +160,7 @@ export interface FileRoutesByTo {
   '/connectors': typeof ConnectorsIndexRoute
   '/entities': typeof EntitiesIndexRoute
   '/jobs': typeof JobsIndexRoute
+  '/tags': typeof TagsIndexRoute
   '/entities/$entityId': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
@@ -158,6 +173,7 @@ export interface FileRoutesById {
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
+  '/tags': typeof TagsRouteWithChildren
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
@@ -166,6 +182,7 @@ export interface FileRoutesById {
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/tags/': typeof TagsIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
   '/entities/$entityId/records/$recordId': typeof EntitiesEntityIdRecordsRecordIdRoute
 }
@@ -179,6 +196,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/login'
     | '/settings'
+    | '/tags'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
@@ -187,6 +205,7 @@ export interface FileRouteTypes {
     | '/connectors/'
     | '/entities/'
     | '/jobs/'
+    | '/tags/'
     | '/entities/$entityId/'
     | '/entities/$entityId/records/$recordId'
   fileRoutesByTo: FileRoutesByTo
@@ -201,6 +220,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/entities'
     | '/jobs'
+    | '/tags'
     | '/entities/$entityId'
     | '/entities/$entityId/records/$recordId'
   id:
@@ -212,6 +232,7 @@ export interface FileRouteTypes {
     | '/jobs'
     | '/login'
     | '/settings'
+    | '/tags'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
@@ -220,6 +241,7 @@ export interface FileRouteTypes {
     | '/connectors/'
     | '/entities/'
     | '/jobs/'
+    | '/tags/'
     | '/entities/$entityId/'
     | '/entities/$entityId/records/$recordId'
   fileRoutesById: FileRoutesById
@@ -232,10 +254,18 @@ export interface RootRouteChildren {
   JobsRoute: typeof JobsRouteWithChildren
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
+  TagsRoute: typeof TagsRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tags': {
+      id: '/tags'
+      path: '/tags'
+      fullPath: '/tags'
+      preLoaderRoute: typeof TagsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -284,6 +314,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/tags/': {
+      id: '/tags/'
+      path: '/'
+      fullPath: '/tags/'
+      preLoaderRoute: typeof TagsIndexRouteImport
+      parentRoute: typeof TagsRoute
     }
     '/jobs/': {
       id: '/jobs/'
@@ -425,6 +462,16 @@ const JobsRouteChildren: JobsRouteChildren = {
 
 const JobsRouteWithChildren = JobsRoute._addFileChildren(JobsRouteChildren)
 
+interface TagsRouteChildren {
+  TagsIndexRoute: typeof TagsIndexRoute
+}
+
+const TagsRouteChildren: TagsRouteChildren = {
+  TagsIndexRoute: TagsIndexRoute,
+}
+
+const TagsRouteWithChildren = TagsRoute._addFileChildren(TagsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ColumnDefinitionsRoute: ColumnDefinitionsRouteWithChildren,
@@ -433,6 +480,7 @@ const rootRouteChildren: RootRouteChildren = {
   JobsRoute: JobsRouteWithChildren,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
+  TagsRoute: TagsRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

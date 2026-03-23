@@ -115,13 +115,8 @@ export const SidebarNavUI = ({
 };
 
 export const SidebarNav = () => {
-  const {
-    isMobile,
-    isCollapsed,
-    isMobileExpanded,
-    isMobileCollapsed,
-    toggle,
-  } = useLayout();
+  const { isMobile, isCollapsed, isMobileExpanded, isMobileCollapsed, toggle } =
+    useLayout();
   const router = useRouter();
   const { logout } = sdk.auth.logout();
   const pathname = router.state.location.pathname;
@@ -175,6 +170,12 @@ export const SidebarNav = () => {
         label="Column Definitions"
         selected={pathname.startsWith(ApplicationRoute.ColumnDefinitions)}
         onClick={() => handleClick(ApplicationRoute.ColumnDefinitions)}
+      />
+      <SidebarNavItem
+        icon={IconName.Label}
+        label="Tags"
+        selected={pathname.startsWith(ApplicationRoute.Tags)}
+        onClick={() => handleClick(ApplicationRoute.Tags)}
       />
       <SidebarNavItem
         icon={IconName.Work}
