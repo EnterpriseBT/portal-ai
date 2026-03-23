@@ -42,30 +42,30 @@ Flat, org-scoped tags that can be assigned to `connector_entities` for organizat
 
 ### Checklist
 
-- [ ] Create `entity-tags.table.ts`
-  - [ ] Spread `baseColumns`
-  - [ ] Add `organizationId` — `text`, not null, FK → `organizations.id`
-  - [ ] Add `name` — `text`, not null
-  - [ ] Add `color` — `text`, nullable
-  - [ ] Add `description` — `text`, nullable
-  - [ ] Export as `entityTags`
-- [ ] Create `entity-tag-assignments.table.ts`
-  - [ ] Spread `baseColumns`
-  - [ ] Add `organizationId` — `text`, not null, FK → `organizations.id`
-  - [ ] Add `connectorEntityId` — `text`, not null, FK → `connector_entities.id`
-  - [ ] Add `entityTagId` — `text`, not null, FK → `entity_tags.id`
-  - [ ] Add `unique("entity_tag_assignments_entity_tag_unique")` on `(connectorEntityId, entityTagId)`
-  - [ ] Export as `entityTagAssignments`
-- [ ] Update `schema/index.ts`
-  - [ ] Add `export { entityTags } from "./entity-tags.table.js"`
-  - [ ] Add `export { entityTagAssignments } from "./entity-tag-assignments.table.js"`
-- [ ] Run `npm run db:generate` from `apps/api/` and confirm migration file is created
-- [ ] Run `npm run db:migrate` from `apps/api/` and confirm migration applies cleanly
+- [x] Create `entity-tags.table.ts`
+  - [x] Spread `baseColumns`
+  - [x] Add `organizationId` — `text`, not null, FK → `organizations.id`
+  - [x] Add `name` — `text`, not null
+  - [x] Add `color` — `text`, nullable
+  - [x] Add `description` — `text`, nullable
+  - [x] Export as `entityTags`
+- [x] Create `entity-tag-assignments.table.ts`
+  - [x] Spread `baseColumns`
+  - [x] Add `organizationId` — `text`, not null, FK → `organizations.id`
+  - [x] Add `connectorEntityId` — `text`, not null, FK → `connector_entities.id`
+  - [x] Add `entityTagId` — `text`, not null, FK → `entity_tags.id`
+  - [x] Add `unique("entity_tag_assignments_entity_tag_unique")` on `(connectorEntityId, entityTagId)`
+  - [x] Export as `entityTagAssignments`
+- [x] Update `schema/index.ts`
+  - [x] Add `export { entityTags } from "./entity-tags.table.js"`
+  - [x] Add `export { entityTagAssignments } from "./entity-tag-assignments.table.js"`
+- [x] Run `npm run db:generate` from `apps/api/` and confirm migration file is created
+- [x] Run `npm run db:migrate` from `apps/api/` and confirm migration applies cleanly
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run build` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run build` passes from repo root
 
 ---
 
