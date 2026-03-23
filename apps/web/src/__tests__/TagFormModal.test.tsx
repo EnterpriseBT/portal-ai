@@ -6,6 +6,22 @@ const { TagFormModal } = await import(
   "../components/TagFormModal.component"
 );
 
+// Mock canvas context for ColorPicker's color wheel
+jest
+  .spyOn(HTMLCanvasElement.prototype, "getContext")
+  .mockReturnValue({
+    clearRect: jest.fn(),
+    createImageData: jest.fn().mockReturnValue({
+      data: new Uint8ClampedArray(4),
+    }),
+    putImageData: jest.fn(),
+    beginPath: jest.fn(),
+    arc: jest.fn(),
+    stroke: jest.fn(),
+    strokeStyle: "",
+    lineWidth: 0,
+  } as unknown as CanvasRenderingContext2D);
+
 const existingTag: EntityTag = {
   id: "tag-1",
   organizationId: "org-1",
@@ -44,8 +60,14 @@ describe("TagFormModal", () => {
   it("should render empty form fields in create mode", () => {
     render(<TagFormModal {...defaultProps} />);
     expect(screen.getByLabelText(/Name/)).toHaveValue("");
-    expect(screen.getByLabelText(/Color/)).toHaveValue("");
     expect(screen.getByLabelText(/Description/)).toHaveValue("");
+  });
+
+  it("should render color picker with default color samples", () => {
+    render(<TagFormModal {...defaultProps} />);
+    expect(screen.getByLabelText("Hex color value")).toBeInTheDocument();
+    expect(screen.getByLabelText("Toggle color picker")).toBeInTheDocument();
+    expect(screen.getByText("Samples")).toBeInTheDocument();
   });
 
   it("should render 'Create' button text in create mode", () => {
@@ -63,7 +85,7 @@ describe("TagFormModal", () => {
   it("should populate form fields from tag in edit mode", () => {
     render(<TagFormModal {...defaultProps} tag={existingTag} />);
     expect(screen.getByLabelText(/Name/)).toHaveValue("Production");
-    expect(screen.getByLabelText(/Color/)).toHaveValue("#EF4444");
+    expect(screen.getByLabelText("Hex color value")).toHaveValue("#EF4444");
     expect(screen.getByLabelText(/Description/)).toHaveValue(
       "Production environment"
     );
@@ -85,36 +107,38 @@ describe("TagFormModal", () => {
     expect(defaultProps.onSubmit).not.toHaveBeenCalled();
   });
 
-  it("should show color validation error for invalid hex", async () => {
-    render(<TagFormModal {...defaultProps} />);
-    fireEvent.change(screen.getByLabelText(/Color/), {
-      target: { value: "not-a-color" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() => {
-      expect(
-        screen.getByText("Color must be a valid hex code (e.g. #FF0000)")
-      ).toBeInTheDocument();
-    });
-    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
-  });
-
-  it("should not show color error for valid hex", async () => {
+  it("should submit with color when a sample is clicked", async () => {
     const onSubmit = jest.fn();
     render(<TagFormModal {...defaultProps} onSubmit={onSubmit} />);
     fireEvent.change(screen.getByLabelText(/Name/), {
       target: { value: "Test" },
     });
-    fireEvent.change(screen.getByLabelText(/Color/), {
+    fireEvent.click(screen.getByLabelText("Select color Red"));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        name: "Test",
+        color: "#ef4444",
+      });
+    });
+  });
+
+  it("should submit with color when valid hex is typed", async () => {
+    const onSubmit = jest.fn();
+    render(<TagFormModal {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Test" },
+    });
+    fireEvent.change(screen.getByLabelText("Hex color value"), {
       target: { value: "#3B82F6" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalled();
+      expect(onSubmit).toHaveBeenCalledWith({
+        name: "Test",
+        color: "#3B82F6",
+      });
     });
-    expect(
-      screen.queryByText("Color must be a valid hex code (e.g. #FF0000)")
-    ).not.toBeInTheDocument();
   });
 
   it("should show field error on blur", async () => {
@@ -135,7 +159,7 @@ describe("TagFormModal", () => {
     fireEvent.change(screen.getByLabelText(/Name/), {
       target: { value: "Staging" },
     });
-    fireEvent.change(screen.getByLabelText(/Color/), {
+    fireEvent.change(screen.getByLabelText("Hex color value"), {
       target: { value: "#F59E0B" },
     });
     fireEvent.change(screen.getByLabelText(/Description/), {
@@ -151,7 +175,7 @@ describe("TagFormModal", () => {
     });
   });
 
-  it("should omit color and description when empty", async () => {
+  it("should omit color and description when not changed", async () => {
     const onSubmit = jest.fn();
     render(<TagFormModal {...defaultProps} onSubmit={onSubmit} />);
     fireEvent.change(screen.getByLabelText(/Name/), {

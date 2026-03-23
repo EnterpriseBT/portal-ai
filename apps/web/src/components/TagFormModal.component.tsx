@@ -5,7 +5,14 @@ import type {
   EntityTagCreateRequestBody,
   EntityTagUpdateRequestBody,
 } from "@portalai/core/contracts";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import {
+  Button,
+  Modal,
+  Stack,
+  Typography,
+  ColorPicker,
+  DEFAULT_COLOR_SAMPLES,
+} from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
 // ── Form types ──────────────────────────────────────────────────────
@@ -21,7 +28,8 @@ interface TagFormErrors {
   color?: string;
 }
 
-const INITIAL_FORM: TagFormState = { name: "", color: "", description: "" };
+const DEFAULT_TAG_COLOR = "#3b82f6";
+const INITIAL_FORM: TagFormState = { name: "", color: DEFAULT_TAG_COLOR, description: "" };
 
 function validateTagForm(form: TagFormState): TagFormErrors {
   const errors: TagFormErrors = {};
@@ -139,19 +147,20 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           fullWidth
           autoFocus
         />
-        <TextField
-          label="Color"
-          value={form.color}
-          onChange={(e) => handleChange("color", e.target.value)}
-          onBlur={() => handleBlur("color")}
-          error={touched.color && !!errors.color}
-          helperText={
-            (touched.color && errors.color) ||
-            "Optional hex color (e.g. #3B82F6)"
-          }
-          fullWidth
-          placeholder="#3B82F6"
-        />
+        <Stack spacing={0.5}>
+          <ColorPicker
+            label="Color"
+            value={form.color}
+            onChange={(color) => handleChange("color", color)}
+            samples={DEFAULT_COLOR_SAMPLES}
+            wheelSize={120}
+          />
+          {touched.color && errors.color && (
+            <Typography variant="caption" color="error">
+              {errors.color}
+            </Typography>
+          )}
+        </Stack>
         <TextField
           label="Description"
           value={form.description}

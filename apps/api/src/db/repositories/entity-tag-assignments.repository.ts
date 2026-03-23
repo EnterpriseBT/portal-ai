@@ -5,7 +5,7 @@
  * combine assignment rows with their parent tag details.
  */
 
-import { eq, and, inArray, isNull } from "drizzle-orm";
+import { eq, and, not, inArray, isNull } from "drizzle-orm";
 
 import { entityTagAssignments, entityTags } from "../schema/index.js";
 import { db } from "../client.js";
@@ -138,6 +138,45 @@ export class EntityTagAssignmentsRepository extends Repository<
         )
       )
       .limit(1);
+    return row as EntityTagAssignmentSelect | undefined;
+  }
+
+  /**
+   * Return an existing soft-deleted assignment for a (connectorEntityId, entityTagId) pair,
+   * or undefined if none exists. Used to restore a previously removed assignment.
+   */
+  async findSoftDeleted(
+    connectorEntityId: string,
+    entityTagId: string,
+    client: DbClient = db
+  ): Promise<EntityTagAssignmentSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(entityTagAssignments.connectorEntityId, connectorEntityId),
+          eq(entityTagAssignments.entityTagId, entityTagId),
+          not(isNull(entityTagAssignments.deleted))
+        )
+      )
+      .limit(1);
+    return row as EntityTagAssignmentSelect | undefined;
+  }
+
+  /**
+   * Restore a soft-deleted assignment by clearing the deleted/deletedBy fields.
+   */
+  async restore(
+    id: string,
+    userId: string,
+    client: DbClient = db
+  ): Promise<EntityTagAssignmentSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: null, deletedBy: null, updated: Date.now(), updatedBy: userId } as any)
+      .where(eq(entityTagAssignments.id, id))
+      .returning();
     return row as EntityTagAssignmentSelect | undefined;
   }
 }

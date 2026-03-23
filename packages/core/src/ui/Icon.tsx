@@ -41,6 +41,7 @@ import LinkIcon from "@mui/icons-material/Link";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import DataObjectIcon from "@mui/icons-material/DataObject";
 import LabelIcon from "@mui/icons-material/Label";
+import ColorizeIcon from "@mui/icons-material/Colorize";
 
 export enum IconName {
   Home = "home",
@@ -84,6 +85,7 @@ export enum IconName {
   ViewColumn = "view_column",
   DataObject = "data_object",
   Label = "label",
+  Colorize = "colorize",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -180,6 +182,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <DataObjectIcon ref={ref} {...props} />;
       case IconName.Label:
         return <LabelIcon ref={ref} {...props} />;
+      case IconName.Colorize:
+        return <ColorizeIcon ref={ref} {...props} />;
       default:
         // If no name is provided or the name doesn't match, render children as a custom icon
         throw new Error(

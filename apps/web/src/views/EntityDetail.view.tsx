@@ -8,9 +8,9 @@ import type {
   EntityRecordCountResponsePayload,
   FieldMappingListResponsePayload,
   EntityTagListResponsePayload,
+  AssignedEntityTag,
   ApiSuccessResponse,
 } from "@portalai/core/contracts";
-import type { EntityTag } from "@portalai/core/models";
 import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
 import { IconName, AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
@@ -96,9 +96,11 @@ export interface EntityDetailViewUIProps {
   /** Called when a record row is clicked. Overrides the default navigation behaviour — useful for testing. */
   onRecordClick?: (recordId: string) => void;
   /** Tags currently assigned to this entity. */
-  tags?: EntityTag[];
+  tags?: AssignedEntityTag[];
   /** Called when a tag is selected for assignment. */
   onAssignTag?: (entityTagId: string) => void;
+  /** Called when a tag chip's delete icon is clicked. */
+  onUnassignTag?: (assignmentId: string) => void;
   /** Search callback for the tag assignment autocomplete. */
   onSearchTags?: (query: string) => Promise<SelectOption[]>;
 }
@@ -115,6 +117,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   onRecordClick,
   tags,
   onAssignTag,
+  onUnassignTag,
   onSearchTags,
 }) => {
   const navigate = useNavigate();
@@ -240,12 +243,22 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                     key={tag.id}
                     label={tag.name}
                     size="small"
-                    sx={
-                      tag.color
-                        ? {
+                    icon={
+                      tag.color ? (
+                        <Box
+                          sx={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: "50%",
                             backgroundColor: tag.color,
-                            color: "white",
-                          }
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : undefined
+                    }
+                    onDelete={
+                      onUnassignTag
+                        ? () => onUnassignTag(tag.assignmentId)
                         : undefined
                     }
                   />
@@ -387,6 +400,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 
   const tagsResult = sdk.entityTagAssignments.listByEntity(entityId);
   const assignMutation = sdk.entityTagAssignments.assign(entityId);
+  const unassignMutation = sdk.entityTagAssignments.unassign(entityId);
 
   const invalidateTags = useCallback(() => {
     queryClient.invalidateQueries({
@@ -402,6 +416,16 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
       );
     },
     [assignMutation, invalidateTags]
+  );
+
+  const handleUnassignTag = useCallback(
+    (assignmentId: string) => {
+      unassignMutation.mutate(
+        { assignmentId },
+        { onSuccess: invalidateTags }
+      );
+    },
+    [unassignMutation, invalidateTags]
   );
 
   const handleSearchTags = useCallback(
@@ -450,6 +474,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             }
             tags={tagsResult.data?.tags}
             onAssignTag={handleAssignTag}
+            onUnassignTag={handleUnassignTag}
             onSearchTags={handleSearchTags}
           />
         );

@@ -10,6 +10,7 @@ import type {
   EntityTagAssignmentCreateResponsePayload,
   EntityTagAssignmentListResponsePayload,
 } from "@portalai/core/contracts";
+import { useMutation } from "@tanstack/react-query";
 import { useInfiniteFilterOptions } from "@portalai/core/ui";
 import type { InfiniteFilterOptionsConfig } from "@portalai/core/ui";
 
@@ -87,11 +88,18 @@ export const entityTagAssignments = {
       method: "POST",
     }),
 
-  remove: (connectorEntityId: string, assignmentId: string) =>
-    useAuthMutation<void, void>({
-      url: `${entityTagAssignmentUrl(connectorEntityId)}/${encodeURIComponent(assignmentId)}`,
-      method: "DELETE",
-    }),
+  unassign: (connectorEntityId: string) => {
+    const { fetchWithAuth } = useAuthFetch();
+
+    return useMutation<void, unknown, { assignmentId: string }>({
+      mutationFn: async ({ assignmentId }) => {
+        await fetchWithAuth(
+          `${entityTagAssignmentUrl(connectorEntityId)}/${encodeURIComponent(assignmentId)}`,
+          { method: "DELETE" }
+        );
+      },
+    });
+  },
 };
 
 const ENTITY_TAG_FILTER_BASE = {

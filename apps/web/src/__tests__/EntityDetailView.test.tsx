@@ -286,6 +286,7 @@ describe("EntityDetailViewUI", () => {
         updatedBy: null,
         deleted: null,
         deletedBy: null,
+        assignmentId: "assignment-1",
       },
       {
         id: "tag-2",
@@ -299,6 +300,7 @@ describe("EntityDetailViewUI", () => {
         updatedBy: null,
         deleted: null,
         deletedBy: null,
+        assignmentId: "assignment-2",
       },
     ];
     render(<EntityDetailViewUI entity={stubEntity} tags={tags} />);

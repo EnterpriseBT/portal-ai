@@ -25,8 +25,14 @@ export type EntityTagAssignmentCreateResponsePayload = z.infer<
 
 // ── List ──────────────────────────────────────────────────────────────
 
+export const AssignedEntityTagSchema = EntityTagSchema.extend({
+  assignmentId: z.string(),
+});
+
+export type AssignedEntityTag = z.infer<typeof AssignedEntityTagSchema>;
+
 export const EntityTagAssignmentListResponsePayloadSchema = z.object({
-  tags: z.array(EntityTagSchema),
+  tags: z.array(AssignedEntityTagSchema),
 });
 
 export type EntityTagAssignmentListResponsePayload = z.infer<
