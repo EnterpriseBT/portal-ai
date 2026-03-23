@@ -150,34 +150,34 @@ Flat, org-scoped tags that can be assigned to `connector_entities` for organizat
 
 ### Checklist
 
-- [ ] Create `entity-tag.contract.ts`
-  - [ ] `EntityTagListRequestQuerySchema` — extends `PaginationRequestQuerySchema` with optional `search: z.string()` and `sortBy: z.enum(["name", "created"])`
-  - [ ] `EntityTagListResponsePayloadSchema` — `PaginatedResponsePayloadSchema` with `entityTags: z.array(EntityTagSchema)`
-  - [ ] `EntityTagWithAssignmentCountSchema` — `EntityTagSchema.extend({ assignmentCount: z.number().int().min(0) })` for enriched list views
-  - [ ] `EntityTagGetResponsePayloadSchema` — `{ entityTag: EntityTagSchema }`
-  - [ ] `EntityTagCreateRequestBodySchema` — `{ name: z.string().min(1), color: z.string().optional(), description: z.string().optional() }`
-  - [ ] `EntityTagCreateResponsePayloadSchema` — `{ entityTag: EntityTagSchema }`
-  - [ ] `EntityTagUpdateRequestBodySchema` — all fields optional (`name?`, `color?`, `description?`), refine to require at least one field present
-  - [ ] `EntityTagUpdateResponsePayloadSchema` — `{ entityTag: EntityTagSchema }`
-  - [ ] Export all schemas and their inferred types
-- [ ] Create `entity-tag-assignment.contract.ts`
-  - [ ] `EntityTagAssignmentCreateRequestBodySchema` — `{ entityTagId: z.string() }`
-  - [ ] `EntityTagAssignmentCreateResponsePayloadSchema` — `{ entityTagAssignment: EntityTagAssignmentSchema }`
-  - [ ] `EntityTagAssignmentListResponsePayloadSchema` — `{ tags: z.array(EntityTagSchema) }` (returns the tag objects, not raw assignments)
-  - [ ] `ConnectorEntityWithTagsSchema` — `ConnectorEntitySchema.extend({ tags: z.array(EntityTagSchema) })`
-  - [ ] `ConnectorEntityListWithTagsResponsePayloadSchema` — `PaginatedResponsePayloadSchema` with `connectorEntities: z.array(ConnectorEntityWithTagsSchema)`
-  - [ ] Export all schemas and their inferred types
-- [ ] Update `connector-entity.contract.ts`
-  - [ ] Add `"tags"` to the `include` enum in `ConnectorEntityListRequestQuerySchema`
-  - [ ] Add `tagIds: z.string().optional()` to `ConnectorEntityListRequestQuerySchema` — accepts a comma-separated string of tag IDs (e.g. `tagIds=id1,id2`); the API splits and filters to entities assigned any of those tags
-- [ ] Update `contracts/index.ts`
-  - [ ] Add `export * from "./entity-tag.contract.js"`
-  - [ ] Add `export * from "./entity-tag-assignment.contract.js"`
+- [x] Create `entity-tag.contract.ts`
+  - [x] `EntityTagListRequestQuerySchema` — extends `PaginationRequestQuerySchema` with optional `search: z.string()` and `sortBy: z.enum(["name", "created"])`
+  - [x] `EntityTagListResponsePayloadSchema` — `PaginatedResponsePayloadSchema` with `entityTags: z.array(EntityTagSchema)`
+  - [x] `EntityTagWithAssignmentCountSchema` — `EntityTagSchema.extend({ assignmentCount: z.number().int().min(0) })` for enriched list views
+  - [x] `EntityTagGetResponsePayloadSchema` — `{ entityTag: EntityTagSchema }`
+  - [x] `EntityTagCreateRequestBodySchema` — `{ name: z.string().min(1), color: z.string().optional(), description: z.string().optional() }`
+  - [x] `EntityTagCreateResponsePayloadSchema` — `{ entityTag: EntityTagSchema }`
+  - [x] `EntityTagUpdateRequestBodySchema` — all fields optional (`name?`, `color?`, `description?`), refine to require at least one field present
+  - [x] `EntityTagUpdateResponsePayloadSchema` — `{ entityTag: EntityTagSchema }`
+  - [x] Export all schemas and their inferred types
+- [x] Create `entity-tag-assignment.contract.ts`
+  - [x] `EntityTagAssignmentCreateRequestBodySchema` — `{ entityTagId: z.string() }`
+  - [x] `EntityTagAssignmentCreateResponsePayloadSchema` — `{ entityTagAssignment: EntityTagAssignmentSchema }`
+  - [x] `EntityTagAssignmentListResponsePayloadSchema` — `{ tags: z.array(EntityTagSchema) }` (returns the tag objects, not raw assignments)
+  - [x] `ConnectorEntityWithTagsSchema` — `ConnectorEntitySchema.extend({ tags: z.array(EntityTagSchema) })`
+  - [x] `ConnectorEntityListWithTagsResponsePayloadSchema` — `PaginatedResponsePayloadSchema` with `connectorEntities: z.array(ConnectorEntityWithTagsSchema)`
+  - [x] Export all schemas and their inferred types
+- [x] Update `connector-entity.contract.ts`
+  - [x] Add `"tags"` to the `include` enum in `ConnectorEntityListRequestQuerySchema`
+  - [x] Add `tagIds: z.string().optional()` to `ConnectorEntityListRequestQuerySchema` — accepts a comma-separated string of tag IDs (e.g. `tagIds=id1,id2`); the API splits and filters to entities assigned any of those tags
+- [x] Update `contracts/index.ts`
+  - [x] Add `export * from "./entity-tag.contract.js"`
+  - [x] Add `export * from "./entity-tag-assignment.contract.js"`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run build` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run build` passes from repo root
 
 ---
 

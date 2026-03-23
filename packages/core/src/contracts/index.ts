@@ -45,3 +45,9 @@ export * from "./upload.contract.js";
 
 /** Filter contracts — schemas & types */
 export * from "./filter.contract.js";
+
+/** Entity Tag contracts — schemas & types */
+export * from "./entity-tag.contract.js";
+
+/** Entity Tag Assignment contracts — schemas & types */
+export * from "./entity-tag-assignment.contract.js";
