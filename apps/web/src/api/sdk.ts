@@ -3,6 +3,7 @@ import { columnDefinitions } from "./column-definitions.api";
 import { connectorDefinitions } from "./connector-definitions.api";
 import { connectorEntities } from "./connector-entities.api";
 import { connectorInstances } from "./connector-instances.api";
+import { entityTags } from "./entity-tags.api";
 import { entityRecords } from "./entity-records.api";
 import { fieldMappings } from "./field-mappings.api";
 import { health } from "./health.api";
@@ -19,6 +20,7 @@ export const sdk = {
   connectorEntities,
   connectorInstances,
   entityRecords,
+  entityTags,
   fieldMappings,
   health,
   jobs,

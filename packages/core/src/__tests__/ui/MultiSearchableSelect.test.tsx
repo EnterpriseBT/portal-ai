@@ -2,9 +2,9 @@ import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
-import { SearchableSelect } from "../../ui/searchable-select/SearchableSelect";
-import { AsyncSearchableSelect } from "../../ui/searchable-select/AsyncSearchableSelect";
-import { InfiniteScrollSelect } from "../../ui/searchable-select/InfiniteScrollSelect";
+import { MultiSearchableSelect } from "../../ui/searchable-select/MultiSearchableSelect";
+import { MultiAsyncSearchableSelect } from "../../ui/searchable-select/MultiAsyncSearchableSelect";
+import { MultiInfiniteScrollSelect } from "../../ui/searchable-select/MultiInfiniteScrollSelect";
 import type { SelectOption } from "../../ui/searchable-select/types";
 
 const OPTIONS: SelectOption[] = [
@@ -15,15 +15,15 @@ const OPTIONS: SelectOption[] = [
   { value: "elderberry", label: "Elderberry" },
 ];
 
-// ── SearchableSelect (synchronous) ────────────────────────────────────────────
+// ── MultiSearchableSelect ────────────────────────────────────────────────────
 
-describe("SearchableSelect", () => {
+describe("MultiSearchableSelect", () => {
   it("renders with the provided options", async () => {
     render(
-      <SearchableSelect
-        label="Fruit"
+      <MultiSearchableSelect
+        label="Fruits"
         options={OPTIONS}
-        value={null}
+        value={[]}
         onChange={() => {}}
       />
     );
@@ -31,15 +31,64 @@ describe("SearchableSelect", () => {
     await userEvent.click(screen.getByRole("combobox"));
     expect(screen.getByText("Apple")).toBeInTheDocument();
     expect(screen.getByText("Banana")).toBeInTheDocument();
-    expect(screen.getByText("Cherry")).toBeInTheDocument();
+  });
+
+  it("calls onChange with string[] when options are selected", async () => {
+    const handleChange = jest.fn();
+    render(
+      <MultiSearchableSelect
+        label="Fruits"
+        options={OPTIONS}
+        value={[]}
+        onChange={handleChange}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("combobox"));
+    await userEvent.click(screen.getByText("Cherry"));
+
+    expect(handleChange).toHaveBeenCalledWith(["cherry"]);
+  });
+
+  it("shows selected values as chips", () => {
+    render(
+      <MultiSearchableSelect
+        label="Fruits"
+        options={OPTIONS}
+        value={["apple", "banana"]}
+        onChange={() => {}}
+      />
+    );
+
+    expect(screen.getByText("Apple")).toBeInTheDocument();
+    expect(screen.getByText("Banana")).toBeInTheDocument();
+  });
+
+  it("calls onChange without the removed value when a chip is deleted", async () => {
+    const handleChange = jest.fn();
+    render(
+      <MultiSearchableSelect
+        label="Fruits"
+        options={OPTIONS}
+        value={["apple", "banana"]}
+        onChange={handleChange}
+      />
+    );
+
+    // Find the delete button on the "Apple" chip
+    const appleChip = screen.getByText("Apple").closest(".MuiChip-root")!;
+    const deleteBtn = appleChip.querySelector("[data-testid='CancelIcon']")!;
+    await userEvent.click(deleteBtn);
+
+    expect(handleChange).toHaveBeenCalledWith(["banana"]);
   });
 
   it("filters options when the user types", async () => {
     render(
-      <SearchableSelect
-        label="Fruit"
+      <MultiSearchableSelect
+        label="Fruits"
         options={OPTIONS}
-        value={null}
+        value={[]}
         onChange={() => {}}
       />
     );
@@ -48,47 +97,13 @@ describe("SearchableSelect", () => {
     await userEvent.type(input, "an");
 
     expect(screen.getByText("Banana")).toBeInTheDocument();
-    expect(screen.queryByText("Apple")).not.toBeInTheDocument();
-  });
-
-  it("calls onChange with the option value when an option is selected", async () => {
-    const handleChange = jest.fn();
-    render(
-      <SearchableSelect
-        label="Fruit"
-        options={OPTIONS}
-        value={null}
-        onChange={handleChange}
-      />
-    );
-
-    await userEvent.click(screen.getByRole("combobox"));
-    await userEvent.click(screen.getByText("Cherry"));
-
-    expect(handleChange).toHaveBeenCalledWith("cherry");
-  });
-
-  it("calls onChange(null) when the selection is cleared", async () => {
-    const handleChange = jest.fn();
-    render(
-      <SearchableSelect
-        label="Fruit"
-        options={OPTIONS}
-        value="apple"
-        onChange={handleChange}
-      />
-    );
-
-    const clearButton = screen.getByTitle("Clear");
-    await userEvent.click(clearButton);
-
-    expect(handleChange).toHaveBeenCalledWith(null);
+    expect(screen.queryByText("Cherry")).not.toBeInTheDocument();
   });
 });
 
-// ── AsyncSearchableSelect (search-on-type) ────────────────────────────────────
+// ── MultiAsyncSearchableSelect ───────────────────────────────────────────────
 
-describe("AsyncSearchableSelect", () => {
+describe("MultiAsyncSearchableSelect", () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -98,36 +113,16 @@ describe("AsyncSearchableSelect", () => {
     jest.useRealTimers();
   });
 
-  it("does not call onSearch synchronously on every keystroke", async () => {
-    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
-    render(
-      <AsyncSearchableSelect
-        label="Fruit"
-        value={null}
-        onChange={() => {}}
-        onSearch={onSearch}
-        debounceMs={300}
-      />
-    );
-
-    const input = screen.getByRole("combobox");
-    await user.type(input, "ban");
-
-    // Debounce not yet elapsed — onSearch should not have been called
-    expect(onSearch).not.toHaveBeenCalled();
-  });
-
-  it("calls onSearch after the debounce delay", async () => {
+  it("calls onSearch after debounce and shows results", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
       { value: "banana", label: "Banana" },
     ]);
 
     render(
-      <AsyncSearchableSelect
-        label="Fruit"
-        value={null}
+      <MultiAsyncSearchableSelect
+        label="Fruits"
+        value={[]}
         onChange={() => {}}
         onSearch={onSearch}
         debounceMs={300}
@@ -137,53 +132,43 @@ describe("AsyncSearchableSelect", () => {
     const input = screen.getByRole("combobox");
     await user.type(input, "ban");
 
-    act(() => {
-      jest.advanceTimersByTime(300);
-    });
+    // Not called before debounce
+    expect(onSearch).not.toHaveBeenCalled();
+
+    act(() => { jest.advanceTimersByTime(300); });
 
     await waitFor(() => {
       expect(onSearch).toHaveBeenCalledWith("ban");
     });
   });
 
-  it("replaces options with each new search result", async () => {
+  it("calls onChange with accumulated values on selection", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    let callCount = 0;
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockImplementation(async () => {
-      callCount++;
-      if (callCount === 1) return [{ value: "banana", label: "Banana" }];
-      return [{ value: "cherry", label: "Cherry" }];
-    });
+    const handleChange = jest.fn();
+    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
+      { value: "banana", label: "Banana" },
+      { value: "blueberry", label: "Blueberry" },
+    ]);
 
     render(
-      <AsyncSearchableSelect
-        label="Fruit"
-        value={null}
-        onChange={() => {}}
+      <MultiAsyncSearchableSelect
+        label="Fruits"
+        value={[]}
+        onChange={handleChange}
         onSearch={onSearch}
         debounceMs={300}
       />
     );
 
     const input = screen.getByRole("combobox");
-
-    // First search
     await user.type(input, "b");
     act(() => { jest.advanceTimersByTime(300); });
-    await waitFor(() => expect(onSearch).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(onSearch).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText("Banana")).toBeInTheDocument());
+    await user.click(screen.getByText("Banana"));
 
-    // Clear input and type new query
-    await user.clear(input);
-    await user.type(input, "c");
-    act(() => { jest.advanceTimersByTime(300); });
-    await waitFor(() => expect(onSearch).toHaveBeenCalledTimes(2));
-
-    // Previous result should be replaced
-    await waitFor(() => {
-      expect(screen.queryByText("Banana")).not.toBeInTheDocument();
-      expect(screen.getByText("Cherry")).toBeInTheDocument();
-    });
+    expect(handleChange).toHaveBeenCalledWith(["banana"]);
   });
 
   it("shows a loading indicator while the search is in-flight", async () => {
@@ -194,9 +179,9 @@ describe("AsyncSearchableSelect", () => {
     );
 
     render(
-      <AsyncSearchableSelect
-        label="Fruit"
-        value={null}
+      <MultiAsyncSearchableSelect
+        label="Fruits"
+        value={[]}
         onChange={() => {}}
         onSearch={onSearch}
         debounceMs={300}
@@ -208,18 +193,15 @@ describe("AsyncSearchableSelect", () => {
     act(() => { jest.advanceTimersByTime(300); });
 
     await waitFor(() => expect(onSearch).toHaveBeenCalled());
-
-    // Loading spinner should be visible while in-flight
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
 
-    // Resolve the search
     await act(async () => { resolveSearch([{ value: "banana", label: "Banana" }]); });
   });
 });
 
-// ── InfiniteScrollSelect (search + paginated scroll) ──────────────────────────
+// ── MultiInfiniteScrollSelect ────────────────────────────────────────────────
 
-describe("InfiniteScrollSelect", () => {
+describe("MultiInfiniteScrollSelect", () => {
   let observerCallback: IntersectionObserverCallback;
   let mockObserver: { observe: jest.Mock; disconnect: jest.Mock; unobserve: jest.Mock };
 
@@ -247,9 +229,9 @@ describe("InfiniteScrollSelect", () => {
       .mockResolvedValue({ options: OPTIONS, hasMore: false });
 
     render(
-      <InfiniteScrollSelect
-        label="Fruit"
-        value={null}
+      <MultiInfiniteScrollSelect
+        label="Fruits"
+        value={[]}
         onChange={() => {}}
         fetchPage={fetchPage}
         pageSize={5}
@@ -263,6 +245,28 @@ describe("InfiniteScrollSelect", () => {
     });
   });
 
+  it("calls onChange with selected values", async () => {
+    const handleChange = jest.fn();
+    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+      .mockResolvedValue({ options: OPTIONS, hasMore: false });
+
+    render(
+      <MultiInfiniteScrollSelect
+        label="Fruits"
+        value={[]}
+        onChange={handleChange}
+        fetchPage={fetchPage}
+        pageSize={5}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("combobox"));
+    await waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+    await userEvent.click(screen.getByText("Cherry"));
+    expect(handleChange).toHaveBeenCalledWith(["cherry"]);
+  });
+
   it("appends results when the scroll sentinel enters the viewport", async () => {
     const page0 = OPTIONS.slice(0, 3).map((o) => ({ ...o }));
     const page1 = OPTIONS.slice(3).map((o) => ({ ...o }));
@@ -272,23 +276,20 @@ describe("InfiniteScrollSelect", () => {
       .mockResolvedValueOnce({ options: page1, hasMore: false });
 
     render(
-      <InfiniteScrollSelect
-        label="Fruit"
-        value={null}
+      <MultiInfiniteScrollSelect
+        label="Fruits"
+        value={[]}
         onChange={() => {}}
         fetchPage={fetchPage}
         pageSize={3}
       />
     );
 
-    // Open dropdown — triggers page 0
     await userEvent.click(screen.getByRole("combobox"));
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(1));
 
-    // Verify first page items are present
     expect(screen.getByText("Apple")).toBeInTheDocument();
 
-    // Simulate sentinel entering viewport to trigger page 1
     await act(async () => {
       observerCallback(
         [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -308,9 +309,9 @@ describe("InfiniteScrollSelect", () => {
       .mockResolvedValue({ options: [{ value: "apple", label: "Apple" }], hasMore: false });
 
     render(
-      <InfiniteScrollSelect
-        label="Fruit"
-        value={null}
+      <MultiInfiniteScrollSelect
+        label="Fruits"
+        value={[]}
         onChange={() => {}}
         fetchPage={fetchPage}
         pageSize={20}
@@ -338,9 +339,9 @@ describe("InfiniteScrollSelect", () => {
       .mockResolvedValue({ options: OPTIONS, hasMore: false });
 
     render(
-      <InfiniteScrollSelect
-        label="Fruit"
-        value={null}
+      <MultiInfiniteScrollSelect
+        label="Fruits"
+        value={[]}
         onChange={() => {}}
         fetchPage={fetchPage}
         pageSize={5}
@@ -350,7 +351,6 @@ describe("InfiniteScrollSelect", () => {
     await userEvent.click(screen.getByRole("combobox"));
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(1));
 
-    // Simulate sentinel intersection — hasMore is false, so no additional fetch
     await act(async () => {
       observerCallback(
         [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -358,7 +358,6 @@ describe("InfiniteScrollSelect", () => {
       );
     });
 
-    // Still only one call
     expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 });

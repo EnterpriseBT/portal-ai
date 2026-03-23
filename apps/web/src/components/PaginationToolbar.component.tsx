@@ -24,7 +24,17 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import IconButton from "@mui/material/IconButton";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
-import { Button, Typography, SearchableSelect } from "@portalai/core/ui";
+import {
+  Button,
+  Typography,
+  SearchableSelect,
+  AsyncSearchableSelect,
+  InfiniteScrollSelect,
+  MultiSearchableSelect,
+  MultiAsyncSearchableSelect,
+  MultiInfiniteScrollSelect,
+} from "@portalai/core/ui";
+import type { FetchPageParams, FetchPageResult, SelectOption } from "@portalai/core/ui";
 
 import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/contracts";
 import {
@@ -74,9 +84,28 @@ export interface TextFilterConfig extends BaseFilterConfig {
   placeholder?: string;
 }
 
+export interface SearchableSelectFilterConfig extends BaseFilterConfig {
+  type: "searchable-select";
+  /** Static options for client-side filtering. */
+  options?: FilterOption[];
+  /** Async search callback. When provided, renders an AsyncSearchableSelect. */
+  onSearch?: (query: string) => Promise<SelectOption[]>;
+  /** Paginated fetch callback. When provided, renders an InfiniteScrollSelect. */
+  fetchPage?: (params: FetchPageParams) => Promise<FetchPageResult>;
+  /** Map of value → label for resolving display labels (used with async/paginated modes). */
+  labelMap?: Record<string, string>;
+}
+
 export interface MultiSelectFilterConfig extends BaseFilterConfig {
   type: "multi-select";
-  options: FilterOption[];
+  /** Static options for client-side filtering. Used when the full list is available upfront. */
+  options?: FilterOption[];
+  /** Async search callback. When provided, renders a MultiAsyncSearchableSelect. */
+  onSearch?: (query: string) => Promise<SelectOption[]>;
+  /** Paginated fetch callback for large option sets. When provided, renders a MultiInfiniteScrollSelect. */
+  fetchPage?: (params: FetchPageParams) => Promise<FetchPageResult>;
+  /** Map of value → label for resolving display labels of selected values (used with async/paginated modes). */
+  labelMap?: Record<string, string>;
 }
 
 export type FilterConfig =
@@ -84,6 +113,7 @@ export type FilterConfig =
   | BooleanFilterConfig
   | NumberFilterConfig
   | TextFilterConfig
+  | SearchableSelectFilterConfig
   | MultiSelectFilterConfig;
 
 export interface SortFieldConfig {
@@ -622,45 +652,36 @@ export const PaginationToolbar = React.forwardRef<
                         />
                       )}
 
+                      {config.type === "searchable-select" && (() => {
+                        const singleProps = {
+                          value: (filters[config.field] ?? [])[0] ?? null,
+                          onChange: (val: string | null) => onFilterValueChange(config.field, val ?? ""),
+                          placeholder: `Select ${config.label.toLowerCase()}...`,
+                          size: "small" as const,
+                        };
+                        if (config.fetchPage) {
+                          return <InfiniteScrollSelect fetchPage={config.fetchPage} {...singleProps} />;
+                        }
+                        if (config.onSearch) {
+                          return <AsyncSearchableSelect onSearch={config.onSearch} {...singleProps} />;
+                        }
+                        return <SearchableSelect options={config.options ?? []} {...singleProps} />;
+                      })()}
+
                       {config.type === "multi-select" && (() => {
-                        const selected = filters[config.field] ?? [];
-                        return (
-                          <Box>
-                            <SearchableSelect
-                              options={config.options.filter(
-                                (o) => !selected.includes(o.value)
-                              )}
-                              value={null}
-                              onChange={(val) => {
-                                if (val && !selected.includes(val)) {
-                                  onFilterChange(config.field, [...selected, val]);
-                                }
-                              }}
-                              placeholder={`Select ${config.label.toLowerCase()}...`}
-                              size="small"
-                            />
-                            {selected.length > 0 && (
-                              <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap", mt: 1 }}>
-                                {selected.map((val) => {
-                                  const opt = config.options.find((o) => o.value === val);
-                                  return (
-                                    <Chip
-                                      key={val}
-                                      label={opt?.label ?? val}
-                                      size="small"
-                                      onDelete={() =>
-                                        onFilterChange(
-                                          config.field,
-                                          selected.filter((v) => v !== val)
-                                        )
-                                      }
-                                    />
-                                  );
-                                })}
-                              </Box>
-                            )}
-                          </Box>
-                        );
+                        const multiProps = {
+                          value: filters[config.field] ?? [],
+                          onChange: (values: string[]) => onFilterChange(config.field, values),
+                          placeholder: `Select ${config.label.toLowerCase()}...`,
+                          size: "small" as const,
+                        };
+                        if (config.fetchPage) {
+                          return <MultiInfiniteScrollSelect fetchPage={config.fetchPage} {...multiProps} />;
+                        }
+                        if (config.onSearch) {
+                          return <MultiAsyncSearchableSelect onSearch={config.onSearch} {...multiProps} />;
+                        }
+                        return <MultiSearchableSelect options={config.options ?? []} {...multiProps} />;
                       })()}
                     </Box>
                   ))}
@@ -844,11 +865,13 @@ export const PaginationToolbar = React.forwardRef<
 
               if (config?.type === "multi-select") {
                 return values.map((val) => {
-                  const opt = config.options.find((o) => o.value === val);
+                  const optLabel = config.options
+                    ? config.options.find((o) => o.value === val)?.label
+                    : config.labelMap?.[val];
                   return (
                     <Chip
                       key={`${field}-${val}`}
-                      label={`${label}: ${opt?.label ?? val}`}
+                      label={`${label}: ${optLabel ?? val}`}
                       size="small"
                       onDelete={() =>
                         onFilterChange(
@@ -859,6 +882,20 @@ export const PaginationToolbar = React.forwardRef<
                     />
                   );
                 });
+              }
+
+              if (config?.type === "searchable-select") {
+                const optLabel = config.options
+                  ? config.options.find((o) => o.value === values[0])?.label
+                  : config.labelMap?.[values[0]];
+                return (
+                  <Chip
+                    key={field}
+                    label={`${label}: ${optLabel ?? values[0]}`}
+                    size="small"
+                    onDelete={() => onFilterValueChange(field, "")}
+                  />
+                );
               }
 
               if (config?.type === "number" || config?.type === "text") {

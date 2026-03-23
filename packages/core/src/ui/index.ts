@@ -17,7 +17,7 @@ export * from "./FileUploader.js";
 export * from "./Stepper.js";
 export * from "./Breadcrumbs.js";
 export * from "./DataTable.js";
-export * from "./SearchableSelect.js";
+export * from "./searchable-select/index.js";
 
 /** Material UI */
 export {

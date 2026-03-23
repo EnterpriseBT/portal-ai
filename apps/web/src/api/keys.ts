@@ -4,6 +4,7 @@ import type { ConnectorEntityListRequestQuery } from "@portalai/core/contracts";
 import type { ConnectorInstanceListRequestQuery } from "@portalai/core/contracts";
 import type { EntityRecordListRequestQuery } from "@portalai/core/contracts";
 import type { FieldMappingListRequestQuery } from "@portalai/core/contracts";
+import type { EntityTagListRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 
 export const queryKeys = {
@@ -62,6 +63,13 @@ export const queryKeys = {
       [...queryKeys.entityRecords.root, "count", connectorEntityId] as const,
     get: (connectorEntityId: string, recordId: string) =>
       [...queryKeys.entityRecords.root, "get", connectorEntityId, recordId] as const,
+  },
+  entityTags: {
+    root: ["entityTags"] as const,
+    list: (params?: EntityTagListRequestQuery) =>
+      [...queryKeys.entityTags.root, "list", params] as const,
+    get: (id: string) =>
+      [...queryKeys.entityTags.root, "get", id] as const,
   },
   jobs: {
     root: ["jobs"] as const,

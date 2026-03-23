@@ -427,29 +427,30 @@ The existing `FilterConfig` union in `PaginationToolbar.component.tsx` supports 
 
 ### Checklist
 
-- [ ] Add `useEntityTagOptions` hook (inline in the file, following the `useConnectorInstanceOptions` pattern):
-  - [ ] Call `sdk.entityTags.list({ limit: 100, offset: 0, sortBy: "name", sortOrder: "asc" })`
-  - [ ] Return `{ label: tag.name, value: tag.id }[]`; return `[]` while loading
-- [ ] In `EntitiesViewUI`, add `tagOptions` to props (type `{ label: string; value: string }[]`)
-- [ ] Add a `"multi-select"` filter entry to the `filters` array passed to `usePagination`:
+- [x] Add `useEntityTagFilter` hook (in `entity-tags.api.ts`, using `InfiniteScrollSelect` pattern with `fetchPage` + `labelMap` for unbounded tag counts):
+  - [x] Uses `useAuthFetch` for authenticated paginated fetching via `fetchPage` callback
+  - [x] Maintains a `labelMap` of fetched tag values to labels for chip display
+- [x] In `EntitiesViewUI`, add `tagFetchPage` and `tagLabelMap` to props
+- [x] Add a `"multi-select"` filter entry to the `filters` array passed to `usePagination`:
   ```ts
   {
     type: "multi-select",
     field: "tagIds",
     label: "Tags",
-    options: tagOptions,
+    fetchPage: tagFetchPage,
+    labelMap: tagLabelMap,
   }
   ```
-- [ ] The `tagIds` value produced by `usePagination.queryParams` (comma-separated string) is already spread into the `ConnectorEntityDataList` query via `pagination.queryParams` — no additional wiring needed
-- [ ] Update `EntitiesView` container to call `useEntityTagOptions` and pass `tagOptions` down to `EntitiesViewUI`
-- [ ] Update `EntitiesViewUIProps` interface to include `tagOptions: { label: string; value: string }[]`
+- [x] The `tagIds` value produced by `usePagination.queryParams` (comma-separated string) is already spread into the `ConnectorEntityDataList` query via `pagination.queryParams` — no additional wiring needed
+- [x] Update `EntitiesView` container to call `useEntityTagFilter` and pass `tagFetchPage` / `tagLabelMap` down to `EntitiesViewUI`
+- [x] Update `EntitiesViewUIProps` interface to include `tagFetchPage` and `tagLabelMap`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from repo root (update `EntitiesView.test.tsx` to cover tag filter rendering and query param output)
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from repo root (update `EntitiesView.test.tsx` to cover tag filter rendering and query param output)
 
 ---
 

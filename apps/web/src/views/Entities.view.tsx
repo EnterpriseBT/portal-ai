@@ -6,6 +6,7 @@ import type {
 } from "@portalai/core/contracts";
 import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
+import type { FetchPageParams, FetchPageResult } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Card from "@mui/material/Card";
 import CardActionArea from "@mui/material/CardActionArea";
@@ -21,6 +22,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk } from "../api/sdk";
+import { useEntityTagFilter } from "../api/entity-tags.api";
 
 // ── Connector instance filter options hook ───────────────────────────
 
@@ -76,10 +78,14 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
 
 export interface EntitiesViewUIProps {
   connectorInstanceOptions: { label: string; value: string }[];
+  tagFetchPage: (params: FetchPageParams) => Promise<FetchPageResult>;
+  tagLabelMap: Record<string, string>;
 }
 
 export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
   connectorInstanceOptions,
+  tagFetchPage,
+  tagLabelMap,
 }) => {
   const navigate = useNavigate();
 
@@ -97,6 +103,13 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
         field: "connectorInstanceId",
         label: "Connector Instance",
         options: connectorInstanceOptions,
+      },
+      {
+        type: "multi-select",
+        field: "tagIds",
+        label: "Tags",
+        fetchPage: tagFetchPage,
+        labelMap: tagLabelMap,
       },
     ],
   });
@@ -178,5 +191,13 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
 
 export const EntitiesView: React.FC = () => {
   const connectorInstanceOptions = useConnectorInstanceOptions();
-  return <EntitiesViewUI connectorInstanceOptions={connectorInstanceOptions} />;
+  const { fetchPage: tagFetchPage, labelMap: tagLabelMap } =
+    useEntityTagFilter();
+  return (
+    <EntitiesViewUI
+      connectorInstanceOptions={connectorInstanceOptions}
+      tagFetchPage={tagFetchPage}
+      tagLabelMap={tagLabelMap}
+    />
+  );
 };

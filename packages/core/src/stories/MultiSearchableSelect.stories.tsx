@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import {
-  SearchableSelect,
-  AsyncSearchableSelect,
-  InfiniteScrollSelect,
+  MultiSearchableSelect,
+  MultiAsyncSearchableSelect,
+  MultiInfiniteScrollSelect,
 } from "../ui/searchable-select/index";
 import type { SelectOption } from "../ui/searchable-select/index";
 
@@ -37,7 +37,6 @@ const FRUITS: SelectOption[] = [
   { value: "pomegranate", label: "Pomegranate" },
 ];
 
-/** Simulate a server-side search with a 400ms delay. */
 function simulateSearch(query: string, dataset: SelectOption[]): Promise<SelectOption[]> {
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -51,16 +50,15 @@ function simulateSearch(query: string, dataset: SelectOption[]): Promise<SelectO
   });
 }
 
-/** Generate a large 200-item dataset for infinite scroll. */
 const LARGE_DATASET: SelectOption[] = Array.from({ length: 200 }, (_, i) => ({
   value: `item-${i + 1}`,
   label: `Item ${String(i + 1).padStart(3, "0")}`,
 }));
 
-// ── SearchableSelect (synchronous) ────────────────────────────────────────────
+// ── Meta ─────────────────────────────────────────────────────────────────────
 
 const meta = {
-  title: "Components/Form/SearchableSelect",
+  title: "Components/Form/MultiSearchableSelect",
   parameters: { layout: "centered" },
   tags: ["autodocs"],
 } satisfies Meta;
@@ -68,52 +66,35 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+// ── MultiSearchableSelect (synchronous) ──────────────────────────────────────
+
 export const Synchronous: Story = {
-  name: "SearchableSelect — static list",
-  render: function SyncDemo() {
-    const [value, setValue] = useState<string | null>(null);
+  name: "MultiSearchableSelect — static list",
+  render: function MultiSyncDemo() {
+    const [value, setValue] = useState<string[]>([]);
     return (
-      <SearchableSelect
-        label="Fruit"
+      <MultiSearchableSelect
+        label="Fruits"
         placeholder="Type to filter…"
         options={FRUITS}
         value={value}
         onChange={setValue}
         size="small"
-        helperText={value ? `Selected: ${value}` : "Start typing to filter 25 fruits"}
+        helperText={`${value.length} selected`}
       />
     );
   },
 };
 
-export const SynchronousWithError: Story = {
-  name: "SearchableSelect — error state",
-  render: function SyncErrorDemo() {
-    const [value, setValue] = useState<string | null>(null);
-    return (
-      <SearchableSelect
-        label="Fruit (required)"
-        options={FRUITS}
-        value={value}
-        onChange={setValue}
-        error={!value}
-        helperText={!value ? "A fruit is required" : undefined}
-        required
-        size="small"
-      />
-    );
-  },
-};
-
-// ── AsyncSearchableSelect (search-on-type) ────────────────────────────────────
+// ── MultiAsyncSearchableSelect (search-on-type) ─────────────────────────────
 
 export const Async: Story = {
-  name: "AsyncSearchableSelect — server-side search",
-  render: function AsyncDemo() {
-    const [value, setValue] = useState<string | null>(null);
+  name: "MultiAsyncSearchableSelect — server-side search",
+  render: function MultiAsyncDemo() {
+    const [value, setValue] = useState<string[]>([]);
     return (
-      <AsyncSearchableSelect
-        label="Fruit (async)"
+      <MultiAsyncSearchableSelect
+        label="Fruits (async)"
         placeholder="Type to search…"
         value={value}
         onChange={setValue}
@@ -126,12 +107,12 @@ export const Async: Story = {
   },
 };
 
-// ── InfiniteScrollSelect (search + paginated scroll) ──────────────────────────
+// ── MultiInfiniteScrollSelect (search + paginated scroll) ───────────────────
 
 export const InfiniteScroll: Story = {
-  name: "InfiniteScrollSelect — paginated browse",
-  render: function InfiniteDemo() {
-    const [value, setValue] = useState<string | null>(null);
+  name: "MultiInfiniteScrollSelect — paginated browse",
+  render: function MultiInfiniteDemo() {
+    const [value, setValue] = useState<string[]>([]);
 
     const fetchPage = async ({
       search,
@@ -154,15 +135,15 @@ export const InfiniteScroll: Story = {
     };
 
     return (
-      <InfiniteScrollSelect
-        label="Item (infinite)"
+      <MultiInfiniteScrollSelect
+        label="Items (infinite)"
         placeholder="Browse or search 200 items…"
         value={value}
         onChange={setValue}
         fetchPage={fetchPage}
         pageSize={20}
         debounceMs={300}
-        helperText="Scroll to load more items"
+        helperText={`${value.length} selected — scroll to load more`}
         size="small"
       />
     );
