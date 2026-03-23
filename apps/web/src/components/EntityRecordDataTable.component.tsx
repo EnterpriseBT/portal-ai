@@ -45,10 +45,15 @@ function toDataTableColumns(
   columns: ColumnDefinitionSummary[]
 ): DataTableColumn[] {
   return columns.map((col) => {
-    if (col.type === "json" || col.type === "array" || col.type === "reference-array") {
+    if (
+      col.type === "json" ||
+      col.type === "array" ||
+      col.type === "reference-array"
+    ) {
       return {
         key: col.key,
         label: col.label,
+        caption: col.type,
         sortable: SORTABLE_COLUMN_TYPES.has(col.type),
         render: (value: unknown) => (
           <EntityRecordCellCode
@@ -61,6 +66,7 @@ function toDataTableColumns(
     return {
       key: col.key,
       label: col.label,
+      caption: col.type,
       sortable: SORTABLE_COLUMN_TYPES.has(col.type),
       format: (value: unknown) => Formatter.format(value, col.type),
     };
