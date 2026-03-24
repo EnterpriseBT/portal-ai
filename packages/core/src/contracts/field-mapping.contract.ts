@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
 import { FieldMappingSchema } from "../models/field-mapping.model.js";
+import { FieldMappingWithColumnDefinitionSchema } from "./connector-entity.contract.js";
 import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
 
 // ── Enriched schemas ─────────────────────────────────────────────────
@@ -33,6 +34,12 @@ export const FieldMappingListWithConnectorEntityResponsePayloadSchema = Paginate
 });
 
 export type FieldMappingListWithConnectorEntityResponsePayload = z.infer<typeof FieldMappingListWithConnectorEntityResponsePayloadSchema>;
+
+export const FieldMappingListWithColumnDefinitionResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
+  fieldMappings: z.array(FieldMappingWithColumnDefinitionSchema),
+});
+
+export type FieldMappingListWithColumnDefinitionResponsePayload = z.infer<typeof FieldMappingListWithColumnDefinitionResponsePayloadSchema>;
 
 // ── Get ───────────────────────────────────────────────────────────────
 

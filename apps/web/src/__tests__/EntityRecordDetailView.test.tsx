@@ -2,21 +2,30 @@ import { jest } from "@jest/globals";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
+const mockResolve = jest.fn();
+const mockListByEntity = jest.fn();
+const mockEntityGroupsGet = jest.fn();
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     connectorEntities: { get: jest.fn() },
     entityRecords: { get: jest.fn() },
+    entityGroups: {
+      listByEntity: mockListByEntity,
+      get: mockEntityGroupsGet,
+      resolve: mockResolve,
+    },
   },
 }));
 
-const { render, screen } = await import("./test-utils");
-const { EntityRecordDetailViewUI } = await import(
+const { render, screen, fireEvent } = await import("./test-utils");
+const { EntityRecordDetailViewUI, RelatedRecordsSection } = await import(
   "../views/EntityRecordDetail.view"
 );
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
-import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
+import type { ConnectorEntity, EntityRecord, EntityGroup } from "@portalai/core/models";
 import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
 
 const stubEntity: ConnectorEntity = {
@@ -44,6 +53,7 @@ const stubRecord: EntityRecord = {
     active: true,
     meta: { tier: "gold" },
     tags: ["admin", "editor"],
+    email: "alice@example.com",
   },
   sourceId: "SRC-001",
   checksum: "abc123",
@@ -63,6 +73,32 @@ const stubColumns: ColumnDefinitionSummary[] = [
   { key: "meta", label: "Meta", type: "json" },
   { key: "tags", label: "Tags", type: "array" },
 ];
+
+const stubGroup: EntityGroup = {
+  id: "grp-1",
+  organizationId: "org-1",
+  name: "People",
+  description: "Cross-entity people group",
+  created: 1700000000000,
+  createdBy: "system",
+  updated: null,
+  updatedBy: null,
+  deleted: null,
+  deletedBy: null,
+};
+
+const stubGroup2: EntityGroup = {
+  id: "grp-2",
+  organizationId: "org-1",
+  name: "Email Identities",
+  description: null,
+  created: 1700000000000,
+  createdBy: "system",
+  updated: null,
+  updatedBy: null,
+  deleted: null,
+  deletedBy: null,
+};
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
@@ -168,5 +204,208 @@ describe("EntityRecordDetailViewUI", () => {
     expect(screen.getByText("Missing")).toBeInTheDocument();
     // EntityRecordFieldValue renders — for null/undefined (may be multiple in the page)
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("renders entity group names in the metadata section", () => {
+    mockEntityGroupsGet.mockReturnValue({ data: undefined, isLoading: true });
+    mockResolve.mockReturnValue({ data: undefined, isLoading: false });
+
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        groups={[stubGroup, stubGroup2]}
+      />
+    );
+    const metadataRow = screen.getByTestId("entity-groups-metadata");
+    expect(metadataRow).toBeInTheDocument();
+    expect(metadataRow).toHaveTextContent("People");
+    expect(metadataRow).toHaveTextContent("Email Identities");
+  });
+
+  it("renders Related Records section when entity has group memberships", () => {
+    mockEntityGroupsGet.mockReturnValue({ data: undefined, isLoading: true });
+    mockResolve.mockReturnValue({ data: undefined, isLoading: false });
+
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        groups={[stubGroup, stubGroup2]}
+      />
+    );
+    expect(screen.getByTestId("related-records-section")).toBeInTheDocument();
+    expect(screen.getByText("Related Records")).toBeInTheDocument();
+  });
+
+  it("hides entity groups from metadata when no group memberships", () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        groups={[]}
+      />
+    );
+    expect(screen.queryByTestId("entity-groups-metadata")).not.toBeInTheDocument();
+  });
+
+  it("hides Related Records section when entity has no group memberships", () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+        groups={[]}
+      />
+    );
+    expect(screen.queryByTestId("related-records-section")).not.toBeInTheDocument();
+    expect(screen.queryByText("Related Records")).not.toBeInTheDocument();
+  });
+
+  it("hides Related Records section when groups prop is omitted", () => {
+    render(
+      <EntityRecordDetailViewUI
+        entity={stubEntity}
+        record={stubRecord}
+        columns={stubColumns}
+      />
+    );
+    expect(screen.queryByTestId("related-records-section")).not.toBeInTheDocument();
+  });
+});
+
+describe("RelatedRecordsSection — identity resolution", () => {
+  const stubMember = {
+    id: "mem-1",
+    organizationId: "org-1",
+    entityGroupId: "grp-1",
+    connectorEntityId: "ent-1",
+    linkFieldMappingId: "fm-1",
+    linkFieldMappingSourceField: "email",
+    connectorEntityLabel: "Contacts",
+    isPrimary: true,
+    created: 1700000000000,
+    createdBy: "system",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+
+  const mockGroupDetail = (overrides?: Partial<typeof stubMember>) => {
+    mockEntityGroupsGet.mockReturnValue({
+      data: {
+        entityGroup: {
+          ...stubGroup,
+          members: [{ ...stubMember, ...overrides }],
+        },
+      },
+      isLoading: false,
+    });
+  };
+
+  beforeEach(() => {
+    mockEntityGroupsGet.mockReset();
+    mockResolve.mockReset();
+  });
+
+  it("renders Resolve Identity button and triggers API call on click", () => {
+    mockGroupDetail();
+    mockResolve.mockReturnValue({ data: undefined, isLoading: false });
+
+    render(
+      <RelatedRecordsSection
+        groups={[stubGroup]}
+        record={stubRecord}
+        connectorEntityId="ent-1"
+      />
+    );
+
+    // Expand the accordion
+    fireEvent.click(screen.getByText("People"));
+
+    // Should see the resolve button
+    expect(screen.getByTestId("resolve-identity-button")).toBeInTheDocument();
+
+    // Click to resolve
+    fireEvent.click(screen.getByTestId("resolve-identity-button"));
+
+    // resolve should have been called with the link value
+    expect(mockResolve).toHaveBeenCalledWith(
+      "grp-1",
+      { linkValue: "alice@example.com" },
+      { enabled: true }
+    );
+  });
+
+  it("displays grouped results with primary member distinguished", () => {
+    mockGroupDetail();
+    mockResolve.mockReturnValue({
+      data: {
+        results: [
+          {
+            connectorEntityId: "ent-1",
+            connectorEntityLabel: "Contacts",
+            isPrimary: true,
+            records: [{ ...stubRecord, id: "rec-1", sourceId: "SRC-001" }],
+          },
+          {
+            connectorEntityId: "ent-2",
+            connectorEntityLabel: "HubSpot Users",
+            isPrimary: false,
+            records: [{ ...stubRecord, id: "rec-2", sourceId: "HS-042" }],
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(
+      <RelatedRecordsSection
+        groups={[stubGroup]}
+        record={stubRecord}
+        connectorEntityId="ent-1"
+      />
+    );
+
+    // Expand the accordion
+    fireEvent.click(screen.getByText("People"));
+
+    // Click resolve
+    fireEvent.click(screen.getByTestId("resolve-identity-button"));
+
+    // Primary member should have star icon and bold label
+    expect(screen.getByTestId("primary-star-icon")).toBeInTheDocument();
+    expect(screen.getByText("Contacts")).toBeInTheDocument();
+    expect(screen.getByText("HubSpot Users")).toBeInTheDocument();
+
+    // Record source IDs should be visible
+    expect(screen.getByText("SRC-001")).toBeInTheDocument();
+    expect(screen.getByText("HS-042")).toBeInTheDocument();
+  });
+
+  it("displays 'No matching records found' when resolve returns empty results", () => {
+    mockGroupDetail({ isPrimary: false });
+    mockResolve.mockReturnValue({
+      data: { results: [] },
+      isLoading: false,
+    });
+
+    render(
+      <RelatedRecordsSection
+        groups={[stubGroup]}
+        record={stubRecord}
+        connectorEntityId="ent-1"
+      />
+    );
+
+    // Expand and resolve
+    fireEvent.click(screen.getByText("People"));
+    fireEvent.click(screen.getByTestId("resolve-identity-button"));
+
+    expect(screen.getByText("No matching records found")).toBeInTheDocument();
   });
 });

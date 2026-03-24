@@ -6,7 +6,7 @@ import type {
   EntityGroupMemberCreateRequestBody,
   EntityGroupUpdateRequestBody,
   ConnectorEntityListResponsePayload,
-  FieldMappingListResponsePayload,
+  FieldMappingListWithColumnDefinitionResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
@@ -557,13 +557,13 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     async (query: string): Promise<SelectOption[]> => {
       if (!selectedEntityId) return [];
       const res = await fetchWithAuth<
-        ApiSuccessResponse<FieldMappingListResponsePayload>
+        ApiSuccessResponse<FieldMappingListWithColumnDefinitionResponsePayload>
       >(
-        `/api/field-mappings?connectorEntityId=${encodeURIComponent(selectedEntityId)}&search=${encodeURIComponent(query)}&limit=100`
+        `/api/field-mappings?connectorEntityId=${encodeURIComponent(selectedEntityId)}&search=${encodeURIComponent(query)}&limit=100&include=columnDefinition`
       );
       return res.payload.fieldMappings.map((fm) => ({
         value: fm.id,
-        label: fm.sourceField,
+        label: fm.columnDefinition?.label ?? fm.sourceField,
       }));
     },
     [fetchWithAuth, selectedEntityId]

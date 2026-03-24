@@ -34,6 +34,17 @@ export const entityGroups = {
       options
     ),
 
+  listByEntity: (
+    connectorEntityId: string,
+    options?: QueryOptions<EntityGroupListResponsePayload>
+  ) =>
+    useAuthQuery<EntityGroupListResponsePayload>(
+      queryKeys.entityGroups.listByEntity(connectorEntityId),
+      buildUrl(ENTITY_GROUPS_URL, { connectorEntityId }),
+      undefined,
+      options
+    ),
+
   get: (id: string, options?: QueryOptions<EntityGroupGetResponsePayload>) =>
     useAuthQuery<EntityGroupGetResponsePayload>(
       queryKeys.entityGroups.get(id),

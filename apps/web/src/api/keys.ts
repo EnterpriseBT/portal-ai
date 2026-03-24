@@ -71,6 +71,8 @@ export const queryKeys = {
     root: ["entityGroups"] as const,
     list: (params?: EntityGroupListRequestQuery) =>
       [...queryKeys.entityGroups.root, "list", params] as const,
+    listByEntity: (connectorEntityId: string) =>
+      [...queryKeys.entityGroups.root, "listByEntity", connectorEntityId] as const,
     get: (id: string) =>
       [...queryKeys.entityGroups.root, "get", id] as const,
     memberOverlap: (id: string, params?: EntityGroupMemberOverlapRequestQuery) =>

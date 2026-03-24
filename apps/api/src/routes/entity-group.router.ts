@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, or, ilike, sql, type SQL, type Column } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, sql, type SQL, type Column } from "drizzle-orm";
 
 import { EntityGroupModelFactory } from "@portalai/core/models";
 import {
@@ -103,7 +103,7 @@ entityGroupRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, include } =
+      const { limit, offset, sortBy, sortOrder, search, include, connectorEntityId } =
         EntityGroupListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -115,6 +115,17 @@ entityGroupRouter.get(
             ilike(entityGroups.name, `%${search}%`),
             ilike(entityGroups.description, `%${search}%`)
           )!
+        );
+      }
+
+      if (connectorEntityId) {
+        const memberRows = await DbService.repository.entityGroupMembers.findByConnectorEntityId(connectorEntityId);
+        const groupIds = [...new Set(memberRows.map((m) => m.entityGroupId))];
+        // inArray requires a non-empty array; use sql`false` to match nothing when empty
+        filters.push(
+          groupIds.length > 0
+            ? inArray(entityGroups.id, groupIds)
+            : sql`false`
         );
       }
 
@@ -215,7 +226,7 @@ entityGroupRouter.get(
       const members = enrichedMembers.map((m) => ({
         ...m,
         connectorEntityLabel: m.connectorEntity.label,
-        linkFieldMappingSourceField: m.fieldMapping.sourceField,
+        linkFieldMappingSourceField: m.columnDefinition.key,
         connectorEntity: undefined,
         fieldMapping: undefined,
       }));
@@ -632,14 +643,14 @@ entityGroupRouter.get(
       const results: EntityGroupResolveResponsePayload["results"] = [];
 
       for (const member of enrichedMembers) {
-        const sourceField = member.fieldMapping.sourceField;
+        const columnKey = member.columnDefinition.key;
 
-        // Query entity_records where normalizedData->>sourceField = linkValue
+        // Query entity_records where normalizedData->>columnKey = linkValue
         const { entityRecords } = await import("../db/schema/index.js");
         const records = await DbService.repository.entityRecords.findMany(
           and(
             eq(entityRecords.connectorEntityId, member.connectorEntityId),
-            sql`${entityRecords.normalizedData}->>${sourceField} = ${linkValue}`
+            sql`${entityRecords.normalizedData}->>${columnKey} = ${linkValue}`
           )
         );
 

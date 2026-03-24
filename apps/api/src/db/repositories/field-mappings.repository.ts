@@ -8,7 +8,7 @@
 import { eq, and, asc, desc, getTableColumns, type SQL, or } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { fieldMappings, connectorEntities } from "../schema/index.js";
+import { fieldMappings, connectorEntities, columnDefinitions } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
 
@@ -18,6 +18,7 @@ export interface FieldMappingListOptions extends ListOptions {
 import type {
   FieldMappingSelect,
   FieldMappingInsert,
+  ColumnDefinitionSelect,
   ConnectorEntitySelect,
 } from "../schema/zod.js";
 
@@ -37,6 +38,9 @@ export class FieldMappingsRepository extends Repository<
   ): Promise<FieldMappingSelect[]> {
     if (opts.include?.includes("connectorEntity")) {
       return this.findManyWithConnectorEntity(where, opts, client) as unknown as FieldMappingSelect[];
+    }
+    if (opts.include?.includes("columnDefinition")) {
+      return this.findManyWithColumnDefinition(where, opts, client) as unknown as FieldMappingSelect[];
     }
     return super.findMany(where, opts, client);
   }
@@ -111,6 +115,47 @@ export class FieldMappingsRepository extends Repository<
     return rows.map((row) => ({
       ...(row.fieldMapping as FieldMappingSelect),
       connectorEntity: row.connectorEntity as ConnectorEntitySelect | null,
+    }));
+  }
+
+  /**
+   * Return field mappings with their associated column definition attached.
+   * Uses a LEFT JOIN so mappings are returned even if the column definition is missing.
+   */
+  async findManyWithColumnDefinition(
+    where: SQL | undefined,
+    opts: ListOptions = {},
+    client: DbClient = db
+  ): Promise<
+    (FieldMappingSelect & { columnDefinition: ColumnDefinitionSelect | null })[]
+  > {
+    const conditions = this.withSoftDelete(where, opts.includeDeleted);
+
+    let query = (client as typeof db)
+      .select({
+        fieldMapping: getTableColumns(fieldMappings),
+        columnDefinition: getTableColumns(columnDefinitions),
+      })
+      .from(fieldMappings)
+      .leftJoin(
+        columnDefinitions,
+        eq(fieldMappings.columnDefinitionId, columnDefinitions.id)
+      )
+      .where(conditions)
+      .$dynamic();
+
+    if (opts.orderBy) {
+      const orderFn = opts.orderBy.direction === "desc" ? desc : asc;
+      query = query.orderBy(orderFn(opts.orderBy.column));
+    }
+    if (opts.limit !== undefined) query = query.limit(opts.limit);
+    if (opts.offset !== undefined) query = query.offset(opts.offset);
+
+    const rows = await query;
+
+    return rows.map((row) => ({
+      ...(row.fieldMapping as FieldMappingSelect),
+      columnDefinition: row.columnDefinition as ColumnDefinitionSelect | null,
     }));
   }
 

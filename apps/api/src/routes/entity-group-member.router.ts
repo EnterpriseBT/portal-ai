@@ -85,7 +85,7 @@ entityGroupMemberRouter.get(
       const members = enrichedMembers.map((m) => ({
         ...m,
         connectorEntityLabel: m.connectorEntity.label,
-        linkFieldMappingSourceField: m.fieldMapping.sourceField,
+        linkFieldMappingSourceField: m.columnDefinition.key,
         connectorEntity: undefined,
         fieldMapping: undefined,
       }));
@@ -550,17 +550,21 @@ entityGroupMemberRouter.get(
 
       const { targetConnectorEntityId, targetLinkFieldMappingId } = queryParsed.data;
 
-      // Look up target field mapping to get the source field
+      // Look up target field mapping and its column definition to get the normalizedData key
       const targetMapping = await DbService.repository.fieldMappings.findById(targetLinkFieldMappingId);
       if (!targetMapping) {
         return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID, "Target link field mapping not found"));
       }
+      const targetColDef = await DbService.repository.columnDefinitions.findById(targetMapping.columnDefinitionId);
+      if (!targetColDef) {
+        return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID, "Target column definition not found"));
+      }
 
-      // Get target entity's distinct link field values
+      // Get target entity's distinct link field values (keyed by column definition key, not source field)
       const targetValues = await DbService.repository.entityRecords.findMany(
         eq(entityRecords.connectorEntityId, targetConnectorEntityId)
       );
-      const targetFieldKey = targetMapping.sourceField;
+      const targetFieldKey = targetColDef.key;
       const targetSet = new Set(
         targetValues
           .map((r) => {
@@ -577,7 +581,7 @@ entityGroupMemberRouter.get(
       const sourceValueSet = new Set<string>();
 
       for (const member of enrichedMembers) {
-        const sourceFieldKey = member.fieldMapping.sourceField;
+        const sourceFieldKey = member.columnDefinition.key;
         const records = await DbService.repository.entityRecords.findMany(
           eq(entityRecords.connectorEntityId, member.connectorEntityId)
         );

@@ -10,6 +10,7 @@ import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
 import {
   entityGroupMembers,
   connectorEntities,
+  columnDefinitions,
   fieldMappings,
 } from "../schema/index.js";
 import { db } from "../client.js";
@@ -17,6 +18,7 @@ import { Repository, type DbClient } from "./base.repository.js";
 import type {
   EntityGroupMemberSelect,
   EntityGroupMemberInsert,
+  ColumnDefinitionSelect,
   ConnectorEntitySelect,
   FieldMappingSelect,
 } from "../schema/zod.js";
@@ -41,6 +43,7 @@ export class EntityGroupMembersRepository extends Repository<
     (EntityGroupMemberSelect & {
       connectorEntity: ConnectorEntitySelect;
       fieldMapping: FieldMappingSelect;
+      columnDefinition: ColumnDefinitionSelect;
     })[]
   > {
     const members = await (client as typeof db)
@@ -75,16 +78,30 @@ export class EntityGroupMembersRepository extends Repository<
       mappings.map((m) => [m.id, m as FieldMappingSelect])
     );
 
+    // Batch-load column definitions for each field mapping
+    const colDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
+    const colDefs = colDefIds.length > 0
+      ? await (client as typeof db)
+          .select()
+          .from(columnDefinitions)
+          .where(inArray(columnDefinitions.id, colDefIds))
+      : [];
+    const colDefMap = new Map(
+      colDefs.map((c) => [c.id, c as ColumnDefinitionSelect])
+    );
+
     return members
       .filter(
         (m) =>
           entityMap.has(m.connectorEntityId) &&
-          mappingMap.has(m.linkFieldMappingId)
+          mappingMap.has(m.linkFieldMappingId) &&
+          colDefMap.has(mappingMap.get(m.linkFieldMappingId)!.columnDefinitionId)
       )
       .map((m) => ({
         ...(m as EntityGroupMemberSelect),
         connectorEntity: entityMap.get(m.connectorEntityId)!,
         fieldMapping: mappingMap.get(m.linkFieldMappingId)!,
+        columnDefinition: colDefMap.get(mappingMap.get(m.linkFieldMappingId)!.columnDefinitionId)!,
       }));
   }
 

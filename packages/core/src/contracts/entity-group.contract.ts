@@ -34,6 +34,7 @@ export const EntityGroupListRequestQuerySchema =
     search: z.string().optional(),
     sortBy: z.enum(["name", "created"]).optional().default("created"),
     include: z.string().optional(),
+    connectorEntityId: z.string().optional(),
   });
 
 export type EntityGroupListRequestQuery = z.infer<

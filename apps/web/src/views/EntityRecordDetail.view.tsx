@@ -1,13 +1,24 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 
 import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
 import type {
   ColumnDefinitionSummary,
   ConnectorEntityGetResponsePayload,
   EntityRecordGetResponsePayload,
+  EntityGroupMemberWithDetails,
 } from "@portalai/core/contracts";
+import type { EntityGroup } from "@portalai/core/models";
 import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import Link from "@mui/material/Link";
+import CircularProgress from "@mui/material/CircularProgress";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import StarIcon from "@mui/icons-material/Star";
 
 import { useNavigate } from "@tanstack/react-router";
 
@@ -16,18 +27,178 @@ import DataResult from "../components/DataResult.component";
 import { EntityRecordFieldValue } from "../components/EntityRecordFieldValue.component";
 import { EntityRecordMetadata } from "../components/EntityRecordMetadata.component";
 
+// ── Related Records panel (per group) ────────────────────────────────
+
+interface RelatedRecordsGroupPanelProps {
+  group: EntityGroup;
+  record: EntityRecord;
+  connectorEntityId: string;
+}
+
+const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
+  group,
+  record,
+  connectorEntityId,
+}) => {
+  const [resolveRequested, setResolveRequested] = useState(false);
+
+  // Fetch group details (with members) when the panel is expanded
+  const groupDetailResult = sdk.entityGroups.get(group.id);
+
+  // Find the current entity's member to determine the link field
+  const groupDetail = groupDetailResult.data?.entityGroup;
+  const currentMember = groupDetail?.members.find(
+    (m: EntityGroupMemberWithDetails) => m.connectorEntityId === connectorEntityId
+  );
+  const linkFieldKey = currentMember?.linkFieldMappingSourceField;
+  const linkValue = linkFieldKey ? String(record.normalizedData[linkFieldKey] ?? "") : "";
+
+  // Resolve identity on demand
+  const resolveResult = sdk.entityGroups.resolve(
+    group.id,
+    { linkValue },
+    { enabled: resolveRequested && !!linkValue }
+  );
+
+  const handleResolve = useCallback(() => {
+    setResolveRequested(true);
+  }, []);
+
+  return (
+    <Accordion data-testid={`related-records-group-${group.id}`}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Typography variant="subtitle1">{group.name}</Typography>
+      </AccordionSummary>
+      <AccordionDetails>
+        {groupDetailResult.isLoading ? (
+          <CircularProgress size={20} />
+        ) : !currentMember ? (
+          <Typography variant="body2" color="text.secondary">
+            Unable to determine link field for this entity.
+          </Typography>
+        ) : (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Link field: <strong>{linkFieldKey}</strong> = &quot;{linkValue}&quot;
+            </Typography>
+
+            {!resolveRequested ? (
+              <Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleResolve}
+                  disabled={!linkValue}
+                  data-testid="resolve-identity-button"
+                >
+                  Resolve Identity
+                </Button>
+              </Box>
+            ) : resolveResult.isLoading ? (
+              <CircularProgress size={20} />
+            ) : resolveResult.data?.results.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No matching records found
+              </Typography>
+            ) : (
+              <Stack spacing={2}>
+                {resolveResult.data?.results.map((result) => (
+                  <Box key={result.connectorEntityId}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <Typography
+                        variant="body1"
+                        sx={{ fontWeight: result.isPrimary ? "bold" : "normal" }}
+                      >
+                        {result.connectorEntityLabel}
+                      </Typography>
+                      {result.isPrimary && (
+                        <StarIcon
+                          fontSize="small"
+                          color="warning"
+                          data-testid="primary-star-icon"
+                        />
+                      )}
+                      <Chip
+                        label={`${result.records.length} record${result.records.length !== 1 ? "s" : ""}`}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </Stack>
+                    {result.records.map((rec) => (
+                      <Box
+                        key={rec.id}
+                        sx={{
+                          pl: 2,
+                          py: 0.5,
+                          borderLeft: 2,
+                          borderColor: "divider",
+                          mb: 0.5,
+                        }}
+                      >
+                        <Typography variant="body2" color="text.secondary">
+                          {rec.sourceId}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </Stack>
+        )}
+      </AccordionDetails>
+    </Accordion>
+  );
+};
+
+// ── Related Records section ──────────────────────────────────────────
+
+interface RelatedRecordsSectionProps {
+  groups: EntityGroup[];
+  record: EntityRecord;
+  connectorEntityId: string;
+}
+
+export const RelatedRecordsSection: React.FC<RelatedRecordsSectionProps> = ({
+  groups,
+  record,
+  connectorEntityId,
+}) => {
+  if (groups.length === 0) return null;
+
+  return (
+    <Box data-testid="related-records-section">
+      <Typography variant="h2" sx={{ mb: 2 }}>
+        Related Records
+      </Typography>
+      <Stack spacing={1}>
+        {groups.map((group) => (
+          <RelatedRecordsGroupPanel
+            key={group.id}
+            group={group}
+            record={record}
+            connectorEntityId={connectorEntityId}
+          />
+        ))}
+      </Stack>
+    </Box>
+  );
+};
+
 // ── Pure UI ──────────────────────────────────────────────────────────
 
 export interface EntityRecordDetailViewUIProps {
   entity: ConnectorEntity;
   record: EntityRecord;
   columns: ColumnDefinitionSummary[];
+  groups?: EntityGroup[];
 }
 
 export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> = ({
   entity,
   record,
   columns,
+  groups = [],
 }) => {
   const navigate = useNavigate();
 
@@ -50,6 +221,39 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
             Metadata
           </Typography>
           <EntityRecordMetadata record={record} />
+          {groups.length > 0 && (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                gap: { xs: 0.5, sm: 2 },
+                alignItems: "flex-start",
+                mt: 1.5,
+              }}
+              data-testid="entity-groups-metadata"
+            >
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ minWidth: 160, flexShrink: 0 }}
+              >
+                Entity Groups
+              </Typography>
+              <Box sx={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 1 }}>
+                {groups.map((g) => (
+                  <Link
+                    key={g.id}
+                    component="button"
+                    variant="body2"
+                    onClick={() => navigate({ to: `/entity-groups/${g.id}` })}
+                    sx={{ cursor: "pointer" }}
+                  >
+                    {g.name}
+                  </Link>
+                ))}
+              </Box>
+            </Box>
+          )}
         </Box>
 
         {/* Fields */}
@@ -83,6 +287,13 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
             ))}
           </Stack>
         </Box>
+
+        {/* Related Records */}
+        <RelatedRecordsSection
+          groups={groups}
+          record={record}
+          connectorEntityId={entity.id}
+        />
       </Stack>
     </Box>
   );
@@ -101,6 +312,7 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
 }) => {
   const entityResult = sdk.connectorEntities.get(entityId);
   const recordResult = sdk.entityRecords.get(entityId, recordId);
+  const groupsResult = sdk.entityGroups.listByEntity(entityId);
 
   return (
     <DataResult results={{ entity: entityResult, record: recordResult }}>
@@ -115,6 +327,7 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
           entity={entityPayload.connectorEntity}
           record={recordPayload.record}
           columns={recordPayload.columns}
+          groups={groupsResult.data?.entityGroups ?? []}
         />
       )}
     </DataResult>

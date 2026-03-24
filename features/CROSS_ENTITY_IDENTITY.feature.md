@@ -432,28 +432,28 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] In the entity record detail view, add a "Related Records" section:
-  - [ ] On load, fetch the entity's group memberships via `entityGroupsRepo.findByConnectorEntityId`
-  - [ ] For each group the entity belongs to, display a collapsible panel titled with the group name
-  - [ ] Inside each panel, add a "Resolve Identity" button (on-demand, not automatic)
-  - [ ] When clicked, read the current record's `normalizedData` value for the member's link field, then call `GET /api/entity-groups/:id/resolve?linkValue=<value>`
-  - [ ] Display results grouped by member entity: entity label, record count, expandable record list
-  - [ ] Primary member entity is visually distinguished (bold label, star icon)
-  - [ ] If no groups exist for the entity, the section is hidden entirely
-- [ ] Write / update tests in `EntityRecordDetailView.test.tsx`
-  - [ ] Identity resolution section renders when entity has group memberships
-  - [ ] Section hidden when entity has no group memberships
-  - [ ] "Resolve Identity" button triggers API call and displays grouped results
-  - [ ] Primary member entity shown with star icon and bold label
-  - [ ] Empty resolve results display "No matching records found" message
-- [ ] Run `npm run test -- --testPathPattern="EntityRecordDetailView"` from `apps/web/` and confirm all tests pass
+- [x] In the entity record detail view, add a "Related Records" section:
+  - [x] On load, fetch the entity's group memberships via `entityGroupsRepo.findByConnectorEntityId`
+  - [x] For each group the entity belongs to, display a collapsible panel titled with the group name
+  - [x] Inside each panel, add a "Resolve Identity" button (on-demand, not automatic)
+  - [x] When clicked, read the current record's `normalizedData` value for the member's link field, then call `GET /api/entity-groups/:id/resolve?linkValue=<value>`
+  - [x] Display results grouped by member entity: entity label, record count, expandable record list
+  - [x] Primary member entity is visually distinguished (bold label, star icon)
+  - [x] If no groups exist for the entity, the section is hidden entirely
+- [x] Write / update tests in `EntityRecordDetailView.test.tsx`
+  - [x] Identity resolution section renders when entity has group memberships
+  - [x] Section hidden when entity has no group memberships
+  - [x] "Resolve Identity" button triggers API call and displays grouped results
+  - [x] Primary member entity shown with star icon and bold label
+  - [x] Empty resolve results display "No matching records found" message
+- [x] Run `npm run test -- --testPathPattern="EntityRecordDetailView"` from `apps/web/` and confirm all tests pass
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from `apps/web/`
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from `apps/web/`
 
 ---
 
