@@ -13,7 +13,7 @@ import {
   type JobListResponsePayload,
   type JobCancelResponsePayload,
 } from "@portalai/core/contracts";
-import { and, Column, eq, ilike, or, sql, SQL } from "drizzle-orm";
+import { and, Column, eq, ilike, inArray, or, sql, SQL } from "drizzle-orm";
 import { jobs } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
@@ -144,13 +144,12 @@ jobsRouter.post(
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending, active, completed, failed, stalled, cancelled]
- *         description: Filter by job status
+ *         description: Comma-separated list of job statuses to filter by (pending, active, completed, failed, stalled, cancelled)
  *       - in: query
  *         name: type
  *         schema:
  *           type: string
- *         description: Filter by job type
+ *         description: Comma-separated list of job types to filter by (file_upload, system_check)
  *       - in: query
  *         name: search
  *         schema:
@@ -185,10 +184,20 @@ jobsRouter.get(
       const filters: SQL[] = [eq(jobs.organizationId, req.application?.metadata.organizationId as string)];
 
       if (query.status) {
-        filters.push(eq(jobs.status, query.status));
+        const statuses = query.status.split(",").map((s) => s.trim()).filter(Boolean);
+        if (statuses.length === 1) {
+          filters.push(eq(jobs.status, statuses[0] as never));
+        } else if (statuses.length > 1) {
+          filters.push(inArray(jobs.status, statuses as never[]));
+        }
       }
       if (query.type) {
-        filters.push(eq(jobs.type, query.type));
+        const types = query.type.split(",").map((t) => t.trim()).filter(Boolean);
+        if (types.length === 1) {
+          filters.push(eq(jobs.type, types[0] as never));
+        } else if (types.length > 1) {
+          filters.push(inArray(jobs.type, types as never[]));
+        }
       }
       if (query.search) {
         filters.push(

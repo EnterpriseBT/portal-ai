@@ -27,7 +27,7 @@ export const JobsView = () => {
     ],
     filters: [
       {
-        type: "select",
+        type: "multi-select",
         field: "status",
         label: "Status",
         options: [
@@ -39,7 +39,7 @@ export const JobsView = () => {
         ],
       },
       {
-        type: "select",
+        type: "multi-select",
         field: "type",
         label: "Type",
         options: [
