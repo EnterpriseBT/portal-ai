@@ -237,28 +237,28 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Add Entity Group codes:
-  - [ ] `ENTITY_GROUP_NOT_FOUND`
-  - [ ] `ENTITY_GROUP_FETCH_FAILED`
-  - [ ] `ENTITY_GROUP_INVALID_PAYLOAD`
-  - [ ] `ENTITY_GROUP_CREATE_FAILED`
-  - [ ] `ENTITY_GROUP_UPDATE_FAILED`
-  - [ ] `ENTITY_GROUP_DELETE_FAILED`
-  - [ ] `ENTITY_GROUP_DUPLICATE_NAME`
-  - [ ] `ENTITY_GROUP_USER_NOT_FOUND`
-- [ ] Add Entity Group Member codes:
-  - [ ] `ENTITY_GROUP_MEMBER_NOT_FOUND`
-  - [ ] `ENTITY_GROUP_MEMBER_FETCH_FAILED`
-  - [ ] `ENTITY_GROUP_MEMBER_CREATE_FAILED`
-  - [ ] `ENTITY_GROUP_MEMBER_UPDATE_FAILED`
-  - [ ] `ENTITY_GROUP_MEMBER_DELETE_FAILED`
-  - [ ] `ENTITY_GROUP_MEMBER_ALREADY_EXISTS`
-  - [ ] `ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID`
-  - [ ] `ENTITY_GROUP_MEMBER_PRIMARY_CONFLICT`
+- [x] Add Entity Group codes:
+  - [x] `ENTITY_GROUP_NOT_FOUND`
+  - [x] `ENTITY_GROUP_FETCH_FAILED`
+  - [x] `ENTITY_GROUP_INVALID_PAYLOAD`
+  - [x] `ENTITY_GROUP_CREATE_FAILED`
+  - [x] `ENTITY_GROUP_UPDATE_FAILED`
+  - [x] `ENTITY_GROUP_DELETE_FAILED`
+  - [x] `ENTITY_GROUP_DUPLICATE_NAME`
+  - [x] `ENTITY_GROUP_USER_NOT_FOUND`
+- [x] Add Entity Group Member codes:
+  - [x] `ENTITY_GROUP_MEMBER_NOT_FOUND`
+  - [x] `ENTITY_GROUP_MEMBER_FETCH_FAILED`
+  - [x] `ENTITY_GROUP_MEMBER_CREATE_FAILED`
+  - [x] `ENTITY_GROUP_MEMBER_UPDATE_FAILED`
+  - [x] `ENTITY_GROUP_MEMBER_DELETE_FAILED`
+  - [x] `ENTITY_GROUP_MEMBER_ALREADY_EXISTS`
+  - [x] `ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID`
+  - [x] `ENTITY_GROUP_MEMBER_PRIMARY_CONFLICT`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
+- [x] `npm run type-check` passes from repo root
 
 ---
 
