@@ -101,7 +101,7 @@ export const ConnectorInstanceCardUI = ({
           <Avatar
             src={cd?.iconUrl ?? undefined}
             alt={ci.name}
-            sx={{ width: 40, height: 40, borderRadius: 1 }}
+            sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
           >
             {ci.name.charAt(0).toUpperCase()}
           </Avatar>
