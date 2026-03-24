@@ -2,10 +2,14 @@ import { eq, and, ne } from "drizzle-orm";
 
 import { DbService } from "./db.service.js";
 import {
+  entityGroupMembers,
+  entityTagAssignments,
   entityRecords,
   fieldMappings,
   connectorEntities,
   connectorInstances,
+  entityGroups,
+  entityTags,
   columnDefinitions,
   jobs,
   organizationUsers,
@@ -38,6 +42,18 @@ export class ResetService {
     await DbService.transaction(async (tx) => {
       // Delete in child → parent order to respect FK constraints
 
+      const deletedEntityGroupMembers = await tx
+        .delete(entityGroupMembers)
+        .where(eq(entityGroupMembers.organizationId, organizationId))
+        .returning({ id: entityGroupMembers.id });
+      logger.info(`Deleted ${deletedEntityGroupMembers.length} entity group members`);
+
+      const deletedEntityTagAssignments = await tx
+        .delete(entityTagAssignments)
+        .where(eq(entityTagAssignments.organizationId, organizationId))
+        .returning({ id: entityTagAssignments.id });
+      logger.info(`Deleted ${deletedEntityTagAssignments.length} entity tag assignments`);
+
       const deletedEntityRecords = await tx
         .delete(entityRecords)
         .where(eq(entityRecords.organizationId, organizationId))
@@ -61,6 +77,18 @@ export class ResetService {
         .where(eq(connectorInstances.organizationId, organizationId))
         .returning({ id: connectorInstances.id });
       logger.info(`Deleted ${deletedConnectorInstances.length} connector instances`);
+
+      const deletedEntityGroups = await tx
+        .delete(entityGroups)
+        .where(eq(entityGroups.organizationId, organizationId))
+        .returning({ id: entityGroups.id });
+      logger.info(`Deleted ${deletedEntityGroups.length} entity groups`);
+
+      const deletedEntityTags = await tx
+        .delete(entityTags)
+        .where(eq(entityTags.organizationId, organizationId))
+        .returning({ id: entityTags.id });
+      logger.info(`Deleted ${deletedEntityTags.length} entity tags`);
 
       const deletedColumnDefinitions = await tx
         .delete(columnDefinitions)

@@ -4,6 +4,9 @@ import type { ConnectorEntityListRequestQuery } from "@portalai/core/contracts";
 import type { ConnectorInstanceListRequestQuery } from "@portalai/core/contracts";
 import type { EntityRecordListRequestQuery } from "@portalai/core/contracts";
 import type { FieldMappingListRequestQuery } from "@portalai/core/contracts";
+import type { EntityGroupListRequestQuery } from "@portalai/core/contracts";
+import type { EntityGroupMemberOverlapRequestQuery } from "@portalai/core/contracts";
+import type { EntityGroupResolveRequestQuery } from "@portalai/core/contracts";
 import type { EntityTagListRequestQuery } from "@portalai/core/contracts";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 
@@ -63,6 +66,17 @@ export const queryKeys = {
       [...queryKeys.entityRecords.root, "count", connectorEntityId] as const,
     get: (connectorEntityId: string, recordId: string) =>
       [...queryKeys.entityRecords.root, "get", connectorEntityId, recordId] as const,
+  },
+  entityGroups: {
+    root: ["entityGroups"] as const,
+    list: (params?: EntityGroupListRequestQuery) =>
+      [...queryKeys.entityGroups.root, "list", params] as const,
+    get: (id: string) =>
+      [...queryKeys.entityGroups.root, "get", id] as const,
+    memberOverlap: (id: string, params?: EntityGroupMemberOverlapRequestQuery) =>
+      [...queryKeys.entityGroups.root, "memberOverlap", id, params] as const,
+    resolve: (id: string, params?: EntityGroupResolveRequestQuery) =>
+      [...queryKeys.entityGroups.root, "resolve", id, params] as const,
   },
   entityTags: {
     root: ["entityTags"] as const,

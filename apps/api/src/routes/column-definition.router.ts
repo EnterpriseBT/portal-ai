@@ -109,9 +109,9 @@ columnDefinitionRouter.get(
       if (type) {
         const types = type.split(",").map((t) => t.trim()).filter(Boolean);
         if (types.length === 1) {
-          filters.push(eq(columnDefinitions.type, types[0]));
+          filters.push(eq(columnDefinitions.type, types[0] as never));
         } else if (types.length > 1) {
-          filters.push(inArray(columnDefinitions.type, types));
+          filters.push(inArray(columnDefinitions.type, types as never[]));
         }
       }
       if (required !== undefined) {

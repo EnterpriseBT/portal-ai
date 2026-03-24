@@ -10,6 +10,7 @@ import { connectorEntityRouter } from "./connector-entity.router.js";
 import { fieldMappingRouter } from "./field-mapping.router.js";
 import { uploadsRouter } from "./uploads.router.js";
 import { entityTagRouter } from "./entity-tag.router.js";
+import { entityGroupRouter } from "./entity-group.router.js";
 
 export const protectedRouter = Router();
 
@@ -27,3 +28,4 @@ protectedRouter.use("/connector-entities", connectorEntityRouter);
 protectedRouter.use("/field-mappings", fieldMappingRouter);
 protectedRouter.use("/uploads", uploadsRouter);
 protectedRouter.use("/entity-tags", entityTagRouter);
+protectedRouter.use("/entity-groups", entityGroupRouter);

@@ -11,6 +11,8 @@ export { entityRecords } from "./entity-records.table.js";
 export { jobs, jobStatusEnum, jobTypeEnum } from "./jobs.table.js";
 export { entityTags } from "./entity-tags.table.js";
 export { entityTagAssignments } from "./entity-tag-assignments.table.js";
+export { entityGroups } from "./entity-groups.table.js";
+export { entityGroupMembers } from "./entity-group-members.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";

@@ -39,7 +39,9 @@ export function useInfiniteFilterOptions<TResponse, TItem>(
 ): InfiniteFilterOptionsResult {
   const [labelMap, setLabelMap] = React.useState<Record<string, string>>({});
   const configRef = React.useRef(config);
-  configRef.current = config;
+  React.useEffect(() => {
+    configRef.current = config;
+  });
 
   const fetchPage = React.useCallback(
     async (params: FetchPageParams): Promise<FetchPageResult> => {

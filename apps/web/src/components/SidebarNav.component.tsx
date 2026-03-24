@@ -172,6 +172,12 @@ export const SidebarNav = () => {
         onClick={() => handleClick(ApplicationRoute.ColumnDefinitions)}
       />
       <SidebarNavItem
+        icon={IconName.Link}
+        label="Entity Groups"
+        selected={pathname.startsWith(ApplicationRoute.EntityGroups)}
+        onClick={() => handleClick(ApplicationRoute.EntityGroups)}
+      />
+      <SidebarNavItem
         icon={IconName.Label}
         label="Tags"
         selected={pathname.startsWith(ApplicationRoute.Tags)}

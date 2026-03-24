@@ -13,16 +13,19 @@ import { Route as TagsRouteImport } from './routes/tags'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JobsRouteImport } from './routes/jobs'
+import { Route as EntityGroupsRouteImport } from './routes/entity-groups'
 import { Route as EntitiesRouteImport } from './routes/entities'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitions'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TagsIndexRouteImport } from './routes/tags.index'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
+import { Route as EntityGroupsIndexRouteImport } from './routes/entity-groups.index'
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
 import { Route as ColumnDefinitionsIndexRouteImport } from './routes/column-definitions.index'
 import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
+import { Route as EntityGroupsEntityGroupIdRouteImport } from './routes/entity-groups.$entityGroupId'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
 import { Route as ConnectorsConnectorInstanceIdRouteImport } from './routes/connectors.$connectorInstanceId'
 import { Route as ColumnDefinitionsColumnDefinitionIdRouteImport } from './routes/column-definitions.$columnDefinitionId'
@@ -47,6 +50,11 @@ const LoginRoute = LoginRouteImport.update({
 const JobsRoute = JobsRouteImport.update({
   id: '/jobs',
   path: '/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EntityGroupsRoute = EntityGroupsRouteImport.update({
+  id: '/entity-groups',
+  path: '/entity-groups',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EntitiesRoute = EntitiesRouteImport.update({
@@ -79,6 +87,11 @@ const JobsIndexRoute = JobsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => JobsRoute,
 } as any)
+const EntityGroupsIndexRoute = EntityGroupsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => EntityGroupsRoute,
+} as any)
 const EntitiesIndexRoute = EntitiesIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -99,6 +112,12 @@ const JobsJobIdRoute = JobsJobIdRouteImport.update({
   path: '/$jobId',
   getParentRoute: () => JobsRoute,
 } as any)
+const EntityGroupsEntityGroupIdRoute =
+  EntityGroupsEntityGroupIdRouteImport.update({
+    id: '/$entityGroupId',
+    path: '/$entityGroupId',
+    getParentRoute: () => EntityGroupsRoute,
+  } as any)
 const EntitiesEntityIdRoute = EntitiesEntityIdRouteImport.update({
   id: '/$entityId',
   path: '/$entityId',
@@ -133,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/column-definitions': typeof ColumnDefinitionsRouteWithChildren
   '/connectors': typeof ConnectorsRouteWithChildren
   '/entities': typeof EntitiesRouteWithChildren
+  '/entity-groups': typeof EntityGroupsRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
@@ -140,10 +160,12 @@ export interface FileRoutesByFullPath {
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
+  '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
+  '/entity-groups/': typeof EntityGroupsIndexRoute
   '/jobs/': typeof JobsIndexRoute
   '/tags/': typeof TagsIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
@@ -155,10 +177,12 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
+  '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions': typeof ColumnDefinitionsIndexRoute
   '/connectors': typeof ConnectorsIndexRoute
   '/entities': typeof EntitiesIndexRoute
+  '/entity-groups': typeof EntityGroupsIndexRoute
   '/jobs': typeof JobsIndexRoute
   '/tags': typeof TagsIndexRoute
   '/entities/$entityId': typeof EntitiesEntityIdIndexRoute
@@ -170,6 +194,7 @@ export interface FileRoutesById {
   '/column-definitions': typeof ColumnDefinitionsRouteWithChildren
   '/connectors': typeof ConnectorsRouteWithChildren
   '/entities': typeof EntitiesRouteWithChildren
+  '/entity-groups': typeof EntityGroupsRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
@@ -177,10 +202,12 @@ export interface FileRoutesById {
   '/column-definitions/$columnDefinitionId': typeof ColumnDefinitionsColumnDefinitionIdRoute
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
+  '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
+  '/entity-groups/': typeof EntityGroupsIndexRoute
   '/jobs/': typeof JobsIndexRoute
   '/tags/': typeof TagsIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
@@ -193,6 +220,7 @@ export interface FileRouteTypes {
     | '/column-definitions'
     | '/connectors'
     | '/entities'
+    | '/entity-groups'
     | '/jobs'
     | '/login'
     | '/settings'
@@ -200,10 +228,12 @@ export interface FileRouteTypes {
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
+    | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
     | '/column-definitions/'
     | '/connectors/'
     | '/entities/'
+    | '/entity-groups/'
     | '/jobs/'
     | '/tags/'
     | '/entities/$entityId/'
@@ -215,10 +245,12 @@ export interface FileRouteTypes {
     | '/settings'
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
+    | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
     | '/column-definitions'
     | '/connectors'
     | '/entities'
+    | '/entity-groups'
     | '/jobs'
     | '/tags'
     | '/entities/$entityId'
@@ -229,6 +261,7 @@ export interface FileRouteTypes {
     | '/column-definitions'
     | '/connectors'
     | '/entities'
+    | '/entity-groups'
     | '/jobs'
     | '/login'
     | '/settings'
@@ -236,10 +269,12 @@ export interface FileRouteTypes {
     | '/column-definitions/$columnDefinitionId'
     | '/connectors/$connectorInstanceId'
     | '/entities/$entityId'
+    | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
     | '/column-definitions/'
     | '/connectors/'
     | '/entities/'
+    | '/entity-groups/'
     | '/jobs/'
     | '/tags/'
     | '/entities/$entityId/'
@@ -251,6 +286,7 @@ export interface RootRouteChildren {
   ColumnDefinitionsRoute: typeof ColumnDefinitionsRouteWithChildren
   ConnectorsRoute: typeof ConnectorsRouteWithChildren
   EntitiesRoute: typeof EntitiesRouteWithChildren
+  EntityGroupsRoute: typeof EntityGroupsRouteWithChildren
   JobsRoute: typeof JobsRouteWithChildren
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
@@ -285,6 +321,13 @@ declare module '@tanstack/react-router' {
       path: '/jobs'
       fullPath: '/jobs'
       preLoaderRoute: typeof JobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/entity-groups': {
+      id: '/entity-groups'
+      path: '/entity-groups'
+      fullPath: '/entity-groups'
+      preLoaderRoute: typeof EntityGroupsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/entities': {
@@ -329,6 +372,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JobsIndexRouteImport
       parentRoute: typeof JobsRoute
     }
+    '/entity-groups/': {
+      id: '/entity-groups/'
+      path: '/'
+      fullPath: '/entity-groups/'
+      preLoaderRoute: typeof EntityGroupsIndexRouteImport
+      parentRoute: typeof EntityGroupsRoute
+    }
     '/entities/': {
       id: '/entities/'
       path: '/'
@@ -356,6 +406,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/jobs/$jobId'
       preLoaderRoute: typeof JobsJobIdRouteImport
       parentRoute: typeof JobsRoute
+    }
+    '/entity-groups/$entityGroupId': {
+      id: '/entity-groups/$entityGroupId'
+      path: '/$entityGroupId'
+      fullPath: '/entity-groups/$entityGroupId'
+      preLoaderRoute: typeof EntityGroupsEntityGroupIdRouteImport
+      parentRoute: typeof EntityGroupsRoute
     }
     '/entities/$entityId': {
       id: '/entities/$entityId'
@@ -450,6 +507,20 @@ const EntitiesRouteWithChildren = EntitiesRoute._addFileChildren(
   EntitiesRouteChildren,
 )
 
+interface EntityGroupsRouteChildren {
+  EntityGroupsEntityGroupIdRoute: typeof EntityGroupsEntityGroupIdRoute
+  EntityGroupsIndexRoute: typeof EntityGroupsIndexRoute
+}
+
+const EntityGroupsRouteChildren: EntityGroupsRouteChildren = {
+  EntityGroupsEntityGroupIdRoute: EntityGroupsEntityGroupIdRoute,
+  EntityGroupsIndexRoute: EntityGroupsIndexRoute,
+}
+
+const EntityGroupsRouteWithChildren = EntityGroupsRoute._addFileChildren(
+  EntityGroupsRouteChildren,
+)
+
 interface JobsRouteChildren {
   JobsJobIdRoute: typeof JobsJobIdRoute
   JobsIndexRoute: typeof JobsIndexRoute
@@ -477,6 +548,7 @@ const rootRouteChildren: RootRouteChildren = {
   ColumnDefinitionsRoute: ColumnDefinitionsRouteWithChildren,
   ConnectorsRoute: ConnectorsRouteWithChildren,
   EntitiesRoute: EntitiesRouteWithChildren,
+  EntityGroupsRoute: EntityGroupsRouteWithChildren,
   JobsRoute: JobsRouteWithChildren,
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
