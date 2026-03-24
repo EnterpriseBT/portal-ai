@@ -112,9 +112,9 @@ connectorInstanceRouter.get(
       if (status) {
         const statuses = status.split(",").map((s) => s.trim()).filter(Boolean);
         if (statuses.length === 1) {
-          filters.push(eq(connectorInstances.status, statuses[0]));
+          filters.push(eq(connectorInstances.status, statuses[0] as never));
         } else if (statuses.length > 1) {
-          filters.push(inArray(connectorInstances.status, statuses));
+          filters.push(inArray(connectorInstances.status, statuses as never[]));
         }
       }
       if (search) {

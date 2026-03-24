@@ -62,31 +62,31 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Create `entity-groups.table.ts`
-  - [ ] Spread `baseColumns`
-  - [ ] Add `organizationId` — `text`, not null, FK → `organizations.id`
-  - [ ] Add `name` — `text`, not null
-  - [ ] Add `description` — `text`, nullable
-  - [ ] Export as `entityGroups`
-- [ ] Create `entity-group-members.table.ts`
-  - [ ] Spread `baseColumns`
-  - [ ] Add `organizationId` — `text`, not null, FK → `organizations.id`
-  - [ ] Add `entityGroupId` — `text`, not null, FK → `entity_groups.id`
-  - [ ] Add `connectorEntityId` — `text`, not null, FK → `connector_entities.id`
-  - [ ] Add `linkFieldMappingId` — `text`, not null, FK → `field_mappings.id`
-  - [ ] Add `isPrimary` — `boolean`, not null, default `false`
-  - [ ] Add `unique("entity_group_members_group_entity_unique")` on `(entityGroupId, connectorEntityId)` — one membership per entity per group
-  - [ ] Export as `entityGroupMembers`
-- [ ] Update `schema/index.ts`
-  - [ ] Add `export { entityGroups } from "./entity-groups.table.js"`
-  - [ ] Add `export { entityGroupMembers } from "./entity-group-members.table.js"`
-- [ ] Run `npm run db:generate` from `apps/api/` and confirm migration file is created
-- [ ] Run `npm run db:migrate` from `apps/api/` and confirm migration applies cleanly
+- [x] Create `entity-groups.table.ts`
+  - [x] Spread `baseColumns`
+  - [x] Add `organizationId` — `text`, not null, FK → `organizations.id`
+  - [x] Add `name` — `text`, not null
+  - [x] Add `description` — `text`, nullable
+  - [x] Export as `entityGroups`
+- [x] Create `entity-group-members.table.ts`
+  - [x] Spread `baseColumns`
+  - [x] Add `organizationId` — `text`, not null, FK → `organizations.id`
+  - [x] Add `entityGroupId` — `text`, not null, FK → `entity_groups.id`
+  - [x] Add `connectorEntityId` — `text`, not null, FK → `connector_entities.id`
+  - [x] Add `linkFieldMappingId` — `text`, not null, FK → `field_mappings.id`
+  - [x] Add `isPrimary` — `boolean`, not null, default `false`
+  - [x] Add `unique("entity_group_members_group_entity_unique")` on `(entityGroupId, connectorEntityId)` — one membership per entity per group
+  - [x] Export as `entityGroupMembers`
+- [x] Update `schema/index.ts`
+  - [x] Add `export { entityGroups } from "./entity-groups.table.js"`
+  - [x] Add `export { entityGroupMembers } from "./entity-group-members.table.js"`
+- [x] Run `npm run db:generate` from `apps/api/` and confirm migration file is created
+- [x] Run `npm run db:migrate` from `apps/api/` and confirm migration applies cleanly
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run build` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run build` passes from repo root
 
 ---
 
