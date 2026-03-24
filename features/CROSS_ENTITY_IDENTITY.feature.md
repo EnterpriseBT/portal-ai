@@ -273,55 +273,55 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Create `entity-group.router.ts`
-  - [ ] `GET /` — list groups scoped to org; support `search` (ilike on `name`), `limit`, `offset`, `sortBy` (name/created), `sortOrder`; use `EntityGroupListRequestQuerySchema` to parse query
-  - [ ] `GET /:id` — fetch single group by ID with members (joined with connector entity labels and field mapping source fields); 404 with `ENTITY_GROUP_NOT_FOUND` if missing
-  - [ ] `POST /` — create group; validate with `EntityGroupCreateRequestBodySchema`; call `findByName` to detect duplicate name within org, return 409 with `ENTITY_GROUP_DUPLICATE_NAME` if found; use `EntityGroupModelFactory` to build the record
-  - [ ] `PATCH /:id` — update group; validate with `EntityGroupUpdateRequestBodySchema`; if `name` is changing, re-run `findByName` duplicate check; 404 if group not found
-  - [ ] `DELETE /:id` — soft-delete group; also soft-delete all its members by calling `entityGroupMembersRepo.softDeleteMany` filtered by `entityGroupId`; wrap both in a `DbService.transaction`; 404 if group not found
-  - [ ] Add OpenAPI JSDoc comments for all routes
-- [ ] Create `entity-group-member.router.ts` — nested under `entity-group.router.ts` at `/:entityGroupId/members`
-  - [ ] `GET /` — list members for the group; returns members with connector entity labels and link field details
-  - [ ] `POST /` — add a member to the group; validate with `EntityGroupMemberCreateRequestBodySchema`; verify the connector entity exists and belongs to the same org; verify the link field mapping exists and belongs to the connector entity; call `findExisting` to detect duplicate, return 409 with `ENTITY_GROUP_MEMBER_ALREADY_EXISTS` if found; if `isPrimary` is true, wrap in a transaction that calls `clearPrimary` then creates the member; use `EntityGroupMemberModelFactory` to build the record
-  - [ ] `PATCH /:memberId` — update a member; validate with `EntityGroupMemberUpdateRequestBodySchema`; if `isPrimary` is changing to `true`, wrap in a transaction that calls `clearPrimary` then updates; if `linkFieldMappingId` is changing, verify the new field mapping belongs to the member's connector entity; 404 if member not found
-  - [ ] `DELETE /:memberId` — soft-delete the member; 404 if member not found
-  - [ ] `GET /overlap` — preview overlap between an existing group member's link field and a candidate member's link field *before* adding it; accepts `targetConnectorEntityId` and `targetLinkFieldMappingId` as query params; for each existing member in the group, queries both entities' `normalizedData` to count distinct link field values, then computes the intersection count and percentage; returns `EntityGroupMemberOverlapResponsePayload`
-  - [ ] Add OpenAPI JSDoc comments for all routes
-- [ ] Add identity resolution endpoint to `entity-group.router.ts`
-  - [ ] `GET /:id/resolve` — on-demand identity resolution; accepts `linkValue` query param; for each member in the group, looks up their `linkFieldMappingId` → column definition key, then queries `entity_records.normalized_data` where `normalizedData[key] = linkValue`; returns `EntityGroupResolveResponsePayload` with matched records grouped by member entity
-- [ ] Update `protected.router.ts`
-  - [ ] Import `entityGroupRouter`
-  - [ ] Add `protectedRouter.use("/entity-groups", entityGroupRouter)`
-- [ ] Write integration tests in `entity-group.router.integration.test.ts`
-  - [ ] `GET /api/entity-groups` returns paginated list scoped to org
-  - [ ] `GET /api/entity-groups` with `search` filters by name
-  - [ ] `GET /api/entity-groups/:id` returns 200 with members for valid ID, 404 for unknown
-  - [ ] `POST /api/entity-groups` creates group, returns 201
-  - [ ] `POST /api/entity-groups` returns 409 on duplicate name within org
-  - [ ] `PATCH /api/entity-groups/:id` updates fields, returns 200
-  - [ ] `PATCH /api/entity-groups/:id` returns 409 if new name conflicts with existing group
-  - [ ] `DELETE /api/entity-groups/:id` soft-deletes group and its members, returns 200
-  - [ ] `DELETE /api/entity-groups/:id` returns 404 for unknown ID
-  - [ ] `GET /api/entity-groups/:id/resolve?linkValue=test@example.com` returns matching records from each member entity
-  - [ ] `GET /api/entity-groups/:id/resolve` returns empty results array when no records match
-- [ ] Write integration tests in `entity-group-member.router.integration.test.ts`
-  - [ ] `GET /api/entity-groups/:id/members` returns members with enriched details
-  - [ ] `POST /api/entity-groups/:id/members` adds a member, returns 201
-  - [ ] `POST /api/entity-groups/:id/members` returns 409 if entity already a member
-  - [ ] `POST /api/entity-groups/:id/members` returns 400 if link field mapping does not belong to the connector entity
-  - [ ] `POST /api/entity-groups/:id/members` with `isPrimary: true` clears any existing primary and sets the new member as primary
-  - [ ] `PATCH /api/entity-groups/:id/members/:memberId` updates `isPrimary` correctly with transactional primary swap
-  - [ ] `PATCH /api/entity-groups/:id/members/:memberId` updates `linkFieldMappingId` and validates ownership
-  - [ ] `DELETE /api/entity-groups/:id/members/:memberId` removes member, returns 200
-  - [ ] `GET /api/entity-groups/:id/members/overlap?targetConnectorEntityId=...&targetLinkFieldMappingId=...` returns overlap statistics
-- [ ] Run `npm run test -- --testPathPattern="entity-group"` from `apps/api/` and confirm all route tests pass
+- [x] Create `entity-group.router.ts`
+  - [x] `GET /` — list groups scoped to org; support `search` (ilike on `name`), `limit`, `offset`, `sortBy` (name/created), `sortOrder`; use `EntityGroupListRequestQuerySchema` to parse query
+  - [x] `GET /:id` — fetch single group by ID with members (joined with connector entity labels and field mapping source fields); 404 with `ENTITY_GROUP_NOT_FOUND` if missing
+  - [x] `POST /` — create group; validate with `EntityGroupCreateRequestBodySchema`; call `findByName` to detect duplicate name within org, return 409 with `ENTITY_GROUP_DUPLICATE_NAME` if found; use `EntityGroupModelFactory` to build the record
+  - [x] `PATCH /:id` — update group; validate with `EntityGroupUpdateRequestBodySchema`; if `name` is changing, re-run `findByName` duplicate check; 404 if group not found
+  - [x] `DELETE /:id` — soft-delete group; also soft-delete all its members by calling `entityGroupMembersRepo.softDeleteMany` filtered by `entityGroupId`; wrap both in a `DbService.transaction`; 404 if group not found
+  - [x] Add OpenAPI JSDoc comments for all routes
+- [x] Create `entity-group-member.router.ts` — nested under `entity-group.router.ts` at `/:entityGroupId/members`
+  - [x] `GET /` — list members for the group; returns members with connector entity labels and link field details
+  - [x] `POST /` — add a member to the group; validate with `EntityGroupMemberCreateRequestBodySchema`; verify the connector entity exists and belongs to the same org; verify the link field mapping exists and belongs to the connector entity; call `findExisting` to detect duplicate, return 409 with `ENTITY_GROUP_MEMBER_ALREADY_EXISTS` if found; if `isPrimary` is true, wrap in a transaction that calls `clearPrimary` then creates the member; use `EntityGroupMemberModelFactory` to build the record
+  - [x] `PATCH /:memberId` — update a member; validate with `EntityGroupMemberUpdateRequestBodySchema`; if `isPrimary` is changing to `true`, wrap in a transaction that calls `clearPrimary` then updates; if `linkFieldMappingId` is changing, verify the new field mapping belongs to the member's connector entity; 404 if member not found
+  - [x] `DELETE /:memberId` — soft-delete the member; 404 if member not found
+  - [x] `GET /overlap` — preview overlap between an existing group member's link field and a candidate member's link field *before* adding it; accepts `targetConnectorEntityId` and `targetLinkFieldMappingId` as query params; for each existing member in the group, queries both entities' `normalizedData` to count distinct link field values, then computes the intersection count and percentage; returns `EntityGroupMemberOverlapResponsePayload`
+  - [x] Add OpenAPI JSDoc comments for all routes
+- [x] Add identity resolution endpoint to `entity-group.router.ts`
+  - [x] `GET /:id/resolve` — on-demand identity resolution; accepts `linkValue` query param; for each member in the group, looks up their `linkFieldMappingId` → column definition key, then queries `entity_records.normalized_data` where `normalizedData[key] = linkValue`; returns `EntityGroupResolveResponsePayload` with matched records grouped by member entity
+- [x] Update `protected.router.ts`
+  - [x] Import `entityGroupRouter`
+  - [x] Add `protectedRouter.use("/entity-groups", entityGroupRouter)`
+- [x] Write integration tests in `entity-group.router.integration.test.ts`
+  - [x] `GET /api/entity-groups` returns paginated list scoped to org
+  - [x] `GET /api/entity-groups` with `search` filters by name
+  - [x] `GET /api/entity-groups/:id` returns 200 with members for valid ID, 404 for unknown
+  - [x] `POST /api/entity-groups` creates group, returns 201
+  - [x] `POST /api/entity-groups` returns 409 on duplicate name within org
+  - [x] `PATCH /api/entity-groups/:id` updates fields, returns 200
+  - [x] `PATCH /api/entity-groups/:id` returns 409 if new name conflicts with existing group
+  - [x] `DELETE /api/entity-groups/:id` soft-deletes group and its members, returns 200
+  - [x] `DELETE /api/entity-groups/:id` returns 404 for unknown ID
+  - [x] `GET /api/entity-groups/:id/resolve?linkValue=test@example.com` returns matching records from each member entity
+  - [x] `GET /api/entity-groups/:id/resolve` returns empty results array when no records match
+- [x] Write integration tests in `entity-group-member.router.integration.test.ts`
+  - [x] `GET /api/entity-groups/:id/members` returns members with enriched details
+  - [x] `POST /api/entity-groups/:id/members` adds a member, returns 201
+  - [x] `POST /api/entity-groups/:id/members` returns 409 if entity already a member
+  - [x] `POST /api/entity-groups/:id/members` returns 400 if link field mapping does not belong to the connector entity
+  - [x] `POST /api/entity-groups/:id/members` with `isPrimary: true` clears any existing primary and sets the new member as primary
+  - [x] `PATCH /api/entity-groups/:id/members/:memberId` updates `isPrimary` correctly with transactional primary swap
+  - [x] `PATCH /api/entity-groups/:id/members/:memberId` updates `linkFieldMappingId` and validates ownership
+  - [x] `DELETE /api/entity-groups/:id/members/:memberId` removes member, returns 200
+  - [x] `GET /api/entity-groups/:id/members/overlap?targetConnectorEntityId=...&targetLinkFieldMappingId=...` returns overlap statistics
+- [x] Run `npm run test -- --testPathPattern="entity-group"` from `apps/api/` and confirm all route tests pass
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root (pre-existing lint error in `useInfiniteFilterOptions.ts` unrelated to this change)
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from repo root
 - [ ] Manually verify routes are visible in Swagger UI at `http://localhost:3001/api-docs`
 
 ---
