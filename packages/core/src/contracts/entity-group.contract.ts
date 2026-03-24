@@ -33,15 +33,22 @@ export const EntityGroupListRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
     search: z.string().optional(),
     sortBy: z.enum(["name", "created"]).optional().default("created"),
+    include: z.string().optional(),
   });
 
 export type EntityGroupListRequestQuery = z.infer<
   typeof EntityGroupListRequestQuerySchema
 >;
 
+export const EntityGroupListItemSchema = EntityGroupSchema.extend({
+  memberCount: z.number(),
+});
+
+export type EntityGroupListItem = z.infer<typeof EntityGroupListItemSchema>;
+
 export const EntityGroupListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    entityGroups: z.array(EntityGroupSchema),
+    entityGroups: z.array(EntityGroupListItemSchema),
   });
 
 export type EntityGroupListResponsePayload = z.infer<

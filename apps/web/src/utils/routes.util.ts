@@ -9,6 +9,8 @@ export enum ApplicationRoute {
   EntityRecord = "/entities/$entityId/records/$recordId",
   ColumnDefinitions = "/column-definitions",
   ColumnDefinition = "/column-definitions/$columnDefinitionId",
+  EntityGroups = "/entity-groups",
+  EntityGroup = "/entity-groups/$entityGroupId",
   Jobs = "/jobs",
   Tags = "/tags",
 }

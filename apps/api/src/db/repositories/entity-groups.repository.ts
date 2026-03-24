@@ -5,12 +5,17 @@
  * and a join through `entityGroupMembers` to find groups by entity.
  */
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 
 import { entityGroups, entityGroupMembers } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
 import type { EntityGroupSelect, EntityGroupInsert } from "../schema/zod.js";
+
+export interface EntityGroupListOptions extends ListOptions {
+  include?: string[];
+}
 
 export class EntityGroupsRepository extends Repository<
   typeof entityGroups,
@@ -19,6 +24,48 @@ export class EntityGroupsRepository extends Repository<
 > {
   constructor() {
     super(entityGroups);
+  }
+
+  /**
+   * Find entity groups matching `where`, with optional eager-loaded relations.
+   * Pass `include` with `"memberCount"` to attach a member count to each group.
+   */
+  override async findMany(
+    where?: SQL,
+    opts: EntityGroupListOptions = {},
+    client: DbClient = db
+  ): Promise<EntityGroupSelect[]> {
+    const groups = await super.findMany(where, opts, client);
+    const { include } = opts;
+    if (groups.length === 0 || !include || include.length === 0) return groups;
+
+    const includes = new Set(include);
+
+    if (includes.has("memberCount")) {
+      const groupIds = groups.map((g) => g.id);
+      const counts = await (client as typeof db)
+        .select({
+          entityGroupId: entityGroupMembers.entityGroupId,
+          count: sql<number>`count(*)::int`.as("count"),
+        })
+        .from(entityGroupMembers)
+        .where(
+          and(
+            inArray(entityGroupMembers.entityGroupId, groupIds),
+            isNull(entityGroupMembers.deleted)
+          )
+        )
+        .groupBy(entityGroupMembers.entityGroupId);
+
+      const countMap = new Map(counts.map((c) => [c.entityGroupId, c.count]));
+
+      return groups.map((g) => ({
+        ...g,
+        memberCount: countMap.get(g.id) ?? 0,
+      })) as EntityGroupSelect[];
+    }
+
+    return groups;
   }
 
   /** Return non-deleted groups for an organization. Supports full ListOptions for sorting/pagination. */

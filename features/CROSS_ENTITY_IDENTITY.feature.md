@@ -339,40 +339,40 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Create `entity-groups.api.ts`
-  - [ ] `fetchEntityGroups(params)` — `GET /api/entity-groups` with pagination/search
-  - [ ] `fetchEntityGroup(id)` — `GET /api/entity-groups/:id` (returns group with members)
-  - [ ] `createEntityGroup(body)` — `POST /api/entity-groups`
-  - [ ] `updateEntityGroup(id, body)` — `PATCH /api/entity-groups/:id`
-  - [ ] `deleteEntityGroup(id)` — `DELETE /api/entity-groups/:id`
-  - [ ] `addEntityGroupMember(groupId, body)` — `POST /api/entity-groups/:id/members`
-  - [ ] `updateEntityGroupMember(groupId, memberId, body)` — `PATCH /api/entity-groups/:id/members/:memberId`
-  - [ ] `removeEntityGroupMember(groupId, memberId)` — `DELETE /api/entity-groups/:id/members/:memberId`
-  - [ ] `fetchMemberOverlap(groupId, params)` — `GET /api/entity-groups/:id/members/overlap`
-  - [ ] `resolveEntityGroup(groupId, linkValue)` — `GET /api/entity-groups/:id/resolve`
-- [ ] Update `keys.ts` with query keys for all entity group endpoints
-- [ ] Create `EntityGroups.view.tsx`
-  - [ ] Container component with `useAuthFetch` and `usePagination`
-  - [ ] Pure `EntityGroupsViewUI` component
-  - [ ] Table with columns: Name, Description, Member Count, Created
-  - [ ] Search bar in `PaginationToolbar`
-  - [ ] "Create Group" button opening a dialog with name + description fields
-  - [ ] Row click navigates to group detail page
-- [ ] Create route files for TanStack Router
-- [ ] Update navigation to include "Entity Groups" link
-- [ ] Write tests in `EntityGroupsView.test.tsx`
-  - [ ] Renders group list table with name, description, member count columns
-  - [ ] Search filters groups by name
-  - [ ] Create dialog opens and submits correctly
-  - [ ] Row click navigates to detail view
-- [ ] Run `npm run test -- --testPathPattern="EntityGroupsView"` from `apps/web/` and confirm all tests pass
+- [x] Create `entity-groups.api.ts`
+  - [x] `fetchEntityGroups(params)` — `GET /api/entity-groups` with pagination/search
+  - [x] `fetchEntityGroup(id)` — `GET /api/entity-groups/:id` (returns group with members)
+  - [x] `createEntityGroup(body)` — `POST /api/entity-groups`
+  - [x] `updateEntityGroup(id, body)` — `PATCH /api/entity-groups/:id`
+  - [x] `deleteEntityGroup(id)` — `DELETE /api/entity-groups/:id`
+  - [x] `addEntityGroupMember(groupId, body)` — `POST /api/entity-groups/:id/members`
+  - [x] `updateEntityGroupMember(groupId, memberId, body)` — `PATCH /api/entity-groups/:id/members/:memberId`
+  - [x] `removeEntityGroupMember(groupId, memberId)` — `DELETE /api/entity-groups/:id/members/:memberId`
+  - [x] `fetchMemberOverlap(groupId, params)` — `GET /api/entity-groups/:id/members/overlap`
+  - [x] `resolveEntityGroup(groupId, linkValue)` — `GET /api/entity-groups/:id/resolve`
+- [x] Update `keys.ts` with query keys for all entity group endpoints
+- [x] Create `EntityGroups.view.tsx`
+  - [x] Container component with `useAuthFetch` and `usePagination`
+  - [x] Pure `EntityGroupsViewUI` component
+  - [x] Table with columns: Name, Description, Member Count, Created
+  - [x] Search bar in `PaginationToolbar`
+  - [x] "Create Group" button opening a dialog with name + description fields
+  - [x] Row click navigates to group detail page
+- [x] Create route files for TanStack Router
+- [x] Update navigation to include "Entity Groups" link
+- [x] Write tests in `EntityGroupsView.test.tsx`
+  - [x] Renders group list table with name, description, member count columns
+  - [x] Search filters groups by name
+  - [x] Create dialog opens and submits correctly
+  - [x] Row click navigates to detail view
+- [x] Run `npm run test -- --testPathPattern="EntityGroupsView"` from `apps/web/` and confirm all tests pass
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from `apps/web/`
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root (pre-existing lint error in `@portalai/core` unrelated to these changes)
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from `apps/web/`
 
 ---
 

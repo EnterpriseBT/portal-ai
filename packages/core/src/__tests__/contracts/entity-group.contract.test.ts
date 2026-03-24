@@ -85,7 +85,7 @@ describe("EntityGroupListResponsePayloadSchema", () => {
       total: 1,
       limit: 20,
       offset: 0,
-      entityGroups: [validEntityGroup],
+      entityGroups: [{ ...validEntityGroup, memberCount: 3 }],
     });
     expect(result.success).toBe(true);
   });

@@ -4,6 +4,7 @@ import { connectorDefinitions } from "./connector-definitions.api";
 import { connectorEntities } from "./connector-entities.api";
 import { connectorInstances } from "./connector-instances.api";
 import { entityRecords } from "./entity-records.api";
+import { entityGroups } from "./entity-groups.api";
 import { entityTags } from "./entity-tags.api";
 import {  entityTagAssignments } from "./entity-tag-assignments.api";
 import { fieldMappings } from "./field-mappings.api";
@@ -20,6 +21,7 @@ export const sdk = {
   connectorDefinitions,
   connectorEntities,
   connectorInstances,
+  entityGroups,
   entityRecords,
   entityTags,
   entityTagAssignments,

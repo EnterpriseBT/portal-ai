@@ -62,6 +62,11 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *           enum: [name, created]
  *           default: created
  *         description: Field to sort by
+ *       - in: query
+ *         name: include
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of related data to include — memberCount
  *     responses:
  *       200:
  *         description: Paginated list of entity groups
@@ -98,7 +103,7 @@ entityGroupRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search } =
+      const { limit, offset, sortBy, sortOrder, search, include } =
         EntityGroupListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -115,7 +120,8 @@ entityGroupRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
+      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
+      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
 
       const [data, total] = await Promise.all([
         DbService.repository.entityGroups.findMany(where, listOpts),
@@ -633,7 +639,7 @@ entityGroupRouter.get(
         const records = await DbService.repository.entityRecords.findMany(
           and(
             eq(entityRecords.connectorEntityId, member.connectorEntityId),
-            sql`${entityRecords.normalizedData}->>${ sourceField} = ${linkValue}`
+            sql`${entityRecords.normalizedData}->>${sourceField} = ${linkValue}`
           )
         );
 
