@@ -19,6 +19,8 @@ import { fieldMappings } from "./field-mappings.table.js";
 import { entityRecords } from "./entity-records.table.js";
 import { entityTags } from "./entity-tags.table.js";
 import { entityTagAssignments } from "./entity-tag-assignments.table.js";
+import { entityGroups } from "./entity-groups.table.js";
+import { entityGroupMembers } from "./entity-group-members.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -198,4 +200,34 @@ export type EntityTagAssignmentSelect = z.infer<
 >;
 export type EntityTagAssignmentInsert = z.infer<
   typeof EntityTagAssignmentInsertSchema
+>;
+
+// ── Entity Groups ───────────────────────────────────────────────────
+
+/** Zod schema for an `entity_groups` row returned by SELECT. */
+export const EntityGroupSelectSchema = createSelectSchema(entityGroups);
+
+/** Zod schema for inserting into `entity_groups`. */
+export const EntityGroupInsertSchema = createInsertSchema(entityGroups);
+
+/** Inferred types */
+export type EntityGroupSelect = z.infer<typeof EntityGroupSelectSchema>;
+export type EntityGroupInsert = z.infer<typeof EntityGroupInsertSchema>;
+
+// ── Entity Group Members ────────────────────────────────────────────
+
+/** Zod schema for an `entity_group_members` row returned by SELECT. */
+export const EntityGroupMemberSelectSchema =
+  createSelectSchema(entityGroupMembers);
+
+/** Zod schema for inserting into `entity_group_members`. */
+export const EntityGroupMemberInsertSchema =
+  createInsertSchema(entityGroupMembers);
+
+/** Inferred types */
+export type EntityGroupMemberSelect = z.infer<
+  typeof EntityGroupMemberSelectSchema
+>;
+export type EntityGroupMemberInsert = z.infer<
+  typeof EntityGroupMemberInsertSchema
 >;

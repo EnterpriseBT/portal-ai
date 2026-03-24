@@ -12,8 +12,8 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, ColumnDefinition, ConnectorEntity, FieldMapping, EntityRecord, EntityTag, EntityTagAssignment, Core } from "@portalai/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect, ColumnDefinitionSelect, ConnectorEntitySelect, FieldMappingSelect, EntityRecordSelect, EntityTagSelect, EntityTagAssignmentSelect } from "./zod.js";
+import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, ColumnDefinition, ConnectorEntity, FieldMapping, EntityRecord, EntityTag, EntityTagAssignment, EntityGroup, EntityGroupMember, Core } from "@portalai/core/models";
+import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect, ColumnDefinitionSelect, ConnectorEntitySelect, FieldMappingSelect, EntityRecordSelect, EntityTagSelect, EntityTagAssignmentSelect, EntityGroupSelect, EntityGroupMemberSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
@@ -27,6 +27,8 @@ import type { fieldMappings } from "./field-mappings.table.js";
 import type { entityRecords } from "./entity-records.table.js";
 import type { entityTags } from "./entity-tags.table.js";
 import type { entityTagAssignments } from "./entity-tag-assignments.table.js";
+import type { entityGroups } from "./entity-groups.table.js";
+import type { entityGroupMembers } from "./entity-group-members.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -229,3 +231,33 @@ const _entTagAssignModelToDrizzle: _EntTagAssignModelToDrizzle = true;
 type _EntTagAssignInferredRow = InferSelectModel<typeof entityTagAssignments>;
 type _EntTagAssignInferredToModel = IsAssignable<_EntTagAssignInferredRow, EntityTagAssignment>;
 const _entTagAssignInferredToModel: _EntTagAssignInferredToModel = true;
+
+// ── EntityGroup ─────────────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _EntGrpDrizzleToModel = IsAssignable<EntityGroupSelect, EntityGroup>;
+const _entGrpDrizzleToModel: _EntGrpDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _EntGrpModelToDrizzle = IsAssignable<EntityGroup, EntityGroupSelect>;
+const _entGrpModelToDrizzle: _EntGrpModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _EntGrpInferredRow = InferSelectModel<typeof entityGroups>;
+type _EntGrpInferredToModel = IsAssignable<_EntGrpInferredRow, EntityGroup>;
+const _entGrpInferredToModel: _EntGrpInferredToModel = true;
+
+// ── EntityGroupMember ───────────────────────────────────────────────
+
+// Drizzle select row → core Zod model (every DB row must satisfy the model)
+type _EntGrpMemDrizzleToModel = IsAssignable<EntityGroupMemberSelect, EntityGroupMember>;
+const _entGrpMemDrizzleToModel: _EntGrpMemDrizzleToModel = true;
+
+// Core Zod model → Drizzle select row (every model value must be a valid row)
+type _EntGrpMemModelToDrizzle = IsAssignable<EntityGroupMember, EntityGroupMemberSelect>;
+const _entGrpMemModelToDrizzle: _EntGrpMemModelToDrizzle = true;
+
+// Also verify the raw InferSelectModel matches
+type _EntGrpMemInferredRow = InferSelectModel<typeof entityGroupMembers>;
+type _EntGrpMemInferredToModel = IsAssignable<_EntGrpMemInferredRow, EntityGroupMember>;
+const _entGrpMemInferredToModel: _EntGrpMemInferredToModel = true;

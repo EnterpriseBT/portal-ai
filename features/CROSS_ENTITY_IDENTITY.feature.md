@@ -98,25 +98,25 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Update `zod.ts`
-  - [ ] Import `entityGroups` and `entityGroupMembers` from their table files
-  - [ ] Add `EntityGroupSelectSchema = createSelectSchema(entityGroups)` and `EntityGroupInsertSchema = createInsertSchema(entityGroups)`
-  - [ ] Export `EntityGroupSelect` and `EntityGroupInsert` types
-  - [ ] Add `EntityGroupMemberSelectSchema = createSelectSchema(entityGroupMembers)` and `EntityGroupMemberInsertSchema = createInsertSchema(entityGroupMembers)`
-  - [ ] Export `EntityGroupMemberSelect` and `EntityGroupMemberInsert` types
-- [ ] Update `type-checks.ts`
-  - [ ] Import `EntityGroup` and `EntityGroupMember` from `@portalai/core/models`
-  - [ ] Import `EntityGroupSelect`, `EntityGroupMemberSelect` from `./zod.js`
-  - [ ] Import `entityGroups` and `entityGroupMembers` table types
-  - [ ] Add bidirectional `IsAssignable` checks for `EntityGroupSelect` ↔ `EntityGroup`
-  - [ ] Add `InferSelectModel` check for `entityGroups` → `EntityGroup`
-  - [ ] Add bidirectional `IsAssignable` checks for `EntityGroupMemberSelect` ↔ `EntityGroupMember`
-  - [ ] Add `InferSelectModel` check for `entityGroupMembers` → `EntityGroupMember`
+- [x] Update `zod.ts`
+  - [x] Import `entityGroups` and `entityGroupMembers` from their table files
+  - [x] Add `EntityGroupSelectSchema = createSelectSchema(entityGroups)` and `EntityGroupInsertSchema = createInsertSchema(entityGroups)`
+  - [x] Export `EntityGroupSelect` and `EntityGroupInsert` types
+  - [x] Add `EntityGroupMemberSelectSchema = createSelectSchema(entityGroupMembers)` and `EntityGroupMemberInsertSchema = createInsertSchema(entityGroupMembers)`
+  - [x] Export `EntityGroupMemberSelect` and `EntityGroupMemberInsert` types
+- [x] Update `type-checks.ts`
+  - [x] Import `EntityGroup` and `EntityGroupMember` from `@portalai/core/models`
+  - [x] Import `EntityGroupSelect`, `EntityGroupMemberSelect` from `./zod.js`
+  - [x] Import `entityGroups` and `entityGroupMembers` table types
+  - [x] Add bidirectional `IsAssignable` checks for `EntityGroupSelect` ↔ `EntityGroup`
+  - [x] Add `InferSelectModel` check for `entityGroups` → `EntityGroup`
+  - [x] Add bidirectional `IsAssignable` checks for `EntityGroupMemberSelect` ↔ `EntityGroupMember`
+  - [x] Add `InferSelectModel` check for `entityGroupMembers` → `EntityGroupMember`
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root — confirms core models are in sync with Drizzle tables
-- [ ] `npm run build` passes from repo root
+- [x] `npm run type-check` passes from repo root — confirms core models are in sync with Drizzle tables
+- [x] `npm run build` passes from repo root
 
 ---
 
