@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, or, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, type SQL, type Column } from "drizzle-orm";
 
 import { ColumnDefinitionModelFactory } from "@portalai/core/models";
 import {
@@ -60,8 +60,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: type
  *         schema:
  *           type: string
- *           enum: [string, number, boolean, date, datetime, enum, json, array, reference, currency]
- *         description: Filter by column data type
+ *         description: Comma-separated list of column data types to filter by (string, number, boolean, date, datetime, enum, json, array, reference, currency)
  *       - in: query
  *         name: required
  *         schema:
@@ -108,7 +107,12 @@ columnDefinitionRouter.get(
         );
       }
       if (type) {
-        filters.push(eq(columnDefinitions.type, type));
+        const types = type.split(",").map((t) => t.trim()).filter(Boolean);
+        if (types.length === 1) {
+          filters.push(eq(columnDefinitions.type, types[0]));
+        } else if (types.length > 1) {
+          filters.push(inArray(columnDefinitions.type, types));
+        }
       }
       if (required !== undefined) {
         filters.push(eq(columnDefinitions.required, required));

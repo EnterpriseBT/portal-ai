@@ -21,6 +21,8 @@ const {
   connectorEntities,
   columnDefinitions,
   entityRecords,
+  entityTagAssignments,
+  entityTags,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -137,6 +139,8 @@ export async function seedUserAndOrg(
  * Includes all tables that reference users or organizations.
  */
 export async function teardownOrg(db: Db): Promise<void> {
+  await db.delete(entityTagAssignments);
+  await db.delete(entityTags);
   await db.delete(entityRecords);
   await db.delete(fieldMappings);
   await db.delete(connectorEntities);

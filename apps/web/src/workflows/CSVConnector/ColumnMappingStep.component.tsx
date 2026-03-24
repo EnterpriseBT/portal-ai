@@ -36,6 +36,7 @@ const COLUMN_TYPE_OPTIONS: SelectOption[] = [
   { value: "json", label: "JSON" },
   { value: "array", label: "Array" },
   { value: "reference", label: "Reference" },
+  { value: "reference-array", label: "Reference Array (M:M)" },
   { value: "currency", label: "Currency" },
 ];
 
@@ -302,7 +303,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
   const handleTypeChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newType = e.target.value;
-      const isReference = newType === "reference";
+      const isReference = newType === "reference" || newType === "reference-array";
       const supportsFormat = (TYPES_WITH_FORMAT as readonly string[]).includes(newType);
       onUpdate(entityIndex, columnIndex, {
         recommended: {
@@ -408,7 +409,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
           />
         </Stack>
 
-        {column.recommended.type === "reference" && (
+        {(column.recommended.type === "reference" || column.recommended.type === "reference-array") && (
           <ReferenceEditor
             column={column}
             entityIndex={entityIndex}

@@ -10,6 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -537,6 +538,101 @@ describe("Field Mapping Router", () => {
     });
   });
 
+  // ── POST — refBidirectionalFieldMappingId ────────────────────────
+
+  describe("POST /api/field-mappings — refBidirectionalFieldMappingId", () => {
+    it("persists refBidirectionalFieldMappingId: null for a reference-array column", async () => {
+      const { connectorEntityId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      // Create a reference-array column definition
+      const refArrayColDef = createColDef(organizationId, { type: "reference-array" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(refArrayColDef as never);
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId: refArrayColDef.id,
+          sourceField: "friend_ids",
+          refBidirectionalFieldMappingId: null,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.payload.fieldMapping.refBidirectionalFieldMappingId).toBeNull();
+    });
+  });
+
+  // ── PATCH — refBidirectionalFieldMappingId ────────────────────────
+
+  describe("PATCH /api/field-mappings/:id — refBidirectionalFieldMappingId", () => {
+    it("can set refBidirectionalFieldMappingId to another mapping id", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      // Create a second column def and mapping as the target
+      const colDef2 = createColDef(organizationId);
+      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef2 as never);
+
+      const mappingA = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        sourceField: "field_a",
+      });
+      const mappingB = createFieldMap(organizationId, connectorEntityId, colDef2.id, {
+        sourceField: "field_b",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values([mappingA, mappingB] as never);
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mappingA.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ refBidirectionalFieldMappingId: mappingB.id });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.fieldMapping.refBidirectionalFieldMappingId).toBe(mappingB.id);
+    });
+
+    it("can clear refBidirectionalFieldMappingId back to null", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const colDef2 = createColDef(organizationId);
+      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef2 as never);
+
+      const mappingA = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        sourceField: "field_a",
+      });
+      const mappingB = createFieldMap(organizationId, connectorEntityId, colDef2.id, {
+        sourceField: "field_b",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values([mappingA, mappingB] as never);
+
+      // Set it
+      await request(app)
+        .patch(`/api/field-mappings/${mappingA.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ refBidirectionalFieldMappingId: mappingB.id });
+
+      // Clear it
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mappingA.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ refBidirectionalFieldMappingId: null });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.fieldMapping.refBidirectionalFieldMappingId).toBeNull();
+    });
+  });
+
   // ── DELETE /api/field-mappings/:id ───────────────────────────────
 
   describe("DELETE /api/field-mappings/:id", () => {
@@ -574,6 +670,156 @@ describe("Field Mapping Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(getRes.status).toBe(404);
+    });
+  });
+
+  // ── GET /api/field-mappings/:id/validate-bidirectional ───────────
+
+  describe("GET /api/field-mappings/:id/validate-bidirectional", () => {
+    it("returns 400 when the column type is not reference-array", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      // columnDefinitionId has type "string" by default
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${mapping.id}/validate-bidirectional`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED);
+    });
+
+    it("returns isConsistent: null when refBidirectionalFieldMappingId is null", async () => {
+      const { connectorEntityId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const refArrayColDef = createColDef(organizationId, { type: "reference-array" });
+      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(refArrayColDef as never);
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, refArrayColDef.id);
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${mapping.id}/validate-bidirectional`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.isConsistent).toBeNull();
+      expect(res.body.payload.reason).toBe("no-back-reference-configured");
+    });
+
+    it("returns isConsistent: true when arrays are in agreement", async () => {
+      const { connectorEntityId, connectorInstanceId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const entityB = createConnEntity(organizationId, connectorInstanceId, {
+        key: `ent_b_${generateId().replace(/-/g, "").slice(0, 8)}`,
+      });
+      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entityB as never);
+
+      const colDefA = createColDef(organizationId, {
+        type: "reference-array",
+        key: `frd_a_${generateId().replace(/-/g, "").slice(0, 6)}`,
+      });
+      const colDefB = createColDef(organizationId, {
+        type: "reference-array",
+        key: `frd_b_${generateId().replace(/-/g, "").slice(0, 6)}`,
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values([colDefA, colDefB] as never);
+
+      const mappingA = createFieldMap(organizationId, connectorEntityId, colDefA.id, {
+        sourceField: "friends_a",
+      });
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mappingA as never);
+
+      const mappingB = createFieldMap(organizationId, entityB.id, colDefB.id, {
+        sourceField: "friends_b",
+        refBidirectionalFieldMappingId: mappingA.id,
+      });
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mappingB as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .update(fieldMappings)
+        .set({ refBidirectionalFieldMappingId: mappingB.id } as never)
+        .where(eq(fieldMappings.id, mappingA.id));
+
+      // Consistent: A["a1"] → ["b1"] and B["b1"] → ["a1"]
+      await (db as ReturnType<typeof drizzle>).insert(schema.entityRecords).values([
+        { id: generateId(), organizationId, connectorEntityId, sourceId: "a1", data: {}, normalizedData: { [colDefA.key]: ["b1"] }, checksum: "ca", syncedAt: now, created: now, createdBy: "test", updated: null, updatedBy: null, deleted: null, deletedBy: null },
+        { id: generateId(), organizationId, connectorEntityId: entityB.id, sourceId: "b1", data: {}, normalizedData: { [colDefB.key]: ["a1"] }, checksum: "cb", syncedAt: now, created: now, createdBy: "test", updated: null, updatedBy: null, deleted: null, deletedBy: null },
+      ] as never);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${mappingA.id}/validate-bidirectional`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.isConsistent).toBe(true);
+      expect(res.body.payload.inconsistentRecordIds).toHaveLength(0);
+      expect(res.body.payload.totalChecked).toBe(1);
+    });
+
+    it("returns isConsistent: false with inconsistentRecordIds when arrays diverge", async () => {
+      const { connectorEntityId, connectorInstanceId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const entityB = createConnEntity(organizationId, connectorInstanceId, {
+        key: `ent_b2_${generateId().replace(/-/g, "").slice(0, 7)}`,
+      });
+      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entityB as never);
+
+      const colDefA = createColDef(organizationId, {
+        type: "reference-array",
+        key: `tg_a_${generateId().replace(/-/g, "").slice(0, 6)}`,
+      });
+      const colDefB = createColDef(organizationId, {
+        type: "reference-array",
+        key: `tg_b_${generateId().replace(/-/g, "").slice(0, 6)}`,
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values([colDefA, colDefB] as never);
+
+      const mappingA = createFieldMap(organizationId, connectorEntityId, colDefA.id, {
+        sourceField: "tags_a",
+      });
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mappingA as never);
+
+      const mappingB = createFieldMap(organizationId, entityB.id, colDefB.id, {
+        sourceField: "tags_b",
+        refBidirectionalFieldMappingId: mappingA.id,
+      });
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mappingB as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .update(fieldMappings)
+        .set({ refBidirectionalFieldMappingId: mappingB.id } as never)
+        .where(eq(fieldMappings.id, mappingA.id));
+
+      // Inconsistent: A["a1"] → ["b1"] but B["b1"] → [] (missing back-ref)
+      const recAId = generateId();
+      await (db as ReturnType<typeof drizzle>).insert(schema.entityRecords).values([
+        { id: recAId, organizationId, connectorEntityId, sourceId: "a1", data: {}, normalizedData: { [colDefA.key]: ["b1"] }, checksum: "ca", syncedAt: now, created: now, createdBy: "test", updated: null, updatedBy: null, deleted: null, deletedBy: null },
+        { id: generateId(), organizationId, connectorEntityId: entityB.id, sourceId: "b1", data: {}, normalizedData: { [colDefB.key]: [] }, checksum: "cb", syncedAt: now, created: now, createdBy: "test", updated: null, updatedBy: null, deleted: null, deletedBy: null },
+      ] as never);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${mappingA.id}/validate-bidirectional`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.isConsistent).toBe(false);
+      expect(res.body.payload.inconsistentRecordIds).toContain(recAId);
+      expect(res.body.payload.totalChecked).toBe(1);
     });
   });
 });

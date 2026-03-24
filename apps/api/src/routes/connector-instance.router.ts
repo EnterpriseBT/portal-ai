@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, ilike, type SQL, type Column } from "drizzle-orm";
+import { eq, and, ilike, inArray, type SQL, type Column } from "drizzle-orm";
 import { ConnectorInstanceModelFactory } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -65,8 +65,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: status
  *         schema:
  *           type: string
- *           enum: [active, inactive, error, pending]
- *         description: Filter by instance status
+ *         description: Comma-separated list of statuses to filter by (active, inactive, error, pending)
  *       - in: query
  *         name: search
  *         schema:
@@ -76,8 +75,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: include
  *         schema:
  *           type: string
- *           enum: [connectorDefinition]
- *         description: Include related connector definition in each result
+ *         description: Comma-separated list of related data to include — connectorDefinition
  *     responses:
  *       200:
  *         description: Paginated list of connector instances
@@ -112,7 +110,12 @@ connectorInstanceRouter.get(
         filters.push(eq(connectorInstances.connectorDefinitionId, connectorDefinitionId));
       }
       if (status) {
-        filters.push(eq(connectorInstances.status, status));
+        const statuses = status.split(",").map((s) => s.trim()).filter(Boolean);
+        if (statuses.length === 1) {
+          filters.push(eq(connectorInstances.status, statuses[0]));
+        } else if (statuses.length > 1) {
+          filters.push(inArray(connectorInstances.status, statuses));
+        }
       }
       if (search) {
         filters.push(ilike(connectorInstances.name, `%${search}%`));
@@ -120,13 +123,11 @@ connectorInstanceRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
+      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
+      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
 
       const [data, total] = await Promise.all([
-        include === "connectorDefinition"
-          ? DbService.repository.connectorInstances.findManyWithDefinition(where, listOpts)
-          : DbService.repository.connectorInstances.findMany(where, listOpts),
+        DbService.repository.connectorInstances.findMany(where, listOpts),
         DbService.repository.connectorInstances.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;

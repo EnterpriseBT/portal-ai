@@ -1,13 +1,9 @@
 import React, { createContext } from "react";
 import { useStorage } from "../utils/storage.util";
 
-export type SidebarState = "collapsed" | "expanded:active" | "expanded:passive";
+export type SidebarState = "collapsed" | "expanded";
 
-export const SIDEBAR_STATES: SidebarState[] = [
-  "collapsed",
-  "expanded:active",
-  "expanded:passive",
-];
+export const SIDEBAR_STATES: SidebarState[] = ["collapsed", "expanded"];
 
 const isSidebarState = (value: unknown): value is SidebarState =>
   typeof value === "string" && SIDEBAR_STATES.includes(value as SidebarState);
@@ -16,8 +12,6 @@ export interface LayoutContextValue {
   sidebarState: SidebarState;
   isCollapsed: boolean;
   isExpanded: boolean;
-  isExpandedActive: boolean;
-  isExpandedPassive: boolean;
   setSidebarState: (value: SidebarState) => void;
 }
 
@@ -32,9 +26,7 @@ export const LayoutProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
   const isCollapsed = sidebarState === "collapsed";
-  const isExpanded = sidebarState !== "collapsed";
-  const isExpandedActive = sidebarState === "expanded:active";
-  const isExpandedPassive = sidebarState === "expanded:passive";
+  const isExpanded = sidebarState === "expanded";
 
   return (
     <LayoutContext.Provider
@@ -43,8 +35,6 @@ export const LayoutProvider = ({ children }: { children: React.ReactNode }) => {
         setSidebarState,
         isCollapsed,
         isExpanded,
-        isExpandedActive,
-        isExpandedPassive,
       }}
     >
       {children}

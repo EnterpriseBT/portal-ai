@@ -50,7 +50,7 @@ export const ConfirmColumnSchema = z.object({
   sourceField: z.string(),
   key: z.string(),
   label: z.string(),
-  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "currency"]),
+  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array", "currency"]),
   format: z.string().nullable(),
   isPrimaryKey: z.boolean(),
   required: z.boolean(),

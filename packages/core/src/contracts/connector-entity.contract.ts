@@ -31,8 +31,9 @@ export type ConnectorEntityWithInstance = z.infer<typeof ConnectorEntityWithInst
 // ── List ──────────────────────────────────────────────────────────────
 
 export const ConnectorEntityListRequestQuerySchema = PaginationRequestQuerySchema.extend({
-  connectorInstanceId: z.string().optional(),
-  include: z.enum(["fieldMappings", "connectorInstance"]).optional(),
+  connectorInstanceIds: z.string().optional(),
+  include: z.string().optional(),
+  tagIds: z.string().optional(),
 });
 
 export type ConnectorEntityListRequestQuery = z.infer<typeof ConnectorEntityListRequestQuerySchema>;

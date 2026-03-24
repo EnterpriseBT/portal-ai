@@ -43,6 +43,8 @@ export interface DataTableColumn {
   key: string;
   /** Display label for the column header. */
   label: string;
+  /** Optional caption rendered below the label in the header (e.g. the column data type). */
+  caption?: string;
   /** Whether this column supports sorting. Default: `false`. */
   sortable?: boolean;
   /** Optional formatter — receives the raw cell value, returns a display string. */
@@ -53,7 +55,11 @@ export interface DataTableColumn {
    */
   render?: (value: unknown, row: Record<string, unknown>) => React.ReactNode;
   /** Called when this cell is clicked. Stops propagation so the row handler does not fire. */
-  onCellClick?: (value: unknown, column: DataTableColumn, row: Record<string, unknown>) => void;
+  onCellClick?: (
+    value: unknown,
+    column: DataTableColumn,
+    row: Record<string, unknown>
+  ) => void;
 }
 
 export interface DataTableProps {
@@ -130,7 +136,8 @@ export function useColumnConfig(
         .filter((c) => !existing.has(c.key))
         .map((c) => ({
           key: c.key,
-          visible: defaultVisibleCount == null || visibleCount < defaultVisibleCount,
+          visible:
+            defaultVisibleCount == null || visibleCount < defaultVisibleCount,
         }));
 
       return [...kept, ...added];
@@ -371,9 +378,9 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
         <TableContainer>
           <Table size="small">
             <TableHead>
-              <TableRow>
+              <TableRow sx={{ backgroundColor: "action.hover" }}>
                 {visibleColumns.map((col) => (
-                  <TableCell key={col.key}>
+                  <TableCell key={col.key} sx={{ fontWeight: 600 }}>
                     {onSort && col.sortable ? (
                       <TableSortLabel
                         active={sortColumn === col.key}
@@ -387,7 +394,17 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                         {col.label}
                       </TableSortLabel>
                     ) : (
-                      col.label
+                      <span>{col.label}</span>
+                    )}
+                    {col.caption && (
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        color="text.secondary"
+                        sx={{ fontWeight: 400, lineHeight: 1.2, mt: 0.25 }}
+                      >
+                        {col.caption}
+                      </Typography>
                     )}
                   </TableCell>
                 ))}
@@ -409,7 +426,9 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                 rows.map((row, idx) => (
                   <TableRow
                     key={idx}
-                    onClick={onRowClick ? () => onRowClick(row, idx) : undefined}
+                    onClick={
+                      onRowClick ? () => onRowClick(row, idx) : undefined
+                    }
                     sx={
                       onRowClick
                         ? {
@@ -434,7 +453,9 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                           col.onCellClick
                             ? {
                                 cursor: "pointer",
-                                "&:hover": { backgroundColor: "action.selected" },
+                                "&:hover": {
+                                  backgroundColor: "action.selected",
+                                },
                               }
                             : undefined
                         }

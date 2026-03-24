@@ -6,7 +6,7 @@ A Turborepo monorepo for displaying dynamic UI content from a Model-Controller-P
 
 - **Frontend**: React 19, TypeScript, Vite, Material UI, TanStack Router/Query, Auth0
 - **Backend**: Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL, Auth0 JWT
-- **Shared**: Zod domain models, MUI component library, JSON-Render dynamic UI registry
+- **Shared**: Zod domain models, MUI component library
 - **Tooling**: Turborepo, ESLint, Prettier, Jest, Storybook
 
 ## Monorepo Structure
@@ -17,7 +17,6 @@ apps/
   api/          → Express API server (localhost:3001)
 packages/
   core/         → Shared UI components, themes, and Zod domain models
-  registry/     → Dynamic UI catalog registry (@json-render)
 ```
 
 ## Getting Started
@@ -67,4 +66,3 @@ Each package has detailed documentation in its README:
 - [`apps/web/README.md`](apps/web/README.md) — Frontend setup, routing, auth, theming, testing
 - [`apps/api/README.md`](apps/api/README.md) — API setup, database schema workflow, repositories, style guide
 - [`packages/core/README.md`](packages/core/README.md) — Component library, model architecture, theme system
-- [`packages/registry/README.md`](packages/registry/README.md) — Dynamic UI catalog system

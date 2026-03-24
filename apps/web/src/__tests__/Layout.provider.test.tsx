@@ -37,13 +37,13 @@ describe("LayoutProvider", () => {
     });
 
     it("should initialize from localStorage when a valid value is stored", () => {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify("expanded:active"));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify("expanded"));
 
       const { result } = renderHook(() => useLayout(), {
         wrapper: createWrapper(),
       });
 
-      expect(result.current.sidebarState).toBe("expanded:active");
+      expect(result.current.sidebarState).toBe("expanded");
     });
 
     it("should fall back to default when localStorage has an invalid value", () => {
@@ -100,15 +100,10 @@ describe("LayoutProvider", () => {
 
       expect(result.current.isCollapsed).toBe(true);
       expect(result.current.isExpanded).toBe(false);
-      expect(result.current.isExpandedActive).toBe(false);
-      expect(result.current.isExpandedPassive).toBe(false);
     });
 
-    it("should set correct flags for expanded:active state", () => {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify("expanded:active")
-      );
+    it("should set correct flags for expanded state", () => {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify("expanded"));
 
       const { result } = renderHook(() => useLayout(), {
         wrapper: createWrapper(),
@@ -116,24 +111,6 @@ describe("LayoutProvider", () => {
 
       expect(result.current.isCollapsed).toBe(false);
       expect(result.current.isExpanded).toBe(true);
-      expect(result.current.isExpandedActive).toBe(true);
-      expect(result.current.isExpandedPassive).toBe(false);
-    });
-
-    it("should set correct flags for expanded:passive state", () => {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify("expanded:passive")
-      );
-
-      const { result } = renderHook(() => useLayout(), {
-        wrapper: createWrapper(),
-      });
-
-      expect(result.current.isCollapsed).toBe(false);
-      expect(result.current.isExpanded).toBe(true);
-      expect(result.current.isExpandedActive).toBe(false);
-      expect(result.current.isExpandedPassive).toBe(true);
     });
 
     it("should update boolean flags when state changes", () => {
@@ -145,18 +122,18 @@ describe("LayoutProvider", () => {
       expect(result.current.isCollapsed).toBe(true);
 
       act(() => {
-        result.current.setSidebarState("expanded:active");
+        result.current.setSidebarState("expanded");
       });
 
-      expect(result.current.isExpandedActive).toBe(true);
+      expect(result.current.isExpanded).toBe(true);
       expect(result.current.isCollapsed).toBe(false);
 
       act(() => {
-        result.current.setSidebarState("expanded:passive");
+        result.current.setSidebarState("collapsed");
       });
 
-      expect(result.current.isExpandedPassive).toBe(true);
-      expect(result.current.isCollapsed).toBe(false);
+      expect(result.current.isCollapsed).toBe(true);
+      expect(result.current.isExpanded).toBe(false);
     });
   });
 

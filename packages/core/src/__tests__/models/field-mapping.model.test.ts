@@ -1,12 +1,52 @@
 import {
   FieldMappingModel,
   FieldMappingModelFactory,
+  FieldMappingSchema,
 } from "../../models/field-mapping.model.js";
 import {
   UUID_REGEX,
   StubIDFactory,
   buildCoreModelFactory,
 } from "../test-utils.js";
+
+// ── FieldMappingSchema ────────────────────────────────────────────────
+
+describe("FieldMappingSchema", () => {
+  const base = {
+    id: "fm-1",
+    organizationId: "org-1",
+    connectorEntityId: "ce-1",
+    columnDefinitionId: "cd-1",
+    sourceField: "my_field",
+    isPrimaryKey: false,
+    refColumnDefinitionId: null,
+    refEntityKey: null,
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+
+  it("accepts refBidirectionalFieldMappingId: null", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, refBidirectionalFieldMappingId: null });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts refBidirectionalFieldMappingId as a valid string ID", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, refBidirectionalFieldMappingId: "fm-99" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.refBidirectionalFieldMappingId).toBe("fm-99");
+    }
+  });
+
+  it("rejects refBidirectionalFieldMappingId as a non-string value", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, refBidirectionalFieldMappingId: 42 });
+    expect(result.success).toBe(false);
+  });
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -18,6 +58,7 @@ const validMappingFields = {
   isPrimaryKey: false,
   refColumnDefinitionId: null,
   refEntityKey: null,
+  refBidirectionalFieldMappingId: null,
   updated: null,
   updatedBy: null,
   deleted: null,

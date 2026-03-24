@@ -29,6 +29,8 @@ import InfoIcon from "@mui/icons-material/Info";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import KeyboardDoubleArrowRightIcon from "@mui/icons-material/KeyboardDoubleArrowRight";
+import KeyboardArrowLeftIcon from "@mui/icons-material/KeyboardArrowLeft";
+import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -38,6 +40,8 @@ import WorkIcon from "@mui/icons-material/Work";
 import LinkIcon from "@mui/icons-material/Link";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import DataObjectIcon from "@mui/icons-material/DataObject";
+import LabelIcon from "@mui/icons-material/Label";
+import ColorizeIcon from "@mui/icons-material/Colorize";
 
 export enum IconName {
   Home = "home",
@@ -70,6 +74,8 @@ export enum IconName {
   CheckCircle = "check_circle",
   KeyboardDoubleArrowLeft = "keyboard_double_arrow_left",
   KeyboardDoubleArrowRight = "keyboard_double_arrow_right",
+  KeyboardArrowLeft = "keyboard_arrow_left",
+  KeyboardArrowRight = "keyboard_arrow_right",
   ExpandMore = "expand_more",
   ExpandLess = "expand_less",
   Refresh = "refresh",
@@ -78,6 +84,8 @@ export enum IconName {
   Link = "link",
   ViewColumn = "view_column",
   DataObject = "data_object",
+  Label = "label",
+  Colorize = "colorize",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -146,6 +154,10 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <KeyboardDoubleArrowLeftIcon ref={ref} {...props} />;
       case IconName.KeyboardDoubleArrowRight:
         return <KeyboardDoubleArrowRightIcon ref={ref} {...props} />;
+      case IconName.KeyboardArrowLeft:
+        return <KeyboardArrowLeftIcon ref={ref} {...props} />;
+      case IconName.KeyboardArrowRight:
+        return <KeyboardArrowRightIcon ref={ref} {...props} />;
       case IconName.ExpandMore:
         return <ExpandMoreIcon ref={ref} {...props} />;
       case IconName.ExpandLess:
@@ -168,6 +180,10 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <ViewColumnIcon ref={ref} {...props} />;
       case IconName.DataObject:
         return <DataObjectIcon ref={ref} {...props} />;
+      case IconName.Label:
+        return <LabelIcon ref={ref} {...props} />;
+      case IconName.Colorize:
+        return <ColorizeIcon ref={ref} {...props} />;
       default:
         // If no name is provided or the name doesn't match, render children as a custom icon
         throw new Error(

@@ -5,12 +5,16 @@
  * column-definition-scoped queries and composite-key upserts.
  */
 
-import { eq, and, asc, desc, getTableColumns, type SQL } from "drizzle-orm";
+import { eq, and, asc, desc, getTableColumns, type SQL, or } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { fieldMappings, connectorEntities } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+
+export interface FieldMappingListOptions extends ListOptions {
+  include?: string[];
+}
 import type {
   FieldMappingSelect,
   FieldMappingInsert,
@@ -24,6 +28,17 @@ export class FieldMappingsRepository extends Repository<
 > {
   constructor() {
     super(fieldMappings);
+  }
+
+  override async findMany(
+    where?: SQL,
+    opts: FieldMappingListOptions = {},
+    client: DbClient = db
+  ): Promise<FieldMappingSelect[]> {
+    if (opts.include?.includes("connectorEntity")) {
+      return this.findManyWithConnectorEntity(where, opts, client) as unknown as FieldMappingSelect[];
+    }
+    return super.findMany(where, opts, client);
   }
 
   /** Find all field mappings for a given connector entity. */
@@ -121,12 +136,50 @@ export class FieldMappingsRepository extends Repository<
           isPrimaryKey: data.isPrimaryKey,
           refColumnDefinitionId: data.refColumnDefinitionId,
           refEntityKey: data.refEntityKey,
+          refBidirectionalFieldMappingId: data.refBidirectionalFieldMappingId,
           updated: data.updated ?? Date.now(),
           updatedBy: data.updatedBy,
         } as never,
       })
       .returning();
     return row as FieldMappingSelect;
+  }
+
+  /**
+   * Return a field mapping and its bidirectional counterpart in a single query.
+   * If `refBidirectionalFieldMappingId` is null on the mapping, `counterpart`
+   * will be null.
+   */
+  async findBidirectionalPair(
+    fieldMappingId: string,
+    client: DbClient = db
+  ): Promise<{ mapping: FieldMappingSelect; counterpart: FieldMappingSelect | null }> {
+    const mapping = await this.findById(fieldMappingId, client);
+    if (!mapping) {
+      return { mapping: null as unknown as FieldMappingSelect, counterpart: null };
+    }
+    if (!mapping.refBidirectionalFieldMappingId) {
+      return { mapping, counterpart: null };
+    }
+    const rows = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          or(
+            eq(fieldMappings.id, fieldMappingId),
+            eq(fieldMappings.id, mapping.refBidirectionalFieldMappingId),
+          ),
+          this.notDeleted(),
+        )
+      ) as FieldMappingSelect[];
+
+    const primary = rows.find((r) => r.id === fieldMappingId) ?? null;
+    const counterpart = rows.find((r) => r.id === mapping.refBidirectionalFieldMappingId) ?? null;
+    return {
+      mapping: primary as FieldMappingSelect,
+      counterpart,
+    };
   }
 }
 

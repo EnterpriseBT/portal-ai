@@ -9,6 +9,7 @@ import { columnDefinitionRouter } from "./column-definition.router.js";
 import { connectorEntityRouter } from "./connector-entity.router.js";
 import { fieldMappingRouter } from "./field-mapping.router.js";
 import { uploadsRouter } from "./uploads.router.js";
+import { entityTagRouter } from "./entity-tag.router.js";
 
 export const protectedRouter = Router();
 
@@ -25,3 +26,4 @@ protectedRouter.use("/column-definitions", columnDefinitionRouter);
 protectedRouter.use("/connector-entities", connectorEntityRouter);
 protectedRouter.use("/field-mappings", fieldMappingRouter);
 protectedRouter.use("/uploads", uploadsRouter);
+protectedRouter.use("/entity-tags", entityTagRouter);

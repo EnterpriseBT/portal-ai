@@ -37,7 +37,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
         <input
           aria-invalid="false"
           class="MuiInputBase-input MuiOutlinedInput-input MuiInputBase-inputSizeSmall MuiInputBase-inputAdornedStart MuiInputBase-inputAdornedEnd css-1nyx7j9-MuiInputBase-input-MuiOutlinedInput-input"
-          id="_r_84_"
+          id="_r_ao_"
           placeholder="Search..."
           type="text"
           value="test"

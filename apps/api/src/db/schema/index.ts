@@ -9,6 +9,8 @@ export { connectorEntities } from "./connector-entities.table.js";
 export { fieldMappings } from "./field-mappings.table.js";
 export { entityRecords } from "./entity-records.table.js";
 export { jobs, jobStatusEnum, jobTypeEnum } from "./jobs.table.js";
+export { entityTags } from "./entity-tags.table.js";
+export { entityTagAssignments } from "./entity-tag-assignments.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";

@@ -162,6 +162,43 @@ describe("Column Definition Router", () => {
       expect(res.body.payload.columnDefinitions[0].label).toBe("Number Col");
     });
 
+    it("should filter by multiple types (comma-separated)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values([
+          createColumnDefinition(organizationId, {
+            label: "String Col",
+            type: "string",
+          }),
+          createColumnDefinition(organizationId, {
+            label: "Number Col",
+            type: "number",
+          }),
+          createColumnDefinition(organizationId, {
+            label: "Boolean Col",
+            type: "boolean",
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/column-definitions?type=string,boolean")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.columnDefinitions).toHaveLength(2);
+      const labels = res.body.payload.columnDefinitions.map(
+        (cd: { label: string }) => cd.label
+      );
+      expect(labels).toContain("String Col");
+      expect(labels).toContain("Boolean Col");
+      expect(labels).not.toContain("Number Col");
+    });
+
     it("should filter by required", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

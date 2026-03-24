@@ -43,11 +43,35 @@ const textFilter: FilterConfig = {
   placeholder: "Enter a tag",
 };
 
+const searchableSelectFilter: FilterConfig = {
+  type: "searchable-select",
+  field: "status",
+  label: "Status",
+  options: [
+    { label: "Active", value: "active" },
+    { label: "Inactive", value: "inactive" },
+    { label: "Pending", value: "pending" },
+  ],
+};
+
+const multiSelectFilter: FilterConfig = {
+  type: "multi-select",
+  field: "tagIds",
+  label: "Tags",
+  options: [
+    { label: "Frontend", value: "tag-1" },
+    { label: "Backend", value: "tag-2" },
+    { label: "DevOps", value: "tag-3" },
+  ],
+};
+
 const allFilters: FilterConfig[] = [
   selectFilter,
   booleanFilter,
   numberFilter,
   textFilter,
+  searchableSelectFilter,
+  multiSelectFilter,
 ];
 
 const sortFields: SortFieldConfig[] = [
@@ -64,6 +88,7 @@ function makeProps(
     filterConfigs: [],
     filters: {},
     onFilterValueChange: jest.fn(),
+    onFilterChange: jest.fn(),
     activeFilterCount: 0,
     sortFields: [],
     sortBy: "created",
@@ -208,6 +233,24 @@ describe("usePagination", () => {
 
       act(() => result.current.setFilterValue("tag", "enterprise"));
       expect(result.current.queryParams.tag).toBe("enterprise");
+    });
+
+    it("should include searchable-select filter as string", () => {
+      const { result } = renderHook(() =>
+        usePagination({ filters: [searchableSelectFilter] })
+      );
+
+      act(() => result.current.setFilterValue("status", "active"));
+      expect(result.current.queryParams.status).toBe("active");
+    });
+
+    it("should serialize multi-select filter as comma-separated string", () => {
+      const { result } = renderHook(() =>
+        usePagination({ filters: [multiSelectFilter] })
+      );
+
+      act(() => result.current.setFilter("tagIds", ["tag-1", "tag-2"]));
+      expect(result.current.queryParams.tagIds).toBe("tag-1,tag-2");
     });
 
     it("should skip empty filter arrays", () => {
@@ -499,6 +542,69 @@ describe("PaginationToolbar", () => {
       expect(screen.getByPlaceholderText("Enter a tag")).toBeInTheDocument();
     });
 
+    it("should render multi-select filter in popover", async () => {
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar
+          {...makeProps({ filterConfigs: [multiSelectFilter] })}
+        />
+      );
+
+      await user.click(screen.getByText("Filter"));
+      expect(screen.getByText("Tags")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Select tags...")).toBeInTheDocument();
+    });
+
+    it("should call onFilterChange when multi-select option selected", async () => {
+      const onFilterChange = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar
+          {...makeProps({
+            filterConfigs: [multiSelectFilter],
+            onFilterChange,
+          })}
+        />
+      );
+
+      await user.click(screen.getByText("Filter"));
+      const searchInput = screen.getByPlaceholderText("Select tags...");
+      await user.click(searchInput);
+      await user.click(screen.getByText("Frontend"));
+      expect(onFilterChange).toHaveBeenCalledWith("tagIds", ["tag-1"]);
+    });
+
+    it("should render searchable-select filter in popover", async () => {
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar
+          {...makeProps({ filterConfigs: [searchableSelectFilter] })}
+        />
+      );
+
+      await user.click(screen.getByText("Filter"));
+      expect(screen.getByText("Status")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Select status...")).toBeInTheDocument();
+    });
+
+    it("should call onFilterValueChange when searchable-select option selected", async () => {
+      const onFilterValueChange = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar
+          {...makeProps({
+            filterConfigs: [searchableSelectFilter],
+            onFilterValueChange,
+          })}
+        />
+      );
+
+      await user.click(screen.getByText("Filter"));
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByText("Active"));
+      expect(onFilterValueChange).toHaveBeenCalledWith("status", "active");
+    });
+
     it("should call onFilterValueChange for text input", async () => {
       const onFilterValueChange = jest.fn();
       const user = userEvent.setup();
@@ -561,6 +667,90 @@ describe("PaginationToolbar", () => {
         />
       );
       expect(screen.getByText("Tag: enterprise")).toBeInTheDocument();
+    });
+
+    it("should render searchable-select filter chip with option label", () => {
+      render(
+        <PaginationToolbar
+          {...makeProps({
+            filterConfigs: [searchableSelectFilter],
+            filters: { status: ["active"] },
+          })}
+        />
+      );
+      expect(screen.getByText("Status: Active")).toBeInTheDocument();
+    });
+
+    it("should render searchable-select filter chip with labelMap value", () => {
+      const asyncSearchableFilter: FilterConfig = {
+        type: "searchable-select",
+        field: "ownerId",
+        label: "Owner",
+        onSearch: jest.fn(() => Promise.resolve([])),
+        labelMap: { "user-1": "Alice" },
+      };
+      render(
+        <PaginationToolbar
+          {...makeProps({
+            filterConfigs: [asyncSearchableFilter],
+            filters: { ownerId: ["user-1"] },
+          })}
+        />
+      );
+      expect(screen.getByText("Owner: Alice")).toBeInTheDocument();
+    });
+
+    it("should clear searchable-select chip on delete", async () => {
+      const onFilterValueChange = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar
+          {...makeProps({
+            filterConfigs: [searchableSelectFilter],
+            filters: { status: ["active"] },
+            onFilterValueChange,
+          })}
+        />
+      );
+
+      const chip = screen.getByText("Status: Active").closest(".MuiChip-root")!;
+      const deleteBtn = within(chip as HTMLElement).getByTestId("CancelIcon");
+      await user.click(deleteBtn);
+      expect(onFilterValueChange).toHaveBeenCalledWith("status", "");
+    });
+
+    it("should render one chip per multi-select value", () => {
+      render(
+        <PaginationToolbar
+          {...makeProps({
+            filterConfigs: [multiSelectFilter],
+            filters: { tagIds: ["tag-1", "tag-2"] },
+            activeFilterCount: 2,
+          })}
+        />
+      );
+      expect(screen.getByText("Tags: Frontend")).toBeInTheDocument();
+      expect(screen.getByText("Tags: Backend")).toBeInTheDocument();
+    });
+
+    it("should remove only the deleted value from multi-select chip", async () => {
+      const onFilterChange = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <PaginationToolbar
+          {...makeProps({
+            filterConfigs: [multiSelectFilter],
+            filters: { tagIds: ["tag-1", "tag-2"] },
+            activeFilterCount: 2,
+            onFilterChange,
+          })}
+        />
+      );
+
+      const chip = screen.getByText("Tags: Frontend").closest(".MuiChip-root")!;
+      const deleteBtn = within(chip as HTMLElement).getByTestId("CancelIcon");
+      await user.click(deleteBtn);
+      expect(onFilterChange).toHaveBeenCalledWith("tagIds", ["tag-2"]);
     });
 
     it("should not render chips for empty filter arrays", () => {

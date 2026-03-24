@@ -2,7 +2,7 @@
 
 ## Project
 
-Turborepo monorepo: React 19 frontend (`apps/web/`), Express API (`apps/api/`), shared component/model library (`packages/core/`), dynamic UI registry (`packages/registry/`).
+Turborepo monorepo: React 19 frontend (`apps/web/`), Express API (`apps/api/`), shared component/model library (`packages/core/`).
 
 ## File Naming
 
@@ -22,7 +22,7 @@ Turborepo monorepo: React 19 frontend (`apps/web/`), Express API (`apps/api/`), 
 
 1. React / React libraries
 2. Third-party (`@mui`, `@tanstack`, `zod`, etc.)
-3. Monorepo (`@portalai/core`, `@portalai/registry`)
+3. Monorepo (`@portalai/core`)
 4. Local (relative imports)
 5. Types, styles, assets
 
@@ -71,6 +71,3 @@ TanStack Router, file-based in `src/routes/`. Route tree auto-generates. Use `cr
 
 Three MUI themes: Brand (default), Light, Dark. Persisted in localStorage via `@portalai/core`.
 
-## Registry (packages/registry)
-
-`@json-render` catalog system. Each catalog in `src/catalogs/` defines Zod prop schemas + React implementations. Register in `src/registry.ts`. Reference: `catalogs/Blog/`.

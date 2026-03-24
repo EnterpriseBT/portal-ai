@@ -330,6 +330,51 @@ describe("DataTable", () => {
     });
   });
 
+  describe("column caption", () => {
+    it("renders caption below label when provided", () => {
+      const cols: DataTableColumn[] = [
+        { key: "name", label: "Name", caption: "string" },
+        { key: "age", label: "Age", caption: "number" },
+      ];
+      render(<DataTable columns={cols} rows={[]} />);
+      expect(screen.getByText("string")).toBeInTheDocument();
+      expect(screen.getByText("number")).toBeInTheDocument();
+    });
+
+    it("does not render caption element when caption is not set", () => {
+      render(<DataTable columns={columns} rows={rows} />);
+      // None of the fixture columns have captions — no extra text nodes should appear
+      const headers = screen.getAllByRole("columnheader");
+      headers.forEach((h) => {
+        // Each header should contain only its label text
+        expect(h.querySelectorAll("p, span + *").length).toBeLessThanOrEqual(1);
+      });
+    });
+
+    it("caption text is distinct from label text", () => {
+      const cols: DataTableColumn[] = [
+        { key: "created", label: "Created At", caption: "datetime" },
+      ];
+      render(<DataTable columns={cols} rows={[{ created: "2024-01-01" }]} />);
+      expect(screen.getByText("Created At")).toBeInTheDocument();
+      expect(screen.getByText("datetime")).toBeInTheDocument();
+      // They are separate DOM nodes
+      expect(screen.getByText("Created At")).not.toBe(
+        screen.getByText("datetime")
+      );
+    });
+
+    it("renders caption alongside sort label", () => {
+      const cols: DataTableColumn[] = [
+        { key: "name", label: "Name", sortable: true, caption: "string" },
+      ];
+      const onSort = jest.fn();
+      render(<DataTable columns={cols} rows={[]} onSort={onSort} />);
+      expect(screen.getByText("Name")).toBeInTheDocument();
+      expect(screen.getByText("string")).toBeInTheDocument();
+    });
+  });
+
   describe("custom header", () => {
     it("renders custom header content", () => {
       render(

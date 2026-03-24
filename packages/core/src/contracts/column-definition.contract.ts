@@ -6,7 +6,7 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 // ── List ──────────────────────────────────────────────────────────────
 
 export const ColumnDefinitionListRequestQuerySchema = PaginationRequestQuerySchema.extend({
-  type: ColumnDataTypeEnum.optional(),
+  type: z.string().optional(),
   required: z
     .enum(["true", "false"])
     .transform((v) => v === "true")

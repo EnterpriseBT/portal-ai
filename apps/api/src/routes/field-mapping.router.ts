@@ -11,6 +11,7 @@ import {
   type FieldMappingCreateResponsePayload,
   FieldMappingUpdateRequestBodySchema,
   type FieldMappingUpdateResponsePayload,
+  type FieldMappingBidirectionalValidationResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -112,17 +113,11 @@ fieldMappingRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
-
-      const fetchMappings = () => {
-        if (include === "connectorEntity") {
-          return DbService.repository.fieldMappings.findManyWithConnectorEntity(where, listOpts);
-        }
-        return DbService.repository.fieldMappings.findMany(where, listOpts);
-      };
+      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
+      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
 
       const [data, total] = await Promise.all([
-        fetchMappings(),
+        DbService.repository.fieldMappings.findMany(where, listOpts),
         DbService.repository.fieldMappings.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
@@ -331,6 +326,7 @@ fieldMappingRouter.post(
         isPrimaryKey: parsed.data.isPrimaryKey,
         refColumnDefinitionId: parsed.data.refColumnDefinitionId,
         refEntityKey: parsed.data.refEntityKey,
+        refBidirectionalFieldMappingId: parsed.data.refBidirectionalFieldMappingId,
       });
 
       const fieldMapping = await DbService.repository.fieldMappings.create(
@@ -542,6 +538,130 @@ fieldMappingRouter.delete(
         "Failed to delete field mapping"
       );
       return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete field mapping"));
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/field-mappings/{id}/validate-bidirectional:
+ *   get:
+ *     tags:
+ *       - Field Mappings
+ *     summary: Check bidirectional array consistency
+ *     description: >
+ *       For a `reference-array` field mapping that has a configured back-reference,
+ *       scans both entities' records and returns any records whose arrays are out of
+ *       sync with the counterpart. Returns `isConsistent: null` when no back-reference
+ *       is configured (unidirectional mode).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Field mapping ID
+ *     responses:
+ *       200:
+ *         description: Validation result
+ *       400:
+ *         description: Field mapping is not a reference-array type
+ *       404:
+ *         description: Field mapping not found
+ *       500:
+ *         description: Internal server error
+ */
+fieldMappingRouter.get(
+  "/:id/validate-bidirectional",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+
+      // 1. Load mapping
+      const mapping = await DbService.repository.fieldMappings.findById(id);
+      if (!mapping) {
+        return next(new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found"));
+      }
+
+      // 2. Load column definition to verify type
+      const columnDef = await DbService.repository.columnDefinitions.findById(mapping.columnDefinitionId);
+      if (!columnDef || columnDef.type !== "reference-array") {
+        return next(new ApiError(400, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED, "Field mapping column type must be reference-array"));
+      }
+
+      // 3. No back-reference configured — unidirectional mode
+      if (!mapping.refBidirectionalFieldMappingId) {
+        return HttpService.success<FieldMappingBidirectionalValidationResponsePayload>(res, {
+          isConsistent: null,
+          inconsistentRecordIds: [],
+          totalChecked: 0,
+          reason: "no-back-reference-configured",
+        });
+      }
+
+      // 4. Load counterpart mapping
+      const { counterpart } = await DbService.repository.fieldMappings.findBidirectionalPair(id);
+      if (!counterpart) {
+        return next(new ApiError(400, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND, "Configured back-reference field mapping no longer exists"));
+      }
+
+      // 5. Load both column definitions to get their normalizedData keys
+      const counterpartColumnDef = await DbService.repository.columnDefinitions.findById(counterpart.columnDefinitionId);
+      if (!counterpartColumnDef) {
+        return next(new ApiError(400, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND, "Back-reference column definition not found"));
+      }
+
+      const keyA = columnDef.key;       // e.g. "enrolled_student_ids"
+      const keyB = counterpartColumnDef.key; // e.g. "classes_enrolled_ids"
+
+      // 6. Load all records from both entities
+      const [recordsA, recordsB] = await Promise.all([
+        DbService.repository.entityRecords.findByConnectorEntityId(mapping.connectorEntityId),
+        DbService.repository.entityRecords.findByConnectorEntityId(counterpart.connectorEntityId),
+      ]);
+
+      // 7. Build a lookup: entity B sourceId → set of IDs in its reference-array field
+      const bArrayBySourceId = new Map<string, Set<string>>();
+      for (const rec of recordsB) {
+        const normalizedData = rec.normalizedData as Record<string, unknown> | null;
+        const arr = normalizedData?.[keyB];
+        const ids = Array.isArray(arr) ? arr.map(String) : [];
+        bArrayBySourceId.set(rec.sourceId, new Set(ids));
+      }
+
+      // 8. For each entity A record, check every ID in its array has a counterpart
+      //    in entity B whose array includes entity A's sourceId
+      const inconsistentRecordIds: string[] = [];
+      for (const recA of recordsA) {
+        const normalizedData = recA.normalizedData as Record<string, unknown> | null;
+        const arr = normalizedData?.[keyA];
+        const idsInA = Array.isArray(arr) ? arr.map(String) : [];
+        const isInconsistent = idsInA.some((targetId) => {
+          const bSet = bArrayBySourceId.get(targetId);
+          return !bSet || !bSet.has(recA.sourceId);
+        });
+        if (isInconsistent) {
+          inconsistentRecordIds.push(recA.id);
+        }
+      }
+
+      const isConsistent = inconsistentRecordIds.length === 0;
+      logger.info({ id, totalChecked: recordsA.length, inconsistentCount: inconsistentRecordIds.length }, "Bidirectional validation complete");
+
+      return HttpService.success<FieldMappingBidirectionalValidationResponsePayload>(res, {
+        isConsistent,
+        inconsistentRecordIds,
+        totalChecked: recordsA.length,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to validate bidirectional field mapping"
+      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED, error instanceof Error ? error.message : "Failed to validate bidirectional field mapping"));
     }
   }
 );

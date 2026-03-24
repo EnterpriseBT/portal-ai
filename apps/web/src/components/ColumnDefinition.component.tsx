@@ -60,6 +60,7 @@ const TYPE_COLOR: Record<string, "primary" | "secondary" | "success" | "warning"
   json: "default",
   array: "default",
   reference: "error",
+  "reference-array": "error",
   currency: "info",
 };
 

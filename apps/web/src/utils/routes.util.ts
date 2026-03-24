@@ -10,4 +10,5 @@ export enum ApplicationRoute {
   ColumnDefinitions = "/column-definitions",
   ColumnDefinition = "/column-definitions/$columnDefinitionId",
   Jobs = "/jobs",
+  Tags = "/tags",
 }

@@ -53,4 +53,13 @@ describe("EntityRecordFieldValue", () => {
       JSON.stringify({ x: 1 }, null, 2)
     );
   });
+
+  it("renders a reference-array as a <pre> code block", () => {
+    const { container } = render(
+      <EntityRecordFieldValue value={["id-1", "id-2"]} type="reference-array" />
+    );
+    const pre = container.querySelector("pre");
+    expect(pre).toBeTruthy();
+    expect(pre!.textContent).toContain('"id-1"');
+  });
 });

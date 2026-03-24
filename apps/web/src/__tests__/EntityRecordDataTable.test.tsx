@@ -162,6 +162,19 @@ describe("EntityRecordDataTableUI", () => {
     expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "array");
   });
 
+  it("renders reference-array column as a <code> element", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[{ refs: ["id-1", "id-2"] }]}
+        columns={[{ key: "refs", label: "Refs", type: "reference-array" as const }]}
+        source="cache"
+      />
+    );
+    expect(screen.getByTestId("cell-code")).toBeInTheDocument();
+    expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "reference-array");
+  });
+
   it("calls onRowClick when a row is clicked", async () => {
     const onRowClick = jest.fn();
     render(
@@ -176,6 +189,45 @@ describe("EntityRecordDataTableUI", () => {
     const { fireEvent } = await import("@testing-library/react");
     fireEvent.click(screen.getByText("Jane"));
     expect(onRowClick).toHaveBeenCalledWith(rows[0]);
+  });
+
+  it("renders column type as caption in each header", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={rows}
+        columns={columns}
+        source="cache"
+      />
+    );
+    // Each column type should appear as a caption below its label
+    const stringCaptions = screen.getAllByText("string");
+    expect(stringCaptions.length).toBe(2); // first_name and email are both string
+    expect(screen.getByText("boolean")).toBeInTheDocument();
+  });
+
+  it("renders correct caption for json column type", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[{ data: { id: 1 } }]}
+        columns={[{ key: "data", label: "Data", type: "json" as const }]}
+        source="cache"
+      />
+    );
+    expect(screen.getByText("json")).toBeInTheDocument();
+  });
+
+  it("renders correct caption for reference-array column type", () => {
+    render(
+      <EntityRecordDataTableUI
+        connectorEntityId={connectorEntityId}
+        rows={[{ refs: ["id-1"] }]}
+        columns={[{ key: "refs", label: "Refs", type: "reference-array" as const }]}
+        source="cache"
+      />
+    );
+    expect(screen.getByText("reference-array")).toBeInTheDocument();
   });
 
   it("renders null values as dash", () => {

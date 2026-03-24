@@ -2,11 +2,9 @@ import React from "react";
 import TextField, { type TextFieldProps } from "@mui/material/TextField";
 import MuiMenuItem from "@mui/material/MenuItem";
 
-export interface SelectOption {
-  value: string | number;
-  label: string;
-  disabled?: boolean;
-}
+import type { SelectOption } from "./searchable-select/types.js";
+
+export type { SelectOption };
 
 export type SelectProps = Omit<TextFieldProps, "select"> & {
   options: SelectOption[];

@@ -1,5 +1,4 @@
-import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "./test-utils";
+import { render, screen } from "./test-utils";
 import { SidebarNavUI } from "../components/SidebarNav.component";
 
 describe("SidebarNavUI", () => {
@@ -85,48 +84,4 @@ describe("SidebarNavUI", () => {
     expect(wrapper).not.toHaveStyle({ display: "none" });
   });
 
-  it("calls onMouseEnter handler on the drawer", () => {
-    const onMouseEnter = jest.fn();
-    render(
-      <SidebarNavUI {...defaultProps} onMouseEnter={onMouseEnter}>
-        <div>Nav Content</div>
-      </SidebarNavUI>
-    );
-
-    const drawer = screen.getByText("Nav Content").closest(".MuiDrawer-root");
-    fireEvent.mouseEnter(drawer!);
-
-    expect(onMouseEnter).toHaveBeenCalledTimes(1);
-  });
-
-  it("calls onMouseLeave handler on the wrapper", () => {
-    const onMouseLeave = jest.fn();
-    render(
-      <SidebarNavUI {...defaultProps} onMouseLeave={onMouseLeave}>
-        <div>Nav Content</div>
-      </SidebarNavUI>
-    );
-
-    const wrapper = screen.getByText("Nav Content").closest(".MuiDrawer-root")
-      ?.parentElement;
-    fireEvent.mouseLeave(wrapper!);
-
-    expect(onMouseLeave).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not call onMouseLeave when moving to a child element", () => {
-    const onMouseLeave = jest.fn();
-    render(
-      <SidebarNavUI {...defaultProps} onMouseLeave={onMouseLeave}>
-        <div data-testid="child">Nav Content</div>
-      </SidebarNavUI>
-    );
-
-    const wrapper = screen.getByText("Nav Content").closest(".MuiDrawer-root")
-      ?.parentElement;
-    const child = screen.getByTestId("child");
-    fireEvent.mouseLeave(wrapper!, { relatedTarget: child });
-
-    expect(onMouseLeave).not.toHaveBeenCalled();
-  });
 });

@@ -24,6 +24,7 @@ export const ColumnDataTypeEnum = z.enum([
   "json",
   "array",
   "reference",
+  "reference-array",
   "currency",
 ]);
 

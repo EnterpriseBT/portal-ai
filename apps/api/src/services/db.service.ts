@@ -17,6 +17,8 @@ import {
   connectorEntitiesRepo,
   fieldMappingsRepo,
   entityRecordsRepo,
+  entityTagsRepo,
+  entityTagAssignmentsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -78,6 +80,8 @@ export class DbService {
       connectorEntities: connectorEntitiesRepo,
       fieldMappings: fieldMappingsRepo,
       entityRecords: entityRecordsRepo,
+      entityTags: entityTagsRepo,
+      entityTagAssignments: entityTagAssignmentsRepo,
     };
   }
 }
