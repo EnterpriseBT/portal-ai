@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React from "react";
 
 import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
 import type {
@@ -13,7 +13,6 @@ import { IconName } from "@portalai/core/ui";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
-import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Link from "@mui/material/Link";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -40,7 +39,7 @@ const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
   record,
   connectorEntityId,
 }) => {
-  const [resolveRequested, setResolveRequested] = useState(false);
+  const navigate = useNavigate();
 
   // Fetch group details (with members) when the panel is expanded
   const groupDetailResult = sdk.entityGroups.get(group.id);
@@ -53,16 +52,20 @@ const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
   const linkFieldKey = currentMember?.linkFieldMappingSourceField;
   const linkValue = linkFieldKey ? String(record.normalizedData[linkFieldKey] ?? "") : "";
 
-  // Resolve identity on demand
+  // Resolve identity automatically when linkValue is available
   const resolveResult = sdk.entityGroups.resolve(
     group.id,
     { linkValue },
-    { enabled: resolveRequested && !!linkValue }
+    { enabled: !!linkValue }
   );
 
-  const handleResolve = useCallback(() => {
-    setResolveRequested(true);
-  }, []);
+  // Filter out the current record from the resolved results
+  const filteredResults = (resolveResult.data?.results ?? [])
+    .map((result) => ({
+      ...result,
+      records: result.records.filter((rec) => rec.id !== record.id),
+    }))
+    .filter((result) => result.records.length > 0);
 
   return (
     <Accordion data-testid={`related-records-group-${group.id}`}>
@@ -82,27 +85,15 @@ const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
               Link field: <strong>{linkFieldKey}</strong> = &quot;{linkValue}&quot;
             </Typography>
 
-            {!resolveRequested ? (
-              <Box>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handleResolve}
-                  disabled={!linkValue}
-                  data-testid="resolve-identity-button"
-                >
-                  Resolve Identity
-                </Button>
-              </Box>
-            ) : resolveResult.isLoading ? (
+            {resolveResult.isLoading ? (
               <CircularProgress size={20} />
-            ) : resolveResult.data?.results.length === 0 ? (
+            ) : filteredResults.length === 0 ? (
               <Typography variant="body2" color="text.secondary">
                 No matching records found
               </Typography>
             ) : (
               <Stack spacing={2}>
-                {resolveResult.data?.results.map((result) => (
+                {filteredResults.map((result) => (
                   <Box key={result.connectorEntityId}>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                       <Typography
@@ -135,9 +126,18 @@ const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
                           mb: 0.5,
                         }}
                       >
-                        <Typography variant="body2" color="text.secondary">
-                          {rec.sourceId}
-                        </Typography>
+                        <Link
+                          component="button"
+                          variant="body2"
+                          onClick={() =>
+                            navigate({
+                              to: `/entities/${result.connectorEntityId}/records/${rec.id}`,
+                            })
+                          }
+                          sx={{ cursor: "pointer" }}
+                        >
+                          Source ID: {rec.sourceId}
+                        </Link>
                       </Box>
                     ))}
                   </Box>
