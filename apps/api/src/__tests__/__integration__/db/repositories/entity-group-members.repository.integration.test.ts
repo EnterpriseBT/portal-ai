@@ -244,23 +244,35 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
   // ── findByEntityGroupId ──────────────────────────────────────────
 
   describe("findByEntityGroupId", () => {
-    it("should return enriched members with entity and field mapping details", async () => {
+    it("should return enriched members with entity and field mapping details when include is passed", async () => {
       const groupId = await seedGroup();
       const { entityId, fieldMappingId } = await seedEntityWithMapping();
       await repo.create(makeMember(groupId, entityId, fieldMappingId), db);
 
-      const results = await repo.findByEntityGroupId(groupId, db);
+      const results = await repo.findByEntityGroupId(groupId, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] }, db);
       expect(results).toHaveLength(1);
       expect(results[0].connectorEntityId).toBe(entityId);
       expect(results[0].connectorEntity).toBeDefined();
-      expect(results[0].connectorEntity.id).toBe(entityId);
+      expect(results[0].connectorEntity!.id).toBe(entityId);
       expect(results[0].fieldMapping).toBeDefined();
-      expect(results[0].fieldMapping.id).toBe(fieldMappingId);
+      expect(results[0].fieldMapping!.id).toBe(fieldMappingId);
+    });
+
+    it("should return plain members when no include is passed", async () => {
+      const groupId = await seedGroup();
+      const { entityId, fieldMappingId } = await seedEntityWithMapping();
+      await repo.create(makeMember(groupId, entityId, fieldMappingId), db);
+
+      const results = await repo.findByEntityGroupId(groupId, {}, db);
+      expect(results).toHaveLength(1);
+      expect(results[0].connectorEntityId).toBe(entityId);
+      expect(results[0].connectorEntity).toBeUndefined();
+      expect(results[0].fieldMapping).toBeUndefined();
     });
 
     it("should return empty array when group has no members", async () => {
       const groupId = await seedGroup();
-      const results = await repo.findByEntityGroupId(groupId, db);
+      const results = await repo.findByEntityGroupId(groupId, {}, db);
       expect(results).toHaveLength(0);
     });
 
@@ -270,7 +282,7 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
       const member = await repo.create(makeMember(groupId, entityId, fieldMappingId), db);
       await repo.softDelete(member.id, "test-system", db);
 
-      const results = await repo.findByEntityGroupId(groupId, db);
+      const results = await repo.findByEntityGroupId(groupId, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] }, db);
       expect(results).toHaveLength(0);
     });
   });

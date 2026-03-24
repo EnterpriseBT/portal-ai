@@ -221,12 +221,12 @@ entityGroupRouter.get(
         return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
       }
 
-      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(id);
+      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(id, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] });
 
       const members = enrichedMembers.map((m) => ({
         ...m,
-        connectorEntityLabel: m.connectorEntity.label,
-        linkFieldMappingSourceField: m.columnDefinition.key,
+        connectorEntityLabel: m.connectorEntity!.label,
+        linkFieldMappingSourceField: m.columnDefinition!.key,
         connectorEntity: undefined,
         fieldMapping: undefined,
       }));
@@ -536,7 +536,7 @@ entityGroupRouter.delete(
       const { userId } = req.application!.metadata;
 
       await DbService.transaction(async (tx) => {
-        const members = await DbService.repository.entityGroupMembers.findByEntityGroupId(id, tx);
+        const members = await DbService.repository.entityGroupMembers.findByEntityGroupId(id, {}, tx);
         const memberIds = members.map((m) => m.id);
         if (memberIds.length > 0) {
           await DbService.repository.entityGroupMembers.softDeleteMany(memberIds, userId, tx);
@@ -638,12 +638,12 @@ entityGroupRouter.get(
         return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
       }
 
-      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(id);
+      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(id, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] });
 
       const results: EntityGroupResolveResponsePayload["results"] = [];
 
       for (const member of enrichedMembers) {
-        const columnKey = member.columnDefinition.key;
+        const columnKey = member.columnDefinition!.key;
 
         // Query entity_records where normalizedData->>columnKey = linkValue
         const { entityRecords } = await import("../db/schema/index.js");
@@ -656,7 +656,7 @@ entityGroupRouter.get(
 
         results.push({
           connectorEntityId: member.connectorEntityId,
-          connectorEntityLabel: member.connectorEntity.label,
+          connectorEntityLabel: member.connectorEntity!.label,
           isPrimary: member.isPrimary,
           records: records as unknown as EntityGroupResolveResponsePayload["results"][number]["records"],
         });

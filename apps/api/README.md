@@ -382,6 +382,99 @@ Authorization: Bearer <your-jwt-token>
 
 You can test protected endpoints using the Swagger UI by clicking the "Authorize" button and entering your JWT token.
 
+## Include / Join Convention
+
+Routes are **not** responsible for handling join logic. The router intakes an `include` query parameter, parses it, and passes the resulting array to repository methods. The repository layer owns the actual join or batch-loading implementation. This pattern applies primarily to **GET requests** (list and detail endpoints).
+
+### URL Standard
+
+Standard query parameters for list endpoints:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | `int` | Max rows to return |
+| `offset` | `int` | Number of rows to skip |
+| `sortBy` | `string` | Column to sort by |
+| `sortOrder` | `asc \| desc` | Sort direction |
+| `search` | `string` | Case-insensitive keyword search |
+| `include` | `string` | Comma-separated list of related data to include |
+
+The specific values accepted by `include` are determined at an endpoint level — each endpoint defines which relations it supports. Additional custom parameters (single strings or comma-separated) are allowed per endpoint.
+
+```
+GET /api/connector-entities?include=fieldMappings,connectorInstance,tags&limit=20&offset=0&sortOrder=asc&sortBy=created&search=customer
+```
+
+### Router Parsing
+
+The router splits the comma-separated `include` value and passes it as a string array:
+
+```typescript
+const { limit, offset, sortBy, sortOrder, search, include } = req.query;
+const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+
+const listOpts = {
+  limit,
+  offset,
+  orderBy: { column, direction: sortOrder },
+  include: include_,
+};
+
+const results = await DbService.repository.foos.findMany(where, listOpts);
+```
+
+### Repository Implementation
+
+Concrete repositories extend `ListOptions` with `include?: string[]` and override `findMany` (or add custom finders) to handle the join logic:
+
+```typescript
+interface FoosListOptions extends ListOptions {
+  include?: string[];
+}
+
+class FoosRepository extends Repository<typeof foos, FooSelect, FooInsert> {
+  async findMany(
+    where: SQL | undefined,
+    opts: FoosListOptions = {},
+    client: DbClient = db,
+  ): Promise<FooSelect[]> {
+    if (opts.include?.includes("bar")) {
+      return this.findManyWithBar(where, opts, client);
+    }
+    return super.findMany(where, opts, client);
+  }
+}
+```
+
+Two patterns are used depending on the relationship cardinality:
+
+1. **LEFT JOIN** — for 1-to-1 relations. Directly joins tables in the query using `getTableColumns()` and Drizzle's `.leftJoin()`.
+2. **Post-query batch-loading** — for 1-to-many relations. Fetches base rows first, then loads related data in parallel via `Promise.all()` and maps them back.
+
+### OpenAPI Documentation
+
+Every list endpoint that accepts `include` must document the supported values in its `@openapi` JSDoc:
+
+```typescript
+/**
+ * @openapi
+ *   - in: query
+ *     name: include
+ *     schema:
+ *       type: string
+ *     description: "Comma-separated list of related data to include — bar, baz"
+ */
+```
+
+### Currently Supported Includes
+
+| Endpoint | Supported `include` values |
+|----------|---------------------------|
+| `GET /api/connector-entities` | `fieldMappings`, `connectorInstance`, `tags` |
+| `GET /api/connector-instances` | `connectorDefinition` |
+| `GET /api/entity-groups` | `memberCount` |
+| `GET /api/field-mappings` | `connectorEntity`, `columnDefinition` |
+
 ## Style Guide
 
 ### Services

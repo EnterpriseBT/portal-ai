@@ -26,13 +26,14 @@ export class EntityTagAssignmentsRepository extends Repository<
   }
 
   /**
-   * Return all non-deleted assignments for a connector entity, each enriched
-   * with its parent tag details (two-query batch-load pattern).
+   * Return all non-deleted assignments for a connector entity.
+   * Pass `include: ["entityTag"]` to batch-load parent tag details.
    */
   async findByConnectorEntityId(
     connectorEntityId: string,
+    opts: { include?: string[] } = {},
     client: DbClient = db
-  ): Promise<(EntityTagAssignmentSelect & { tag: EntityTagSelect })[]> {
+  ): Promise<(EntityTagAssignmentSelect & { tag?: EntityTagSelect })[]> {
     const assignments = await (client as typeof db)
       .select()
       .from(this.table)
@@ -43,7 +44,9 @@ export class EntityTagAssignmentsRepository extends Repository<
         )
       );
 
-    if (assignments.length === 0) return [];
+    if (assignments.length === 0 || !opts.include?.includes("entityTag")) {
+      return assignments as EntityTagAssignmentSelect[];
+    }
 
     const tagIds = assignments.map((a) => a.entityTagId);
     const tags = await (client as typeof db)

@@ -109,8 +109,8 @@ const defaultProps = {
   addMemberOpen: false,
   onOpenAddMember: jest.fn(),
   onCloseAddMember: jest.fn(),
-  onSearchEntities: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
-  onSearchFieldMappings: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
+  onSearchEntities: jest.fn().mockResolvedValue([]),
+  onSearchFieldMappings: jest.fn().mockResolvedValue([]),
   selectedEntityId: null as string | null,
   onEntityChange: jest.fn(),
   selectedFieldMappingId: null as string | null,
@@ -178,9 +178,7 @@ describe("EntityGroupDetailViewUI", () => {
 
   it("add member submit button disabled until entity and field mapping selected", () => {
     render(<EntityGroupDetailViewUI {...defaultProps} addMemberOpen={true} />);
-    const addButtons = screen.getAllByRole("button", { name: /Add Member/i });
-    // The submit button inside the dialog is the last one
-    const submitBtn = addButtons[addButtons.length - 1];
+    const submitBtn = screen.getByRole("button", { name: /Submit/i });
     expect(submitBtn).toBeDisabled();
   });
 
@@ -193,8 +191,7 @@ describe("EntityGroupDetailViewUI", () => {
         selectedFieldMappingId="fm-3"
       />
     );
-    const addButtons = screen.getAllByRole("button", { name: /Add Member/i });
-    const submitBtn = addButtons[addButtons.length - 1];
+    const submitBtn = screen.getByRole("button", { name: /Submit/i });
     expect(submitBtn).toBeEnabled();
   });
 
