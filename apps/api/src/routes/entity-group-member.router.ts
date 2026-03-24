@@ -215,24 +215,54 @@ entityGroupMemberRouter.post(
         return next(new ApiError(409, ApiCode.ENTITY_GROUP_MEMBER_ALREADY_EXISTS, "This entity is already a member of this group"));
       }
 
-      const factory = new EntityGroupMemberModelFactory();
-      const model = factory.create(userId);
-      model.update({
-        organizationId,
+      // Check for a soft-deleted member with the same combo — restore it instead of inserting
+      const softDeleted = await DbService.repository.entityGroupMembers.findSoftDeleted(
         entityGroupId,
-        connectorEntityId: parsed.data.connectorEntityId,
-        linkFieldMappingId: parsed.data.linkFieldMappingId,
-        isPrimary: parsed.data.isPrimary,
-      });
+        parsed.data.connectorEntityId
+      );
 
       let entityGroupMember;
-      if (parsed.data.isPrimary) {
-        entityGroupMember = await DbService.transaction(async (tx) => {
-          await DbService.repository.entityGroupMembers.clearPrimary(entityGroupId, tx);
-          return DbService.repository.entityGroupMembers.create(model.parse(), tx);
-        });
+
+      if (softDeleted) {
+        // Restore the soft-deleted row with updated fields
+        const restoreData = {
+          linkFieldMappingId: parsed.data.linkFieldMappingId,
+          isPrimary: parsed.data.isPrimary ?? false,
+          updated: Date.now(),
+          updatedBy: userId,
+        };
+
+        if (parsed.data.isPrimary) {
+          entityGroupMember = await DbService.transaction(async (tx) => {
+            await DbService.repository.entityGroupMembers.clearPrimary(entityGroupId, tx);
+            return DbService.repository.entityGroupMembers.restore(softDeleted.id, restoreData as never, tx);
+          });
+        } else {
+          entityGroupMember = await DbService.repository.entityGroupMembers.restore(softDeleted.id, restoreData as never);
+        }
       } else {
-        entityGroupMember = await DbService.repository.entityGroupMembers.create(model.parse());
+        const factory = new EntityGroupMemberModelFactory();
+        const model = factory.create(userId);
+        model.update({
+          organizationId,
+          entityGroupId,
+          connectorEntityId: parsed.data.connectorEntityId,
+          linkFieldMappingId: parsed.data.linkFieldMappingId,
+          isPrimary: parsed.data.isPrimary,
+        });
+
+        if (parsed.data.isPrimary) {
+          entityGroupMember = await DbService.transaction(async (tx) => {
+            await DbService.repository.entityGroupMembers.clearPrimary(entityGroupId, tx);
+            return DbService.repository.entityGroupMembers.create(model.parse(), tx);
+          });
+        } else {
+          entityGroupMember = await DbService.repository.entityGroupMembers.create(model.parse());
+        }
+      }
+
+      if (!entityGroupMember) {
+        return next(new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED, "Failed to create entity group member"));
       }
 
       logger.info({ id: entityGroupMember.id, entityGroupId }, "Entity group member created");

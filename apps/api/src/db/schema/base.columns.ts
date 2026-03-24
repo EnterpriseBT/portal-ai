@@ -1,6 +1,6 @@
 import { text, bigint, type PgColumnBuilderBase } from "drizzle-orm/pg-core";
 import { CoreSchema, type Core } from "@portalai/core/models";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 

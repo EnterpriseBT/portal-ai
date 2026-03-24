@@ -384,43 +384,43 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Create `EntityGroupDetail.view.tsx`
-  - [ ] Container component fetches group with members via `fetchEntityGroup(id)`
-  - [ ] Pure `EntityGroupDetailViewUI` component
-  - [ ] **Header section**: Group name (editable inline), description, edit/delete actions
-  - [ ] **Members table**: Columns — Entity Label, Connector Instance, Link Field, Primary (star icon), Actions (remove)
-    - [ ] Primary member row displays a filled star icon; non-primary shows an outline star that can be clicked to promote
-    - [ ] Clicking the star triggers `updateEntityGroupMember(groupId, memberId, { isPrimary: true })` — the API handles clearing the previous primary
-  - [ ] **Add Member panel**: A form section below the members table with:
-    - [ ] `SearchableSelect` for connector entity (async search across org entities)
-    - [ ] `SearchableSelect` for link field mapping (filtered to field mappings of the selected connector entity; disabled until entity is selected)
-    - [ ] `isPrimary` checkbox
-    - [ ] **Overlap preview**: Once both entity and link field are selected, automatically call `GET /api/entity-groups/:id/members/overlap` and display the result:
-      - [ ] Show overlap percentage as a prominent number (e.g., "72% overlap")
-      - [ ] Show counts: "145 of 200 source records match 145 of 300 target records"
-      - [ ] **Yellow highlight** (MUI `warning` color) if overlap is below 50%
-      - [ ] **Red highlight** (MUI `error` color) if overlap is below 5%
-      - [ ] Overlap check runs against each existing member in the group individually
-    - [ ] "Add Member" button — disabled until entity and link field are selected; submits `POST /api/entity-groups/:id/members`
-- [ ] Write tests in `EntityGroupDetailView.test.tsx`
-  - [ ] Renders group header with name and description
-  - [ ] Members table displays entity labels, link fields, and primary indicators
-  - [ ] Clicking star icon on non-primary member triggers primary update
-  - [ ] Add member form: selecting entity populates link field dropdown
-  - [ ] Overlap preview displays correct percentage and highlight colors:
-    - [ ] `>= 50%` — default styling (no highlight)
-    - [ ] `< 50%` and `>= 5%` — yellow/warning highlight
-    - [ ] `< 5%` — red/error highlight
-  - [ ] Add member button disabled until entity and link field selected
-  - [ ] Remove member triggers delete confirmation and API call
-- [ ] Run `npm run test -- --testPathPattern="EntityGroupDetailView"` from `apps/web/` and confirm all tests pass
+- [x] Create `EntityGroupDetail.view.tsx`
+  - [x] Container component fetches group with members via `fetchEntityGroup(id)`
+  - [x] Pure `EntityGroupDetailViewUI` component
+  - [x] **Header section**: Group name (editable inline), description, edit/delete actions
+  - [x] **Members table**: Columns — Entity Label, Connector Instance, Link Field, Primary (star icon), Actions (remove)
+    - [x] Primary member row displays a filled star icon; non-primary shows an outline star that can be clicked to promote
+    - [x] Clicking the star triggers `updateEntityGroupMember(groupId, memberId, { isPrimary: true })` — the API handles clearing the previous primary
+  - [x] **Add Member panel**: A form section below the members table with:
+    - [x] `SearchableSelect` for connector entity (async search across org entities)
+    - [x] `SearchableSelect` for link field mapping (filtered to field mappings of the selected connector entity; disabled until entity is selected)
+    - [x] `isPrimary` checkbox
+    - [x] **Overlap preview**: Once both entity and link field are selected, automatically call `GET /api/entity-groups/:id/members/overlap` and display the result:
+      - [x] Show overlap percentage as a prominent number (e.g., "72% overlap")
+      - [x] Show counts: "145 of 200 source records match 145 of 300 target records"
+      - [x] **Yellow highlight** (MUI `warning` color) if overlap is below 50%
+      - [x] **Red highlight** (MUI `error` color) if overlap is below 5%
+      - [x] Overlap check runs against each existing member in the group individually
+    - [x] "Add Member" button — disabled until entity and link field are selected; submits `POST /api/entity-groups/:id/members`
+- [x] Write tests in `EntityGroupDetailView.test.tsx`
+  - [x] Renders group header with name and description
+  - [x] Members table displays entity labels, link fields, and primary indicators
+  - [x] Clicking star icon on non-primary member triggers primary update
+  - [x] Add member form: selecting entity populates link field dropdown
+  - [x] Overlap preview displays correct percentage and highlight colors:
+    - [x] `>= 50%` — default styling (no highlight)
+    - [x] `< 50%` and `>= 5%` — yellow/warning highlight
+    - [x] `< 5%` — red/error highlight
+  - [x] Add member button disabled until entity and link field selected
+  - [x] Remove member triggers delete confirmation and API call
+- [x] Run `npm run test -- --testPathPattern="EntityGroupDetailView"` from `apps/web/` and confirm all tests pass
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run lint` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from `apps/web/`
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run lint` passes from repo root
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from `apps/web/`
 
 ---
 

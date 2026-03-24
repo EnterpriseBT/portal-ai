@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { EntityGroupDetailView } from "../views/EntityGroupDetail.view";
+
 export const Route = createFileRoute("/entity-groups/$entityGroupId")({
-  component: EntityGroupDetailPlaceholder,
+  component: EntityGroupDetailRoute,
 });
 
-function EntityGroupDetailPlaceholder() {
+function EntityGroupDetailRoute() {
   const { entityGroupId } = Route.useParams();
-  return <div>Entity Group Detail: {entityGroupId}</div>;
+  return <EntityGroupDetailView entityGroupId={entityGroupId} />;
 }
