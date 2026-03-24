@@ -18,7 +18,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-const { render, screen, fireEvent } = await import("./test-utils");
+const { render, screen } = await import("./test-utils");
 const { EntityRecordDetailViewUI, RelatedRecordsSection } = await import(
   "../views/EntityRecordDetail.view"
 );
@@ -312,7 +312,7 @@ describe("RelatedRecordsSection — identity resolution", () => {
     mockResolve.mockReset();
   });
 
-  it("renders Resolve Identity button and triggers API call on click", () => {
+  it("automatically resolves identity when linkValue is available", () => {
     mockGroupDetail();
     mockResolve.mockReturnValue({ data: undefined, isLoading: false });
 
@@ -324,16 +324,7 @@ describe("RelatedRecordsSection — identity resolution", () => {
       />
     );
 
-    // Expand the accordion
-    fireEvent.click(screen.getByText("People"));
-
-    // Should see the resolve button
-    expect(screen.getByTestId("resolve-identity-button")).toBeInTheDocument();
-
-    // Click to resolve
-    fireEvent.click(screen.getByTestId("resolve-identity-button"));
-
-    // resolve should have been called with the link value
+    // resolve should have been called automatically with the link value
     expect(mockResolve).toHaveBeenCalledWith(
       "grp-1",
       { linkValue: "alice@example.com" },
@@ -346,12 +337,6 @@ describe("RelatedRecordsSection — identity resolution", () => {
     mockResolve.mockReturnValue({
       data: {
         results: [
-          {
-            connectorEntityId: "ent-1",
-            connectorEntityLabel: "Contacts",
-            isPrimary: true,
-            records: [{ ...stubRecord, id: "rec-1", sourceId: "SRC-001" }],
-          },
           {
             connectorEntityId: "ent-2",
             connectorEntityLabel: "HubSpot Users",
@@ -371,20 +356,9 @@ describe("RelatedRecordsSection — identity resolution", () => {
       />
     );
 
-    // Expand the accordion
-    fireEvent.click(screen.getByText("People"));
-
-    // Click resolve
-    fireEvent.click(screen.getByTestId("resolve-identity-button"));
-
-    // Primary member should have star icon and bold label
-    expect(screen.getByTestId("primary-star-icon")).toBeInTheDocument();
-    expect(screen.getByText("Contacts")).toBeInTheDocument();
+    // Results should appear automatically (no button click needed)
     expect(screen.getByText("HubSpot Users")).toBeInTheDocument();
-
-    // Record source IDs should be visible
-    expect(screen.getByText("SRC-001")).toBeInTheDocument();
-    expect(screen.getByText("HS-042")).toBeInTheDocument();
+    expect(screen.getByText(/HS-042/)).toBeInTheDocument();
   });
 
   it("displays 'No matching records found' when resolve returns empty results", () => {
@@ -402,10 +376,7 @@ describe("RelatedRecordsSection — identity resolution", () => {
       />
     );
 
-    // Expand and resolve
-    fireEvent.click(screen.getByText("People"));
-    fireEvent.click(screen.getByTestId("resolve-identity-button"));
-
+    // Empty results message should appear automatically
     expect(screen.getByText("No matching records found")).toBeInTheDocument();
   });
 });
