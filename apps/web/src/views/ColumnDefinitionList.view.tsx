@@ -40,7 +40,7 @@ export const ColumnDefinitionListView: React.FC = () => {
     defaultSortOrder: "asc",
     filters: [
       {
-        type: "select",
+        type: "multi-select",
         field: "type",
         label: "Type",
         options: TYPE_OPTIONS,
