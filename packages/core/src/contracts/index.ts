@@ -51,3 +51,9 @@ export * from "./entity-tag.contract.js";
 
 /** Entity Tag Assignment contracts — schemas & types */
 export * from "./entity-tag-assignment.contract.js";
+
+/** Entity Group contracts — schemas & types */
+export * from "./entity-group.contract.js";
+
+/** Entity Group Member contracts — schemas & types */
+export * from "./entity-group-member.contract.js";

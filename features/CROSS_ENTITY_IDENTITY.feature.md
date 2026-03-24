@@ -188,45 +188,45 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Create `entity-group.contract.ts`
-  - [ ] `EntityGroupListRequestQuerySchema` — extends `PaginationRequestQuerySchema` with optional `search: z.string()` and `sortBy: z.enum(["name", "created"])`
-  - [ ] `EntityGroupListResponsePayloadSchema` — `PaginatedResponsePayloadSchema` with `entityGroups: z.array(EntityGroupSchema)`
-  - [ ] `EntityGroupWithMembersSchema` — `EntityGroupSchema.extend({ members: z.array(EntityGroupMemberWithDetailsSchema) })` where `EntityGroupMemberWithDetailsSchema` enriches `EntityGroupMemberSchema` with `connectorEntityLabel: z.string()` and `linkFieldMappingSourceField: z.string()`
-  - [ ] `EntityGroupGetResponsePayloadSchema` — `{ entityGroup: EntityGroupWithMembersSchema }`
-  - [ ] `EntityGroupCreateRequestBodySchema` — `{ name: z.string().min(1), description: z.string().optional() }`
-  - [ ] `EntityGroupCreateResponsePayloadSchema` — `{ entityGroup: EntityGroupSchema }`
-  - [ ] `EntityGroupUpdateRequestBodySchema` — all fields optional (`name?`, `description?`), refine to require at least one field present
-  - [ ] `EntityGroupUpdateResponsePayloadSchema` — `{ entityGroup: EntityGroupSchema }`
-  - [ ] Export all schemas and their inferred types
-- [ ] Create `entity-group-member.contract.ts`
-  - [ ] `EntityGroupMemberCreateRequestBodySchema` — `{ connectorEntityId: z.string(), linkFieldMappingId: z.string(), isPrimary: z.boolean().optional().default(false) }`
-  - [ ] `EntityGroupMemberCreateResponsePayloadSchema` — `{ entityGroupMember: EntityGroupMemberSchema }`
-  - [ ] `EntityGroupMemberUpdateRequestBodySchema` — `{ linkFieldMappingId: z.string().optional(), isPrimary: z.boolean().optional() }`, refine to require at least one field
-  - [ ] `EntityGroupMemberUpdateResponsePayloadSchema` — `{ entityGroupMember: EntityGroupMemberSchema }`
-  - [ ] `EntityGroupMemberOverlapRequestQuerySchema` — `{ targetConnectorEntityId: z.string(), targetLinkFieldMappingId: z.string() }` — used to preview overlap % before adding a new member
-  - [ ] `EntityGroupMemberOverlapResponsePayloadSchema` — `{ overlapPercentage: z.number().min(0).max(100), sourceRecordCount: z.number(), targetRecordCount: z.number(), matchingRecordCount: z.number() }`
-  - [ ] `EntityGroupResolveRequestQuerySchema` — `{ linkValue: z.string() }` — the identity value to resolve across group members
-  - [ ] `EntityGroupResolveResponsePayloadSchema` — `{ results: z.array(z.object({ connectorEntityId: z.string(), connectorEntityLabel: z.string(), isPrimary: z.boolean(), records: z.array(EntityRecordSchema) })) }`
-  - [ ] Export all schemas and their inferred types
-- [ ] Update `contracts/index.ts`
-  - [ ] Add `export * from "./entity-group.contract.js"`
-  - [ ] Add `export * from "./entity-group-member.contract.js"`
-- [ ] Write unit tests in `entity-group.contract.test.ts`
-  - [ ] `EntityGroupCreateRequestBodySchema` accepts valid input, rejects empty name
-  - [ ] `EntityGroupUpdateRequestBodySchema` rejects empty object (at least one field required)
-  - [ ] `EntityGroupListRequestQuerySchema` accepts valid pagination + search params
-- [ ] Write unit tests in `entity-group-member.contract.test.ts`
-  - [ ] `EntityGroupMemberCreateRequestBodySchema` accepts valid input, defaults `isPrimary` to `false`
-  - [ ] `EntityGroupMemberUpdateRequestBodySchema` rejects empty object (at least one field required)
-  - [ ] `EntityGroupMemberOverlapResponsePayloadSchema` validates percentage bounds (0–100)
-  - [ ] `EntityGroupResolveResponsePayloadSchema` accepts valid resolve response with nested records
-- [ ] Run `npm run test -- --testPathPattern="entity-group"` from `packages/core/` and confirm all contract tests pass
+- [x] Create `entity-group.contract.ts`
+  - [x] `EntityGroupListRequestQuerySchema` — extends `PaginationRequestQuerySchema` with optional `search: z.string()` and `sortBy: z.enum(["name", "created"])`
+  - [x] `EntityGroupListResponsePayloadSchema` — `PaginatedResponsePayloadSchema` with `entityGroups: z.array(EntityGroupSchema)`
+  - [x] `EntityGroupWithMembersSchema` — `EntityGroupSchema.extend({ members: z.array(EntityGroupMemberWithDetailsSchema) })` where `EntityGroupMemberWithDetailsSchema` enriches `EntityGroupMemberSchema` with `connectorEntityLabel: z.string()` and `linkFieldMappingSourceField: z.string()`
+  - [x] `EntityGroupGetResponsePayloadSchema` — `{ entityGroup: EntityGroupWithMembersSchema }`
+  - [x] `EntityGroupCreateRequestBodySchema` — `{ name: z.string().min(1), description: z.string().optional() }`
+  - [x] `EntityGroupCreateResponsePayloadSchema` — `{ entityGroup: EntityGroupSchema }`
+  - [x] `EntityGroupUpdateRequestBodySchema` — all fields optional (`name?`, `description?`), refine to require at least one field present
+  - [x] `EntityGroupUpdateResponsePayloadSchema` — `{ entityGroup: EntityGroupSchema }`
+  - [x] Export all schemas and their inferred types
+- [x] Create `entity-group-member.contract.ts`
+  - [x] `EntityGroupMemberCreateRequestBodySchema` — `{ connectorEntityId: z.string(), linkFieldMappingId: z.string(), isPrimary: z.boolean().optional().default(false) }`
+  - [x] `EntityGroupMemberCreateResponsePayloadSchema` — `{ entityGroupMember: EntityGroupMemberSchema }`
+  - [x] `EntityGroupMemberUpdateRequestBodySchema` — `{ linkFieldMappingId: z.string().optional(), isPrimary: z.boolean().optional() }`, refine to require at least one field
+  - [x] `EntityGroupMemberUpdateResponsePayloadSchema` — `{ entityGroupMember: EntityGroupMemberSchema }`
+  - [x] `EntityGroupMemberOverlapRequestQuerySchema` — `{ targetConnectorEntityId: z.string(), targetLinkFieldMappingId: z.string() }` — used to preview overlap % before adding a new member
+  - [x] `EntityGroupMemberOverlapResponsePayloadSchema` — `{ overlapPercentage: z.number().min(0).max(100), sourceRecordCount: z.number(), targetRecordCount: z.number(), matchingRecordCount: z.number() }`
+  - [x] `EntityGroupResolveRequestQuerySchema` — `{ linkValue: z.string() }` — the identity value to resolve across group members
+  - [x] `EntityGroupResolveResponsePayloadSchema` — `{ results: z.array(z.object({ connectorEntityId: z.string(), connectorEntityLabel: z.string(), isPrimary: z.boolean(), records: z.array(EntityRecordSchema) })) }`
+  - [x] Export all schemas and their inferred types
+- [x] Update `contracts/index.ts`
+  - [x] Add `export * from "./entity-group.contract.js"`
+  - [x] Add `export * from "./entity-group-member.contract.js"`
+- [x] Write unit tests in `entity-group.contract.test.ts`
+  - [x] `EntityGroupCreateRequestBodySchema` accepts valid input, rejects empty name
+  - [x] `EntityGroupUpdateRequestBodySchema` rejects empty object (at least one field required)
+  - [x] `EntityGroupListRequestQuerySchema` accepts valid pagination + search params
+- [x] Write unit tests in `entity-group-member.contract.test.ts`
+  - [x] `EntityGroupMemberCreateRequestBodySchema` accepts valid input, defaults `isPrimary` to `false`
+  - [x] `EntityGroupMemberUpdateRequestBodySchema` rejects empty object (at least one field required)
+  - [x] `EntityGroupMemberOverlapResponsePayloadSchema` validates percentage bounds (0–100)
+  - [x] `EntityGroupResolveResponsePayloadSchema` accepts valid resolve response with nested records
+- [x] Run `npm run test -- --testPathPattern="entity-group"` from `packages/core/` and confirm all contract tests pass
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from `packages/core/`
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from `packages/core/`
 
 ---
 
