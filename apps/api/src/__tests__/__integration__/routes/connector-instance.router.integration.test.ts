@@ -237,6 +237,47 @@ describe("Connector Instance Router", () => {
       expect(res.body.payload.connectorInstances[0].name).toBe("Pending");
     });
 
+    it("should filter by multiple statuses (comma-separated)", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def.id, orgId, {
+            name: "Active",
+            status: "active",
+          }),
+          createConnectorInstance(def.id, orgId, {
+            name: "Error",
+            status: "error",
+          }),
+          createConnectorInstance(def.id, orgId, {
+            name: "Pending",
+            status: "pending",
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/connector-instances?status=active,error")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(2);
+      const names = res.body.payload.connectorInstances.map(
+        (ci: { name: string }) => ci.name
+      );
+      expect(names).toContain("Active");
+      expect(names).toContain("Error");
+      expect(names).not.toContain("Pending");
+    });
+
     it("should attach connectorDefinition when include=connectorDefinition", async () => {
       const { organizationId: orgId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

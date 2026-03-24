@@ -480,7 +480,7 @@ The existing `FilterConfig` union in `PaginationToolbar.component.tsx` supports 
 
 Run all checks from the repo root in order:
 
-- [ ] `npm run type-check`
-- [ ] `npm run lint`
-- [ ] `npm run build`
-- [ ] `npm run test`
+- [x] `npm run type-check`
+- [x] `npm run lint`
+- [x] `npm run build`
+- [x] `npm run test`

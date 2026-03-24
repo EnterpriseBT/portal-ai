@@ -88,7 +88,7 @@ export const ConnectorView = () => {
     ],
     filters: [
       {
-        type: "select",
+        type: "multi-select",
         field: "status",
         label: "Status",
         options: [
