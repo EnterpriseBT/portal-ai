@@ -9,18 +9,20 @@ import { eq, and, inArray, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { connectorEntities, connectorInstances, fieldMappings, columnDefinitions, entityTagAssignments } from "../schema/index.js";
+import { connectorEntities, connectorInstances, fieldMappings, columnDefinitions } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
 import { entityTagAssignmentsRepo } from "./entity-tag-assignments.repository.js";
 import type {
   ConnectorEntitySelect,
   ConnectorEntityInsert,
-  ConnectorInstanceSelect,
   FieldMappingSelect,
   ColumnDefinitionSelect,
-  EntityTagSelect,
 } from "../schema/zod.js";
+
+export interface ConnectorEntityListOptions extends ListOptions {
+  include?: string[];
+}
 
 export class ConnectorEntitiesRepository extends Repository<
   typeof connectorEntities,
@@ -29,6 +31,46 @@ export class ConnectorEntitiesRepository extends Repository<
 > {
   constructor() {
     super(connectorEntities);
+  }
+
+  /**
+   * Find entities matching `where`, with optional eager-loaded relations.
+   * Pass `include` to attach any combination of `connectorInstance`, `fieldMappings`, and `tags`.
+   */
+  override async findMany(
+    where?: SQL,
+    opts: ConnectorEntityListOptions = {},
+    client: DbClient = db
+  ): Promise<ConnectorEntitySelect[]> {
+    const entities = await super.findMany(where, opts, client);
+    const { include } = opts;
+    if (entities.length === 0 || !include || include.length === 0) return entities;
+
+    const entityIds = entities.map((e) => e.id);
+    const includes = new Set(include);
+
+    const [instanceMap, fieldMappingsByEntity, tagsByEntity] = await Promise.all([
+      includes.has("connectorInstance")
+        ? (client as typeof db)
+            .select()
+            .from(connectorInstances)
+            .where(inArray(connectorInstances.id, [...new Set(entities.map((e) => e.connectorInstanceId))]))
+            .then((rows) => new Map(rows.map((i) => [i.id, i])))
+        : Promise.resolve(null),
+      includes.has("fieldMappings")
+        ? this.findFieldMappingsByEntityIds(entityIds, client)
+        : Promise.resolve(null),
+      includes.has("tags")
+        ? entityTagAssignmentsRepo.findByConnectorEntityIds(entityIds, client)
+        : Promise.resolve(null),
+    ]);
+
+    return entities.map((entity) => ({
+      ...entity,
+      ...(instanceMap && { connectorInstance: instanceMap.get(entity.connectorInstanceId) ?? null }),
+      ...(fieldMappingsByEntity && { fieldMappings: fieldMappingsByEntity.get(entity.id) ?? [] }),
+      ...(tagsByEntity && { tags: tagsByEntity.get(entity.id) ?? [] }),
+    })) as ConnectorEntitySelect[];
   }
 
   /** Find all entities for a given connector instance. */
@@ -68,173 +110,37 @@ export class ConnectorEntitiesRepository extends Repository<
   }
 
   /**
-   * Return entities with their field mappings and associated column definitions.
-   * Uses batch-loading to avoid N+1 queries.
+   * Batch-load field mappings (with column definitions) for a list of entity IDs.
+   * Returns a Map keyed by entity ID.
    */
-  async findManyWithFieldMappings(
-    where: SQL | undefined,
-    opts: ListOptions = {},
+  async findFieldMappingsByEntityIds(
+    entityIds: string[],
     client: DbClient = db
-  ): Promise<
-    (ConnectorEntitySelect & {
-      fieldMappings: (FieldMappingSelect & {
-        columnDefinition: ColumnDefinitionSelect | null;
-      })[];
-    })[]
-  > {
-    // 1. Fetch paginated entities
-    const entities = await this.findMany(where, opts, client);
-    if (entities.length === 0) return [];
+  ): Promise<Map<string, (FieldMappingSelect & { columnDefinition: ColumnDefinitionSelect | null })[]>> {
+    if (entityIds.length === 0) return new Map();
 
-    const entityIds = entities.map((e) => e.id);
-
-    // 2. Batch-fetch field mappings for these entities
     const mappings = await (client as typeof db)
       .select()
       .from(fieldMappings)
-      .where(
-        and(
-          inArray(fieldMappings.connectorEntityId, entityIds),
-          isNull(fieldMappings.deleted)
-        )
-      );
+      .where(and(inArray(fieldMappings.connectorEntityId, entityIds), isNull(fieldMappings.deleted)));
 
-    // 3. Batch-fetch column definitions for the mappings
-    const uniqueColDefIds = [
-      ...new Set(mappings.map((m) => m.columnDefinitionId)),
-    ];
-    const colDefs =
-      uniqueColDefIds.length > 0
-        ? await (client as typeof db)
-            .select()
-            .from(columnDefinitions)
-            .where(
-              and(
-                inArray(columnDefinitions.id, uniqueColDefIds),
-                isNull(columnDefinitions.deleted)
-              )
-            )
-        : [];
+    const uniqueColDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
+    const colDefs = uniqueColDefIds.length > 0
+      ? await (client as typeof db)
+          .select()
+          .from(columnDefinitions)
+          .where(and(inArray(columnDefinitions.id, uniqueColDefIds), isNull(columnDefinitions.deleted)))
+      : [];
 
-    // 4. Assemble in-memory
     const colDefMap = new Map(colDefs.map((cd) => [cd.id, cd]));
-
-    const mappingsByEntity = new Map<
-      string,
-      (FieldMappingSelect & { columnDefinition: ColumnDefinitionSelect | null })[]
-    >();
+    const result = new Map<string, (FieldMappingSelect & { columnDefinition: ColumnDefinitionSelect | null })[]>();
     for (const m of mappings) {
-      const enriched = {
-        ...(m as FieldMappingSelect),
-        columnDefinition: colDefMap.get(m.columnDefinitionId) ?? null,
-      };
-      const list = mappingsByEntity.get(m.connectorEntityId) ?? [];
+      const enriched = { ...(m as FieldMappingSelect), columnDefinition: colDefMap.get(m.columnDefinitionId) ?? null };
+      const list = result.get(m.connectorEntityId) ?? [];
       list.push(enriched);
-      mappingsByEntity.set(m.connectorEntityId, list);
+      result.set(m.connectorEntityId, list);
     }
-
-    return entities.map((entity) => ({
-      ...entity,
-      fieldMappings: mappingsByEntity.get(entity.id) ?? [],
-    }));
-  }
-
-  /**
-   * Return entities with their full connector instance attached.
-   * Uses batch-loading to avoid N+1 queries.
-   */
-  async findManyWithInstance(
-    where: SQL | undefined,
-    opts: ListOptions = {},
-    client: DbClient = db
-  ): Promise<
-    (ConnectorEntitySelect & {
-      connectorInstance: ConnectorInstanceSelect;
-    })[]
-  > {
-    const entities = await this.findMany(where, opts, client);
-    if (entities.length === 0) return [];
-
-    const instanceIds = [
-      ...new Set(entities.map((e) => e.connectorInstanceId)),
-    ];
-
-    const instances = await (client as typeof db)
-      .select()
-      .from(connectorInstances)
-      .where(inArray(connectorInstances.id, instanceIds));
-
-    const instanceMap = new Map(instances.map((i) => [i.id, i]));
-
-    return entities
-      .filter((e) => instanceMap.has(e.connectorInstanceId))
-      .map((entity) => ({
-        ...entity,
-        connectorInstance: instanceMap.get(
-          entity.connectorInstanceId
-        )! as ConnectorInstanceSelect,
-      }));
-  }
-
-  /**
-   * Return entities with their assigned tags batch-loaded.
-   * Fetches paginated entities then calls entityTagAssignmentsRepo.findByConnectorEntityIds
-   * to batch-load tags in a second query.
-   */
-  async findManyWithTags(
-    where: SQL | undefined,
-    opts: ListOptions = {},
-    client: DbClient = db
-  ): Promise<(ConnectorEntitySelect & { tags: EntityTagSelect[] })[]> {
-    const entities = await this.findMany(where, opts, client);
-    if (entities.length === 0) return [];
-
-    const entityIds = entities.map((e) => e.id);
-    const tagsByEntity = await entityTagAssignmentsRepo.findByConnectorEntityIds(
-      entityIds,
-      client
-    );
-
-    return entities.map((entity) => ({
-      ...entity,
-      tags: tagsByEntity.get(entity.id) ?? [],
-    }));
-  }
-
-  /**
-   * Return entities in an organization that have at least one assignment
-   * matching any of the given tag IDs.
-   */
-  async findManyByTagIds(
-    organizationId: string,
-    tagIds: string[],
-    opts: ListOptions = {},
-    client: DbClient = db
-  ): Promise<ConnectorEntitySelect[]> {
-    if (tagIds.length === 0) return [];
-
-    const assignedRows = await (client as typeof db)
-      .selectDistinct({ id: entityTagAssignments.connectorEntityId })
-      .from(entityTagAssignments)
-      .where(
-        and(
-          inArray(entityTagAssignments.entityTagId, tagIds),
-          isNull(entityTagAssignments.deleted)
-        )
-      );
-
-    if (assignedRows.length === 0) return [];
-
-    const assignedIds = assignedRows.map((r) => r.id);
-
-    return this.findMany(
-      and(
-        eq(connectorEntities.organizationId, organizationId),
-        inArray(connectorEntities.id, assignedIds)
-      ),
-      opts,
-      client
-    );
+    return result;
   }
 
   /**

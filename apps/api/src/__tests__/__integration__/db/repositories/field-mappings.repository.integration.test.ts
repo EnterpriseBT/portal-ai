@@ -402,6 +402,30 @@ describe("FieldMappingsRepository Integration Tests", () => {
     });
   });
 
+  // ── findMany with include ──────────────────────────────────────
+
+  describe("findMany with include", () => {
+    it("should attach connectorEntity when include contains connectorEntity", async () => {
+      await repo.create(makeMapping({ sourceField: "full_name" }), db);
+
+      const results = await repo.findMany(undefined, { include: ["connectorEntity"] }, db);
+
+      expect(results).toHaveLength(1);
+      const enriched = results[0] as Record<string, unknown>;
+      expect(enriched.connectorEntity).toBeDefined();
+      expect((enriched.connectorEntity as { id: string }).id).toBe(connectorEntityId);
+    });
+
+    it("should return plain rows when include is empty", async () => {
+      await repo.create(makeMapping(), db);
+
+      const results = await repo.findMany(undefined, { include: [] }, db);
+
+      expect(results).toHaveLength(1);
+      expect((results[0] as Record<string, unknown>).connectorEntity).toBeUndefined();
+    });
+  });
+
   // ── Reference metadata ─────────────────────────────────────────
 
   describe("reference metadata", () => {

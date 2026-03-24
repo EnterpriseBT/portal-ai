@@ -113,17 +113,11 @@ fieldMappingRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
-
-      const fetchMappings = () => {
-        if (include === "connectorEntity") {
-          return DbService.repository.fieldMappings.findManyWithConnectorEntity(where, listOpts);
-        }
-        return DbService.repository.fieldMappings.findMany(where, listOpts);
-      };
+      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
+      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
 
       const [data, total] = await Promise.all([
-        fetchMappings(),
+        DbService.repository.fieldMappings.findMany(where, listOpts),
         DbService.repository.fieldMappings.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;

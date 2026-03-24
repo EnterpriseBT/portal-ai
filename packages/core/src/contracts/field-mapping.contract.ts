@@ -17,7 +17,7 @@ export type FieldMappingWithConnectorEntity = z.infer<typeof FieldMappingWithCon
 export const FieldMappingListRequestQuerySchema = PaginationRequestQuerySchema.extend({
   connectorEntityId: z.string().optional(),
   columnDefinitionId: z.string().optional(),
-  include: z.enum(["connectorEntity"]).optional(),
+  include: z.string().optional(),
 });
 
 export type FieldMappingListRequestQuery = z.infer<typeof FieldMappingListRequestQuerySchema>;

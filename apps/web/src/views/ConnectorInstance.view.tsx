@@ -131,8 +131,8 @@ export const ConnectorInstanceView = ({
                     <Box sx={{ mt: 2 }}>
                       <ConnectorEntityDataList
                         query={{
-                          connectorInstanceId,
-                          include: "fieldMappings" as const,
+                          connectorInstanceIds: connectorInstanceId,
+                          include: "fieldMappings",
                           ...pagination.queryParams,
                         } as ConnectorEntityListRequestQuery}
                       >

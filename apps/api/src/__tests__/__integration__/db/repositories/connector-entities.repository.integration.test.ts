@@ -225,4 +225,91 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
       await expect(repo.create(data, db)).rejects.toThrow();
     });
   });
+
+  // ── findMany with include ───────────────────────────────────────
+
+  describe("findMany with include", () => {
+    it("should attach connectorInstance when include contains connectorInstance", async () => {
+      await repo.create(makeEntity(), db);
+
+      const results = await repo.findMany(undefined, { include: ["connectorInstance"] }, db);
+
+      expect(results).toHaveLength(1);
+      const entity = results[0] as Record<string, unknown>;
+      expect(entity.connectorInstance).toBeDefined();
+      expect((entity.connectorInstance as { id: string }).id).toBe(connectorInstanceId);
+    });
+
+    it("should attach fieldMappings when include contains fieldMappings", async () => {
+      const dbTyped = db as ReturnType<typeof drizzle>;
+      const entity = await repo.create(makeEntity(), db);
+
+      const colDefId = generateId();
+      await dbTyped.insert(schema.columnDefinitions).values({
+        id: colDefId,
+        organizationId: orgId,
+        key: `col_${generateId().slice(0, 8)}`,
+        label: "Test Col",
+        type: "string",
+        required: false,
+        defaultValue: null,
+        format: null,
+        enumValues: null,
+        description: null,
+        created: Date.now(),
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      await dbTyped.insert(schema.fieldMappings).values({
+        id: generateId(),
+        organizationId: orgId,
+        connectorEntityId: entity.id,
+        columnDefinitionId: colDefId,
+        sourceField: "name",
+        isPrimaryKey: false,
+        refColumnDefinitionId: null,
+        refEntityKey: null,
+        refBidirectionalFieldMappingId: null,
+        created: Date.now(),
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      const results = await repo.findMany(undefined, { include: ["fieldMappings"] }, db);
+
+      expect(results).toHaveLength(1);
+      const enriched = results[0] as Record<string, unknown>;
+      expect(enriched.fieldMappings as unknown[]).toHaveLength(1);
+      expect(((enriched.fieldMappings as unknown[])[0] as { sourceField: string }).sourceField).toBe("name");
+    });
+
+    it("should return empty arrays for includes with no matching data", async () => {
+      await repo.create(makeEntity(), db);
+
+      const results = await repo.findMany(undefined, { include: ["fieldMappings", "tags"] }, db);
+
+      expect(results).toHaveLength(1);
+      const enriched = results[0] as Record<string, unknown>;
+      expect(enriched.fieldMappings).toEqual([]);
+      expect(enriched.tags).toEqual([]);
+    });
+
+    it("should return plain rows when include is empty", async () => {
+      await repo.create(makeEntity(), db);
+
+      const results = await repo.findMany(undefined, { include: [] }, db);
+
+      expect(results).toHaveLength(1);
+      const row = results[0] as Record<string, unknown>;
+      expect(row.fieldMappings).toBeUndefined();
+      expect(row.connectorInstance).toBeUndefined();
+    });
+  });
 });

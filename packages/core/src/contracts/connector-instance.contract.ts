@@ -17,7 +17,7 @@ export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;
 export const ConnectorInstanceListRequestQuerySchema = PaginationRequestQuerySchema.extend({
   connectorDefinitionId: z.string().optional(),
   status: z.enum(["active", "inactive", "error", "pending"]).optional(),
-  include: z.enum(["connectorDefinition"]).optional(),
+  include: z.string().optional(),
 });
 
 export type ConnectorInstanceListRequestQuery = z.infer<typeof ConnectorInstanceListRequestQuerySchema>;

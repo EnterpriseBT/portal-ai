@@ -10,6 +10,10 @@ import { connectorInstances } from "../schema/index.js";
 import { connectorDefinitions } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+
+export interface ConnectorInstanceListOptions extends ListOptions {
+  include?: string[];
+}
 import type {
   ConnectorInstanceSelect,
   ConnectorInstanceInsert,
@@ -81,10 +85,13 @@ export class ConnectorInstancesRepository extends Repository<
   }
 
   override async findMany(
-    where?: import("drizzle-orm").SQL,
-    opts?: import("./base.repository.js").ListOptions,
-    client?: DbClient
+    where?: SQL,
+    opts: ConnectorInstanceListOptions = {},
+    client: DbClient = db
   ): Promise<ConnectorInstanceSelect[]> {
+    if (opts.include?.includes("connectorDefinition")) {
+      return this.findManyWithDefinition(where, opts, client) as unknown as ConnectorInstanceSelect[];
+    }
     const rows = await super.findMany(where, opts, client);
     return decryptRows(rows);
   }

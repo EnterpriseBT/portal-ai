@@ -65,6 +65,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
 }) => {
   const isEdit = tag !== null;
   const [form, setForm] = useState<TagFormState>(INITIAL_FORM);
+  const [colorModified, setColorModified] = useState(false);
   const [errors, setErrors] = useState<TagFormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -76,8 +77,10 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           color: tag.color ?? "",
           description: tag.description ?? "",
         });
+        setColorModified(!!tag.color);
       } else {
         setForm(INITIAL_FORM);
+        setColorModified(false);
       }
       setErrors({});
       setTouched({});
@@ -87,6 +90,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
   const handleChange = (field: keyof TagFormState, value: string) => {
     const next = { ...form, [field]: value };
     setForm(next);
+    if (field === "color") setColorModified(true);
     if (touched[field]) {
       setErrors(validateTagForm(next));
     }
@@ -105,7 +109,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
 
     const body: EntityTagCreateRequestBody = {
       name: form.name.trim(),
-      ...(form.color ? { color: form.color } : {}),
+      ...(colorModified && form.color ? { color: form.color } : {}),
       ...(form.description.trim()
         ? { description: form.description.trim() }
         : {}),

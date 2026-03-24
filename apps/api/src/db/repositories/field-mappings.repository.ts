@@ -11,6 +11,10 @@ import type { IndexColumn } from "drizzle-orm/pg-core";
 import { fieldMappings, connectorEntities } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+
+export interface FieldMappingListOptions extends ListOptions {
+  include?: string[];
+}
 import type {
   FieldMappingSelect,
   FieldMappingInsert,
@@ -24,6 +28,17 @@ export class FieldMappingsRepository extends Repository<
 > {
   constructor() {
     super(fieldMappings);
+  }
+
+  override async findMany(
+    where?: SQL,
+    opts: FieldMappingListOptions = {},
+    client: DbClient = db
+  ): Promise<FieldMappingSelect[]> {
+    if (opts.include?.includes("connectorEntity")) {
+      return this.findManyWithConnectorEntity(where, opts, client) as unknown as FieldMappingSelect[];
+    }
+    return super.findMany(where, opts, client);
   }
 
   /** Find all field mappings for a given connector entity. */

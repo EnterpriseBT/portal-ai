@@ -4,6 +4,7 @@ import type {
   ConnectorEntityListRequestQuery,
   ConnectorEntityListWithInstanceResponsePayload,
 } from "@portalai/core/contracts";
+import type { EntityTag } from "@portalai/core/models";
 import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
 import type { FetchPageParams, FetchPageResult } from "@portalai/core/ui";
@@ -21,29 +22,17 @@ import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
-import { sdk } from "../api/sdk";
 import { useEntityTagFilter } from "../api/entity-tags.api";
-
-// ── Connector instance filter options hook ───────────────────────────
-
-function useConnectorInstanceOptions() {
-  const res = sdk.connectorInstances.list({
-    limit: 100,
-    offset: 0,
-    sortBy: "created",
-    sortOrder: "asc",
-  });
-  if (!res.data) return [];
-  return res.data.connectorInstances.map((ci) => ({
-    label: ci.name,
-    value: ci.id,
-  }));
-}
+import { useConnectorInstanceFilter } from "../api/connector-instances.api";
 
 // ── Entity card ─────────────────────────────────────────────────────
 
+type EntityWithTags = ConnectorEntityListWithInstanceResponsePayload["connectorEntities"][number] & {
+  tags?: EntityTag[];
+};
+
 interface EntityCardProps {
-  entity: ConnectorEntityListWithInstanceResponsePayload["connectorEntities"][number];
+  entity: EntityWithTags;
   onClick: () => void;
 }
 
@@ -59,13 +48,28 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
             <Typography variant="caption" color="text.secondary">
               {entity.connectorInstance.name}
             </Typography>
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{ mt: 0.5 }}
-            >
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
               <Chip label={entity.key} size="small" variant="outlined" />
+              {entity.tags?.map((tag) => (
+                <Chip
+                  key={tag.id}
+                  label={tag.name}
+                  size="small"
+                  icon={
+                    tag.color ? (
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          backgroundColor: tag.color,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : undefined
+                  }
+                />
+              ))}
             </Stack>
           </Box>
         </Stack>
@@ -77,13 +81,15 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
 // ── Entities list view (pure UI) ────────────────────────────────────
 
 export interface EntitiesViewUIProps {
-  connectorInstanceOptions: { label: string; value: string }[];
+  connectorInstanceFetchPage: (params: FetchPageParams) => Promise<FetchPageResult>;
+  connectorInstanceLabelMap: Record<string, string>;
   tagFetchPage: (params: FetchPageParams) => Promise<FetchPageResult>;
   tagLabelMap: Record<string, string>;
 }
 
 export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
-  connectorInstanceOptions,
+  connectorInstanceFetchPage,
+  connectorInstanceLabelMap,
   tagFetchPage,
   tagLabelMap,
 }) => {
@@ -99,10 +105,11 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
     defaultSortOrder: "asc",
     filters: [
       {
-        type: "select",
-        field: "connectorInstanceId",
+        type: "multi-select",
+        field: "connectorInstanceIds",
         label: "Connector Instance",
-        options: connectorInstanceOptions,
+        fetchPage: connectorInstanceFetchPage,
+        labelMap: connectorInstanceLabelMap,
       },
       {
         type: "multi-select",
@@ -136,7 +143,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
             query={
               {
                 ...pagination.queryParams,
-                include: "connectorInstance",
+                include: "connectorInstance,tags",
               } as ConnectorEntityListRequestQuery
             }
           >
@@ -190,12 +197,14 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const EntitiesView: React.FC = () => {
-  const connectorInstanceOptions = useConnectorInstanceOptions();
+  const { fetchPage: connectorInstanceFetchPage, labelMap: connectorInstanceLabelMap } =
+    useConnectorInstanceFilter();
   const { fetchPage: tagFetchPage, labelMap: tagLabelMap } =
     useEntityTagFilter();
   return (
     <EntitiesViewUI
-      connectorInstanceOptions={connectorInstanceOptions}
+      connectorInstanceFetchPage={connectorInstanceFetchPage}
+      connectorInstanceLabelMap={connectorInstanceLabelMap}
       tagFetchPage={tagFetchPage}
       tagLabelMap={tagLabelMap}
     />

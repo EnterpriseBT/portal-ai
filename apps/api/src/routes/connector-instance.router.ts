@@ -76,8 +76,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: include
  *         schema:
  *           type: string
- *           enum: [connectorDefinition]
- *         description: Include related connector definition in each result
+ *         description: Comma-separated list of related data to include — connectorDefinition
  *     responses:
  *       200:
  *         description: Paginated list of connector instances
@@ -120,13 +119,11 @@ connectorInstanceRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
+      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
+      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
 
       const [data, total] = await Promise.all([
-        include === "connectorDefinition"
-          ? DbService.repository.connectorInstances.findManyWithDefinition(where, listOpts)
-          : DbService.repository.connectorInstances.findMany(where, listOpts),
+        DbService.repository.connectorInstances.findMany(where, listOpts),
         DbService.repository.connectorInstances.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;

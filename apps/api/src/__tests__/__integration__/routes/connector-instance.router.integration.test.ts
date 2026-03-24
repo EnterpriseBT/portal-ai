@@ -237,6 +237,31 @@ describe("Connector Instance Router", () => {
       expect(res.body.payload.connectorInstances[0].name).toBe("Pending");
     });
 
+    it("should attach connectorDefinition when include=connectorDefinition", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({ display: "My Connector" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(createConnectorInstance(def.id, orgId) as never);
+
+      const res = await request(app)
+        .get("/api/connector-instances?include=connectorDefinition")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(1);
+      const inst = res.body.payload.connectorInstances[0];
+      expect(inst.connectorDefinition).toBeDefined();
+      expect(inst.connectorDefinition.id).toBe(def.id);
+      expect(inst.connectorDefinition.display).toBe("My Connector");
+    });
+
     it("should filter by search (case-insensitive name match)", async () => {
       const { organizationId: orgId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,

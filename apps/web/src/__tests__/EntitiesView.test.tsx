@@ -3,8 +3,10 @@ import { jest } from "@jest/globals";
 // ── Mocks ───────────────────────────────────────────────────────────
 
 const mockEntityList = jest.fn();
-const mockInstanceList = jest.fn();
 const mockTagFetchPage = jest.fn(() =>
+  Promise.resolve({ options: [] as { value: string; label: string }[], hasMore: false })
+);
+const mockConnectorInstanceFetchPage = jest.fn(() =>
   Promise.resolve({ options: [] as { value: string; label: string }[], hasMore: false })
 );
 
@@ -13,15 +15,19 @@ jest.unstable_mockModule("../api/sdk", () => ({
     connectorEntities: {
       list: mockEntityList,
     },
-    connectorInstances: {
-      list: mockInstanceList,
-    },
   },
 }));
 
 jest.unstable_mockModule("../api/entity-tags.api", () => ({
   useEntityTagFilter: () => ({
     fetchPage: mockTagFetchPage,
+    labelMap: {},
+  }),
+}));
+
+jest.unstable_mockModule("../api/connector-instances.api", () => ({
+  useConnectorInstanceFilter: () => ({
+    fetchPage: mockConnectorInstanceFetchPage,
     labelMap: {},
   }),
 }));
@@ -90,18 +96,12 @@ const emptyEntities = {
 describe("EntitiesView", () => {
   beforeEach(() => {
     mockEntityList.mockReturnValue(twoEntities);
-    mockInstanceList.mockReturnValue({
-      data: { connectorInstances: [], total: 0, limit: 100, offset: 0 },
-      isLoading: false,
-      isError: false,
-      error: null,
-    });
   });
 
   it("renders the page title", () => {
     render(
       <EntitiesViewUI
-        connectorInstanceOptions={[{ label: "My CSV", value: "inst-1" }]}
+        connectorInstanceFetchPage={mockConnectorInstanceFetchPage} connectorInstanceLabelMap={{}}
         tagFetchPage={mockTagFetchPage}
         tagLabelMap={{}}
       />
@@ -112,24 +112,24 @@ describe("EntitiesView", () => {
   });
 
   it("renders breadcrumbs with Dashboard link", () => {
-    render(<EntitiesViewUI connectorInstanceOptions={[]} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
+    render(<EntitiesViewUI connectorInstanceFetchPage={mockConnectorInstanceFetchPage} connectorInstanceLabelMap={{}} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
   });
 
   it("renders entity cards from the data", () => {
-    render(<EntitiesViewUI connectorInstanceOptions={[]} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
+    render(<EntitiesViewUI connectorInstanceFetchPage={mockConnectorInstanceFetchPage} connectorInstanceLabelMap={{}} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
     expect(screen.getByText("Contacts")).toBeInTheDocument();
     expect(screen.getByText("Deals")).toBeInTheDocument();
   });
 
   it("renders connector instance name on entity cards", () => {
-    render(<EntitiesViewUI connectorInstanceOptions={[]} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
+    render(<EntitiesViewUI connectorInstanceFetchPage={mockConnectorInstanceFetchPage} connectorInstanceLabelMap={{}} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
     const names = screen.getAllByText("My CSV");
     expect(names.length).toBe(2);
   });
 
   it("renders entity key chips", () => {
-    render(<EntitiesViewUI connectorInstanceOptions={[]} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
+    render(<EntitiesViewUI connectorInstanceFetchPage={mockConnectorInstanceFetchPage} connectorInstanceLabelMap={{}} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
     expect(screen.getByText("contacts")).toBeInTheDocument();
     expect(screen.getByText("deals")).toBeInTheDocument();
   });
@@ -137,12 +137,12 @@ describe("EntitiesView", () => {
   it("renders empty state when no entities", () => {
     mockEntityList.mockReturnValue(emptyEntities);
 
-    render(<EntitiesViewUI connectorInstanceOptions={[]} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
+    render(<EntitiesViewUI connectorInstanceFetchPage={mockConnectorInstanceFetchPage} connectorInstanceLabelMap={{}} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
     expect(screen.getByText("No entities found")).toBeInTheDocument();
   });
 
   it("renders pagination toolbar", () => {
-    render(<EntitiesViewUI connectorInstanceOptions={[]} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
+    render(<EntitiesViewUI connectorInstanceFetchPage={mockConnectorInstanceFetchPage} connectorInstanceLabelMap={{}} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
     expect(
       screen.getByPlaceholderText("Search...")
     ).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe("EntitiesView", () => {
 
   it("renders filter button with tag filter available", async () => {
     const user = userEvent.setup();
-    render(<EntitiesViewUI connectorInstanceOptions={[]} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
+    render(<EntitiesViewUI connectorInstanceFetchPage={mockConnectorInstanceFetchPage} connectorInstanceLabelMap={{}} tagFetchPage={mockTagFetchPage} tagLabelMap={{}} />);
     await user.click(screen.getByText("Filter"));
     expect(screen.getByText("Tags")).toBeInTheDocument();
   });

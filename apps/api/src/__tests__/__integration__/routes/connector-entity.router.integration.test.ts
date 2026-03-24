@@ -211,7 +211,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}`
         )
         .set("Authorization", "Bearer test-token");
 
@@ -243,7 +243,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&limit=2&offset=0`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}&limit=2&offset=0`
         )
         .set("Authorization", "Bearer test-token");
 
@@ -274,7 +274,7 @@ describe("Connector Entity Router", () => {
         ] as never);
 
       const res = await request(app)
-        .get(`/api/connector-entities?connectorInstanceId=${instA}`)
+        .get(`/api/connector-entities?connectorInstanceIds=${instA}`)
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
@@ -321,7 +321,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&include=fieldMappings`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}&include=fieldMappings`
         )
         .set("Authorization", "Bearer test-token");
 
@@ -366,7 +366,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}`
         )
         .set("Authorization", "Bearer test-token");
 
@@ -406,7 +406,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&search=deal`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}&search=deal`
         )
         .set("Authorization", "Bearer test-token");
 
@@ -441,7 +441,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&search=contacts`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}&search=contacts`
         )
         .set("Authorization", "Bearer test-token");
 
@@ -472,7 +472,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&search=CONTACTS`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}&search=CONTACTS`
         )
         .set("Authorization", "Bearer test-token");
 
@@ -502,7 +502,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&search=zzzznotfound`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}&search=zzzznotfound`
         )
         .set("Authorization", "Bearer test-token");
 
@@ -556,7 +556,7 @@ describe("Connector Entity Router", () => {
 
       const res = await request(app)
         .get(
-          `/api/connector-entities?connectorInstanceId=${connectorInstanceId}&include=fieldMappings`
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}&include=fieldMappings`
         )
         .set("Authorization", "Bearer test-token");
 

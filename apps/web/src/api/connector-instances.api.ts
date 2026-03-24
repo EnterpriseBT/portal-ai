@@ -1,13 +1,42 @@
 import type {
+  ApiSuccessResponse,
+  ConnectorInstanceApi,
   ConnectorInstanceGetResponsePayload,
   ConnectorInstanceListRequestQuery,
   ConnectorInstanceListResponsePayload,
   ConnectorInstanceListWithDefinitionResponsePayload,
 } from "@portalai/core/contracts";
-import { useAuthQuery } from "../utils/api.util";
+import { useInfiniteFilterOptions } from "@portalai/core/ui";
+import type { InfiniteFilterOptionsConfig } from "@portalai/core/ui";
+import { useAuthQuery, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
+
+const CONNECTOR_INSTANCE_FILTER_BASE = {
+  url: "/api/connector-instances",
+  getItems: (res: ApiSuccessResponse<ConnectorInstanceListResponsePayload>) => res.payload.connectorInstances,
+  getTotal: (res: ApiSuccessResponse<ConnectorInstanceListResponsePayload>) => res.payload.total,
+  mapItem: (instance: ConnectorInstanceApi) => ({
+    value: instance.id,
+    label: instance.name,
+  }),
+  sortBy: "name",
+} as const;
+
+export function useConnectorInstanceFilter() {
+  const { fetchWithAuth } = useAuthFetch();
+
+  const config: InfiniteFilterOptionsConfig<
+    ApiSuccessResponse<ConnectorInstanceListResponsePayload>,
+    ConnectorInstanceApi
+  > = {
+    ...CONNECTOR_INSTANCE_FILTER_BASE,
+    fetcher: fetchWithAuth,
+  };
+
+  return useInfiniteFilterOptions(config);
+}
 
 export const connectorInstances = {
   list: (
