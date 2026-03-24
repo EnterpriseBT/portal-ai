@@ -14,3 +14,5 @@ export * from "./field-mappings.repository.js";
 export * from "./entity-records.repository.js";
 export * from "./entity-tags.repository.js";
 export * from "./entity-tag-assignments.repository.js";
+export * from "./entity-groups.repository.js";
+export * from "./entity-group-members.repository.js";

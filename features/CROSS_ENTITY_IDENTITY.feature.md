@@ -132,48 +132,48 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Create `entity-groups.repository.ts`
-  - [ ] Extend `Repository<typeof entityGroups, EntityGroupSelect, EntityGroupInsert>`
-  - [ ] Implement `findByOrganizationId(organizationId, opts?)` — filters by org + not deleted, ordered by `name` ASC
-  - [ ] Implement `findByName(organizationId, name)` — exact match within org, returns single row or undefined (used for duplicate name validation)
-  - [ ] Implement `findByConnectorEntityId(connectorEntityId)` — returns all groups that the given entity belongs to (join through `entityGroupMembers`); used when viewing an entity record to discover its group memberships
-  - [ ] Export singleton `entityGroupsRepo`
-- [ ] Create `entity-group-members.repository.ts`
-  - [ ] Extend `Repository<typeof entityGroupMembers, EntityGroupMemberSelect, EntityGroupMemberInsert>`
-  - [ ] Implement `findByEntityGroupId(entityGroupId)` — returns all members for a group with their `connectorEntity` label and `fieldMapping` details joined (two-query pattern)
-  - [ ] Implement `findByConnectorEntityId(connectorEntityId)` — returns all group memberships for an entity
-  - [ ] Implement `findExisting(entityGroupId, connectorEntityId)` — returns existing non-deleted member or undefined (duplicate detection)
-  - [ ] Implement `findPrimary(entityGroupId)` — returns the member with `isPrimary = true`, or undefined if none set
-  - [ ] Implement `clearPrimary(entityGroupId, client?)` — sets `isPrimary = false` on all members of the group (used in transaction before setting a new primary)
-  - [ ] Export singleton `entityGroupMembersRepo`
-- [ ] Update `repositories/index.ts`
-  - [ ] Add `export * from "./entity-groups.repository.js"`
-  - [ ] Add `export * from "./entity-group-members.repository.js"`
-- [ ] Update `db.service.ts`
-  - [ ] Import `entityGroupsRepo` and `entityGroupMembersRepo`
-  - [ ] Add `entityGroups: entityGroupsRepo` to `DbService.repository`
-  - [ ] Add `entityGroupMembers: entityGroupMembersRepo` to `DbService.repository`
-- [ ] Write integration tests in `entity-groups.repository.integration.test.ts`
-  - [ ] `findByOrganizationId` returns groups scoped to org, excludes soft-deleted
-  - [ ] `findByName` returns correct row on match, undefined on miss
-  - [ ] `findByConnectorEntityId` returns groups the entity belongs to
-  - [ ] `create` inserts and returns full row
-  - [ ] `update` modifies fields correctly
-  - [ ] `softDelete` sets `deleted` and excludes row from subsequent reads
-- [ ] Write integration tests in `entity-group-members.repository.integration.test.ts`
-  - [ ] `findByEntityGroupId` returns enriched members with entity labels and field mapping details
-  - [ ] `findByConnectorEntityId` returns all group memberships for an entity
-  - [ ] `findExisting` detects existing member, returns undefined for non-existent
-  - [ ] `findPrimary` returns the primary member, undefined when none set
-  - [ ] `clearPrimary` sets `isPrimary = false` on all members of a group
-  - [ ] Unique constraint prevents duplicate `(entityGroupId, connectorEntityId)` at DB level
-- [ ] Run `npm run test -- --testPathPattern="entity-group"` from `apps/api/` and confirm all repository tests pass
+- [x] Create `entity-groups.repository.ts`
+  - [x] Extend `Repository<typeof entityGroups, EntityGroupSelect, EntityGroupInsert>`
+  - [x] Implement `findByOrganizationId(organizationId, opts?)` — filters by org + not deleted, ordered by `name` ASC
+  - [x] Implement `findByName(organizationId, name)` — exact match within org, returns single row or undefined (used for duplicate name validation)
+  - [x] Implement `findByConnectorEntityId(connectorEntityId)` — returns all groups that the given entity belongs to (join through `entityGroupMembers`); used when viewing an entity record to discover its group memberships
+  - [x] Export singleton `entityGroupsRepo`
+- [x] Create `entity-group-members.repository.ts`
+  - [x] Extend `Repository<typeof entityGroupMembers, EntityGroupMemberSelect, EntityGroupMemberInsert>`
+  - [x] Implement `findByEntityGroupId(entityGroupId)` — returns all members for a group with their `connectorEntity` label and `fieldMapping` details joined (two-query pattern)
+  - [x] Implement `findByConnectorEntityId(connectorEntityId)` — returns all group memberships for an entity
+  - [x] Implement `findExisting(entityGroupId, connectorEntityId)` — returns existing non-deleted member or undefined (duplicate detection)
+  - [x] Implement `findPrimary(entityGroupId)` — returns the member with `isPrimary = true`, or undefined if none set
+  - [x] Implement `clearPrimary(entityGroupId, client?)` — sets `isPrimary = false` on all members of the group (used in transaction before setting a new primary)
+  - [x] Export singleton `entityGroupMembersRepo`
+- [x] Update `repositories/index.ts`
+  - [x] Add `export * from "./entity-groups.repository.js"`
+  - [x] Add `export * from "./entity-group-members.repository.js"`
+- [x] Update `db.service.ts`
+  - [x] Import `entityGroupsRepo` and `entityGroupMembersRepo`
+  - [x] Add `entityGroups: entityGroupsRepo` to `DbService.repository`
+  - [x] Add `entityGroupMembers: entityGroupMembersRepo` to `DbService.repository`
+- [x] Write integration tests in `entity-groups.repository.integration.test.ts`
+  - [x] `findByOrganizationId` returns groups scoped to org, excludes soft-deleted
+  - [x] `findByName` returns correct row on match, undefined on miss
+  - [x] `findByConnectorEntityId` returns groups the entity belongs to
+  - [x] `create` inserts and returns full row
+  - [x] `update` modifies fields correctly
+  - [x] `softDelete` sets `deleted` and excludes row from subsequent reads
+- [x] Write integration tests in `entity-group-members.repository.integration.test.ts`
+  - [x] `findByEntityGroupId` returns enriched members with entity labels and field mapping details
+  - [x] `findByConnectorEntityId` returns all group memberships for an entity
+  - [x] `findExisting` detects existing member, returns undefined for non-existent
+  - [x] `findPrimary` returns the primary member, undefined when none set
+  - [x] `clearPrimary` sets `isPrimary = false` on all members of a group
+  - [x] Unique constraint prevents duplicate `(entityGroupId, connectorEntityId)` at DB level
+- [x] Run `npm run test -- --testPathPattern="entity-group"` from `apps/api/` and confirm all repository tests pass
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run build` passes from repo root
-- [ ] `npm run test` passes from repo root
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run build` passes from repo root
+- [x] `npm run test` passes from repo root
 
 ---
 

@@ -19,6 +19,8 @@ import {
   entityRecordsRepo,
   entityTagsRepo,
   entityTagAssignmentsRepo,
+  entityGroupsRepo,
+  entityGroupMembersRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -82,6 +84,8 @@ export class DbService {
       entityRecords: entityRecordsRepo,
       entityTags: entityTagsRepo,
       entityTagAssignments: entityTagAssignmentsRepo,
+      entityGroups: entityGroupsRepo,
+      entityGroupMembers: entityGroupMembersRepo,
     };
   }
 }

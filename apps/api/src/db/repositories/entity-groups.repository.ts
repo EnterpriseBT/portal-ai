@@ -1,0 +1,90 @@
+/**
+ * Repository for the `entity_groups` table.
+ *
+ * Extends the generic {@link Repository} with org-scoped group lookups
+ * and a join through `entityGroupMembers` to find groups by entity.
+ */
+
+import { and, eq, inArray, isNull } from "drizzle-orm";
+
+import { entityGroups, entityGroupMembers } from "../schema/index.js";
+import { db } from "../client.js";
+import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+import type { EntityGroupSelect, EntityGroupInsert } from "../schema/zod.js";
+
+export class EntityGroupsRepository extends Repository<
+  typeof entityGroups,
+  EntityGroupSelect,
+  EntityGroupInsert
+> {
+  constructor() {
+    super(entityGroups);
+  }
+
+  /** Return non-deleted groups for an organization. Supports full ListOptions for sorting/pagination. */
+  async findByOrganizationId(
+    organizationId: string,
+    opts: ListOptions = {},
+    client: DbClient = db
+  ): Promise<EntityGroupSelect[]> {
+    return this.findMany(eq(entityGroups.organizationId, organizationId), opts, client);
+  }
+
+  /** Find a single group by exact name within an organization (used for duplicate name validation). */
+  async findByName(
+    organizationId: string,
+    name: string,
+    client: DbClient = db
+  ): Promise<EntityGroupSelect | undefined> {
+    const [row] = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(entityGroups.organizationId, organizationId),
+          eq(entityGroups.name, name),
+          isNull(entityGroups.deleted)
+        )
+      )
+      .limit(1);
+    return row as EntityGroupSelect | undefined;
+  }
+
+  /**
+   * Return all groups that a given connector entity belongs to
+   * (join through `entityGroupMembers`).
+   */
+  async findByConnectorEntityId(
+    connectorEntityId: string,
+    client: DbClient = db
+  ): Promise<EntityGroupSelect[]> {
+    // First, find all non-deleted member rows for this entity
+    const members = await (client as typeof db)
+      .select()
+      .from(entityGroupMembers)
+      .where(
+        and(
+          eq(entityGroupMembers.connectorEntityId, connectorEntityId),
+          isNull(entityGroupMembers.deleted)
+        )
+      );
+
+    if (members.length === 0) return [];
+
+    const groupIds = [...new Set(members.map((m) => m.entityGroupId))];
+    const groups = await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          inArray(entityGroups.id, groupIds),
+          isNull(entityGroups.deleted)
+        )
+      );
+
+    return groups as EntityGroupSelect[];
+  }
+}
+
+/** Singleton instance. */
+export const entityGroupsRepo = new EntityGroupsRepository();
