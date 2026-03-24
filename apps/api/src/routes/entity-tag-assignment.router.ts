@@ -70,14 +70,14 @@ entityTagAssignmentRouter.get(
       logger.info({ connectorEntityId }, "GET /connector-entities/:connectorEntityId/tags called");
 
       const enrichedAssignments = await DbService.repository.entityTagAssignments
-        .findByConnectorEntityId(connectorEntityId)
+        .findByConnectorEntityId(connectorEntityId, { include: ["entityTag"] })
         .catch((error) => {
           if (error instanceof ApiError) throw error;
           throw new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity tag assignments");
         });
 
       const tags = enrichedAssignments.map((a) => ({
-        ...a.tag,
+        ...a.tag!,
         assignmentId: a.id,
       }));
 

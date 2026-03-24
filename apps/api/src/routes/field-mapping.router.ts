@@ -66,6 +66,11 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         schema:
  *           type: string
  *         description: Filter by column definition ID
+ *       - in: query
+ *         name: include
+ *         schema:
+ *           type: string
+ *         description: "Comma-separated list of related data to include — connectorEntity, columnDefinition"
  *     responses:
  *       200:
  *         description: Paginated list of field mappings

@@ -130,7 +130,7 @@ function createConnectorEntity(organizationId: string, connectorInstanceId: stri
   };
 }
 
-function createColumnDef(organizationId: string) {
+function createColumnDef(organizationId: string, overrides?: Partial<Record<string, unknown>>) {
   return {
     id: generateId(),
     organizationId,
@@ -148,6 +148,7 @@ function createColumnDef(organizationId: string) {
     updatedBy: null,
     deleted: null,
     deletedBy: null,
+    ...overrides,
   };
 }
 
@@ -232,7 +233,7 @@ describe("Entity Group Member Router", () => {
   async function seedEntityWithMapping(organizationId: string, connectorInstanceId: string, sourceField = "email") {
     const entity = createConnectorEntity(organizationId, connectorInstanceId);
     await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity as never);
-    const colDef = createColumnDef(organizationId);
+    const colDef = createColumnDef(organizationId, { key: sourceField });
     await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef as never);
     const mapping = createFieldMapping(organizationId, entity.id, colDef.id, { sourceField });
     await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
@@ -318,9 +319,9 @@ describe("Entity Group Member Router", () => {
 
     it("should return 400 if link field mapping does not belong to the connector entity", async () => {
       const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const { entityId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const { entityId } = await seedEntityWithMapping(organizationId, connectorInstanceId, "email");
       // Create a second entity with its own mapping
-      const { fieldMappingId: otherMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const { fieldMappingId: otherMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId, "name");
 
       const res = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
@@ -333,8 +334,8 @@ describe("Entity Group Member Router", () => {
 
     it("should clear existing primary and set new member as primary with isPrimary: true", async () => {
       const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const seed1 = await seedEntityWithMapping(organizationId, connectorInstanceId);
-      const seed2 = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const seed1 = await seedEntityWithMapping(organizationId, connectorInstanceId, "email");
+      const seed2 = await seedEntityWithMapping(organizationId, connectorInstanceId, "name");
 
       // Add first member as primary
       const res1 = await request(app)
@@ -370,8 +371,8 @@ describe("Entity Group Member Router", () => {
   describe("PATCH /api/entity-groups/:id/members/:memberId", () => {
     it("should update isPrimary correctly with transactional primary swap", async () => {
       const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const seed1 = await seedEntityWithMapping(organizationId, connectorInstanceId);
-      const seed2 = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const seed1 = await seedEntityWithMapping(organizationId, connectorInstanceId, "email");
+      const seed2 = await seedEntityWithMapping(organizationId, connectorInstanceId, "name");
 
       // Add two members, first as primary
       const res1 = await request(app)
@@ -409,7 +410,7 @@ describe("Entity Group Member Router", () => {
       const { entityId, fieldMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
 
       // Create a second field mapping on the SAME entity
-      const colDef2 = createColumnDef(organizationId);
+      const colDef2 = createColumnDef(organizationId, { key: "name" });
       await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef2 as never);
       const mapping2 = createFieldMapping(organizationId, entityId, colDef2.id, { sourceField: "name" });
       await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping2 as never);
@@ -432,7 +433,7 @@ describe("Entity Group Member Router", () => {
       expect(patchRes.body.payload.entityGroupMember.linkFieldMappingId).toBe(mapping2.id);
 
       // Try to update to a mapping from a DIFFERENT entity — should fail
-      const { fieldMappingId: otherMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const { fieldMappingId: otherMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId, "phone");
 
       const failRes = await request(app)
         .patch(`/api/entity-groups/${groupId}/members/${memberId}`)

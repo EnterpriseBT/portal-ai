@@ -76,7 +76,7 @@ entityGroupMemberRouter.get(
       logger.info({ entityGroupId }, "GET /entity-groups/:entityGroupId/members called");
 
       const enrichedMembers = await DbService.repository.entityGroupMembers
-        .findByEntityGroupId(entityGroupId)
+        .findByEntityGroupId(entityGroupId, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] })
         .catch((error) => {
           if (error instanceof ApiError) throw error;
           throw new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity group members");
@@ -84,8 +84,8 @@ entityGroupMemberRouter.get(
 
       const members = enrichedMembers.map((m) => ({
         ...m,
-        connectorEntityLabel: m.connectorEntity.label,
-        linkFieldMappingSourceField: m.columnDefinition.key,
+        connectorEntityLabel: m.connectorEntity!.label,
+        linkFieldMappingSourceField: m.columnDefinition!.key,
         connectorEntity: undefined,
         fieldMapping: undefined,
       }));
@@ -575,13 +575,13 @@ entityGroupMemberRouter.get(
       );
 
       // Get existing members of the group
-      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(entityGroupId);
+      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(entityGroupId, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] });
 
       let sourceRecordCount = 0;
       const sourceValueSet = new Set<string>();
 
       for (const member of enrichedMembers) {
-        const sourceFieldKey = member.columnDefinition.key;
+        const sourceFieldKey = member.columnDefinition!.key;
         const records = await DbService.repository.entityRecords.findMany(
           eq(entityRecords.connectorEntityId, member.connectorEntityId)
         );

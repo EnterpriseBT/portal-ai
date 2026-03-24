@@ -33,17 +33,21 @@ export class EntityGroupMembersRepository extends Repository<
   }
 
   /**
-   * Return all non-deleted members for a group, each enriched with
-   * connector entity label and field mapping details (two-query batch-load pattern).
+   * Return all non-deleted members for a group.
+   * Pass `include` to batch-load related data:
+   * - `"connectorEntity"` — connector entity details
+   * - `"fieldMapping"` — field mapping details
+   * - `"columnDefinition"` — column definition details (via field mapping)
    */
   async findByEntityGroupId(
     entityGroupId: string,
+    opts: { include?: string[] } = {},
     client: DbClient = db
   ): Promise<
     (EntityGroupMemberSelect & {
-      connectorEntity: ConnectorEntitySelect;
-      fieldMapping: FieldMappingSelect;
-      columnDefinition: ColumnDefinitionSelect;
+      connectorEntity?: ConnectorEntitySelect;
+      fieldMapping?: FieldMappingSelect;
+      columnDefinition?: ColumnDefinitionSelect;
     })[]
   > {
     const members = await (client as typeof db)
@@ -58,50 +62,56 @@ export class EntityGroupMembersRepository extends Repository<
 
     if (members.length === 0) return [];
 
+    const includes = new Set(opts.include ?? []);
+    if (includes.size === 0) return members as EntityGroupMemberSelect[];
+
     // Batch-load connector entities
-    const entityIds = [...new Set(members.map((m) => m.connectorEntityId))];
-    const entities = await (client as typeof db)
-      .select()
-      .from(connectorEntities)
-      .where(inArray(connectorEntities.id, entityIds));
-    const entityMap = new Map(
-      entities.map((e) => [e.id, e as ConnectorEntitySelect])
-    );
+    const entityMap = includes.has("connectorEntity")
+      ? await (client as typeof db)
+          .select()
+          .from(connectorEntities)
+          .where(inArray(connectorEntities.id, [...new Set(members.map((m) => m.connectorEntityId))]))
+          .then((rows) => new Map(rows.map((e) => [e.id, e as ConnectorEntitySelect])))
+      : null;
 
     // Batch-load field mappings
     const mappingIds = [...new Set(members.map((m) => m.linkFieldMappingId))];
-    const mappings = await (client as typeof db)
-      .select()
-      .from(fieldMappings)
-      .where(inArray(fieldMappings.id, mappingIds));
-    const mappingMap = new Map(
-      mappings.map((m) => [m.id, m as FieldMappingSelect])
-    );
-
-    // Batch-load column definitions for each field mapping
-    const colDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
-    const colDefs = colDefIds.length > 0
+    const mappingMap = includes.has("fieldMapping") || includes.has("columnDefinition")
       ? await (client as typeof db)
           .select()
-          .from(columnDefinitions)
-          .where(inArray(columnDefinitions.id, colDefIds))
-      : [];
-    const colDefMap = new Map(
-      colDefs.map((c) => [c.id, c as ColumnDefinitionSelect])
-    );
+          .from(fieldMappings)
+          .where(inArray(fieldMappings.id, mappingIds))
+          .then((rows) => new Map(rows.map((m) => [m.id, m as FieldMappingSelect])))
+      : null;
+
+    // Batch-load column definitions for each field mapping
+    const colDefMap = includes.has("columnDefinition") && mappingMap
+      ? await (async () => {
+          const colDefIds = [...new Set([...mappingMap.values()].map((m) => m.columnDefinitionId))];
+          if (colDefIds.length === 0) return new Map<string, ColumnDefinitionSelect>();
+          const colDefs = await (client as typeof db)
+            .select()
+            .from(columnDefinitions)
+            .where(inArray(columnDefinitions.id, colDefIds));
+          return new Map(colDefs.map((c) => [c.id, c as ColumnDefinitionSelect]));
+        })()
+      : null;
 
     return members
-      .filter(
-        (m) =>
-          entityMap.has(m.connectorEntityId) &&
-          mappingMap.has(m.linkFieldMappingId) &&
-          colDefMap.has(mappingMap.get(m.linkFieldMappingId)!.columnDefinitionId)
-      )
+      .filter((m) => {
+        if (entityMap && !entityMap.has(m.connectorEntityId)) return false;
+        if (mappingMap && !mappingMap.has(m.linkFieldMappingId)) return false;
+        if (colDefMap && mappingMap) {
+          const mapping = mappingMap.get(m.linkFieldMappingId);
+          if (!mapping || !colDefMap.has(mapping.columnDefinitionId)) return false;
+        }
+        return true;
+      })
       .map((m) => ({
         ...(m as EntityGroupMemberSelect),
-        connectorEntity: entityMap.get(m.connectorEntityId)!,
-        fieldMapping: mappingMap.get(m.linkFieldMappingId)!,
-        columnDefinition: colDefMap.get(mappingMap.get(m.linkFieldMappingId)!.columnDefinitionId)!,
+        ...(entityMap && { connectorEntity: entityMap.get(m.connectorEntityId)! }),
+        ...(mappingMap && { fieldMapping: mappingMap.get(m.linkFieldMappingId)! }),
+        ...(colDefMap && mappingMap && { columnDefinition: colDefMap.get(mappingMap.get(m.linkFieldMappingId)!.columnDefinitionId)! }),
       }));
   }
 

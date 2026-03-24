@@ -161,6 +161,41 @@ Reference implementation: `packages/core/src/models/user.model.ts`
 - **Error handling**: Use `ApiError` class with `next(error)` — never send error responses directly
 - **Error codes**: Add to `ApiCode` enum in `src/constants/api-codes.constants.ts`, format: `<DOMAIN>_<FAILURE>`
 
+### Include / Join Convention
+
+Routes are **not** responsible for join logic. The router's job is to intake an `include` query parameter, parse it, and pass the resulting array to repository methods. The repository layer handles the actual joins or batch-loading. This pattern applies primarily to **GET requests** (list and detail endpoints).
+
+#### URL Standard
+
+Standard query parameters for list endpoints: `limit`, `offset`, `sortBy`, `sortOrder`, `search`, `include`. The specific values accepted by `include` are determined at an endpoint level — each endpoint defines which relations it supports. Additional custom parameters (single strings or comma-separated) are allowed per endpoint.
+
+```
+/api/resource?include=<comma,separated,attrs>&limit=10&offset=0&sortOrder=asc&sortBy=created&search=keyword
+```
+
+#### Router Layer
+
+Parse `include` from the query string and pass to the repository:
+
+```typescript
+const include_ = req.query.include?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+```
+
+#### Repository Layer
+
+Repository methods accept `include` as an option. Pagination values are always optional:
+
+```typescript
+repository.findMany(where, { include, ...opts })
+repository.findById(id, { include, ...opts })
+repository.findByCustom(customValue, { include, ...opts })
+```
+
+Concrete repositories extend `ListOptions` with `include?: string[]` and override `findMany` (or add custom finders) to handle the join/batch-loading logic. Two implementation patterns are used:
+
+1. **LEFT JOIN** — for 1-to-1 relations (e.g., `connectorDefinition` on `connectorInstances`)
+2. **Post-query batch-loading** — for 1-to-many relations (e.g., `fieldMappings` on `connectorEntities`)
+
 ## Authentication
 
 - **Frontend**: Auth0 React SDK — `useAuth0()` for login, `useAuthFetch()` hook for authenticated API calls

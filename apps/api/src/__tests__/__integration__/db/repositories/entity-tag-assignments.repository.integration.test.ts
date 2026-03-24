@@ -173,22 +173,33 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
   // ── findByConnectorEntityId ──────────────────────────────────────
 
   describe("findByConnectorEntityId", () => {
-    it("should return enriched assignments with tag details", async () => {
+    it("should return enriched assignments with tag details when include is passed", async () => {
       const entityId = await seedEntity();
       const tagId = await seedTag();
       await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
 
-      const results = await assignmentsRepo.findByConnectorEntityId(entityId, db);
+      const results = await assignmentsRepo.findByConnectorEntityId(entityId, { include: ["entityTag"] }, db);
       expect(results).toHaveLength(1);
       expect(results[0].connectorEntityId).toBe(entityId);
       expect(results[0].entityTagId).toBe(tagId);
       expect(results[0].tag).toBeDefined();
-      expect(results[0].tag.id).toBe(tagId);
+      expect(results[0].tag!.id).toBe(tagId);
+    });
+
+    it("should return plain assignments when no include is passed", async () => {
+      const entityId = await seedEntity();
+      const tagId = await seedTag();
+      await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
+
+      const results = await assignmentsRepo.findByConnectorEntityId(entityId, {}, db);
+      expect(results).toHaveLength(1);
+      expect(results[0].connectorEntityId).toBe(entityId);
+      expect(results[0].tag).toBeUndefined();
     });
 
     it("should return empty array when entity has no assignments", async () => {
       const entityId = await seedEntity();
-      const results = await assignmentsRepo.findByConnectorEntityId(entityId, db);
+      const results = await assignmentsRepo.findByConnectorEntityId(entityId, {}, db);
       expect(results).toHaveLength(0);
     });
 
@@ -198,7 +209,7 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
       const assignment = await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
       await assignmentsRepo.softDelete(assignment.id, "test-system", db);
 
-      const results = await assignmentsRepo.findByConnectorEntityId(entityId, db);
+      const results = await assignmentsRepo.findByConnectorEntityId(entityId, { include: ["entityTag"] }, db);
       expect(results).toHaveLength(0);
     });
   });

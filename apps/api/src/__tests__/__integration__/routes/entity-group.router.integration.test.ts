@@ -132,7 +132,7 @@ function createConnectorEntity(organizationId: string, connectorInstanceId: stri
   };
 }
 
-function createColumnDef(organizationId: string) {
+function createColumnDef(organizationId: string, overrides?: Partial<Record<string, unknown>>) {
   return {
     id: generateId(),
     organizationId,
@@ -150,6 +150,7 @@ function createColumnDef(organizationId: string) {
     updatedBy: null,
     deleted: null,
     deletedBy: null,
+    ...overrides,
   };
 }
 
@@ -298,7 +299,7 @@ describe("Entity Group Router", () => {
       await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(connInst as never);
       const entity = createConnectorEntity(organizationId, connInst.id, { label: "Employees" });
       await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity as never);
-      const colDef = createColumnDef(organizationId);
+      const colDef = createColumnDef(organizationId, { key: "email" });
       await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef as never);
       const mapping = createFieldMapping(organizationId, entity.id, colDef.id, { sourceField: "email" });
       await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
@@ -449,7 +450,7 @@ describe("Entity Group Router", () => {
       await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(connInst as never);
       const entity = createConnectorEntity(organizationId, connInst.id);
       await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity as never);
-      const colDef = createColumnDef(organizationId);
+      const colDef = createColumnDef(organizationId, { key: "email" });
       await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef as never);
       const mapping = createFieldMapping(organizationId, entity.id, colDef.id);
       await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
@@ -523,14 +524,14 @@ describe("Entity Group Router", () => {
 
       const entity1 = createConnectorEntity(organizationId, connInst.id, { label: "Employees" });
       await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity1 as never);
-      const colDef1 = createColumnDef(organizationId);
+      const colDef1 = createColumnDef(organizationId, { key: "email" });
       await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef1 as never);
       const mapping1 = createFieldMapping(organizationId, entity1.id, colDef1.id, { sourceField: "email" });
       await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping1 as never);
 
       const entity2 = createConnectorEntity(organizationId, connInst.id, { label: "Contacts" });
       await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity2 as never);
-      const colDef2 = createColumnDef(organizationId);
+      const colDef2 = createColumnDef(organizationId, { key: "contact_email" });
       await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef2 as never);
       const mapping2 = createFieldMapping(organizationId, entity2.id, colDef2.id, { sourceField: "contact_email" });
       await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping2 as never);
