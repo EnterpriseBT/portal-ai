@@ -154,25 +154,19 @@ export const SidebarNav = () => {
         onClick={() => handleClick(ApplicationRoute.Dashboard)}
       />
       <SidebarNavItem
-        icon={IconName.DataObject}
-        label="Entities"
-        selected={pathname.startsWith(ApplicationRoute.Entities)}
-        onClick={() => handleClick(ApplicationRoute.Entities)}
-      />
-      <SidebarNavItem
         icon={IconName.MemoryChip}
         label="Connectors"
         selected={pathname === ApplicationRoute.Connectors}
         onClick={() => handleClick(ApplicationRoute.Connectors)}
       />
       <SidebarNavItem
-        icon={IconName.ViewColumn}
-        label="Column Definitions"
-        selected={pathname.startsWith(ApplicationRoute.ColumnDefinitions)}
-        onClick={() => handleClick(ApplicationRoute.ColumnDefinitions)}
+        icon={IconName.DataObject}
+        label="Entities"
+        selected={pathname.startsWith(ApplicationRoute.Entities)}
+        onClick={() => handleClick(ApplicationRoute.Entities)}
       />
       <SidebarNavItem
-        icon={IconName.Link}
+        icon={IconName.Hub}
         label="Entity Groups"
         selected={pathname.startsWith(ApplicationRoute.EntityGroups)}
         onClick={() => handleClick(ApplicationRoute.EntityGroups)}
@@ -182,6 +176,12 @@ export const SidebarNav = () => {
         label="Tags"
         selected={pathname.startsWith(ApplicationRoute.Tags)}
         onClick={() => handleClick(ApplicationRoute.Tags)}
+      />
+      <SidebarNavItem
+        icon={IconName.ViewColumn}
+        label="Column Definitions"
+        selected={pathname.startsWith(ApplicationRoute.ColumnDefinitions)}
+        onClick={() => handleClick(ApplicationRoute.ColumnDefinitions)}
       />
       <SidebarNavItem
         icon={IconName.Work}

@@ -259,7 +259,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose} disabled={isPending}>
+          <Button variant="outlined" onClick={handleClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
