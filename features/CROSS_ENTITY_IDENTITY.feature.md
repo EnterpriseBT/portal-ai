@@ -22,34 +22,34 @@ Multiple entities from different connector instances represent the *same real-wo
 
 ### Checklist
 
-- [ ] Create `entity-group.model.ts`
-  - [ ] Define `EntityGroupSchema` extending `CoreSchema` with fields: `organizationId`, `name` (min 1), `description` (nullable)
-  - [ ] Export `EntityGroup` type inferred from schema
-  - [ ] Export `EntityGroupModel` class extending `CoreModel<EntityGroup>` with `get schema()`, `parse()`, `validate()`
-  - [ ] Export `EntityGroupModelFactory` class extending `ModelFactory<EntityGroup, EntityGroupModel>` with `create(createdBy)`
-- [ ] Create `entity-group-member.model.ts`
-  - [ ] Define `EntityGroupMemberSchema` extending `CoreSchema` with fields: `organizationId`, `entityGroupId`, `connectorEntityId`, `linkFieldMappingId`, `isPrimary` (boolean, default `false`)
-  - [ ] Export `EntityGroupMember` type inferred from schema
-  - [ ] Export `EntityGroupMemberModel` class extending `CoreModel<EntityGroupMember>` with `get schema()`, `parse()`, `validate()`
-  - [ ] Export `EntityGroupMemberModelFactory` class extending `ModelFactory<EntityGroupMember, EntityGroupMemberModel>` with `create(createdBy)`
-- [ ] Update `models/index.ts`
-  - [ ] Add `export * from "./entity-group.model.js"`
-  - [ ] Add `export * from "./entity-group-member.model.js"`
-- [ ] Write unit tests in `entity-group.model.test.ts`
-  - [ ] `EntityGroupSchema` accepts valid data with all fields
-  - [ ] `EntityGroupSchema` rejects empty `name`
-  - [ ] `EntityGroupSchema` accepts `description: null`
-  - [ ] `EntityGroupModelFactory.create()` produces a valid model instance
-- [ ] Write unit tests in `entity-group-member.model.test.ts`
-  - [ ] `EntityGroupMemberSchema` accepts valid data with all fields
-  - [ ] `EntityGroupMemberSchema` defaults `isPrimary` to `false`
-  - [ ] `EntityGroupMemberSchema` accepts `isPrimary: true`
-  - [ ] `EntityGroupMemberModelFactory.create()` produces a valid model instance
+- [x] Create `entity-group.model.ts`
+  - [x] Define `EntityGroupSchema` extending `CoreSchema` with fields: `organizationId`, `name` (min 1), `description` (nullable)
+  - [x] Export `EntityGroup` type inferred from schema
+  - [x] Export `EntityGroupModel` class extending `CoreModel<EntityGroup>` with `get schema()`, `parse()`, `validate()`
+  - [x] Export `EntityGroupModelFactory` class extending `ModelFactory<EntityGroup, EntityGroupModel>` with `create(createdBy)`
+- [x] Create `entity-group-member.model.ts`
+  - [x] Define `EntityGroupMemberSchema` extending `CoreSchema` with fields: `organizationId`, `entityGroupId`, `connectorEntityId`, `linkFieldMappingId`, `isPrimary` (boolean, default `false`)
+  - [x] Export `EntityGroupMember` type inferred from schema
+  - [x] Export `EntityGroupMemberModel` class extending `CoreModel<EntityGroupMember>` with `get schema()`, `parse()`, `validate()`
+  - [x] Export `EntityGroupMemberModelFactory` class extending `ModelFactory<EntityGroupMember, EntityGroupMemberModel>` with `create(createdBy)`
+- [x] Update `models/index.ts`
+  - [x] Add `export * from "./entity-group.model.js"`
+  - [x] Add `export * from "./entity-group-member.model.js"`
+- [x] Write unit tests in `entity-group.model.test.ts`
+  - [x] `EntityGroupSchema` accepts valid data with all fields
+  - [x] `EntityGroupSchema` rejects empty `name`
+  - [x] `EntityGroupSchema` accepts `description: null`
+  - [x] `EntityGroupModelFactory.create()` produces a valid model instance
+- [x] Write unit tests in `entity-group-member.model.test.ts`
+  - [x] `EntityGroupMemberSchema` accepts valid data with all fields
+  - [x] `EntityGroupMemberSchema` defaults `isPrimary` to `false`
+  - [x] `EntityGroupMemberSchema` accepts `isPrimary: true`
+  - [x] `EntityGroupMemberModelFactory.create()` produces a valid model instance
 
 ### Verification
 
-- [ ] `npm run type-check` passes from repo root
-- [ ] `npm run test -- --testPathPattern="entity-group"` passes from `packages/core/`
+- [x] `npm run type-check` passes from repo root
+- [x] `npm run test -- --testPathPattern="entity-group"` passes from `packages/core/`
 
 ---
 

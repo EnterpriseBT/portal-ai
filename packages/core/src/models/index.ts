@@ -36,3 +36,9 @@ export * from "./entity-tag.model.js";
 
 /** Entity tag assignment model schema & type */
 export * from "./entity-tag-assignment.model.js";
+
+/** Entity group model schema & type */
+export * from "./entity-group.model.js";
+
+/** Entity group member model schema & type */
+export * from "./entity-group-member.model.js";

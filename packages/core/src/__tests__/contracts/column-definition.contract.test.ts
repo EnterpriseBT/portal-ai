@@ -52,11 +52,14 @@ describe("ColumnDefinitionListRequestQuerySchema", () => {
     expect(result.type).toBe("string");
   });
 
-  it("should reject invalid type filter", () => {
+  it("should accept any string as type filter (multi-type support)", () => {
     const result = ColumnDefinitionListRequestQuerySchema.safeParse({
-      type: "bigint",
+      type: "string,number",
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe("string,number");
+    }
   });
 
   it("should accept optional required filter and coerce to boolean", () => {
