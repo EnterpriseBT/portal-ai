@@ -29,11 +29,11 @@ describe("organization-tools.api", () => {
     });
 
     it("calls correct endpoint with search param", () => {
-      const params = { search: "my-tool" };
+      const params = { limit: 20, offset: 0, sortBy: "created", sortOrder: "asc" as const, search: "my-tool" };
       organizationTools.list(params);
       expect(mockUseAuthQuery).toHaveBeenCalledWith(
         queryKeys.organizationTools.list(params),
-        "/api/organization-tools?search=my-tool",
+        "/api/organization-tools?limit=20&offset=0&sortBy=created&sortOrder=asc&search=my-tool",
         undefined,
         undefined
       );

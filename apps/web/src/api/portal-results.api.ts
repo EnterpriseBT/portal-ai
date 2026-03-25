@@ -5,11 +5,11 @@ import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
 
-export interface PortalResultsListParams {
+export type PortalResultsListParams = {
   stationId?: string;
   limit?: number;
   offset?: number;
-}
+};
 
 export interface PortalResultsListPayload {
   portalResults: unknown[];

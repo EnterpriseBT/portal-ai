@@ -29,11 +29,11 @@ describe("station-tools.api", () => {
     });
 
     it("calls correct endpoint with stationId and params", () => {
-      const params = { limit: 5 };
+      const params = { limit: 5, offset: 0, sortBy: "created", sortOrder: "asc" as const };
       stationTools.list("station-123", params);
       expect(mockUseAuthQuery).toHaveBeenCalledWith(
         queryKeys.stationTools.list("station-123", params),
-        "/api/stations/station-123/tools?limit=5",
+        "/api/stations/station-123/tools?limit=5&offset=0&sortBy=created&sortOrder=asc",
         undefined,
         undefined
       );

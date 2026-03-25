@@ -24,6 +24,7 @@ import { Route as EntityGroupsIndexRouteImport } from './routes/entity-groups.in
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
 import { Route as ColumnDefinitionsIndexRouteImport } from './routes/column-definitions.index'
+import { Route as PortalsPortalIdRouteImport } from './routes/portals.$portalId'
 import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
 import { Route as EntityGroupsEntityGroupIdRouteImport } from './routes/entity-groups.$entityGroupId'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
@@ -107,6 +108,11 @@ const ColumnDefinitionsIndexRoute = ColumnDefinitionsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ColumnDefinitionsRoute,
 } as any)
+const PortalsPortalIdRoute = PortalsPortalIdRouteImport.update({
+  id: '/portals/$portalId',
+  path: '/portals/$portalId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JobsJobIdRoute = JobsJobIdRouteImport.update({
   id: '/$jobId',
   path: '/$jobId',
@@ -162,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/portals/$portalId': typeof PortalsPortalIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
@@ -179,6 +186,7 @@ export interface FileRoutesByTo {
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/portals/$portalId': typeof PortalsPortalIdRoute
   '/column-definitions': typeof ColumnDefinitionsIndexRoute
   '/connectors': typeof ConnectorsIndexRoute
   '/entities': typeof EntitiesIndexRoute
@@ -204,6 +212,7 @@ export interface FileRoutesById {
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/portals/$portalId': typeof PortalsPortalIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
@@ -230,6 +239,7 @@ export interface FileRouteTypes {
     | '/entities/$entityId'
     | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
+    | '/portals/$portalId'
     | '/column-definitions/'
     | '/connectors/'
     | '/entities/'
@@ -247,6 +257,7 @@ export interface FileRouteTypes {
     | '/connectors/$connectorInstanceId'
     | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
+    | '/portals/$portalId'
     | '/column-definitions'
     | '/connectors'
     | '/entities'
@@ -271,6 +282,7 @@ export interface FileRouteTypes {
     | '/entities/$entityId'
     | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
+    | '/portals/$portalId'
     | '/column-definitions/'
     | '/connectors/'
     | '/entities/'
@@ -291,6 +303,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
   TagsRoute: typeof TagsRouteWithChildren
+  PortalsPortalIdRoute: typeof PortalsPortalIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -399,6 +412,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/column-definitions/'
       preLoaderRoute: typeof ColumnDefinitionsIndexRouteImport
       parentRoute: typeof ColumnDefinitionsRoute
+    }
+    '/portals/$portalId': {
+      id: '/portals/$portalId'
+      path: '/portals/$portalId'
+      fullPath: '/portals/$portalId'
+      preLoaderRoute: typeof PortalsPortalIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/jobs/$jobId': {
       id: '/jobs/$jobId'
@@ -553,6 +573,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
   TagsRoute: TagsRouteWithChildren,
+  PortalsPortalIdRoute: PortalsPortalIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -411,30 +411,30 @@ Primitive content-block rendering components (`ContentBlockRenderer`, and later 
 ### Checklist
 
 #### `packages/core` — content-block rendering components
-- [ ] Install peer dependencies in `packages/core/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
-- [ ] Implement `ContentBlockRenderer.component.tsx` in `packages/core/src/components/` — switches on `block.type`: `"text"` → `<ReactMarkdown>`, `"vega-lite"` → `<VegaLite>`; uses `ContentBlock` type from `packages/core/src/contracts/portal.contract.ts`
-- [ ] Export `ContentBlockRenderer` from `packages/core/src/index.ts`
+- [x] Install peer dependencies in `packages/core/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
+- [x] Implement `ContentBlockRenderer.component.tsx` in `packages/core/src/components/` — switches on `block.type`: `"text"` → `<ReactMarkdown>`, `"vega-lite"` → `<VegaLite>`; uses `ContentBlock` type from `packages/core/src/contracts/portal.contract.ts`
+- [x] Export `ContentBlockRenderer` from `packages/core/src/index.ts`
 
 #### `apps/web` — Portal UI
-- [ ] Install frontend visualization dependencies in `apps/web/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
-- [ ] Implement `PortalMessage.component.tsx` (container + UI):
-  - [ ] Renders user messages as plain text bubbles
-  - [ ] Renders assistant messages as a sequence of `<ContentBlockRenderer>` instances imported from `@portalai/core`
-  - [ ] Shows a pin icon button on each assistant block; clicking opens a name dialog → calls `sdk.portalResults.pin()`
-- [ ] Implement `PortalSession.component.tsx` (container + UI):
-  - [ ] On mount: calls `sdk.portals.get(portalId)` to load message history
-  - [ ] Renders message list above `ChatWindowUI`
-  - [ ] On submit: calls `sdk.portals.sendMessage()`, then opens SSE connection to `/api/sse/portals/:portalId/stream`
-  - [ ] Accumulates `delta` events into a streaming assistant bubble
-  - [ ] Inserts `tool_result` blocks inline at their position in the stream
-  - [ ] On `done`: finalises the assistant message in local state
-- [ ] Create route `apps/web/src/routes/_authorized/portals.$portalId.tsx`
-- [ ] Add `Portals = "/portals/$portalId"` to `routes.util.ts` enum
-- [ ] Unit tests for `PortalMessage` (renders text block, renders vega-lite block, pin button visible on assistant messages)
-- [ ] Unit tests for `PortalSession` (loads history on mount, renders messages, submit triggers sendMessage)
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Install frontend visualization dependencies in `apps/web/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
+- [x] Implement `PortalMessage.component.tsx` (container + UI):
+  - [x] Renders user messages as plain text bubbles
+  - [x] Renders assistant messages as a sequence of `<ContentBlockRenderer>` instances imported from `@portalai/core`
+  - [x] Shows a pin icon button on each assistant block; clicking opens a name dialog → calls `sdk.portalResults.pin()`
+- [x] Implement `PortalSession.component.tsx` (container + UI):
+  - [x] On mount: calls `sdk.portals.get(portalId)` to load message history
+  - [x] Renders message list above `ChatWindowUI`
+  - [x] On submit: calls `sdk.portals.sendMessage()`, then opens SSE connection to `/api/sse/portals/:portalId/stream`
+  - [x] Accumulates `delta` events into a streaming assistant bubble
+  - [x] Inserts `tool_result` blocks inline at their position in the stream
+  - [x] On `done`: finalises the assistant message in local state
+- [x] Create route `apps/web/src/routes/_authorized/portals.$portalId.tsx`
+- [x] Add `Portals = "/portals/$portalId"` to `routes.util.ts` enum
+- [x] Unit tests for `PortalMessage` (renders text block, renders vega-lite block, pin button visible on assistant messages)
+- [x] Unit tests for `PortalSession` (loads history on mount, renders messages, submit triggers sendMessage)
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 | Action | File |
