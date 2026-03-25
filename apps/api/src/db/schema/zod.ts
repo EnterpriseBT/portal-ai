@@ -21,6 +21,13 @@ import { entityTags } from "./entity-tags.table.js";
 import { entityTagAssignments } from "./entity-tag-assignments.table.js";
 import { entityGroups } from "./entity-groups.table.js";
 import { entityGroupMembers } from "./entity-group-members.table.js";
+import { stations } from "./stations.table.js";
+import { stationInstances } from "./station-instances.table.js";
+import { portals } from "./portals.table.js";
+import { portalMessages } from "./portal-messages.table.js";
+import { portalResults } from "./portal-results.table.js";
+import { organizationTools } from "./organization-tools.table.js";
+import { stationTools } from "./station-tools.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -231,3 +238,99 @@ export type EntityGroupMemberSelect = z.infer<
 export type EntityGroupMemberInsert = z.infer<
   typeof EntityGroupMemberInsertSchema
 >;
+
+// ── Stations ───────────────────────────────────────────────────────────
+
+/** Zod schema for a `stations` row returned by SELECT. */
+export const StationSelectSchema = createSelectSchema(stations);
+
+/** Zod schema for inserting into `stations`. */
+export const StationInsertSchema = createInsertSchema(stations);
+
+/** Inferred types */
+export type StationSelect = z.infer<typeof StationSelectSchema>;
+export type StationInsert = z.infer<typeof StationInsertSchema>;
+
+// ── Station Instances ──────────────────────────────────────────────────
+
+/** Zod schema for a `station_instances` row returned by SELECT. */
+export const StationInstanceSelectSchema =
+  createSelectSchema(stationInstances);
+
+/** Zod schema for inserting into `station_instances`. */
+export const StationInstanceInsertSchema =
+  createInsertSchema(stationInstances);
+
+/** Inferred types */
+export type StationInstanceSelect = z.infer<
+  typeof StationInstanceSelectSchema
+>;
+export type StationInstanceInsert = z.infer<
+  typeof StationInstanceInsertSchema
+>;
+
+// ── Portals ────────────────────────────────────────────────────────────
+
+/** Zod schema for a `portals` row returned by SELECT. */
+export const PortalSelectSchema = createSelectSchema(portals);
+
+/** Zod schema for inserting into `portals`. */
+export const PortalInsertSchema = createInsertSchema(portals);
+
+/** Inferred types */
+export type PortalSelect = z.infer<typeof PortalSelectSchema>;
+export type PortalInsert = z.infer<typeof PortalInsertSchema>;
+
+// ── Portal Messages ──────────────────────────────────────────────────
+
+/** Zod schema for a `portal_messages` row returned by SELECT. */
+export const PortalMessageSelectSchema = createSelectSchema(portalMessages);
+
+/** Zod schema for inserting into `portal_messages`. */
+export const PortalMessageInsertSchema = createInsertSchema(portalMessages);
+
+/** Inferred types */
+export type PortalMessageSelect = z.infer<typeof PortalMessageSelectSchema>;
+export type PortalMessageInsert = z.infer<typeof PortalMessageInsertSchema>;
+
+// ── Portal Results ───────────────────────────────────────────────────
+
+/** Zod schema for a `portal_results` row returned by SELECT. */
+export const PortalResultSelectSchema = createSelectSchema(portalResults);
+
+/** Zod schema for inserting into `portal_results`. */
+export const PortalResultInsertSchema = createInsertSchema(portalResults);
+
+/** Inferred types */
+export type PortalResultSelect = z.infer<typeof PortalResultSelectSchema>;
+export type PortalResultInsert = z.infer<typeof PortalResultInsertSchema>;
+
+// ── Organization Tools ───────────────────────────────────────────────
+
+/** Zod schema for an `organization_tools` row returned by SELECT. */
+export const OrganizationToolSelectSchema =
+  createSelectSchema(organizationTools);
+
+/** Zod schema for inserting into `organization_tools`. */
+export const OrganizationToolInsertSchema =
+  createInsertSchema(organizationTools);
+
+/** Inferred types */
+export type OrganizationToolSelect = z.infer<
+  typeof OrganizationToolSelectSchema
+>;
+export type OrganizationToolInsert = z.infer<
+  typeof OrganizationToolInsertSchema
+>;
+
+// ── Station Tools ────────────────────────────────────────────────────
+
+/** Zod schema for a `station_tools` row returned by SELECT. */
+export const StationToolSelectSchema = createSelectSchema(stationTools);
+
+/** Zod schema for inserting into `station_tools`. */
+export const StationToolInsertSchema = createInsertSchema(stationTools);
+
+/** Inferred types */
+export type StationToolSelect = z.infer<typeof StationToolSelectSchema>;
+export type StationToolInsert = z.infer<typeof StationToolInsertSchema>;

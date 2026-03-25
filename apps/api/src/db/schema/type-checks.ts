@@ -12,8 +12,8 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, ColumnDefinition, ConnectorEntity, FieldMapping, EntityRecord, EntityTag, EntityTagAssignment, EntityGroup, EntityGroupMember, Core } from "@portalai/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect, ColumnDefinitionSelect, ConnectorEntitySelect, FieldMappingSelect, EntityRecordSelect, EntityTagSelect, EntityTagAssignmentSelect, EntityGroupSelect, EntityGroupMemberSelect } from "./zod.js";
+import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, ColumnDefinition, ConnectorEntity, FieldMapping, EntityRecord, EntityTag, EntityTagAssignment, EntityGroup, EntityGroupMember, Core, Station, StationInstance, Portal, PortalMessage, PortalResult, OrganizationTool, StationTool } from "@portalai/core/models";
+import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect, ColumnDefinitionSelect, ConnectorEntitySelect, FieldMappingSelect, EntityRecordSelect, EntityTagSelect, EntityTagAssignmentSelect, EntityGroupSelect, EntityGroupMemberSelect, StationSelect, StationInstanceSelect, PortalSelect, PortalMessageSelect, PortalResultSelect, OrganizationToolSelect, StationToolSelect } from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
@@ -29,6 +29,13 @@ import type { entityTags } from "./entity-tags.table.js";
 import type { entityTagAssignments } from "./entity-tag-assignments.table.js";
 import type { entityGroups } from "./entity-groups.table.js";
 import type { entityGroupMembers } from "./entity-group-members.table.js";
+import type { stations } from "./stations.table.js";
+import type { stationInstances } from "./station-instances.table.js";
+import type { portals } from "./portals.table.js";
+import type { portalMessages } from "./portal-messages.table.js";
+import type { portalResults } from "./portal-results.table.js";
+import type { organizationTools } from "./organization-tools.table.js";
+import type { stationTools } from "./station-tools.table.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -261,3 +268,87 @@ const _entGrpMemModelToDrizzle: _EntGrpMemModelToDrizzle = true;
 type _EntGrpMemInferredRow = InferSelectModel<typeof entityGroupMembers>;
 type _EntGrpMemInferredToModel = IsAssignable<_EntGrpMemInferredRow, EntityGroupMember>;
 const _entGrpMemInferredToModel: _EntGrpMemInferredToModel = true;
+
+// ── Station ───────────────────────────────────────────────────────────
+
+type _StaDrizzleToModel = IsAssignable<StationSelect, Station>;
+const _staDrizzleToModel: _StaDrizzleToModel = true;
+
+type _StaModelToDrizzle = IsAssignable<Station, StationSelect>;
+const _staModelToDrizzle: _StaModelToDrizzle = true;
+
+type _StaInferredRow = InferSelectModel<typeof stations>;
+type _StaInferredToModel = IsAssignable<_StaInferredRow, Station>;
+const _staInferredToModel: _StaInferredToModel = true;
+
+// ── StationInstance ───────────────────────────────────────────────────
+
+type _StaInstDrizzleToModel = IsAssignable<StationInstanceSelect, StationInstance>;
+const _staInstDrizzleToModel: _StaInstDrizzleToModel = true;
+
+type _StaInstModelToDrizzle = IsAssignable<StationInstance, StationInstanceSelect>;
+const _staInstModelToDrizzle: _StaInstModelToDrizzle = true;
+
+type _StaInstInferredRow = InferSelectModel<typeof stationInstances>;
+type _StaInstInferredToModel = IsAssignable<_StaInstInferredRow, StationInstance>;
+const _staInstInferredToModel: _StaInstInferredToModel = true;
+
+// ── Portal ────────────────────────────────────────────────────────────
+
+type _PortalDrizzleToModel = IsAssignable<PortalSelect, Portal>;
+const _portalDrizzleToModel: _PortalDrizzleToModel = true;
+
+type _PortalModelToDrizzle = IsAssignable<Portal, PortalSelect>;
+const _portalModelToDrizzle: _PortalModelToDrizzle = true;
+
+type _PortalInferredRow = InferSelectModel<typeof portals>;
+type _PortalInferredToModel = IsAssignable<_PortalInferredRow, Portal>;
+const _portalInferredToModel: _PortalInferredToModel = true;
+
+// ── PortalMessage ─────────────────────────────────────────────────────
+
+type _PortalMsgDrizzleToModel = IsAssignable<PortalMessageSelect, PortalMessage>;
+const _portalMsgDrizzleToModel: _PortalMsgDrizzleToModel = true;
+
+type _PortalMsgModelToDrizzle = IsAssignable<PortalMessage, PortalMessageSelect>;
+const _portalMsgModelToDrizzle: _PortalMsgModelToDrizzle = true;
+
+type _PortalMsgInferredRow = InferSelectModel<typeof portalMessages>;
+type _PortalMsgInferredToModel = IsAssignable<_PortalMsgInferredRow, PortalMessage>;
+const _portalMsgInferredToModel: _PortalMsgInferredToModel = true;
+
+// ── PortalResult ──────────────────────────────────────────────────────
+
+type _PortalResDrizzleToModel = IsAssignable<PortalResultSelect, PortalResult>;
+const _portalResDrizzleToModel: _PortalResDrizzleToModel = true;
+
+type _PortalResModelToDrizzle = IsAssignable<PortalResult, PortalResultSelect>;
+const _portalResModelToDrizzle: _PortalResModelToDrizzle = true;
+
+type _PortalResInferredRow = InferSelectModel<typeof portalResults>;
+type _PortalResInferredToModel = IsAssignable<_PortalResInferredRow, PortalResult>;
+const _portalResInferredToModel: _PortalResInferredToModel = true;
+
+// ── OrganizationTool ──────────────────────────────────────────────────
+
+type _OrgToolDrizzleToModel = IsAssignable<OrganizationToolSelect, OrganizationTool>;
+const _orgToolDrizzleToModel: _OrgToolDrizzleToModel = true;
+
+type _OrgToolModelToDrizzle = IsAssignable<OrganizationTool, OrganizationToolSelect>;
+const _orgToolModelToDrizzle: _OrgToolModelToDrizzle = true;
+
+type _OrgToolInferredRow = InferSelectModel<typeof organizationTools>;
+type _OrgToolInferredToModel = IsAssignable<_OrgToolInferredRow, OrganizationTool>;
+const _orgToolInferredToModel: _OrgToolInferredToModel = true;
+
+// ── StationTool ───────────────────────────────────────────────────────
+
+type _StaToolDrizzleToModel = IsAssignable<StationToolSelect, StationTool>;
+const _staToolDrizzleToModel: _StaToolDrizzleToModel = true;
+
+type _StaToolModelToDrizzle = IsAssignable<StationTool, StationToolSelect>;
+const _staToolModelToDrizzle: _StaToolModelToDrizzle = true;
+
+type _StaToolInferredRow = InferSelectModel<typeof stationTools>;
+type _StaToolInferredToModel = IsAssignable<_StaToolInferredRow, StationTool>;
+const _staToolInferredToModel: _StaToolInferredToModel = true;

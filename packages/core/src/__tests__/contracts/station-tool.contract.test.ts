@@ -27,6 +27,11 @@ const validStationTool = {
   stationId: "station-1",
   organizationToolId: "ot-1",
   created: Date.now(),
+  createdBy: "user-1",
+  updated: null,
+  updatedBy: null,
+  deleted: null,
+  deletedBy: null,
 };
 
 // ── Assign request body ─────────────────────────────────────────────

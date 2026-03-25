@@ -5,7 +5,9 @@ export * from "./ui/index.js";
 
 // ── New MCP models ────────────────────────────────────────────────────
 export * from "./models/station.model.js";
+export * from "./models/station-instance.model.js";
 export * from "./models/portal.model.js";
+export * from "./models/portal-message.model.js";
 export * from "./models/portal-result.model.js";
 export * from "./models/organization-tool.model.js";
 export * from "./models/station-tool.model.js";

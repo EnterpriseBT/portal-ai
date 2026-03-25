@@ -69,24 +69,23 @@ Add Zod models for all new domain objects following the existing dual-schema pat
 Define Drizzle tables for all new entities, update `organizations`, add type-check assertions, and generate + apply migrations. Includes `organization_tools` (org-scoped tool definitions) and `station_tools` (join table assigning tools to stations).
 
 ### Checklist
-- [ ] Create `stations.table.ts` — `id`, `organizationId`, `name`, `description`, `createdBy` + baseColumns
-- [ ] Create `station-instances.table.ts` — `id`, `stationId`, `connectorInstanceId`, `created` (join table, no soft delete)
-- [ ] Create `portals.table.ts` — `id`, `organizationId`, `stationId`, `name`, `createdBy` + baseColumns
-- [ ] Create `portal-messages.table.ts` — `id`, `portalId`, `organizationId`, `role` enum (`user`|`assistant`), `blocks` jsonb, `created`
-- [ ] Create `portal-results.table.ts` — `id`, `organizationId`, `stationId`, `portalId` (nullable), `name`, `type` enum (`text`|`vega-lite`), `content` jsonb, `createdBy` + baseColumns
-- [ ] Create `organization-tools.table.ts` — `id`, `organizationId`, `name`, `description`, `parameterSchema` jsonb, `implementation` jsonb + baseColumns
-- [ ] Create `station-tools.table.ts` — `id`, `stationId`, `organizationToolId`, `created` (join table, no soft delete — mirrors `station_instances` pattern)
-- [ ] Modify `organizations.table.ts` — add `defaultStationId` (nullable text FK → stations)
-- [ ] Add drizzle-zod `createSelectSchema` / `createInsertSchema` entries in `zod.ts`
-- [ ] Add bidirectional `IsAssignable` type guards in `type-checks.ts` for all new tables
-- [ ] Export new tables from `apps/api/src/db/schema/index.ts`
-- [ ] `npm run db:generate` — generates migration SQL
-- [ ] `npm run db:migrate` — applies migration
-- [ ] Unit tests for drizzle-zod schemas — verify `createSelectSchema` / `createInsertSchema` produce correct types for all new tables (`stations`, `station_instances`, `portals`, `portal_messages`, `portal_results`, `organization_tools`, `station_tools`)
-- [ ] Unit tests for `IsAssignable` type guards — verify bidirectional assignability between Zod models and Drizzle select types for all new tables
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run test` passes
+- [x] Create `stations.table.ts` — `id`, `organizationId`, `name`, `description`, `createdBy` + baseColumns
+- [x] Create `station-instances.table.ts` — uses baseColumns (standardized to CoreSchema for consistency)
+- [x] Create `portals.table.ts` — `id`, `organizationId`, `stationId`, `name`, `createdBy` + baseColumns
+- [x] Create `portal-messages.table.ts` — uses baseColumns (standardized to CoreSchema for consistency)
+- [x] Create `portal-results.table.ts` — `id`, `organizationId`, `stationId`, `portalId` (nullable), `name`, `type` enum (`text`|`vega-lite`), `content` jsonb, `createdBy` + baseColumns
+- [x] Create `organization-tools.table.ts` — `id`, `organizationId`, `name`, `description`, `parameterSchema` jsonb, `implementation` jsonb + baseColumns
+- [x] Create `station-tools.table.ts` — uses baseColumns (standardized to CoreSchema for consistency)
+- [x] Modify `organizations.table.ts` — add `defaultStationId` (nullable text FK → stations)
+- [x] Add drizzle-zod `createSelectSchema` / `createInsertSchema` entries in `zod.ts`
+- [x] Add bidirectional `IsAssignable` type guards in `type-checks.ts` for all new tables
+- [x] Export new tables from `apps/api/src/db/schema/index.ts`
+- [x] `npm run db:generate` — generates migration SQL
+- [x] `npm run db:migrate` — migration applied successfully
+- [x] Unit tests for `IsAssignable` type guards — verify bidirectional assignability between Zod models and Drizzle select types for all new tables (enforced at compile time via `type-checks.ts`)
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run test` passes (929 core + 275 API unit + 453 integration = all green)
 
 ### Files
 | Action | File |

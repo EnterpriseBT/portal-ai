@@ -12,4 +12,5 @@ export const organizations = pgTable("organizations", {
   ownerUserId: text("owner_user_id")
     .notNull()
     .references(() => users.id),
+  defaultStationId: text("default_station_id"),
 });
