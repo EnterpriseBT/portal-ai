@@ -155,42 +155,42 @@ One repository per new table, extending the base `Repository` class.
 Stateless service with static methods. Each method receives pre-loaded records and runs the analysis. All methods are organized by pack — there is no distinction between "core" and "curated" at the service layer. Pack membership only affects whether a tool is registered in `buildAnalyticsTools()`.
 
 ### Checklist
-- [ ] Install dependencies: `alasql`, `arquero`, `simple-statistics`, `ml-kmeans`, `technicalindicators`, `financial` in `apps/api/package.json`
-- [ ] Install type stubs where needed (`@types/alasql`, `@types/simple-statistics`)
-- [ ] Implement `AnalyticsService.loadStation(stationId, organizationId)`:
-  - [ ] Resolve `stationId → station_instances → connectorInstanceIds`
-  - [ ] For each instance: `ConnectorEntityRepository.findByConnectorInstanceId()`
-  - [ ] For each entity: walk `fieldMappings → columnDefinitions` to build typed schema catalog
-  - [ ] Fetch `EntityRecordRepository.findMany({ connectorEntityId })` → extract `normalizedData`
-  - [ ] Register each entity as a named AlaSQL table (`connectorEntity.key`)
-  - [ ] **Entity Group discovery** — after all entities are loaded:
-    - [ ] For each loaded connectorEntity: `EntityGroupMembersRepository.findByConnectorEntityId(connectorEntity.id)`
-    - [ ] Deduplicate by `entityGroupId`; keep only groups where ≥2 member entities are present in this station's loaded entities
-    - [ ] For each relevant group: `EntityGroupRepository.findById(groupId)` → resolve each member's `linkFieldMappingId → fieldMapping → columnDefinition` to produce `{ entityKey, linkColumnKey, linkColumnLabel, isPrimary }`
-  - [ ] Return `{ entities: EntitySchema[], entityGroups: EntityGroupContext[], records: Map<key, rows[]> }`
-- [ ] Implement `AnalyticsService.loadRecords(entityKey, organizationId)` — resolves key → records
-- [ ] **Pack `data_query` — `AnalyticsService.sqlQuery({ sql, organizationId })`** — executes against AlaSQL; validates SQL against an allowlist (block `SELECT INTO`, `ATTACH`)
-- [ ] **Pack `data_query` — `AnalyticsService.visualize({ sql, vegaLiteSpec, organizationId })`** — runs SQL then injects rows into spec
-- [ ] **Pack `data_query` — `AnalyticsService.resolveIdentity({ entityGroupName, linkValue, stationId, organizationId })`** — looks up Entity Group by name within the org, filters members to those loaded in the current station, queries each member's in-memory AlaSQL table (`SELECT * FROM <entityKey> WHERE <linkColumnKey> = '<linkValue>'`), returns matched records grouped by source entity with primary entity first. Operates entirely against in-memory tables (no DB round-trip for record lookup).
-- [ ] **Pack `statistics` — `AnalyticsService.describeColumn({ entity, column, organizationId })`** — count, mean, median, stddev, min, max, p25, p75
-- [ ] **Pack `statistics` — `AnalyticsService.correlate({ entity, columnA, columnB, organizationId })`** — Pearson correlation
-- [ ] **Pack `statistics` — `AnalyticsService.detectOutliers({ entity, column, method, organizationId })`** — IQR or Z-score
-- [ ] **Pack `statistics` — `AnalyticsService.cluster({ entity, columns, k, organizationId })`** — k-means via ml-kmeans
-- [ ] **Pack `regression` — `AnalyticsService.regression({ entity, x, y, type, organizationId })`** — linear or polynomial regression via simple-statistics; returns coefficients and R-squared
-- [ ] **Pack `regression` — `AnalyticsService.trend({ entity, dateColumn, valueColumn, interval, organizationId })`** — time-series aggregation via Arquero + linear trend line via simple-statistics
-- [ ] **Pack `financial` — `AnalyticsService.technicalIndicator({ entity, dateColumn, valueColumn, indicator, params, organizationId })`** — SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV via `technicalindicators`; returns `{ dates: string[], values: number[] | object[] }` aligned to input series
-- [ ] **Pack `financial` — `AnalyticsService.npv({ rate, cashFlows })`** — net present value via `financial`; returns `{ npv: number }`
-- [ ] **Pack `financial` — `AnalyticsService.irr({ cashFlows })`** — internal rate of return via `financial`; returns `{ irr: number }`
-- [ ] **Pack `financial` — `AnalyticsService.amortize({ principal, annualRate, periods })`** — loan amortization schedule via `financial`; returns one row per period with `{ period, payment, principal, interest, balance }`
-- [ ] **Pack `financial` — `AnalyticsService.sharpeRatio({ entity, valueColumn, riskFreeRate, annualize, organizationId })`** — `(mean − riskFreeRate) / stddev` via simple-statistics; `annualize: boolean` multiplies by `√252` for daily data
-- [ ] **Pack `financial` — `AnalyticsService.maxDrawdown({ entity, dateColumn, valueColumn, organizationId })`** — rolling peak then `(peak − trough) / peak` via Arquero; returns `{ maxDrawdown: number, peakDate, troughDate }`
-- [ ] **Pack `financial` — `AnalyticsService.rollingReturns({ entity, dateColumn, valueColumn, window, organizationId })`** — period-over-period return series within a rolling window via Arquero; returns `{ dates: string[], returns: number[] }`
-- [ ] Unit tests for each method with fixture records
-- [ ] Unit tests: `loadStation` returns `entityGroups` with correct members and link columns when Entity Groups exist; returns empty array when no groups have ≥2 loaded members
-- [ ] Unit tests: `resolveIdentity` returns matched records grouped by entity with primary first; returns empty matches for a linkValue with no hits; throws for a non-existent entityGroupName
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Install dependencies: `alasql`, `arquero`, `simple-statistics`, `ml-kmeans`, `technicalindicators`, `financial` in `apps/api/package.json`
+- [x] Install type stubs where needed (`@types/alasql`, `@types/simple-statistics`)
+- [x] Implement `AnalyticsService.loadStation(stationId, organizationId)`:
+  - [x] Resolve `stationId → station_instances → connectorInstanceIds`
+  - [x] For each instance: `ConnectorEntityRepository.findByConnectorInstanceId()`
+  - [x] For each entity: walk `fieldMappings → columnDefinitions` to build typed schema catalog
+  - [x] Fetch `EntityRecordRepository.findMany({ connectorEntityId })` → extract `normalizedData`
+  - [x] Register each entity as a named AlaSQL table (`connectorEntity.key`)
+  - [x] **Entity Group discovery** — after all entities are loaded:
+    - [x] For each loaded connectorEntity: `EntityGroupMembersRepository.findByConnectorEntityId(connectorEntity.id)`
+    - [x] Deduplicate by `entityGroupId`; keep only groups where ≥2 member entities are present in this station's loaded entities
+    - [x] For each relevant group: `EntityGroupRepository.findById(groupId)` → resolve each member's `linkFieldMappingId → fieldMapping → columnDefinition` to produce `{ entityKey, linkColumnKey, linkColumnLabel, isPrimary }`
+  - [x] Return `{ entities: EntitySchema[], entityGroups: EntityGroupContext[], records: Map<key, rows[]> }`
+- [x] Implement `AnalyticsService.loadRecords(entityKey, organizationId)` — resolves key → records
+- [x] **Pack `data_query` — `AnalyticsService.sqlQuery({ sql, organizationId })`** — executes against AlaSQL; validates SQL against an allowlist (block `SELECT INTO`, `ATTACH`)
+- [x] **Pack `data_query` — `AnalyticsService.visualize({ sql, vegaLiteSpec, organizationId })`** — runs SQL then injects rows into spec
+- [x] **Pack `data_query` — `AnalyticsService.resolveIdentity({ entityGroupName, linkValue, stationId, organizationId })`** — looks up Entity Group by name within the org, filters members to those loaded in the current station, queries each member's in-memory AlaSQL table (`SELECT * FROM <entityKey> WHERE <linkColumnKey> = '<linkValue>'`), returns matched records grouped by source entity with primary entity first. Operates entirely against in-memory tables (no DB round-trip for record lookup).
+- [x] **Pack `statistics` — `AnalyticsService.describeColumn({ entity, column, organizationId })`** — count, mean, median, stddev, min, max, p25, p75
+- [x] **Pack `statistics` — `AnalyticsService.correlate({ entity, columnA, columnB, organizationId })`** — Pearson correlation
+- [x] **Pack `statistics` — `AnalyticsService.detectOutliers({ entity, column, method, organizationId })`** — IQR or Z-score
+- [x] **Pack `statistics` — `AnalyticsService.cluster({ entity, columns, k, organizationId })`** — k-means via ml-kmeans
+- [x] **Pack `regression` — `AnalyticsService.regression({ entity, x, y, type, organizationId })`** — linear or polynomial regression via simple-statistics; returns coefficients and R-squared
+- [x] **Pack `regression` — `AnalyticsService.trend({ entity, dateColumn, valueColumn, interval, organizationId })`** — time-series aggregation via Arquero + linear trend line via simple-statistics
+- [x] **Pack `financial` — `AnalyticsService.technicalIndicator({ entity, dateColumn, valueColumn, indicator, params, organizationId })`** — SMA, EMA, RSI, MACD, Bollinger Bands, ATR, OBV via `technicalindicators`; returns `{ dates: string[], values: number[] | object[] }` aligned to input series
+- [x] **Pack `financial` — `AnalyticsService.npv({ rate, cashFlows })`** — net present value via `financial`; returns `{ npv: number }`
+- [x] **Pack `financial` — `AnalyticsService.irr({ cashFlows })`** — internal rate of return via `financial`; returns `{ irr: number }`
+- [x] **Pack `financial` — `AnalyticsService.amortize({ principal, annualRate, periods })`** — loan amortization schedule via `financial`; returns one row per period with `{ period, payment, principal, interest, balance }`
+- [x] **Pack `financial` — `AnalyticsService.sharpeRatio({ entity, valueColumn, riskFreeRate, annualize, organizationId })`** — `(mean − riskFreeRate) / stddev` via simple-statistics; `annualize: boolean` multiplies by `√252` for daily data
+- [x] **Pack `financial` — `AnalyticsService.maxDrawdown({ entity, dateColumn, valueColumn, organizationId })`** — rolling peak then `(peak − trough) / peak` via Arquero; returns `{ maxDrawdown: number, peakDate, troughDate }`
+- [x] **Pack `financial` — `AnalyticsService.rollingReturns({ entity, dateColumn, valueColumn, window, organizationId })`** — period-over-period return series within a rolling window via Arquero; returns `{ dates: string[], returns: number[] }`
+- [x] Unit tests for each method with fixture records
+- [x] Unit tests: `loadStation` returns `entityGroups` with correct members and link columns when Entity Groups exist; returns empty array when no groups have ≥2 loaded members
+- [x] Unit tests: `resolveIdentity` returns matched records grouped by entity with primary first; returns empty matches for a linkValue with no hits; throws for a non-existent entityGroupName
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 | Action | File |
