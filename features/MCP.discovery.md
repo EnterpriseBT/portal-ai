@@ -688,7 +688,7 @@ import { stationToolsRepo, stationsRepo } from "../db/index.js";
  *
  * Every tool available to Claude is determined exclusively by:
  *   1. The packs selected on the station (station.toolPacks)
- *   2. The custom webhook tools registered on the station (station_tools rows)
+ *   2. The organization tools assigned to the station (organization_tools via station_tools join table)
  *
  * There are no implicit or always-on tools. If a station has no packs selected,
  * this function throws — portal creation should have already blocked that case.
@@ -852,8 +852,8 @@ export async function buildAnalyticsTools(
   }
 
   // ── Custom webhook tools ────────────────────────────────────────────
-  // Appended from station_tools rows — always included regardless of packs
-  const customToolDefs = await stationToolsRepo.findByStation(stationId, organizationId);
+  // Loaded from organization_tools via station_tools join — always included regardless of packs
+  const customToolDefs = await stationToolsRepo.findByStationId(stationId);
   for (const def of customToolDefs) {
     tools[def.name] = tool({
       description: def.description,
@@ -1196,9 +1196,9 @@ Additional algorithms implemented by the Portal.ai team — ARIMA time-series fo
 
 **Phase 1 — Curated packs.** Implement `regression`, `trend`, and the financial analytics pack as additional `AnalyticsService` methods. This covers the highest-value gaps without introducing code execution.
 
-**Phase 2 — Webhook-based custom tools.** Add the `station_tools` table and extend `buildAnalyticsTools()` to load and wrap registered webhooks. This gives users full extensibility without any sandboxing complexity.
+**Phase 2 — Webhook-based custom tools.** Add the `organization_tools` table (org-scoped definitions) and `station_tools` join table (station ↔ tool assignments), then extend `buildAnalyticsTools()` to load and wrap assigned webhooks. Tools are defined once per org and shared across stations. This gives users full extensibility without any sandboxing complexity.
 
-**Phase 3 — Sandboxed JS snippets.** Revisit once the webhook pattern is validated; JS snippets can be offered as an alternative implementation type within the same `station_tools` schema.
+**Phase 3 — Sandboxed JS snippets.** Revisit once the webhook pattern is validated; JS snippets can be offered as an alternative implementation type within the same `organization_tools` schema.
 
 ---
 
@@ -1240,14 +1240,13 @@ Risk metrics (Sharpe ratio, VaR, drawdown, rolling returns) are derived from `si
 
 ---
 
-### Database Schema: `station_tools`
+### Database Schema: `organization_tools`
 
 ```sql
--- One row per user-defined tool, scoped to a station
+-- One row per user-defined tool, scoped to the organization (shared library)
 id                  uuid PRIMARY KEY
 organization_id     uuid REFERENCES organizations(id)
-station_id          uuid REFERENCES stations(id)
-name                text NOT NULL   -- used as the tool key, e.g. "score_lead" (must be unique within a station, cannot shadow built-in names)
+name                text NOT NULL   -- used as the tool key, e.g. "score_lead" (must be unique within an org)
 description         text NOT NULL   -- Claude uses this to decide when to call the tool
 parameter_schema    jsonb NOT NULL  -- JSON Schema object describing input parameters
 implementation      jsonb NOT NULL  -- { type: "webhook", url: string, headers?: Record<string,string> }
@@ -1257,7 +1256,19 @@ updated             timestamp
 deleted             timestamp       -- soft delete
 ```
 
-Dual-schema model in `packages/core`: `StationToolSchema` + `StationToolModel` + `StationToolModelFactory` following the existing pattern.
+Dual-schema model in `packages/core`: `OrganizationToolSchema` + `OrganizationToolModel` + `OrganizationToolModelFactory` following the existing pattern.
+
+### Database Schema: `station_tools` (join table)
+
+```sql
+-- Assigns organization-level tools to stations (many-to-many)
+id                      uuid PRIMARY KEY
+station_id              uuid REFERENCES stations(id)
+organization_tool_id    uuid REFERENCES organization_tools(id)
+created                 timestamp
+```
+
+No soft delete — mirrors the `station_instances` join table pattern. Removing a tool from a station hard-deletes the join row. Updating the tool definition (name, webhook URL, etc.) happens on the `organization_tools` row and propagates to all stations that reference it.
 
 ---
 
@@ -1274,7 +1285,8 @@ Dual-schema model in `packages/core`: `StationToolSchema` + `StationToolModel` +
 | No implicit tools | Every tool Claude can call is explicitly selected by the station operator. There is no platform-wide default set. |
 | Station must have ≥1 pack | `buildAnalyticsTools()` throws if no packs are selected; portal creation validates this before writing the row. Enforced in the Zod model (`toolPacks: z.array(StationToolPackSchema).min(1)`) and at the API layer. |
 | Packs are the selection unit, not individual tools | Users choose capabilities (financial analysis, regression, etc.), not individual function names. This keeps the station setup UI simple and prevents partial/broken configurations. |
-| Tool names must not shadow pack tool names | Prevent custom webhook tools silently overriding curated pack tools; validated at `station_tools` creation time via `StationToolsRepository.create()`. |
+| Tools are org-scoped, assigned to stations via join table | A single webhook tool definition is managed once and shared across multiple stations. Updates to the tool (URL, schema) propagate to all stations. Mirrors the `station_instances` pattern for connector instances. |
+| Tool names must not shadow pack tool names | Prevent custom webhook tools silently overriding curated pack tools; validated at station-tool assignment time (`StationToolsRepository.create()`), not at org-tool creation time — the same tool name may be safe for one station's packs but not another's. |
 | `web_search` is a pack, not a platform default | Web access is opt-in per station. A support-ticket station should not be able to search the web; a research station should. Explicit selection makes this auditable. |
 | System prompt lists only available tools | The system prompt is generated from `Object.keys(tools)` — Claude is told exactly what it can call and never invents tools that aren't in the map. |
 | Webhook auth headers stored encrypted | Tool definitions may include API keys; store `headers` field encrypted at rest using the same mechanism as connector credentials. |
@@ -1286,11 +1298,15 @@ Dual-schema model in `packages/core`: `StationToolSchema` + `StationToolModel` +
 
 | Action | File | Purpose |
 |--------|------|---------|
-| Create | `packages/core/src/models/station-tool.model.ts` | Zod model for StationTool |
-| Create | `apps/api/src/db/schema/station-tools.table.ts` | Drizzle table definition |
-| Create | `apps/api/src/db/repositories/station-tools.repository.ts` | CRUD + findByStation |
-| Create | `apps/api/src/routes/station-tools.router.ts` | REST endpoints: list, create, update, delete |
-| Modify | `apps/api/src/services/analytics.tools.ts` | Extend `buildAnalyticsTools()` to accept `stationId`, load and wrap custom tools |
+| Create | `packages/core/src/models/organization-tool.model.ts` | Zod model for OrganizationTool (org-scoped tool definition) |
+| Create | `packages/core/src/models/station-tool.model.ts` | Zod model for StationTool (join table: station ↔ org tool) |
+| Create | `apps/api/src/db/schema/organization-tools.table.ts` | Drizzle table definition for org-scoped tools |
+| Create | `apps/api/src/db/schema/station-tools.table.ts` | Drizzle join table: station ↔ org tool assignments |
+| Create | `apps/api/src/db/repositories/organization-tools.repository.ts` | CRUD for org-scoped tool definitions |
+| Create | `apps/api/src/db/repositories/station-tools.repository.ts` | assign/unassign + findByStationId (joins to org tools) |
+| Create | `apps/api/src/routes/organization-tools.router.ts` | REST endpoints: list, create, update, delete org tools |
+| Create | `apps/api/src/routes/station-tools.router.ts` | REST endpoints: list, assign, unassign tools on a station |
+| Modify | `apps/api/src/services/analytics.tools.ts` | Extend `buildAnalyticsTools()` to load assigned org tools via join table |
 | Modify | `apps/api/src/services/portal.service.ts` | Pass `stationId` into `buildAnalyticsTools()` |
 
 ---

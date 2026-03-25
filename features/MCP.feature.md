@@ -6,7 +6,7 @@ Stations, Portals, and an embedded analytics engine that lets users query their 
 
 **Architecture decision — Option 2: Analytics Tools Embedded in API.** Analytics tools are implemented as static `AnalyticsService` methods and registered as Vercel AI SDK `tool()` definitions in `analytics.tools.ts`, alongside the existing `AiService.tools`. No separate MCP server process is needed. The MCP protocol can be adopted later by wrapping the same service methods in MCP tool handlers.
 
-**Custom tooling — Option A: Webhook-based custom tools.** Users can register per-station custom tools that point to external webhook endpoints. Phase 1 ships curated built-in tool packs (`regression`, `trend`) via `AnalyticsService`. Phase 2 adds the `station_tools` database table, `StationToolsRepository`, and station-tools REST routes so users can register arbitrary webhook tools. `buildAnalyticsTools(organizationId, stationId)` is async from the start to accommodate Phase 2 without a future signature break.
+**Custom tooling — Option A: Webhook-based custom tools.** Users can register custom tools at the organization level that point to external webhook endpoints, then assign them to one or more stations via a join table. Phase 1 ships curated built-in tool packs (`regression`, `trend`) via `AnalyticsService`. Phase 2 adds the `organization_tools` table (org-scoped tool definitions) and `station_tools` join table (station ↔ tool assignments), plus `OrganizationToolsRepository`, `StationToolsRepository`, and REST routes so users can manage a shared tool library and assign tools to stations. `buildAnalyticsTools(organizationId, stationId)` is async from the start to accommodate Phase 2 without a future signature break.
 
 Reference discovery doc: `features/MCP.discovery.md`
 
@@ -14,17 +14,26 @@ Reference discovery doc: `features/MCP.discovery.md`
 
 ## Phase 1 — Core models (`packages/core`)
 
-Add Zod models for all new domain objects following the existing dual-schema pattern. Includes the `StationTool` model needed for webhook-based custom tools (Phase 2 DB + routes, but model defined here to keep the dual-schema pattern intact).
+Add Zod models for all new domain objects following the existing dual-schema pattern. Includes the `OrganizationTool` model for org-scoped webhook tool definitions and the `StationTool` join model for station ↔ tool assignments (Phase 2 DB + routes, but models defined here to keep the dual-schema pattern intact).
 
 ### Checklist
 - [ ] Add `StationSchema` + `StationModel` + `StationModelFactory` in `station.model.ts`
 - [ ] Add `PortalSchema` + `PortalModel` + `PortalModelFactory` in `portal.model.ts`
 - [ ] Add `PortalResultSchema` + `PortalResultModel` + `PortalResultModelFactory` in `portal-result.model.ts`
-- [ ] Add `StationToolSchema` + `StationToolModel` + `StationToolModelFactory` in `station-tool.model.ts` — fields: `id`, `organizationId`, `stationId`, `name`, `description`, `parameterSchema` (jsonb), `implementation` (jsonb: `{ type: "webhook", url: string, headers?: Record<string,string> }`) + baseColumns
+- [ ] Add `OrganizationToolSchema` + `OrganizationToolModel` + `OrganizationToolModelFactory` in `organization-tool.model.ts` — fields: `id`, `organizationId`, `name`, `description`, `parameterSchema` (jsonb), `implementation` (jsonb: `{ type: "webhook", url: string, headers?: Record<string,string> }`) + baseColumns
+- [ ] Add `StationToolSchema` in `station-tool.model.ts` — join table model, fields: `id`, `stationId`, `organizationToolId`, `created` (no soft delete, mirrors `station_instances` pattern)
 - [ ] Add `portal.contract.ts` — Zod schemas for `CreatePortalBody`, `SendMessageBody`, `PinResultBody`, `PortalMessageResponse`, SSE event payloads (`DeltaEvent`, `ToolResultEvent`, `DoneEvent`)
 - [ ] Add `station.contract.ts` — Zod schemas for `CreateStationBody`, `UpdateStationBody`, `StationListResponse`
-- [ ] Add `station-tool.contract.ts` — Zod schemas for `CreateStationToolBody`, `UpdateStationToolBody`, `StationToolListResponse`
+- [ ] Add `organization-tool.contract.ts` — Zod schemas for `CreateOrganizationToolBody`, `UpdateOrganizationToolBody`, `OrganizationToolListResponse`
+- [ ] Add `station-tool.contract.ts` — Zod schemas for `AssignStationToolBody`, `StationToolListResponse`
 - [ ] Export all new models and contracts from `packages/core/src/index.ts`
+- [ ] Unit tests for `StationModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
+- [ ] Unit tests for `PortalModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
+- [ ] Unit tests for `PortalResultModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
+- [ ] Unit tests for `OrganizationToolModel` — validate schema parsing (including `parameterSchema` jsonb and `implementation` jsonb), factory `create()`, `toJSON()`, `update()`, invalid input rejection
+- [ ] Unit tests for `StationToolSchema` — validate schema parsing for join table fields, reject missing required fields
+- [ ] Unit tests for contract schemas — `CreateStationBody`, `UpdateStationBody`, `CreatePortalBody`, `SendMessageBody`, `PinResultBody`, `CreateOrganizationToolBody`, `UpdateOrganizationToolBody`, `AssignStationToolBody` all parse valid input and reject invalid input
+- [ ] Unit tests for SSE event payload schemas — `DeltaEvent`, `ToolResultEvent`, `DoneEvent` parse valid payloads and reject malformed payloads
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
 - [ ] `npm run test` passes
@@ -36,17 +45,28 @@ Add Zod models for all new domain objects following the existing dual-schema pat
 | Create | `packages/core/src/models/station.model.ts` |
 | Create | `packages/core/src/models/portal.model.ts` |
 | Create | `packages/core/src/models/portal-result.model.ts` |
+| Create | `packages/core/src/models/organization-tool.model.ts` |
 | Create | `packages/core/src/models/station-tool.model.ts` |
 | Create | `packages/core/src/contracts/station.contract.ts` |
 | Create | `packages/core/src/contracts/portal.contract.ts` |
+| Create | `packages/core/src/contracts/organization-tool.contract.ts` |
 | Create | `packages/core/src/contracts/station-tool.contract.ts` |
 | Modify | `packages/core/src/index.ts` |
+| Create | `packages/core/src/__tests__/models/station.model.test.ts` |
+| Create | `packages/core/src/__tests__/models/portal.model.test.ts` |
+| Create | `packages/core/src/__tests__/models/portal-result.model.test.ts` |
+| Create | `packages/core/src/__tests__/models/organization-tool.model.test.ts` |
+| Create | `packages/core/src/__tests__/models/station-tool.model.test.ts` |
+| Create | `packages/core/src/__tests__/contracts/station.contract.test.ts` |
+| Create | `packages/core/src/__tests__/contracts/portal.contract.test.ts` |
+| Create | `packages/core/src/__tests__/contracts/organization-tool.contract.test.ts` |
+| Create | `packages/core/src/__tests__/contracts/station-tool.contract.test.ts` |
 
 ---
 
 ## Phase 2 — Database schema + migrations (`apps/api`)
 
-Define Drizzle tables for all new entities, update `organizations`, add type-check assertions, and generate + apply migrations. Includes the `station_tools` table for webhook-based custom tools.
+Define Drizzle tables for all new entities, update `organizations`, add type-check assertions, and generate + apply migrations. Includes `organization_tools` (org-scoped tool definitions) and `station_tools` (join table assigning tools to stations).
 
 ### Checklist
 - [ ] Create `stations.table.ts` — `id`, `organizationId`, `name`, `description`, `createdBy` + baseColumns
@@ -54,15 +74,19 @@ Define Drizzle tables for all new entities, update `organizations`, add type-che
 - [ ] Create `portals.table.ts` — `id`, `organizationId`, `stationId`, `name`, `createdBy` + baseColumns
 - [ ] Create `portal-messages.table.ts` — `id`, `portalId`, `organizationId`, `role` enum (`user`|`assistant`), `blocks` jsonb, `created`
 - [ ] Create `portal-results.table.ts` — `id`, `organizationId`, `stationId`, `portalId` (nullable), `name`, `type` enum (`text`|`vega-lite`), `content` jsonb, `createdBy` + baseColumns
-- [ ] Create `station-tools.table.ts` — `id`, `organizationId`, `stationId`, `name`, `description`, `parameterSchema` jsonb, `implementation` jsonb + baseColumns
+- [ ] Create `organization-tools.table.ts` — `id`, `organizationId`, `name`, `description`, `parameterSchema` jsonb, `implementation` jsonb + baseColumns
+- [ ] Create `station-tools.table.ts` — `id`, `stationId`, `organizationToolId`, `created` (join table, no soft delete — mirrors `station_instances` pattern)
 - [ ] Modify `organizations.table.ts` — add `defaultStationId` (nullable text FK → stations)
 - [ ] Add drizzle-zod `createSelectSchema` / `createInsertSchema` entries in `zod.ts`
 - [ ] Add bidirectional `IsAssignable` type guards in `type-checks.ts` for all new tables
 - [ ] Export new tables from `apps/api/src/db/schema/index.ts`
 - [ ] `npm run db:generate` — generates migration SQL
 - [ ] `npm run db:migrate` — applies migration
+- [ ] Unit tests for drizzle-zod schemas — verify `createSelectSchema` / `createInsertSchema` produce correct types for all new tables (`stations`, `station_instances`, `portals`, `portal_messages`, `portal_results`, `organization_tools`, `station_tools`)
+- [ ] Unit tests for `IsAssignable` type guards — verify bidirectional assignability between Zod models and Drizzle select types for all new tables
 - [ ] `npm run type-check` passes
 - [ ] `npm run build` passes
+- [ ] `npm run test` passes
 
 ### Files
 | Action | File |
@@ -72,11 +96,13 @@ Define Drizzle tables for all new entities, update `organizations`, add type-che
 | Create | `apps/api/src/db/schema/portals.table.ts` |
 | Create | `apps/api/src/db/schema/portal-messages.table.ts` |
 | Create | `apps/api/src/db/schema/portal-results.table.ts` |
+| Create | `apps/api/src/db/schema/organization-tools.table.ts` |
 | Create | `apps/api/src/db/schema/station-tools.table.ts` |
 | Modify | `apps/api/src/db/schema/organizations.table.ts` |
 | Modify | `apps/api/src/db/schema/zod.ts` |
 | Modify | `apps/api/src/db/schema/type-checks.ts` |
 | Modify | `apps/api/src/db/schema/index.ts` |
+| Create | `apps/api/src/__tests__/db/schema/new-tables.schema.test.ts` |
 
 ---
 
@@ -90,10 +116,19 @@ One repository per new table, extending the base `Repository` class.
 - [ ] `PortalsRepository` — `findById`, `findByStation`, `findRecentByOrg(limit)`, `create`, `update`, `softDelete`
 - [ ] `PortalMessagesRepository` — `findByPortal` (ordered by `created` asc), `create`
 - [ ] `PortalResultsRepository` — `findById`, `findByStation`, `create`, `update`, `softDelete`
-- [ ] `StationToolsRepository` — `findById`, `findByStation(stationId, organizationId)`, `create` (validate name does not shadow a built-in tool name), `update`, `softDelete`
+- [ ] `OrganizationToolsRepository` — `findById`, `findMany(organizationId)`, `create` (validate name is unique within org), `update`, `softDelete`
+- [ ] `StationToolsRepository` — `findByStationId(stationId)` (returns joined `organization_tools` rows), `create` (assign tool to station; validate tool name does not shadow a built-in pack tool name for that station's selected packs), `hardDelete` (unassign — join table, no soft delete)
 - [ ] Register all new repositories on `DbService.repository` in `db.service.ts`
+- [ ] Unit tests for `StationsRepository` — `findById` returns station, `findMany` filters by org, `create` persists, `update` modifies fields, `softDelete` sets deleted timestamp
+- [ ] Unit tests for `StationInstancesRepository` — `findByStationId` returns instances, `create` persists join row, `hardDelete` removes row
+- [ ] Unit tests for `PortalsRepository` — `findById`, `findByStation`, `findRecentByOrg` returns correct limit/order, `create`, `update`, `softDelete`
+- [ ] Unit tests for `PortalMessagesRepository` — `findByPortal` returns messages ordered by `created` asc, `create` persists message with blocks
+- [ ] Unit tests for `PortalResultsRepository` — `findById`, `findByStation` filters correctly, `create`, `update`, `softDelete`
+- [ ] Unit tests for `OrganizationToolsRepository` — `findById`, `findMany` filters by org, `create` validates name uniqueness within org (rejects duplicate), `update`, `softDelete`
+- [ ] Unit tests for `StationToolsRepository` — `findByStationId` returns joined org tool definitions, `create` validates no built-in pack name shadowing (rejects shadow), `hardDelete` removes join row
 - [ ] `npm run type-check` passes
 - [ ] `npm run build` passes
+- [ ] `npm run test` passes
 
 ### Files
 | Action | File |
@@ -103,8 +138,16 @@ One repository per new table, extending the base `Repository` class.
 | Create | `apps/api/src/db/repositories/portals.repository.ts` |
 | Create | `apps/api/src/db/repositories/portal-messages.repository.ts` |
 | Create | `apps/api/src/db/repositories/portal-results.repository.ts` |
+| Create | `apps/api/src/db/repositories/organization-tools.repository.ts` |
 | Create | `apps/api/src/db/repositories/station-tools.repository.ts` |
 | Modify | `apps/api/src/services/db.service.ts` |
+| Create | `apps/api/src/__tests__/db/repositories/stations.repository.test.ts` |
+| Create | `apps/api/src/__tests__/db/repositories/station-instances.repository.test.ts` |
+| Create | `apps/api/src/__tests__/db/repositories/portals.repository.test.ts` |
+| Create | `apps/api/src/__tests__/db/repositories/portal-messages.repository.test.ts` |
+| Create | `apps/api/src/__tests__/db/repositories/portal-results.repository.test.ts` |
+| Create | `apps/api/src/__tests__/db/repositories/organization-tools.repository.test.ts` |
+| Create | `apps/api/src/__tests__/db/repositories/station-tools.repository.test.ts` |
 
 ---
 
@@ -189,7 +232,7 @@ Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods and user-regis
   - [ ] `rolling_returns` — Zod input `{ entity, dateColumn, valueColumn, window: number }`
 - [ ] Pack `web_search` — register tool only when `packs.has("web_search")`:
   - [ ] `web_search` — delegate to `AiService.buildWebSearchTool()` (no `organizationId` scoping needed)
-- [ ] Custom webhook tools — always appended from `StationToolsRepository.findByStation(stationId, organizationId)`:
+- [ ] Custom webhook tools — load via `StationToolsRepository.findByStationId(stationId)` (returns joined `organization_tools` rows for tools assigned to this station):
   - [ ] Convert each tool's `parameterSchema` (JSON Schema) to a Zod schema at runtime
   - [ ] Tool `execute` calls `callWebhook(def.implementation, input)` with a 30 s timeout
   - [ ] If webhook response contains `{ type: "vega-lite", spec }`, propagate as a chart result
@@ -280,16 +323,21 @@ Wire all new routes into the Express app. All except the SSE stream use the exis
 - [ ] `PATCH /api/portal-results/:id` — rename a saved result
 - [ ] `DELETE /api/portal-results/:id` — soft delete
 
-#### Station tool routes (`station-tools.router.ts`)
-- [ ] `GET /api/stations/:stationId/tools` — list custom tools registered on a station
-- [ ] `POST /api/stations/:stationId/tools` — register a new webhook tool; validate name does not shadow a built-in
-- [ ] `PATCH /api/stations/:stationId/tools/:toolId` — update name / description / parameterSchema / implementation URL
-- [ ] `DELETE /api/stations/:stationId/tools/:toolId` — soft delete
+#### Organization tool routes (`organization-tools.router.ts`)
+- [ ] `GET /api/organization-tools` — list all custom tools for the org
+- [ ] `POST /api/organization-tools` — create a new webhook tool definition at org level; validate name is unique within org
+- [ ] `PATCH /api/organization-tools/:toolId` — update name / description / parameterSchema / implementation URL
+- [ ] `DELETE /api/organization-tools/:toolId` — soft delete
+
+#### Station tool assignment routes (`station-tools.router.ts`)
+- [ ] `GET /api/stations/:stationId/tools` — list custom tools assigned to a station (returns joined org tool definitions)
+- [ ] `POST /api/stations/:stationId/tools` — assign an existing org tool to a station; body `{ organizationToolId }`; validate name does not shadow a built-in pack tool for this station
+- [ ] `DELETE /api/stations/:stationId/tools/:assignmentId` — unassign a tool from a station (hard delete of join row)
 
 #### Wire-up
 - [ ] Register all new routers in `apps/api/src/app.ts`
-- [ ] Add new `ApiCode` error codes: `STATION_NOT_FOUND`, `PORTAL_NOT_FOUND`, `PORTAL_RESULT_NOT_FOUND`, `PORTAL_INVALID_STATION`, `PORTAL_STATION_NO_TOOLS`, `STATION_TOOL_NOT_FOUND`, `STATION_TOOL_NAME_CONFLICT`
-- [ ] Integration tests for station CRUD, portal create + message, portal-results pin + list, station-tools CRUD
+- [ ] Add new `ApiCode` error codes: `STATION_NOT_FOUND`, `PORTAL_NOT_FOUND`, `PORTAL_RESULT_NOT_FOUND`, `PORTAL_INVALID_STATION`, `PORTAL_STATION_NO_TOOLS`, `ORG_TOOL_NOT_FOUND`, `ORG_TOOL_NAME_CONFLICT`, `STATION_TOOL_NAME_SHADOW`
+- [ ] Integration tests for station CRUD, portal create + message, portal-results pin + list, organization-tools CRUD, station-tool assignment + unassignment
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
 - [ ] `npm run test` passes
@@ -301,6 +349,7 @@ Wire all new routes into the Express app. All except the SSE stream use the exis
 | Create | `apps/api/src/routes/portal.router.ts` |
 | Create | `apps/api/src/routes/portal-events.router.ts` |
 | Create | `apps/api/src/routes/portal-results.router.ts` |
+| Create | `apps/api/src/routes/organization-tools.router.ts` |
 | Create | `apps/api/src/routes/station-tools.router.ts` |
 | Modify | `apps/api/src/routes/organization.router.ts` |
 | Modify | `apps/api/src/app.ts` |
@@ -308,6 +357,7 @@ Wire all new routes into the Express app. All except the SSE stream use the exis
 | Create | `apps/api/src/__tests__/__integration__/routes/station.router.integration.test.ts` |
 | Create | `apps/api/src/__tests__/__integration__/routes/portal.router.integration.test.ts` |
 | Create | `apps/api/src/__tests__/__integration__/routes/portal-results.router.integration.test.ts` |
+| Create | `apps/api/src/__tests__/__integration__/routes/organization-tools.router.integration.test.ts` |
 | Create | `apps/api/src/__tests__/__integration__/routes/station-tools.router.integration.test.ts` |
 
 ---
@@ -318,14 +368,21 @@ API hooks following the existing `useAuthQuery` / `useAuthMutation` pattern. Ins
 
 ### Checklist
 - [ ] Install frontend dependencies in `apps/web/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
-- [ ] Add query key namespaces to `apps/web/src/api/keys.ts`: `stations`, `portals`, `portalResults`, `stationTools`
+- [ ] Add query key namespaces to `apps/web/src/api/keys.ts`: `stations`, `portals`, `portalResults`, `organizationTools`, `stationTools`
 - [ ] Create `stations.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `update(id, body)`, `setDefault(orgId, stationId)`
 - [ ] Create `portals.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `sendMessage(portalId, message)`
 - [ ] Create `portal-results.api.ts` — `list(params?, options?)`, `pin(body)`, `rename(id, name)`, `remove(id)`
-- [ ] Create `station-tools.api.ts` — `list(stationId, params?, options?)`, `create(stationId, body)`, `update(stationId, toolId, body)`, `remove(stationId, toolId)`
+- [ ] Create `organization-tools.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `update(toolId, body)`, `remove(toolId)`
+- [ ] Create `station-tools.api.ts` — `list(stationId, params?, options?)`, `assign(stationId, body)`, `unassign(stationId, assignmentId)`
 - [ ] Register all new API modules on `sdk` in `apps/web/src/api/sdk.ts`
+- [ ] Unit tests for `stations.api.ts` — `list` calls correct endpoint with params, `get` calls by id, `create` sends body, `update` sends PATCH, `setDefault` sends correct org PATCH payload
+- [ ] Unit tests for `portals.api.ts` — `list` calls correct endpoint with params, `get` calls by id, `create` sends body, `sendMessage` sends POST with message
+- [ ] Unit tests for `portal-results.api.ts` — `list` calls correct endpoint, `pin` sends POST body, `rename` sends PATCH, `remove` sends DELETE
+- [ ] Unit tests for `organization-tools.api.ts` — `list` calls correct endpoint, `get` calls by id, `create` sends body, `update` sends PATCH, `remove` sends DELETE
+- [ ] Unit tests for `station-tools.api.ts` — `list` calls with stationId, `assign` sends POST body, `unassign` sends DELETE with assignmentId
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
+- [ ] `npm run test` passes
 
 ### Files
 | Action | File |
@@ -333,10 +390,16 @@ API hooks following the existing `useAuthQuery` / `useAuthMutation` pattern. Ins
 | Create | `apps/web/src/api/stations.api.ts` |
 | Create | `apps/web/src/api/portals.api.ts` |
 | Create | `apps/web/src/api/portal-results.api.ts` |
+| Create | `apps/web/src/api/organization-tools.api.ts` |
 | Create | `apps/web/src/api/station-tools.api.ts` |
 | Modify | `apps/web/src/api/keys.ts` |
 | Modify | `apps/web/src/api/sdk.ts` |
 | Modify | `apps/web/package.json` |
+| Create | `apps/web/src/__tests__/api/stations.api.test.ts` |
+| Create | `apps/web/src/__tests__/api/portals.api.test.ts` |
+| Create | `apps/web/src/__tests__/api/portal-results.api.test.ts` |
+| Create | `apps/web/src/__tests__/api/organization-tools.api.test.ts` |
+| Create | `apps/web/src/__tests__/api/station-tools.api.test.ts` |
 
 ---
 
@@ -525,6 +588,15 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 | `packages/core/src/contracts/portal.contract.ts` | Create | 1 |
 | `packages/core/src/contracts/station-tool.contract.ts` | Create | 1 |
 | `packages/core/src/index.ts` | Modify | 1 |
+| `packages/core/src/__tests__/models/station.model.test.ts` | Create | 1 |
+| `packages/core/src/__tests__/models/portal.model.test.ts` | Create | 1 |
+| `packages/core/src/__tests__/models/portal-result.model.test.ts` | Create | 1 |
+| `packages/core/src/__tests__/models/organization-tool.model.test.ts` | Create | 1 |
+| `packages/core/src/__tests__/models/station-tool.model.test.ts` | Create | 1 |
+| `packages/core/src/__tests__/contracts/station.contract.test.ts` | Create | 1 |
+| `packages/core/src/__tests__/contracts/portal.contract.test.ts` | Create | 1 |
+| `packages/core/src/__tests__/contracts/organization-tool.contract.test.ts` | Create | 1 |
+| `packages/core/src/__tests__/contracts/station-tool.contract.test.ts` | Create | 1 |
 | `apps/api/src/db/schema/stations.table.ts` | Create | 2 |
 | `apps/api/src/db/schema/station-instances.table.ts` | Create | 2 |
 | `apps/api/src/db/schema/portals.table.ts` | Create | 2 |
@@ -535,6 +607,7 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 | `apps/api/src/db/schema/zod.ts` | Modify | 2 |
 | `apps/api/src/db/schema/type-checks.ts` | Modify | 2 |
 | `apps/api/src/db/schema/index.ts` | Modify | 2 |
+| `apps/api/src/__tests__/db/schema/new-tables.schema.test.ts` | Create | 2 |
 | `apps/api/src/db/repositories/stations.repository.ts` | Create | 3 |
 | `apps/api/src/db/repositories/station-instances.repository.ts` | Create | 3 |
 | `apps/api/src/db/repositories/portals.repository.ts` | Create | 3 |
@@ -542,6 +615,13 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 | `apps/api/src/db/repositories/portal-results.repository.ts` | Create | 3 |
 | `apps/api/src/db/repositories/station-tools.repository.ts` | Create | 3 |
 | `apps/api/src/services/db.service.ts` | Modify | 3 |
+| `apps/api/src/__tests__/db/repositories/stations.repository.test.ts` | Create | 3 |
+| `apps/api/src/__tests__/db/repositories/station-instances.repository.test.ts` | Create | 3 |
+| `apps/api/src/__tests__/db/repositories/portals.repository.test.ts` | Create | 3 |
+| `apps/api/src/__tests__/db/repositories/portal-messages.repository.test.ts` | Create | 3 |
+| `apps/api/src/__tests__/db/repositories/portal-results.repository.test.ts` | Create | 3 |
+| `apps/api/src/__tests__/db/repositories/organization-tools.repository.test.ts` | Create | 3 |
+| `apps/api/src/__tests__/db/repositories/station-tools.repository.test.ts` | Create | 3 |
 | `apps/api/src/services/analytics.service.ts` | Create | 4 |
 | `apps/api/src/services/analytics.tools.ts` | Create | 5 |
 | `apps/api/src/services/portal.service.ts` | Create | 6 |
@@ -560,6 +640,11 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 | `apps/web/src/api/keys.ts` | Modify | 8 |
 | `apps/web/src/api/sdk.ts` | Modify | 8 |
 | `apps/web/package.json` | Modify | 8 |
+| `apps/web/src/__tests__/api/stations.api.test.ts` | Create | 8 |
+| `apps/web/src/__tests__/api/portals.api.test.ts` | Create | 8 |
+| `apps/web/src/__tests__/api/portal-results.api.test.ts` | Create | 8 |
+| `apps/web/src/__tests__/api/organization-tools.api.test.ts` | Create | 8 |
+| `apps/web/src/__tests__/api/station-tools.api.test.ts` | Create | 8 |
 | `apps/api/package.json` | Modify | 4 |
 | `packages/core/src/components/ContentBlockRenderer.component.tsx` | Create | 9 |
 | `apps/web/src/components/PortalMessage.component.tsx` | Create | 9 |
