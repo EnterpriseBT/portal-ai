@@ -38,8 +38,16 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { stations, connectorDefinitions, connectorInstances, stationInstances } =
-  schema;
+const {
+  stations,
+  organizations,
+  portals,
+  portalMessages,
+  portalResults,
+  connectorDefinitions,
+  connectorInstances,
+  stationInstances,
+} = schema;
 
 const now = Date.now();
 
@@ -84,6 +92,71 @@ function createConnectorInstance(
     updatedBy: null,
     deleted: null,
     deletedBy: null,
+  };
+}
+
+function createPortal(
+  organizationId: string,
+  stationId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    organizationId,
+    stationId,
+    name: `Portal ${generateId().slice(0, 8)}`,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createPortalMessage(
+  organizationId: string,
+  portalId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    organizationId,
+    portalId,
+    role: "user" as const,
+    blocks: [],
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createPortalResult(
+  organizationId: string,
+  stationId: string,
+  portalId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    organizationId,
+    stationId,
+    portalId,
+    name: `Result ${generateId().slice(0, 8)}`,
+    type: "text" as const,
+    content: {},
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
   };
 }
 
@@ -318,6 +391,110 @@ describe("Station Router", () => {
         .from(stations)
         .where(eq(stations.id, station.id));
       expect(found[0].deleted).not.toBeNull();
+    });
+
+    it("soft-deletes associated portals, their messages, and portal results", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal1 = createPortal(organizationId, station.id);
+      const portal2 = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values([portal1 as never, portal2 as never]);
+
+      const msg1 = createPortalMessage(organizationId, portal1.id);
+      const msg2 = createPortalMessage(organizationId, portal2.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values([msg1 as never, msg2 as never]);
+
+      const result1 = createPortalResult(organizationId, station.id, portal1.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(result1 as never);
+
+      await request(app).delete(`/api/stations/${station.id}`).expect(200);
+
+      const remainingPortals = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portals)
+        .where(eq(portals.stationId, station.id));
+      expect(remainingPortals).toHaveLength(2);
+      expect(remainingPortals.every((p) => p.deleted !== null)).toBe(true);
+
+      const remainingMessages = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portalMessages)
+        .where(eq(portalMessages.portalId, portal1.id));
+      expect(remainingMessages).toHaveLength(1);
+      expect(remainingMessages[0].deleted).not.toBeNull();
+
+      const remainingResults = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portalResults)
+        .where(eq(portalResults.stationId, station.id));
+      expect(remainingResults).toHaveLength(1);
+      expect(remainingResults[0].deleted).not.toBeNull();
+    });
+
+    it("clears org defaultStationId when the default station is deleted", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      // Set this station as the org default
+      await (db as ReturnType<typeof drizzle>)
+        .update(organizations)
+        .set({ defaultStationId: station.id } as never)
+        .where(eq(organizations.id, organizationId));
+
+      await request(app).delete(`/api/stations/${station.id}`).expect(200);
+
+      const [org] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, organizationId));
+      expect(org.defaultStationId).toBeNull();
+    });
+
+    it("does not clear org defaultStationId when a non-default station is deleted", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const defaultStation = createStation(organizationId);
+      const otherStation = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values([defaultStation as never, otherStation as never]);
+
+      await (db as ReturnType<typeof drizzle>)
+        .update(organizations)
+        .set({ defaultStationId: defaultStation.id } as never)
+        .where(eq(organizations.id, organizationId));
+
+      await request(app).delete(`/api/stations/${otherStation.id}`).expect(200);
+
+      const [org] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, organizationId));
+      expect(org.defaultStationId).toBe(defaultStation.id);
     });
 
     it("returns 404 for unknown station", async () => {

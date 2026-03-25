@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, ilike, and, type SQL } from "drizzle-orm";
+import { eq, ilike, and, inArray, type SQL } from "drizzle-orm";
 
 import { StationModelFactory } from "@portalai/core/models";
 import {
@@ -15,7 +15,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { stations } from "../db/schema/index.js";
+import { stations, organizations, portalMessages } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { SystemUtilities } from "../utils/system.util.js";
 
@@ -555,7 +555,49 @@ stationRouter.delete(
         );
       }
 
-      await DbService.repository.stations.softDelete(id, userId);
+      await DbService.transaction(async (tx) => {
+        const stationPortals = await DbService.repository.portals.findByStation(id, {}, tx);
+
+        if (stationPortals.length > 0) {
+          const portalIds = stationPortals.map((p) => p.id);
+
+          // Soft-delete all messages for these portals
+          const messages = await DbService.repository.portalMessages.findMany(
+            inArray(portalMessages.portalId, portalIds),
+            {},
+            tx
+          );
+          if (messages.length > 0) {
+            await DbService.repository.portalMessages.softDeleteMany(
+              messages.map((m) => m.id),
+              userId,
+              tx
+            );
+          }
+
+          // Soft-delete all portals
+          await DbService.repository.portals.softDeleteMany(portalIds, userId, tx);
+        }
+
+        // Soft-delete all portal results for this station
+        const results = await DbService.repository.portalResults.findByStation(id, {}, tx);
+        if (results.length > 0) {
+          await DbService.repository.portalResults.softDeleteMany(
+            results.map((r) => r.id),
+            userId,
+            tx
+          );
+        }
+
+        // Clear the org's defaultStationId if it points to this station
+        await DbService.repository.organizations.updateWhere(
+          and(eq(organizations.id, organizationId), eq(organizations.defaultStationId, id)) as SQL,
+          { defaultStationId: null },
+          tx
+        );
+
+        await DbService.repository.stations.softDelete(id, userId, tx);
+      });
       logger.info({ id }, "Station soft-deleted");
 
       return HttpService.success(res, { id });
