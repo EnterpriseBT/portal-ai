@@ -121,10 +121,15 @@ Stateless service with static methods. Each method receives pre-loaded records a
   - [ ] For each entity: walk `fieldMappings → columnDefinitions` to build typed schema catalog
   - [ ] Fetch `EntityRecordRepository.findMany({ connectorEntityId })` → extract `normalizedData`
   - [ ] Register each entity as a named AlaSQL table (`connectorEntity.key`)
-  - [ ] Return `{ entities: EntitySchema[], records: Map<key, rows[]> }`
+  - [ ] **Entity Group discovery** — after all entities are loaded:
+    - [ ] For each loaded connectorEntity: `EntityGroupMembersRepository.findByConnectorEntityId(connectorEntity.id)`
+    - [ ] Deduplicate by `entityGroupId`; keep only groups where ≥2 member entities are present in this station's loaded entities
+    - [ ] For each relevant group: `EntityGroupRepository.findById(groupId)` → resolve each member's `linkFieldMappingId → fieldMapping → columnDefinition` to produce `{ entityKey, linkColumnKey, linkColumnLabel, isPrimary }`
+  - [ ] Return `{ entities: EntitySchema[], entityGroups: EntityGroupContext[], records: Map<key, rows[]> }`
 - [ ] Implement `AnalyticsService.loadRecords(entityKey, organizationId)` — resolves key → records
 - [ ] **Pack `data_query` — `AnalyticsService.sqlQuery({ sql, organizationId })`** — executes against AlaSQL; validates SQL against an allowlist (block `SELECT INTO`, `ATTACH`)
 - [ ] **Pack `data_query` — `AnalyticsService.visualize({ sql, vegaLiteSpec, organizationId })`** — runs SQL then injects rows into spec
+- [ ] **Pack `data_query` — `AnalyticsService.resolveIdentity({ entityGroupName, linkValue, stationId, organizationId })`** — looks up Entity Group by name within the org, filters members to those loaded in the current station, queries each member's in-memory AlaSQL table (`SELECT * FROM <entityKey> WHERE <linkColumnKey> = '<linkValue>'`), returns matched records grouped by source entity with primary entity first. Operates entirely against in-memory tables (no DB round-trip for record lookup).
 - [ ] **Pack `statistics` — `AnalyticsService.describeColumn({ entity, column, organizationId })`** — count, mean, median, stddev, min, max, p25, p75
 - [ ] **Pack `statistics` — `AnalyticsService.correlate({ entity, columnA, columnB, organizationId })`** — Pearson correlation
 - [ ] **Pack `statistics` — `AnalyticsService.detectOutliers({ entity, column, method, organizationId })`** — IQR or Z-score
@@ -139,6 +144,8 @@ Stateless service with static methods. Each method receives pre-loaded records a
 - [ ] **Pack `financial` — `AnalyticsService.maxDrawdown({ entity, dateColumn, valueColumn, organizationId })`** — rolling peak then `(peak − trough) / peak` via Arquero; returns `{ maxDrawdown: number, peakDate, troughDate }`
 - [ ] **Pack `financial` — `AnalyticsService.rollingReturns({ entity, dateColumn, valueColumn, window, organizationId })`** — period-over-period return series within a rolling window via Arquero; returns `{ dates: string[], returns: number[] }`
 - [ ] Unit tests for each method with fixture records
+- [ ] Unit tests: `loadStation` returns `entityGroups` with correct members and link columns when Entity Groups exist; returns empty array when no groups have ≥2 loaded members
+- [ ] Unit tests: `resolveIdentity` returns matched records grouped by entity with primary first; returns empty matches for a linkValue with no hits; throws for a non-existent entityGroupName
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
 - [ ] `npm run test` passes
@@ -163,6 +170,7 @@ Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods and user-regis
 - [ ] Pack `data_query` — register tools only when `packs.has("data_query")`:
   - [ ] `sql_query` — Zod input `{ sql: string }`
   - [ ] `visualize` — Zod input `{ sql, vegaLiteSpec }`
+  - [ ] `resolve_identity` — Zod input `{ entityGroupName: string, linkValue: string }` — finds all records across an Entity Group's member entities sharing a given link value; returns matches grouped by source entity with primary entity first. Only registered when the station has ≥1 Entity Group with ≥2 loaded members; omitted otherwise to avoid confusing Claude with an unusable tool.
 - [ ] Pack `statistics` — register tools only when `packs.has("statistics")`:
   - [ ] `describe_column` — Zod input `{ entity, column }`
   - [ ] `correlate` — Zod input `{ entity, columnA, columnB }`
@@ -188,6 +196,7 @@ Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods and user-regis
   - [ ] Validate custom tool names do not shadow any pack tool name (throw on conflict)
 - [ ] Implement `callWebhook(implementation, input)` helper — POST to URL, inject auth headers, enforce timeout, return parsed JSON
 - [ ] Unit tests: each pack's tools are present only when the pack is in `station.toolPacks`; absent otherwise
+- [ ] Unit tests: `resolve_identity` tool is registered only when `data_query` pack is selected AND ≥1 Entity Group has ≥2 loaded members; omitted otherwise
 - [ ] Unit tests: `callWebhook` called with correct URL + headers for a webhook tool; timeout enforced; response returned
 - [ ] Unit tests: throws when `station.toolPacks` is empty
 - [ ] `npm run type-check` passes
@@ -210,12 +219,14 @@ Orchestrates portal lifecycle: creation, message persistence, Claude agentic str
   - [ ] Validate station exists and belongs to org
   - [ ] Validate `station.toolPacks.length >= 1` — return `PORTAL_STATION_NO_TOOLS` error if not
   - [ ] Create `portals` row with auto-generated name (`Portal — <date>`)
-  - [ ] Call `AnalyticsService.loadStation()` and cache result in memory keyed by `portalId`
-  - [ ] Return `{ portalId, stationContext }`
+  - [ ] Call `AnalyticsService.loadStation()` and cache result in memory keyed by `portalId` — cached result includes `entities`, `entityGroups`, and `records`
+  - [ ] Return `{ portalId, stationContext }` — `stationContext` includes `stationId`, `stationName`, `entities`, and `entityGroups`
 - [ ] Implement `PortalService.getPortal(portalId)` — loads portal + full message history from DB
 - [ ] Implement `PortalService.addMessage(portalId, { role, content })` — persists message row; assembles `blocks[]` for assistant turns
 - [ ] Implement `PortalService.streamResponse({ portalId, messages, stationContext, organizationId, sse })`:
-  - [ ] Build system prompt from station name + entity schemas; append list of custom tool names + descriptions if any are registered on the station
+  - [ ] Build system prompt from station name + entity schemas
+  - [ ] **Entity Group prompt section** — if `stationContext.entityGroups` is non-empty, append a "Cross-Entity Relationships" section listing each group's name, member entities, link columns (`entityKey` + `linkColumnKey`), and `isPrimary` flag. Include guidance: "Use the specified link columns when joining across member entities. Prefer data from the primary entity when displaying a unified view." This gives Claude the join metadata it needs for accurate cross-entity SQL without the user having to specify join keys.
+  - [ ] Append list of custom tool names + descriptions if any are registered on the station
   - [ ] Call `await buildAnalyticsTools(organizationId, stationContext.stationId)` — the returned map is the complete and exclusive tool set for this session
   - [ ] Call `streamText()` with the tool map only — do **not** merge `AiService.tools`; `web_search` is available via the `web_search` pack
   - [ ] Stream `delta` SSE events for text chunks
@@ -223,6 +234,8 @@ Orchestrates portal lifecycle: creation, message persistence, Claude agentic str
   - [ ] On stream complete: assemble full assistant `blocks[]` and persist via `PortalMessagesRepository.create()`
   - [ ] Send `done` SSE event
 - [ ] Unit tests for `createPortal`, `addMessage`, `streamResponse` (mock AiService + AnalyticsService)
+- [ ] Unit tests: `streamResponse` system prompt includes Entity Group section when `stationContext.entityGroups` is non-empty; omitted when empty
+- [ ] Unit tests: `streamResponse` system prompt Entity Group section lists correct member entities, link columns, and primary flags
 - [ ] `npm run type-check` passes
 - [ ] `npm run lint` passes
 - [ ] `npm run test` passes

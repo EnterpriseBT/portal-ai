@@ -69,8 +69,9 @@ SQL querying and chart visualization against in-memory entity records.
 |------|-----------|-----------------|----------|
 | `sql_query` | AlaSQL | `{ sql: string }` | Flexible querying: aggregations, filters, joins, pivots. Tables named by `connectorEntity.key`. |
 | `visualize` | AlaSQL + Vega-Lite | `{ sql: string, vegaLiteSpec: object }` | Run a SQL query and render the result as any chart type (bar, line, scatter, heatmap, etc.) |
+| `resolve_identity` | EntityGroups + AlaSQL | `{ entityGroupName: string, linkValue: string }` | Find all records across Entity Group member entities that share a given link value (e.g., all records for email "jane@co.com" across CRM, HRIS, and CSV sources). Returns matched records grouped by source entity. |
 
-> The `entity` key (e.g. `"orders"`, `"customers"`) is the table name registered in AlaSQL when the portal opens. For `sql_query` and `visualize`, reference it directly in the SQL statement.
+> The `entity` key (e.g. `"orders"`, `"customers"`) is the table name registered in AlaSQL when the portal opens. For `sql_query` and `visualize`, reference it directly in the SQL statement. For `resolve_identity`, the tool uses Entity Group metadata to query across member entities automatically.
 
 ---
 
@@ -154,6 +155,16 @@ A **Station** is a named grouping of one or more connector instances. Users crea
 
 A Station referencing two connector instances (e.g., a CRM instance with "contacts" and "deals", and a CSV instance with "products") means the agent can query across all of their entities within a portal — enabling cross-entity SQL joins, correlations, and visualizations.
 
+#### Entity Groups and Cross-Entity Identity
+
+Stations define *which* data is available; **Entity Groups** define *how* that data relates across entities. An Entity Group declares that two or more connector entities represent the same real-world object (e.g., "Person" group links `employees` from HubSpot, `contacts` from Salesforce, and `users` from a CSV). Each member of the group specifies a `linkFieldMappingId` — the field mapping whose underlying column definition serves as the shared join key (e.g., email address, employee ID).
+
+When a station's connector instances contain entities that belong to one or more Entity Groups, the portal session gains cross-entity relationship metadata that would otherwise require the user to manually specify join keys. This has three concrete effects on portal behavior:
+
+1. **System prompt enrichment** — Entity Group relationships are included in the system prompt alongside entity schemas, so Claude knows which tables can be joined and on which columns without the user having to explain the data model.
+2. **Automatic join key resolution** — Tools like `sql_query` and `visualize` benefit from Claude knowing the canonical join keys between entities. Instead of guessing or asking the user which field to join on, Claude can reference the Entity Group link fields directly.
+3. **Identity resolution queries** — The `resolve_identity` tool (see below) allows Claude to find all records across group member entities that share a given link value, surfacing a unified view of a real-world object across data sources.
+
 **`portals` table** — a chat session opened from a station
 
 | Column | Type | Description |
@@ -217,11 +228,24 @@ stationId → StationRepository.findById() → station
                → AlaSQL: register as named table (using connectorEntity.key as table name) for cross-entity joins
                → Arquero: aq.from(records)
                → ml.js: extract numeric columns into feature matrix
+  → Entity Group discovery (runs once after all entities are resolved):
+      For each connectorEntity loaded above:
+        EntityGroupMembersRepository.findByConnectorEntityId(connectorEntity.id)
+          → entityGroupMembers[] (includes entityGroupId, linkFieldMappingId, isPrimary)
+      Deduplicate by entityGroupId → collect only groups where ≥2 member entities
+        are present in this station's loaded entities
+      For each relevant EntityGroup:
+        EntityGroupRepository.findById(groupId) → { name, description }
+        Map each member's linkFieldMappingId → fieldMapping → columnDefinition
+          → { entityKey, linkColumnKey, linkColumnLabel, isPrimary }
+      → Produces entityGroups[] for system prompt (see below)
 ```
 
 The field mappings and column definitions are derived from each entity record's associated `connectorEntity`. Since entity records store both raw `data` and `normalizedData` (mapped via `fieldMappings` to the organization's `columnDefinitions`), the analytics layer operates on `normalizedData` — which uses the standardized column keys. This means the schema passed to the LLM in the system prompt matches the actual column names in the data, enabling accurate SQL and tool parameter generation.
 
 All connector entities across all station instances are loaded as named tables in AlaSQL (using `connectorEntity.key` as the table name), allowing the agent to write cross-entity SQL joins (e.g., `SELECT c.name, SUM(o.amount) FROM customers c JOIN orders o ON c.id = o.customerId`).
+
+Entity Group metadata is included in the system prompt so Claude can generate accurate cross-entity joins without guessing join keys. For each Entity Group where two or more member entities are loaded in the station, the system prompt includes the group name, member entities, and the specific column to join on for each member. This turns vague cross-source queries ("compare employees across systems") into precise SQL joins.
 
 ---
 
@@ -464,6 +488,11 @@ export class AnalyticsService {
   /** Load all connector entities for a station into memory (called when a portal is opened) */
   private static async loadStation(stationId: string, organizationId: string): Promise<{
     entities: Array<{ key: string; label: string; schema: Record<string, string> }>;
+    entityGroups: Array<{
+      name: string;
+      description: string | null;
+      members: Array<{ entityKey: string; linkColumnKey: string; linkColumnLabel: string; isPrimary: boolean }>;
+    }>;
     records: Map<string, Record<string, unknown>[]>;
   }> {
     // 1. Resolve stationId → stationInstances → connectorInstanceIds
@@ -474,7 +503,12 @@ export class AnalyticsService {
     //    b. Fetch records: EntityRecordRepository.findMany({ connectorEntityId, organizationId })
     //       → extract normalizedData (already mapped to standardized column keys)
     //    c. Register as named AlaSQL table (using connectorEntity.key) for cross-entity joins
-    // 3. Return entity schemas (for system prompt) and records map keyed by connectorEntity.key
+    // 3. Discover Entity Groups:
+    //    a. For each loaded connectorEntity, query EntityGroupMembersRepository.findByConnectorEntityId()
+    //    b. Collect all unique entityGroupIds, filter to groups where ≥2 members are in this station
+    //    c. For each relevant group, resolve member linkFieldMappingId → fieldMapping → columnDefinition
+    //       → produces { entityKey, linkColumnKey, linkColumnLabel, isPrimary }[] per group
+    // 4. Return entity schemas, entity group metadata (for system prompt), and records map
   }
 
   /** Load records for a single connector entity */
@@ -604,6 +638,37 @@ export class AnalyticsService {
     };
     return { spec };
   }
+
+  /** Resolve identity across Entity Group members — find all records sharing a link value */
+  static async resolveIdentity(params: {
+    entityGroupName: string;
+    linkValue: string;
+    stationId: string;
+    organizationId: string;
+  }): Promise<{
+    entityGroup: string;
+    linkValue: string;
+    matches: Array<{
+      entityKey: string;
+      entityLabel: string;
+      linkColumn: string;
+      isPrimary: boolean;
+      records: Record<string, unknown>[];
+    }>;
+    totalRecords: number;
+  }> {
+    // 1. Look up the Entity Group by name within the organization
+    // 2. Load its members (connectorEntityId, linkFieldMappingId, isPrimary)
+    // 3. Filter to members whose connectorEntity is loaded in the current station
+    // 4. For each member, query the in-memory AlaSQL table:
+    //    SELECT * FROM <entityKey> WHERE <linkColumnKey> = '<linkValue>'
+    // 5. Return matched records grouped by entity, primary entity first
+    //
+    // This mirrors the existing EntityGroup resolve endpoint
+    // (GET /api/entity-groups/:groupId/resolve?linkValue=...)
+    // but operates against the in-memory tables already loaded for the portal session,
+    // avoiding an additional DB round-trip.
+  }
 }
 ```
 
@@ -657,6 +722,14 @@ export async function buildAnalyticsTools(
         vegaLiteSpec: z.record(z.unknown()).describe("Vega-Lite spec without data — include mark, encoding, and any transforms"),
       }),
       execute: (input) => AnalyticsService.visualize({ ...input, organizationId }),
+    });
+    tools.resolve_identity = tool({
+      description: "Find all records across an Entity Group's member entities that share a given link value. Use this when the user asks about a specific person, company, or object that exists across multiple data sources. Returns matched records grouped by source entity, with the primary entity's records first.",
+      inputSchema: z.object({
+        entityGroupName: z.string().describe("Name of the Entity Group to resolve against (e.g., 'Person', 'Company')"),
+        linkValue: z.string().describe("The shared identifier value to look up (e.g., an email address, employee ID, company name)"),
+      }),
+      execute: (input) => AnalyticsService.resolveIdentity({ ...input, stationId, organizationId }),
     });
   }
 
@@ -808,7 +881,16 @@ export class PortalService {
   /** Run a portal turn: stream Claude's response while executing tool calls */
   static async streamResponse(params: {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
-    stationContext: { stationId: string; stationName: string; entities: Array<{ key: string; label: string; schema: Record<string, string> }> };
+    stationContext: {
+      stationId: string;
+      stationName: string;
+      entities: Array<{ key: string; label: string; schema: Record<string, string> }>;
+      entityGroups: Array<{
+        name: string;
+        description: string | null;
+        members: Array<{ entityKey: string; linkColumnKey: string; linkColumnLabel: string; isPrimary: boolean }>;
+      }>;
+    };
     organizationId: string;
     sse: SseUtil;
   }): Promise<void> {
@@ -822,6 +904,33 @@ export class PortalService {
       .map((e) => `### ${e.label} (table: \`${e.key}\`)\n${JSON.stringify(e.schema, null, 2)}`)
       .join("\n\n");
 
+    // Build Entity Group relationship descriptions for the system prompt.
+    // These tell Claude which entities represent the same real-world objects
+    // and which columns to use for cross-entity joins.
+    const entityGroupDescriptions = stationContext.entityGroups.length > 0
+      ? [
+          "## Entity Groups (Cross-Entity Relationships)",
+          "",
+          "The following Entity Groups define identity relationships between entities in this station. " +
+          "Entities within the same group represent the same real-world objects across different data sources. " +
+          "Use the specified link columns when joining across member entities.",
+          "",
+          ...stationContext.entityGroups.map((g) => {
+            const primaryMember = g.members.find((m) => m.isPrimary);
+            const memberList = g.members
+              .map((m) => `- \`${m.entityKey}\` — join on column \`${m.linkColumnKey}\` (${m.linkColumnLabel})${m.isPrimary ? " **[primary]**" : ""}`)
+              .join("\n");
+            return [
+              `### ${g.name}${g.description ? ` — ${g.description}` : ""}`,
+              memberList,
+              primaryMember
+                ? `\nWhen displaying a unified view, prefer data from the primary entity \`${primaryMember.entityKey}\` and supplement with other members.`
+                : "",
+            ].filter(Boolean).join("\n");
+          }),
+        ].join("\n")
+      : "";
+
     const availableToolNames = Object.keys(tools).join(", ");
 
     const systemPrompt = [
@@ -830,9 +939,13 @@ export class PortalService {
       "",
       entitySchemas,
       "",
+      ...(entityGroupDescriptions ? [entityGroupDescriptions, ""] : []),
       `You have access to the following tools: ${availableToolNames}`,
       "Use only the tools listed above. Respond in markdown. Keep explanations concise.",
       "When presenting tabular results, format them as markdown tables.",
+      ...(stationContext.entityGroups.length > 0
+        ? ["When the user asks about a real-world object that spans multiple entities (e.g., a person, a company), use the Entity Group link columns to join across entities rather than asking the user for join keys."]
+        : []),
     ].join("\n");
 
     const result = streamText({
@@ -1261,3 +1374,7 @@ When the feature needs to evolve beyond single-turn multi-step — for example, 
 8. **Vega-Lite spec validation** — Validate Claude-generated specs against the Vega-Lite JSON schema before sending to the frontend, to prevent rendering errors.
 9. **Custom tool response rendering** — Webhook-based custom tools can return arbitrary JSON. If a custom tool returns a `{ type: "vega-lite", spec }` payload, `PortalService` can emit it as a `tool_result` SSE event for chart rendering. How should other rich response types (tables, images, custom UI blocks) be handled? Define a response envelope standard now, or evolve it as needs arise?
 10. **JSON Schema → Zod conversion** — `buildAnalyticsTools()` will need to convert user-supplied JSON Schema parameter definitions into Zod schemas at runtime (for the Vercel AI SDK `inputSchema`). Evaluate `json-schema-to-zod` or `zod-from-json-schema`; alternatively, constrain `parameter_schema` to a limited subset of JSON Schema types (string, number, boolean, enum, array of primitives) and map them manually to keep the conversion trivial and predictable.
+11. **Entity Group scope in system prompt** — Only Entity Groups where ≥2 member entities are present in the station's loaded data are included in the system prompt. Groups with a single loaded member provide no cross-entity join value and would clutter the context. Should single-member groups still be mentioned as a hint that related data exists in other connectors?
+12. **Entity Group link field cardinality** — Entity Groups currently support one link field per member (compound keys are deferred). For portal analytics, this means joins are always on a single column. If a user needs to join on multiple fields (e.g., first name + last name), they must use `sql_query` with an explicit multi-column WHERE clause. Document this limitation in the system prompt guidance.
+13. **Entity Group ambiguity in `resolve_identity`** — If an organization has multiple Entity Groups with similar names (e.g., "Person" and "People"), the `resolve_identity` tool may match the wrong one. Consider accepting `entityGroupId` as an alternative parameter, or having the system prompt list groups with IDs.
+14. **Entity Group data freshness** — Entity Group membership and link fields are resolved at portal-open time and cached for the session. If an Entity Group is modified mid-session (member added/removed, link field changed), the portal's identity resolution will be stale until a new portal is opened. Acceptable for now; flag if users report confusion.
