@@ -257,30 +257,30 @@ Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods and user-regis
 Orchestrates portal lifecycle: creation, message persistence, Claude agentic streaming loop.
 
 ### Checklist
-- [ ] Implement `PortalService.createPortal({ stationId, organizationId, userId })`:
-  - [ ] Validate station exists and belongs to org
-  - [ ] Validate `station.toolPacks.length >= 1` — return `PORTAL_STATION_NO_TOOLS` error if not
-  - [ ] Create `portals` row with auto-generated name (`Portal — <date>`)
-  - [ ] Call `AnalyticsService.loadStation()` and cache result in memory keyed by `portalId` — cached result includes `entities`, `entityGroups`, and `records`
-  - [ ] Return `{ portalId, stationContext }` — `stationContext` includes `stationId`, `stationName`, `entities`, and `entityGroups`
-- [ ] Implement `PortalService.getPortal(portalId)` — loads portal + full message history from DB
-- [ ] Implement `PortalService.addMessage(portalId, { role, content })` — persists message row; assembles `blocks[]` for assistant turns
-- [ ] Implement `PortalService.streamResponse({ portalId, messages, stationContext, organizationId, sse })`:
-  - [ ] Build system prompt from station name + entity schemas
-  - [ ] **Entity Group prompt section** — if `stationContext.entityGroups` is non-empty, append a "Cross-Entity Relationships" section listing each group's name, member entities, link columns (`entityKey` + `linkColumnKey`), and `isPrimary` flag. Include guidance: "Use the specified link columns when joining across member entities. Prefer data from the primary entity when displaying a unified view." This gives Claude the join metadata it needs for accurate cross-entity SQL without the user having to specify join keys.
-  - [ ] Append list of custom tool names + descriptions if any are registered on the station
-  - [ ] Call `await buildAnalyticsTools(organizationId, stationContext.stationId)` — the returned map is the complete and exclusive tool set for this session
-  - [ ] Call `streamText()` with the tool map only — do **not** merge `AiService.tools`; `web_search` is available via the `web_search` pack
-  - [ ] Stream `delta` SSE events for text chunks
-  - [ ] Stream `tool_result` SSE events for `visualize` results and any webhook tool results returning `{ type: "vega-lite", spec }`
-  - [ ] On stream complete: assemble full assistant `blocks[]` and persist via `PortalMessagesRepository.create()`
-  - [ ] Send `done` SSE event
-- [ ] Unit tests for `createPortal`, `addMessage`, `streamResponse` (mock AiService + AnalyticsService)
-- [ ] Unit tests: `streamResponse` system prompt includes Entity Group section when `stationContext.entityGroups` is non-empty; omitted when empty
-- [ ] Unit tests: `streamResponse` system prompt Entity Group section lists correct member entities, link columns, and primary flags
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Implement `PortalService.createPortal({ stationId, organizationId, userId })`:
+  - [x] Validate station exists and belongs to org
+  - [x] Validate `station.toolPacks.length >= 1` — return `PORTAL_STATION_NO_TOOLS` error if not
+  - [x] Create `portals` row with auto-generated name (`Portal — <date>`)
+  - [x] Call `AnalyticsService.loadStation()` and cache result in memory keyed by `portalId` — cached result includes `entities`, `entityGroups`, and `records`
+  - [x] Return `{ portalId, stationContext }` — `stationContext` includes `stationId`, `stationName`, `entities`, and `entityGroups`
+- [x] Implement `PortalService.getPortal(portalId)` — loads portal + full message history from DB
+- [x] Implement `PortalService.addMessage(portalId, { role, content })` — persists message row; assembles `blocks[]` for assistant turns
+- [x] Implement `PortalService.streamResponse({ portalId, messages, stationContext, organizationId, sse })`:
+  - [x] Build system prompt from station name + entity schemas
+  - [x] **Entity Group prompt section** — if `stationContext.entityGroups` is non-empty, append a "Cross-Entity Relationships" section listing each group's name, member entities, link columns (`entityKey` + `linkColumnKey`), and `isPrimary` flag. Include guidance: "Use the specified link columns when joining across member entities. Prefer data from the primary entity when displaying a unified view." This gives Claude the join metadata it needs for accurate cross-entity SQL without the user having to specify join keys.
+  - [x] Append list of custom tool names + descriptions if any are registered on the station
+  - [x] Call `await buildAnalyticsTools(organizationId, stationContext.stationId)` — the returned map is the complete and exclusive tool set for this session
+  - [x] Call `streamText()` with the tool map only — do **not** merge `AiService.tools`; `web_search` is available via the `web_search` pack
+  - [x] Stream `delta` SSE events for text chunks
+  - [x] Stream `tool_result` SSE events for `visualize` results and any webhook tool results returning `{ type: "vega-lite", spec }`
+  - [x] On stream complete: assemble full assistant `blocks[]` and persist via `PortalMessagesRepository.create()`
+  - [x] Send `done` SSE event
+- [x] Unit tests for `createPortal`, `addMessage`, `streamResponse` (mock AiService + AnalyticsService)
+- [x] Unit tests: `streamResponse` system prompt includes Entity Group section when `stationContext.entityGroups` is non-empty; omitted when empty
+- [x] Unit tests: `streamResponse` system prompt Entity Group section lists correct member entities, link columns, and primary flags
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 | Action | File |
