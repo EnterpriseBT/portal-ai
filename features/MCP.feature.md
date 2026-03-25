@@ -110,24 +110,24 @@ Define Drizzle tables for all new entities, update `organizations`, add type-che
 One repository per new table, extending the base `Repository` class.
 
 ### Checklist
-- [ ] `StationsRepository` — `findById`, `findMany` (by org), `create`, `update`, `softDelete`
-- [ ] `StationInstancesRepository` — `findByStationId`, `create`, `hardDelete` (join table — no soft delete)
-- [ ] `PortalsRepository` — `findById`, `findByStation`, `findRecentByOrg(limit)`, `create`, `update`, `softDelete`
-- [ ] `PortalMessagesRepository` — `findByPortal` (ordered by `created` asc), `create`
-- [ ] `PortalResultsRepository` — `findById`, `findByStation`, `create`, `update`, `softDelete`
-- [ ] `OrganizationToolsRepository` — `findById`, `findMany(organizationId)`, `create` (validate name is unique within org), `update`, `softDelete`
-- [ ] `StationToolsRepository` — `findByStationId(stationId)` (returns joined `organization_tools` rows), `create` (assign tool to station; validate tool name does not shadow a built-in pack tool name for that station's selected packs), `hardDelete` (unassign — join table, no soft delete)
-- [ ] Register all new repositories on `DbService.repository` in `db.service.ts`
-- [ ] Unit tests for `StationsRepository` — `findById` returns station, `findMany` filters by org, `create` persists, `update` modifies fields, `softDelete` sets deleted timestamp
-- [ ] Unit tests for `StationInstancesRepository` — `findByStationId` returns instances, `create` persists join row, `hardDelete` removes row
-- [ ] Unit tests for `PortalsRepository` — `findById`, `findByStation`, `findRecentByOrg` returns correct limit/order, `create`, `update`, `softDelete`
-- [ ] Unit tests for `PortalMessagesRepository` — `findByPortal` returns messages ordered by `created` asc, `create` persists message with blocks
-- [ ] Unit tests for `PortalResultsRepository` — `findById`, `findByStation` filters correctly, `create`, `update`, `softDelete`
-- [ ] Unit tests for `OrganizationToolsRepository` — `findById`, `findMany` filters by org, `create` validates name uniqueness within org (rejects duplicate), `update`, `softDelete`
-- [ ] Unit tests for `StationToolsRepository` — `findByStationId` returns joined org tool definitions, `create` validates no built-in pack name shadowing (rejects shadow), `hardDelete` removes join row
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run test` passes
+- [x] `StationsRepository` — `findById`, `findMany` (by org), `create`, `update`, `softDelete`
+- [x] `StationInstancesRepository` — `findByStationId`, `create`, `hardDelete` (join table — no soft delete)
+- [x] `PortalsRepository` — `findById`, `findByStation`, `findRecentByOrg(limit)`, `create`, `update`, `softDelete`
+- [x] `PortalMessagesRepository` — `findByPortal` (ordered by `created` asc), `create`
+- [x] `PortalResultsRepository` — `findById`, `findByStation`, `create`, `update`, `softDelete`
+- [x] `OrganizationToolsRepository` — `findById`, `findMany(organizationId)`, `create`, `findByName` (unique name detection), `update`, `softDelete`
+- [x] `StationToolsRepository` — `findByStationId(stationId)` (returns joined `organization_tools` rows), `create`, `hardDelete` (unassign)
+- [x] Register all new repositories on `DbService.repository` in `db.service.ts`
+- [x] Integration tests for `StationsRepository` — `findById`, `findByOrganizationId`, `create`, `update`, `softDelete`
+- [x] Integration tests for `StationInstancesRepository` — `findByStationId`, `create`, `hardDelete`
+- [x] Integration tests for `PortalsRepository` — `findById`, `findByStation`, `findRecentByOrg`, `create`, `update`, `softDelete`
+- [x] Integration tests for `PortalMessagesRepository` — `findByPortal` ordered by created asc, `create`
+- [x] Integration tests for `PortalResultsRepository` — `findById`, `findByStation`, `create`, `update`, `softDelete`
+- [x] Integration tests for `OrganizationToolsRepository` — `findById`, `findByOrganizationId`, `findByName`, `create`, `update`, `softDelete`
+- [x] Integration tests for `StationToolsRepository` — `findByStationId` with joined org tools, `create`, `hardDelete`
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run test` passes (275 unit + 501 integration = all green)
 
 ### Files
 | Action | File |
