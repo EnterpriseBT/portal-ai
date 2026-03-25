@@ -43,6 +43,7 @@ import DataObjectIcon from "@mui/icons-material/DataObject";
 import LabelIcon from "@mui/icons-material/Label";
 import ColorizeIcon from "@mui/icons-material/Colorize";
 import HubIcon from "@mui/icons-material/Hub";
+import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 
 export enum IconName {
   Home = "home",
@@ -88,6 +89,7 @@ export enum IconName {
   Label = "label",
   Colorize = "colorize",
   Hub = "hub",
+  RocketLaunch = "rocket_launch",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -188,6 +190,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <ColorizeIcon ref={ref} {...props} />;
       case IconName.Hub:
         return <HubIcon ref={ref} {...props} />;
+      case IconName.RocketLaunch:
+        return <RocketLaunchIcon ref={ref} {...props} />;
       default:
         // If no name is provided or the name doesn't match, render children as a custom icon
         throw new Error(

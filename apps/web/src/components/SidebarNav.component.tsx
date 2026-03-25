@@ -189,6 +189,12 @@ export const SidebarNav = () => {
         selected={pathname.startsWith(ApplicationRoute.Jobs)}
         onClick={() => handleClick(ApplicationRoute.Jobs)}
       />
+      <SidebarNavItem
+        icon={IconName.RocketLaunch}
+        label="Stations"
+        selected={pathname.startsWith(ApplicationRoute.Stations)}
+        onClick={() => handleClick(ApplicationRoute.Stations)}
+      />
     </SidebarNavUI>
   );
 };
