@@ -887,6 +887,258 @@ const options: swaggerJsdoc.Options = {
             matchingRecordCount: { type: "integer", example: 145 },
           },
         },
+        Station: {
+          type: "object",
+          required: ["id", "organizationId", "name", "toolPacks", "created", "createdBy"],
+          properties: {
+            id: { type: "string", example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+            organizationId: { type: "string" },
+            name: { type: "string", example: "Sales Analytics" },
+            description: { type: "string", nullable: true },
+            toolPacks: {
+              type: "array",
+              items: { type: "string" },
+              example: ["data_query"],
+            },
+            created: { type: "number", description: "Epoch ms", example: 1700000000000 },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        StationInstance: {
+          type: "object",
+          required: ["id", "stationId", "connectorInstanceId", "created", "createdBy"],
+          properties: {
+            id: { type: "string" },
+            stationId: { type: "string" },
+            connectorInstanceId: { type: "string" },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        StationWithInstances: {
+          allOf: [
+            { $ref: "#/components/schemas/Station" },
+            {
+              type: "object",
+              required: ["instances"],
+              properties: {
+                instances: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/StationInstance" },
+                },
+              },
+            },
+          ],
+        },
+        StationListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["stations"],
+              properties: {
+                stations: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/Station" },
+                },
+              },
+            },
+          ],
+        },
+        Portal: {
+          type: "object",
+          required: ["id", "organizationId", "stationId", "name", "created", "createdBy"],
+          properties: {
+            id: { type: "string", example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+            organizationId: { type: "string" },
+            stationId: { type: "string" },
+            name: { type: "string", example: "Test Portal" },
+            created: { type: "number", description: "Epoch ms", example: 1700000000000 },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        PortalMessage: {
+          type: "object",
+          required: ["id", "portalId", "role", "blocks", "created", "createdBy"],
+          properties: {
+            id: { type: "string" },
+            portalId: { type: "string" },
+            role: { type: "string", enum: ["user", "assistant"] },
+            blocks: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  type: { type: "string", example: "text" },
+                  content: {},
+                },
+              },
+            },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        PortalWithMessages: {
+          type: "object",
+          required: ["portal", "messages"],
+          properties: {
+            portal: { $ref: "#/components/schemas/Portal" },
+            messages: {
+              type: "array",
+              items: { $ref: "#/components/schemas/PortalMessage" },
+            },
+          },
+        },
+        PortalListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["portals"],
+              properties: {
+                portals: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/Portal" },
+                },
+              },
+            },
+          ],
+        },
+        PortalResult: {
+          type: "object",
+          required: ["id", "organizationId", "stationId", "portalId", "name", "type", "content", "created", "createdBy"],
+          properties: {
+            id: { type: "string" },
+            organizationId: { type: "string" },
+            stationId: { type: "string" },
+            portalId: { type: "string" },
+            name: { type: "string", example: "Q1 Revenue Chart" },
+            type: { type: "string", enum: ["text", "vega-lite"], example: "vega-lite" },
+            content: { type: "object", additionalProperties: true },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        PortalResultListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["portalResults"],
+              properties: {
+                portalResults: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/PortalResult" },
+                },
+              },
+            },
+          ],
+        },
+        OrganizationTool: {
+          type: "object",
+          required: ["id", "organizationId", "name", "parameterSchema", "implementation", "created", "createdBy"],
+          properties: {
+            id: { type: "string" },
+            organizationId: { type: "string" },
+            name: { type: "string", example: "get_customer_ltv" },
+            description: { type: "string", nullable: true },
+            parameterSchema: {
+              type: "object",
+              additionalProperties: true,
+              description: "JSON Schema describing the tool parameters",
+            },
+            implementation: {
+              type: "object",
+              properties: {
+                type: { type: "string", enum: ["webhook"], example: "webhook" },
+                url: { type: "string", example: "https://example.com/tool" },
+                headers: { type: "object", additionalProperties: { type: "string" } },
+              },
+            },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        OrganizationToolListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["organizationTools"],
+              properties: {
+                organizationTools: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/OrganizationTool" },
+                },
+              },
+            },
+          ],
+        },
+        StationTool: {
+          type: "object",
+          required: ["id", "stationId", "organizationToolId", "created", "createdBy"],
+          properties: {
+            id: { type: "string" },
+            stationId: { type: "string" },
+            organizationToolId: { type: "string" },
+            created: { type: "number", description: "Epoch ms" },
+            createdBy: { type: "string" },
+            updated: { type: "number", nullable: true },
+            updatedBy: { type: "string", nullable: true },
+            deleted: { type: "number", nullable: true },
+            deletedBy: { type: "string", nullable: true },
+          },
+        },
+        StationToolWithOrgTool: {
+          allOf: [
+            { $ref: "#/components/schemas/StationTool" },
+            {
+              type: "object",
+              properties: {
+                organizationTool: { $ref: "#/components/schemas/OrganizationTool" },
+              },
+            },
+          ],
+        },
+        StationToolListResponse: {
+          allOf: [
+            { $ref: "#/components/schemas/PaginatedResponse" },
+            {
+              type: "object",
+              required: ["stationTools"],
+              properties: {
+                stationTools: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/StationToolWithOrgTool" },
+                },
+              },
+            },
+          ],
+        },
       },
     },
     tags: [
@@ -937,6 +1189,34 @@ const options: swaggerJsdoc.Options = {
       {
         name: "Entity Group Members",
         description: "Entity group member management and overlap preview endpoints",
+      },
+      {
+        name: "Organization",
+        description: "Organization management endpoints",
+      },
+      {
+        name: "Stations",
+        description: "Station management endpoints",
+      },
+      {
+        name: "Portals",
+        description: "Portal management and messaging endpoints",
+      },
+      {
+        name: "Portal Events",
+        description: "Server-sent events (SSE) for portal AI response streaming",
+      },
+      {
+        name: "Portal Results",
+        description: "Pinned portal result management endpoints",
+      },
+      {
+        name: "Organization Tools",
+        description: "Custom webhook tool management endpoints",
+      },
+      {
+        name: "Station Tools",
+        description: "Station custom tool assignment endpoints",
       },
     ],
   },

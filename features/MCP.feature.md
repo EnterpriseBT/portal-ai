@@ -297,49 +297,49 @@ Wire all new routes into the Express app. All except the SSE stream use the exis
 ### Checklist
 
 #### Station routes (`station.router.ts`)
-- [ ] `GET /api/stations` — list stations for org (paginated)
-- [ ] `GET /api/stations/:id` — get station with instance list
-- [ ] `POST /api/stations` — create station (name, description, connectorInstanceIds)
-- [ ] `PATCH /api/stations/:id` — update name / description / instances
-- [ ] `DELETE /api/stations/:id` — soft delete
+- [x] `GET /api/stations` — list stations for org (paginated)
+- [x] `GET /api/stations/:id` — get station with instance list
+- [x] `POST /api/stations` — create station (name, description, connectorInstanceIds)
+- [x] `PATCH /api/stations/:id` — update name / description / instances
+- [x] `DELETE /api/stations/:id` — soft delete
 
 #### Organization route extension
-- [ ] `PATCH /api/organizations/:id` — add `defaultStationId` to updatable fields; validate station belongs to org
+- [x] `PATCH /api/organizations/:id` — add `defaultStationId` to updatable fields; validate station belongs to org
 
 #### Portal routes (`portal.router.ts`)
-- [ ] `POST /api/portals` — body `{ stationId }` → creates portal, returns `{ portalId }`
-- [ ] `GET /api/portals` — list portals for org (filter by `stationId`, paginated)
-- [ ] `GET /api/portals/:id` — get portal with message history
-- [ ] `POST /api/portals/:id/messages` — body `{ message }` → persists user turn, returns `{ portalId, status: "streaming" }`
+- [x] `POST /api/portals` — body `{ stationId }` → creates portal, returns `{ portalId }`
+- [x] `GET /api/portals` — list portals for org (filter by `stationId`, paginated)
+- [x] `GET /api/portals/:id` — get portal with message history
+- [x] `POST /api/portals/:id/messages` — body `{ message }` → persists user turn, returns `{ portalId, status: "streaming" }`
 
 #### Portal SSE route (`portal-events.router.ts`)
-- [ ] `GET /api/sse/portals/:portalId/stream` — query-param auth via `sseAuth` middleware; calls `PortalService.streamResponse()`
-- [ ] Mount outside `protectedRouter` alongside existing `jobEventsRouter`
+- [x] `GET /api/sse/portals/:portalId/stream` — query-param auth via `sseAuth` middleware; calls `PortalService.streamResponse()`
+- [x] Mount outside `protectedRouter` alongside existing `jobEventsRouter`
 
 #### Portal results routes (`portal-results.router.ts`)
-- [ ] `POST /api/portal-results` — body `{ portalId, blockIndex, name }` → pins result; returns saved result
-- [ ] `GET /api/portal-results` — list saved results (filter by `stationId`, paginated)
-- [ ] `PATCH /api/portal-results/:id` — rename a saved result
-- [ ] `DELETE /api/portal-results/:id` — soft delete
+- [x] `POST /api/portal-results` — body `{ portalId, blockIndex, name }` → pins result; returns saved result
+- [x] `GET /api/portal-results` — list saved results (filter by `stationId`, paginated)
+- [x] `PATCH /api/portal-results/:id` — rename a saved result
+- [x] `DELETE /api/portal-results/:id` — soft delete
 
 #### Organization tool routes (`organization-tools.router.ts`)
-- [ ] `GET /api/organization-tools` — list all custom tools for the org
-- [ ] `POST /api/organization-tools` — create a new webhook tool definition at org level; validate name is unique within org
-- [ ] `PATCH /api/organization-tools/:toolId` — update name / description / parameterSchema / implementation URL
-- [ ] `DELETE /api/organization-tools/:toolId` — soft delete
+- [x] `GET /api/organization-tools` — list all custom tools for the org
+- [x] `POST /api/organization-tools` — create a new webhook tool definition at org level; validate name is unique within org
+- [x] `PATCH /api/organization-tools/:toolId` — update name / description / parameterSchema / implementation URL
+- [x] `DELETE /api/organization-tools/:toolId` — soft delete
 
 #### Station tool assignment routes (`station-tools.router.ts`)
-- [ ] `GET /api/stations/:stationId/tools` — list custom tools assigned to a station (returns joined org tool definitions)
-- [ ] `POST /api/stations/:stationId/tools` — assign an existing org tool to a station; body `{ organizationToolId }`; validate name does not shadow a built-in pack tool for this station
-- [ ] `DELETE /api/stations/:stationId/tools/:assignmentId` — unassign a tool from a station (hard delete of join row)
+- [x] `GET /api/stations/:stationId/tools` — list custom tools assigned to a station (returns joined org tool definitions)
+- [x] `POST /api/stations/:stationId/tools` — assign an existing org tool to a station; body `{ organizationToolId }`; validate name does not shadow a built-in pack tool for this station
+- [x] `DELETE /api/stations/:stationId/tools/:assignmentId` — unassign a tool from a station (hard delete of join row)
 
 #### Wire-up
-- [ ] Register all new routers in `apps/api/src/app.ts`
-- [ ] Add new `ApiCode` error codes: `STATION_NOT_FOUND`, `PORTAL_NOT_FOUND`, `PORTAL_RESULT_NOT_FOUND`, `PORTAL_INVALID_STATION`, `PORTAL_STATION_NO_TOOLS`, `ORG_TOOL_NOT_FOUND`, `ORG_TOOL_NAME_CONFLICT`, `STATION_TOOL_NAME_SHADOW`
-- [ ] Integration tests for station CRUD, portal create + message, portal-results pin + list, organization-tools CRUD, station-tool assignment + unassignment
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Register all new routers in `apps/api/src/app.ts`
+- [x] Add new `ApiCode` error codes: `STATION_NOT_FOUND`, `PORTAL_NOT_FOUND`, `PORTAL_RESULT_NOT_FOUND`, `PORTAL_INVALID_STATION`, `PORTAL_STATION_NO_TOOLS`, `ORG_TOOL_NOT_FOUND`, `ORG_TOOL_NAME_CONFLICT`, `STATION_TOOL_NAME_SHADOW`
+- [x] Integration tests for station CRUD, portal create + message, portal-results pin + list, organization-tools CRUD, station-tool assignment + unassignment
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 | Action | File |
