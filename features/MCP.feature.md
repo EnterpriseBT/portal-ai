@@ -366,22 +366,22 @@ Wire all new routes into the Express app. All except the SSE stream use the exis
 API hooks following the existing `useAuthQuery` / `useAuthMutation` pattern. Install new frontend dependencies.
 
 ### Checklist
-- [ ] Install frontend dependencies in `apps/web/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
-- [ ] Add query key namespaces to `apps/web/src/api/keys.ts`: `stations`, `portals`, `portalResults`, `organizationTools`, `stationTools`
-- [ ] Create `stations.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `update(id, body)`, `setDefault(orgId, stationId)`
-- [ ] Create `portals.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `sendMessage(portalId, message)`
-- [ ] Create `portal-results.api.ts` — `list(params?, options?)`, `pin(body)`, `rename(id, name)`, `remove(id)`
-- [ ] Create `organization-tools.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `update(toolId, body)`, `remove(toolId)`
-- [ ] Create `station-tools.api.ts` — `list(stationId, params?, options?)`, `assign(stationId, body)`, `unassign(stationId, assignmentId)`
-- [ ] Register all new API modules on `sdk` in `apps/web/src/api/sdk.ts`
-- [ ] Unit tests for `stations.api.ts` — `list` calls correct endpoint with params, `get` calls by id, `create` sends body, `update` sends PATCH, `setDefault` sends correct org PATCH payload
-- [ ] Unit tests for `portals.api.ts` — `list` calls correct endpoint with params, `get` calls by id, `create` sends body, `sendMessage` sends POST with message
-- [ ] Unit tests for `portal-results.api.ts` — `list` calls correct endpoint, `pin` sends POST body, `rename` sends PATCH, `remove` sends DELETE
-- [ ] Unit tests for `organization-tools.api.ts` — `list` calls correct endpoint, `get` calls by id, `create` sends body, `update` sends PATCH, `remove` sends DELETE
-- [ ] Unit tests for `station-tools.api.ts` — `list` calls with stationId, `assign` sends POST body, `unassign` sends DELETE with assignmentId
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Install frontend dependencies in `apps/web/package.json`: `react-markdown`, `remark-gfm`, `react-vega`, `vega`, `vega-lite`
+- [x] Add query key namespaces to `apps/web/src/api/keys.ts`: `stations`, `portals`, `portalResults`, `organizationTools`, `stationTools`
+- [x] Create `stations.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `update(id, body)`, `setDefault(orgId, stationId)`
+- [x] Create `portals.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `sendMessage(portalId, message)`
+- [x] Create `portal-results.api.ts` — `list(params?, options?)`, `pin(body)`, `rename(id, name)`, `remove(id)`
+- [x] Create `organization-tools.api.ts` — `list(params?, options?)`, `get(id, options?)`, `create(body)`, `update(toolId, body)`, `remove(toolId)`
+- [x] Create `station-tools.api.ts` — `list(stationId, params?, options?)`, `assign(stationId, body)`, `unassign(stationId, assignmentId)`
+- [x] Register all new API modules on `sdk` in `apps/web/src/api/sdk.ts`
+- [x] Unit tests for `stations.api.ts` — `list` calls correct endpoint with params, `get` calls by id, `create` sends body, `update` sends PATCH, `setDefault` sends correct org PATCH payload
+- [x] Unit tests for `portals.api.ts` — `list` calls correct endpoint with params, `get` calls by id, `create` sends body, `sendMessage` sends POST with message
+- [x] Unit tests for `portal-results.api.ts` — `list` calls correct endpoint, `pin` sends POST body, `rename` sends PATCH, `remove` sends DELETE
+- [x] Unit tests for `organization-tools.api.ts` — `list` calls correct endpoint, `get` calls by id, `create` sends body, `update` sends PATCH, `remove` sends DELETE
+- [x] Unit tests for `station-tools.api.ts` — `list` calls with stationId, `assign` sends POST body, `unassign` sends DELETE with assignmentId
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 | Action | File |
