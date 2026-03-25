@@ -264,9 +264,6 @@ export const EntityGroupDetailViewUI: React.FC<
       {
         key: "connectorEntityLabel",
         label: "Entity Label",
-        onCellClick: (_value, _column, row) => {
-          navigate({ to: "/entities/$entityId", params: { entityId: row.connectorEntityId as string } });
-        },
       },
       {
         key: "linkFieldMappingSourceField",
@@ -278,10 +275,11 @@ export const EntityGroupDetailViewUI: React.FC<
         render: (_value, row) => (
           <IconButton
             size="small"
-            onClick={() =>
-              row.isPrimary
-                ? onDemoteMember(row.id as string)
-                : onPromoteMember(row.id as string)
+            onClick={(e) => {
+              e.stopPropagation();
+              if (row.isPrimary) onDemoteMember(row.id as string)
+              else onPromoteMember(row.id as string)
+            }
             }
             aria-label={row.isPrimary ? "Remove as primary" : "Set as primary"}
           >
@@ -296,7 +294,10 @@ export const EntityGroupDetailViewUI: React.FC<
           <IconButton
             size="small"
             color="error"
-            onClick={() => setRemoveDialogMemberId(row.id as string)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setRemoveDialogMemberId(row.id as string)
+            }}
             aria-label="Remove member"
           >
             <DeleteIcon fontSize="small" />
@@ -390,6 +391,7 @@ export const EntityGroupDetailViewUI: React.FC<
               columns={membersColumns}
               rows={group.members.map((m) => ({ ...m } as Record<string, unknown>))}
               emptyMessage="No members yet"
+              onRowClick={(row) => navigate({ to: "/entities/$entityId", params: { entityId: row.connectorEntityId as string } })}
             />
           </Box>
 
