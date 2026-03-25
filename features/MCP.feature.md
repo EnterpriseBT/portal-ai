@@ -17,27 +17,27 @@ Reference discovery doc: `features/MCP.discovery.md`
 Add Zod models for all new domain objects following the existing dual-schema pattern. Includes the `OrganizationTool` model for org-scoped webhook tool definitions and the `StationTool` join model for station ↔ tool assignments (Phase 2 DB + routes, but models defined here to keep the dual-schema pattern intact).
 
 ### Checklist
-- [ ] Add `StationSchema` + `StationModel` + `StationModelFactory` in `station.model.ts`
-- [ ] Add `PortalSchema` + `PortalModel` + `PortalModelFactory` in `portal.model.ts`
-- [ ] Add `PortalResultSchema` + `PortalResultModel` + `PortalResultModelFactory` in `portal-result.model.ts`
-- [ ] Add `OrganizationToolSchema` + `OrganizationToolModel` + `OrganizationToolModelFactory` in `organization-tool.model.ts` — fields: `id`, `organizationId`, `name`, `description`, `parameterSchema` (jsonb), `implementation` (jsonb: `{ type: "webhook", url: string, headers?: Record<string,string> }`) + baseColumns
-- [ ] Add `StationToolSchema` in `station-tool.model.ts` — join table model, fields: `id`, `stationId`, `organizationToolId`, `created` (no soft delete, mirrors `station_instances` pattern)
-- [ ] Add `portal.contract.ts` — Zod schemas for `CreatePortalBody`, `SendMessageBody`, `PinResultBody`, `PortalMessageResponse`, SSE event payloads (`DeltaEvent`, `ToolResultEvent`, `DoneEvent`)
-- [ ] Add `station.contract.ts` — Zod schemas for `CreateStationBody`, `UpdateStationBody`, `StationListResponse`
-- [ ] Add `organization-tool.contract.ts` — Zod schemas for `CreateOrganizationToolBody`, `UpdateOrganizationToolBody`, `OrganizationToolListResponse`
-- [ ] Add `station-tool.contract.ts` — Zod schemas for `AssignStationToolBody`, `StationToolListResponse`
-- [ ] Export all new models and contracts from `packages/core/src/index.ts`
-- [ ] Unit tests for `StationModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
-- [ ] Unit tests for `PortalModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
-- [ ] Unit tests for `PortalResultModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
-- [ ] Unit tests for `OrganizationToolModel` — validate schema parsing (including `parameterSchema` jsonb and `implementation` jsonb), factory `create()`, `toJSON()`, `update()`, invalid input rejection
-- [ ] Unit tests for `StationToolSchema` — validate schema parsing for join table fields, reject missing required fields
-- [ ] Unit tests for contract schemas — `CreateStationBody`, `UpdateStationBody`, `CreatePortalBody`, `SendMessageBody`, `PinResultBody`, `CreateOrganizationToolBody`, `UpdateOrganizationToolBody`, `AssignStationToolBody` all parse valid input and reject invalid input
-- [ ] Unit tests for SSE event payload schemas — `DeltaEvent`, `ToolResultEvent`, `DoneEvent` parse valid payloads and reject malformed payloads
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
+- [x] Add `StationSchema` + `StationModel` + `StationModelFactory` in `station.model.ts`
+- [x] Add `PortalSchema` + `PortalModel` + `PortalModelFactory` in `portal.model.ts`
+- [x] Add `PortalResultSchema` + `PortalResultModel` + `PortalResultModelFactory` in `portal-result.model.ts`
+- [x] Add `OrganizationToolSchema` + `OrganizationToolModel` + `OrganizationToolModelFactory` in `organization-tool.model.ts` — fields: `id`, `organizationId`, `name`, `description`, `parameterSchema` (jsonb), `implementation` (jsonb: `{ type: "webhook", url: string, headers?: Record<string,string> }`) + baseColumns
+- [x] Add `StationToolSchema` in `station-tool.model.ts` — join table model, fields: `id`, `stationId`, `organizationToolId`, `created` (no soft delete, mirrors `station_instances` pattern)
+- [x] Add `portal.contract.ts` — Zod schemas for `CreatePortalBody`, `SendMessageBody`, `PinResultBody`, `PortalMessageResponse`, SSE event payloads (`DeltaEvent`, `ToolResultEvent`, `DoneEvent`)
+- [x] Add `station.contract.ts` — Zod schemas for `CreateStationBody`, `UpdateStationBody`, `StationListResponse`
+- [x] Add `organization-tool.contract.ts` — Zod schemas for `CreateOrganizationToolBody`, `UpdateOrganizationToolBody`, `OrganizationToolListResponse`
+- [x] Add `station-tool.contract.ts` — Zod schemas for `AssignStationToolBody`, `StationToolListResponse`
+- [x] Export all new models and contracts from `packages/core/src/index.ts`
+- [x] Unit tests for `StationModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
+- [x] Unit tests for `PortalModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
+- [x] Unit tests for `PortalResultModel` — validate schema parsing, factory `create()`, `toJSON()`, `update()`, invalid input rejection
+- [x] Unit tests for `OrganizationToolModel` — validate schema parsing (including `parameterSchema` jsonb and `implementation` jsonb), factory `create()`, `toJSON()`, `update()`, invalid input rejection
+- [x] Unit tests for `StationToolSchema` — validate schema parsing for join table fields, reject missing required fields
+- [x] Unit tests for contract schemas — `CreateStationBody`, `UpdateStationBody`, `CreatePortalBody`, `SendMessageBody`, `PinResultBody`, `CreateOrganizationToolBody`, `UpdateOrganizationToolBody`, `AssignStationToolBody` all parse valid input and reject invalid input
+- [x] Unit tests for SSE event payload schemas — `DeltaEvent`, `ToolResultEvent`, `DoneEvent` parse valid payloads and reject malformed payloads
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
+- [x] `npm run build` passes
 
 ### Files
 | Action | File |
