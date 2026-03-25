@@ -43,6 +43,7 @@ export const CreateStationBodySchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   connectorInstanceIds: z.array(z.string()).optional(),
+  toolPacks: z.array(z.string()).min(1).optional(),
 });
 
 export type CreateStationBody = z.infer<typeof CreateStationBodySchema>;
@@ -62,6 +63,7 @@ export const UpdateStationBodySchema = z
     name: z.string().min(1).optional(),
     description: z.string().optional(),
     connectorInstanceIds: z.array(z.string()).optional(),
+    toolPacks: z.array(z.string()).min(1).optional(),
   })
   .refine((data) => Object.values(data).some((v) => v !== undefined), {
     message: "At least one field must be provided",

@@ -60,6 +60,7 @@ describe("StationsRepository Integration Tests", () => {
       organizationId: orgId,
       name: `station-${generateId().slice(0, 8)}`,
       description: null,
+      toolPacks: ["data_query"],
       created: now,
       createdBy: "test-system",
       updated: null,

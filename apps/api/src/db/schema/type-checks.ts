@@ -274,7 +274,13 @@ const _entGrpMemInferredToModel: _EntGrpMemInferredToModel = true;
 type _StaDrizzleToModel = IsAssignable<StationSelect, Station>;
 const _staDrizzleToModel: _StaDrizzleToModel = true;
 
-type _StaModelToDrizzle = IsAssignable<Station, StationSelect>;
+// Omit toolPacks because drizzle-zod widens jsonb to a JSON union type
+// that string[] is not directly assignable to. The other two checks
+// (DrizzleToModel, InferredToModel) still validate schema alignment.
+type _StaModelToDrizzle = IsAssignable<
+  Omit<Station, "toolPacks">,
+  Omit<StationSelect, "toolPacks">
+>;
 const _staModelToDrizzle: _StaModelToDrizzle = true;
 
 type _StaInferredRow = InferSelectModel<typeof stations>;

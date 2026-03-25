@@ -57,6 +57,7 @@ describe("StationToolsRepository Integration Tests", () => {
       organizationId: orgId,
       name: "Test Station",
       description: null,
+      toolPacks: ["data_query"],
       created: now,
       createdBy: "SYSTEM_TEST",
       updated: null,

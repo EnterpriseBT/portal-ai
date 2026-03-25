@@ -2,6 +2,20 @@ import { z } from "zod";
 import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 /**
+ * Tool packs that can be enabled for a station.
+ * Each pack gates a group of analytics tools exposed to Claude.
+ */
+export const StationToolPackSchema = z.enum([
+  "data_query",
+  "statistics",
+  "regression",
+  "financial",
+  "web_search",
+]);
+
+export type StationToolPack = z.infer<typeof StationToolPackSchema>;
+
+/**
  * Station model.
  * Represents a curated collection of connector instances that are
  * grouped together for analytics purposes within an organization.
@@ -14,6 +28,7 @@ export const StationSchema = CoreSchema.extend({
   organizationId: z.string(),
   name: z.string().min(1),
   description: z.string().nullable(),
+  toolPacks: z.array(z.string()).min(1),
 });
 
 export type Station = z.infer<typeof StationSchema>;

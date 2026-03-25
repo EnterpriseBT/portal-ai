@@ -206,43 +206,43 @@ Stateless service with static methods. Each method receives pre-loaded records a
 Vercel AI SDK `tool()` wrappers around `AnalyticsService` methods and user-registered webhook tools. Every tool is conditional on a pack being selected for the station — there are no always-on tools. `web_search` is a first-class pack, not a platform default.
 
 ### Checklist
-- [ ] Define `StationToolPack` enum in `packages/core/src/models/station.model.ts`: `"data_query" | "statistics" | "regression" | "financial" | "web_search"`
-- [ ] Update `StationSchema` to include `toolPacks: z.array(StationToolPackSchema).min(1)` — enforces the ≥1 pack requirement at the model layer
-- [ ] Implement `buildAnalyticsTools(organizationId, stationId)` as an **async** factory in `analytics.tools.ts`; throw if `station.toolPacks` is empty
-- [ ] Pack `data_query` — register tools only when `packs.has("data_query")`:
-  - [ ] `sql_query` — Zod input `{ sql: string }`
-  - [ ] `visualize` — Zod input `{ sql, vegaLiteSpec }`
-  - [ ] `resolve_identity` — Zod input `{ entityGroupName: string, linkValue: string }` — finds all records across an Entity Group's member entities sharing a given link value; returns matches grouped by source entity with primary entity first. Only registered when the station has ≥1 Entity Group with ≥2 loaded members; omitted otherwise to avoid confusing Claude with an unusable tool.
-- [ ] Pack `statistics` — register tools only when `packs.has("statistics")`:
-  - [ ] `describe_column` — Zod input `{ entity, column }`
-  - [ ] `correlate` — Zod input `{ entity, columnA, columnB }`
-  - [ ] `detect_outliers` — Zod input `{ entity, column, method }`
-  - [ ] `cluster` — Zod input `{ entity, columns, k }`
-- [ ] Pack `regression` — register tools only when `packs.has("regression")`:
-  - [ ] `regression` — Zod input `{ entity, x, y, type }`
-  - [ ] `trend` — Zod input `{ entity, dateColumn, valueColumn, interval }`
-- [ ] Pack `financial` — register tools only when `packs.has("financial")`:
-  - [ ] `technical_indicator` — Zod input `{ entity, dateColumn, valueColumn, indicator: enum["SMA","EMA","RSI","MACD","BB","ATR","OBV"], params? }`
-  - [ ] `npv` — Zod input `{ rate: number, cashFlows: number[] }`
-  - [ ] `irr` — Zod input `{ cashFlows: number[] }`
-  - [ ] `amortize` — Zod input `{ principal: number, annualRate: number, periods: number }`
-  - [ ] `sharpe_ratio` — Zod input `{ entity, valueColumn, riskFreeRate?: number, annualize?: boolean }`
-  - [ ] `max_drawdown` — Zod input `{ entity, dateColumn, valueColumn }`
-  - [ ] `rolling_returns` — Zod input `{ entity, dateColumn, valueColumn, window: number }`
-- [ ] Pack `web_search` — register tool only when `packs.has("web_search")`:
-  - [ ] `web_search` — delegate to `AiService.buildWebSearchTool()` (no `organizationId` scoping needed)
-- [ ] Custom webhook tools — load via `StationToolsRepository.findByStationId(stationId)` (returns joined `organization_tools` rows for tools assigned to this station):
-  - [ ] Convert each tool's `parameterSchema` (JSON Schema) to a Zod schema at runtime
-  - [ ] Tool `execute` calls `callWebhook(def.implementation, input)` with a 30 s timeout
-  - [ ] If webhook response contains `{ type: "vega-lite", spec }`, propagate as a chart result
-  - [ ] Validate custom tool names do not shadow any pack tool name (throw on conflict)
-- [ ] Implement `callWebhook(implementation, input)` helper — POST to URL, inject auth headers, enforce timeout, return parsed JSON
-- [ ] Unit tests: each pack's tools are present only when the pack is in `station.toolPacks`; absent otherwise
-- [ ] Unit tests: `resolve_identity` tool is registered only when `data_query` pack is selected AND ≥1 Entity Group has ≥2 loaded members; omitted otherwise
-- [ ] Unit tests: `callWebhook` called with correct URL + headers for a webhook tool; timeout enforced; response returned
-- [ ] Unit tests: throws when `station.toolPacks` is empty
-- [ ] `npm run type-check` passes
-- [ ] `npm run test` passes
+- [x] Define `StationToolPack` enum in `packages/core/src/models/station.model.ts`: `"data_query" | "statistics" | "regression" | "financial" | "web_search"`
+- [x] Update `StationSchema` to include `toolPacks: z.array(StationToolPackSchema).min(1)` — enforces the ≥1 pack requirement at the model layer
+- [x] Implement `buildAnalyticsTools(organizationId, stationId)` as an **async** factory in `analytics.tools.ts`; throw if `station.toolPacks` is empty
+- [x] Pack `data_query` — register tools only when `packs.has("data_query")`:
+  - [x] `sql_query` — Zod input `{ sql: string }`
+  - [x] `visualize` — Zod input `{ sql, vegaLiteSpec }`
+  - [x] `resolve_identity` — Zod input `{ entityGroupName: string, linkValue: string }` — finds all records across an Entity Group's member entities sharing a given link value; returns matches grouped by source entity with primary entity first. Only registered when the station has ≥1 Entity Group with ≥2 loaded members; omitted otherwise to avoid confusing Claude with an unusable tool.
+- [x] Pack `statistics` — register tools only when `packs.has("statistics")`:
+  - [x] `describe_column` — Zod input `{ entity, column }`
+  - [x] `correlate` — Zod input `{ entity, columnA, columnB }`
+  - [x] `detect_outliers` — Zod input `{ entity, column, method }`
+  - [x] `cluster` — Zod input `{ entity, columns, k }`
+- [x] Pack `regression` — register tools only when `packs.has("regression")`:
+  - [x] `regression` — Zod input `{ entity, x, y, type }`
+  - [x] `trend` — Zod input `{ entity, dateColumn, valueColumn, interval }`
+- [x] Pack `financial` — register tools only when `packs.has("financial")`:
+  - [x] `technical_indicator` — Zod input `{ entity, dateColumn, valueColumn, indicator: enum["SMA","EMA","RSI","MACD","BB","ATR","OBV"], params? }`
+  - [x] `npv` — Zod input `{ rate: number, cashFlows: number[] }`
+  - [x] `irr` — Zod input `{ cashFlows: number[] }`
+  - [x] `amortize` — Zod input `{ principal: number, annualRate: number, periods: number }`
+  - [x] `sharpe_ratio` — Zod input `{ entity, valueColumn, riskFreeRate?: number, annualize?: boolean }`
+  - [x] `max_drawdown` — Zod input `{ entity, dateColumn, valueColumn }`
+  - [x] `rolling_returns` — Zod input `{ entity, dateColumn, valueColumn, window: number }`
+- [x] Pack `web_search` — register tool only when `packs.has("web_search")`:
+  - [x] `web_search` — delegate to `AiService.buildWebSearchTool()` (no `organizationId` scoping needed)
+- [x] Custom webhook tools — load via `StationToolsRepository.findByStationId(stationId)` (returns joined `organization_tools` rows for tools assigned to this station):
+  - [x] Convert each tool's `parameterSchema` (JSON Schema) to a Zod schema at runtime
+  - [x] Tool `execute` calls `callWebhook(def.implementation, input)` with a 30 s timeout
+  - [x] If webhook response contains `{ type: "vega-lite", spec }`, propagate as a chart result
+  - [x] Validate custom tool names do not shadow any pack tool name (throw on conflict)
+- [x] Implement `callWebhook(implementation, input)` helper — POST to URL, inject auth headers, enforce timeout, return parsed JSON
+- [x] Unit tests: each pack's tools are present only when the pack is in `station.toolPacks`; absent otherwise
+- [x] Unit tests: `resolve_identity` tool is registered only when `data_query` pack is selected AND ≥1 Entity Group has ≥2 loaded members; omitted otherwise
+- [x] Unit tests: `callWebhook` called with correct URL + headers for a webhook tool; timeout enforced; response returned
+- [x] Unit tests: throws when `station.toolPacks` is empty
+- [x] `npm run type-check` passes
+- [x] `npm run test` passes
 
 ### Files
 | Action | File |

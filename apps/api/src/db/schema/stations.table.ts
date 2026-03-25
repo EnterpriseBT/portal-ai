@@ -1,4 +1,4 @@
-import { pgTable, text } from "drizzle-orm/pg-core";
+import { pgTable, text, jsonb } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 
@@ -13,4 +13,7 @@ export const stations = pgTable("stations", {
     .references(() => organizations.id),
   name: text("name").notNull(),
   description: text("description"),
+  toolPacks: jsonb("tool_packs")
+    .$type<string[]>()
+    .notNull(),
 });

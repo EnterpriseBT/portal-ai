@@ -14,6 +14,7 @@ const validStation = {
   organizationId: "org-1",
   name: "Analytics Station",
   description: "Main workspace",
+  toolPacks: ["data_query", "statistics"],
   created: Date.now(),
   createdBy: "user-1",
   updated: null,
