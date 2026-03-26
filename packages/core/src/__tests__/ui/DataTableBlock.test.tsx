@@ -57,14 +57,19 @@ describe("DataTableBlock", () => {
     const nextButton = screen.getByLabelText("Go to next page");
     fireEvent.click(nextButton);
 
-    expect(screen.getByText("Row 50")).toBeInTheDocument();
-    expect(screen.getByText("Row 74")).toBeInTheDocument();
+    expect(screen.getByText("Row 10")).toBeInTheDocument();
+    expect(screen.getByText("Row 19")).toBeInTheDocument();
     expect(screen.queryByText("Row 0")).not.toBeInTheDocument();
   });
 
   it("does not show pagination when under smallest page size option", () => {
     render(<DataTableBlock columns={columns} rows={rows} />);
     expect(screen.queryByTestId("table-pagination")).not.toBeInTheDocument();
+  });
+
+  it("hides search bar when rows are empty", () => {
+    render(<DataTableBlock columns={columns} rows={[]} />);
+    expect(screen.queryByTestId("table-search")).not.toBeVisible();
   });
 
   it("renders empty table when no rows", () => {

@@ -13,7 +13,7 @@ import TableSortLabel from "@mui/material/TableSortLabel";
 import TextField from "@mui/material/TextField";
 import SearchIcon from "@mui/icons-material/Search";
 
-const DEFAULT_ROWS_PER_PAGE = 50;
+const DEFAULT_ROWS_PER_PAGE = 10;
 const ROWS_PER_PAGE_OPTIONS = [5, 10, 25, 50, 100];
 
 type SortDirection = "asc" | "desc";
@@ -103,7 +103,7 @@ export const DataTableBlock: React.FC<DataTableBlockProps> = ({
     <Box sx={{ my: 1 }}>
       <Box
         sx={{
-          display: "flex",
+          display: rows.length ? "flex" : 'none',
           justifyContent: "space-between",
           alignItems: "center",
           flexWrap: "wrap",

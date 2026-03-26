@@ -73,6 +73,7 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
           <Box
             key={i}
             sx={{
+              p: 1,
               display: "flex",
               alignItems: "flex-start",
               mb: 1,
