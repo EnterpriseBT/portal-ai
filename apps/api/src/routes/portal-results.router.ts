@@ -178,10 +178,10 @@ portalResultsRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.PORTAL_RESULT_NOT_FOUND,
-              "Failed to pin result"
-            )
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to pin result"
+          )
       );
     }
   }
@@ -274,10 +274,46 @@ portalResultsRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.PORTAL_RESULT_NOT_FOUND,
-              "Failed to list portal results"
-            )
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to list portal results"
+          )
+      );
+    }
+  }
+);
+
+// ── GET /api/portal-results/:id ───────────────────────────────────────────
+
+portalResultsRouter.get(
+  "/:id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      const portalResult = await DbService.repository.portalResults.findById(id);
+      if (!portalResult || portalResult.organizationId !== organizationId) {
+        return next(
+          new ApiError(404, ApiCode.PORTAL_RESULT_NOT_FOUND, "Portal result not found")
+        );
+      }
+
+      return HttpService.success(res, { portalResult });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown" },
+        "Failed to get portal result"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to get portal result"
+          )
       );
     }
   }
@@ -386,10 +422,10 @@ portalResultsRouter.patch(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.PORTAL_RESULT_NOT_FOUND,
-              "Failed to rename portal result"
-            )
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to rename portal result"
+          )
       );
     }
   }
@@ -471,10 +507,10 @@ portalResultsRouter.delete(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.PORTAL_RESULT_NOT_FOUND,
-              "Failed to delete portal result"
-            )
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to delete portal result"
+          )
       );
     }
   }

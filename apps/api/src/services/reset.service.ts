@@ -1,4 +1,4 @@
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and, ne, inArray } from "drizzle-orm";
 
 import { DbService } from "./db.service.js";
 import {
@@ -12,7 +12,14 @@ import {
   entityTags,
   columnDefinitions,
   jobs,
+  organizations,
   organizationUsers,
+  portalResults,
+  portalMessages,
+  portals,
+  stationTools,
+  stationInstances,
+  stations,
 } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -65,6 +72,55 @@ export class ResetService {
         .where(eq(fieldMappings.organizationId, organizationId))
         .returning({ id: fieldMappings.id });
       logger.info(`Deleted ${deletedFieldMappings.length} field mappings`);
+
+      const deletedPortalResults = await tx
+        .delete(portalResults)
+        .where(eq(portalResults.organizationId, organizationId))
+        .returning({ id: portalResults.id });
+      logger.info(`Deleted ${deletedPortalResults.length} portal results`);
+
+      const deletedPortalMessages = await tx
+        .delete(portalMessages)
+        .where(eq(portalMessages.organizationId, organizationId))
+        .returning({ id: portalMessages.id });
+      logger.info(`Deleted ${deletedPortalMessages.length} portal messages`);
+
+      const deletedPortals = await tx
+        .delete(portals)
+        .where(eq(portals.organizationId, organizationId))
+        .returning({ id: portals.id });
+      logger.info(`Deleted ${deletedPortals.length} portals`);
+
+      // station_tools and station_instances are join tables without organizationId —
+      // delete by matching stationId against org-scoped stations
+      const orgStationIds = tx
+        .select({ id: stations.id })
+        .from(stations)
+        .where(eq(stations.organizationId, organizationId));
+
+      const deletedStationTools = await tx
+        .delete(stationTools)
+        .where(inArray(stationTools.stationId, orgStationIds))
+        .returning({ id: stationTools.id });
+      logger.info(`Deleted ${deletedStationTools.length} station tools`);
+
+      const deletedStationInstances = await tx
+        .delete(stationInstances)
+        .where(inArray(stationInstances.stationId, orgStationIds))
+        .returning({ id: stationInstances.id });
+      logger.info(`Deleted ${deletedStationInstances.length} station instances`);
+
+      await tx
+        .update(organizations)
+        .set({ defaultStationId: null })
+        .where(eq(organizations.id, organizationId));
+      logger.info("Reset defaultStationId to null");
+
+      const deletedStations = await tx
+        .delete(stations)
+        .where(eq(stations.organizationId, organizationId))
+        .returning({ id: stations.id });
+      logger.info(`Deleted ${deletedStations.length} stations`);
 
       const deletedConnectorEntities = await tx
         .delete(connectorEntities)

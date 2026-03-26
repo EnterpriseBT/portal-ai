@@ -30,6 +30,7 @@ import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
 import { Route as ColumnDefinitionsIndexRouteImport } from './routes/column-definitions.index'
 import { Route as StationsStationIdRouteImport } from './routes/stations.$stationId'
 import { Route as PortalsPortalIdRouteImport } from './routes/portals.$portalId'
+import { Route as PortalResultsPortalResultIdRouteImport } from './routes/portal-results.$portalResultId'
 import { Route as JobsJobIdRouteImport } from './routes/jobs.$jobId'
 import { Route as EntityGroupsEntityGroupIdRouteImport } from './routes/entity-groups.$entityGroupId'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
@@ -143,6 +144,12 @@ const PortalsPortalIdRoute = PortalsPortalIdRouteImport.update({
   path: '/portals/$portalId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalResultsPortalResultIdRoute =
+  PortalResultsPortalResultIdRouteImport.update({
+    id: '/$portalResultId',
+    path: '/$portalResultId',
+    getParentRoute: () => PortalResultsRoute,
+  } as any)
 const JobsJobIdRoute = JobsJobIdRouteImport.update({
   id: '/$jobId',
   path: '/$jobId',
@@ -200,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
@@ -221,6 +229,7 @@ export interface FileRoutesByTo {
   '/connectors/$connectorInstanceId': typeof ConnectorsConnectorInstanceIdRoute
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
   '/column-definitions': typeof ColumnDefinitionsIndexRoute
@@ -252,6 +261,7 @@ export interface FileRoutesById {
   '/entities/$entityId': typeof EntitiesEntityIdRouteWithChildren
   '/entity-groups/$entityGroupId': typeof EntityGroupsEntityGroupIdRoute
   '/jobs/$jobId': typeof JobsJobIdRoute
+  '/portal-results/$portalResultId': typeof PortalResultsPortalResultIdRoute
   '/portals/$portalId': typeof PortalsPortalIdRoute
   '/stations/$stationId': typeof StationsStationIdRoute
   '/column-definitions/': typeof ColumnDefinitionsIndexRoute
@@ -284,6 +294,7 @@ export interface FileRouteTypes {
     | '/entities/$entityId'
     | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
+    | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
     | '/column-definitions/'
@@ -305,6 +316,7 @@ export interface FileRouteTypes {
     | '/connectors/$connectorInstanceId'
     | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
+    | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
     | '/column-definitions'
@@ -335,6 +347,7 @@ export interface FileRouteTypes {
     | '/entities/$entityId'
     | '/entity-groups/$entityGroupId'
     | '/jobs/$jobId'
+    | '/portal-results/$portalResultId'
     | '/portals/$portalId'
     | '/stations/$stationId'
     | '/column-definitions/'
@@ -513,6 +526,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalsPortalIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal-results/$portalResultId': {
+      id: '/portal-results/$portalResultId'
+      path: '/$portalResultId'
+      fullPath: '/portal-results/$portalResultId'
+      preLoaderRoute: typeof PortalResultsPortalResultIdRouteImport
+      parentRoute: typeof PortalResultsRoute
+    }
     '/jobs/$jobId': {
       id: '/jobs/$jobId'
       path: '/$jobId'
@@ -647,10 +667,12 @@ const JobsRouteChildren: JobsRouteChildren = {
 const JobsRouteWithChildren = JobsRoute._addFileChildren(JobsRouteChildren)
 
 interface PortalResultsRouteChildren {
+  PortalResultsPortalResultIdRoute: typeof PortalResultsPortalResultIdRoute
   PortalResultsIndexRoute: typeof PortalResultsIndexRoute
 }
 
 const PortalResultsRouteChildren: PortalResultsRouteChildren = {
+  PortalResultsPortalResultIdRoute: PortalResultsPortalResultIdRoute,
   PortalResultsIndexRoute: PortalResultsIndexRoute,
 }
 

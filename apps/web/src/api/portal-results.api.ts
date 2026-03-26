@@ -39,6 +39,14 @@ export const portalResults = {
       options
     ),
 
+  get: (id: string, options?: QueryOptions<PortalResultPayload>) =>
+    useAuthQuery<PortalResultPayload>(
+      queryKeys.portalResults.get(id),
+      buildUrl(`/api/portal-results/${encodeURIComponent(id)}`),
+      undefined,
+      options
+    ),
+
   pin: () =>
     useAuthMutation<PortalResultPayload, PinResultBody>({
       url: "/api/portal-results",

@@ -195,6 +195,12 @@ export const SidebarNav = () => {
         selected={pathname.startsWith(ApplicationRoute.Stations)}
         onClick={() => handleClick(ApplicationRoute.Stations)}
       />
+      <SidebarNavItem
+        icon={IconName.PushPin}
+        label="Pinned Results"
+        selected={pathname.startsWith(ApplicationRoute.PortalResults)}
+        onClick={() => handleClick(ApplicationRoute.PortalResults)}
+      />
     </SidebarNavUI>
   );
 };
