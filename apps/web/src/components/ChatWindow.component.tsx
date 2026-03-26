@@ -16,6 +16,7 @@ export interface ChatWindowUIProps {
   onSubmit: () => void;
   onReset: () => void;
   onCancel: () => void;
+  onExit: () => void;
   disabled?: boolean;
   children?: React.ReactNode;
 }
@@ -26,6 +27,7 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
   onSubmit,
   onReset,
   onCancel,
+  onExit,
   disabled,
   children,
 }) => {
@@ -57,6 +59,13 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
         <Stack direction="row" spacing={1} justifyContent="flex-end">
           {isMobile ? (
             <>
+              <Tooltip title="Exit">
+                <IconButton
+                  icon={IconName.ArrowBack}
+                  onClick={onExit}
+                />
+              </Tooltip>
+              <Box sx={{ flex: 1 }} />
               <Tooltip title="Cancel">
                 <span>
                   <IconButton
@@ -83,6 +92,14 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
             </>
           ) : (
             <>
+              <Button
+                variant="outlined"
+                onClick={onExit}
+                startIcon={<Icon name={IconName.ArrowBack} />}
+              >
+                Exit
+              </Button>
+              <Box sx={{ flex: 1 }} />
               <Button
                 variant="outlined"
                 color="secondary"

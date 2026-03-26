@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
+import { useRouter } from "@tanstack/react-router";
 import { Box } from "@portalai/core/ui";
 import { ContentBlockRenderer } from "@portalai/core";
 import type {
@@ -25,6 +26,7 @@ export interface PortalSessionUIProps {
   onSubmit: () => void;
   onReset: () => void;
   onCancel: () => void;
+  onExit: () => void;
   isStreaming: boolean;
 }
 
@@ -37,6 +39,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   onSubmit,
   onReset,
   onCancel,
+  onExit,
   isStreaming,
 }) => (
   <ChatWindowUI
@@ -45,6 +48,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
     onSubmit={onSubmit}
     onReset={onReset}
     onCancel={onCancel}
+    onExit={onExit}
     disabled={isStreaming}
   >
     {messages.map((msg) => (
@@ -69,6 +73,7 @@ interface PortalSessionProps {
 
 export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const { getAccessTokenSilently } = useAuth0();
+  const router = useRouter();
 
   // Server messages come directly from the query (no local copy).
   const portalQuery = sdk.portals.get(portalId);
@@ -236,6 +241,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       onSubmit={handleSubmit}
       onReset={handleReset}
       onCancel={handleCancel}
+      onExit={() => router.history.back()}
       isStreaming={isStreaming}
     />
   );

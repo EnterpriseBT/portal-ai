@@ -105,6 +105,7 @@ describe("PortalSessionUI", () => {
     onSubmit: jest.fn(),
     onReset: jest.fn(),
     onCancel: jest.fn(),
+    onExit: jest.fn(),
     isStreaming: false,
   };
 

@@ -497,30 +497,30 @@ CRUD for stations, connector instance picker, and default station control.
 Extends the existing `DashboardView` placeholder with portal-aware sections.
 
 ### Checklist
-- [ ] Implement `DefaultStationCard.component.tsx` (container + UI):
-  - [ ] Fetches org to read `defaultStationId`; fetches station detail if set
-  - [ ] Shows station name, description, connector instance names
-  - [ ] "Launch Portal" button → calls `sdk.portals.create({ stationId })` → navigates to new portal
-  - [ ] "Change default" link → navigates to `/stations`
-  - [ ] Empty state when no default is set: "No default station — go to Stations to set one"
-- [ ] Implement `RecentPortalsList.component.tsx` (container + UI):
-  - [ ] Fetches `sdk.portals.list({ limit: 5 })` (most recent across org)
-  - [ ] Table columns: portal name, station name, created-at (relative)
-  - [ ] Row click navigates to `/portals/:portalId`
-  - [ ] Empty state when no portals exist yet
-- [ ] Implement `CreatePortalDialog.component.tsx`:
-  - [ ] Station select pre-populated with default station if set; user can change
-  - [ ] On confirm: calls `sdk.portals.create({ stationId })` → navigates to new portal
-- [ ] Update `DashboardView`:
-  - [ ] Add "New Portal" button in page header → opens `CreatePortalDialog`
-  - [ ] Render `DefaultStationCard`
-  - [ ] Render `RecentPortalsList`
-- [ ] Unit tests for `DefaultStationCard` (renders station info, empty state, launch button navigates)
-- [ ] Unit tests for `RecentPortalsList` (renders rows, empty state, row click navigates)
-- [ ] Unit tests for `CreatePortalDialog` (station select defaults to org default, submit navigates to new portal)
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Implement `DefaultStationCard.component.tsx` (container + UI):
+  - [x] Fetches org to read `defaultStationId`; fetches station detail if set
+  - [x] Shows station name, description, connector instance names
+  - [x] "Launch Portal" button → calls `sdk.portals.create({ stationId })` → navigates to new portal
+  - [x] "Change default" link → navigates to `/stations`
+  - [x] Empty state when no default is set: "No default station — go to Stations to set one"
+- [x] Implement `RecentPortalsList.component.tsx` (container + UI):
+  - [x] Fetches `sdk.portals.list({ limit: 5 })` (most recent across org)
+  - [x] Table columns: portal name, station name, created-at (relative)
+  - [x] Row click navigates to `/portals/:portalId`
+  - [x] Empty state when no portals exist yet
+- [x] Implement `CreatePortalDialog.component.tsx`:
+  - [x] Station select pre-populated with default station if set; user can change
+  - [x] On confirm: calls `sdk.portals.create({ stationId })` → navigates to new portal
+- [x] Update `DashboardView`:
+  - [x] Add "New Portal" button in page header → opens `CreatePortalDialog`
+  - [x] Render `DefaultStationCard`
+  - [x] Render `RecentPortalsList`
+- [x] Unit tests for `DefaultStationCard` (renders station info, empty state, launch button navigates)
+- [x] Unit tests for `RecentPortalsList` (renders rows, empty state, row click navigates)
+- [x] Unit tests for `CreatePortalDialog` (station select defaults to org default, submit navigates to new portal)
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 | Action | File |

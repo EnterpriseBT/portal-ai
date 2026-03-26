@@ -50,6 +50,7 @@ const createProps = (overrides = {}) => ({
   onSubmit: jest.fn(),
   onReset: jest.fn(),
   onCancel: jest.fn(),
+  onExit: jest.fn(),
   ...overrides,
 });
 
@@ -70,11 +71,12 @@ describe("ChatWindowUI", () => {
       ).toBeInTheDocument();
     });
 
-    it("renders Submit, Reset, and Cancel buttons", () => {
+    it("renders Submit, Reset, Cancel, and Exit buttons", () => {
       render(<ChatWindowUI {...createProps()} />);
       expect(screen.getByRole("button", { name: /submit/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /reset/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /exit/i })).toBeInTheDocument();
     });
 
     it("renders children in the content area", () => {
@@ -119,6 +121,13 @@ describe("ChatWindowUI", () => {
       render(<ChatWindowUI {...props} />);
       fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
       expect(props.onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls onExit when Exit button is clicked", () => {
+      const props = createProps();
+      render(<ChatWindowUI {...props} />);
+      fireEvent.click(screen.getByRole("button", { name: /exit/i }));
+      expect(props.onExit).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -195,10 +204,11 @@ describe("ChatWindowUI", () => {
       // Desktop text labels should not appear
       expect(screen.queryByText("Submit")).not.toBeInTheDocument();
       expect(screen.queryByText("Cancel")).not.toBeInTheDocument();
-      // Should have icon buttons (Send, Refresh, Close icons)
+      // Should have icon buttons (Send, Refresh, Close, ArrowBack icons)
       expect(container.querySelector("[data-testid='SendIcon']")).toBeInTheDocument();
       expect(container.querySelector("[data-testid='RefreshIcon']")).toBeInTheDocument();
       expect(container.querySelector("[data-testid='CloseIcon']")).toBeInTheDocument();
+      expect(container.querySelector("[data-testid='ArrowBackIcon']")).toBeInTheDocument();
     });
 
     it("calls onSubmit on mobile submit icon click", () => {
@@ -215,6 +225,14 @@ describe("ChatWindowUI", () => {
       const refreshIcon = container.querySelector("[data-testid='RefreshIcon']")!;
       fireEvent.click(refreshIcon.closest("button")!);
       expect(props.onReset).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls onExit on mobile exit icon click", () => {
+      const props = createProps();
+      const { container } = render(<ChatWindowUI {...props} />);
+      const backIcon = container.querySelector("[data-testid='ArrowBackIcon']")!;
+      fireEvent.click(backIcon.closest("button")!);
+      expect(props.onExit).toHaveBeenCalledTimes(1);
     });
   });
 });
