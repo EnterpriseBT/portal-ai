@@ -42,7 +42,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   onExit,
   isStreaming,
 }) => (
-  <Box flex={1}>
+  <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
     <ChatWindowUI
       value={inputValue}
       onChange={onInputChange}
@@ -180,11 +180,16 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     es.addEventListener("tool_result", (e: MessageEvent) => {
       const data = JSON.parse(e.data) as ToolResultEvent;
       const result = data.result as Record<string, unknown> | null;
+
+      let block: PortalMessageBlock | null = null;
+
       if (result && typeof result === "object" && result["type"] === "vega-lite") {
-        const block: PortalMessageBlock = {
-          type: "vega-lite",
-          content: result["spec"],
-        };
+        block = { type: "vega-lite", content: result["spec"] };
+      } else if (result && typeof result === "object" && result["type"] === "data-table") {
+        block = { type: "data-table", content: result };
+      }
+
+      if (block) {
         setStreamingBlocks((prev) => {
           const next = [...(prev ?? []), block];
           streamingBlocksRef.current = next;

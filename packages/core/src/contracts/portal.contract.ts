@@ -91,6 +91,25 @@ export const PinResultBodySchema = z.object({
 
 export type PinResultBody = z.infer<typeof PinResultBodySchema>;
 
+// ── Content Block Types ───────────────────────────────────────────────
+
+/**
+ * Typed content block discriminants that can appear in `blocks`.
+ *
+ * - `text`       — markdown narrative
+ * - `vega-lite`  — Vega-Lite chart spec
+ * - `data-table` — row-set result from sql_query, detect_outliers, cluster
+ * - `tool-call`  — CoreMessage tool-call part (persisted for multi-turn)
+ * - `tool-result`— CoreMessage tool-result part (persisted for multi-turn)
+ */
+export const DataTableContentBlockSchema = z.object({
+  type: z.literal("data-table"),
+  columns: z.array(z.string()),
+  rows: z.array(z.record(z.string(), z.unknown())),
+});
+
+export type DataTableContentBlock = z.infer<typeof DataTableContentBlockSchema>;
+
 // ── SSE Event Payloads ────────────────────────────────────────────────
 
 export const DeltaEventSchema = z.object({

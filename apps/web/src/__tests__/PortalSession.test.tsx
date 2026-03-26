@@ -139,6 +139,25 @@ describe("PortalSessionUI", () => {
     expect(screen.getByPlaceholderText("Type a message...")).toBeDisabled();
   });
 
+  it("renders data-table streaming blocks inline", () => {
+    const dataTableBlock = {
+      type: "data-table",
+      content: {
+        columns: ["id", "value"],
+        rows: [{ id: 1, value: 42 }],
+      },
+    };
+    render(
+      <PortalSessionUI
+        {...defaultProps}
+        streamingBlocks={[dataTableBlock]}
+      />
+    );
+    expect(screen.getByText("id")).toBeInTheDocument();
+    expect(screen.getByText("value")).toBeInTheDocument();
+    expect(screen.getByText("42")).toBeInTheDocument();
+  });
+
   it("calls onSubmit when submit button clicked", () => {
     const onSubmit = jest.fn();
     render(

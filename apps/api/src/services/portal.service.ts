@@ -3,8 +3,9 @@
  *
  * Responsibilities:
  *  - Creating portals and loading station data into memory
- *  - Persisting portal messages
+ *  - Persisting portal messages (full ModelMessage[] representation)
  *  - Running the Claude agentic streaming loop and fanning out SSE events
+ *  - Reconstructing full ModelMessage[] history for multi-turn continuity
  */
 
 import { streamText, stepCountIs, type ModelMessage } from "ai";
@@ -48,7 +49,16 @@ export interface CreatePortalResult {
 export interface PortalWithMessages {
   portal: PortalSelect;
   messages: PortalMessageSelect[];
+  /** Full Vercel AI SDK ModelMessage[] reconstructed from persisted blocks. */
+  coreMessages: ModelMessage[];
 }
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Tools whose results contain row sets and should be surfaced as data-table blocks. */
+const ROW_SET_TOOLS = new Set(["sql_query", "detect_outliers", "cluster"]);
 
 // ---------------------------------------------------------------------------
 // In-memory station data cache (keyed by portalId)
@@ -139,7 +149,11 @@ export class PortalService {
   // getPortal
   // -------------------------------------------------------------------------
 
-  /** Load a portal and its full message history from the DB. */
+  /**
+   * Load a portal, its message history, and reconstruct the full ModelMessage[]
+   * array (user + assistant turns, including tool call/result pairs) for
+   * multi-turn continuity with `streamText`.
+   */
   static async getPortal(portalId: string): Promise<PortalWithMessages> {
     const repo = DbService.repository;
 
@@ -149,7 +163,8 @@ export class PortalService {
     }
 
     const messages = await repo.portalMessages.findByPortal(portalId);
-    return { portal, messages };
+    const coreMessages = reconstructModelMessages(messages);
+    return { portal, messages, coreMessages };
   }
 
   // -------------------------------------------------------------------------
@@ -195,13 +210,47 @@ export class PortalService {
   // streamResponse
   // -------------------------------------------------------------------------
 
+  /*
+   * ── LangGraph Migration Seam ──────────────────────────────────────────
+   *
+   * When we migrate to LangGraph, this method is the primary swap point.
+   *
+   * What changes:
+   *   - Replace `streamText()` with `graph.stream()` from @langchain/langgraph
+   *   - The graph will own the agentic loop (tool dispatch, retries, routing)
+   *   - LangGraph checkpoints replace our manual ModelMessage[] persistence
+   *
+   * What stays the same:
+   *   - API contract: SSE events (delta, tool_result, done) are unchanged
+   *   - DB schema: portal_messages.blocks continues to store ModelMessage[] parts
+   *   - Tool definitions: analytics tools remain identical (LangGraph uses the
+   *     same Zod-based tool schema as Vercel AI SDK)
+   *
+   * Mapping table:
+   *   Current primitive          → LangGraph equivalent
+   *   ─────────────────────────────────────────────────────
+   *   streamText()               → graph.stream()
+   *   stepCountIs(10)            → recursion_limit: 10
+   *   result.fullStream          → graph event stream
+   *   ModelMessage[]              → LangGraph checkpoint state
+   *   tool-call / tool-result    → ToolNode messages
+   *   assistantBlocks persistence→ checkpoint persistence (auto)
+   * ────────────────────────────────────────────────────────────────────────
+   */
+
   /**
    * Run the Claude agentic loop and stream results to the client via SSE.
    *
    * Events emitted:
    *  - `delta`       — text chunk from the model
-   *  - `tool_result` — vega-lite chart from `visualize` or a webhook tool
+   *  - `tool_result` — vega-lite chart, data-table, or structured result
    *  - `done`        — stream finished; carries the persisted messageId
+   *
+   * Persistence:
+   *  Blocks store the full ModelMessage[] representation of the assistant turn,
+   *  including `tool-call` and `tool-result` content parts. This is the
+   *  LangGraph checkpoint format; only rendered display blocks are sent as SSE
+   *  events, but all parts are persisted for multi-turn reconstruction.
    */
   static async streamResponse({
     portalId,
@@ -230,7 +279,7 @@ export class PortalService {
       stopWhen: stepCountIs(10),
     });
 
-    // Accumulate assistant content blocks
+    // Accumulate assistant content blocks (full ModelMessage[] parts)
     const assistantBlocks: Record<string, unknown>[] = [];
     let currentText = "";
 
@@ -239,17 +288,38 @@ export class PortalService {
         currentText += chunk.text;
         const event: DeltaEvent = { type: "delta", content: chunk.text };
         sse.send("delta", event);
-      } else if (chunk.type === "tool-result") {
-        // Flush any accumulated text into a block before the tool result
+      } else if (chunk.type === "tool-call") {
+        // Flush any accumulated text into a block before the tool call
         if (currentText) {
           assistantBlocks.push({ type: "text", content: currentText });
           currentText = "";
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toolCall = chunk as any;
+        // Persist tool-call part for ModelMessage[] reconstruction
+        assistantBlocks.push({
+          type: "tool-call",
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+          args: toolCall.args,
+        });
+      } else if (chunk.type === "tool-result") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const toolResult = (chunk as any).output as Record<string, unknown>;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const toolName = (chunk as any).toolName as string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toolCallId = (chunk as any).toolCallId as string | undefined;
+
+        // Persist tool-result part for ModelMessage[] reconstruction
+        assistantBlocks.push({
+          type: "tool-result",
+          toolCallId,
+          toolName,
+          content: toolResult,
+        });
+
         const isVegaLite =
           toolName === "visualize" ||
           (toolResult != null && toolResult.type === "vega-lite");
@@ -262,12 +332,27 @@ export class PortalService {
           };
           sse.send("tool_result", event);
           assistantBlocks.push({ type: "vega-lite", content: toolResult });
-        } else {
-          assistantBlocks.push({
+        } else if (ROW_SET_TOOLS.has(toolName)) {
+          // Row-set tools emit a data-table SSE event for inline rendering
+          const rows = Array.isArray(toolResult?.rows)
+            ? (toolResult.rows as Record<string, unknown>[])
+            : [];
+          const columns =
+            rows.length > 0 ? Object.keys(rows[0] as object) : [];
+
+          const dataTableBlock = {
+            type: "data-table" as const,
+            columns,
+            rows,
+          };
+
+          const event: ToolResultEvent = {
             type: "tool_result",
             toolName,
-            content: toolResult,
-          });
+            result: dataTableBlock,
+          };
+          sse.send("tool_result", event);
+          assistantBlocks.push(dataTableBlock);
         }
       } else if (chunk.type === "finish") {
         // Flush remaining text on finish
@@ -317,6 +402,78 @@ export class PortalService {
       "Portal stream complete"
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// ModelMessage[] reconstruction
+// ---------------------------------------------------------------------------
+
+/**
+ * Reconstruct the full Vercel AI SDK `ModelMessage[]` array from persisted
+ * portal message rows. User messages become `{ role: "user", content }`.
+ * Assistant messages are walked block-by-block: text parts become assistant
+ * content, tool-call parts become `tool-call` content, and tool-result blocks
+ * are grouped into a single `{ role: "tool", content: [...] }` message.
+ */
+function reconstructModelMessages(
+  messages: PortalMessageSelect[]
+): ModelMessage[] {
+  const coreMessages: ModelMessage[] = [];
+
+  for (const msg of messages) {
+    const blocks = (msg.blocks ?? []) as Record<string, unknown>[];
+
+    if (msg.role === "user") {
+      // User turns: extract text content from the first text block
+      const textBlock = blocks.find((b) => b.type === "text");
+      coreMessages.push({
+        role: "user",
+        content: String(textBlock?.content ?? ""),
+      });
+      continue;
+    }
+
+    // Assistant turns: split into assistant content parts + tool results
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const assistantParts: any[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toolResults: any[] = [];
+
+    for (const block of blocks) {
+      if (block.type === "text") {
+        assistantParts.push({
+          type: "text",
+          text: String(block.content ?? ""),
+        });
+      } else if (block.type === "tool-call") {
+        assistantParts.push({
+          type: "tool-call",
+          toolCallId: block.toolCallId,
+          toolName: block.toolName,
+          args: block.args,
+        });
+      } else if (block.type === "tool-result") {
+        toolResults.push({
+          type: "tool-result",
+          toolCallId: block.toolCallId,
+          toolName: block.toolName,
+          result: block.content,
+        });
+      }
+      // Display-only blocks (vega-lite, data-table) are skipped for
+      // ModelMessage reconstruction — they duplicate tool-result data.
+    }
+
+    if (assistantParts.length > 0) {
+      coreMessages.push({ role: "assistant", content: assistantParts });
+    }
+
+    if (toolResults.length > 0) {
+      coreMessages.push({ role: "tool", content: toolResults });
+    }
+  }
+
+  return coreMessages;
 }
 
 // ---------------------------------------------------------------------------

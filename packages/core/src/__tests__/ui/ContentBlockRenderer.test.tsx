@@ -37,6 +37,31 @@ describe("ContentBlockRenderer", () => {
     expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
   });
 
+  it("renders data-table block via DataTableBlock", () => {
+    render(
+      <ContentBlockRenderer
+        block={{
+          type: "data-table",
+          content: {
+            columns: ["id", "name"],
+            rows: [{ id: 1, name: "Alice" }],
+          },
+        }}
+      />
+    );
+    expect(screen.getByText("id")).toBeInTheDocument();
+    expect(screen.getByText("name")).toBeInTheDocument();
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("renders data-table block with null content gracefully", () => {
+    const { container } = render(
+      <ContentBlockRenderer block={{ type: "data-table", content: null }} />
+    );
+    // Should render an empty table (headers from empty columns array)
+    expect(container.querySelector("table")).toBeInTheDocument();
+  });
+
   it("renders nothing for unknown block types", () => {
     const { container } = render(
       <ContentBlockRenderer block={{ type: "unknown", content: "data" }} />

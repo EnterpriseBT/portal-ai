@@ -278,8 +278,8 @@ describe("PortalService", () => {
   // ── getPortal ─────────────────────────────────────────────────────────────
 
   describe("getPortal", () => {
-    it("returns portal and message history", async () => {
-      const messages = [{ id: "msg-1", role: "user", blocks: [] }];
+    it("returns portal, messages, and coreMessages", async () => {
+      const messages = [{ id: "msg-1", role: "user", blocks: [{ type: "text", content: "Hi" }] }];
       mockFindById_portal.mockResolvedValue(PORTAL);
       mockFindByPortal.mockResolvedValue(messages);
 
@@ -287,7 +287,57 @@ describe("PortalService", () => {
 
       expect(result.portal).toBe(PORTAL);
       expect(result.messages).toBe(messages);
+      expect(result.coreMessages).toBeDefined();
       expect(mockFindByPortal).toHaveBeenCalledWith(PORTAL_ID);
+    });
+
+    it("reconstructs full ModelMessage[] including tool turns", async () => {
+      const messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          blocks: [{ type: "text", content: "Show me revenue" }],
+        },
+        {
+          id: "msg-2",
+          role: "assistant",
+          blocks: [
+            { type: "text", content: "Let me query that." },
+            { type: "tool-call", toolCallId: "tc-1", toolName: "sql_query", args: { query: "SELECT *" } },
+            { type: "tool-result", toolCallId: "tc-1", toolName: "sql_query", content: { rows: [{ id: 1 }] } },
+            { type: "data-table", columns: ["id"], rows: [{ id: 1 }] },
+            { type: "text", content: "Here are the results." },
+          ],
+        },
+      ];
+      mockFindById_portal.mockResolvedValue(PORTAL);
+      mockFindByPortal.mockResolvedValue(messages);
+
+      const result = await PortalService.getPortal(PORTAL_ID);
+
+      // User message
+      expect(result.coreMessages[0]).toEqual({
+        role: "user",
+        content: "Show me revenue",
+      });
+
+      // Assistant message with text + tool-call parts
+      expect(result.coreMessages[1]).toEqual({
+        role: "assistant",
+        content: [
+          { type: "text", text: "Let me query that." },
+          { type: "tool-call", toolCallId: "tc-1", toolName: "sql_query", args: { query: "SELECT *" } },
+          { type: "text", text: "Here are the results." },
+        ],
+      });
+
+      // Tool results message
+      expect(result.coreMessages[2]).toEqual({
+        role: "tool",
+        content: [
+          { type: "tool-result", toolCallId: "tc-1", toolName: "sql_query", result: { rows: [{ id: 1 }] } },
+        ],
+      });
     });
 
     it("throws PORTAL_NOT_FOUND when portal does not exist", async () => {
@@ -441,12 +491,79 @@ describe("PortalService", () => {
       });
     });
 
-    it("does not send tool_result SSE for non-vega tool results", async () => {
+    it("sends data-table SSE event for sql_query tool results", async () => {
+      const queryResult = { rows: [{ id: 1, name: "Alice" }] };
       const chunks = [
         {
           type: "tool-result",
           toolName: "sql_query",
-          output: { rows: [{ id: 1 }] },
+          toolCallId: "tc-1",
+          output: queryResult,
+        },
+        { type: "finish" },
+      ];
+      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
+
+      const sse = makeSse();
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        sse: sse as any,
+      });
+
+      const toolResultCalls = (sse.send as any).mock.calls.filter(
+        (c: unknown[]) => c[0] === "tool_result"
+      );
+      expect(toolResultCalls).toHaveLength(1);
+      expect(toolResultCalls[0][1]).toMatchObject({
+        type: "tool_result",
+        toolName: "sql_query",
+        result: {
+          type: "data-table",
+          columns: ["id", "name"],
+          rows: [{ id: 1, name: "Alice" }],
+        },
+      });
+    });
+
+    it("sends data-table SSE event for detect_outliers tool results", async () => {
+      const outlierResult = { rows: [{ value: 99, is_outlier: true }] };
+      const chunks = [
+        {
+          type: "tool-result",
+          toolName: "detect_outliers",
+          toolCallId: "tc-2",
+          output: outlierResult,
+        },
+        { type: "finish" },
+      ];
+      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
+
+      const sse = makeSse();
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        sse: sse as any,
+      });
+
+      const toolResultCalls = (sse.send as any).mock.calls.filter(
+        (c: unknown[]) => c[0] === "tool_result"
+      );
+      expect(toolResultCalls).toHaveLength(1);
+      expect(toolResultCalls[0][1].result.type).toBe("data-table");
+    });
+
+    it("does not send tool_result SSE for scalar tool results (correlate)", async () => {
+      const chunks = [
+        {
+          type: "tool-result",
+          toolName: "correlate",
+          toolCallId: "tc-3",
+          output: { coefficient: 0.87 },
         },
         { type: "finish" },
       ];
@@ -467,10 +584,11 @@ describe("PortalService", () => {
       expect(toolResultCalls).toHaveLength(0);
     });
 
-    it("persists assistant message with correct blocks", async () => {
+    it("persists assistant message with tool-call, tool-result, and display blocks", async () => {
       const chunks = [
         { type: "text-delta", text: "Analysis: " },
-        { type: "tool-result", toolName: "visualize", output: { chart: true } },
+        { type: "tool-call", toolCallId: "tc-1", toolName: "visualize", args: { type: "bar" } },
+        { type: "tool-result", toolCallId: "tc-1", toolName: "visualize", output: { chart: true } },
         { type: "text-delta", text: "done" },
         { type: "finish" },
       ];
@@ -490,6 +608,8 @@ describe("PortalService", () => {
           role: "assistant",
           blocks: [
             { type: "text", content: "Analysis: " },
+            { type: "tool-call", toolCallId: "tc-1", toolName: "visualize", args: { type: "bar" } },
+            { type: "tool-result", toolCallId: "tc-1", toolName: "visualize", content: { chart: true } },
             { type: "vega-lite", content: { chart: true } },
             { type: "text", content: "done" },
           ],

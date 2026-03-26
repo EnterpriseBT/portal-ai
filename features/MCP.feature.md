@@ -540,25 +540,25 @@ Extends the Portal UI and `PortalService` to support richer in-session interacti
 
 #### Backend
 
-- [ ] **Full CoreMessage[] persistence** — Update `PortalService.streamResponse()` to assemble and persist the complete Vercel AI SDK `CoreMessage[]` representation of the assistant turn (including `toolCall` and `toolResult` content parts) in `portal_messages.blocks`. This is the LangGraph checkpoint format; storing only rendered text blocks now would require a migration later.
-- [ ] **Full CoreMessage[] reconstruction on load** — Update `PortalService.getPortal()` to reconstruct the full `CoreMessage[]` array (user + assistant turns, including tool call/result pairs) from `portal_messages` rows. Pass the full array to `streamText` on each new turn so Claude can reason about prior analysis steps.
-- [ ] **`data-table` SSE event** — Extend the `onStepFinish` handler in `PortalService.streamResponse()` to emit a `tool_result` SSE event with `type: "data-table"` for tool calls that return row sets: `sql_query`, `detect_outliers`, `cluster`. Scalar results (correlation, describe_column) continue to be narrated; only row sets surface as structured blocks.
-- [ ] **`data-table` ContentBlock type** — Add `{ type: "data-table"; columns: string[]; rows: Record<string, unknown>[] }` to the `ContentBlock` union in `portal.contract.ts`. Update `portal-messages.table.ts` comment to document that `blocks` stores full CoreMessage[] parts.
-- [ ] **LangGraph seam comment** — Add a comment block in `portal.service.ts` above `streamResponse()` documenting the swap plan: what changes (swap `streamText` for `graph.stream()`), what stays the same (API contract, DB schema, tool definitions), and the mapping table from current primitives to LangGraph equivalents.
-- [ ] **Unit tests** — Update `portal.service.test.ts`: verify that assistant turns persist tool-call + tool-result content parts; verify `data-table` SSE events are emitted for row-returning tools; verify `getPortal()` reconstructs full CoreMessage[] including tool turns.
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] **Full CoreMessage[] persistence** — Update `PortalService.streamResponse()` to assemble and persist the complete Vercel AI SDK `CoreMessage[]` representation of the assistant turn (including `toolCall` and `toolResult` content parts) in `portal_messages.blocks`. This is the LangGraph checkpoint format; storing only rendered text blocks now would require a migration later.
+- [x] **Full CoreMessage[] reconstruction on load** — Update `PortalService.getPortal()` to reconstruct the full `CoreMessage[]` array (user + assistant turns, including tool call/result pairs) from `portal_messages` rows. Pass the full array to `streamText` on each new turn so Claude can reason about prior analysis steps.
+- [x] **`data-table` SSE event** — Extend the `onStepFinish` handler in `PortalService.streamResponse()` to emit a `tool_result` SSE event with `type: "data-table"` for tool calls that return row sets: `sql_query`, `detect_outliers`, `cluster`. Scalar results (correlation, describe_column) continue to be narrated; only row sets surface as structured blocks.
+- [x] **`data-table` ContentBlock type** — Add `{ type: "data-table"; columns: string[]; rows: Record<string, unknown>[] }` to the `ContentBlock` union in `portal.contract.ts`. Update `portal-messages.table.ts` comment to document that `blocks` stores full CoreMessage[] parts.
+- [x] **LangGraph seam comment** — Add a comment block in `portal.service.ts` above `streamResponse()` documenting the swap plan: what changes (swap `streamText` for `graph.stream()`), what stays the same (API contract, DB schema, tool definitions), and the mapping table from current primitives to LangGraph equivalents.
+- [x] **Unit tests** — Update `portal.service.test.ts`: verify that assistant turns persist tool-call + tool-result content parts; verify `data-table` SSE events are emitted for row-returning tools; verify `getPortal()` reconstructs full CoreMessage[] including tool turns.
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 #### Frontend
 
-- [ ] **`DataTableBlock` component** — Implement `DataTableBlock.component.tsx` in `packages/core/src/components/`: a compact, non-paginated MUI table that renders a `data-table` content block inline in the chat thread. Columns auto-sized; truncates at 50 rows with a "showing N of M rows" label. Export from `packages/core/src/index.ts`.
-- [ ] **Extend `ContentBlockRenderer`** — Add a `case "data-table"` branch in `packages/core/src/components/ContentBlockRenderer.component.tsx` that renders `<DataTableBlock>`.
-- [ ] **Progressive block rendering** — Update `PortalSession` SSE handler to insert `data-table` and `vega-lite` blocks inline as they arrive from `tool_result` events, before the final `done` event. The user sees charts and tables appear while Claude is still composing its narrative text.
-- [ ] **Unit tests** — `DataTableBlock`: renders columns and rows, truncates at 50 rows, shows row count label. `ContentBlockRenderer`: renders `data-table` block via `DataTableBlock`. `PortalSession`: `tool_result` events insert blocks at correct position in the streaming message.
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] **`DataTableBlock` component** — Implement `DataTableBlock.component.tsx` in `packages/core/src/components/`: a compact, non-paginated MUI table that renders a `data-table` content block inline in the chat thread. Columns auto-sized; truncates at 50 rows with a "showing N of M rows" label. Export from `packages/core/src/index.ts`.
+- [x] **Extend `ContentBlockRenderer`** — Add a `case "data-table"` branch in `packages/core/src/components/ContentBlockRenderer.component.tsx` that renders `<DataTableBlock>`.
+- [x] **Progressive block rendering** — Update `PortalSession` SSE handler to insert `data-table` and `vega-lite` blocks inline as they arrive from `tool_result` events, before the final `done` event. The user sees charts and tables appear while Claude is still composing its narrative text.
+- [x] **Unit tests** — `DataTableBlock`: renders columns and rows, truncates at 50 rows, shows row count label. `ContentBlockRenderer`: renders `data-table` block via `DataTableBlock`. `PortalSession`: `tool_result` events insert blocks at correct position in the streaming message.
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 
