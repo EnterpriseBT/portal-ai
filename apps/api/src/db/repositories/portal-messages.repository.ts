@@ -4,7 +4,7 @@
  * Messages are immutable — only create and read operations are supported.
  */
 
-import { eq, asc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { portalMessages } from "../schema/index.js";
 import { db } from "../client.js";
@@ -30,6 +30,18 @@ export class PortalMessagesRepository extends Repository<
       { orderBy: { column: this.cols.created, direction: "asc" } },
       client
     );
+  }
+
+  /** Hard-delete all messages for a portal. Returns the count deleted. */
+  async deleteByPortal(
+    portalId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const result = await (client as typeof db)
+      .delete(portalMessages)
+      .where(eq(portalMessages.portalId, portalId))
+      .returning();
+    return result.length;
   }
 }
 

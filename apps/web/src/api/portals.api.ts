@@ -41,4 +41,10 @@ export const portals = {
     useAuthMutation<void, SendMessageBody>({
       url: `/api/portals/${encodeURIComponent(portalId)}/messages`,
     }),
+
+  resetMessages: (portalId: string) =>
+    useAuthMutation<void, void>({
+      url: `/api/portals/${encodeURIComponent(portalId)}/messages`,
+      method: "DELETE",
+    }),
 };

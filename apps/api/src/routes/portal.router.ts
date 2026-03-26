@@ -299,6 +299,90 @@ portalRouter.get(
   }
 );
 
+// ── DELETE /api/portals/:id/messages ──────────────────────────────────────
+
+/**
+ * @openapi
+ * /api/portals/{id}/messages:
+ *   delete:
+ *     tags:
+ *       - Portals
+ *     summary: Reset a portal
+ *     description: Deletes all messages in the portal, resetting the conversation.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Portal ID
+ *     responses:
+ *       200:
+ *         description: Messages deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     portalId:
+ *                       type: string
+ *                     deletedMessages:
+ *                       type: number
+ *       404:
+ *         description: Portal not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+portalRouter.delete(
+  "/:id/messages",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      const portal = await DbService.repository.portals.findById(id);
+      if (!portal || portal.organizationId !== organizationId) {
+        return next(
+          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
+        );
+      }
+
+      const deletedMessages = await PortalService.resetPortal(id);
+
+      logger.info({ portalId: id, deletedMessages }, "Portal reset");
+
+      return HttpService.success(res, { portalId: id, deletedMessages });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown" },
+        "Failed to reset portal"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to reset portal")
+      );
+    }
+  }
+);
+
 // ── POST /api/portals/:id/messages ────────────────────────────────────────
 
 /**

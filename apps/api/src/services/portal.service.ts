@@ -207,6 +207,26 @@ export class PortalService {
   }
 
   // -------------------------------------------------------------------------
+  // resetPortal
+  // -------------------------------------------------------------------------
+
+  /**
+   * Delete all messages associated with a portal, resetting the conversation.
+   */
+  static async resetPortal(portalId: string): Promise<number> {
+    const repo = DbService.repository;
+
+    const portal = await repo.portals.findById(portalId);
+    if (!portal) {
+      throw new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found");
+    }
+
+    const count = await repo.portalMessages.deleteByPortal(portalId);
+    logger.info({ portalId, deletedMessages: count }, "Portal reset");
+    return count;
+  }
+
+  // -------------------------------------------------------------------------
   // streamResponse
   // -------------------------------------------------------------------------
 

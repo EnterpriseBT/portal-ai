@@ -262,6 +262,106 @@ describe("Portal Router", () => {
     });
   });
 
+  // ── DELETE /api/portals/:id/messages ──────────────────────────────
+
+  describe("DELETE /api/portals/:id/messages", () => {
+    it("deletes all messages and returns count", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      // Seed two messages
+      const baseTime = Date.now();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.portalMessages)
+        .values([
+          {
+            id: generateId(),
+            portalId: portal.id,
+            organizationId,
+            role: "user",
+            blocks: [{ type: "text", content: "Hello" }],
+            created: baseTime,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          } as never,
+          {
+            id: generateId(),
+            portalId: portal.id,
+            organizationId,
+            role: "assistant",
+            blocks: [{ type: "text", content: "Hi there" }],
+            created: baseTime + 1000,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          } as never,
+        ]);
+
+      const res = await request(app)
+        .delete(`/api/portals/${portal.id}/messages`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.portalId).toBe(portal.id);
+      expect(res.body.payload.deletedMessages).toBe(2);
+
+      // Verify messages are gone
+      const remaining = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.portalMessages)
+        .where(eq(schema.portalMessages.portalId, portal.id));
+      expect(remaining).toHaveLength(0);
+    });
+
+    it("returns 200 with zero count when portal has no messages", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .delete(`/api/portals/${portal.id}/messages`)
+        .expect(200);
+
+      expect(res.body.payload.deletedMessages).toBe(0);
+    });
+
+    it("returns 404 for unknown portal", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .delete(`/api/portals/${generateId()}/messages`)
+        .expect(404);
+    });
+  });
+
   // ── POST /api/portals/:id/messages ────────────────────────────────
 
   describe("POST /api/portals/:id/messages", () => {

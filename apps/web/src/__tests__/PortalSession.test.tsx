@@ -7,6 +7,7 @@ import type { ApiError } from "../utils";
 
 const mockGetPortal = jest.fn<() => unknown>();
 const mockSendMessage = jest.fn<() => Promise<unknown>>();
+const mockResetMessages = jest.fn<() => Promise<unknown>>();
 const mockPinPortalResult = jest.fn();
 
 jest.unstable_mockModule("../api/sdk", () => ({
@@ -15,6 +16,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
       get: mockGetPortal,
       sendMessage: () => ({
         mutateAsync: mockSendMessage,
+        isPending: false,
+      }),
+      resetMessages: () => ({
+        mutateAsync: mockResetMessages,
         isPending: false,
       }),
     },

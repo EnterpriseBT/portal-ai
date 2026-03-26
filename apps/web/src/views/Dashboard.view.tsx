@@ -37,7 +37,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
   <Box>
     <Stack spacing={4}>
       <Box>
-        <Breadcrumbs items={[{ label: "Dashboard", icon: IconName.Home }]} />
+        <Breadcrumbs items={[{ label: "Home", icon: IconName.Home }]} />
         <Stack
           direction="row"
           justifyContent="space-between"

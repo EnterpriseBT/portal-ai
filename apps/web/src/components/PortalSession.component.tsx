@@ -95,6 +95,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
   const esRef = useRef<EventSource | null>(null);
   const sendMessage = sdk.portals.sendMessage(portalId);
+  const resetMessages = sdk.portals.resetMessages(portalId);
 
   const allMessages = [...serverMessages, ...localMessages];
 
@@ -106,10 +107,16 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     streamingBlocksRef.current = [];
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     handleCancel();
     setLocalMessages([]);
     setInputValue("");
+    try {
+      await resetMessages.mutateAsync();
+      await portalQuery.refetch();
+    } catch {
+      // Best-effort — local state is already cleared
+    }
   };
 
   const handleSubmit = async () => {
@@ -183,8 +190,13 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
       let block: PortalMessageBlock | null = null;
 
-      if (result && typeof result === "object" && result["type"] === "vega-lite") {
-        block = { type: "vega-lite", content: result["spec"] };
+      const isVegaLite =
+        result != null &&
+        typeof result === "object" &&
+        (data.toolName === "visualize" || result["type"] === "vega-lite");
+
+      if (isVegaLite) {
+        block = { type: "vega-lite", content: result };
       } else if (result && typeof result === "object" && result["type"] === "data-table") {
         block = { type: "data-table", content: result };
       }

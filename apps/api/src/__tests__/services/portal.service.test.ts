@@ -11,6 +11,7 @@ const mockFindById_portal = jest.fn<() => Promise<unknown>>();
 const mockCreate_portal = jest.fn<() => Promise<unknown>>();
 const mockCreate_message = jest.fn<() => Promise<unknown>>();
 const mockFindByPortal = jest.fn<() => Promise<unknown[]>>();
+const mockDeleteByPortal = jest.fn<() => Promise<number>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -23,6 +24,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       portalMessages: {
         findByPortal: mockFindByPortal,
         create: mockCreate_message,
+        deleteByPortal: mockDeleteByPortal,
       },
     },
   },
@@ -379,6 +381,37 @@ describe("PortalService", () => {
       await expect(
         PortalService.addMessage(PORTAL_ID, { role: "user", content: "hi" })
       ).rejects.toMatchObject({ code: ApiCode.PORTAL_NOT_FOUND });
+    });
+  });
+
+  // ── resetPortal ──────────────────────────────────────────────────────────
+
+  describe("resetPortal", () => {
+    it("deletes all messages and returns count", async () => {
+      mockFindById_portal.mockResolvedValue(PORTAL);
+      mockDeleteByPortal.mockResolvedValue(5);
+
+      const count = await PortalService.resetPortal(PORTAL_ID);
+
+      expect(count).toBe(5);
+      expect(mockDeleteByPortal).toHaveBeenCalledWith(PORTAL_ID);
+    });
+
+    it("returns 0 when portal has no messages", async () => {
+      mockFindById_portal.mockResolvedValue(PORTAL);
+      mockDeleteByPortal.mockResolvedValue(0);
+
+      const count = await PortalService.resetPortal(PORTAL_ID);
+
+      expect(count).toBe(0);
+    });
+
+    it("throws PORTAL_NOT_FOUND when portal does not exist", async () => {
+      mockFindById_portal.mockResolvedValue(null);
+
+      await expect(PortalService.resetPortal(PORTAL_ID)).rejects.toMatchObject({
+        code: ApiCode.PORTAL_NOT_FOUND,
+      });
     });
   });
 
