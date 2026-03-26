@@ -50,4 +50,10 @@ export const stations = {
       url: `/api/organization/${encodeURIComponent(orgId)}`,
       method: "PATCH",
     }),
+
+  delete: (id: string) =>
+    useAuthMutation<void, void>({
+      url: `/api/stations/${encodeURIComponent(id)}`,
+      method: "DELETE",
+    }),
 };

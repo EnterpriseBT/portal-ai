@@ -15,7 +15,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { stations, organizations, portalMessages } from "../db/schema/index.js";
+import { stations, organizations, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { SystemUtilities } from "../utils/system.util.js";
 
@@ -561,32 +561,19 @@ stationRouter.delete(
         if (stationPortals.length > 0) {
           const portalIds = stationPortals.map((p) => p.id);
 
-          // Soft-delete all messages for these portals
-          const messages = await DbService.repository.portalMessages.findMany(
-            inArray(portalMessages.portalId, portalIds),
-            {},
-            tx
-          );
-          if (messages.length > 0) {
-            await DbService.repository.portalMessages.softDeleteMany(
-              messages.map((m) => m.id),
-              userId,
-              tx
-            );
+          // Detach pinned results — keep them but remove the portal link
+          await tx
+            .update(portalResults)
+            .set({ portalId: null, updated: Date.now(), updatedBy: userId })
+            .where(inArray(portalResults.portalId, portalIds));
+
+          // Hard-delete messages — no value without the portal
+          for (const portalId of portalIds) {
+            await DbService.repository.portalMessages.deleteByPortal(portalId, tx);
           }
 
           // Soft-delete all portals
           await DbService.repository.portals.softDeleteMany(portalIds, userId, tx);
-        }
-
-        // Soft-delete all portal results for this station
-        const results = await DbService.repository.portalResults.findByStation(id, {}, tx);
-        if (results.length > 0) {
-          await DbService.repository.portalResults.softDeleteMany(
-            results.map((r) => r.id),
-            userId,
-            tx
-          );
         }
 
         // Clear the org's defaultStationId if it points to this station

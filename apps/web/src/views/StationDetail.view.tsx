@@ -19,6 +19,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -67,8 +68,21 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { fetchWithAuth } = useAuthFetch();
+  const createPortalMutation = sdk.portals.create();
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const handleLaunchPortal = useCallback(() => {
+    createPortalMutation.mutate(
+      { stationId },
+      {
+        onSuccess: (data) => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
+          navigate({ to: `/portals/${data.portal.id}` });
+        },
+      }
+    );
+  }, [createPortalMutation, stationId, queryClient, navigate]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -110,9 +124,18 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       direction="row"
                       spacing={2}
                       alignItems="center"
+                      justifyContent="space-between"
                       sx={{ mb: 2 }}
                     >
                       <Typography variant="h1">{station.name}</Typography>
+                      <Button
+                        variant="contained"
+                        startIcon={<RocketLaunchIcon />}
+                        onClick={handleLaunchPortal}
+                        disabled={createPortalMutation.isPending}
+                      >
+                        {createPortalMutation.isPending ? "Opening..." : "Open Portal"}
+                      </Button>
                     </Stack>
                     <Box>
                       {/* Metadata Section */}

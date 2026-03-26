@@ -46,30 +46,28 @@ describe("DefaultStationCardUI", () => {
     expect(screen.getByText("statistics")).toBeInTheDocument();
   });
 
-  it("should render 'Launch Portal' button", () => {
+  it("should render 'Open Portal' button", () => {
     render(<DefaultStationCardUI {...defaultProps} />);
     expect(
-      screen.getByRole("button", { name: /Launch Portal/ })
+      screen.getByRole("button", { name: /Open Portal/ })
     ).toBeInTheDocument();
   });
 
-  it("should call onLaunchPortal with stationId when Launch Portal is clicked", () => {
+  it("should call onLaunchPortal with stationId when Open Portal is clicked", () => {
     const onLaunchPortal = jest.fn();
     render(
       <DefaultStationCardUI {...defaultProps} onLaunchPortal={onLaunchPortal} />
     );
-    fireEvent.click(screen.getByRole("button", { name: /Launch Portal/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Open Portal/ }));
     expect(onLaunchPortal).toHaveBeenCalledWith("station-1");
   });
 
-  it("should render 'Change default' link", () => {
+  it("should render '(change)' link", () => {
     render(<DefaultStationCardUI {...defaultProps} />);
-    expect(
-      screen.getByRole("button", { name: "Change default" })
-    ).toBeInTheDocument();
+    expect(screen.getByText("(change)")).toBeInTheDocument();
   });
 
-  it("should call onChangeDefault when Change default is clicked", () => {
+  it("should call onChangeDefault when (change) is clicked", () => {
     const onChangeDefault = jest.fn();
     render(
       <DefaultStationCardUI
@@ -77,7 +75,7 @@ describe("DefaultStationCardUI", () => {
         onChangeDefault={onChangeDefault}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Change default" }));
+    fireEvent.click(screen.getByText("(change)"));
     expect(onChangeDefault).toHaveBeenCalled();
   });
 
