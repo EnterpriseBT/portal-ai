@@ -69,4 +69,34 @@ describe("portals.api", () => {
       });
     });
   });
+
+  describe("rename", () => {
+    it("sends PATCH to portal endpoint", () => {
+      portals.rename("portal-123");
+      expect(mockUseAuthMutation).toHaveBeenCalledWith({
+        url: "/api/portals/portal-123",
+        method: "PATCH",
+      });
+    });
+  });
+
+  describe("remove", () => {
+    it("sends DELETE to portal endpoint", () => {
+      portals.remove("portal-123");
+      expect(mockUseAuthMutation).toHaveBeenCalledWith({
+        url: "/api/portals/portal-123",
+        method: "DELETE",
+      });
+    });
+  });
+
+  describe("resetMessages", () => {
+    it("sends DELETE to portal messages endpoint", () => {
+      portals.resetMessages("portal-123");
+      expect(mockUseAuthMutation).toHaveBeenCalledWith({
+        url: "/api/portals/portal-123/messages",
+        method: "DELETE",
+      });
+    });
+  });
 });

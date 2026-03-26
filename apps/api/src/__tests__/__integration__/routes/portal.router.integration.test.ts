@@ -405,6 +405,68 @@ describe("Portal Router", () => {
     });
   });
 
+  // ── PATCH /api/portals/:id ───────────────────────────────────────
+
+  describe("PATCH /api/portals/:id", () => {
+    it("renames a portal", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .patch(`/api/portals/${portal.id}`)
+        .send({ name: "Updated Name" })
+        .expect(200);
+
+      expect(res.body.payload.portal.name).toBe("Updated Name");
+
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portals)
+        .where(eq(portals.id, portal.id));
+      expect(row.name).toBe("Updated Name");
+      expect(row.updated).not.toBeNull();
+    });
+
+    it("returns 400 when name is missing", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .patch(`/api/portals/${generateId()}`)
+        .send({})
+        .expect(400);
+    });
+
+    it("returns 400 when name is empty", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .patch(`/api/portals/${generateId()}`)
+        .send({ name: "   " })
+        .expect(400);
+    });
+
+    it("returns 404 for unknown portal", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .patch(`/api/portals/${generateId()}`)
+        .send({ name: "New Name" })
+        .expect(404);
+    });
+  });
+
   // ── DELETE /api/portals/:id/messages ──────────────────────────────
 
   describe("DELETE /api/portals/:id/messages", () => {
