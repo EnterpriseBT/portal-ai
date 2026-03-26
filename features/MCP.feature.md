@@ -455,28 +455,28 @@ Primitive content-block rendering components (`ContentBlockRenderer`, and later 
 CRUD for stations, connector instance picker, and default station control.
 
 ### Checklist
-- [ ] Implement `StationList.component.tsx` (container + UI):
-  - [ ] Fetches `sdk.stations.list()` with pagination
-  - [ ] Table columns: name, description, instance count, "Default" badge, "Set as default" action, "Open" link
-  - [ ] "Set as default" calls `sdk.stations.setDefault()` → invalidates org query
-  - [ ] "New Station" button opens `CreateStationDialog`
-- [ ] Implement `CreateStationDialog.component.tsx`:
-  - [ ] Fields: name (text), description (text), connector instances (multi-select from `sdk.connectorInstances.list()`)
-  - [ ] On confirm: calls `sdk.stations.create()` → closes dialog → refreshes list
-- [ ] Implement `StationsView.tsx` — breadcrumbs + `StationList`
-- [ ] Implement `StationDetailView.tsx` (`/stations/:stationId`):
-  - [ ] Station metadata header (name, description, instances)
-  - [ ] Paginated list of portals for this station; clicking navigates to `/portals/:portalId`
-  - [ ] "New Portal" button → `CreatePortalDialog`
-- [ ] Create route `apps/web/src/routes/_authorized/stations.tsx`
-- [ ] Create route `apps/web/src/routes/_authorized/stations.$stationId.tsx`
-- [ ] Add `Stations = "/stations"`, `StationDetail = "/stations/$stationId"` to `routes.util.ts`
-- [ ] Add `Stations` entry to `SidebarNav`
-- [ ] Unit tests for `StationList` (renders rows, default badge, set-as-default action)
-- [ ] Unit tests for `CreateStationDialog` (submits correct payload, closes on success)
-- [ ] `npm run type-check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [x] Implement `StationList.component.tsx` (container + UI):
+  - [x] Fetches `sdk.stations.list()` with pagination
+  - [x] Table columns: name, description, instance count, "Default" badge, "Set as default" action, "Open" link
+  - [x] "Set as default" calls `sdk.stations.setDefault()` → invalidates org query
+  - [x] "New Station" button opens `CreateStationDialog`
+- [x] Implement `CreateStationDialog.component.tsx`:
+  - [x] Fields: name (text), description (text), connector instances (multi-select from `sdk.connectorInstances.list()`)
+  - [x] On confirm: calls `sdk.stations.create()` → closes dialog → refreshes list
+- [x] Implement `StationsView.tsx` — breadcrumbs + `StationList`
+- [x] Implement `StationDetailView.tsx` (`/stations/:stationId`):
+  - [x] Station metadata header (name, description, instances)
+  - [x] Paginated list of portals for this station; clicking navigates to `/portals/:portalId`
+  - [x] "New Portal" button → `CreatePortalDialog`
+- [x] Create route `apps/web/src/routes/_authorized/stations.tsx`
+- [x] Create route `apps/web/src/routes/_authorized/stations.$stationId.tsx`
+- [x] Add `Stations = "/stations"`, `StationDetail = "/stations/$stationId"` to `routes.util.ts`
+- [x] Add `Stations` entry to `SidebarNav`
+- [x] Unit tests for `StationList` (renders rows, default badge, set-as-default action)
+- [x] Unit tests for `CreateStationDialog` (submits correct payload, closes on success)
+- [x] `npm run type-check` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes
 
 ### Files
 | Action | File |
