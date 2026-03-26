@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 
 import type {
   StationGetResponsePayload,
+  UpdateStationBody,
   PortalListRequestQuery,
   PortalListResponsePayload,
 } from "@portalai/core/contracts";
@@ -19,11 +20,13 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditIcon from "@mui/icons-material/Edit";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { EditStationDialog } from "../components/EditStationDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
@@ -69,8 +72,22 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const queryClient = useQueryClient();
   const { fetchWithAuth } = useAuthFetch();
   const createPortalMutation = sdk.portals.create();
+  const updateMutation = sdk.stations.update(stationId);
 
+  const [editOpen, setEditOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const handleEditSubmit = useCallback(
+    (body: UpdateStationBody) => {
+      updateMutation.mutate(body, {
+        onSuccess: () => {
+          setEditOpen(false);
+          queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+        },
+      });
+    },
+    [updateMutation, queryClient]
+  );
 
   const handleLaunchPortal = useCallback(() => {
     createPortalMutation.mutate(
@@ -110,6 +127,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
             {({ item }: { item: StationGetResponsePayload }) => {
               const station = item.station;
               return (
+                <>
                 <Stack spacing={4}>
                   <Box>
                     <Breadcrumbs
@@ -128,14 +146,23 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       sx={{ mb: 2 }}
                     >
                       <Typography variant="h1">{station.name}</Typography>
-                      <Button
-                        variant="contained"
-                        startIcon={<RocketLaunchIcon />}
-                        onClick={handleLaunchPortal}
-                        disabled={createPortalMutation.isPending}
-                      >
-                        {createPortalMutation.isPending ? "Opening..." : "Open Portal"}
-                      </Button>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          variant="outlined"
+                          startIcon={<EditIcon />}
+                          onClick={() => setEditOpen(true)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="contained"
+                          startIcon={<RocketLaunchIcon />}
+                          onClick={handleLaunchPortal}
+                          disabled={createPortalMutation.isPending}
+                        >
+                          {createPortalMutation.isPending ? "Opening..." : "Open Portal"}
+                        </Button>
+                      </Stack>
                     </Stack>
                     <Box>
                       {/* Metadata Section */}
@@ -261,6 +288,18 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                     </Box>
                   </Box>
                 </Stack>
+                {editOpen && (
+                  <EditStationDialog
+                    key={stationId}
+                    open={editOpen}
+                    onClose={() => setEditOpen(false)}
+                    station={station}
+                    onSubmit={handleEditSubmit}
+                    isPending={updateMutation.isPending}
+                    serverError={updateMutation.error?.message ?? null}
+                  />
+                )}
+                </>
               );
             }}
           </DataResult>
