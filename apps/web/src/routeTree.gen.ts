@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TagsRouteImport } from './routes/tags'
 import { Route as StationsRouteImport } from './routes/stations'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as PortalResultsRouteImport } from './routes/portal-results'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as EntityGroupsRouteImport } from './routes/entity-groups'
@@ -21,6 +22,7 @@ import { Route as ColumnDefinitionsRouteImport } from './routes/column-definitio
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TagsIndexRouteImport } from './routes/tags.index'
 import { Route as StationsIndexRouteImport } from './routes/stations.index'
+import { Route as PortalResultsIndexRouteImport } from './routes/portal-results.index'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
 import { Route as EntityGroupsIndexRouteImport } from './routes/entity-groups.index'
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
@@ -49,6 +51,11 @@ const StationsRoute = StationsRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalResultsRoute = PortalResultsRouteImport.update({
+  id: '/portal-results',
+  path: '/portal-results',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -95,6 +102,11 @@ const StationsIndexRoute = StationsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => StationsRoute,
+} as any)
+const PortalResultsIndexRoute = PortalResultsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalResultsRoute,
 } as any)
 const JobsIndexRoute = JobsIndexRouteImport.update({
   id: '/',
@@ -179,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/entity-groups': typeof EntityGroupsRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
+  '/portal-results': typeof PortalResultsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/stations': typeof StationsRouteWithChildren
   '/tags': typeof TagsRouteWithChildren
@@ -194,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/entities/': typeof EntitiesIndexRoute
   '/entity-groups/': typeof EntityGroupsIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/portal-results/': typeof PortalResultsIndexRoute
   '/stations/': typeof StationsIndexRoute
   '/tags/': typeof TagsIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
@@ -214,6 +228,7 @@ export interface FileRoutesByTo {
   '/entities': typeof EntitiesIndexRoute
   '/entity-groups': typeof EntityGroupsIndexRoute
   '/jobs': typeof JobsIndexRoute
+  '/portal-results': typeof PortalResultsIndexRoute
   '/stations': typeof StationsIndexRoute
   '/tags': typeof TagsIndexRoute
   '/entities/$entityId': typeof EntitiesEntityIdIndexRoute
@@ -228,6 +243,7 @@ export interface FileRoutesById {
   '/entity-groups': typeof EntityGroupsRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
+  '/portal-results': typeof PortalResultsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/stations': typeof StationsRouteWithChildren
   '/tags': typeof TagsRouteWithChildren
@@ -243,6 +259,7 @@ export interface FileRoutesById {
   '/entities/': typeof EntitiesIndexRoute
   '/entity-groups/': typeof EntityGroupsIndexRoute
   '/jobs/': typeof JobsIndexRoute
+  '/portal-results/': typeof PortalResultsIndexRoute
   '/stations/': typeof StationsIndexRoute
   '/tags/': typeof TagsIndexRoute
   '/entities/$entityId/': typeof EntitiesEntityIdIndexRoute
@@ -258,6 +275,7 @@ export interface FileRouteTypes {
     | '/entity-groups'
     | '/jobs'
     | '/login'
+    | '/portal-results'
     | '/settings'
     | '/stations'
     | '/tags'
@@ -273,6 +291,7 @@ export interface FileRouteTypes {
     | '/entities/'
     | '/entity-groups/'
     | '/jobs/'
+    | '/portal-results/'
     | '/stations/'
     | '/tags/'
     | '/entities/$entityId/'
@@ -293,6 +312,7 @@ export interface FileRouteTypes {
     | '/entities'
     | '/entity-groups'
     | '/jobs'
+    | '/portal-results'
     | '/stations'
     | '/tags'
     | '/entities/$entityId'
@@ -306,6 +326,7 @@ export interface FileRouteTypes {
     | '/entity-groups'
     | '/jobs'
     | '/login'
+    | '/portal-results'
     | '/settings'
     | '/stations'
     | '/tags'
@@ -321,6 +342,7 @@ export interface FileRouteTypes {
     | '/entities/'
     | '/entity-groups/'
     | '/jobs/'
+    | '/portal-results/'
     | '/stations/'
     | '/tags/'
     | '/entities/$entityId/'
@@ -335,6 +357,7 @@ export interface RootRouteChildren {
   EntityGroupsRoute: typeof EntityGroupsRouteWithChildren
   JobsRoute: typeof JobsRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PortalResultsRoute: typeof PortalResultsRouteWithChildren
   SettingsRoute: typeof SettingsRoute
   StationsRoute: typeof StationsRouteWithChildren
   TagsRoute: typeof TagsRouteWithChildren
@@ -362,6 +385,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal-results': {
+      id: '/portal-results'
+      path: '/portal-results'
+      fullPath: '/portal-results'
+      preLoaderRoute: typeof PortalResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -426,6 +456,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/stations/'
       preLoaderRoute: typeof StationsIndexRouteImport
       parentRoute: typeof StationsRoute
+    }
+    '/portal-results/': {
+      id: '/portal-results/'
+      path: '/'
+      fullPath: '/portal-results/'
+      preLoaderRoute: typeof PortalResultsIndexRouteImport
+      parentRoute: typeof PortalResultsRoute
     }
     '/jobs/': {
       id: '/jobs/'
@@ -609,6 +646,18 @@ const JobsRouteChildren: JobsRouteChildren = {
 
 const JobsRouteWithChildren = JobsRoute._addFileChildren(JobsRouteChildren)
 
+interface PortalResultsRouteChildren {
+  PortalResultsIndexRoute: typeof PortalResultsIndexRoute
+}
+
+const PortalResultsRouteChildren: PortalResultsRouteChildren = {
+  PortalResultsIndexRoute: PortalResultsIndexRoute,
+}
+
+const PortalResultsRouteWithChildren = PortalResultsRoute._addFileChildren(
+  PortalResultsRouteChildren,
+)
+
 interface StationsRouteChildren {
   StationsStationIdRoute: typeof StationsStationIdRoute
   StationsIndexRoute: typeof StationsIndexRoute
@@ -641,6 +690,7 @@ const rootRouteChildren: RootRouteChildren = {
   EntityGroupsRoute: EntityGroupsRouteWithChildren,
   JobsRoute: JobsRouteWithChildren,
   LoginRoute: LoginRoute,
+  PortalResultsRoute: PortalResultsRouteWithChildren,
   SettingsRoute: SettingsRoute,
   StationsRoute: StationsRouteWithChildren,
   TagsRoute: TagsRouteWithChildren,

@@ -7,6 +7,7 @@ import type { QueryOptions } from "./types";
 
 export type PortalResultsListParams = {
   stationId?: string;
+  search?: string;
   limit?: number;
   offset?: number;
 };

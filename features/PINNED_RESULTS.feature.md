@@ -37,7 +37,7 @@ No new backend work is required. This is a frontend-only feature.
   - Empty state: placeholder encouraging user to pin results from a portal session
   - "View All" link navigates to `/portal-results`
 
-- [ ] **Wire into `Dashboard.view.tsx`**
+- [x] **Wire into `Dashboard.view.tsx`**
   - Add `PinnedResultsListConnected` between `DefaultStationCardConnected` and `RecentPortalsListConnected`
   - Add `onViewAllPinnedResults` and `onPinnedResultClick` callbacks
   - Invalidate `queryKeys.portalResults.root` after unpin mutation
@@ -55,7 +55,7 @@ No new backend work is required. This is a frontend-only feature.
   - Renders empty-state placeholder when no results
   - "View All" link renders and navigates to `/portal-results`
 
-- [ ] **`Dashboard.view.test.tsx`** — Integration test additions
+- [x] **`Dashboard.view.test.tsx`** — Integration test additions
   - Pinned results section renders between default station and recent portals
 
 ---
@@ -66,12 +66,12 @@ No new backend work is required. This is a frontend-only feature.
 
 #### Routes
 
-- [ ] **`routes/_authorized/portal-results.tsx`** — Layout route wrapper
-- [ ] **`routes/_authorized/portal-results.index.tsx`** — List page route
+- [x] **`routes/portal-results.tsx`** — Layout route wrapper
+- [x] **`routes/portal-results.index.tsx`** — List page route
 
 #### Components
 
-- [ ] **`PinnedResultsListView.view.tsx`** — Full list page
+- [x] **`PinnedResultsListView.view.tsx`** — Full list page
   - Breadcrumbs: Dashboard > Pinned Results
   - `PaginationToolbar` with sort (by `created`), search by name
   - Paginated list of `PinnedResultCard` items
@@ -80,7 +80,7 @@ No new backend work is required. This is a frontend-only feature.
 
 #### Tests
 
-- [ ] **`PinnedResultsListView.view.test.tsx`** — Unit tests for list page
+- [x] **`PinnedResultsListView.view.test.tsx`** — Unit tests for list page
   - Renders breadcrumbs (Dashboard > Pinned Results)
   - Renders pagination toolbar with sort and search
   - Renders paginated pinned result cards
@@ -143,15 +143,15 @@ No new backend work is required. This is a frontend-only feature.
 ### Phase 2 — Dashboard pinned results section
 5. [x] Create `PinnedResultCard.component.tsx`
 6. [x] Create `PinnedResultsList.component.tsx` (UI + Data + Connected)
-7. [ ] Wire `PinnedResultsListConnected` into `Dashboard.view.tsx`
+7. [x] Wire `PinnedResultsListConnected` into `Dashboard.view.tsx`
 8. [x] Write unit tests for `PinnedResultCard` and `PinnedResultsList`
-9. [ ] Add dashboard integration test coverage for pinned results section
+9. [x] Add dashboard integration test coverage for pinned results section
 
 ### Phase 3 — List page
-10. [ ] Create route files: `portal-results.tsx`, `portal-results.index.tsx`
-11. [ ] Create `PinnedResultsListView.view.tsx` with pagination, search, sort
-12. [ ] Add "View All" link from dashboard section to list page
-13. [ ] Write unit tests for `PinnedResultsListView`
+10. [x] Create route files: `portal-results.tsx`, `portal-results.index.tsx`
+11. [x] Create `PinnedResultsListView.view.tsx` with pagination, search, sort
+12. [x] Add "View All" link from dashboard section to list page
+13. [x] Write unit tests for `PinnedResultsListView`
 
 ### Phase 4 — Detail page
 14. [ ] Create route file: `portal-results.$portalResultId.tsx`

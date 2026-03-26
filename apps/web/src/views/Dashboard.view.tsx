@@ -14,10 +14,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { DefaultStationCardConnected } from "../components/DefaultStationCard.component";
+import { PinnedResultsListConnected } from "../components/PinnedResultsList.component";
 import { RecentPortalsListConnected } from "../components/RecentPortalsList.component";
 import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { HealthCheck } from "../components/HealthCheck.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { useAuthFetch } from "../utils/api.util";
 
 // ── Dashboard UI (pure) ─────────────────────────────────────────────
 
@@ -26,6 +28,9 @@ export interface DashboardViewUIProps {
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
   onPortalClick: (portalId: string) => void;
+  onPinnedResultClick: (id: string) => void;
+  onUnpinResult: (id: string) => void;
+  onViewAllPinnedResults: () => void;
 }
 
 export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
@@ -33,6 +38,9 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
   onLaunchPortal,
   onChangeDefault,
   onPortalClick,
+  onPinnedResultClick,
+  onUnpinResult,
+  onViewAllPinnedResults,
 }) => (
   <Box>
     <Stack spacing={4}>
@@ -65,6 +73,17 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 
       <Box>
         <Typography variant="h2" sx={{ mb: 2 }}>
+          Pinned Results
+        </Typography>
+        <PinnedResultsListConnected
+          onResultClick={onPinnedResultClick}
+          onUnpin={onUnpinResult}
+          onViewAll={onViewAllPinnedResults}
+        />
+      </Box>
+
+      <Box>
+        <Typography variant="h2" sx={{ mb: 2 }}>
           Recent Portals
         </Typography>
         <RecentPortalsListConnected onPortalClick={onPortalClick} />
@@ -78,6 +97,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 export const DashboardView: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { fetchWithAuth } = useAuthFetch();
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.portals.create();
@@ -131,6 +151,30 @@ export const DashboardView: React.FC = () => {
     [navigate]
   );
 
+  const handlePinnedResultClick = useCallback(
+    (id: string) => {
+      navigate({ to: `/portal-results/${id}` });
+    },
+    [navigate]
+  );
+
+  const handleUnpinResult = useCallback(
+    async (id: string) => {
+      await fetchWithAuth(
+        `/api/portal-results/${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      );
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.portalResults.root,
+      });
+    },
+    [fetchWithAuth, queryClient]
+  );
+
+  const handleViewAllPinnedResults = useCallback(() => {
+    navigate({ to: "/portal-results" });
+  }, [navigate]);
+
   return (
     <>
       <DashboardViewUI
@@ -138,6 +182,9 @@ export const DashboardView: React.FC = () => {
         onLaunchPortal={handleLaunchPortal}
         onChangeDefault={handleChangeDefault}
         onPortalClick={handlePortalClick}
+        onPinnedResultClick={handlePinnedResultClick}
+        onUnpinResult={handleUnpinResult}
+        onViewAllPinnedResults={handleViewAllPinnedResults}
       />
 
       <CreatePortalDialog

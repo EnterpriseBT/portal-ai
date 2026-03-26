@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, type SQL } from "drizzle-orm";
+import { eq, and, ilike, type SQL } from "drizzle-orm";
 
 import {
   PinResultBodySchema,
@@ -233,7 +233,7 @@ portalResultsRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortOrder, stationId } =
+      const { limit, offset, sortOrder, search, stationId } =
         PortalListRequestQuerySchema.parse(req.query);
       const { organizationId } = req.application!.metadata;
 
@@ -242,6 +242,9 @@ portalResultsRouter.get(
       ];
       if (stationId) {
         filters.push(eq(portalResults.stationId, stationId));
+      }
+      if (search) {
+        filters.push(ilike(portalResults.name, `%${search}%`));
       }
       const where = and(...filters);
 
