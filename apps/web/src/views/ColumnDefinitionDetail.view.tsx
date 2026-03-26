@@ -71,20 +71,18 @@ export const ColumnDefinitionDetailView: React.FC<
               const cd = item.columnDefinition;
               return (
                 <Stack spacing={4}>
-                  <Breadcrumbs
-                    items={[
-                      { label: "Dashboard", href: "/", icon: IconName.Home },
-                      {
-                        label: "Column Definitions",
-                        href: "/column-definitions",
-                      },
-                      { label: cd.label },
-                    ]}
-                    onNavigate={(href) => navigate({ to: href })}
-                  />
-
-                  {/* Metadata Section */}
                   <Box>
+                    <Breadcrumbs
+                      items={[
+                        { label: "Dashboard", href: "/", icon: IconName.Home },
+                        {
+                          label: "Column Definitions",
+                          href: "/column-definitions",
+                        },
+                        { label: cd.label },
+                      ]}
+                      onNavigate={(href) => navigate({ to: href })}
+                    />
                     <Stack
                       direction="row"
                       spacing={2}
@@ -102,6 +100,10 @@ export const ColumnDefinitionDetailView: React.FC<
                         <Chip label="Required" size="small" color="error" />
                       )}
                     </Stack>
+                  </Box>
+
+                  {/* Metadata Section */}
+                  <Box>
 
                     <Stack spacing={1}>
                       <Typography variant="body2" color="text.secondary">

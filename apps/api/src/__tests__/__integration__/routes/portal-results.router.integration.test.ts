@@ -274,6 +274,77 @@ describe("Portal Results Router", () => {
     });
   });
 
+  // ── GET /api/portal-results/:id ─────────────────────────────────
+
+  describe("GET /api/portal-results/:id", () => {
+    it("returns a portal result by ID", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const result = createPortalResult(organizationId, station.id, portal.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(result as never);
+
+      const res = await request(app)
+        .get(`/api/portal-results/${result.id}`)
+        .expect(200);
+
+      expect(res.body.payload.portalResult).toBeDefined();
+      expect(res.body.payload.portalResult.id).toBe(result.id);
+      expect(res.body.payload.portalResult.name).toBe("My Result");
+    });
+
+    it("returns 404 for non-existent ID", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .get(`/api/portal-results/${generateId()}`)
+        .expect(404);
+    });
+
+    it("returns 404 for soft-deleted result", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const result = createPortalResult(organizationId, station.id, portal.id, {
+        deleted: now,
+        deletedBy: "SYSTEM_TEST",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(result as never);
+
+      await request(app)
+        .get(`/api/portal-results/${result.id}`)
+        .expect(404);
+    });
+  });
+
   // ── PATCH /api/portal-results/:id ────────────────────────────────
 
   describe("PATCH /api/portal-results/:id", () => {

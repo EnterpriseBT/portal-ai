@@ -66,17 +66,19 @@ export const PinnedResultsListView: React.FC = () => {
   );
 
   return (
-    <Box>
-      <Breadcrumbs
-        items={[
-          { label: "Dashboard", href: "/", icon: IconName.Home },
-          { label: "Pinned Results" },
-        ]}
-        onNavigate={(href) => navigate({ to: href })}
-      />
-      <Typography variant="h1" gutterBottom>
-        Pinned Results
-      </Typography>
+    <Stack spacing={4}>
+      <Box>
+        <Breadcrumbs
+          items={[
+            { label: "Dashboard", href: "/", icon: IconName.Home },
+            { label: "Pinned Results" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+        />
+        <Typography variant="h1">
+          Pinned Results
+        </Typography>
+      </Box>
       <Stack spacing={2}>
         <PaginationToolbar {...pagination.toolbarProps} />
         <PinnedResultsDataList
@@ -112,6 +114,6 @@ export const PinnedResultsListView: React.FC = () => {
           )}
         </PinnedResultsDataList>
       </Stack>
-    </Box>
+    </Stack>
   );
 };
