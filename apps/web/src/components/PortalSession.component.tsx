@@ -57,9 +57,11 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
       ))}
 
       {streamingBlocks !== null && streamingBlocks.length > 0 && (
-        <Box sx={{ mb: 2 }}>
+        <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
           {streamingBlocks.map((block, i) => (
-            <ContentBlockRenderer key={i} block={block} />
+            <Box key={i} sx={{ overflow: "auto" }}>
+              <ContentBlockRenderer block={block} />
+            </Box>
           ))}
         </Box>
       )}
@@ -211,7 +213,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     });
 
     es.addEventListener("done", (_e: MessageEvent) => {
-      JSON.parse(_e.data) as DoneEvent;
+      const doneData = JSON.parse(_e.data) as DoneEvent;
       es.close();
       esRef.current = null;
 
@@ -219,7 +221,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       const finalBlocks = streamingBlocksRef.current;
       if (finalBlocks.length > 0) {
         const assistantMsg: PortalMessageResponse = {
-          id: `local-assistant-${Date.now()}`,
+          id: doneData.messageId,
           portalId,
           organizationId: "",
           role: "assistant",

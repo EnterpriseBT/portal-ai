@@ -85,6 +85,7 @@ export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
 
 export const PinResultBodySchema = z.object({
   portalId: z.string().min(1),
+  messageId: z.string().min(1).optional(),
   blockIndex: z.number().int().min(0),
   name: z.string().min(1),
 });

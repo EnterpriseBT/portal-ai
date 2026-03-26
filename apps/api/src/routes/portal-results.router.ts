@@ -96,7 +96,7 @@ portalResultsRouter.post(
       }
 
       const { organizationId, userId } = req.application!.metadata;
-      const { portalId, blockIndex, name } = parsed.data;
+      const { portalId, messageId, blockIndex, name } = parsed.data;
 
       // Load portal to get stationId + verify org
       const portal = await DbService.repository.portals.findById(portalId);
@@ -106,13 +106,19 @@ portalResultsRouter.post(
         );
       }
 
-      // Find the most recent assistant message
+      // Find the target assistant message
       const messages =
         await DbService.repository.portalMessages.findByPortal(portalId);
-      const assistantMessages = messages.filter((m) => m.role === "assistant");
-      const lastAssistantMsg = assistantMessages[assistantMessages.length - 1];
 
-      if (!lastAssistantMsg) {
+      let targetMsg;
+      if (messageId) {
+        targetMsg = messages.find((m) => m.id === messageId && m.role === "assistant");
+      } else {
+        const assistantMessages = messages.filter((m) => m.role === "assistant");
+        targetMsg = assistantMessages[assistantMessages.length - 1];
+      }
+
+      if (!targetMsg) {
         return next(
           new ApiError(
             404,
@@ -122,7 +128,7 @@ portalResultsRouter.post(
         );
       }
 
-      const blocks = lastAssistantMsg.blocks as Array<{
+      const blocks = targetMsg.blocks as Array<{
         type: string;
         content: unknown;
       }>;

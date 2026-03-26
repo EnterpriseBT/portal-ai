@@ -207,11 +207,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
           data-testid="result-content"
           sx={{
             overflow: "auto",
-            maxWidth: "100%",
-            "& img, & canvas, & .vega-embed": {
-              maxWidth: "100%",
-              height: "auto",
-            },
+            width: '100% !important'
           }}
         >
           <ContentBlockRenderer block={contentBlock} />
@@ -229,6 +225,9 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             label="Name"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleRenameSubmit();
+            }}
             data-testid="rename-input"
           />
         </DialogContent>
