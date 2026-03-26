@@ -9,7 +9,7 @@ import {
   Typography,
   IconName,
 } from "@portalai/core/ui";
-import AddIcon from "@mui/icons-material/Add";
+import RocketLaunch from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -39,9 +39,10 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
       <Box>
         <Breadcrumbs items={[{ label: "Home", icon: IconName.Home }]} />
         <Stack
-          direction="row"
+          direction={{ xs: "column", sm: "row" }}
           justifyContent="space-between"
-          alignItems="center"
+          alignItems={{ xs: "flex-start", sm: "center" }}
+          spacing={1}
         >
           <Stack direction="row" alignItems="center" gap={1}>
             <HealthCheck />
@@ -49,10 +50,10 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
           </Stack>
           <Button
             variant="contained"
-            startIcon={<AddIcon />}
+            startIcon={<RocketLaunch />}
             onClick={onNewPortal}
           >
-            New Portal
+            Launch New Portal
           </Button>
         </Stack>
       </Box>
