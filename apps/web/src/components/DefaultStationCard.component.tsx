@@ -33,12 +33,14 @@ export interface DefaultStationCardUIProps {
   station: Station | null;
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
+  onViewStation?: (stationId: string) => void;
 }
 
 export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
   station,
   onLaunchPortal,
   onChangeDefault,
+  onViewStation,
 }) => {
   if (!station) {
     return (
@@ -61,7 +63,19 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
   return (
     <Card variant="outlined" data-testid="default-station-card">
       <CardContent>
-        <Typography variant="h6" gutterBottom>{station.name}</Typography>
+        <Stack direction="row" alignItems="baseline" spacing={1}>
+          <Typography variant="h6" gutterBottom>{station.name}</Typography>
+          {onViewStation && (
+            <Typography
+              variant="caption"
+              color="primary"
+              onClick={() => onViewStation(station.id)}
+              sx={{ cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
+            >
+              View Station
+            </Typography>
+          )}
+        </Stack>
         <Stack spacing={1} sx={{ mb: 2 }}>
           <Stack direction="row" spacing={0.5} alignItems="baseline">
             <Typography variant="caption" color="text.secondary">Default Station</Typography>
@@ -103,11 +117,12 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
 export interface DefaultStationCardConnectedProps {
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
+  onViewStation?: (stationId: string) => void;
 }
 
 export const DefaultStationCardConnected: React.FC<
   DefaultStationCardConnectedProps
-> = ({ onLaunchPortal, onChangeDefault }) => (
+> = ({ onLaunchPortal, onChangeDefault, onViewStation }) => (
   <OrgData>
     {(orgResult) => (
       <DataResult results={{ org: orgResult }}>
@@ -137,6 +152,7 @@ export const DefaultStationCardConnected: React.FC<
                         station={payload.station}
                         onLaunchPortal={onLaunchPortal}
                         onChangeDefault={onChangeDefault}
+                        onViewStation={onViewStation}
                       />
                     );
                   }}

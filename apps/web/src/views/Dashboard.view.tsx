@@ -27,6 +27,7 @@ export interface DashboardViewUIProps {
   onNewPortal: () => void;
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
+  onViewStation: (stationId: string) => void;
   onPortalClick: (portalId: string) => void;
   onPinnedResultClick: (id: string) => void;
   onUnpinResult: (id: string) => void;
@@ -37,6 +38,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
   onNewPortal,
   onLaunchPortal,
   onChangeDefault,
+  onViewStation,
   onPortalClick,
   onPinnedResultClick,
   onUnpinResult,
@@ -69,6 +71,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
       <DefaultStationCardConnected
         onLaunchPortal={onLaunchPortal}
         onChangeDefault={onChangeDefault}
+        onViewStation={onViewStation}
       />
 
       <Box>
@@ -144,6 +147,13 @@ export const DashboardView: React.FC = () => {
     navigate({ to: "/stations" });
   }, [navigate]);
 
+  const handleViewStation = useCallback(
+    (stationId: string) => {
+      navigate({ to: `/stations/${stationId}` });
+    },
+    [navigate]
+  );
+
   const handlePortalClick = useCallback(
     (portalId: string) => {
       navigate({ to: `/portals/${portalId}` });
@@ -181,6 +191,7 @@ export const DashboardView: React.FC = () => {
         onNewPortal={handleNewPortal}
         onLaunchPortal={handleLaunchPortal}
         onChangeDefault={handleChangeDefault}
+        onViewStation={handleViewStation}
         onPortalClick={handlePortalClick}
         onPinnedResultClick={handlePinnedResultClick}
         onUnpinResult={handleUnpinResult}
