@@ -42,27 +42,29 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   onExit,
   isStreaming,
 }) => (
-  <ChatWindowUI
-    value={inputValue}
-    onChange={onInputChange}
-    onSubmit={onSubmit}
-    onReset={onReset}
-    onCancel={onCancel}
-    onExit={onExit}
-    disabled={isStreaming}
-  >
-    {messages.map((msg) => (
-      <PortalMessage key={msg.id} message={msg} portalId={portalId} />
-    ))}
+  <Box flex={1}>
+    <ChatWindowUI
+      value={inputValue}
+      onChange={onInputChange}
+      onSubmit={onSubmit}
+      onReset={onReset}
+      onCancel={onCancel}
+      onExit={onExit}
+      disabled={isStreaming}
+    >
+      {messages.map((msg) => (
+        <PortalMessage key={msg.id} message={msg} portalId={portalId} />
+      ))}
 
-    {streamingBlocks !== null && streamingBlocks.length > 0 && (
-      <Box sx={{ mb: 2 }}>
-        {streamingBlocks.map((block, i) => (
-          <ContentBlockRenderer key={i} block={block} />
-        ))}
-      </Box>
-    )}
-  </ChatWindowUI>
+      {streamingBlocks !== null && streamingBlocks.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          {streamingBlocks.map((block, i) => (
+            <ContentBlockRenderer key={i} block={block} />
+          ))}
+        </Box>
+      )}
+    </ChatWindowUI>
+  </Box>
 );
 
 // ── Container ─────────────────────────────────────────────────────────
