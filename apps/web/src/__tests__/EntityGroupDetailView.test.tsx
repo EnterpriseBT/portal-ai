@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import type { SelectOption } from "@portalai/core/ui";
 
 // ── Mocks ───────────────────────────────────────────────────────────
 
@@ -109,8 +110,8 @@ const defaultProps = {
   addMemberOpen: false,
   onOpenAddMember: jest.fn(),
   onCloseAddMember: jest.fn(),
-  onSearchEntities: jest.fn().mockResolvedValue([]),
-  onSearchFieldMappings: jest.fn().mockResolvedValue([]),
+  onSearchEntities: jest.fn<(_: string) => Promise<SelectOption[]>>().mockResolvedValue([]),
+  onSearchFieldMappings: jest.fn<(_: string) => Promise<SelectOption[]>>().mockResolvedValue([]),
   selectedEntityId: null as string | null,
   onEntityChange: jest.fn(),
   selectedFieldMappingId: null as string | null,

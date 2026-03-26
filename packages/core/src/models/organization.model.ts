@@ -13,6 +13,7 @@ export const OrganizationSchema = CoreSchema.extend({
   name: z.string(),
   timezone: z.string(),
   ownerUserId: z.string(), // ID of the user who owns this organization
+  defaultStationId: z.string().nullable().default(null),
 });
 
 export type Organization = z.infer<typeof OrganizationSchema>;

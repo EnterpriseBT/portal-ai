@@ -6,11 +6,16 @@ import { connectorInstances } from "./connector-instances.api";
 import { entityRecords } from "./entity-records.api";
 import { entityGroups } from "./entity-groups.api";
 import { entityTags } from "./entity-tags.api";
-import {  entityTagAssignments } from "./entity-tag-assignments.api";
+import { entityTagAssignments } from "./entity-tag-assignments.api";
 import { fieldMappings } from "./field-mappings.api";
 import { health } from "./health.api";
 import { jobs } from "./jobs.api";
+import { organizationTools } from "./organization-tools.api";
 import { organizations } from "./organizations.api";
+import { portalResults } from "./portal-results.api";
+import { portals } from "./portals.api";
+import { stationTools } from "./station-tools.api";
+import { stations } from "./stations.api";
 import { uploads } from "./uploads.api";
 
 export { queryKeys } from "./keys";
@@ -28,6 +33,11 @@ export const sdk = {
   fieldMappings,
   health,
   jobs,
+  organizationTools,
   organizations,
+  portalResults,
+  portals,
+  stationTools,
+  stations,
   uploads,
 } as const;

@@ -1,0 +1,33 @@
+/**
+ * Repository for the `station_instances` join table.
+ *
+ * Links stations to connector instances.
+ */
+
+import { eq } from "drizzle-orm";
+
+import { stationInstances } from "../schema/index.js";
+import { db } from "../client.js";
+import { Repository, type DbClient } from "./base.repository.js";
+import type { StationInstanceSelect, StationInstanceInsert } from "../schema/zod.js";
+
+export class StationInstancesRepository extends Repository<
+  typeof stationInstances,
+  StationInstanceSelect,
+  StationInstanceInsert
+> {
+  constructor() {
+    super(stationInstances);
+  }
+
+  /** Return all instances linked to a station. */
+  async findByStationId(
+    stationId: string,
+    client: DbClient = db
+  ): Promise<StationInstanceSelect[]> {
+    return this.findMany(eq(stationInstances.stationId, stationId), {}, client);
+  }
+}
+
+/** Singleton instance. */
+export const stationInstancesRepo = new StationInstancesRepository();

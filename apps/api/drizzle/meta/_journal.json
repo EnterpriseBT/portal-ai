@@ -169,6 +169,20 @@
       "when": 1774367702124,
       "tag": "0023_create_entity_groups_and_members",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1774455979622,
+      "tag": "0024_add_stations_portals_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1774542379622,
+      "tag": "0025_add_station_tool_packs",
+      "breakpoints": true
     }
   ]
 }

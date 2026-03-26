@@ -21,6 +21,13 @@ import {
   entityTagAssignmentsRepo,
   entityGroupsRepo,
   entityGroupMembersRepo,
+  stationsRepo,
+  stationInstancesRepo,
+  portalsRepo,
+  portalMessagesRepo,
+  portalResultsRepo,
+  organizationToolsRepo,
+  stationToolsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -86,6 +93,13 @@ export class DbService {
       entityTagAssignments: entityTagAssignmentsRepo,
       entityGroups: entityGroupsRepo,
       entityGroupMembers: entityGroupMembersRepo,
+      stations: stationsRepo,
+      stationInstances: stationInstancesRepo,
+      portals: portalsRepo,
+      portalMessages: portalMessagesRepo,
+      portalResults: portalResultsRepo,
+      organizationTools: organizationToolsRepo,
+      stationTools: stationToolsRepo,
     };
   }
 }

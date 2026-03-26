@@ -69,8 +69,9 @@ SQL querying and chart visualization against in-memory entity records.
 |------|-----------|-----------------|----------|
 | `sql_query` | AlaSQL | `{ sql: string }` | Flexible querying: aggregations, filters, joins, pivots. Tables named by `connectorEntity.key`. |
 | `visualize` | AlaSQL + Vega-Lite | `{ sql: string, vegaLiteSpec: object }` | Run a SQL query and render the result as any chart type (bar, line, scatter, heatmap, etc.) |
+| `resolve_identity` | EntityGroups + AlaSQL | `{ entityGroupName: string, linkValue: string }` | Find all records across Entity Group member entities that share a given link value (e.g., all records for email "jane@co.com" across CRM, HRIS, and CSV sources). Returns matched records grouped by source entity. |
 
-> The `entity` key (e.g. `"orders"`, `"customers"`) is the table name registered in AlaSQL when the portal opens. For `sql_query` and `visualize`, reference it directly in the SQL statement.
+> The `entity` key (e.g. `"orders"`, `"customers"`) is the table name registered in AlaSQL when the portal opens. For `sql_query` and `visualize`, reference it directly in the SQL statement. For `resolve_identity`, the tool uses Entity Group metadata to query across member entities automatically.
 
 ---
 
@@ -154,6 +155,16 @@ A **Station** is a named grouping of one or more connector instances. Users crea
 
 A Station referencing two connector instances (e.g., a CRM instance with "contacts" and "deals", and a CSV instance with "products") means the agent can query across all of their entities within a portal — enabling cross-entity SQL joins, correlations, and visualizations.
 
+#### Entity Groups and Cross-Entity Identity
+
+Stations define *which* data is available; **Entity Groups** define *how* that data relates across entities. An Entity Group declares that two or more connector entities represent the same real-world object (e.g., "Person" group links `employees` from HubSpot, `contacts` from Salesforce, and `users` from a CSV). Each member of the group specifies a `linkFieldMappingId` — the field mapping whose underlying column definition serves as the shared join key (e.g., email address, employee ID).
+
+When a station's connector instances contain entities that belong to one or more Entity Groups, the portal session gains cross-entity relationship metadata that would otherwise require the user to manually specify join keys. This has three concrete effects on portal behavior:
+
+1. **System prompt enrichment** — Entity Group relationships are included in the system prompt alongside entity schemas, so Claude knows which tables can be joined and on which columns without the user having to explain the data model.
+2. **Automatic join key resolution** — Tools like `sql_query` and `visualize` benefit from Claude knowing the canonical join keys between entities. Instead of guessing or asking the user which field to join on, Claude can reference the Entity Group link fields directly.
+3. **Identity resolution queries** — The `resolve_identity` tool (see below) allows Claude to find all records across group member entities that share a given link value, surfacing a unified view of a real-world object across data sources.
+
 **`portals` table** — a chat session opened from a station
 
 | Column | Type | Description |
@@ -217,11 +228,24 @@ stationId → StationRepository.findById() → station
                → AlaSQL: register as named table (using connectorEntity.key as table name) for cross-entity joins
                → Arquero: aq.from(records)
                → ml.js: extract numeric columns into feature matrix
+  → Entity Group discovery (runs once after all entities are resolved):
+      For each connectorEntity loaded above:
+        EntityGroupMembersRepository.findByConnectorEntityId(connectorEntity.id)
+          → entityGroupMembers[] (includes entityGroupId, linkFieldMappingId, isPrimary)
+      Deduplicate by entityGroupId → collect only groups where ≥2 member entities
+        are present in this station's loaded entities
+      For each relevant EntityGroup:
+        EntityGroupRepository.findById(groupId) → { name, description }
+        Map each member's linkFieldMappingId → fieldMapping → columnDefinition
+          → { entityKey, linkColumnKey, linkColumnLabel, isPrimary }
+      → Produces entityGroups[] for system prompt (see below)
 ```
 
 The field mappings and column definitions are derived from each entity record's associated `connectorEntity`. Since entity records store both raw `data` and `normalizedData` (mapped via `fieldMappings` to the organization's `columnDefinitions`), the analytics layer operates on `normalizedData` — which uses the standardized column keys. This means the schema passed to the LLM in the system prompt matches the actual column names in the data, enabling accurate SQL and tool parameter generation.
 
 All connector entities across all station instances are loaded as named tables in AlaSQL (using `connectorEntity.key` as the table name), allowing the agent to write cross-entity SQL joins (e.g., `SELECT c.name, SUM(o.amount) FROM customers c JOIN orders o ON c.id = o.customerId`).
+
+Entity Group metadata is included in the system prompt so Claude can generate accurate cross-entity joins without guessing join keys. For each Entity Group where two or more member entities are loaded in the station, the system prompt includes the group name, member entities, and the specific column to join on for each member. This turns vague cross-source queries ("compare employees across systems") into precise SQL joins.
 
 ---
 
@@ -464,6 +488,11 @@ export class AnalyticsService {
   /** Load all connector entities for a station into memory (called when a portal is opened) */
   private static async loadStation(stationId: string, organizationId: string): Promise<{
     entities: Array<{ key: string; label: string; schema: Record<string, string> }>;
+    entityGroups: Array<{
+      name: string;
+      description: string | null;
+      members: Array<{ entityKey: string; linkColumnKey: string; linkColumnLabel: string; isPrimary: boolean }>;
+    }>;
     records: Map<string, Record<string, unknown>[]>;
   }> {
     // 1. Resolve stationId → stationInstances → connectorInstanceIds
@@ -474,7 +503,12 @@ export class AnalyticsService {
     //    b. Fetch records: EntityRecordRepository.findMany({ connectorEntityId, organizationId })
     //       → extract normalizedData (already mapped to standardized column keys)
     //    c. Register as named AlaSQL table (using connectorEntity.key) for cross-entity joins
-    // 3. Return entity schemas (for system prompt) and records map keyed by connectorEntity.key
+    // 3. Discover Entity Groups:
+    //    a. For each loaded connectorEntity, query EntityGroupMembersRepository.findByConnectorEntityId()
+    //    b. Collect all unique entityGroupIds, filter to groups where ≥2 members are in this station
+    //    c. For each relevant group, resolve member linkFieldMappingId → fieldMapping → columnDefinition
+    //       → produces { entityKey, linkColumnKey, linkColumnLabel, isPrimary }[] per group
+    // 4. Return entity schemas, entity group metadata (for system prompt), and records map
   }
 
   /** Load records for a single connector entity */
@@ -604,6 +638,37 @@ export class AnalyticsService {
     };
     return { spec };
   }
+
+  /** Resolve identity across Entity Group members — find all records sharing a link value */
+  static async resolveIdentity(params: {
+    entityGroupName: string;
+    linkValue: string;
+    stationId: string;
+    organizationId: string;
+  }): Promise<{
+    entityGroup: string;
+    linkValue: string;
+    matches: Array<{
+      entityKey: string;
+      entityLabel: string;
+      linkColumn: string;
+      isPrimary: boolean;
+      records: Record<string, unknown>[];
+    }>;
+    totalRecords: number;
+  }> {
+    // 1. Look up the Entity Group by name within the organization
+    // 2. Load its members (connectorEntityId, linkFieldMappingId, isPrimary)
+    // 3. Filter to members whose connectorEntity is loaded in the current station
+    // 4. For each member, query the in-memory AlaSQL table:
+    //    SELECT * FROM <entityKey> WHERE <linkColumnKey> = '<linkValue>'
+    // 5. Return matched records grouped by entity, primary entity first
+    //
+    // This mirrors the existing EntityGroup resolve endpoint
+    // (GET /api/entity-groups/:groupId/resolve?linkValue=...)
+    // but operates against the in-memory tables already loaded for the portal session,
+    // avoiding an additional DB round-trip.
+  }
 }
 ```
 
@@ -623,7 +688,7 @@ import { stationToolsRepo, stationsRepo } from "../db/index.js";
  *
  * Every tool available to Claude is determined exclusively by:
  *   1. The packs selected on the station (station.toolPacks)
- *   2. The custom webhook tools registered on the station (station_tools rows)
+ *   2. The organization tools assigned to the station (organization_tools via station_tools join table)
  *
  * There are no implicit or always-on tools. If a station has no packs selected,
  * this function throws — portal creation should have already blocked that case.
@@ -657,6 +722,14 @@ export async function buildAnalyticsTools(
         vegaLiteSpec: z.record(z.unknown()).describe("Vega-Lite spec without data — include mark, encoding, and any transforms"),
       }),
       execute: (input) => AnalyticsService.visualize({ ...input, organizationId }),
+    });
+    tools.resolve_identity = tool({
+      description: "Find all records across an Entity Group's member entities that share a given link value. Use this when the user asks about a specific person, company, or object that exists across multiple data sources. Returns matched records grouped by source entity, with the primary entity's records first.",
+      inputSchema: z.object({
+        entityGroupName: z.string().describe("Name of the Entity Group to resolve against (e.g., 'Person', 'Company')"),
+        linkValue: z.string().describe("The shared identifier value to look up (e.g., an email address, employee ID, company name)"),
+      }),
+      execute: (input) => AnalyticsService.resolveIdentity({ ...input, stationId, organizationId }),
     });
   }
 
@@ -779,8 +852,8 @@ export async function buildAnalyticsTools(
   }
 
   // ── Custom webhook tools ────────────────────────────────────────────
-  // Appended from station_tools rows — always included regardless of packs
-  const customToolDefs = await stationToolsRepo.findByStation(stationId, organizationId);
+  // Loaded from organization_tools via station_tools join — always included regardless of packs
+  const customToolDefs = await stationToolsRepo.findByStationId(stationId);
   for (const def of customToolDefs) {
     tools[def.name] = tool({
       description: def.description,
@@ -808,7 +881,16 @@ export class PortalService {
   /** Run a portal turn: stream Claude's response while executing tool calls */
   static async streamResponse(params: {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
-    stationContext: { stationId: string; stationName: string; entities: Array<{ key: string; label: string; schema: Record<string, string> }> };
+    stationContext: {
+      stationId: string;
+      stationName: string;
+      entities: Array<{ key: string; label: string; schema: Record<string, string> }>;
+      entityGroups: Array<{
+        name: string;
+        description: string | null;
+        members: Array<{ entityKey: string; linkColumnKey: string; linkColumnLabel: string; isPrimary: boolean }>;
+      }>;
+    };
     organizationId: string;
     sse: SseUtil;
   }): Promise<void> {
@@ -822,6 +904,33 @@ export class PortalService {
       .map((e) => `### ${e.label} (table: \`${e.key}\`)\n${JSON.stringify(e.schema, null, 2)}`)
       .join("\n\n");
 
+    // Build Entity Group relationship descriptions for the system prompt.
+    // These tell Claude which entities represent the same real-world objects
+    // and which columns to use for cross-entity joins.
+    const entityGroupDescriptions = stationContext.entityGroups.length > 0
+      ? [
+          "## Entity Groups (Cross-Entity Relationships)",
+          "",
+          "The following Entity Groups define identity relationships between entities in this station. " +
+          "Entities within the same group represent the same real-world objects across different data sources. " +
+          "Use the specified link columns when joining across member entities.",
+          "",
+          ...stationContext.entityGroups.map((g) => {
+            const primaryMember = g.members.find((m) => m.isPrimary);
+            const memberList = g.members
+              .map((m) => `- \`${m.entityKey}\` — join on column \`${m.linkColumnKey}\` (${m.linkColumnLabel})${m.isPrimary ? " **[primary]**" : ""}`)
+              .join("\n");
+            return [
+              `### ${g.name}${g.description ? ` — ${g.description}` : ""}`,
+              memberList,
+              primaryMember
+                ? `\nWhen displaying a unified view, prefer data from the primary entity \`${primaryMember.entityKey}\` and supplement with other members.`
+                : "",
+            ].filter(Boolean).join("\n");
+          }),
+        ].join("\n")
+      : "";
+
     const availableToolNames = Object.keys(tools).join(", ");
 
     const systemPrompt = [
@@ -830,9 +939,13 @@ export class PortalService {
       "",
       entitySchemas,
       "",
+      ...(entityGroupDescriptions ? [entityGroupDescriptions, ""] : []),
       `You have access to the following tools: ${availableToolNames}`,
       "Use only the tools listed above. Respond in markdown. Keep explanations concise.",
       "When presenting tabular results, format them as markdown tables.",
+      ...(stationContext.entityGroups.length > 0
+        ? ["When the user asks about a real-world object that spans multiple entities (e.g., a person, a company), use the Entity Group link columns to join across entities rather than asking the user for join keys."]
+        : []),
     ].join("\n");
 
     const result = streamText({
@@ -1083,9 +1196,9 @@ Additional algorithms implemented by the Portal.ai team — ARIMA time-series fo
 
 **Phase 1 — Curated packs.** Implement `regression`, `trend`, and the financial analytics pack as additional `AnalyticsService` methods. This covers the highest-value gaps without introducing code execution.
 
-**Phase 2 — Webhook-based custom tools.** Add the `station_tools` table and extend `buildAnalyticsTools()` to load and wrap registered webhooks. This gives users full extensibility without any sandboxing complexity.
+**Phase 2 — Webhook-based custom tools.** Add the `organization_tools` table (org-scoped definitions) and `station_tools` join table (station ↔ tool assignments), then extend `buildAnalyticsTools()` to load and wrap assigned webhooks. Tools are defined once per org and shared across stations. This gives users full extensibility without any sandboxing complexity.
 
-**Phase 3 — Sandboxed JS snippets.** Revisit once the webhook pattern is validated; JS snippets can be offered as an alternative implementation type within the same `station_tools` schema.
+**Phase 3 — Sandboxed JS snippets.** Revisit once the webhook pattern is validated; JS snippets can be offered as an alternative implementation type within the same `organization_tools` schema.
 
 ---
 
@@ -1127,14 +1240,13 @@ Risk metrics (Sharpe ratio, VaR, drawdown, rolling returns) are derived from `si
 
 ---
 
-### Database Schema: `station_tools`
+### Database Schema: `organization_tools`
 
 ```sql
--- One row per user-defined tool, scoped to a station
+-- One row per user-defined tool, scoped to the organization (shared library)
 id                  uuid PRIMARY KEY
 organization_id     uuid REFERENCES organizations(id)
-station_id          uuid REFERENCES stations(id)
-name                text NOT NULL   -- used as the tool key, e.g. "score_lead" (must be unique within a station, cannot shadow built-in names)
+name                text NOT NULL   -- used as the tool key, e.g. "score_lead" (must be unique within an org)
 description         text NOT NULL   -- Claude uses this to decide when to call the tool
 parameter_schema    jsonb NOT NULL  -- JSON Schema object describing input parameters
 implementation      jsonb NOT NULL  -- { type: "webhook", url: string, headers?: Record<string,string> }
@@ -1144,7 +1256,19 @@ updated             timestamp
 deleted             timestamp       -- soft delete
 ```
 
-Dual-schema model in `packages/core`: `StationToolSchema` + `StationToolModel` + `StationToolModelFactory` following the existing pattern.
+Dual-schema model in `packages/core`: `OrganizationToolSchema` + `OrganizationToolModel` + `OrganizationToolModelFactory` following the existing pattern.
+
+### Database Schema: `station_tools` (join table)
+
+```sql
+-- Assigns organization-level tools to stations (many-to-many)
+id                      uuid PRIMARY KEY
+station_id              uuid REFERENCES stations(id)
+organization_tool_id    uuid REFERENCES organization_tools(id)
+created                 timestamp
+```
+
+No soft delete — mirrors the `station_instances` join table pattern. Removing a tool from a station hard-deletes the join row. Updating the tool definition (name, webhook URL, etc.) happens on the `organization_tools` row and propagates to all stations that reference it.
 
 ---
 
@@ -1161,7 +1285,8 @@ Dual-schema model in `packages/core`: `StationToolSchema` + `StationToolModel` +
 | No implicit tools | Every tool Claude can call is explicitly selected by the station operator. There is no platform-wide default set. |
 | Station must have ≥1 pack | `buildAnalyticsTools()` throws if no packs are selected; portal creation validates this before writing the row. Enforced in the Zod model (`toolPacks: z.array(StationToolPackSchema).min(1)`) and at the API layer. |
 | Packs are the selection unit, not individual tools | Users choose capabilities (financial analysis, regression, etc.), not individual function names. This keeps the station setup UI simple and prevents partial/broken configurations. |
-| Tool names must not shadow pack tool names | Prevent custom webhook tools silently overriding curated pack tools; validated at `station_tools` creation time via `StationToolsRepository.create()`. |
+| Tools are org-scoped, assigned to stations via join table | A single webhook tool definition is managed once and shared across multiple stations. Updates to the tool (URL, schema) propagate to all stations. Mirrors the `station_instances` pattern for connector instances. |
+| Tool names must not shadow pack tool names | Prevent custom webhook tools silently overriding curated pack tools; validated at station-tool assignment time (`StationToolsRepository.create()`), not at org-tool creation time — the same tool name may be safe for one station's packs but not another's. |
 | `web_search` is a pack, not a platform default | Web access is opt-in per station. A support-ticket station should not be able to search the web; a research station should. Explicit selection makes this auditable. |
 | System prompt lists only available tools | The system prompt is generated from `Object.keys(tools)` — Claude is told exactly what it can call and never invents tools that aren't in the map. |
 | Webhook auth headers stored encrypted | Tool definitions may include API keys; store `headers` field encrypted at rest using the same mechanism as connector credentials. |
@@ -1173,11 +1298,15 @@ Dual-schema model in `packages/core`: `StationToolSchema` + `StationToolModel` +
 
 | Action | File | Purpose |
 |--------|------|---------|
-| Create | `packages/core/src/models/station-tool.model.ts` | Zod model for StationTool |
-| Create | `apps/api/src/db/schema/station-tools.table.ts` | Drizzle table definition |
-| Create | `apps/api/src/db/repositories/station-tools.repository.ts` | CRUD + findByStation |
-| Create | `apps/api/src/routes/station-tools.router.ts` | REST endpoints: list, create, update, delete |
-| Modify | `apps/api/src/services/analytics.tools.ts` | Extend `buildAnalyticsTools()` to accept `stationId`, load and wrap custom tools |
+| Create | `packages/core/src/models/organization-tool.model.ts` | Zod model for OrganizationTool (org-scoped tool definition) |
+| Create | `packages/core/src/models/station-tool.model.ts` | Zod model for StationTool (join table: station ↔ org tool) |
+| Create | `apps/api/src/db/schema/organization-tools.table.ts` | Drizzle table definition for org-scoped tools |
+| Create | `apps/api/src/db/schema/station-tools.table.ts` | Drizzle join table: station ↔ org tool assignments |
+| Create | `apps/api/src/db/repositories/organization-tools.repository.ts` | CRUD for org-scoped tool definitions |
+| Create | `apps/api/src/db/repositories/station-tools.repository.ts` | assign/unassign + findByStationId (joins to org tools) |
+| Create | `apps/api/src/routes/organization-tools.router.ts` | REST endpoints: list, create, update, delete org tools |
+| Create | `apps/api/src/routes/station-tools.router.ts` | REST endpoints: list, assign, unassign tools on a station |
+| Modify | `apps/api/src/services/analytics.tools.ts` | Extend `buildAnalyticsTools()` to load assigned org tools via join table |
 | Modify | `apps/api/src/services/portal.service.ts` | Pass `stationId` into `buildAnalyticsTools()` |
 
 ---
@@ -1261,3 +1390,7 @@ When the feature needs to evolve beyond single-turn multi-step — for example, 
 8. **Vega-Lite spec validation** — Validate Claude-generated specs against the Vega-Lite JSON schema before sending to the frontend, to prevent rendering errors.
 9. **Custom tool response rendering** — Webhook-based custom tools can return arbitrary JSON. If a custom tool returns a `{ type: "vega-lite", spec }` payload, `PortalService` can emit it as a `tool_result` SSE event for chart rendering. How should other rich response types (tables, images, custom UI blocks) be handled? Define a response envelope standard now, or evolve it as needs arise?
 10. **JSON Schema → Zod conversion** — `buildAnalyticsTools()` will need to convert user-supplied JSON Schema parameter definitions into Zod schemas at runtime (for the Vercel AI SDK `inputSchema`). Evaluate `json-schema-to-zod` or `zod-from-json-schema`; alternatively, constrain `parameter_schema` to a limited subset of JSON Schema types (string, number, boolean, enum, array of primitives) and map them manually to keep the conversion trivial and predictable.
+11. **Entity Group scope in system prompt** — Only Entity Groups where ≥2 member entities are present in the station's loaded data are included in the system prompt. Groups with a single loaded member provide no cross-entity join value and would clutter the context. Should single-member groups still be mentioned as a hint that related data exists in other connectors?
+12. **Entity Group link field cardinality** — Entity Groups currently support one link field per member (compound keys are deferred). For portal analytics, this means joins are always on a single column. If a user needs to join on multiple fields (e.g., first name + last name), they must use `sql_query` with an explicit multi-column WHERE clause. Document this limitation in the system prompt guidance.
+13. **Entity Group ambiguity in `resolve_identity`** — If an organization has multiple Entity Groups with similar names (e.g., "Person" and "People"), the `resolve_identity` tool may match the wrong one. Consider accepting `entityGroupId` as an alternative parameter, or having the system prompt list groups with IDs.
+14. **Entity Group data freshness** — Entity Group membership and link fields are resolved at portal-open time and cached for the session. If an Entity Group is modified mid-session (member added/removed, link field changed), the portal's identity resolution will be stale until a new portal is opened. Acceptable for now; flag if users report confusion.

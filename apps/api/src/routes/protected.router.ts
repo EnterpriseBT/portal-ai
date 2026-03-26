@@ -11,6 +11,11 @@ import { fieldMappingRouter } from "./field-mapping.router.js";
 import { uploadsRouter } from "./uploads.router.js";
 import { entityTagRouter } from "./entity-tag.router.js";
 import { entityGroupRouter } from "./entity-group.router.js";
+import { stationRouter } from "./station.router.js";
+import { portalRouter } from "./portal.router.js";
+import { portalResultsRouter } from "./portal-results.router.js";
+import { organizationToolsRouter } from "./organization-tools.router.js";
+import { stationToolsRouter } from "./station-tools.router.js";
 
 export const protectedRouter = Router();
 
@@ -29,3 +34,8 @@ protectedRouter.use("/field-mappings", fieldMappingRouter);
 protectedRouter.use("/uploads", uploadsRouter);
 protectedRouter.use("/entity-tags", entityTagRouter);
 protectedRouter.use("/entity-groups", entityGroupRouter);
+protectedRouter.use("/stations", stationRouter);
+protectedRouter.use("/stations", stationToolsRouter);
+protectedRouter.use("/portals", portalRouter);
+protectedRouter.use("/portal-results", portalResultsRouter);
+protectedRouter.use("/organization-tools", organizationToolsRouter);

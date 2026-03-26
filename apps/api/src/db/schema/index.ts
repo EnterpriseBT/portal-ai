@@ -13,6 +13,13 @@ export { entityTags } from "./entity-tags.table.js";
 export { entityTagAssignments } from "./entity-tag-assignments.table.js";
 export { entityGroups } from "./entity-groups.table.js";
 export { entityGroupMembers } from "./entity-group-members.table.js";
+export { stations } from "./stations.table.js";
+export { stationInstances } from "./station-instances.table.js";
+export { portals } from "./portals.table.js";
+export { portalMessages, portalMessageRoleEnum } from "./portal-messages.table.js";
+export { portalResults, portalResultTypeEnum } from "./portal-results.table.js";
+export { organizationTools } from "./organization-tools.table.js";
+export { stationTools } from "./station-tools.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";
