@@ -90,11 +90,11 @@ describe("StationCardUI", () => {
     expect(onSetDefault).toHaveBeenCalledWith(station1);
   });
 
-  it("should render open station button", () => {
-    render(<StationCardUI {...defaultCardProps} />);
-    expect(
-      screen.getByRole("button", { name: "Open station" })
-    ).toBeInTheDocument();
+  it("should navigate when card is clicked", () => {
+    const onOpen = jest.fn();
+    render(<StationCardUI {...defaultCardProps} onOpen={onOpen} />);
+    fireEvent.click(screen.getByTestId("station-card"));
+    expect(onOpen).toHaveBeenCalledWith(station1);
   });
 });
 

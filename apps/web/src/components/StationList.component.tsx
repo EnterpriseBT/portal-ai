@@ -8,6 +8,7 @@ import type {
 import type { OrganizationGetResponse } from "@portalai/core/contracts";
 import { Box, Stack, Typography } from "@portalai/core/ui";
 import Card from "@mui/material/Card";
+import CardActionArea from "@mui/material/CardActionArea";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
@@ -59,59 +60,56 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   onOpen,
 }) => (
   <Card variant="outlined">
-    <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        alignItems={{ xs: "flex-start", sm: "center" }}
-        spacing={1.5}
-      >
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography variant="subtitle1" noWrap>
-              {station.name}
-            </Typography>
-            {isDefault && (
-              <Chip
-                label="Default"
-                size="small"
-                color="primary"
-                icon={<StarIcon />}
-                data-testid="default-badge"
-              />
+    <CardActionArea onClick={() => onOpen(station)} data-testid="station-card">
+      <CardContent sx={{ "&:last-child": { pb: 2 } }}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          alignItems={{ xs: "flex-start", sm: "center" }}
+          spacing={1.5}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography variant="subtitle1" noWrap>
+                {station.name}
+              </Typography>
+              {isDefault && (
+                <Chip
+                  label="Default"
+                  size="small"
+                  color="primary"
+                  icon={<StarIcon />}
+                  data-testid="default-badge"
+                />
+              )}
+            </Stack>
+            {station.description && (
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {station.description}
+              </Typography>
             )}
-          </Stack>
-          {station.description && (
-            <Typography variant="body2" color="text.secondary" noWrap>
-              {station.description}
+            <Typography variant="caption" color="text.secondary">
+              Tool packs: {station.toolPacks.join(", ")}
             </Typography>
-          )}
-          <Typography variant="caption" color="text.secondary">
-            Tool packs: {station.toolPacks.join(", ")}
-          </Typography>
-        </Box>
+          </Box>
 
-        <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
           {!isDefault && (
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => onSetDefault(station)}
-              aria-label="Set as default"
+            <Box
+              sx={{ flexShrink: 0 }}
+              onClick={(e) => e.stopPropagation()}
             >
-              Set as default
-            </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => onSetDefault(station)}
+                aria-label="Set as default"
+              >
+                Set as default
+              </Button>
+            </Box>
           )}
-          <Button
-            size="small"
-            variant="text"
-            onClick={() => onOpen(station)}
-            aria-label="Open station"
-          >
-            Open
-          </Button>
         </Stack>
-      </Stack>
-    </CardContent>
+      </CardContent>
+    </CardActionArea>
   </Card>
 );
 
