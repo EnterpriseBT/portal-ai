@@ -21,7 +21,6 @@ import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-
 import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";

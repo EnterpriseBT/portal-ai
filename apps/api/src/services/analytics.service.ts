@@ -397,6 +397,21 @@ export class AnalyticsService {
   }
 
   /**
+   * Run SQL then inject rows into a full Vega spec at `data[0].values`.
+   */
+  static visualizeVega(params: {
+    sql: string;
+    vegaSpec: Record<string, unknown>;
+    stationId: string;
+  }): Record<string, unknown> {
+    const { sql, vegaSpec, stationId } = params;
+    const rows = this.sqlQuery({ sql, stationId });
+    const data = Array.isArray(vegaSpec.data) ? [...vegaSpec.data] : [{}];
+    data[0] = { ...data[0], values: rows };
+    return { ...vegaSpec, data };
+  }
+
+  /**
    * Look up an Entity Group by name, query each member's in-memory AlaSQL table,
    * and return matched records grouped by source entity with primary entity first.
    */

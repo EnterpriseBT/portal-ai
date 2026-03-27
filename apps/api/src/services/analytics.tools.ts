@@ -30,6 +30,7 @@ const logger = createLogger({ module: "analytics-tools" });
 const PACK_TOOL_NAMES = new Set([
   "sql_query",
   "visualize",
+  "visualize_tree",
   "resolve_identity",
   "describe_column",
   "correlate",
@@ -203,6 +204,24 @@ export async function buildAnalyticsTools(
       }),
       execute: async ({ sql, vegaLiteSpec }) =>
         AnalyticsService.visualize({ sql, vegaLiteSpec, stationId }),
+    });
+
+    tools.visualize_tree = tool({
+      description:
+        "Build a full Vega spec for hierarchical or network visualizations " +
+        "(trees, treemaps, sunbursts, force-directed graphs). " +
+        "Use this instead of visualize when the chart requires Vega transforms " +
+        "like stratify, tree, force, or treemap.",
+      inputSchema: z.object({
+        sql: z.string().describe("SQL query to fetch node/link data"),
+        vegaSpec: z
+          .record(z.string(), z.unknown())
+          .describe(
+            "Full Vega spec — data[0].values will be overwritten with query results"
+          ),
+      }),
+      execute: async ({ sql, vegaSpec }) =>
+        AnalyticsService.visualizeVega({ sql, vegaSpec, stationId }),
     });
 
     // resolve_identity — only when ≥1 Entity Group has ≥2 loaded members
@@ -495,7 +514,7 @@ export async function buildAnalyticsTools(
         );
         const result = await callWebhook(implementation, input);
 
-        // Propagate vega-lite chart results
+        // Propagate vega-lite and vega chart results
         if (
           result &&
           typeof result === "object" &&
@@ -503,6 +522,13 @@ export async function buildAnalyticsTools(
           (result as any).spec
         ) {
           return { type: "vega-lite", spec: (result as any).spec };
+        }
+        if (
+          result &&
+          typeof result === "object" &&
+          (result as any).type === "vega"
+        ) {
+          return result;
         }
 
         return result;

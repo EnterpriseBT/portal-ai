@@ -381,6 +381,75 @@ describe("AnalyticsService", () => {
   });
 
   // -----------------------------------------------------------------------
+  // visualizeVega
+  // -----------------------------------------------------------------------
+
+  describe("visualizeVega()", () => {
+    it("should inject SQL results into data[0].values of a Vega spec", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const spec = {
+        $schema: "https://vega.github.io/schema/vega/v5.json",
+        data: [{ name: "table" }],
+        marks: [{ type: "rect" }],
+      };
+
+      const result = AnalyticsService.visualizeVega({
+        sql: "SELECT * FROM [products]",
+        vegaSpec: spec,
+        stationId: STATION_ID,
+      });
+
+      expect((result.data as any[])[0].values).toHaveLength(2);
+      expect((result.data as any[])[0].name).toBe("table");
+      expect(result.marks).toEqual([{ type: "rect" }]);
+    });
+
+    it("should handle specs with no existing data array", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const spec = {
+        $schema: "https://vega.github.io/schema/vega/v5.json",
+        marks: [{ type: "arc" }],
+      };
+
+      const result = AnalyticsService.visualizeVega({
+        sql: "SELECT * FROM [products]",
+        vegaSpec: spec,
+        stationId: STATION_ID,
+      });
+
+      expect(Array.isArray(result.data)).toBe(true);
+      expect((result.data as any[])[0].values).toHaveLength(2);
+    });
+
+    it("should preserve non-first data entries", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const spec = {
+        data: [
+          { name: "table" },
+          { name: "links", values: [{ source: "a", target: "b" }] },
+        ],
+        marks: [],
+      };
+
+      const result = AnalyticsService.visualizeVega({
+        sql: "SELECT * FROM [products]",
+        vegaSpec: spec,
+        stationId: STATION_ID,
+      });
+
+      const data = result.data as any[];
+      expect(data).toHaveLength(2);
+      expect(data[1]).toEqual({ name: "links", values: [{ source: "a", target: "b" }] });
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // resolveIdentity
   // -----------------------------------------------------------------------
 

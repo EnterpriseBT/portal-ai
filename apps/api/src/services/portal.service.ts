@@ -344,6 +344,10 @@ export class PortalService {
           toolName === "visualize" ||
           (toolResult != null && toolResult.type === "vega-lite");
 
+        const isVega =
+          toolName === "visualize_tree" ||
+          (toolResult != null && toolResult.type === "vega");
+
         if (isVegaLite) {
           const event: ToolResultEvent = {
             type: "tool_result",
@@ -352,6 +356,14 @@ export class PortalService {
           };
           sse.send("tool_result", event);
           assistantBlocks.push({ type: "vega-lite", content: toolResult });
+        } else if (isVega) {
+          const event: ToolResultEvent = {
+            type: "tool_result",
+            toolName,
+            result: toolResult,
+          };
+          sse.send("tool_result", event);
+          assistantBlocks.push({ type: "vega", content: toolResult });
         } else if (ROW_SET_TOOLS.has(toolName)) {
           // Row-set tools emit a data-table SSE event for inline rendering
           const rows = Array.isArray(toolResult?.rows)
@@ -480,7 +492,7 @@ function reconstructModelMessages(
           result: block.content,
         });
       }
-      // Display-only blocks (vega-lite, data-table) are skipped for
+      // Display-only blocks (vega-lite, vega, data-table) are skipped for
       // ModelMessage reconstruction — they duplicate tool-result data.
     }
 

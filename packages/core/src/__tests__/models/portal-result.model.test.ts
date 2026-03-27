@@ -146,6 +146,26 @@ describe("PortalResultSchema", () => {
     const result = PortalResultSchema.safeParse(data);
     expect(result.success).toBe(true);
   });
+
+  it("should accept type \"vega\"", () => {
+    const data = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: "org-1",
+      stationId: "station-1",
+      portalId: "portal-1",
+      name: "Tree Diagram",
+      type: "vega",
+      content: { data: [{ values: [] }], marks: [] },
+    };
+    const result = PortalResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("PortalResultModelFactory", () => {

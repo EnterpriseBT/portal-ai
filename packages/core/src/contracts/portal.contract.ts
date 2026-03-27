@@ -100,6 +100,7 @@ export type PinResultBody = z.infer<typeof PinResultBodySchema>;
  *
  * - `text`       — markdown narrative
  * - `vega-lite`  — Vega-Lite chart spec
+ * - `vega`       — Full Vega spec (trees, networks, maps, force-directed graphs)
  * - `data-table` — row-set result from sql_query, detect_outliers, cluster
  * - `tool-call`  — CoreMessage tool-call part (persisted for multi-turn)
  * - `tool-result`— CoreMessage tool-result part (persisted for multi-turn)
@@ -107,6 +108,7 @@ export type PinResultBody = z.infer<typeof PinResultBodySchema>;
 export const PortalBlockTypeSchema = z.enum([
   "text",
   "vega-lite",
+  "vega",
   "data-table",
   "tool-call",
   "tool-result",

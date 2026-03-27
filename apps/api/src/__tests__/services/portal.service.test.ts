@@ -524,6 +524,89 @@ describe("PortalService", () => {
       });
     });
 
+    it("sends tool_result SSE event for visualize_tree tool", async () => {
+      const vegaResult = { data: [{ values: [] }], marks: [{ type: "rect" }] };
+      const chunks = [
+        {
+          type: "tool-result",
+          toolName: "visualize_tree",
+          output: vegaResult,
+        },
+        { type: "finish" },
+      ];
+      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
+
+      const sse = makeSse();
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        sse: sse as any,
+      });
+
+      expect(sse.send).toHaveBeenCalledWith("tool_result", {
+        type: "tool_result",
+        toolName: "visualize_tree",
+        result: vegaResult,
+      });
+    });
+
+    it("sends tool_result SSE event for webhook tool returning vega type", async () => {
+      const vegaResult = { type: "vega", data: [{ values: [] }] };
+      const chunks = [
+        {
+          type: "tool-result",
+          toolName: "my_webhook_tool",
+          output: vegaResult,
+        },
+        { type: "finish" },
+      ];
+      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
+
+      const sse = makeSse();
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        sse: sse as any,
+      });
+
+      expect(sse.send).toHaveBeenCalledWith("tool_result", {
+        type: "tool_result",
+        toolName: "my_webhook_tool",
+        result: vegaResult,
+      });
+    });
+
+    it("persists vega display block in assistant message", async () => {
+      const vegaResult = { data: [{ values: [] }], marks: [] };
+      const chunks = [
+        { type: "tool-call", toolCallId: "tc-v", toolName: "visualize_tree", args: {} },
+        { type: "tool-result", toolCallId: "tc-v", toolName: "visualize_tree", output: vegaResult },
+        { type: "finish" },
+      ];
+      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
+
+      const sse = makeSse();
+      await PortalService.streamResponse({
+        portalId: PORTAL_ID,
+        messages: [],
+        stationContext,
+        organizationId: ORG_ID,
+        sse: sse as any,
+      });
+
+      expect(mockCreate_message).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            { type: "vega", content: vegaResult },
+          ]),
+        })
+      );
+    });
+
     it("sends data-table SSE event for sql_query tool results", async () => {
       const queryResult = { rows: [{ id: 1, name: "Alice" }] };
       const chunks = [

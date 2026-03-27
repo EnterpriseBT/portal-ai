@@ -126,12 +126,19 @@ describe("buildAnalyticsTools()", () => {
 
     expect(tools.sql_query).toBeDefined();
     expect(tools.visualize).toBeDefined();
+    expect(tools.visualize_tree).toBeDefined();
     // resolve_identity omitted because no entity groups
     expect(tools.resolve_identity).toBeUndefined();
     // Other pack tools should be absent
     expect(tools.describe_column).toBeUndefined();
     expect(tools.regression).toBeUndefined();
     expect(tools.npv).toBeUndefined();
+  });
+
+  it("should NOT register visualize_tree when data_query pack is not selected", async () => {
+    setupStationMocks(["statistics"]);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    expect(tools.visualize_tree).toBeUndefined();
   });
 
   it("should register statistics tools when statistics pack is selected", async () => {
@@ -192,6 +199,7 @@ describe("buildAnalyticsTools()", () => {
     // data_query
     expect(tools.sql_query).toBeDefined();
     expect(tools.visualize).toBeDefined();
+    expect(tools.visualize_tree).toBeDefined();
     // statistics
     expect(tools.describe_column).toBeDefined();
     expect(tools.correlate).toBeDefined();
@@ -374,6 +382,36 @@ describe("buildAnalyticsTools()", () => {
     const result = await (tools.chart_tool as any).execute({});
 
     expect(result).toEqual({ type: "vega-lite", spec: vegaSpec });
+  });
+
+  it("should propagate vega results from webhook", async () => {
+    setupStationMocks(["data_query"]);
+
+    mockFindByStationId_tools.mockResolvedValue([
+      {
+        id: "st-1",
+        stationId: STATION_ID,
+        organizationToolId: "ot-1",
+        organizationTool: {
+          id: "ot-1",
+          name: "tree_tool",
+          description: "Returns a full Vega spec",
+          parameterSchema: { type: "object", properties: {} },
+          implementation: { type: "webhook", url: "https://example.com/tree" },
+        },
+      },
+    ]);
+
+    const vegaSpec = { type: "vega", data: [{ values: [] }], marks: [] };
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => vegaSpec,
+    });
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const result = await (tools.tree_tool as any).execute({});
+
+    expect(result).toEqual(vegaSpec);
   });
 
   it("should throw when custom tool name shadows a pack tool name", async () => {

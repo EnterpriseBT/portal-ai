@@ -60,6 +60,10 @@ const toContentBlock = (
     return { type: "vega-lite", content: spec };
   }
 
+  if (result.type === "vega") {
+    return { type: "vega", content: raw };
+  }
+
   if (result.type === "data-table") {
     const obj = raw as Record<string, unknown> | null;
     return {

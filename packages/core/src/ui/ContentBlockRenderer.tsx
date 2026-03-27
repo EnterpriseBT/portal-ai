@@ -9,6 +9,10 @@ const LazyVegaLite = React.lazy(() =>
   import("react-vega").then((mod) => ({ default: mod.VegaLite }))
 );
 
+const LazyVega = React.lazy(() =>
+  import("react-vega").then((mod) => ({ default: mod.Vega }))
+);
+
 export interface ContentBlockRendererProps {
   block: PortalMessageBlock;
 }
@@ -28,6 +32,14 @@ export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
     return (
       <Suspense fallback={null}>
         <LazyVegaLite spec={block.content as object} />
+      </Suspense>
+    );
+  }
+
+  if (block.type === "vega") {
+    return (
+      <Suspense fallback={null}>
+        <LazyVega spec={block.content as object} />
       </Suspense>
     );
   }

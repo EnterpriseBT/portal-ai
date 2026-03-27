@@ -204,8 +204,15 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
         typeof result === "object" &&
         (data.toolName === "visualize" || result["type"] === "vega-lite");
 
+      const isVega =
+        result != null &&
+        typeof result === "object" &&
+        (data.toolName === "visualize_tree" || result["type"] === "vega");
+
       if (isVegaLite) {
         block = { type: "vega-lite", content: result };
+      } else if (isVega) {
+        block = { type: "vega", content: result };
       } else if (result && typeof result === "object" && result["type"] === "data-table") {
         block = { type: "data-table", content: result };
       }
