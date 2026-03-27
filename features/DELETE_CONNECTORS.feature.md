@@ -356,17 +356,17 @@ interface EditConnectorInstanceDialogProps {
 
 ### Checklist
 
-- [ ] Add `deleteDialogOpen` and `renameDialogOpen` state variables
-- [ ] Wire up `connectorInstances.delete(id)` mutation with `onSuccess` callback (invalidate queries, navigate to `/connectors`)
-- [ ] Wire up `connectorInstances.rename(id)` mutation with `onSuccess` callback (invalidate queries)
-- [ ] Wire up `connectorInstances.impact(id)` query with `enabled: deleteDialogOpen`
-- [ ] Add Delete button (error color) to view header/actions area
-- [ ] Add Rename button/icon next to instance name
-- [ ] Render `<DeleteConnectorInstanceDialog>` with `impact` data and `isLoadingImpact` props
-- [ ] Render `<EditConnectorInstanceDialog>` with correct props
-- [ ] Verify: `npm run type-check` passes
-- [ ] Verify: `npm run lint` passes
-- [ ] Verify: `npm run build` passes
+- [x] Add `deleteDialogOpen` and `renameDialogOpen` state variables
+- [x] Wire up `connectorInstances.delete(id)` mutation with `onSuccess` callback (invalidate queries, navigate to `/connectors`)
+- [x] Wire up `connectorInstances.rename(id)` mutation with `onSuccess` callback (invalidate queries)
+- [x] Wire up `connectorInstances.impact(id)` query with `enabled: deleteDialogOpen`
+- [x] Add Delete button (error color) to view header/actions area
+- [x] Add Rename button/icon next to instance name
+- [x] Render `<DeleteConnectorInstanceDialog>` with `impact` data and `isLoadingImpact` props
+- [x] Render `<EditConnectorInstanceDialog>` with correct props
+- [x] Verify: `npm run type-check` passes
+- [x] Verify: `npm run lint` passes
+- [x] Verify: `npm run build` passes
 
 ---
 

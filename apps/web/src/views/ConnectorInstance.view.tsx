@@ -1,21 +1,28 @@
+import { useState, useCallback } from "react";
+
 import type {
   ConnectorEntityListRequestQuery,
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
+import { Box, Breadcrumbs, Button, Stack, Typography } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditIcon from "@mui/icons-material/Edit";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
 
-import { useNavigate } from "@tanstack/react-router";
-
+import { sdk, queryKeys } from "../api/sdk";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
 import {
   ConnectorEntityDataList,
   ConnectorEntityCardUI,
 } from "../components/ConnectorEntity.component";
 import DataResult from "../components/DataResult.component";
+import { DeleteConnectorInstanceDialog } from "../components/DeleteConnectorInstanceDialog.component";
+import { EditConnectorInstanceDialog } from "../components/EditConnectorInstanceDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
@@ -40,6 +47,39 @@ export const ConnectorInstanceView = ({
   connectorInstanceId,
 }: ConnectorInstanceViewProps) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+  const deleteMutation = sdk.connectorInstances.delete(connectorInstanceId);
+  const renameMutation = sdk.connectorInstances.rename(connectorInstanceId);
+  const impactQuery = sdk.connectorInstances.impact(connectorInstanceId, {
+    enabled: deleteDialogOpen,
+  });
+
+  const handleDelete = useCallback(() => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+        navigate({ to: "/connectors" });
+      },
+    });
+  }, [deleteMutation, queryClient, navigate]);
+
+  const handleRename = useCallback(
+    (newName: string) => {
+      renameMutation.mutate({ name: newName }, {
+        onSuccess: () => {
+          setEditDialogOpen(false);
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.get(connectorInstanceId) });
+        },
+      });
+    },
+    [renameMutation, queryClient, connectorInstanceId]
+  );
 
   const pagination = usePagination({
     sortFields: [
@@ -89,6 +129,22 @@ export const ConnectorInstanceView = ({
                           color={STATUS_COLOR[ci.status] ?? "default"}
                           variant="outlined"
                         />
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Button
+                          variant="outlined"
+                          startIcon={<EditIcon />}
+                          onClick={() => setEditDialogOpen(true)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="contained"
+                          color="error"
+                          startIcon={<DeleteOutlineIcon />}
+                          onClick={() => setDeleteDialogOpen(true)}
+                        >
+                          Delete
+                        </Button>
                       </Stack>
 
                       <Stack spacing={1}>
@@ -181,6 +237,23 @@ export const ConnectorInstanceView = ({
                       </ConnectorEntityDataList>
                     </Box>
                   </Box>
+                  <DeleteConnectorInstanceDialog
+                    open={deleteDialogOpen}
+                    onClose={() => setDeleteDialogOpen(false)}
+                    connectorInstanceName={ci.name}
+                    onConfirm={handleDelete}
+                    isPending={deleteMutation.isPending}
+                    impact={impactQuery.data ?? null}
+                    isLoadingImpact={impactQuery.isLoading && deleteDialogOpen}
+                  />
+
+                  <EditConnectorInstanceDialog
+                    open={editDialogOpen}
+                    onClose={() => setEditDialogOpen(false)}
+                    currentName={ci.name}
+                    onConfirm={handleRename}
+                    isPending={renameMutation.isPending}
+                  />
                 </Stack>
               );
             }}
