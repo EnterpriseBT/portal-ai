@@ -5,6 +5,8 @@ import {
   PortalMessageResponseSchema,
   PortalBlockTypeSchema,
   PINNABLE_BLOCK_TYPES,
+  D3TreeNodeSchema,
+  D3TreeContentBlockSchema,
   DeltaEventSchema,
   ToolResultEventSchema,
   DoneEventSchema,
@@ -149,6 +151,11 @@ describe("PortalBlockTypeSchema", () => {
     const result = PortalBlockTypeSchema.safeParse("vega");
     expect(result.success).toBe(true);
   });
+
+  it("should accept \"d3-tree\" as a valid block type", () => {
+    const result = PortalBlockTypeSchema.safeParse("d3-tree");
+    expect(result.success).toBe(true);
+  });
 });
 
 // ── PINNABLE_BLOCK_TYPES ────────────────────────────────────────────
@@ -156,6 +163,72 @@ describe("PortalBlockTypeSchema", () => {
 describe("PINNABLE_BLOCK_TYPES", () => {
   it("should contain \"vega\"", () => {
     expect(PINNABLE_BLOCK_TYPES.has("vega")).toBe(true);
+  });
+
+  it("should contain \"d3-tree\"", () => {
+    expect(PINNABLE_BLOCK_TYPES.has("d3-tree")).toBe(true);
+  });
+});
+
+// ── D3TreeNodeSchema ────────────────────────────────────────────────
+
+describe("D3TreeNodeSchema", () => {
+  it("should accept valid tree data", () => {
+    const result = D3TreeNodeSchema.safeParse({
+      name: "Root",
+      attributes: { role: "CEO" },
+      children: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject missing name", () => {
+    const result = D3TreeNodeSchema.safeParse({
+      attributes: {},
+      children: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("should accept nested children recursively", () => {
+    const result = D3TreeNodeSchema.safeParse({
+      name: "Root",
+      children: [
+        {
+          name: "Child A",
+          children: [
+            { name: "Grandchild A1" },
+          ],
+        },
+        { name: "Child B" },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept node without optional fields", () => {
+    const result = D3TreeNodeSchema.safeParse({ name: "Leaf" });
+    expect(result.success).toBe(true);
+  });
+});
+
+// ── D3TreeContentBlockSchema ────────────────────────────────────────
+
+describe("D3TreeContentBlockSchema", () => {
+  it("should accept valid d3-tree content block", () => {
+    const result = D3TreeContentBlockSchema.safeParse({
+      type: "d3-tree",
+      content: { name: "Root", children: [] },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject wrong type literal", () => {
+    const result = D3TreeContentBlockSchema.safeParse({
+      type: "vega",
+      content: { name: "Root" },
+    });
+    expect(result.success).toBe(false);
   });
 });
 

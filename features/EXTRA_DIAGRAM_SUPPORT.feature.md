@@ -136,8 +136,8 @@ cd packages/core && npm install react-d3-tree
 - `packages/core/src/contracts/portal.contract.ts` — add `"d3-tree"` to `PortalBlockTypeSchema`; add `D3TreeNodeSchema` and `D3TreeContentBlockSchema` Zod schemas
 
 #### Tests to write:
-- [ ] `packages/core/src/__tests__/models/portal-result.model.test.ts` — add `"d3-tree"` to "accepts all valid types" test; add dedicated `it("should accept d3-tree type")`
-- [ ] `packages/core/src/__tests__/contracts/portal.contract.test.ts` — test `PortalBlockTypeSchema` accepts `"d3-tree"`; test `PINNABLE_BLOCK_TYPES` contains `"d3-tree"`; test `D3TreeNodeSchema` accepts valid tree data; test it rejects missing `name`; test it accepts nested children recursively; test `D3TreeContentBlockSchema` validates correctly
+- [x] `packages/core/src/__tests__/models/portal-result.model.test.ts` — add `"d3-tree"` to "accepts all valid types" test; add dedicated `it("should accept d3-tree type")`
+- [x] `packages/core/src/__tests__/contracts/portal.contract.test.ts` — test `PortalBlockTypeSchema` accepts `"d3-tree"`; test `PINNABLE_BLOCK_TYPES` contains `"d3-tree"`; test `D3TreeNodeSchema` accepts valid tree data; test it rejects missing `name`; test it accepts nested children recursively; test `D3TreeContentBlockSchema` validates correctly
 
 ### 2.3 Database Migration
 

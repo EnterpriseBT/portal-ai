@@ -10,7 +10,7 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
  * time via `apps/api/src/db/schema/type-checks.ts` and at runtime
  * via drizzle-zod derived schemas in `apps/api/src/db/schema/zod.ts`.
  */
-export const PortalResultTypeSchema = z.enum(["text", "vega-lite", "vega", "data-table"]);
+export const PortalResultTypeSchema = z.enum(["text", "vega-lite", "vega", "d3-tree", "data-table"]);
 
 export type PortalResultType = z.infer<typeof PortalResultTypeSchema>;
 

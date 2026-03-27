@@ -147,6 +147,26 @@ describe("PortalResultSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("should accept type \"d3-tree\"", () => {
+    const data = {
+      id: "pr-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: "org-1",
+      stationId: "station-1",
+      portalId: "portal-1",
+      name: "Org Chart",
+      type: "d3-tree",
+      content: { name: "Root", children: [] },
+    };
+    const result = PortalResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
   it("should accept type \"vega\"", () => {
     const data = {
       id: "pr-1",
