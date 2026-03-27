@@ -1,6 +1,7 @@
 import type {
   StationListRequestQuery,
   StationListResponsePayload,
+  StationGetRequestQuery,
   StationGetResponsePayload,
   StationCreateResponsePayload,
   StationUpdateResponsePayload,
@@ -26,10 +27,14 @@ export const stations = {
       options
     ),
 
-  get: (id: string, options?: QueryOptions<StationGetResponsePayload>) =>
+  get: (
+    id: string,
+    params?: StationGetRequestQuery,
+    options?: QueryOptions<StationGetResponsePayload>
+  ) =>
     useAuthQuery<StationGetResponsePayload>(
       queryKeys.stations.get(id),
-      buildUrl(`/api/stations/${encodeURIComponent(id)}`),
+      buildUrl(`/api/stations/${encodeURIComponent(id)}`, params),
       undefined,
       options
     ),

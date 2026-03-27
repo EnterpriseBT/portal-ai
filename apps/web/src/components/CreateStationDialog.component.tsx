@@ -1,17 +1,13 @@
 import React, { useState } from "react";
 
-import type {
-  CreateStationBody,
-  ConnectorInstanceListResponsePayload,
-} from "@portalai/core/contracts";
+import type { CreateStationBody } from "@portalai/core/contracts";
 import { StationToolPackSchema } from "@portalai/core/models";
 import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import Chip from "@mui/material/Chip";
 
-import DataResult from "./DataResult.component";
-import { sdk } from "../api/sdk";
+import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -54,76 +50,6 @@ function validateForm(form: StationFormState): StationFormErrors {
   }
   return errors;
 }
-
-// ── Connector Instance picker ────────────────────────────────────────
-
-interface InstanceOption {
-  value: string;
-  label: string;
-}
-
-interface ConnectorInstancePickerProps {
-  selected: string[];
-  onChange: (ids: string[]) => void;
-}
-
-const ConnectorInstancePicker: React.FC<ConnectorInstancePickerProps> = ({
-  selected,
-  onChange,
-}) => {
-  const result = sdk.connectorInstances.list({
-    limit: 100,
-    offset: 0,
-    sortBy: "name",
-    sortOrder: "asc",
-  });
-
-  return (
-    <DataResult results={{ instances: result }}>
-      {(data) => {
-        const payload =
-          data.instances as unknown as ConnectorInstanceListResponsePayload;
-        const options: InstanceOption[] = payload.connectorInstances.map(
-          (ci) => ({ value: ci.id, label: ci.name })
-        );
-        const selectedOptions = options.filter((o) =>
-          selected.includes(o.value)
-        );
-
-        return (
-          <Autocomplete
-            multiple
-            options={options}
-            getOptionLabel={(o) => o.label}
-            isOptionEqualToValue={(a, b) => a.value === b.value}
-            value={selectedOptions}
-            onChange={(_, newValue) => onChange(newValue.map((o) => o.value))}
-            renderTags={(value, getTagProps) =>
-              value.map((option, index) => {
-                const { key, ...tagProps } = getTagProps({ index });
-                return (
-                  <Chip
-                    key={key}
-                    label={option.label}
-                    size="small"
-                    {...tagProps}
-                  />
-                );
-              })
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Connector Instances"
-                placeholder="Select instances..."
-              />
-            )}
-          />
-        );
-      }}
-    </DataResult>
-  );
-};
 
 // ── Component ────────────────────────────────────────────────────────
 

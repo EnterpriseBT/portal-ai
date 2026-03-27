@@ -65,6 +65,8 @@ export interface TransactionClient {
 
 /** Options for list / findMany queries. */
 export interface ListOptions {
+  search?: string;
+  include?: string[];
   limit?: number;
   offset?: number;
   includeDeleted?: boolean;

@@ -4,12 +4,12 @@
  * Links stations to connector instances.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
-import { stationInstances } from "../schema/index.js";
+import { stationInstances, connectorInstances } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
-import type { StationInstanceSelect, StationInstanceInsert } from "../schema/zod.js";
+import type { StationInstanceSelect, StationInstanceInsert, ConnectorInstanceSelect } from "../schema/zod.js";
 
 export class StationInstancesRepository extends Repository<
   typeof stationInstances,
@@ -23,9 +23,25 @@ export class StationInstancesRepository extends Repository<
   /** Return all instances linked to a station. */
   async findByStationId(
     stationId: string,
+    opts: { include?: string[] } = {},
     client: DbClient = db
-  ): Promise<StationInstanceSelect[]> {
-    return this.findMany(eq(stationInstances.stationId, stationId), {}, client);
+  ): Promise<(StationInstanceSelect & { connectorInstance?: ConnectorInstanceSelect })[]> {
+    const rows = await this.findMany(eq(stationInstances.stationId, stationId), {}, client);
+    if (rows.length === 0 || !opts.include?.includes("connectorInstance")) {
+      return rows;
+    }
+
+    const instanceIds = [...new Set(rows.map((r) => r.connectorInstanceId))];
+    const instances = await (client as typeof db)
+      .select()
+      .from(connectorInstances)
+      .where(inArray(connectorInstances.id, instanceIds));
+    const instanceMap = new Map(instances.map((i) => [i.id, i as ConnectorInstanceSelect]));
+
+    return rows.map((row) => ({
+      ...row,
+      connectorInstance: instanceMap.get(row.connectorInstanceId),
+    }));
   }
 
   /** Count station links for a given connector instance. */

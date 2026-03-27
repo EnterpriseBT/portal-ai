@@ -3,12 +3,11 @@ import React, { useState } from "react";
 import type { UpdateStationBody } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { StationToolPackSchema } from "@portalai/core/models";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import { Button, Modal, MultiSearchableSelect, Stack, Typography } from "@portalai/core/ui";
+import type { SelectOption } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
-import Autocomplete from "@mui/material/Autocomplete";
-import Chip from "@mui/material/Chip";
 
-const TOOL_PACK_OPTIONS = StationToolPackSchema.options;
+import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 
 const TOOL_PACK_LABELS: Record<string, string> = {
   data_query: "Data Query",
@@ -18,9 +17,15 @@ const TOOL_PACK_LABELS: Record<string, string> = {
   web_search: "Web Search",
 };
 
+const TOOL_PACK_OPTIONS: SelectOption[] = StationToolPackSchema.options.map(
+  (value) => ({ value, label: TOOL_PACK_LABELS[value] ?? value })
+);
+
+
 interface FormState {
   name: string;
   toolPacks: string[];
+  connectorInstanceIds: string[];
 }
 
 interface FormErrors {
@@ -39,10 +44,14 @@ function validateForm(form: FormState): FormErrors {
   return errors;
 }
 
+interface StationInstance {
+  connectorInstanceId: string;
+}
+
 export interface EditStationDialogProps {
   open: boolean;
   onClose: () => void;
-  station: Station;
+  station: Station & { instances?: StationInstance[] };
   onSubmit: (body: UpdateStationBody) => void;
   isPending: boolean;
   serverError: string | null;
@@ -56,9 +65,13 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   isPending,
   serverError,
 }) => {
+  const initialInstanceIds = (station.instances ?? []).map(
+    (i) => i.connectorInstanceId
+  );
   const [form, setForm] = useState<FormState>({
     name: station.name,
     toolPacks: [...station.toolPacks],
+    connectorInstanceIds: [...initialInstanceIds],
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -88,6 +101,11 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     }
     if (JSON.stringify(form.toolPacks) !== JSON.stringify(station.toolPacks)) {
       body.toolPacks = form.toolPacks;
+    }
+    const sortedCurrent = [...initialInstanceIds].sort();
+    const sortedNew = [...form.connectorInstanceIds].sort();
+    if (JSON.stringify(sortedNew) !== JSON.stringify(sortedCurrent)) {
+      body.connectorInstanceIds = form.connectorInstanceIds;
     }
 
     if (Object.keys(body).length === 0) {
@@ -132,36 +150,19 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           fullWidth
           autoFocus
         />
-        <Autocomplete
-          multiple
-          options={[...TOOL_PACK_OPTIONS]}
-          getOptionLabel={(o) => TOOL_PACK_LABELS[o] ?? o}
+        <MultiSearchableSelect
+          options={TOOL_PACK_OPTIONS}
           value={form.toolPacks}
-          onChange={(_, newValue) => handleChange("toolPacks", newValue)}
-          onBlur={() => handleBlur("toolPacks")}
-          renderTags={(value, getTagProps) =>
-            value.map((option, index) => {
-              const { key, ...tagProps } = getTagProps({ index });
-              return (
-                <Chip
-                  key={key}
-                  label={TOOL_PACK_LABELS[option] ?? option}
-                  size="small"
-                  {...tagProps}
-                />
-              );
-            })
-          }
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Tool Packs"
-              placeholder="Select tool packs..."
-              required
-              error={touched.toolPacks && !!errors.toolPacks}
-              helperText={touched.toolPacks && errors.toolPacks}
-            />
-          )}
+          onChange={(values) => handleChange("toolPacks", values)}
+          label="Tool Packs"
+          placeholder="Select tool packs..."
+          required
+          error={touched.toolPacks && !!errors.toolPacks}
+          helperText={touched.toolPacks ? errors.toolPacks : undefined}
+        />
+        <ConnectorInstancePicker
+          selected={form.connectorInstanceIds}
+          onChange={(ids) => handleChange("connectorInstanceIds", ids)}
         />
         {serverError && (
           <Typography variant="body2" color="error">

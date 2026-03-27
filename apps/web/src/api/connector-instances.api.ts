@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import type {
   ApiSuccessResponse,
   ConnectorInstanceApi,
@@ -7,8 +9,8 @@ import type {
   ConnectorInstanceListResponsePayload,
   ConnectorInstanceListWithDefinitionResponsePayload,
 } from "@portalai/core/contracts";
-import { useInfiniteFilterOptions } from "@portalai/core/ui";
-import type { InfiniteFilterOptionsConfig } from "@portalai/core/ui";
+import { useInfiniteFilterOptions, useAsyncFilterOptions } from "@portalai/core/ui";
+import type { InfiniteFilterOptionsConfig, AsyncFilterOptionsConfig } from "@portalai/core/ui";
 import { useAuthQuery, useAuthMutation, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
@@ -24,6 +26,25 @@ const CONNECTOR_INSTANCE_FILTER_BASE = {
   }),
   sortBy: "name",
 } as const;
+
+export function useConnectorInstanceSearch() {
+  const { fetchWithAuth } = useAuthFetch();
+
+  const config = useMemo<
+    AsyncFilterOptionsConfig<
+      ApiSuccessResponse<ConnectorInstanceListResponsePayload>,
+      ConnectorInstanceApi
+    >
+  >(
+    () => ({
+      ...CONNECTOR_INSTANCE_FILTER_BASE,
+      fetcher: fetchWithAuth,
+    }),
+    [fetchWithAuth]
+  );
+
+  return useAsyncFilterOptions(config);
+}
 
 export function useConnectorInstanceFilter() {
   const { fetchWithAuth } = useAuthFetch();

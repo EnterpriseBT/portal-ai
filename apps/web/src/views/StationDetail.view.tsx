@@ -16,6 +16,8 @@ import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
+import HandymanOutlined from "@mui/icons-material/HandymanOutlined";
+import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -40,7 +42,7 @@ interface StationDataItemProps {
 }
 
 const StationDataItem: React.FC<StationDataItemProps> = ({ id, children }) => {
-  const res = sdk.stations.get(id);
+  const res = sdk.stations.get(id, { include: "connectorInstance" });
   return <>{children(res)}</>;
 };
 
@@ -190,18 +192,33 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                               {station.description}
                             </Typography>
                           )}
-                          <Stack direction="row" spacing={0.5}>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap">
                             {station.toolPacks.map((pack) => (
                               <Chip
                                 key={pack}
+                                icon={<HandymanOutlined fontSize="small" />}
                                 label={pack}
                                 size="small"
                                 variant="outlined"
                               />
                             ))}
                           </Stack>
+                          {(station.instances ?? []).length > 0 && (
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                              {station.instances!.map((inst) => (
+                                <Chip
+                                  key={inst.id}
+                                  icon={<MemoryOutlined fontSize="small" />}
+                                  label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                />
+                              ))}
+                            </Stack>
+                          )}
                           <Typography variant="body2" color="text.secondary">
-                            Created: {new Date(station.created).toLocaleString()}
+                            Created: {DateFactory.relativeTime(station.created)}
                           </Typography>
                         </Stack>
                       </Box>

@@ -137,6 +137,11 @@ stationRouter.get(
  *         schema:
  *           type: string
  *         description: Station ID
+ *       - in: query
+ *         name: include
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of related data to include — connectorInstance
  *     responses:
  *       200:
  *         description: Station retrieved successfully
@@ -174,6 +179,11 @@ stationRouter.get(
       const { id } = req.params;
       const { organizationId } = req.application!.metadata;
 
+      const include_ = (req.query.include as string | undefined)
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) ?? [];
+
       const station = await DbService.repository.stations.findById(id);
       if (!station || station.organizationId !== organizationId) {
         return next(
@@ -182,7 +192,7 @@ stationRouter.get(
       }
 
       const instances =
-        await DbService.repository.stationInstances.findByStationId(id);
+        await DbService.repository.stationInstances.findByStationId(id, { include: include_ });
 
       return HttpService.success<StationGetResponsePayload>(res, {
         station: {
