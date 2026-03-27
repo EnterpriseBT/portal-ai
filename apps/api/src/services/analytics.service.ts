@@ -100,6 +100,12 @@ export interface AmortizationRow {
   balance: number;
 }
 
+export interface D3TreeNode {
+  name: string;
+  attributes?: Record<string, unknown>;
+  children?: D3TreeNode[];
+}
+
 export interface ResolveIdentityResult {
   entityGroupName: string;
   linkValue: string;
@@ -409,6 +415,54 @@ export class AnalyticsService {
     const data = Array.isArray(vegaSpec.data) ? [...vegaSpec.data] : [{}];
     data[0] = { ...data[0], values: rows };
     return { ...vegaSpec, data };
+  }
+
+  /**
+   * Run SQL returning flat parent-child rows and convert to a nested tree
+   * structure suitable for react-d3-tree rendering.
+   */
+  static buildTree(params: {
+    sql: string;
+    labelColumn: string;
+    attributeColumns?: string[];
+    stationId: string;
+  }): { type: "d3-tree"; tree: D3TreeNode } {
+    const { sql, labelColumn, attributeColumns, stationId } = params;
+    const rows = this.sqlQuery({ sql, stationId });
+
+    // Build lookup map
+    const nodeMap = new Map<string, D3TreeNode>();
+    for (const row of rows) {
+      const id = String(row.id);
+      const attrs = attributeColumns
+        ? Object.fromEntries(attributeColumns.map((c) => [c, row[c]]))
+        : undefined;
+      nodeMap.set(id, {
+        name: String(row[labelColumn]),
+        attributes: attrs,
+        children: [],
+      });
+    }
+
+    // Link children to parents, collect roots
+    const roots: D3TreeNode[] = [];
+    for (const row of rows) {
+      const node = nodeMap.get(String(row.id))!;
+      const parentId =
+        row.parentId != null ? String(row.parentId) : null;
+      if (parentId && nodeMap.has(parentId)) {
+        nodeMap.get(parentId)!.children!.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    // If exactly one root, return it; otherwise wrap in a synthetic root
+    const tree =
+      roots.length === 1
+        ? roots[0]
+        : { name: "Root", children: roots };
+    return { type: "d3-tree", tree };
   }
 
   /**

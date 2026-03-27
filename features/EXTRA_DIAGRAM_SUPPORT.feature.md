@@ -155,8 +155,8 @@ Then: `cd apps/api && npm run db:generate && npm run db:migrate`
 - `apps/api/src/services/analytics.service.ts` — add `buildTree()` static method (flat→nested conversion from parent-child SQL rows)
 
 #### Tests to write:
-- [ ] `apps/api/src/__tests__/services/analytics.tools.test.ts` — test `build_tree` is registered when `data_query` pack enabled; test it is NOT registered when pack disabled; add to shadow-conflict set
-- [ ] `apps/api/src/__tests__/services/analytics.service.test.ts` — test `buildTree()` converts flat rows to nested tree; test single root returns that root directly; test multiple roots wraps in synthetic "Root" node; test `attributeColumns` are extracted correctly; test `labelColumn` is used for node names; test empty rows returns a root with no children
+- [x] `apps/api/src/__tests__/services/analytics.tools.test.ts` — test `build_tree` is registered when `data_query` pack enabled; test it is NOT registered when pack disabled; add to shadow-conflict set
+- [x] `apps/api/src/__tests__/services/analytics.service.test.ts` — test `buildTree()` converts flat rows to nested tree; test single root returns that root directly; test multiple roots wraps in synthetic "Root" node; test `attributeColumns` are extracted correctly; test `labelColumn` is used for node names; test empty rows returns a root with no children
 
 ### 2.5 Stream Detection (API)
 
@@ -167,7 +167,7 @@ isD3Tree = toolName === "build_tree" || (toolResult?.type === "d3-tree")
 Push `{ type: "d3-tree", content: toolResult.tree ?? toolResult }`.
 
 #### Tests to write:
-- [ ] `apps/api/src/__tests__/services/portal.service.test.ts` — test `streamResponse` sends `tool_result` SSE for `build_tree` tool; test persisted assistant message includes `d3-tree` display block; test it extracts `.tree` from the result when present
+- [x] `apps/api/src/__tests__/services/portal.service.test.ts` — test `streamResponse` sends `tool_result` SSE for `build_tree` tool; test persisted assistant message includes `d3-tree` display block; test it extracts `.tree` from the result when present
 
 ### 2.6 SSE Event Handler (Frontend)
 

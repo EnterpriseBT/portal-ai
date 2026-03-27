@@ -141,6 +141,18 @@ describe("buildAnalyticsTools()", () => {
     expect(tools.visualize_tree).toBeUndefined();
   });
 
+  it("should register build_tree when data_query pack is selected", async () => {
+    setupStationMocks(["data_query"]);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    expect(tools.build_tree).toBeDefined();
+  });
+
+  it("should NOT register build_tree when data_query pack is not selected", async () => {
+    setupStationMocks(["statistics"]);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    expect(tools.build_tree).toBeUndefined();
+  });
+
   it("should register statistics tools when statistics pack is selected", async () => {
     setupStationMocks(["statistics"]);
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
@@ -200,6 +212,7 @@ describe("buildAnalyticsTools()", () => {
     expect(tools.sql_query).toBeDefined();
     expect(tools.visualize).toBeDefined();
     expect(tools.visualize_tree).toBeDefined();
+    expect(tools.build_tree).toBeDefined();
     // statistics
     expect(tools.describe_column).toBeDefined();
     expect(tools.correlate).toBeDefined();

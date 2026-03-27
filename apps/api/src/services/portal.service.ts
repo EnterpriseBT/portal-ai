@@ -61,6 +61,127 @@ export interface PortalWithMessages {
 const ROW_SET_TOOLS = new Set(["sql_query", "detect_outliers", "cluster"]);
 
 // ---------------------------------------------------------------------------
+// Stream chunk handlers
+// ---------------------------------------------------------------------------
+
+interface StreamContext {
+  assistantBlocks: Record<string, unknown>[];
+  sse: SseUtil;
+  currentText: string;
+}
+
+/** Handle a text-delta chunk: accumulate text and send SSE. */
+function handleTextDelta(
+  ctx: StreamContext,
+  text: string
+): void {
+  ctx.currentText += text;
+  const event: DeltaEvent = { type: "delta", content: text };
+  ctx.sse.send("delta", event);
+}
+
+/** Handle a tool-call chunk: flush text, persist tool-call block. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function handleToolCall(ctx: StreamContext, chunk: any): void {
+  if (ctx.currentText) {
+    ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
+    ctx.currentText = "";
+  }
+
+  ctx.assistantBlocks.push({
+    type: "tool-call",
+    toolCallId: chunk.toolCallId,
+    toolName: chunk.toolName,
+    args: chunk.args,
+  });
+}
+
+/**
+ * Handle a tool-result chunk: persist the raw tool-result block for
+ * ModelMessage reconstruction, then detect display block types and
+ * emit SSE events + display blocks as needed.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function handleToolResult(ctx: StreamContext, chunk: any): void {
+  const toolResult = chunk.output as Record<string, unknown>;
+  const toolName = chunk.toolName as string;
+  const toolCallId = chunk.toolCallId as string | undefined;
+
+  // Persist tool-result part for ModelMessage[] reconstruction
+  ctx.assistantBlocks.push({
+    type: "tool-result",
+    toolCallId,
+    toolName,
+    content: toolResult,
+  });
+
+  const displayBlock = resolveDisplayBlock(toolName, toolResult);
+  if (displayBlock) {
+    const event: ToolResultEvent = {
+      type: "tool_result",
+      toolName,
+      result: displayBlock.sseResult ?? toolResult,
+    };
+    ctx.sse.send("tool_result", event);
+    ctx.assistantBlocks.push(displayBlock.block);
+  }
+}
+
+/**
+ * Determine if a tool result should produce a display block for inline
+ * rendering. Returns null for scalar/non-display results.
+ */
+function resolveDisplayBlock(
+  toolName: string,
+  toolResult: Record<string, unknown> | null
+): {
+  block: Record<string, unknown>;
+  sseResult?: Record<string, unknown>;
+} | null {
+  const isVegaLite =
+    toolName === "visualize" ||
+    (toolResult != null && toolResult.type === "vega-lite");
+  if (isVegaLite) {
+    return { block: { type: "vega-lite", content: toolResult } };
+  }
+
+  const isVega =
+    toolName === "visualize_tree" ||
+    (toolResult != null && toolResult.type === "vega");
+  if (isVega) {
+    return { block: { type: "vega", content: toolResult } };
+  }
+
+  const isD3Tree =
+    toolName === "build_tree" ||
+    (toolResult != null && toolResult.type === "d3-tree");
+  if (isD3Tree) {
+    return {
+      block: {
+        type: "d3-tree",
+        content: toolResult?.tree ?? toolResult,
+      },
+    };
+  }
+
+  if (ROW_SET_TOOLS.has(toolName)) {
+    const rows = Array.isArray(toolResult?.rows)
+      ? (toolResult!.rows as Record<string, unknown>[])
+      : [];
+    const columns =
+      rows.length > 0 ? Object.keys(rows[0] as object) : [];
+    const dataTableBlock = {
+      type: "data-table" as const,
+      columns,
+      rows,
+    };
+    return { block: dataTableBlock, sseResult: dataTableBlock };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // In-memory station data cache (keyed by portalId)
 // ---------------------------------------------------------------------------
 
@@ -300,105 +421,33 @@ export class PortalService {
     });
 
     // Accumulate assistant content blocks (full ModelMessage[] parts)
-    const assistantBlocks: Record<string, unknown>[] = [];
-    let currentText = "";
+    const ctx: StreamContext = {
+      assistantBlocks: [],
+      sse,
+      currentText: "",
+    };
 
     for await (const chunk of result.fullStream) {
       if (chunk.type === "text-delta") {
-        currentText += chunk.text;
-        const event: DeltaEvent = { type: "delta", content: chunk.text };
-        sse.send("delta", event);
+        handleTextDelta(ctx, chunk.text);
       } else if (chunk.type === "tool-call") {
-        // Flush any accumulated text into a block before the tool call
-        if (currentText) {
-          assistantBlocks.push({ type: "text", content: currentText });
-          currentText = "";
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolCall = chunk as any;
-        // Persist tool-call part for ModelMessage[] reconstruction
-        assistantBlocks.push({
-          type: "tool-call",
-          toolCallId: toolCall.toolCallId,
-          toolName: toolCall.toolName,
-          args: toolCall.args,
-        });
+        handleToolCall(ctx, chunk);
       } else if (chunk.type === "tool-result") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolResult = (chunk as any).output as Record<string, unknown>;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolName = (chunk as any).toolName as string;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolCallId = (chunk as any).toolCallId as string | undefined;
-
-        // Persist tool-result part for ModelMessage[] reconstruction
-        assistantBlocks.push({
-          type: "tool-result",
-          toolCallId,
-          toolName,
-          content: toolResult,
-        });
-
-        const isVegaLite =
-          toolName === "visualize" ||
-          (toolResult != null && toolResult.type === "vega-lite");
-
-        const isVega =
-          toolName === "visualize_tree" ||
-          (toolResult != null && toolResult.type === "vega");
-
-        if (isVegaLite) {
-          const event: ToolResultEvent = {
-            type: "tool_result",
-            toolName,
-            result: toolResult,
-          };
-          sse.send("tool_result", event);
-          assistantBlocks.push({ type: "vega-lite", content: toolResult });
-        } else if (isVega) {
-          const event: ToolResultEvent = {
-            type: "tool_result",
-            toolName,
-            result: toolResult,
-          };
-          sse.send("tool_result", event);
-          assistantBlocks.push({ type: "vega", content: toolResult });
-        } else if (ROW_SET_TOOLS.has(toolName)) {
-          // Row-set tools emit a data-table SSE event for inline rendering
-          const rows = Array.isArray(toolResult?.rows)
-            ? (toolResult.rows as Record<string, unknown>[])
-            : [];
-          const columns =
-            rows.length > 0 ? Object.keys(rows[0] as object) : [];
-
-          const dataTableBlock = {
-            type: "data-table" as const,
-            columns,
-            rows,
-          };
-
-          const event: ToolResultEvent = {
-            type: "tool_result",
-            toolName,
-            result: dataTableBlock,
-          };
-          sse.send("tool_result", event);
-          assistantBlocks.push(dataTableBlock);
-        }
+        handleToolResult(ctx, chunk);
       } else if (chunk.type === "finish") {
-        // Flush remaining text on finish
-        if (currentText) {
-          assistantBlocks.push({ type: "text", content: currentText });
-          currentText = "";
+        if (ctx.currentText) {
+          ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
+          ctx.currentText = "";
         }
       }
     }
 
     // Final flush in case stream ended without a finish event
-    if (currentText) {
-      assistantBlocks.push({ type: "text", content: currentText });
+    if (ctx.currentText) {
+      ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
     }
+
+    const assistantBlocks = ctx.assistantBlocks;
 
     // Persist the assistant message
     const repo = DbService.repository;
@@ -492,7 +541,7 @@ function reconstructModelMessages(
           result: block.content,
         });
       }
-      // Display-only blocks (vega-lite, vega, data-table) are skipped for
+      // Display-only blocks (vega-lite, vega, d3-tree, data-table) are skipped for
       // ModelMessage reconstruction — they duplicate tool-result data.
     }
 

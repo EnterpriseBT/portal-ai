@@ -450,6 +450,166 @@ describe("AnalyticsService", () => {
   });
 
   // -----------------------------------------------------------------------
+  // buildTree
+  // -----------------------------------------------------------------------
+
+  describe("buildTree()", () => {
+    it("should convert flat rows to a nested tree", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      // Insert tree data into an AlaSQL table via sql_query
+      const rows = [
+        { id: "1", parentId: null, name: "CEO", title: "Chief Executive" },
+        { id: "2", parentId: "1", name: "CTO", title: "Chief Technology" },
+        { id: "3", parentId: "1", name: "CFO", title: "Chief Financial" },
+        { id: "4", parentId: "2", name: "Dev Lead", title: "Engineering" },
+      ];
+      // Create a temp table for tree data
+      AnalyticsService.sqlQuery({
+        sql: "CREATE TABLE IF NOT EXISTS org_chart (id STRING, parentId STRING, name STRING, title STRING)",
+        stationId: STATION_ID,
+      });
+      for (const r of rows) {
+        AnalyticsService.sqlQuery({
+          sql: `INSERT INTO org_chart VALUES ('${r.id}', ${r.parentId ? `'${r.parentId}'` : "NULL"}, '${r.name}', '${r.title}')`,
+          stationId: STATION_ID,
+        });
+      }
+
+      const result = AnalyticsService.buildTree({
+        sql: "SELECT * FROM org_chart",
+        labelColumn: "name",
+        attributeColumns: ["title"],
+        stationId: STATION_ID,
+      });
+
+      expect(result.type).toBe("d3-tree");
+      expect(result.tree.name).toBe("CEO");
+      expect(result.tree.attributes).toEqual({ title: "Chief Executive" });
+      expect(result.tree.children).toHaveLength(2);
+
+      const cto = result.tree.children!.find((c) => c.name === "CTO");
+      expect(cto).toBeDefined();
+      expect(cto!.children).toHaveLength(1);
+      expect(cto!.children![0].name).toBe("Dev Lead");
+    });
+
+    it("should return single root directly when there is exactly one", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      AnalyticsService.sqlQuery({
+        sql: "CREATE TABLE IF NOT EXISTS single_root (id STRING, parentId STRING, name STRING)",
+        stationId: STATION_ID,
+      });
+      AnalyticsService.sqlQuery({
+        sql: "INSERT INTO single_root VALUES ('1', NULL, 'Root')",
+        stationId: STATION_ID,
+      });
+
+      const result = AnalyticsService.buildTree({
+        sql: "SELECT * FROM single_root",
+        labelColumn: "name",
+        stationId: STATION_ID,
+      });
+
+      expect(result.tree.name).toBe("Root");
+    });
+
+    it("should wrap multiple roots in a synthetic Root node", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      AnalyticsService.sqlQuery({
+        sql: "CREATE TABLE IF NOT EXISTS multi_root (id STRING, parentId STRING, name STRING)",
+        stationId: STATION_ID,
+      });
+      AnalyticsService.sqlQuery({
+        sql: "INSERT INTO multi_root VALUES ('1', NULL, 'TreeA')",
+        stationId: STATION_ID,
+      });
+      AnalyticsService.sqlQuery({
+        sql: "INSERT INTO multi_root VALUES ('2', NULL, 'TreeB')",
+        stationId: STATION_ID,
+      });
+
+      const result = AnalyticsService.buildTree({
+        sql: "SELECT * FROM multi_root",
+        labelColumn: "name",
+        stationId: STATION_ID,
+      });
+
+      expect(result.tree.name).toBe("Root");
+      expect(result.tree.children).toHaveLength(2);
+    });
+
+    it("should use labelColumn for node names", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      AnalyticsService.sqlQuery({
+        sql: "CREATE TABLE IF NOT EXISTS label_test (id STRING, parentId STRING, title STRING)",
+        stationId: STATION_ID,
+      });
+      AnalyticsService.sqlQuery({
+        sql: "INSERT INTO label_test VALUES ('1', NULL, 'Boss')",
+        stationId: STATION_ID,
+      });
+
+      const result = AnalyticsService.buildTree({
+        sql: "SELECT * FROM label_test",
+        labelColumn: "title",
+        stationId: STATION_ID,
+      });
+
+      expect(result.tree.name).toBe("Boss");
+    });
+
+    it("should omit attributes when attributeColumns is not provided", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      AnalyticsService.sqlQuery({
+        sql: "CREATE TABLE IF NOT EXISTS no_attrs (id STRING, parentId STRING, name STRING)",
+        stationId: STATION_ID,
+      });
+      AnalyticsService.sqlQuery({
+        sql: "INSERT INTO no_attrs VALUES ('1', NULL, 'Leaf')",
+        stationId: STATION_ID,
+      });
+
+      const result = AnalyticsService.buildTree({
+        sql: "SELECT * FROM no_attrs",
+        labelColumn: "name",
+        stationId: STATION_ID,
+      });
+
+      expect(result.tree.attributes).toBeUndefined();
+    });
+
+    it("should return empty tree for empty result set", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      AnalyticsService.sqlQuery({
+        sql: "CREATE TABLE IF NOT EXISTS empty_tree (id STRING, parentId STRING, name STRING)",
+        stationId: STATION_ID,
+      });
+
+      const result = AnalyticsService.buildTree({
+        sql: "SELECT * FROM empty_tree WHERE 1=0",
+        labelColumn: "name",
+        stationId: STATION_ID,
+      });
+
+      expect(result.type).toBe("d3-tree");
+      expect(result.tree.name).toBe("Root");
+      expect(result.tree.children).toEqual([]);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // resolveIdentity
   // -----------------------------------------------------------------------
 
