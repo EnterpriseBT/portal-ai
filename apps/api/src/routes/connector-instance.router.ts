@@ -386,3 +386,99 @@ connectorInstanceRouter.post(
     }
   }
 );
+
+/**
+ * @openapi
+ * /api/connector-instances/{id}:
+ *   delete:
+ *     tags:
+ *       - Connector Instances
+ *     summary: Delete a connector instance
+ *     description: >
+ *       Soft-deletes a connector instance and cascades to all associated
+ *       connector entities, entity records, field mappings, tag assignments,
+ *       and group members. Hard-deletes station_instances join rows.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector instance ID
+ *     responses:
+ *       200:
+ *         description: Connector instance deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *       404:
+ *         description: Connector instance not found
+ *       500:
+ *         description: Internal server error
+ */
+connectorInstanceRouter.delete(
+  "/:id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.application!.metadata;
+
+      const existing = await DbService.repository.connectorInstances.findById(id);
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND, "Connector instance not found")
+        );
+      }
+
+      await DbService.transaction(async (tx) => {
+        // Hard-delete station_instances join rows (unlink from stations)
+        await DbService.repository.stationInstances.hardDeleteByConnectorInstanceId(id, tx);
+
+        // Find all connector entities for this instance
+        const entities = await DbService.repository.connectorEntities.findByConnectorInstanceId(id, tx);
+        const entityIds = entities.map((e) => e.id);
+
+        if (entityIds.length > 0) {
+          // Soft-delete leaf records first, then entities
+          await Promise.all([
+            DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+            DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+            DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+            DbService.repository.entityRecords.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+          ]);
+
+          await DbService.repository.connectorEntities.softDeleteByConnectorInstanceId(id, userId, tx);
+        }
+
+        // Soft-delete the connector instance itself
+        await DbService.repository.connectorInstances.softDelete(id, userId, tx);
+      });
+
+      logger.info({ id }, "Connector instance deleted");
+      return HttpService.success(res, { id });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to delete connector instance"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete connector instance")
+      );
+    }
+  }
+);

@@ -12,12 +12,15 @@ When a connector instance is deleted, all dependent records must be soft-deleted
 
 ```
 connector_instance (soft-delete)
+ +-- station_instances (hard-delete join rows — unlinks from stations)
  +-- connector_entities (soft-delete all)
       +-- entity_records (soft-delete all)
       +-- field_mappings (soft-delete all)
       +-- entity_tag_assignments (soft-delete all)
       +-- entity_group_members (soft-delete all)
 ```
+
+> **Note:** `station_instances` is a join table (`stationId`, `connectorInstanceId`) with `ON DELETE no action` foreign keys. Rows must be explicitly hard-deleted to unlink the connector instance from any stations before soft-deleting the instance itself.
 
 ---
 
@@ -45,15 +48,16 @@ Add `DELETE /api/connector-instances/:id` following the station delete pattern (
 
 1. Extract `id` from route params, `userId` from application metadata
 2. Fetch the connector instance by ID; return 404 (`CONNECTOR_INSTANCE_NOT_FOUND`) if missing
-3. Open a **transaction** and cascade soft-deletes in order:
-   a. Find all `connector_entities` for this instance via `connectorEntitiesRepo.findByConnectorInstanceId(id)`
-   b. Collect all entity IDs
-   c. Soft-delete `entity_group_members` for those entity IDs via `entityGroupMembersRepo.softDeleteMany(...)` (or a `deleteByConnectorEntityIds` helper)
-   d. Soft-delete `entity_tag_assignments` for those entity IDs via `entityTagAssignmentsRepo.softDeleteMany(...)` (or a `deleteByConnectorEntityIds` helper)
-   e. Soft-delete `field_mappings` for those entity IDs
-   f. Soft-delete `entity_records` for those entity IDs
-   g. Soft-delete all `connector_entities` for this instance
-   h. Soft-delete the `connector_instance` itself
+3. Open a **transaction** and cascade deletes in order:
+   a. Hard-delete `station_instances` rows for this connector instance (unlink from stations)
+   b. Find all `connector_entities` for this instance via `connectorEntitiesRepo.findByConnectorInstanceId(id)`
+   c. Collect all entity IDs
+   d. Soft-delete `entity_group_members` for those entity IDs via `entityGroupMembersRepo.softDeleteMany(...)` (or a `deleteByConnectorEntityIds` helper)
+   e. Soft-delete `entity_tag_assignments` for those entity IDs via `entityTagAssignmentsRepo.softDeleteMany(...)` (or a `deleteByConnectorEntityIds` helper)
+   f. Soft-delete `field_mappings` for those entity IDs
+   g. Soft-delete `entity_records` for those entity IDs
+   h. Soft-delete all `connector_entities` for this instance
+   i. Soft-delete the `connector_instance` itself
 4. Return `{ id }` on success (200)
 5. Wrap in try/catch, return 500 (`CONNECTOR_INSTANCE_DELETE_FAILED`) on failure
 
@@ -68,31 +72,34 @@ Some repositories may need new batch-delete-by-entity-id methods. Check each rep
 - **`entity-tag-assignments.repository.ts`** -- add `softDeleteByConnectorEntityIds(entityIds, deletedBy, client)` if not present
 - **`entity-group-members.repository.ts`** -- add `softDeleteByConnectorEntityIds(entityIds, deletedBy, client)` if not present
 - **`connector-entities.repository.ts`** -- add `softDeleteByConnectorInstanceId(instanceId, deletedBy, client)` if not present
+- **`station-instances.repository.ts`** -- add `hardDeleteByConnectorInstanceId(connectorInstanceId, client)` if not present (this is a join table, so hard-delete is appropriate)
 
-Each helper should use `update(...).set({ deleted: now, deletedBy }).where(inArray(connectorEntityId, entityIds))` within the passed transaction client.
+Each helper should use `update(...).set({ deleted: now, deletedBy }).where(inArray(connectorEntityId, entityIds))` within the passed transaction client. The `station-instances` helper uses `delete().where(eq(connectorInstanceId, id))` since it is a join table with no soft-delete columns.
 
 ### Checklist
 
-- [ ] Add `softDeleteByConnectorEntityIds` to `entity-records.repository.ts`
-- [ ] Add `softDeleteByConnectorEntityIds` to `field-mappings.repository.ts`
-- [ ] Add `softDeleteByConnectorEntityIds` to `entity-tag-assignments.repository.ts`
-- [ ] Add `softDeleteByConnectorEntityIds` to `entity-group-members.repository.ts`
-- [ ] Add `softDeleteByConnectorInstanceId` to `connector-entities.repository.ts`
-- [ ] Implement `DELETE /api/connector-instances/:id` route handler with transaction and cascade
-- [ ] Write integration tests for DELETE endpoint:
-  - [ ] Test: returns 200 with `{ id }` on successful delete
-  - [ ] Test: returns 404 for non-existent connector instance
-  - [ ] Test: returns 404 for already-deleted connector instance
-  - [ ] Test: cascades soft-delete to connector entities
-  - [ ] Test: cascades soft-delete to entity records
-  - [ ] Test: cascades soft-delete to field mappings
-  - [ ] Test: cascades soft-delete to entity tag assignments
-  - [ ] Test: cascades soft-delete to entity group members
-  - [ ] Test: deleted instance no longer appears in GET list
-- [ ] Verify: `npm run test` passes (all new and existing tests)
-- [ ] Verify: `npm run type-check` passes
-- [ ] Verify: `npm run lint` passes
-- [ ] Verify: `npm run build` passes
+- [x] Add `softDeleteByConnectorEntityIds` to `entity-records.repository.ts`
+- [x] Add `softDeleteByConnectorEntityIds` to `field-mappings.repository.ts`
+- [x] Add `softDeleteByConnectorEntityIds` to `entity-tag-assignments.repository.ts`
+- [x] Add `softDeleteByConnectorEntityIds` to `entity-group-members.repository.ts`
+- [x] Add `softDeleteByConnectorInstanceId` to `connector-entities.repository.ts`
+- [x] Add `hardDeleteByConnectorInstanceId` to `station-instances.repository.ts`
+- [x] Implement `DELETE /api/connector-instances/:id` route handler with transaction and cascade
+- [x] Write integration tests for DELETE endpoint:
+  - [x] Test: returns 200 with `{ id }` on successful delete
+  - [x] Test: returns 404 for non-existent connector instance
+  - [x] Test: returns 404 for already-deleted connector instance
+  - [x] Test: cascades soft-delete to connector entities
+  - [x] Test: cascades soft-delete to entity records
+  - [x] Test: cascades soft-delete to field mappings
+  - [x] Test: cascades soft-delete to entity tag assignments
+  - [x] Test: cascades soft-delete to entity group members
+  - [x] Test: hard-deletes station_instances join rows (unlinks from stations)
+  - [x] Test: deleted instance no longer appears in GET list
+- [x] Verify: `npm run test` passes (all new and existing tests)
+- [x] Verify: `npm run type-check` passes
+- [x] Verify: `npm run lint` passes
+- [x] Verify: `npm run build` passes
 
 ---
 
@@ -125,11 +132,73 @@ Add `PATCH /api/connector-instances/:id` to support renaming (and future partial
 
 ---
 
-## Step 4: Add Frontend API Hooks
+## Step 4: Add Pre-Flight Impact Check Endpoint
+
+**File:** `apps/api/src/routes/connector-instance.router.ts`
+
+Add `GET /api/connector-instances/:id/impact` that returns counts of all associated objects that would be affected by deletion. The frontend will call this when the delete dialog opens to show the user exactly what will be removed.
+
+### Response Shape
+
+```typescript
+interface ConnectorInstanceImpact {
+  connectorEntities: number;
+  entityRecords: number;
+  fieldMappings: number;
+  entityTagAssignments: number;
+  entityGroupMembers: number;
+  stations: number; // count of stations linked via station_instances
+}
+```
+
+### Implementation
+
+1. Extract `id` from route params
+2. Fetch the connector instance by ID; return 404 (`CONNECTOR_INSTANCE_NOT_FOUND`) if missing
+3. Find all `connector_entities` for this instance, collect entity IDs
+4. Run count queries in parallel (no transaction needed -- read-only):
+   a. `connectorEntities` -- count of entities for this instance
+   b. `entityRecords` -- count of records across those entity IDs
+   c. `fieldMappings` -- count of field mappings across those entity IDs
+   d. `entityTagAssignments` -- count of tag assignments across those entity IDs
+   e. `entityGroupMembers` -- count of group members across those entity IDs
+   f. `stations` -- count of `station_instances` rows for this connector instance (distinct station count)
+5. Return the impact object (200)
+
+### Repository Helpers Needed
+
+Add `count`-by-entity-ID helpers where not already present:
+
+- **`entity-records.repository.ts`** -- add `countByConnectorEntityIds(entityIds)` if not present
+- **`field-mappings.repository.ts`** -- add `countByConnectorEntityIds(entityIds)` if not present
+- **`entity-tag-assignments.repository.ts`** -- add `countByConnectorEntityIds(entityIds)` if not present
+- **`entity-group-members.repository.ts`** -- add `countByConnectorEntityIds(entityIds)` if not present
+- **`station-instances.repository.ts`** -- add `countByConnectorInstanceId(connectorInstanceId)` if not present
+
+### Checklist
+
+- [ ] Add `countByConnectorEntityIds` to `entity-records.repository.ts`
+- [ ] Add `countByConnectorEntityIds` to `field-mappings.repository.ts`
+- [ ] Add `countByConnectorEntityIds` to `entity-tag-assignments.repository.ts`
+- [ ] Add `countByConnectorEntityIds` to `entity-group-members.repository.ts`
+- [ ] Add `countByConnectorInstanceId` to `station-instances.repository.ts`
+- [ ] Implement `GET /api/connector-instances/:id/impact` route handler
+- [ ] Write integration tests for impact endpoint:
+  - [ ] Test: returns correct counts for an instance with entities, records, mappings, tags, groups, and station links
+  - [ ] Test: returns all zeros for an instance with no associated data
+  - [ ] Test: returns 404 for non-existent connector instance
+- [ ] Verify: `npm run test` passes (all new and existing tests)
+- [ ] Verify: `npm run type-check` passes
+- [ ] Verify: `npm run lint` passes
+- [ ] Verify: `npm run build` passes
+
+---
+
+## Step 5: Add Frontend API Hooks
 
 **File:** `apps/web/src/api/connector-instances.api.ts`
 
-Add two mutation hooks following the station delete pattern (`apps/web/src/api/stations.api.ts:54-58`):
+Add mutation hooks and an impact query hook:
 
 ```typescript
 delete: (id: string) =>
@@ -143,19 +212,30 @@ rename: (id: string) =>
     url: `/api/connector-instances/${encodeURIComponent(id)}`,
     method: "PATCH",
   }),
+
+impact: (id: string, options?) =>
+  useAuthQuery<ConnectorInstanceImpact>({
+    queryKey: queryKeys.connectorInstances.impact(id),
+    url: `/api/connector-instances/${encodeURIComponent(id)}/impact`,
+    ...options,
+  }),
 ```
+
+The `impact` query should use `enabled: open` (only fetch when the delete dialog is open) to avoid unnecessary requests.
 
 ### Checklist
 
 - [ ] Add `delete` mutation hook to `connectorInstances` API object
 - [ ] Add `rename` mutation hook to `connectorInstances` API object
+- [ ] Add `impact` query hook to `connectorInstances` API object
+- [ ] Add `impact` key to `queryKeys.connectorInstances`
 - [ ] Verify: `npm run type-check` passes
 - [ ] Verify: `npm run lint` passes
 - [ ] Verify: `npm run build` passes
 
 ---
 
-## Step 5: Create DeleteConnectorInstanceDialog Component
+## Step 6: Create DeleteConnectorInstanceDialog Component
 
 **File:** `apps/web/src/components/DeleteConnectorInstanceDialog.component.tsx`
 
@@ -170,6 +250,8 @@ interface DeleteConnectorInstanceDialogProps {
   connectorInstanceName: string;
   onConfirm: () => void;
   isPending?: boolean;
+  impact?: ConnectorInstanceImpact | null; // from the pre-flight query
+  isLoadingImpact?: boolean;
 }
 ```
 
@@ -177,19 +259,36 @@ interface DeleteConnectorInstanceDialogProps {
 
 - MUI `Dialog` with title: **"Delete Connector Instance"**
 - Body text: *"Are you sure you want to delete **{name}**?"*
-- Warning text (use MUI `Alert` severity="warning"): *"This action will permanently delete all associated data including connector entities, entity records, field mappings, tag assignments, and group memberships. This cannot be undone."*
-- Actions: **Cancel** button (secondary) and **Delete** button (error color, disabled while `isPending`)
+- **Impact summary** (displayed when `impact` is loaded, loading spinner while `isLoadingImpact`):
+  - Itemized list showing non-zero counts, e.g.:
+    - "3 connector entities"
+    - "47 entity records"
+    - "12 field mappings"
+    - "5 tag assignments"
+    - "2 group memberships"
+    - "1 station will be unlinked"
+  - Omit items with zero count to keep the list concise
+  - If all counts are zero, show: *"No associated data found."*
+- Warning text (use MUI `Alert` severity="warning"): *"This action will permanently delete all associated data listed above. This cannot be undone."*
+- Actions: **Cancel** button (secondary) and **Delete** button (error color, disabled while `isPending` or `isLoadingImpact`)
 
 ### Checklist
 
 - [ ] Create `DeleteConnectorInstanceDialog.component.tsx` with props interface
-- [ ] Implement dialog UI with title, confirmation text, warning alert, and action buttons
+- [ ] Implement dialog UI with title, confirmation text, impact summary, warning alert, and action buttons
+- [ ] Show loading state while impact data is being fetched
+- [ ] Display itemized impact counts, omitting zero-count items
 - [ ] Write unit tests for `DeleteConnectorInstanceDialog`:
   - [ ] Test: renders dialog when `open` is true
   - [ ] Test: displays connector instance name in confirmation text
+  - [ ] Test: displays impact counts when `impact` data is provided
+  - [ ] Test: omits items with zero count from impact summary
+  - [ ] Test: shows loading indicator when `isLoadingImpact` is true
+  - [ ] Test: shows "No associated data found" when all counts are zero
   - [ ] Test: calls `onConfirm` when Delete button is clicked
   - [ ] Test: calls `onClose` when Cancel button is clicked
   - [ ] Test: Delete button is disabled when `isPending` is true
+  - [ ] Test: Delete button is disabled when `isLoadingImpact` is true
 - [ ] Verify: `npm run test` passes
 - [ ] Verify: `npm run type-check` passes
 - [ ] Verify: `npm run lint` passes
@@ -197,7 +296,7 @@ interface DeleteConnectorInstanceDialogProps {
 
 ---
 
-## Step 6: Create RenameConnectorInstanceDialog Component
+## Step 7: Create RenameConnectorInstanceDialog Component
 
 **File:** `apps/web/src/components/RenameConnectorInstanceDialog.component.tsx`
 
@@ -238,18 +337,20 @@ interface RenameConnectorInstanceDialogProps {
 
 ---
 
-## Step 7: Integrate Delete & Rename into Connector Instance Detail View
+## Step 8: Integrate Delete & Rename into Connector Instance Detail View
 
 **File:** `apps/web/src/views/ConnectorInstance.view.tsx`
 
 1. Add state: `deleteDialogOpen` (boolean), `renameDialogOpen` (boolean)
 2. Wire up the `connectorInstances.delete(id)` mutation hook
 3. Wire up the `connectorInstances.rename(id)` mutation hook
-4. Add a **Delete** button (red/error, in the header area or actions section) that opens the delete dialog
-5. Add a **Rename** option (edit icon button next to the instance name, or a menu action) that opens the rename dialog
-6. On delete confirm: call mutation, on success invalidate `queryKeys.connectorInstances.root` and navigate to `/connectors`
-7. On rename confirm: call mutation with new name, on success invalidate queries to refresh the view
-8. Render `<DeleteConnectorInstanceDialog>` and `<RenameConnectorInstanceDialog>` at the bottom of the component
+4. Wire up the `connectorInstances.impact(id, { enabled: deleteDialogOpen })` query hook — only fetches when the delete dialog is open
+5. Add a **Delete** button (red/error, in the header area or actions section) that opens the delete dialog
+6. Add a **Rename** option (edit icon button next to the instance name, or a menu action) that opens the rename dialog
+7. On delete confirm: call mutation, on success invalidate `queryKeys.connectorInstances.root` and navigate to `/connectors`
+8. On rename confirm: call mutation with new name, on success invalidate queries to refresh the view
+9. Render `<DeleteConnectorInstanceDialog>` with `impact` and `isLoadingImpact` props from the impact query
+10. Render `<RenameConnectorInstanceDialog>` at the bottom of the component
 
 **Reference:** Station detail view delete integration at `apps/web/src/views/StationDetail.view.tsx`.
 
@@ -258,9 +359,10 @@ interface RenameConnectorInstanceDialogProps {
 - [ ] Add `deleteDialogOpen` and `renameDialogOpen` state variables
 - [ ] Wire up `connectorInstances.delete(id)` mutation with `onSuccess` callback (invalidate queries, navigate to `/connectors`)
 - [ ] Wire up `connectorInstances.rename(id)` mutation with `onSuccess` callback (invalidate queries)
+- [ ] Wire up `connectorInstances.impact(id)` query with `enabled: deleteDialogOpen`
 - [ ] Add Delete button (error color) to view header/actions area
 - [ ] Add Rename button/icon next to instance name
-- [ ] Render `<DeleteConnectorInstanceDialog>` with correct props
+- [ ] Render `<DeleteConnectorInstanceDialog>` with `impact` data and `isLoadingImpact` props
 - [ ] Render `<RenameConnectorInstanceDialog>` with correct props
 - [ ] Verify: `npm run type-check` passes
 - [ ] Verify: `npm run lint` passes
@@ -268,7 +370,7 @@ interface RenameConnectorInstanceDialogProps {
 
 ---
 
-## Step 8: Integrate Delete into Connector Instance List View (Cards)
+## Step 9: Integrate Delete into Connector Instance List View (Cards)
 
 **File:** `apps/web/src/views/Connector.view.tsx` and `apps/web/src/components/ConnectorInstance.component.tsx`
 
@@ -289,9 +391,10 @@ Two approaches (choose based on existing card patterns):
 
 1. Add state: `deleteDialogOpen` (boolean), `deleteTarget` (instance name + id)
 2. Wire up the `connectorInstances.delete(id)` mutation hook
-3. Pass `onDelete` handler to each `ConnectorInstanceCardUI` that sets `deleteTarget` and opens the dialog
-4. On confirm: call mutation, on success invalidate queries to refresh the list
-5. Render `<DeleteConnectorInstanceDialog>` at the bottom of the view
+3. Wire up the `connectorInstances.impact(deleteTarget?.id, { enabled: deleteDialogOpen })` query hook
+4. Pass `onDelete` handler to each `ConnectorInstanceCardUI` that sets `deleteTarget` and opens the dialog
+5. On confirm: call mutation, on success invalidate queries to refresh the list
+6. Render `<DeleteConnectorInstanceDialog>` with `impact` data at the bottom of the view
 
 ### Checklist
 
@@ -299,15 +402,16 @@ Two approaches (choose based on existing card patterns):
 - [ ] Add menu or icon button to card UI that triggers `onDelete`
 - [ ] Add `deleteDialogOpen` and `deleteTarget` state to `Connector.view.tsx`
 - [ ] Wire up `connectorInstances.delete(id)` mutation with `onSuccess` callback (invalidate queries)
+- [ ] Wire up `connectorInstances.impact(deleteTarget?.id)` query with `enabled: deleteDialogOpen`
 - [ ] Pass `onDelete` handler to each card that sets target and opens dialog
-- [ ] Render `<DeleteConnectorInstanceDialog>` in the list view
+- [ ] Render `<DeleteConnectorInstanceDialog>` with `impact` and `isLoadingImpact` props in the list view
 - [ ] Verify: `npm run type-check` passes
 - [ ] Verify: `npm run lint` passes
 - [ ] Verify: `npm run build` passes
 
 ---
 
-## Step 9: Final Verification
+## Step 10: Final Verification
 
 Run all checks across the full monorepo to confirm nothing is broken.
 
@@ -320,7 +424,9 @@ Run all checks across the full monorepo to confirm nothing is broken.
 - [ ] Manual smoke test: delete connector instance from detail view triggers dialog with warning, completes successfully, navigates to list
 - [ ] Manual smoke test: delete connector instance from list view card triggers dialog with warning, completes successfully, list refreshes
 - [ ] Manual smoke test: rename connector instance from detail view triggers dialog, saves successfully, name updates in view
+- [ ] Manual smoke test: delete dialog shows correct impact counts (entities, records, mappings, tags, groups, stations) before confirming
 - [ ] Manual smoke test: verify cascaded data (entities, records, mappings, tags, groups) is no longer returned by API after delete
+- [ ] Manual smoke test: verify station_instances join rows are removed (station no longer lists the deleted connector instance)
 
 ---
 
@@ -334,7 +440,8 @@ Run all checks across the full monorepo to confirm nothing is broken.
 | `apps/api/src/db/repositories/entity-tag-assignments.repository.ts` | Edit | Add `softDeleteByConnectorEntityIds` helper |
 | `apps/api/src/db/repositories/entity-group-members.repository.ts` | Edit | Add `softDeleteByConnectorEntityIds` helper |
 | `apps/api/src/db/repositories/connector-entities.repository.ts` | Edit | Add `softDeleteByConnectorInstanceId` helper |
-| `apps/api/src/routes/connector-instance.router.ts` | Edit | Add `DELETE /:id` and `PATCH /:id` endpoints |
+| `apps/api/src/db/repositories/station-instances.repository.ts` | Edit | Add `hardDeleteByConnectorInstanceId` and `countByConnectorInstanceId` helpers |
+| `apps/api/src/routes/connector-instance.router.ts` | Edit | Add `DELETE /:id`, `PATCH /:id`, and `GET /:id/impact` endpoints |
 | `apps/web/src/api/connector-instances.api.ts` | Edit | Add `delete` and `rename` mutation hooks |
 | `apps/web/src/components/DeleteConnectorInstanceDialog.component.tsx` | Create | Delete confirmation dialog with cascade warning |
 | `apps/web/src/components/RenameConnectorInstanceDialog.component.tsx` | Create | Rename dialog with text field |
@@ -344,4 +451,4 @@ Run all checks across the full monorepo to confirm nothing is broken.
 | `apps/api/src/__tests__/__integration__/routes/connector-instance.router.integration.test.ts` | Edit | Add DELETE and PATCH test cases |
 
 **Estimated new files:** 2
-**Estimated modified files:** 12
+**Estimated modified files:** 13

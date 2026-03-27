@@ -144,6 +144,29 @@ export class ConnectorEntitiesRepository extends Repository<
   }
 
   /**
+   * Soft-delete all entities for a given connector instance.
+   * Returns the number of affected rows.
+   */
+  async softDeleteByConnectorInstanceId(
+    connectorInstanceId: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const now = Date.now();
+    const result = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: now, deletedBy } as any)
+      .where(
+        and(
+          eq(connectorEntities.connectorInstanceId, connectorInstanceId),
+          this.notDeleted()
+        )
+      )
+      .returning();
+    return result.length;
+  }
+
+  /**
    * Insert a connector entity or update it if a row with the same
    * `(connector_instance_id, key)` already exists. Returns the resulting row.
    */

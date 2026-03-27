@@ -5,7 +5,7 @@
  * column-definition-scoped queries and composite-key upserts.
  */
 
-import { eq, and, asc, desc, getTableColumns, type SQL, or } from "drizzle-orm";
+import { eq, and, asc, desc, getTableColumns, type SQL, or, inArray } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { fieldMappings, connectorEntities, columnDefinitions } from "../schema/index.js";
@@ -225,6 +225,29 @@ export class FieldMappingsRepository extends Repository<
       mapping: primary as FieldMappingSelect,
       counterpart,
     };
+  }
+  /**
+   * Soft-delete all field mappings across multiple connector entities.
+   * Returns the number of affected rows.
+   */
+  async softDeleteByConnectorEntityIds(
+    connectorEntityIds: string[],
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    const now = Date.now();
+    const result = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: now, deletedBy } as any)
+      .where(
+        and(
+          inArray(fieldMappings.connectorEntityId, connectorEntityIds),
+          this.notDeleted()
+        )
+      )
+      .returning();
+    return result.length;
   }
 }
 

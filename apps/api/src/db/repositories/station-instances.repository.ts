@@ -27,6 +27,21 @@ export class StationInstancesRepository extends Repository<
   ): Promise<StationInstanceSelect[]> {
     return this.findMany(eq(stationInstances.stationId, stationId), {}, client);
   }
+
+  /**
+   * Hard-delete all station_instances rows for a given connector instance.
+   * Returns the number of deleted rows.
+   */
+  async hardDeleteByConnectorInstanceId(
+    connectorInstanceId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const result = await (client as typeof db)
+      .delete(this.table)
+      .where(eq(stationInstances.connectorInstanceId, connectorInstanceId))
+      .returning();
+    return result.length;
+  }
 }
 
 /** Singleton instance. */

@@ -7,7 +7,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { entityRecords } from "../schema/index.js";
@@ -127,6 +127,30 @@ export class EntityRecordsRepository extends Repository<
       .where(
         and(
           eq(entityRecords.connectorEntityId, connectorEntityId),
+          this.notDeleted()
+        )
+      )
+      .returning();
+    return result.length;
+  }
+
+  /**
+   * Soft-delete all records across multiple connector entities.
+   * Returns the number of affected rows.
+   */
+  async softDeleteByConnectorEntityIds(
+    connectorEntityIds: string[],
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    const now = Date.now();
+    const result = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: now, deletedBy } as any)
+      .where(
+        and(
+          inArray(entityRecords.connectorEntityId, connectorEntityIds),
           this.notDeleted()
         )
       )
