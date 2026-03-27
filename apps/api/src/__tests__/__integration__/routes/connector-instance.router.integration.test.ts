@@ -754,6 +754,65 @@ describe("Connector Instance Router", () => {
     });
   });
 
+  // ── PATCH /api/connector-instances/:id ─────────────────────────
+
+  describe("PATCH /api/connector-instances/:id", () => {
+    it("should return 404 for non-existent connector instance", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "New Name" });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+    });
+
+    it("should return 400 for empty name", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD);
+    });
+
+    it("should return 400 for missing name", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD);
+    });
+
+    it("should rename a connector instance and return updated record", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, orgId, { name: "Old Name" });
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "New Name" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.connectorInstance.name).toBe("New Name");
+      expect(res.body.payload.connectorInstance.id).toBe(instance.id);
+      expect(res.body.payload.connectorInstance.updatedBy).toBeDefined();
+    });
+  });
+
   // ── POST /api/connector-instances ───────────────────────────────
 
   describe("POST /api/connector-instances", () => {

@@ -118,17 +118,17 @@ Add `PATCH /api/connector-instances/:id` to support renaming (and future partial
 
 ### Checklist
 
-- [ ] Define Zod request body schema for PATCH (e.g., `ConnectorInstancePatchBodySchema`)
-- [ ] Implement `PATCH /api/connector-instances/:id` route handler
-- [ ] Write integration tests for PATCH endpoint:
-  - [ ] Test: returns 200 with updated record on successful rename
-  - [ ] Test: returns 404 for non-existent connector instance
-  - [ ] Test: returns 400 for empty or missing name
-  - [ ] Test: `updatedBy` field is set to the requesting user
-- [ ] Verify: `npm run test` passes (all new and existing tests)
-- [ ] Verify: `npm run type-check` passes
-- [ ] Verify: `npm run lint` passes
-- [ ] Verify: `npm run build` passes
+- [x] Define Zod request body schema for PATCH (e.g., `ConnectorInstancePatchBodySchema`)
+- [x] Implement `PATCH /api/connector-instances/:id` route handler
+- [x] Write integration tests for PATCH endpoint:
+  - [x] Test: returns 200 with updated record on successful rename
+  - [x] Test: returns 404 for non-existent connector instance
+  - [x] Test: returns 400 for empty or missing name
+  - [x] Test: `updatedBy` field is set to the requesting user
+- [x] Verify: `npm run test` passes (all new and existing tests)
+- [x] Verify: `npm run type-check` passes
+- [x] Verify: `npm run lint` passes
+- [x] Verify: `npm run build` passes
 
 ---
 

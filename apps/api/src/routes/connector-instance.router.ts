@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { eq, and, ilike, inArray, type SQL, type Column } from "drizzle-orm";
+import { z } from "zod";
 import { ConnectorInstanceModelFactory } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -478,6 +479,93 @@ connectorInstanceRouter.delete(
         error instanceof ApiError
           ? error
           : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete connector instance")
+      );
+    }
+  }
+);
+
+/** Zod schema for PATCH request body. */
+const ConnectorInstancePatchBodySchema = z.object({
+  name: z.string().min(1, "Name is required"),
+});
+
+/**
+ * @openapi
+ * /api/connector-instances/{id}:
+ *   patch:
+ *     tags:
+ *       - Connector Instances
+ *     summary: Update a connector instance
+ *     description: Partially updates a connector instance (e.g. rename).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector instance ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 minLength: 1
+ *     responses:
+ *       200:
+ *         description: Connector instance updated
+ *       400:
+ *         description: Invalid request body
+ *       404:
+ *         description: Connector instance not found
+ *       500:
+ *         description: Internal server error
+ */
+connectorInstanceRouter.patch(
+  "/:id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.application!.metadata;
+
+      const parsed = ConnectorInstancePatchBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(400, ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD, "Invalid connector instance payload")
+        );
+      }
+
+      const existing = await DbService.repository.connectorInstances.findById(id);
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND, "Connector instance not found")
+        );
+      }
+
+      const updated = await DbService.repository.connectorInstances.update(id, {
+        name: parsed.data.name,
+        updatedBy: userId,
+      });
+
+      logger.info({ id }, "Connector instance updated");
+      return HttpService.success(res, { connectorInstance: updated as unknown as ConnectorInstanceApi });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to update connector instance"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update connector instance")
       );
     }
   }
