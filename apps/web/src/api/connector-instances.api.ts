@@ -2,13 +2,14 @@ import type {
   ApiSuccessResponse,
   ConnectorInstanceApi,
   ConnectorInstanceGetResponsePayload,
+  ConnectorInstanceImpact,
   ConnectorInstanceListRequestQuery,
   ConnectorInstanceListResponsePayload,
   ConnectorInstanceListWithDefinitionResponsePayload,
 } from "@portalai/core/contracts";
 import { useInfiniteFilterOptions } from "@portalai/core/ui";
 import type { InfiniteFilterOptionsConfig } from "@portalai/core/ui";
-import { useAuthQuery, useAuthFetch } from "../utils/api.util";
+import { useAuthQuery, useAuthMutation, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -71,4 +72,27 @@ export const connectorInstances = {
       undefined,
       options
     ),
+
+  impact: (
+    id: string,
+    options?: QueryOptions<ConnectorInstanceImpact>
+  ) =>
+    useAuthQuery<ConnectorInstanceImpact>(
+      queryKeys.connectorInstances.impact(id),
+      buildUrl(`/api/connector-instances/${encodeURIComponent(id)}/impact`),
+      undefined,
+      options
+    ),
+
+  delete: (id: string) =>
+    useAuthMutation<void, void>({
+      url: `/api/connector-instances/${encodeURIComponent(id)}`,
+      method: "DELETE",
+    }),
+
+  rename: (id: string) =>
+    useAuthMutation<ConnectorInstanceGetResponsePayload, { name: string }>({
+      url: `/api/connector-instances/${encodeURIComponent(id)}`,
+      method: "PATCH",
+    }),
 };

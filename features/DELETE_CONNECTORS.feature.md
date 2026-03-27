@@ -225,13 +225,13 @@ The `impact` query should use `enabled: open` (only fetch when the delete dialog
 
 ### Checklist
 
-- [ ] Add `delete` mutation hook to `connectorInstances` API object
-- [ ] Add `rename` mutation hook to `connectorInstances` API object
-- [ ] Add `impact` query hook to `connectorInstances` API object
-- [ ] Add `impact` key to `queryKeys.connectorInstances`
-- [ ] Verify: `npm run type-check` passes
-- [ ] Verify: `npm run lint` passes
-- [ ] Verify: `npm run build` passes
+- [x] Add `delete` mutation hook to `connectorInstances` API object
+- [x] Add `rename` mutation hook to `connectorInstances` API object
+- [x] Add `impact` query hook to `connectorInstances` API object
+- [x] Add `impact` key to `queryKeys.connectorInstances`
+- [x] Verify: `npm run type-check` passes
+- [x] Verify: `npm run lint` passes
+- [x] Verify: `npm run build` passes
 
 ---
 

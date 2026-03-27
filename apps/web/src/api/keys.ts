@@ -47,6 +47,8 @@ export const queryKeys = {
       [...queryKeys.connectorInstances.root, "list", params] as const,
     get: (id: string) =>
       [...queryKeys.connectorInstances.root, "get", id] as const,
+    impact: (id: string) =>
+      [...queryKeys.connectorInstances.root, "impact", id] as const,
   },
   columnDefinitions: {
     root: ["columnDefinitions"] as const,

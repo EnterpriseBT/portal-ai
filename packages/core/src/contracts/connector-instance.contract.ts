@@ -66,3 +66,14 @@ export const ConnectorInstanceCreateResponseSchema = z.object({
 export type ConnectorInstanceCreateResponsePayload = z.infer<
   typeof ConnectorInstanceCreateResponseSchema
 >;
+
+export const ConnectorInstanceImpactResponseSchema = z.object({
+  connectorEntities: z.number(),
+  entityRecords: z.number(),
+  fieldMappings: z.number(),
+  entityTagAssignments: z.number(),
+  entityGroupMembers: z.number(),
+  stations: z.number(),
+});
+
+export type ConnectorInstanceImpact = z.infer<typeof ConnectorInstanceImpactResponseSchema>;
