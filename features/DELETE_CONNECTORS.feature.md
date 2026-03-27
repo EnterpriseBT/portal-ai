@@ -274,25 +274,25 @@ interface DeleteConnectorInstanceDialogProps {
 
 ### Checklist
 
-- [ ] Create `DeleteConnectorInstanceDialog.component.tsx` with props interface
-- [ ] Implement dialog UI with title, confirmation text, impact summary, warning alert, and action buttons
-- [ ] Show loading state while impact data is being fetched
-- [ ] Display itemized impact counts, omitting zero-count items
-- [ ] Write unit tests for `DeleteConnectorInstanceDialog`:
-  - [ ] Test: renders dialog when `open` is true
-  - [ ] Test: displays connector instance name in confirmation text
-  - [ ] Test: displays impact counts when `impact` data is provided
-  - [ ] Test: omits items with zero count from impact summary
-  - [ ] Test: shows loading indicator when `isLoadingImpact` is true
-  - [ ] Test: shows "No associated data found" when all counts are zero
-  - [ ] Test: calls `onConfirm` when Delete button is clicked
-  - [ ] Test: calls `onClose` when Cancel button is clicked
-  - [ ] Test: Delete button is disabled when `isPending` is true
-  - [ ] Test: Delete button is disabled when `isLoadingImpact` is true
-- [ ] Verify: `npm run test` passes
-- [ ] Verify: `npm run type-check` passes
-- [ ] Verify: `npm run lint` passes
-- [ ] Verify: `npm run build` passes
+- [x] Create `DeleteConnectorInstanceDialog.component.tsx` with props interface
+- [x] Implement dialog UI with title, confirmation text, impact summary, warning alert, and action buttons
+- [x] Show loading state while impact data is being fetched
+- [x] Display itemized impact counts, omitting zero-count items
+- [x] Write unit tests for `DeleteConnectorInstanceDialog`:
+  - [x] Test: renders dialog when `open` is true
+  - [x] Test: displays connector instance name in confirmation text
+  - [x] Test: displays impact counts when `impact` data is provided
+  - [x] Test: omits items with zero count from impact summary
+  - [x] Test: shows loading indicator when `isLoadingImpact` is true
+  - [x] Test: shows "No associated data found" when all counts are zero
+  - [x] Test: calls `onConfirm` when Delete button is clicked
+  - [x] Test: calls `onClose` when Cancel button is clicked
+  - [x] Test: Delete button is disabled when `isPending` is true
+  - [x] Test: Delete button is disabled when `isLoadingImpact` is true
+- [x] Verify: `npm run test` passes
+- [x] Verify: `npm run type-check` passes
+- [x] Verify: `npm run lint` passes
+- [x] Verify: `npm run build` passes
 
 ---
 
