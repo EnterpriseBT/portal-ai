@@ -398,16 +398,16 @@ Two approaches (choose based on existing card patterns):
 
 ### Checklist
 
-- [ ] Add `onDelete` optional callback prop to `ConnectorInstanceCardUI`
-- [ ] Add menu or icon button to card UI that triggers `onDelete`
-- [ ] Add `deleteDialogOpen` and `deleteTarget` state to `Connector.view.tsx`
-- [ ] Wire up `connectorInstances.delete(id)` mutation with `onSuccess` callback (invalidate queries)
-- [ ] Wire up `connectorInstances.impact(deleteTarget?.id)` query with `enabled: deleteDialogOpen`
-- [ ] Pass `onDelete` handler to each card that sets target and opens dialog
-- [ ] Render `<DeleteConnectorInstanceDialog>` with `impact` and `isLoadingImpact` props in the list view
-- [ ] Verify: `npm run type-check` passes
-- [ ] Verify: `npm run lint` passes
-- [ ] Verify: `npm run build` passes
+- [x] Add `onDelete` optional callback prop to `ConnectorInstanceCardUI`
+- [x] Add menu or icon button to card UI that triggers `onDelete`
+- [x] Add `deleteDialogOpen` and `deleteTarget` state to `Connector.view.tsx`
+- [x] Wire up `connectorInstances.delete(id)` mutation with `onSuccess` callback (invalidate queries)
+- [x] Wire up `connectorInstances.impact(deleteTarget?.id)` query with `enabled: deleteDialogOpen`
+- [x] Pass `onDelete` handler to each card that sets target and opens dialog
+- [x] Render `<DeleteConnectorInstanceDialog>` with `impact` and `isLoadingImpact` props in the list view
+- [x] Verify: `npm run type-check` passes
+- [x] Verify: `npm run lint` passes
+- [x] Verify: `npm run build` passes
 
 ---
 
