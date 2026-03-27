@@ -146,7 +146,7 @@ cd packages/core && npm install react-d3-tree
 Then: `cd apps/api && npm run db:generate && npm run db:migrate`
 
 #### Tests to write:
-- [ ] No unit tests — compile-time type assertions cover this. Verified by `npm run build`.
+- [x] No unit tests — compile-time type assertions cover this. Verified by `npm run build`.
 
 ### 2.4 Tool Definition & Service Method
 
