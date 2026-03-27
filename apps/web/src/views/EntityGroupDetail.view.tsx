@@ -319,59 +319,60 @@ export const EntityGroupDetailViewUI: React.FC<
               ]}
               onNavigate={(href) => navigate({ to: href })}
             />
-          </Box>
-
-          {/* Header */}
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            justifyContent="space-between"
-            alignItems={{ xs: "flex-start", sm: "center" }}
-            spacing={1}
-          >
-            <Box>
-              {editingName ? (
-                <TextField
-                  value={nameValue}
-                  onChange={(e) => setNameValue(e.target.value)}
-                  onBlur={handleSaveName}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveName();
-                    if (e.key === "Escape") {
-                      setNameValue(group.name);
-                      setEditingName(false);
-                    }
-                  }}
-                  autoFocus
-                  size="small"
-                  slotProps={{ htmlInput: { "aria-label": "Group name" } }}
-                />
-              ) : (
-                <Typography variant="h1">{group.name}</Typography>
-              )}
-              {group.description && (
-                <Typography variant="body1" color="text.secondary">
-                  {group.description}
-                </Typography>
-              )}
-            </Box>
-            <Stack direction="row" spacing={1}>
-              <Button
-                startIcon={<EditIcon />}
-                onClick={() => setEditingName(true)}
-                disabled={isUpdatingGroup}
-              >
-                Edit
-              </Button>
-              <Button
-                color="error"
-                startIcon={<DeleteIcon />}
-                onClick={() => setDeleteDialogOpen(true)}
-                disabled={isDeletingGroup}
-              >
-                Delete
-              </Button>
+            {/* Header */}
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              justifyContent="space-between"
+              alignItems={{ xs: "flex-start", sm: "center" }}
+              spacing={1}
+            >
+              <Box>
+                {editingName ? (
+                  <TextField
+                    value={nameValue}
+                    onChange={(e) => setNameValue(e.target.value)}
+                    onBlur={handleSaveName}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveName();
+                      if (e.key === "Escape") {
+                        setNameValue(group.name);
+                        setEditingName(false);
+                      }
+                    }}
+                    autoFocus
+                    size="small"
+                    slotProps={{ htmlInput: { "aria-label": "Group name" } }}
+                  />
+                ) : (
+                  <Typography variant="h1">{group.name}</Typography>
+                )}
+                {group.description && (
+                  <Typography variant="body1" color="text.secondary">
+                    {group.description}
+                  </Typography>
+                )}
+              </Box>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="outlined"
+                  startIcon={<EditIcon />}
+                  onClick={() => setEditingName(true)}
+                  disabled={isUpdatingGroup}
+                >
+                  Edit
+                </Button>
+                <Button
+                  color="error"
+                  variant="contained"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => setDeleteDialogOpen(true)}
+                  disabled={isDeletingGroup}
+                >
+                  Delete
+                </Button>
+              </Stack>
             </Stack>
-          </Stack>
+          </Box>
 
           {/* Members table */}
           <Box>

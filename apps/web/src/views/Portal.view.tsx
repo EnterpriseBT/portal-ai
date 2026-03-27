@@ -199,7 +199,7 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                       </Button>
                       <Button
                         size="small"
-                        variant="outlined"
+                        variant="contained"
                         color="error"
                         startIcon={<DeleteIcon />}
                         onClick={() => setDeleteOpen(true)}

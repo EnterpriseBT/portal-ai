@@ -64,60 +64,63 @@ export const ConnectorInstanceView = ({
               const ci = instance.connectorInstance;
               return (
                 <Stack spacing={4}>
-                  <Breadcrumbs
-                    items={[
-                      { label: "Dashboard", href: "/", icon: IconName.Home },
-                      { label: "Connectors", href: "/connectors" },
-                      { label: ci.name },
-                    ]}
-                    onNavigate={(href) => navigate({ to: href })}
-                  />
-                  {/* Section 1: Instance Details */}
                   <Box>
-                    <Stack
-                      direction="row"
-                      spacing={2}
-                      alignItems="center"
-                      sx={{ mb: 2 }}
-                    >
-                      <Typography variant="h1">{ci.name}</Typography>
-                      <Chip
-                        label={upperFirst(ci.status)}
-                        size="small"
-                        color={STATUS_COLOR[ci.status] ?? "default"}
-                        variant="outlined"
-                      />
-                    </Stack>
+                    <Breadcrumbs
+                      items={[
+                        { label: "Dashboard", href: "/", icon: IconName.Home },
+                        { label: "Connectors", href: "/connectors" },
+                        { label: ci.name },
+                      ]}
+                      onNavigate={(href) => navigate({ to: href })}
+                    />
 
-                    <Stack spacing={1}>
-                      {ci.connectorDefinition && (
-                        <Typography variant="body1" color="text.secondary">
-                          Connector: {ci.connectorDefinition.display}
-                        </Typography>
-                      )}
+                    {/* Section 1: Instance Details */}
+                    <Box>
+                      <Stack
+                        direction="row"
+                        spacing={2}
+                        alignItems="center"
+                        sx={{ mb: 2 }}
+                      >
+                        <Typography variant="h1">{ci.name}</Typography>
+                        <Chip
+                          label={upperFirst(ci.status)}
+                          size="small"
+                          color={STATUS_COLOR[ci.status] ?? "default"}
+                          variant="outlined"
+                        />
+                      </Stack>
 
-                      {ci.config && Object.keys(ci.config).length > 0 && (
+                      <Stack spacing={1}>
+                        {ci.connectorDefinition && (
+                          <Typography variant="body1" color="text.secondary">
+                            Connector: {ci.connectorDefinition.display}
+                          </Typography>
+                        )}
+
+                        {ci.config && Object.keys(ci.config).length > 0 && (
+                          <Typography variant="body2" color="text.secondary">
+                            Config: {JSON.stringify(ci.config)}
+                          </Typography>
+                        )}
+
+                        {ci.lastSyncAt && (
+                          <Typography variant="body2" color="text.secondary">
+                            Last sync: {new Date(ci.lastSyncAt).toLocaleString()}
+                          </Typography>
+                        )}
+
+                        {ci.status === "error" && ci.lastErrorMessage && (
+                          <Typography variant="body2" color="error">
+                            Error: {ci.lastErrorMessage}
+                          </Typography>
+                        )}
+
                         <Typography variant="body2" color="text.secondary">
-                          Config: {JSON.stringify(ci.config)}
+                          Created: {new Date(ci.created).toLocaleString()}
                         </Typography>
-                      )}
-
-                      {ci.lastSyncAt && (
-                        <Typography variant="body2" color="text.secondary">
-                          Last sync: {new Date(ci.lastSyncAt).toLocaleString()}
-                        </Typography>
-                      )}
-
-                      {ci.status === "error" && ci.lastErrorMessage && (
-                        <Typography variant="body2" color="error">
-                          Error: {ci.lastErrorMessage}
-                        </Typography>
-                      )}
-
-                      <Typography variant="body2" color="text.secondary">
-                        Created: {new Date(ci.created).toLocaleString()}
-                      </Typography>
-                    </Stack>
+                      </Stack>
+                    </Box>
                   </Box>
 
                   {/* Section 2: Entities List */}
