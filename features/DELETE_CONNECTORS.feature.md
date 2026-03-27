@@ -417,16 +417,16 @@ Run all checks across the full monorepo to confirm nothing is broken.
 
 ### Checklist
 
-- [ ] Verify: `npm run test` passes (all unit and integration tests across monorepo)
-- [ ] Verify: `npm run type-check` passes (all packages)
-- [ ] Verify: `npm run lint` passes (all packages)
-- [ ] Verify: `npm run build` passes (all packages)
-- [ ] Manual smoke test: delete connector instance from detail view triggers dialog with warning, completes successfully, navigates to list
-- [ ] Manual smoke test: delete connector instance from list view card triggers dialog with warning, completes successfully, list refreshes
-- [ ] Manual smoke test: rename connector instance from detail view triggers dialog, saves successfully, name updates in view
-- [ ] Manual smoke test: delete dialog shows correct impact counts (entities, records, mappings, tags, groups, stations) before confirming
-- [ ] Manual smoke test: verify cascaded data (entities, records, mappings, tags, groups) is no longer returned by API after delete
-- [ ] Manual smoke test: verify station_instances join rows are removed (station no longer lists the deleted connector instance)
+- [x] Verify: `npm run test` passes (all unit and integration tests across monorepo)
+- [x] Verify: `npm run type-check` passes (all packages)
+- [x] Verify: `npm run lint` passes (all packages)
+- [x] Verify: `npm run build` passes (all packages)
+- [x] Manual smoke test: delete connector instance from detail view triggers dialog with warning, completes successfully, navigates to list
+- [x] Manual smoke test: delete connector instance from list view card triggers dialog with warning, completes successfully, list refreshes
+- [x] Manual smoke test: rename connector instance from detail view triggers dialog, saves successfully, name updates in view
+- [x] Manual smoke test: delete dialog shows correct impact counts (entities, records, mappings, tags, groups, stations) before confirming
+- [x] Manual smoke test: verify cascaded data (entities, records, mappings, tags, groups) is no longer returned by API after delete
+- [x] Manual smoke test: verify station_instances join rows are removed (station no longer lists the deleted connector instance)
 
 ---
 
