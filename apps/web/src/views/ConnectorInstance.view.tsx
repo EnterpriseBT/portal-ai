@@ -1,21 +1,28 @@
+import { useState, useCallback } from "react";
+
 import type {
   ConnectorEntityListRequestQuery,
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
+import { Box, Breadcrumbs, Button, Stack, Typography } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditIcon from "@mui/icons-material/Edit";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
 
-import { useNavigate } from "@tanstack/react-router";
-
+import { sdk, queryKeys } from "../api/sdk";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
 import {
   ConnectorEntityDataList,
   ConnectorEntityCardUI,
 } from "../components/ConnectorEntity.component";
 import DataResult from "../components/DataResult.component";
+import { DeleteConnectorInstanceDialog } from "../components/DeleteConnectorInstanceDialog.component";
+import { EditConnectorInstanceDialog } from "../components/EditConnectorInstanceDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
@@ -40,6 +47,39 @@ export const ConnectorInstanceView = ({
   connectorInstanceId,
 }: ConnectorInstanceViewProps) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+  const deleteMutation = sdk.connectorInstances.delete(connectorInstanceId);
+  const renameMutation = sdk.connectorInstances.rename(connectorInstanceId);
+  const impactQuery = sdk.connectorInstances.impact(connectorInstanceId, {
+    enabled: deleteDialogOpen,
+  });
+
+  const handleDelete = useCallback(() => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+        navigate({ to: "/connectors" });
+      },
+    });
+  }, [deleteMutation, queryClient, navigate]);
+
+  const handleRename = useCallback(
+    (newName: string) => {
+      renameMutation.mutate({ name: newName }, {
+        onSuccess: () => {
+          setEditDialogOpen(false);
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.get(connectorInstanceId) });
+        },
+      });
+    },
+    [renameMutation, queryClient, connectorInstanceId]
+  );
 
   const pagination = usePagination({
     sortFields: [
@@ -64,60 +104,79 @@ export const ConnectorInstanceView = ({
               const ci = instance.connectorInstance;
               return (
                 <Stack spacing={4}>
-                  <Breadcrumbs
-                    items={[
-                      { label: "Dashboard", href: "/", icon: IconName.Home },
-                      { label: "Connectors", href: "/connectors" },
-                      { label: ci.name },
-                    ]}
-                    onNavigate={(href) => navigate({ to: href })}
-                  />
-                  {/* Section 1: Instance Details */}
                   <Box>
-                    <Stack
-                      direction="row"
-                      spacing={2}
-                      alignItems="center"
-                      sx={{ mb: 2 }}
-                    >
-                      <Typography variant="h1">{ci.name}</Typography>
-                      <Chip
-                        label={upperFirst(ci.status)}
-                        size="small"
-                        color={STATUS_COLOR[ci.status] ?? "default"}
-                        variant="outlined"
-                      />
-                    </Stack>
+                    <Breadcrumbs
+                      items={[
+                        { label: "Dashboard", href: "/", icon: IconName.Home },
+                        { label: "Connectors", href: "/connectors" },
+                        { label: ci.name },
+                      ]}
+                      onNavigate={(href) => navigate({ to: href })}
+                    />
 
-                    <Stack spacing={1}>
-                      {ci.connectorDefinition && (
-                        <Typography variant="body1" color="text.secondary">
-                          Connector: {ci.connectorDefinition.display}
-                        </Typography>
-                      )}
+                    {/* Section 1: Instance Details */}
+                    <Box>
+                      <Stack
+                        direction="row"
+                        spacing={2}
+                        alignItems="center"
+                        sx={{ mb: 2 }}
+                      >
+                        <Typography variant="h1">{ci.name}</Typography>
+                        <Chip
+                          label={upperFirst(ci.status)}
+                          size="small"
+                          color={STATUS_COLOR[ci.status] ?? "default"}
+                          variant="outlined"
+                        />
+                        <Box sx={{ flexGrow: 1 }} />
+                        <Button
+                          variant="outlined"
+                          startIcon={<EditIcon />}
+                          onClick={() => setEditDialogOpen(true)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="contained"
+                          color="error"
+                          startIcon={<DeleteOutlineIcon />}
+                          onClick={() => setDeleteDialogOpen(true)}
+                        >
+                          Delete
+                        </Button>
+                      </Stack>
 
-                      {ci.config && Object.keys(ci.config).length > 0 && (
+                      <Stack spacing={1}>
+                        {ci.connectorDefinition && (
+                          <Typography variant="body1" color="text.secondary">
+                            Connector: {ci.connectorDefinition.display}
+                          </Typography>
+                        )}
+
+                        {ci.config && Object.keys(ci.config).length > 0 && (
+                          <Typography variant="body2" color="text.secondary">
+                            Config: {JSON.stringify(ci.config)}
+                          </Typography>
+                        )}
+
+                        {ci.lastSyncAt && (
+                          <Typography variant="body2" color="text.secondary">
+                            Last sync: {new Date(ci.lastSyncAt).toLocaleString()}
+                          </Typography>
+                        )}
+
+                        {ci.status === "error" && ci.lastErrorMessage && (
+                          <Typography variant="body2" color="error">
+                            Error: {ci.lastErrorMessage}
+                          </Typography>
+                        )}
+
                         <Typography variant="body2" color="text.secondary">
-                          Config: {JSON.stringify(ci.config)}
+                          Created: {new Date(ci.created).toLocaleString()}
                         </Typography>
-                      )}
-
-                      {ci.lastSyncAt && (
-                        <Typography variant="body2" color="text.secondary">
-                          Last sync: {new Date(ci.lastSyncAt).toLocaleString()}
-                        </Typography>
-                      )}
-
-                      {ci.status === "error" && ci.lastErrorMessage && (
-                        <Typography variant="body2" color="error">
-                          Error: {ci.lastErrorMessage}
-                        </Typography>
-                      )}
-
-                      <Typography variant="body2" color="text.secondary">
-                        Created: {new Date(ci.created).toLocaleString()}
-                      </Typography>
-                    </Stack>
+                      </Stack>
+                    </Box>
                   </Box>
 
                   {/* Section 2: Entities List */}
@@ -178,6 +237,23 @@ export const ConnectorInstanceView = ({
                       </ConnectorEntityDataList>
                     </Box>
                   </Box>
+                  <DeleteConnectorInstanceDialog
+                    open={deleteDialogOpen}
+                    onClose={() => setDeleteDialogOpen(false)}
+                    connectorInstanceName={ci.name}
+                    onConfirm={handleDelete}
+                    isPending={deleteMutation.isPending}
+                    impact={impactQuery.data ?? null}
+                    isLoadingImpact={impactQuery.isLoading && deleteDialogOpen}
+                  />
+
+                  <EditConnectorInstanceDialog
+                    open={editDialogOpen}
+                    onClose={() => setEditDialogOpen(false)}
+                    currentName={ci.name}
+                    onConfirm={handleRename}
+                    isPending={renameMutation.isPending}
+                  />
                 </Stack>
               );
             }}

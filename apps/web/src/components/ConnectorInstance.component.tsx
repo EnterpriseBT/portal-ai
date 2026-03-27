@@ -17,7 +17,11 @@ import {
   Stack,
   Typography,
 } from "@portalai/core/ui";
+import CardActionArea from "@mui/material/CardActionArea";
 import Chip from "@mui/material/Chip";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { upperFirst } from "lodash-es";
 
 import { sdk } from "../api/sdk";
@@ -79,72 +83,95 @@ export interface ConnectorInstanceCardUIProps {
   connectorInstance: ConnectorInstanceApi;
   connectorDefinition?: ConnectorDefinition;
   onClick?: (connectorInstance: ConnectorInstanceApi) => void;
+  onDelete?: (connectorInstance: ConnectorInstanceApi) => void;
 }
 
 export const ConnectorInstanceCardUI = ({
   connectorInstance: ci,
   connectorDefinition: cd,
   onClick,
+  onDelete,
 }: ConnectorInstanceCardUIProps) => {
   return (
-    <Card
-      variant="outlined"
-      sx={{ cursor: onClick ? "pointer" : undefined }}
-      onClick={() => onClick?.(ci)}
-    >
-      <CardContent>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={2}
-          alignItems={{ xs: "center", sm: "center" }}
+    <Card variant="outlined">
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        alignItems={{ xs: "flex-start", sm: "center" }}
+      >
+        <CardActionArea
+          onClick={() => onClick?.(ci)}
+          disabled={!onClick}
+          sx={{ flex: 1, minWidth: 0 }}
         >
-          <Avatar
-            src={cd?.iconUrl ?? undefined}
-            alt={ci.name}
-            sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
-          >
-            {ci.name.charAt(0).toUpperCase()}
-          </Avatar>
-
-          <Box
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              textAlign: { xs: "center", sm: "left" },
-            }}
-          >
+          <CardContent sx={{ "&:last-child": { pb: 2 } }}>
             <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              justifyContent={{ xs: "center", sm: "flex-start" }}
-              flexWrap="wrap"
+              direction={{ xs: "column", sm: "row" }}
+              spacing={2}
+              alignItems={{ xs: "center", sm: "center" }}
             >
-              <Typography variant="subtitle1" noWrap>
-                {ci.name}
-              </Typography>
-              <Chip
-                label={upperFirst(ci.status)}
-                size="small"
-                color={STATUS_COLOR[ci.status] ?? "default"}
-                variant="outlined"
-              />
+              <Avatar
+                src={cd?.iconUrl ?? undefined}
+                alt={ci.name}
+                sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
+              >
+                {ci.name.charAt(0).toUpperCase()}
+              </Avatar>
+
+              <Box
+                sx={{
+                  flex: 1,
+                  minWidth: 0,
+                  textAlign: { xs: "center", sm: "left" },
+                }}
+              >
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  justifyContent={{ xs: "center", sm: "flex-start" }}
+                  flexWrap="wrap"
+                >
+                  <Typography variant="subtitle1" noWrap>
+                    {ci.name}
+                  </Typography>
+                  <Chip
+                    label={upperFirst(ci.status)}
+                    size="small"
+                    color={STATUS_COLOR[ci.status] ?? "default"}
+                    variant="outlined"
+                  />
+                </Stack>
+
+                <Typography variant="body2" color="text.secondary">
+                  {cd?.display ?? "Unknown connector"}
+                  {ci.lastSyncAt &&
+                    ` · Last sync: ${new Date(ci.lastSyncAt).toLocaleDateString()}`}
+                </Typography>
+
+                {ci.status === "error" && ci.lastErrorMessage && (
+                  <Typography variant="body2" color="error" noWrap>
+                    {ci.lastErrorMessage}
+                  </Typography>
+                )}
+              </Box>
             </Stack>
+          </CardContent>
+        </CardActionArea>
 
-            <Typography variant="body2" color="text.secondary">
-              {cd?.display ?? "Unknown connector"}
-              {ci.lastSyncAt &&
-                ` · Last sync: ${new Date(ci.lastSyncAt).toLocaleDateString()}`}
-            </Typography>
-
-            {ci.status === "error" && ci.lastErrorMessage && (
-              <Typography variant="body2" color="error" noWrap>
-                {ci.lastErrorMessage}
-              </Typography>
-            )}
+        {onDelete && (
+          <Box sx={{ flexShrink: 0, pr: 2, py: 1 }}>
+            <Tooltip title="Delete">
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => onDelete(ci)}
+              >
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
-        </Stack>
-      </CardContent>
+        )}
+      </Stack>
     </Card>
   );
 };

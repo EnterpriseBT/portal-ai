@@ -9,15 +9,17 @@ import {
   Typography,
   IconName,
 } from "@portalai/core/ui";
-import AddIcon from "@mui/icons-material/Add";
+import RocketLaunch from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { DefaultStationCardConnected } from "../components/DefaultStationCard.component";
+import { PinnedResultsListConnected } from "../components/PinnedResultsList.component";
 import { RecentPortalsListConnected } from "../components/RecentPortalsList.component";
 import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { HealthCheck } from "../components/HealthCheck.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { useAuthFetch } from "../utils/api.util";
 
 // ── Dashboard UI (pure) ─────────────────────────────────────────────
 
@@ -25,23 +27,32 @@ export interface DashboardViewUIProps {
   onNewPortal: () => void;
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
+  onViewStation: (stationId: string) => void;
   onPortalClick: (portalId: string) => void;
+  onPinnedResultClick: (id: string) => void;
+  onUnpinResult: (id: string) => void;
+  onViewAllPinnedResults: () => void;
 }
 
 export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
   onNewPortal,
   onLaunchPortal,
   onChangeDefault,
+  onViewStation,
   onPortalClick,
+  onPinnedResultClick,
+  onUnpinResult,
+  onViewAllPinnedResults,
 }) => (
   <Box>
     <Stack spacing={4}>
       <Box>
         <Breadcrumbs items={[{ label: "Home", icon: IconName.Home }]} />
         <Stack
-          direction="row"
+          direction={{ xs: "column", sm: "row" }}
           justifyContent="space-between"
-          alignItems="center"
+          alignItems={{ xs: "flex-start", sm: "center" }}
+          spacing={1}
         >
           <Stack direction="row" alignItems="center" gap={1}>
             <HealthCheck />
@@ -49,10 +60,10 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
           </Stack>
           <Button
             variant="contained"
-            startIcon={<AddIcon />}
+            startIcon={<RocketLaunch />}
             onClick={onNewPortal}
           >
-            New Portal
+            Launch New Portal
           </Button>
         </Stack>
       </Box>
@@ -60,7 +71,19 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
       <DefaultStationCardConnected
         onLaunchPortal={onLaunchPortal}
         onChangeDefault={onChangeDefault}
+        onViewStation={onViewStation}
       />
+
+      <Box>
+        <Typography variant="h2" sx={{ mb: 2 }}>
+          Pinned Results
+        </Typography>
+        <PinnedResultsListConnected
+          onResultClick={onPinnedResultClick}
+          onUnpin={onUnpinResult}
+          onViewAll={onViewAllPinnedResults}
+        />
+      </Box>
 
       <Box>
         <Typography variant="h2" sx={{ mb: 2 }}>
@@ -77,6 +100,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 export const DashboardView: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { fetchWithAuth } = useAuthFetch();
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.portals.create();
@@ -123,6 +147,13 @@ export const DashboardView: React.FC = () => {
     navigate({ to: "/stations" });
   }, [navigate]);
 
+  const handleViewStation = useCallback(
+    (stationId: string) => {
+      navigate({ to: `/stations/${stationId}` });
+    },
+    [navigate]
+  );
+
   const handlePortalClick = useCallback(
     (portalId: string) => {
       navigate({ to: `/portals/${portalId}` });
@@ -130,13 +161,41 @@ export const DashboardView: React.FC = () => {
     [navigate]
   );
 
+  const handlePinnedResultClick = useCallback(
+    (id: string) => {
+      navigate({ to: `/portal-results/${id}` });
+    },
+    [navigate]
+  );
+
+  const handleUnpinResult = useCallback(
+    async (id: string) => {
+      await fetchWithAuth(
+        `/api/portal-results/${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      );
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.portalResults.root,
+      });
+    },
+    [fetchWithAuth, queryClient]
+  );
+
+  const handleViewAllPinnedResults = useCallback(() => {
+    navigate({ to: "/portal-results" });
+  }, [navigate]);
+
   return (
     <>
       <DashboardViewUI
         onNewPortal={handleNewPortal}
         onLaunchPortal={handleLaunchPortal}
         onChangeDefault={handleChangeDefault}
+        onViewStation={handleViewStation}
         onPortalClick={handlePortalClick}
+        onPinnedResultClick={handlePinnedResultClick}
+        onUnpinResult={handleUnpinResult}
+        onViewAllPinnedResults={handleViewAllPinnedResults}
       />
 
       <CreatePortalDialog

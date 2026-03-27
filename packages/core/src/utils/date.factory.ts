@@ -137,6 +137,25 @@ export class DateFactory {
   }
 
   /**
+   * Returns a human-readable relative time string for a Unix-ms timestamp
+   * compared to now (e.g. "just now", "5m ago", "3h ago", "2d ago").
+   *
+   * This is a timezone-independent convenience — it only compares elapsed
+   * milliseconds, so it lives on the factory for colocation with other
+   * date helpers.
+   */
+  static relativeTime(timestamp: number): string {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
+
+  /**
    * Checks whether two dates fall on the same day in the configured time zone.
    *
    * @see {@link dateFns.isSameDay}

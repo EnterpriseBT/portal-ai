@@ -18,8 +18,10 @@ import type {
   ConnectorInstanceApi,
   ConnectorInstanceListRequestQuery,
 } from "@portalai/core/contracts";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
+import { sdk, queryKeys } from "../api/sdk";
 import {
   ConnectorDefinitionCardUI,
   ConnectorDefinitionDataList,
@@ -29,13 +31,13 @@ import {
   ConnectorInstanceWithDefinitionDataList,
 } from "../components/ConnectorInstance.component";
 import DataResult from "../components/DataResult.component";
+import { DeleteConnectorInstanceDialog } from "../components/DeleteConnectorInstanceDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
 import {
   PaginationToolbar,
   usePagination,
 } from "../components/PaginationToolbar.component";
 import { SyncTotal } from "../components/SyncTotal.component";
-import { sdk } from "../api/sdk";
 import { CSVConnectorWorkflow } from "../workflows/CSVConnector";
 
 export interface ConnectorWorkflowProps {
@@ -55,11 +57,35 @@ const WORKFLOW_REGISTRY: Record<
 export const ConnectorView = () => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [selectedConnectorDefinitionId, setSelectedConnectorDefinitionId] =
     useState<string | null>(null);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const deleteMutation = sdk.connectorInstances.delete(deleteTarget?.id ?? "");
+  const impactQuery = sdk.connectorInstances.impact(deleteTarget?.id ?? "", {
+    enabled: deleteDialogOpen && !!deleteTarget,
+  });
+
+  const handleDeleteClick = useCallback((ci: ConnectorInstanceApi) => {
+    setDeleteTarget({ id: ci.id, name: ci.name });
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false);
+        setDeleteTarget(null);
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+      },
+    });
+  }, [deleteMutation, queryClient]);
 
   const { data: orgData } = sdk.organizations.current();
   const organizationId = orgData?.organization.id ?? "";
@@ -168,6 +194,7 @@ export const ConnectorView = () => {
                               ci.connectorDefinition ?? undefined
                             }
                             onClick={handleInstanceClick}
+                            onDelete={handleDeleteClick}
                           />
                         ))}
                       </Stack>
@@ -230,6 +257,19 @@ export const ConnectorView = () => {
             />
           );
         })()}
+
+      <DeleteConnectorInstanceDialog
+        open={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setDeleteTarget(null);
+        }}
+        connectorInstanceName={deleteTarget?.name ?? ""}
+        onConfirm={handleDeleteConfirm}
+        isPending={deleteMutation.isPending}
+        impact={impactQuery.data ?? null}
+        isLoadingImpact={impactQuery.isLoading && deleteDialogOpen}
+      />
     </Box>
   );
 };

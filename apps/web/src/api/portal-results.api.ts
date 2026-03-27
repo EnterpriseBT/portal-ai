@@ -7,6 +7,7 @@ import type { QueryOptions } from "./types";
 
 export type PortalResultsListParams = {
   stationId?: string;
+  search?: string;
   limit?: number;
   offset?: number;
 };
@@ -34,6 +35,14 @@ export const portalResults = {
     useAuthQuery<PortalResultsListPayload>(
       queryKeys.portalResults.list(params),
       buildUrl("/api/portal-results", params),
+      undefined,
+      options
+    ),
+
+  get: (id: string, options?: QueryOptions<PortalResultPayload>) =>
+    useAuthQuery<PortalResultPayload>(
+      queryKeys.portalResults.get(id),
+      buildUrl(`/api/portal-results/${encodeURIComponent(id)}`),
       undefined,
       options
     ),

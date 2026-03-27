@@ -50,7 +50,7 @@ jest.unstable_mockModule("../../../services/analytics.service.js", () => ({
 }));
 
 const { app } = await import("../../../app.js");
-const { stations, portals } = schema;
+const { stations, portals, portalMessages, portalResults } = schema;
 
 const now = Date.now();
 
@@ -259,6 +259,211 @@ describe("Portal Router", () => {
         .expect(404);
 
       expect(res.body.code).toBe(ApiCode.PORTAL_NOT_FOUND);
+    });
+  });
+
+  // ── DELETE /api/portals/:id ───────────────────────────────────────
+
+  describe("DELETE /api/portals/:id", () => {
+    it("soft-deletes a portal", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .delete(`/api/portals/${portal.id}`)
+        .expect(200);
+
+      expect(res.body.payload.id).toBe(portal.id);
+
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portals)
+        .where(eq(portals.id, portal.id));
+      expect(row.deleted).not.toBeNull();
+    });
+
+    it("hard-deletes associated messages", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalMessages)
+        .values([
+          {
+            id: generateId(),
+            portalId: portal.id,
+            organizationId,
+            role: "user",
+            blocks: [{ type: "text", content: "Hello" }],
+            created: now,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          } as never,
+          {
+            id: generateId(),
+            portalId: portal.id,
+            organizationId,
+            role: "assistant",
+            blocks: [{ type: "text", content: "Hi" }],
+            created: now + 1000,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          } as never,
+        ]);
+
+      await request(app).delete(`/api/portals/${portal.id}`).expect(200);
+
+      const remaining = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portalMessages)
+        .where(eq(portalMessages.portalId, portal.id));
+      expect(remaining).toHaveLength(0);
+    });
+
+    it("detaches pinned results but preserves them", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const resultId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values({
+          id: resultId,
+          organizationId,
+          stationId: station.id,
+          portalId: portal.id,
+          name: "Pinned Result",
+          type: "text",
+          content: { value: "kept" },
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+
+      await request(app).delete(`/api/portals/${portal.id}`).expect(200);
+
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portalResults)
+        .where(eq(portalResults.id, resultId));
+      expect(row).toBeDefined();
+      expect(row.portalId).toBeNull();
+      expect(row.name).toBe("Pinned Result");
+    });
+
+    it("returns 404 for unknown portal", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .delete(`/api/portals/${generateId()}`)
+        .expect(404);
+    });
+  });
+
+  // ── PATCH /api/portals/:id ───────────────────────────────────────
+
+  describe("PATCH /api/portals/:id", () => {
+    it("renames a portal", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .patch(`/api/portals/${portal.id}`)
+        .send({ name: "Updated Name" })
+        .expect(200);
+
+      expect(res.body.payload.portal.name).toBe("Updated Name");
+
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portals)
+        .where(eq(portals.id, portal.id));
+      expect(row.name).toBe("Updated Name");
+      expect(row.updated).not.toBeNull();
+    });
+
+    it("returns 400 when name is missing", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .patch(`/api/portals/${generateId()}`)
+        .send({})
+        .expect(400);
+    });
+
+    it("returns 400 when name is empty", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .patch(`/api/portals/${generateId()}`)
+        .send({ name: "   " })
+        .expect(400);
+    });
+
+    it("returns 404 for unknown portal", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      await request(app)
+        .patch(`/api/portals/${generateId()}`)
+        .send({ name: "New Name" })
+        .expect(404);
     });
   });
 

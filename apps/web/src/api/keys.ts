@@ -47,6 +47,8 @@ export const queryKeys = {
       [...queryKeys.connectorInstances.root, "list", params] as const,
     get: (id: string) =>
       [...queryKeys.connectorInstances.root, "get", id] as const,
+    impact: (id: string) =>
+      [...queryKeys.connectorInstances.root, "impact", id] as const,
   },
   columnDefinitions: {
     root: ["columnDefinitions"] as const,
@@ -121,6 +123,8 @@ export const queryKeys = {
     root: ["portalResults"] as const,
     list: (params?: Record<string, unknown>) =>
       [...queryKeys.portalResults.root, "list", params] as const,
+    get: (id: string) =>
+      [...queryKeys.portalResults.root, "get", id] as const,
   },
   organizationTools: {
     root: ["organizationTools"] as const,

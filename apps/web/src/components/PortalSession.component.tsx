@@ -57,9 +57,11 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
       ))}
 
       {streamingBlocks !== null && streamingBlocks.length > 0 && (
-        <Box sx={{ mb: 2 }}>
+        <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
           {streamingBlocks.map((block, i) => (
-            <ContentBlockRenderer key={i} block={block} />
+            <Box key={i} sx={{ overflow: "auto" }}>
+              <ContentBlockRenderer block={block} />
+            </Box>
           ))}
         </Box>
       )}
@@ -97,7 +99,14 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const sendMessage = sdk.portals.sendMessage(portalId);
   const resetMessages = sdk.portals.resetMessages(portalId);
 
-  const allMessages = [...serverMessages, ...localMessages];
+  // Deduplicate: prefer server messages over local optimistic copies so that
+  // block arrays (which include tool-call/tool-result metadata blocks) have
+  // correct indices for operations like pinning.
+  const serverIds = new Set(serverMessages.map((m) => m.id));
+  const allMessages = [
+    ...serverMessages,
+    ...localMessages.filter((m) => !serverIds.has(m.id)),
+  ];
 
   const handleCancel = () => {
     esRef.current?.close();
@@ -211,7 +220,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     });
 
     es.addEventListener("done", (_e: MessageEvent) => {
-      JSON.parse(_e.data) as DoneEvent;
+      const doneData = JSON.parse(_e.data) as DoneEvent;
       es.close();
       esRef.current = null;
 
@@ -219,7 +228,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       const finalBlocks = streamingBlocksRef.current;
       if (finalBlocks.length > 0) {
         const assistantMsg: PortalMessageResponse = {
-          id: `local-assistant-${Date.now()}`,
+          id: doneData.messageId,
           portalId,
           organizationId: "",
           role: "assistant",
@@ -232,6 +241,13 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       streamingBlocksRef.current = [];
       setStreamingBlocks(null);
       setIsStreaming(false);
+
+      // Refetch so server-stored blocks (which include tool-call/tool-result
+      // metadata) replace the display-only local copies. This ensures pin
+      // operations send correct block indices.
+      portalQuery.refetch().then(() => {
+        setLocalMessages([]);
+      });
     });
 
     es.onerror = () => {

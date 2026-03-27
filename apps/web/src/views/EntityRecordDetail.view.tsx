@@ -205,21 +205,24 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
   return (
     <Box>
       <Stack spacing={4}>
-        <Breadcrumbs
-          items={[
-            { label: "Dashboard", href: "/", icon: IconName.Home },
-            { label: "Entities", href: "/entities" },
-            { label: entity.label, href: `/entities/${entity.id}` },
-            { label: `Record ${record.sourceId}` },
-          ]}
-          onNavigate={(href) => navigate({ to: href })}
-        />
+        <Box>
+          <Breadcrumbs
+            items={[
+              { label: "Dashboard", href: "/", icon: IconName.Home },
+              { label: "Entities", href: "/entities" },
+              { label: entity.label, href: `/entities/${entity.id}` },
+              { label: `Record ${record.sourceId}` },
+            ]}
+            onNavigate={(href) => navigate({ to: href })}
+          />
 
+          <Typography variant="h1">
+            Record Details
+          </Typography>
+
+        </Box>
         {/* Metadata */}
         <Box>
-          <Typography variant="h2" sx={{ mb: 2 }}>
-            Metadata
-          </Typography>
           <EntityRecordMetadata record={record} />
           {groups.length > 0 && (
             <Box

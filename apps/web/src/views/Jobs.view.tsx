@@ -51,17 +51,19 @@ export const JobsView = () => {
   });
 
   return (
-    <Box>
-      <Breadcrumbs
-        items={[
-          { label: "Dashboard", href: "/", icon: IconName.Home },
-          { label: "Jobs" },
-        ]}
-        onNavigate={(href) => navigate({ to: href })}
-      />
-      <Typography variant="h1" gutterBottom>
-        Jobs
-      </Typography>
+    <Stack spacing={4}>
+      <Box>
+        <Breadcrumbs
+          items={[
+            { label: "Dashboard", href: "/", icon: IconName.Home },
+            { label: "Jobs" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+        />
+        <Typography variant="h1">
+          Jobs
+        </Typography>
+      </Box>
       <Stack spacing={2}>
         <PaginationToolbar {...pagination.toolbarProps} />
         <JobDataList query={pagination.queryParams as JobListRequestQuery}>
@@ -99,6 +101,6 @@ export const JobsView = () => {
           )}
         </JobDataList>
       </Stack>
-    </Box>
+    </Stack>
   );
 };

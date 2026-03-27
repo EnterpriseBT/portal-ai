@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { PortalSchema } from "../models/portal.model.js";
+import { PortalResultTypeSchema, type PortalResultType } from "../models/portal-result.model.js";
 import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
@@ -85,6 +86,7 @@ export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
 
 export const PinResultBodySchema = z.object({
   portalId: z.string().min(1),
+  messageId: z.string().min(1).optional(),
   blockIndex: z.number().int().min(0),
   name: z.string().min(1),
 });
@@ -102,6 +104,25 @@ export type PinResultBody = z.infer<typeof PinResultBodySchema>;
  * - `tool-call`  — CoreMessage tool-call part (persisted for multi-turn)
  * - `tool-result`— CoreMessage tool-result part (persisted for multi-turn)
  */
+export const PortalBlockTypeSchema = z.enum([
+  "text",
+  "vega-lite",
+  "data-table",
+  "tool-call",
+  "tool-result",
+]);
+
+export type PortalBlockType = z.infer<typeof PortalBlockTypeSchema>;
+
+/**
+ * Block types that can be pinned as portal results.
+ * Derived from `PortalResultTypeSchema` so that the model enum is the
+ * single source of truth for both frontend and backend.
+ */
+export const PINNABLE_BLOCK_TYPES: ReadonlySet<PortalResultType> = new Set(
+  PortalResultTypeSchema.options
+);
+
 export const DataTableContentBlockSchema = z.object({
   type: z.literal("data-table"),
   columns: z.array(z.string()),

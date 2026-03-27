@@ -13,7 +13,7 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { portals } from "../db/schema/index.js";
+import { portals, portalMessages, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalService } from "../services/portal.service.js";
 
@@ -451,6 +451,141 @@ portalRouter.delete(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  */
+// ── PATCH /api/portals/:id ───────────────────────────────────────────────
+
+/**
+ * @openapi
+ * /api/portals/{id}:
+ *   patch:
+ *     tags:
+ *       - Portals
+ *     summary: Rename a portal
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Portal ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Updated Portal Name
+ *     responses:
+ *       200:
+ *         description: Portal renamed successfully
+ *       400:
+ *         description: Invalid payload
+ *       404:
+ *         description: Portal not found
+ *       500:
+ *         description: Internal server error
+ */
+portalRouter.patch(
+  "/:id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId, userId } = req.application!.metadata;
+
+      const { name } = req.body as { name?: string };
+      if (!name || typeof name !== "string" || name.trim() === "") {
+        return next(
+          new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "name is required")
+        );
+      }
+
+      const existing = await DbService.repository.portals.findById(id);
+      if (!existing || existing.organizationId !== organizationId) {
+        return next(
+          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
+        );
+      }
+
+      const portal = await DbService.repository.portals.update(
+        id,
+        { name: name.trim(), updated: Date.now(), updatedBy: userId } as never
+      );
+
+      logger.info({ id }, "Portal renamed");
+
+      return HttpService.success(res, { portal });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown" },
+        "Failed to rename portal"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to rename portal")
+      );
+    }
+  }
+);
+
+// ── DELETE /api/portals/:id ───────────────────────────────────────────────
+
+portalRouter.delete(
+  "/:id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId, userId } = req.application!.metadata;
+
+      const portal = await DbService.repository.portals.findById(id);
+      if (!portal || portal.organizationId !== organizationId) {
+        return next(
+          new ApiError(404, ApiCode.PORTAL_NOT_FOUND, "Portal not found")
+        );
+      }
+
+      await DbService.transaction(async (tx) => {
+        // Detach pinned results — keep them but remove the portal link
+        await tx
+          .update(portalResults)
+          .set({ portalId: null, updated: Date.now(), updatedBy: userId })
+          .where(eq(portalResults.portalId, id));
+
+        // Hard-delete messages — no value without the portal
+        await tx
+          .delete(portalMessages)
+          .where(eq(portalMessages.portalId, id));
+
+        // Soft-delete the portal
+        await DbService.repository.portals.softDelete(id, userId, tx);
+      });
+
+      logger.info({ id }, "Portal deleted with messages cleaned up");
+
+      return HttpService.success(res, { id });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown" },
+        "Failed to delete portal"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to delete portal")
+      );
+    }
+  }
+);
+
+// ── POST /api/portals/:id/messages ───────────────────────────────────────
+
 portalRouter.post(
   "/:id/messages",
   getApplicationMetadata,

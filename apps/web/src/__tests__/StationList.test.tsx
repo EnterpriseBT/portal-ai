@@ -34,6 +34,7 @@ const defaultCardProps = {
   isDefault: false,
   onSetDefault: jest.fn(),
   onOpen: jest.fn(),
+  onDelete: jest.fn(),
 };
 
 describe("StationCardUI", () => {
@@ -103,6 +104,7 @@ const defaultListProps = {
   defaultStationId: null as string | null,
   onSetDefault: jest.fn(),
   onOpen: jest.fn(),
+  onDelete: jest.fn(),
 };
 
 describe("StationListUI", () => {

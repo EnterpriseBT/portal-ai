@@ -9,7 +9,7 @@ import { Button, Stack, Typography } from "@portalai/core/ui";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
-import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
+import RocketLaunch from "@mui/icons-material/RocketLaunch";
 
 import DataResult from "./DataResult.component";
 import { OrgData } from "./StationList.component";
@@ -33,12 +33,14 @@ export interface DefaultStationCardUIProps {
   station: Station | null;
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
+  onViewStation?: (stationId: string) => void;
 }
 
 export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
   station,
   onLaunchPortal,
   onChangeDefault,
+  onViewStation,
 }) => {
   if (!station) {
     return (
@@ -61,35 +63,50 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
   return (
     <Card variant="outlined" data-testid="default-station-card">
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Default Station
-        </Typography>
+        <Stack direction="row" alignItems="baseline" spacing={1}>
+          <Typography variant="h6" gutterBottom>{station.name}</Typography>
+          {onViewStation && (
+            <Typography
+              variant="caption"
+              color="primary"
+              onClick={() => onViewStation(station.id)}
+              sx={{ cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
+            >
+              View Station
+            </Typography>
+          )}
+        </Stack>
         <Stack spacing={1} sx={{ mb: 2 }}>
-          <Typography variant="subtitle1">{station.name}</Typography>
+          <Stack direction="row" spacing={0.5} alignItems="baseline">
+            <Typography variant="caption" color="text.secondary">Default Station</Typography>
+            <Typography
+              variant="caption"
+              color="primary"
+              onClick={onChangeDefault}
+              sx={{ cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
+            >
+              (change)
+            </Typography>
+          </Stack>
           {station.description && (
             <Typography variant="body2" color="text.secondary">
               {station.description}
             </Typography>
           )}
-          <Stack direction="row" spacing={0.5}>
+          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
             {station.toolPacks.map((pack) => (
               <Chip key={pack} label={pack} size="small" variant="outlined" />
             ))}
           </Stack>
         </Stack>
-        <Stack direction="row" spacing={1}>
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<RocketLaunchIcon />}
-            onClick={() => onLaunchPortal(station.id)}
-          >
-            Launch Portal
-          </Button>
-          <Button variant="text" size="small" onClick={onChangeDefault}>
-            Change default
-          </Button>
-        </Stack>
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={<RocketLaunch />}
+          onClick={() => onLaunchPortal(station.id)}
+        >
+          Open Portal
+        </Button>
       </CardContent>
     </Card>
   );
@@ -100,11 +117,12 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
 export interface DefaultStationCardConnectedProps {
   onLaunchPortal: (stationId: string) => void;
   onChangeDefault: () => void;
+  onViewStation?: (stationId: string) => void;
 }
 
 export const DefaultStationCardConnected: React.FC<
   DefaultStationCardConnectedProps
-> = ({ onLaunchPortal, onChangeDefault }) => (
+> = ({ onLaunchPortal, onChangeDefault, onViewStation }) => (
   <OrgData>
     {(orgResult) => (
       <DataResult results={{ org: orgResult }}>
@@ -134,6 +152,7 @@ export const DefaultStationCardConnected: React.FC<
                         station={payload.station}
                         onLaunchPortal={onLaunchPortal}
                         onChangeDefault={onChangeDefault}
+                        onViewStation={onViewStation}
                       />
                     );
                   }}

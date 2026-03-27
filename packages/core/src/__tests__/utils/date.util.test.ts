@@ -180,6 +180,26 @@ describe("DateFactory", () => {
     });
   });
 
+  // ── relativeTime (static) ─────────────────────────────────────────
+
+  describe("relativeTime()", () => {
+    it("returns 'just now' for timestamps less than 60 seconds ago", () => {
+      expect(DateFactory.relativeTime(Date.now() - 30_000)).toBe("just now");
+    });
+
+    it("returns minutes ago for timestamps less than 1 hour ago", () => {
+      expect(DateFactory.relativeTime(Date.now() - 5 * 60_000)).toBe("5m ago");
+    });
+
+    it("returns hours ago for timestamps less than 1 day ago", () => {
+      expect(DateFactory.relativeTime(Date.now() - 3 * 3_600_000)).toBe("3h ago");
+    });
+
+    it("returns days ago for timestamps more than 1 day ago", () => {
+      expect(DateFactory.relativeTime(Date.now() - 2 * 86_400_000)).toBe("2d ago");
+    });
+  });
+
   // ── fns passthrough with tzContext ────────────────────────────────
 
   describe("fns + tzContext passthrough", () => {

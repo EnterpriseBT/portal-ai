@@ -393,7 +393,7 @@ describe("Station Router", () => {
       expect(found[0].deleted).not.toBeNull();
     });
 
-    it("soft-deletes associated portals, their messages, and portal results", async () => {
+    it("soft-deletes portals, hard-deletes messages, and detaches pinned results", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -423,6 +423,7 @@ describe("Station Router", () => {
 
       await request(app).delete(`/api/stations/${station.id}`).expect(200);
 
+      // Portals should be soft-deleted
       const remainingPortals = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(portals)
@@ -430,19 +431,27 @@ describe("Station Router", () => {
       expect(remainingPortals).toHaveLength(2);
       expect(remainingPortals.every((p) => p.deleted !== null)).toBe(true);
 
-      const remainingMessages = await (db as ReturnType<typeof drizzle>)
+      // Messages should be hard-deleted (completely removed)
+      const remainingMessages1 = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(portalMessages)
         .where(eq(portalMessages.portalId, portal1.id));
-      expect(remainingMessages).toHaveLength(1);
-      expect(remainingMessages[0].deleted).not.toBeNull();
+      expect(remainingMessages1).toHaveLength(0);
 
-      const remainingResults = await (db as ReturnType<typeof drizzle>)
+      const remainingMessages2 = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portalMessages)
+        .where(eq(portalMessages.portalId, portal2.id));
+      expect(remainingMessages2).toHaveLength(0);
+
+      // Pinned result should be preserved and detached from portal
+      const [preservedResult] = await (db as ReturnType<typeof drizzle>)
         .select()
         .from(portalResults)
-        .where(eq(portalResults.stationId, station.id));
-      expect(remainingResults).toHaveLength(1);
-      expect(remainingResults[0].deleted).not.toBeNull();
+        .where(eq(portalResults.id, result1.id));
+      expect(preservedResult).toBeDefined();
+      expect(preservedResult.deleted).toBeNull();
+      expect(preservedResult.portalId).toBeNull();
     });
 
     it("clears org defaultStationId when the default station is deleted", async () => {

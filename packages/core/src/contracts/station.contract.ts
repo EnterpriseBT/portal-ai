@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
+import { StationInstanceSchema } from "../models/station-instance.model.js";
 import { StationSchema } from "../models/station.model.js";
 import {
   PaginatedResponsePayloadSchema,
@@ -29,8 +31,25 @@ export type StationListResponsePayload = z.infer<
 
 // ── Get ───────────────────────────────────────────────────────────────
 
+export const StationGetRequestQuerySchema = z.object({
+  include: z.string().optional(),
+});
+
+export type StationGetRequestQuery = z.infer<typeof StationGetRequestQuerySchema>;
+
+/** Station instance with its attached connector instance details. */
+export const StationInstanceWithConnectorInstanceSchema = StationInstanceSchema.extend({
+  connectorInstance: ConnectorInstanceSchema.optional(),
+});
+
+export type StationInstanceWithConnectorInstance = z.infer<
+  typeof StationInstanceWithConnectorInstanceSchema
+>;
+
 export const StationGetResponsePayloadSchema = z.object({
-  station: StationSchema,
+  station: StationSchema.extend({
+    instances: z.array(StationInstanceWithConnectorInstanceSchema).optional(),
+  }),
 });
 
 export type StationGetResponsePayload = z.infer<

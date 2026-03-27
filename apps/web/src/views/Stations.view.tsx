@@ -19,6 +19,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { StationListConnected } from "../components/StationList.component";
 import { CreateStationDialog } from "../components/CreateStationDialog.component";
+import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
 import {
   usePagination,
   PaginationToolbar,
@@ -31,12 +32,14 @@ export interface StationsViewUIProps {
   onCreateStation: () => void;
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
+  onDelete: (station: Station) => void;
 }
 
 export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   onCreateStation,
   onSetDefault,
   onOpen,
+  onDelete,
 }) => {
   const navigate = useNavigate();
 
@@ -85,6 +88,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
             setTotal={pagination.setTotal}
             onSetDefault={onSetDefault}
             onOpen={onOpen}
+            onDelete={onDelete}
           />
         </Box>
       </Stack>
@@ -99,8 +103,11 @@ export const StationsView: React.FC = () => {
   const navigate = useNavigate();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingStation, setDeletingStation] = useState<Station | null>(null);
 
   const createMutation = sdk.stations.create();
+  const deleteMutation = sdk.stations.delete(deletingStation?.id ?? "");
 
   // We need the org data to call setDefault — fetch it eagerly
   const orgResult = sdk.organizations.current();
@@ -151,6 +158,28 @@ export const StationsView: React.FC = () => {
     [setDefaultMutation, invalidateOrg]
   );
 
+  // Delete
+  const handleOpenDelete = useCallback((station: Station) => {
+    setDeletingStation(station);
+    setDeleteOpen(true);
+  }, []);
+
+  const handleDeleteClose = useCallback(() => {
+    setDeleteOpen(false);
+    setDeletingStation(null);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        handleDeleteClose();
+        invalidate();
+        invalidateOrg();
+        queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+      },
+    });
+  }, [deleteMutation, handleDeleteClose, invalidate, invalidateOrg, queryClient]);
+
   // Open station detail
   const handleOpen = useCallback(
     (station: Station) => {
@@ -165,6 +194,7 @@ export const StationsView: React.FC = () => {
         onCreateStation={handleOpenCreate}
         onSetDefault={handleSetDefault}
         onOpen={handleOpen}
+        onDelete={handleOpenDelete}
       />
 
       <CreateStationDialog
@@ -173,6 +203,14 @@ export const StationsView: React.FC = () => {
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
         serverError={createMutation.error?.message ?? null}
+      />
+
+      <DeleteStationDialog
+        open={deleteOpen}
+        onClose={handleDeleteClose}
+        station={deletingStation}
+        onConfirm={handleDeleteConfirm}
+        isPending={deleteMutation.isPending}
       />
     </>
   );

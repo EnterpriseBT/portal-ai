@@ -1,10 +1,12 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, type SQL } from "drizzle-orm";
+import { eq, and, ilike, type SQL } from "drizzle-orm";
 
 import {
   PinResultBodySchema,
   PortalListRequestQuerySchema,
+  PINNABLE_BLOCK_TYPES,
 } from "@portalai/core/contracts";
+import type { PortalResultType } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -12,6 +14,7 @@ import { DbService } from "../services/db.service.js";
 import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { SystemUtilities } from "../utils/system.util.js";
+import { DateFactory } from "@portalai/core/utils";
 
 const logger = createLogger({ module: "portal-results" });
 
@@ -96,7 +99,7 @@ portalResultsRouter.post(
       }
 
       const { organizationId, userId } = req.application!.metadata;
-      const { portalId, blockIndex, name } = parsed.data;
+      const { portalId, messageId, blockIndex, name } = parsed.data;
 
       // Load portal to get stationId + verify org
       const portal = await DbService.repository.portals.findById(portalId);
@@ -106,13 +109,19 @@ portalResultsRouter.post(
         );
       }
 
-      // Find the most recent assistant message
+      // Find the target assistant message
       const messages =
         await DbService.repository.portalMessages.findByPortal(portalId);
-      const assistantMessages = messages.filter((m) => m.role === "assistant");
-      const lastAssistantMsg = assistantMessages[assistantMessages.length - 1];
 
-      if (!lastAssistantMsg) {
+      let targetMsg;
+      if (messageId) {
+        targetMsg = messages.find((m) => m.id === messageId && m.role === "assistant");
+      } else {
+        const assistantMessages = messages.filter((m) => m.role === "assistant");
+        targetMsg = assistantMessages[assistantMessages.length - 1];
+      }
+
+      if (!targetMsg) {
         return next(
           new ApiError(
             404,
@@ -122,10 +131,7 @@ portalResultsRouter.post(
         );
       }
 
-      const blocks = lastAssistantMsg.blocks as Array<{
-        type: string;
-        content: unknown;
-      }>;
+      const blocks = targetMsg.blocks as Array<Record<string, unknown>>;
       if (blockIndex >= blocks.length) {
         return next(
           new ApiError(
@@ -136,17 +142,32 @@ portalResultsRouter.post(
         );
       }
 
-      const block = blocks[blockIndex];
-      const type =
-        block.type === "vega-lite"
-          ? ("vega-lite" as const)
-          : ("text" as const);
-      const content =
-        typeof block.content === "object" && block.content !== null
-          ? (block.content as Record<string, unknown>)
-          : { value: block.content };
+      const block = blocks[blockIndex] as Record<string, unknown>;
+      const blockType = block.type as string;
+      if (!PINNABLE_BLOCK_TYPES.has(blockType as PortalResultType)) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            `Block type "${String(block.type)}" cannot be pinned`
+          )
+        );
+      }
+      const type = blockType as PortalResultType;
 
-      const now = Date.now();
+      let content: Record<string, unknown>;
+      if (block.type === "data-table") {
+        content = { columns: block.columns, rows: block.rows };
+      } else if (
+        typeof block.content === "object" &&
+        block.content !== null
+      ) {
+        content = block.content as Record<string, unknown>;
+      } else {
+        content = { value: block.content };
+      }
+
+      const now = new DateFactory('UTC').now().getTime()
       const portalResult = await DbService.repository.portalResults.create({
         id: SystemUtilities.id.v4.generate(),
         organizationId,
@@ -178,10 +199,10 @@ portalResultsRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.PORTAL_RESULT_NOT_FOUND,
-              "Failed to pin result"
-            )
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to pin result"
+          )
       );
     }
   }
@@ -233,7 +254,7 @@ portalResultsRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortOrder, stationId } =
+      const { limit, offset, sortOrder, search, stationId } =
         PortalListRequestQuerySchema.parse(req.query);
       const { organizationId } = req.application!.metadata;
 
@@ -242,6 +263,9 @@ portalResultsRouter.get(
       ];
       if (stationId) {
         filters.push(eq(portalResults.stationId, stationId));
+      }
+      if (search) {
+        filters.push(ilike(portalResults.name, `%${search}%`));
       }
       const where = and(...filters);
 
@@ -271,10 +295,46 @@ portalResultsRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.PORTAL_RESULT_NOT_FOUND,
-              "Failed to list portal results"
-            )
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to list portal results"
+          )
+      );
+    }
+  }
+);
+
+// ── GET /api/portal-results/:id ───────────────────────────────────────────
+
+portalResultsRouter.get(
+  "/:id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { organizationId } = req.application!.metadata;
+
+      const portalResult = await DbService.repository.portalResults.findById(id);
+      if (!portalResult || portalResult.organizationId !== organizationId) {
+        return next(
+          new ApiError(404, ApiCode.PORTAL_RESULT_NOT_FOUND, "Portal result not found")
+        );
+      }
+
+      return HttpService.success(res, { portalResult });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown" },
+        "Failed to get portal result"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to get portal result"
+          )
       );
     }
   }
@@ -383,10 +443,10 @@ portalResultsRouter.patch(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.PORTAL_RESULT_NOT_FOUND,
-              "Failed to rename portal result"
-            )
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to rename portal result"
+          )
       );
     }
   }
@@ -468,10 +528,10 @@ portalResultsRouter.delete(
         error instanceof ApiError
           ? error
           : new ApiError(
-              500,
-              ApiCode.PORTAL_RESULT_NOT_FOUND,
-              "Failed to delete portal result"
-            )
+            500,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Failed to delete portal result"
+          )
       );
     }
   }

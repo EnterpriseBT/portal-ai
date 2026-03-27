@@ -12,7 +12,9 @@ import CardActionArea from "@mui/material/CardActionArea";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
 import StarIcon from "@mui/icons-material/Star";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 import DataResult from "./DataResult.component";
 import { SyncTotal } from "./SyncTotal.component";
@@ -51,6 +53,7 @@ export interface StationCardUIProps {
   isDefault: boolean;
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
+  onDelete: (station: Station) => void;
 }
 
 export const StationCardUI: React.FC<StationCardUIProps> = ({
@@ -58,58 +61,67 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   isDefault,
   onSetDefault,
   onOpen,
+  onDelete,
 }) => (
   <Card variant="outlined">
-    <CardActionArea onClick={() => onOpen(station)} data-testid="station-card">
-      <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          alignItems={{ xs: "flex-start", sm: "center" }}
-          spacing={1.5}
-        >
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <Typography variant="subtitle1" noWrap>
-                {station.name}
-              </Typography>
-              {isDefault && (
-                <Chip
-                  label="Default"
-                  size="small"
-                  color="primary"
-                  icon={<StarIcon />}
-                  data-testid="default-badge"
-                />
-              )}
-            </Stack>
-            {station.description && (
-              <Typography variant="body2" color="text.secondary" noWrap>
-                {station.description}
-              </Typography>
-            )}
-            <Typography variant="caption" color="text.secondary">
-              Tool packs: {station.toolPacks.join(", ")}
+    <Stack
+      direction={{ xs: "column", sm: "row" }}
+      alignItems={{ xs: "flex-start", sm: "center" }}
+    >
+      <CardActionArea
+        onClick={() => onOpen(station)}
+        data-testid="station-card"
+        sx={{ flex: 1, minWidth: 0 }}
+      >
+        <CardContent sx={{ "&:last-child": { pb: 2 } }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="subtitle1" noWrap>
+              {station.name}
             </Typography>
-          </Box>
-
-          {!isDefault && (
-            <Box
-              sx={{ flexShrink: 0 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Button
+            {isDefault && (
+              <Chip
+                label="Default"
                 size="small"
-                variant="outlined"
-                onClick={() => onSetDefault(station)}
-                aria-label="Set as default"
-              >
-                Set as default
-              </Button>
-            </Box>
+                color="primary"
+                icon={<StarIcon />}
+                data-testid="default-badge"
+              />
+            )}
+          </Stack>
+          {station.description && (
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {station.description}
+            </Typography>
           )}
+          <Typography variant="caption" color="text.secondary">
+            Tool packs: {station.toolPacks.join(", ")}
+          </Typography>
+        </CardContent>
+      </CardActionArea>
+
+      <Box sx={{ flexShrink: 0, pr: 2, py: 1 }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          {!isDefault && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => onSetDefault(station)}
+              aria-label="Set as default"
+            >
+              Set as default
+            </Button>
+          )}
+          <IconButton
+            size="small"
+            color="error"
+            onClick={() => onDelete(station)}
+            aria-label="Delete station"
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
         </Stack>
-      </CardContent>
-    </CardActionArea>
+      </Box>
+    </Stack>
   </Card>
 );
 
@@ -120,6 +132,7 @@ export interface StationListUIProps {
   defaultStationId: string | null;
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
+  onDelete: (station: Station) => void;
 }
 
 export const StationListUI: React.FC<StationListUIProps> = ({
@@ -127,6 +140,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
   defaultStationId,
   onSetDefault,
   onOpen,
+  onDelete,
 }) => {
   if (stations.length === 0) {
     return (
@@ -149,6 +163,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
           isDefault={station.id === defaultStationId}
           onSetDefault={onSetDefault}
           onOpen={onOpen}
+          onDelete={onDelete}
         />
       ))}
     </Stack>
@@ -162,6 +177,7 @@ export interface StationListConnectedProps {
   setTotal: (t: number) => void;
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
+  onDelete: (station: Station) => void;
 }
 
 export const StationListConnected: React.FC<StationListConnectedProps> = ({
@@ -169,6 +185,7 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
   setTotal,
   onSetDefault,
   onOpen,
+  onDelete,
 }) => (
   <OrgData>
     {(orgResult) => (
@@ -187,6 +204,7 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
                     defaultStationId={org.organization.defaultStationId}
                     onSetDefault={onSetDefault}
                     onOpen={onOpen}
+                    onDelete={onDelete}
                   />
                 );
               }}

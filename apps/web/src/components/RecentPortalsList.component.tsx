@@ -3,25 +3,13 @@ import React from "react";
 import type { Portal } from "@portalai/core/models";
 import type { PortalListResponsePayload } from "@portalai/core/contracts";
 import { Box, Stack, Typography } from "@portalai/core/ui";
+import { DateFactory } from "@portalai/core/utils";
 import Card from "@mui/material/Card";
 import CardActionArea from "@mui/material/CardActionArea";
 import CardContent from "@mui/material/CardContent";
 
 import DataResult from "./DataResult.component";
 import { sdk } from "../api/sdk";
-
-// ── Relative time helper ────────────────────────────────────────────
-
-function relativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 
 // ── Pure UI ─────────────────────────────────────────────────────────
 
@@ -71,7 +59,7 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
                   color="text.secondary"
                   sx={{ ml: 2, flexShrink: 0 }}
                 >
-                  {relativeTime(portal.created)}
+                  {DateFactory.relativeTime(portal.created)}
                 </Typography>
               </Stack>
             </CardContent>

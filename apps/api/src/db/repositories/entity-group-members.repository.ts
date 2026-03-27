@@ -115,6 +115,15 @@ export class EntityGroupMembersRepository extends Repository<
       }));
   }
 
+  /** Count group members across multiple connector entities (soft-delete aware). */
+  async countByConnectorEntityIds(
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    return this.count(inArray(entityGroupMembers.connectorEntityId, connectorEntityIds), client);
+  }
+
   /** Return all non-deleted group memberships for a connector entity. */
   async findByConnectorEntityId(
     connectorEntityId: string,
@@ -259,6 +268,29 @@ export class EntityGroupMembersRepository extends Repository<
 
     if (client) return exec(client);
     return Repository.transaction((tx) => exec(tx));
+  }
+  /**
+   * Soft-delete all group members across multiple connector entities.
+   * Returns the number of affected rows.
+   */
+  async softDeleteByConnectorEntityIds(
+    connectorEntityIds: string[],
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    const now = Date.now();
+    const result = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: now, deletedBy } as any)
+      .where(
+        and(
+          inArray(entityGroupMembers.connectorEntityId, connectorEntityIds),
+          isNull(entityGroupMembers.deleted)
+        )
+      )
+      .returning();
+    return result.length;
   }
 }
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { Box } from "@portalai/core/ui";
 
-export const PortalLayout = ({
+export const FullScreenLayout = ({
   children,
 }: {
   children: React.ReactNode;

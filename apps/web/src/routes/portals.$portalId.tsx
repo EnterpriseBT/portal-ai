@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { PortalLayout } from "../layouts/Portal.layout";
-import { PortalSession } from "../components/PortalSession.component";
+import { FullScreenLayout } from "../layouts/FullScreen.layout";
+import { PortalView } from "../views/Portal.view";
+import { Authorized } from "../components/Authorized.component";
 
 export const Route = createFileRoute("/portals/$portalId")({
   component: RouteComponent,
@@ -10,8 +11,10 @@ export const Route = createFileRoute("/portals/$portalId")({
 function RouteComponent() {
   const { portalId } = Route.useParams();
   return (
-    <PortalLayout>
-      <PortalSession portalId={portalId} />
-    </PortalLayout>
+    <Authorized>
+      <FullScreenLayout>
+        <PortalView portalId={portalId} />
+      </FullScreenLayout>
+    </Authorized>
   );
 }

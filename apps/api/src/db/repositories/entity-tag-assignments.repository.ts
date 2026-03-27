@@ -25,6 +25,15 @@ export class EntityTagAssignmentsRepository extends Repository<
     super(entityTagAssignments);
   }
 
+  /** Count tag assignments across multiple connector entities (soft-delete aware). */
+  async countByConnectorEntityIds(
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    return this.count(inArray(entityTagAssignments.connectorEntityId, connectorEntityIds), client);
+  }
+
   /**
    * Return all non-deleted assignments for a connector entity.
    * Pass `include: ["entityTag"]` to batch-load parent tag details.
@@ -181,6 +190,29 @@ export class EntityTagAssignmentsRepository extends Repository<
       .where(eq(entityTagAssignments.id, id))
       .returning();
     return row as EntityTagAssignmentSelect | undefined;
+  }
+  /**
+   * Soft-delete all tag assignments across multiple connector entities.
+   * Returns the number of affected rows.
+   */
+  async softDeleteByConnectorEntityIds(
+    connectorEntityIds: string[],
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    const now = Date.now();
+    const result = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: now, deletedBy } as any)
+      .where(
+        and(
+          inArray(entityTagAssignments.connectorEntityId, connectorEntityIds),
+          isNull(entityTagAssignments.deleted)
+        )
+      )
+      .returning();
+    return result.length;
   }
 }
 

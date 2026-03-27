@@ -187,17 +187,16 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Breadcrumbs
-          items={[
-            { label: "Dashboard", href: "/", icon: IconName.Home },
-            { label: "Entities", href: "/entities" },
-            { label: entity.label },
-          ]}
-          onNavigate={(href) => navigate({ to: href })}
-        />
-
-        {/* Header */}
         <Box>
+          <Breadcrumbs
+            items={[
+              { label: "Dashboard", href: "/", icon: IconName.Home },
+              { label: "Entities", href: "/entities" },
+              { label: entity.label },
+            ]}
+            onNavigate={(href) => navigate({ to: href })}
+          />
+          {/* Header */}
           <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="h1">{entity.label}</Typography>
             <Chip
@@ -207,7 +206,6 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
               sx={{ fontFamily: "monospace" }}
             />
           </Stack>
-
           <Stack spacing={0.5}>
             {connectorInstanceName && (
               <Typography variant="body2" color="text.secondary">
@@ -230,65 +228,67 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
               </Typography>
             )}
           </Stack>
+          <Box>
+            {/* Tags */}
+            {tags && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Tags
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {tags.map((tag) => (
+                    <Chip
+                      key={tag.id}
+                      label={tag.name}
+                      size="small"
+                      icon={
+                        tag.color ? (
+                          <Box
+                            sx={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: "50%",
+                              backgroundColor: tag.color,
+                              flexShrink: 0,
+                            }}
+                          />
+                        ) : undefined
+                      }
+                      onDelete={
+                        onUnassignTag
+                          ? () => onUnassignTag(tag.assignmentId)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </Stack>
+                {onSearchTags && onAssignTag && (
+                  <Box sx={{ mt: 1, maxWidth: 300 }}>
+                    <TagAssignSelect
+                      onSearch={onSearchTags}
+                      onAssign={onAssignTag}
+                    />
+                  </Box>
+                )}
+              </Box>
+            )}
 
-          {/* Tags */}
-          {tags && (
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Tags
-              </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {tags.map((tag) => (
-                  <Chip
-                    key={tag.id}
-                    label={tag.name}
-                    size="small"
-                    icon={
-                      tag.color ? (
-                        <Box
-                          sx={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: "50%",
-                            backgroundColor: tag.color,
-                            flexShrink: 0,
-                          }}
-                        />
-                      ) : undefined
-                    }
-                    onDelete={
-                      onUnassignTag
-                        ? () => onUnassignTag(tag.assignmentId)
-                        : undefined
-                    }
-                  />
-                ))}
-              </Stack>
-              {onSearchTags && onAssignTag && (
-                <Box sx={{ mt: 1, maxWidth: 300 }}>
-                  <TagAssignSelect
-                    onSearch={onSearchTags}
-                    onAssign={onAssignTag}
-                  />
-                </Box>
-              )}
-            </Box>
-          )}
-
-          {showSyncButton && (
-            <Box sx={{ mt: 2 }}>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<RefreshIcon />}
-                onClick={onSync}
-                disabled={isSyncing}
-              >
-                {isSyncing ? "Syncing…" : "Sync"}
-              </Button>
-            </Box>
-          )}
+            {showSyncButton && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<RefreshIcon />}
+                  onClick={onSync}
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? "Syncing…" : "Sync"}
+                </Button>
+              </Box>
+            )}
+          </Box>
         </Box>
+
 
         {/* Bidirectional consistency warnings */}
         {bidirectionalFieldMappings && bidirectionalFieldMappings.length > 0 && (

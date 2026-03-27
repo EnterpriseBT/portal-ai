@@ -1,17 +1,27 @@
 import React, { useState } from "react";
 import { Box, Paper } from "@portalai/core/ui";
-import { Typography, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from "@mui/material";
+import { Typography, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from "@mui/material";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import { ContentBlockRenderer } from "@portalai/core";
 import type { PortalMessageResponse, PortalMessageBlock } from "@portalai/core/contracts";
+import { PINNABLE_BLOCK_TYPES } from "@portalai/core/contracts";
+import type { PortalResultType } from "@portalai/core/models";
 
 import { sdk } from "../api/sdk";
+
+function hasPinnableContent(block: PortalMessageBlock): boolean {
+  if (!PINNABLE_BLOCK_TYPES.has(block.type as PortalResultType)) return false;
+  if (block.content == null) return false;
+  if (typeof block.content === "string") return block.content.trim().length > 0;
+  if (typeof block.content === "object") return Object.keys(block.content as object).length > 0;
+  return false;
+}
 
 // ── UI ────────────────────────────────────────────────────────────────
 
 export interface PortalMessageUIProps {
   message: PortalMessageResponse;
-  onPin: (blockIndex: number, name: string) => void;
+  onPin: (messageId: string, blockIndex: number, name: string) => void;
   isPinPending?: boolean;
 }
 
@@ -32,7 +42,7 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
 
   const handleConfirm = () => {
     if (pinBlockIndex !== null && pinName.trim()) {
-      onPin(pinBlockIndex, pinName.trim());
+      onPin(message.id, pinBlockIndex, pinName.trim());
       setPinDialogOpen(false);
     }
   };
@@ -55,20 +65,45 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
   }
 
   return (
-    <Box sx={{ mb: 2 }}>
-      {message.blocks.map((block: PortalMessageBlock, i: number) => (
-        <Box key={i} sx={{ position: "relative", mb: 1 }}>
-          <ContentBlockRenderer block={block} />
-          <IconButton
-            size="small"
-            aria-label="Pin result"
-            onClick={() => handlePinClick(i)}
-            sx={{ position: "absolute", top: 0, right: 0 }}
+    <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
+      {message.blocks.map((block: PortalMessageBlock, i: number) => {
+        const pinnable = hasPinnableContent(block);
+        if (!pinnable) return null;
+        return (
+          <Box
+            key={i}
+            sx={{
+              p: 1,
+              display: "flex",
+              alignItems: "flex-start",
+              mb: 1,
+              borderRadius: 1,
+              transition: "background-color 0.15s",
+              "&:hover": {
+                bgcolor: "action.hover",
+              },
+              "&:hover .pin-button": {
+                opacity: 1,
+              },
+            }}
           >
-            <PushPinOutlinedIcon fontSize="small" />
-          </IconButton>
-        </Box>
-      ))}
+            <Box sx={{ flex: 1, minWidth: 0, overflow: "auto" }}>
+              <ContentBlockRenderer block={block} />
+            </Box>
+            <Tooltip title="Pin result">
+              <IconButton
+                size="small"
+                className="pin-button"
+                aria-label="Pin result"
+                onClick={() => handlePinClick(i)}
+                sx={{ flexShrink: 0, ml: 1, opacity: 0, transition: "opacity 0.15s" }}
+              >
+                <PushPinOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        );
+      })}
 
       <Dialog open={pinDialogOpen} onClose={() => setPinDialogOpen(false)}>
         <DialogTitle>Name this result</DialogTitle>
@@ -113,8 +148,8 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
 }) => {
   const pin = sdk.portalResults.pin();
 
-  const handlePin = (blockIndex: number, name: string) => {
-    pin.mutate({ portalId, blockIndex, name });
+  const handlePin = (messageId: string, blockIndex: number, name: string) => {
+    pin.mutate({ portalId, messageId, blockIndex, name });
   };
 
   return (

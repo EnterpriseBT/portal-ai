@@ -71,25 +71,23 @@ export const ColumnDefinitionDetailView: React.FC<
               const cd = item.columnDefinition;
               return (
                 <Stack spacing={4}>
-                  <Breadcrumbs
-                    items={[
-                      { label: "Dashboard", href: "/", icon: IconName.Home },
-                      {
-                        label: "Column Definitions",
-                        href: "/column-definitions",
-                      },
-                      { label: cd.label },
-                    ]}
-                    onNavigate={(href) => navigate({ to: href })}
-                  />
-
-                  {/* Metadata Section */}
                   <Box>
+                    <Breadcrumbs
+                      items={[
+                        { label: "Dashboard", href: "/", icon: IconName.Home },
+                        {
+                          label: "Column Definitions",
+                          href: "/column-definitions",
+                        },
+                        { label: cd.label },
+                      ]}
+                      onNavigate={(href) => navigate({ to: href })}
+                    />
                     <Stack
                       direction="row"
                       spacing={2}
                       alignItems="center"
-                      sx={{ mb: 2 }}
+                      sx={{ mb: 1 }}
                     >
                       <Typography variant="h1">{cd.label}</Typography>
                       <Chip
@@ -103,47 +101,51 @@ export const ColumnDefinitionDetailView: React.FC<
                       )}
                     </Stack>
 
-                    <Stack spacing={1}>
-                      <Typography variant="body2" color="text.secondary">
-                        Key:{" "}
-                        <Typography
-                          component="span"
-                          variant="body2"
-                          sx={{ fontFamily: "monospace" }}
-                        >
-                          {cd.key}
-                        </Typography>
-                      </Typography>
-
-                      {cd.description && (
+                    {/* Metadata Section */}
+                    <Box>
+                      <Stack spacing={1}>
                         <Typography variant="body2" color="text.secondary">
-                          Description: {cd.description}
+                          Key:{" "}
+                          <Typography
+                            component="span"
+                            variant="body2"
+                            sx={{ fontFamily: "monospace" }}
+                          >
+                            {cd.key}
+                          </Typography>
                         </Typography>
-                      )}
 
-                      {cd.format && (
+                        {cd.description && (
+                          <Typography variant="body2" color="text.secondary">
+                            Description: {cd.description}
+                          </Typography>
+                        )}
+
+                        {cd.format && (
+                          <Typography variant="body2" color="text.secondary">
+                            Format: {cd.format}
+                          </Typography>
+                        )}
+
+                        {cd.defaultValue && (
+                          <Typography variant="body2" color="text.secondary">
+                            Default Value: {cd.defaultValue}
+                          </Typography>
+                        )}
+
+                        {cd.enumValues && cd.enumValues.length > 0 && (
+                          <Typography variant="body2" color="text.secondary">
+                            Enum Values: {cd.enumValues.join(", ")}
+                          </Typography>
+                        )}
+
                         <Typography variant="body2" color="text.secondary">
-                          Format: {cd.format}
+                          Created: {new Date(cd.created).toLocaleString()}
                         </Typography>
-                      )}
-
-                      {cd.defaultValue && (
-                        <Typography variant="body2" color="text.secondary">
-                          Default Value: {cd.defaultValue}
-                        </Typography>
-                      )}
-
-                      {cd.enumValues && cd.enumValues.length > 0 && (
-                        <Typography variant="body2" color="text.secondary">
-                          Enum Values: {cd.enumValues.join(", ")}
-                        </Typography>
-                      )}
-
-                      <Typography variant="body2" color="text.secondary">
-                        Created: {new Date(cd.created).toLocaleString()}
-                      </Typography>
-                    </Stack>
+                      </Stack>
+                    </Box>
                   </Box>
+
 
                   {/* Field Mappings Section */}
                   <Box>
