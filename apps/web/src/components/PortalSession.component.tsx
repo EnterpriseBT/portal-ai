@@ -99,7 +99,14 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const sendMessage = sdk.portals.sendMessage(portalId);
   const resetMessages = sdk.portals.resetMessages(portalId);
 
-  const allMessages = [...serverMessages, ...localMessages];
+  // Deduplicate: prefer server messages over local optimistic copies so that
+  // block arrays (which include tool-call/tool-result metadata blocks) have
+  // correct indices for operations like pinning.
+  const serverIds = new Set(serverMessages.map((m) => m.id));
+  const allMessages = [
+    ...serverMessages,
+    ...localMessages.filter((m) => !serverIds.has(m.id)),
+  ];
 
   const handleCancel = () => {
     esRef.current?.close();
@@ -234,6 +241,13 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       streamingBlocksRef.current = [];
       setStreamingBlocks(null);
       setIsStreaming(false);
+
+      // Refetch so server-stored blocks (which include tool-call/tool-result
+      // metadata) replace the display-only local copies. This ensures pin
+      // operations send correct block indices.
+      portalQuery.refetch().then(() => {
+        setLocalMessages([]);
+      });
     });
 
     es.onerror = () => {
