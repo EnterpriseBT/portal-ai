@@ -3,14 +3,14 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
 
 /**
  * Portal Result model.
- * Represents a pinned/saved analytics result (text or Vega-Lite chart)
- * produced during a portal session.
+ * Represents a pinned/saved analytics result (text, Vega-Lite chart,
+ * or data-table) produced during a portal session.
  *
  * Sync with the Drizzle `portal_results` table is enforced at compile
  * time via `apps/api/src/db/schema/type-checks.ts` and at runtime
  * via drizzle-zod derived schemas in `apps/api/src/db/schema/zod.ts`.
  */
-export const PortalResultTypeSchema = z.enum(["text", "vega-lite"]);
+export const PortalResultTypeSchema = z.enum(["text", "vega-lite", "data-table"]);
 
 export type PortalResultType = z.infer<typeof PortalResultTypeSchema>;
 

@@ -4,13 +4,13 @@ import { Typography, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, Di
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import { ContentBlockRenderer } from "@portalai/core";
 import type { PortalMessageResponse, PortalMessageBlock } from "@portalai/core/contracts";
+import { PINNABLE_BLOCK_TYPES } from "@portalai/core/contracts";
+import type { PortalResultType } from "@portalai/core/models";
 
 import { sdk } from "../api/sdk";
 
-const PINNABLE_TYPES = new Set(["text", "vega-lite", "data-table"]);
-
 function hasPinnableContent(block: PortalMessageBlock): boolean {
-  if (!PINNABLE_TYPES.has(block.type)) return false;
+  if (!PINNABLE_BLOCK_TYPES.has(block.type as PortalResultType)) return false;
   if (block.content == null) return false;
   if (typeof block.content === "string") return block.content.trim().length > 0;
   if (typeof block.content === "object") return Object.keys(block.content as object).length > 0;

@@ -4,7 +4,9 @@ import { eq, and, ilike, type SQL } from "drizzle-orm";
 import {
   PinResultBodySchema,
   PortalListRequestQuerySchema,
+  PINNABLE_BLOCK_TYPES,
 } from "@portalai/core/contracts";
+import type { PortalResultType } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -12,6 +14,7 @@ import { DbService } from "../services/db.service.js";
 import { portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { SystemUtilities } from "../utils/system.util.js";
+import { DateFactory } from "@portalai/core/utils";
 
 const logger = createLogger({ module: "portal-results" });
 
@@ -128,10 +131,7 @@ portalResultsRouter.post(
         );
       }
 
-      const blocks = targetMsg.blocks as Array<{
-        type: string;
-        content: unknown;
-      }>;
+      const blocks = targetMsg.blocks as Array<Record<string, unknown>>;
       if (blockIndex >= blocks.length) {
         return next(
           new ApiError(
@@ -142,17 +142,32 @@ portalResultsRouter.post(
         );
       }
 
-      const block = blocks[blockIndex];
-      const type =
-        block.type === "vega-lite"
-          ? ("vega-lite" as const)
-          : ("text" as const);
-      const content =
-        typeof block.content === "object" && block.content !== null
-          ? (block.content as Record<string, unknown>)
-          : { value: block.content };
+      const block = blocks[blockIndex] as Record<string, unknown>;
+      const blockType = block.type as string;
+      if (!PINNABLE_BLOCK_TYPES.has(blockType as PortalResultType)) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            `Block type "${String(block.type)}" cannot be pinned`
+          )
+        );
+      }
+      const type = blockType as PortalResultType;
 
-      const now = Date.now();
+      let content: Record<string, unknown>;
+      if (block.type === "data-table") {
+        content = { columns: block.columns, rows: block.rows };
+      } else if (
+        typeof block.content === "object" &&
+        block.content !== null
+      ) {
+        content = block.content as Record<string, unknown>;
+      } else {
+        content = { value: block.content };
+      }
+
+      const now = new DateFactory('UTC').now().getTime()
       const portalResult = await DbService.repository.portalResults.create({
         id: SystemUtilities.id.v4.generate(),
         organizationId,

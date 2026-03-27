@@ -41,6 +41,48 @@ const ResultData: React.FC<ResultDataProps> = ({ id, children }) => {
   return <>{children(res)}</>;
 };
 
+// ── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Reconstruct a block that ContentBlockRenderer can handle.
+ * Pinned content varies by type: vega-lite spec, data-table, { value } text, or raw string.
+ */
+const toContentBlock = (
+  result: PortalResult
+): { type: string; content: unknown } => {
+  const raw = result.content;
+
+  if (result.type === "vega-lite") {
+    const spec =
+      typeof raw === "object" && raw !== null && "spec" in raw
+        ? (raw as Record<string, unknown>).spec
+        : raw;
+    return { type: "vega-lite", content: spec };
+  }
+
+  if (result.type === "data-table") {
+    const obj = raw as Record<string, unknown> | null;
+    return {
+      type: "data-table",
+      content: {
+        columns: Array.isArray(obj?.columns) ? (obj.columns as string[]) : [],
+        rows: Array.isArray(obj?.rows)
+          ? (obj.rows as Record<string, unknown>[])
+          : [],
+      },
+    };
+  }
+
+  if (typeof raw === "object" && raw !== null && "value" in raw) {
+    return { type: "text", content: (raw as Record<string, unknown>).value };
+  }
+
+  return {
+    type: "text",
+    content: typeof raw === "string" ? raw : JSON.stringify(raw, null, 2),
+  };
+};
+
 // ── Pure UI ─────────────────────────────────────────────────────────
 
 export interface PinnedResultDetailUIProps {
@@ -76,40 +118,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
     onDelete();
   };
 
-  // Reconstruct a block that ContentBlockRenderer can handle.
-  // Pinned content can be: a string, { value: string }, an array of row objects,
-  // or a vega-lite spec object — depending on the original block type.
-  const raw = result.content;
-  let contentBlock: { type: string; content: unknown };
-
-  if (result.type === "vega-lite") {
-    // Vega-lite content is stored as { type: "vega-lite", spec: {...} }
-    // ContentBlockRenderer expects the spec object directly
-    const spec =
-      typeof raw === "object" && raw !== null && "spec" in raw
-        ? (raw as Record<string, unknown>).spec
-        : raw;
-    contentBlock = { type: "vega-lite", content: spec };
-  } else if (Array.isArray(raw)) {
-    // Tabular data stored as row array — render as data-table
-    const columns = raw.length > 0 ? Object.keys(raw[0] as object) : [];
-    contentBlock = {
-      type: "data-table",
-      content: { columns, rows: raw },
-    };
-  } else if (typeof raw === "object" && raw !== null && "value" in raw) {
-    // Text stored as { value: "markdown string" }
-    contentBlock = {
-      type: "text",
-      content: (raw as Record<string, unknown>).value,
-    };
-  } else {
-    // Fallback — pass through as text
-    contentBlock = {
-      type: "text",
-      content: typeof raw === "string" ? raw : JSON.stringify(raw, null, 2),
-    };
-  }
+  const contentBlock = toContentBlock(result);
 
   return (
     <Box>

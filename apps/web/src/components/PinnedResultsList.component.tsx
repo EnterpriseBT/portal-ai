@@ -10,6 +10,7 @@ import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import TextSnippetOutlinedIcon from "@mui/icons-material/TextSnippetOutlined";
 import BarChartIcon from "@mui/icons-material/BarChart";
+import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 
 import DataResult from "./DataResult.component";
@@ -21,6 +22,9 @@ import type { PortalResultsListPayload } from "../api/portal-results.api";
 function ResultTypeIcon({ type }: { type: string }) {
   if (type === "vega-lite") {
     return <BarChartIcon fontSize="small" color="action" />;
+  }
+  if (type === "data-table") {
+    return <TableChartOutlinedIcon fontSize="small" color="action" />;
   }
   return <TextSnippetOutlinedIcon fontSize="small" color="action" />;
 }
