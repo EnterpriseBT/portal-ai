@@ -25,6 +25,15 @@ export class EntityTagAssignmentsRepository extends Repository<
     super(entityTagAssignments);
   }
 
+  /** Count tag assignments across multiple connector entities (soft-delete aware). */
+  async countByConnectorEntityIds(
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    return this.count(inArray(entityTagAssignments.connectorEntityId, connectorEntityIds), client);
+  }
+
   /**
    * Return all non-deleted assignments for a connector entity.
    * Pass `include: ["entityTag"]` to batch-load parent tag details.

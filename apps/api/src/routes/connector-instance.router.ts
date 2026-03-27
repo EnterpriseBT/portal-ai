@@ -238,6 +238,81 @@ connectorInstanceRouter.get(
 
 /**
  * @openapi
+ * /api/connector-instances/{id}/impact:
+ *   get:
+ *     tags:
+ *       - Connector Instances
+ *     summary: Get deletion impact for a connector instance
+ *     description: >
+ *       Returns counts of all associated objects that would be affected
+ *       if this connector instance were deleted. Used for pre-flight
+ *       confirmation in the delete dialog.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector instance ID
+ *     responses:
+ *       200:
+ *         description: Impact counts
+ *       404:
+ *         description: Connector instance not found
+ *       500:
+ *         description: Internal server error
+ */
+connectorInstanceRouter.get(
+  "/:id/impact",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+
+      const existing = await DbService.repository.connectorInstances.findById(id);
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND, "Connector instance not found")
+        );
+      }
+
+      const entities = await DbService.repository.connectorEntities.findByConnectorInstanceId(id);
+      const entityIds = entities.map((e) => e.id);
+
+      const [entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers, stations] =
+        await Promise.all([
+          DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
+          DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
+          DbService.repository.entityTagAssignments.countByConnectorEntityIds(entityIds),
+          DbService.repository.entityGroupMembers.countByConnectorEntityIds(entityIds),
+          DbService.repository.stationInstances.countByConnectorInstanceId(id),
+        ]);
+
+      return HttpService.success(res, {
+        connectorEntities: entities.length,
+        entityRecords,
+        fieldMappings,
+        entityTagAssignments,
+        entityGroupMembers,
+        stations,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch connector instance impact"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector instance impact")
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/connector-instances:
  *   post:
  *     tags:

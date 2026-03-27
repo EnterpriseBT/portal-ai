@@ -177,20 +177,20 @@ Add `count`-by-entity-ID helpers where not already present:
 
 ### Checklist
 
-- [ ] Add `countByConnectorEntityIds` to `entity-records.repository.ts`
-- [ ] Add `countByConnectorEntityIds` to `field-mappings.repository.ts`
-- [ ] Add `countByConnectorEntityIds` to `entity-tag-assignments.repository.ts`
-- [ ] Add `countByConnectorEntityIds` to `entity-group-members.repository.ts`
-- [ ] Add `countByConnectorInstanceId` to `station-instances.repository.ts`
-- [ ] Implement `GET /api/connector-instances/:id/impact` route handler
-- [ ] Write integration tests for impact endpoint:
-  - [ ] Test: returns correct counts for an instance with entities, records, mappings, tags, groups, and station links
-  - [ ] Test: returns all zeros for an instance with no associated data
-  - [ ] Test: returns 404 for non-existent connector instance
-- [ ] Verify: `npm run test` passes (all new and existing tests)
-- [ ] Verify: `npm run type-check` passes
-- [ ] Verify: `npm run lint` passes
-- [ ] Verify: `npm run build` passes
+- [x] Add `countByConnectorEntityIds` to `entity-records.repository.ts`
+- [x] Add `countByConnectorEntityIds` to `field-mappings.repository.ts`
+- [x] Add `countByConnectorEntityIds` to `entity-tag-assignments.repository.ts`
+- [x] Add `countByConnectorEntityIds` to `entity-group-members.repository.ts`
+- [x] Add `countByConnectorInstanceId` to `station-instances.repository.ts`
+- [x] Implement `GET /api/connector-instances/:id/impact` route handler
+- [x] Write integration tests for impact endpoint:
+  - [x] Test: returns correct counts for an instance with entities, records, mappings, tags, groups, and station links
+  - [x] Test: returns all zeros for an instance with no associated data
+  - [x] Test: returns 404 for non-existent connector instance
+- [x] Verify: `npm run test` passes (all new and existing tests)
+- [x] Verify: `npm run type-check` passes
+- [x] Verify: `npm run lint` passes
+- [x] Verify: `npm run build` passes
 
 ---
 

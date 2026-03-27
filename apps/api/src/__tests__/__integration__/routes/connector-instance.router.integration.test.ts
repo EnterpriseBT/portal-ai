@@ -444,9 +444,8 @@ describe("Connector Instance Router", () => {
 
   // ── DELETE /api/connector-instances/:id ──────────────────────────
 
-  describe("DELETE /api/connector-instances/:id", () => {
-    /** Seed a full connector instance with all related data for cascade tests. */
-    async function seedInstanceWithRelatedData(orgId: string, userId: string) {
+  /** Seed a full connector instance with all related data for cascade/impact tests. */
+  async function seedInstanceWithRelatedData(orgId: string, userId: string) {
       const def = createConnectorDefinition();
       await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
 
@@ -630,8 +629,9 @@ describe("Connector Instance Router", () => {
         station,
         stationInstance,
       };
-    }
+  }
 
+  describe("DELETE /api/connector-instances/:id", () => {
     it("should return 404 for non-existent connector instance", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
@@ -751,6 +751,60 @@ describe("Connector Instance Router", () => {
       expect(listRes.status).toBe(200);
       const names = listRes.body.payload.connectorInstances.map((ci: { name: string }) => ci.name);
       expect(names).not.toContain("Soon Gone");
+    });
+  });
+
+  // ── GET /api/connector-instances/:id/impact ─────────────────────
+
+  describe("GET /api/connector-instances/:id/impact", () => {
+    it("should return 404 for non-existent connector instance", async () => {
+      const res = await request(app)
+        .get(`/api/connector-instances/${generateId()}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+    });
+
+    it("should return all zeros for an instance with no associated data", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, orgId);
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${instance.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload).toEqual({
+        connectorEntities: 0,
+        entityRecords: 0,
+        fieldMappings: 0,
+        entityTagAssignments: 0,
+        entityGroupMembers: 0,
+        stations: 0,
+      });
+    });
+
+    it("should return correct counts for an instance with associated data", async () => {
+      const { organizationId: orgId, userId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const seeded = await seedInstanceWithRelatedData(orgId, userId);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${seeded.instance.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload).toEqual({
+        connectorEntities: 1,
+        entityRecords: 1,
+        fieldMappings: 1,
+        entityTagAssignments: 1,
+        entityGroupMembers: 1,
+        stations: 1,
+      });
     });
   });
 

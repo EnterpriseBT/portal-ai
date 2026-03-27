@@ -115,6 +115,15 @@ export class EntityGroupMembersRepository extends Repository<
       }));
   }
 
+  /** Count group members across multiple connector entities (soft-delete aware). */
+  async countByConnectorEntityIds(
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    return this.count(inArray(entityGroupMembers.connectorEntityId, connectorEntityIds), client);
+  }
+
   /** Return all non-deleted group memberships for a connector entity. */
   async findByConnectorEntityId(
     connectorEntityId: string,

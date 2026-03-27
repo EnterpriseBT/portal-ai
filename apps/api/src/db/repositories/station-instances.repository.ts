@@ -28,6 +28,14 @@ export class StationInstancesRepository extends Repository<
     return this.findMany(eq(stationInstances.stationId, stationId), {}, client);
   }
 
+  /** Count station links for a given connector instance. */
+  async countByConnectorInstanceId(
+    connectorInstanceId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    return this.count(eq(stationInstances.connectorInstanceId, connectorInstanceId), client);
+  }
+
   /**
    * Hard-delete all station_instances rows for a given connector instance.
    * Returns the number of deleted rows.

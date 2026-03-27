@@ -45,6 +45,15 @@ export class FieldMappingsRepository extends Repository<
     return super.findMany(where, opts, client);
   }
 
+  /** Count field mappings across multiple connector entities (soft-delete aware). */
+  async countByConnectorEntityIds(
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    return this.count(inArray(fieldMappings.connectorEntityId, connectorEntityIds), client);
+  }
+
   /** Find all field mappings for a given connector entity. */
   async findByConnectorEntityId(
     connectorEntityId: string,

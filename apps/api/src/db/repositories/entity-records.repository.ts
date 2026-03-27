@@ -41,6 +41,15 @@ export class EntityRecordsRepository extends Repository<
     return this.findMany(where, opts, client);
   }
 
+  /** Count records across multiple connector entities (soft-delete aware). */
+  async countByConnectorEntityIds(
+    connectorEntityIds: string[],
+    client: DbClient = db
+  ): Promise<number> {
+    if (connectorEntityIds.length === 0) return 0;
+    return this.count(inArray(entityRecords.connectorEntityId, connectorEntityIds), client);
+  }
+
   /** Count records for a given connector entity (soft-delete aware). */
   async countByConnectorEntityId(
     connectorEntityId: string,
