@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { PortalSession } from "../components/PortalSession.component";
 import { sdk, queryKeys } from "../api/sdk";
 
@@ -97,57 +98,6 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
     </Modal>
   );
 };
-
-// ── Delete dialog ───────────────────────────────────────────────────
-
-interface DeletePortalDialogProps {
-  open: boolean;
-  onClose: () => void;
-  portalName: string;
-  onConfirm: () => void;
-  isPending: boolean;
-}
-
-const DeletePortalDialog: React.FC<DeletePortalDialogProps> = ({
-  open,
-  onClose,
-  portalName,
-  onConfirm,
-  isPending,
-}) => (
-  <Modal
-    open={open}
-    onClose={onClose}
-    title="Delete Portal"
-    maxWidth="sm"
-    fullWidth
-    actions={
-      <Stack direction="row" spacing={1}>
-        <Button variant="outlined" onClick={onClose} disabled={isPending}>
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          color="error"
-          onClick={onConfirm}
-          disabled={isPending}
-        >
-          {isPending ? "Deleting..." : "Delete"}
-        </Button>
-      </Stack>
-    }
-  >
-    <Stack spacing={2} sx={{ pt: 1 }}>
-      <Typography variant="body1">
-        Are you sure you want to delete <strong>{portalName}</strong>?
-      </Typography>
-      <Typography variant="body2" color="warning.main">
-        All messages will be permanently deleted. Pinned results will not be
-        affected. This action cannot be undone.
-      </Typography>
-    </Stack>
-  </Modal>
-);
 
 // ── Portal view ─────────────────────────────────────────────────────
 

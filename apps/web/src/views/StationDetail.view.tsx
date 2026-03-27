@@ -14,11 +14,6 @@ import CardActionArea from "@mui/material/CardActionArea";
 import CardContent from "@mui/material/CardContent";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogContentText from "@mui/material/DialogContentText";
-import DialogActions from "@mui/material/DialogActions";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
@@ -26,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { EditStationDialog } from "../components/EditStationDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
@@ -306,27 +302,12 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
         )}
       </StationDataItem>
 
-      <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
-        <DialogTitle>Delete Portal</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete &quot;{deleteTarget?.name}&quot;?
-            This will permanently remove the portal and all associated unpinned
-            messages. Pinned results will not be affected.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button
-            onClick={handleConfirmDelete}
-            color="error"
-            variant="contained"
-            data-testid="confirm-delete-portal"
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DeletePortalDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        portalName={deleteTarget?.name ?? ""}
+        onConfirm={handleConfirmDelete}
+      />
     </Box>
   );
 };
