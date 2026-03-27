@@ -296,14 +296,14 @@ interface DeleteConnectorInstanceDialogProps {
 
 ---
 
-## Step 7: Create RenameConnectorInstanceDialog Component
+## Step 7: Create EditConnectorInstanceDialog Component
 
-**File:** `apps/web/src/components/RenameConnectorInstanceDialog.component.tsx`
+**File:** `apps/web/src/components/EditConnectorInstanceDialog.component.tsx`
 
 ### Props
 
 ```typescript
-interface RenameConnectorInstanceDialogProps {
+interface EditConnectorInstanceDialogProps {
   open: boolean;
   onClose: () => void;
   currentName: string;
@@ -320,20 +320,20 @@ interface RenameConnectorInstanceDialogProps {
 
 ### Checklist
 
-- [ ] Create `RenameConnectorInstanceDialog.component.tsx` with props interface
-- [ ] Implement dialog UI with title, text field, and action buttons
-- [ ] Write unit tests for `RenameConnectorInstanceDialog`:
-  - [ ] Test: renders dialog when `open` is true
-  - [ ] Test: text field is pre-filled with `currentName`
-  - [ ] Test: Save button is disabled when name is unchanged
-  - [ ] Test: Save button is disabled when name is empty
-  - [ ] Test: Save button is disabled when `isPending` is true
-  - [ ] Test: calls `onConfirm` with new name when Save is clicked
-  - [ ] Test: calls `onClose` when Cancel button is clicked
-- [ ] Verify: `npm run test` passes
-- [ ] Verify: `npm run type-check` passes
-- [ ] Verify: `npm run lint` passes
-- [ ] Verify: `npm run build` passes
+- [x] Create `EditConnectorInstanceDialog.component.tsx` with props interface
+- [x] Implement dialog UI with title, text field, and action buttons
+- [x] Write unit tests for `EditConnectorInstanceDialog`:
+  - [x] Test: renders dialog when `open` is true
+  - [x] Test: text field is pre-filled with `currentName`
+  - [x] Test: Save button is disabled when name is unchanged
+  - [x] Test: Save button is disabled when name is empty
+  - [x] Test: Save button is disabled when `isPending` is true
+  - [x] Test: calls `onConfirm` with new name when Save is clicked
+  - [x] Test: calls `onClose` when Cancel button is clicked
+- [x] Verify: `npm run test` passes
+- [x] Verify: `npm run type-check` passes
+- [x] Verify: `npm run lint` passes
+- [x] Verify: `npm run build` passes
 
 ---
 
@@ -350,7 +350,7 @@ interface RenameConnectorInstanceDialogProps {
 7. On delete confirm: call mutation, on success invalidate `queryKeys.connectorInstances.root` and navigate to `/connectors`
 8. On rename confirm: call mutation with new name, on success invalidate queries to refresh the view
 9. Render `<DeleteConnectorInstanceDialog>` with `impact` and `isLoadingImpact` props from the impact query
-10. Render `<RenameConnectorInstanceDialog>` at the bottom of the component
+10. Render `<EditConnectorInstanceDialog>` at the bottom of the component
 
 **Reference:** Station detail view delete integration at `apps/web/src/views/StationDetail.view.tsx`.
 
@@ -363,7 +363,7 @@ interface RenameConnectorInstanceDialogProps {
 - [ ] Add Delete button (error color) to view header/actions area
 - [ ] Add Rename button/icon next to instance name
 - [ ] Render `<DeleteConnectorInstanceDialog>` with `impact` data and `isLoadingImpact` props
-- [ ] Render `<RenameConnectorInstanceDialog>` with correct props
+- [ ] Render `<EditConnectorInstanceDialog>` with correct props
 - [ ] Verify: `npm run type-check` passes
 - [ ] Verify: `npm run lint` passes
 - [ ] Verify: `npm run build` passes
@@ -444,7 +444,7 @@ Run all checks across the full monorepo to confirm nothing is broken.
 | `apps/api/src/routes/connector-instance.router.ts` | Edit | Add `DELETE /:id`, `PATCH /:id`, and `GET /:id/impact` endpoints |
 | `apps/web/src/api/connector-instances.api.ts` | Edit | Add `delete` and `rename` mutation hooks |
 | `apps/web/src/components/DeleteConnectorInstanceDialog.component.tsx` | Create | Delete confirmation dialog with cascade warning |
-| `apps/web/src/components/RenameConnectorInstanceDialog.component.tsx` | Create | Rename dialog with text field |
+| `apps/web/src/components/EditConnectorInstanceDialog.component.tsx` | Create | Edit dialog with text field |
 | `apps/web/src/components/ConnectorInstance.component.tsx` | Edit | Add `onDelete` prop to `ConnectorInstanceCardUI` |
 | `apps/web/src/views/ConnectorInstance.view.tsx` | Edit | Integrate delete + rename dialogs and mutations |
 | `apps/web/src/views/Connector.view.tsx` | Edit | Integrate delete from card menu/button |
