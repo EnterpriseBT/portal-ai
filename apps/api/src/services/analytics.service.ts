@@ -22,9 +22,14 @@ import {
   OBV,
 } from "technicalindicators";
 import * as financial from "financial";
+import { parse as vegaParse, View as VegaView } from "vega";
+import type { Spec as VegaSpec, Data, ValuesData } from "vega";
+import { compile as vegaLiteCompile } from "vega-lite";
+import type { TopLevelSpec as VegaLiteSpec } from "vega-lite";
 
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
+import { VegaLiteSpecInput, VisualizeTool } from "../tools/visualize.tool.js";
 
 const logger = createLogger({ module: "analytics-service" });
 
@@ -121,6 +126,38 @@ function validateSql(sql: string): void {
     if (pattern.test(sql)) {
       throw new Error(`Blocked SQL operation: ${pattern.source}`);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Vega / Vega-Lite Spec Validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a Vega spec by parsing and running a headless view.
+ * Catches structural errors (bad mark types, invalid transforms, missing
+ * data references, etc.) that `vega.parse` alone does not surface.
+ */
+function validateVegaLiteSpec(spec: VegaLiteSpec): void {
+  try {
+    vegaLiteCompile(spec);
+  } catch (err: any) {
+    const msg =
+      err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid Vega-Lite spec: ${msg}`);
+  }
+}
+
+async function validateVegaSpec(spec: VegaSpec): Promise<void> {
+  try {
+    const runtime = vegaParse(spec as any);
+    const view = new VegaView(runtime, { renderer: "none" });
+    await view.runAsync();
+    view.finalize();
+  } catch (err: any) {
+    const msg =
+      err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid Vega spec: ${msg}`);
   }
 }
 
@@ -383,32 +420,64 @@ export class AnalyticsService {
   /**
    * Run SQL then inject rows into a Vega-Lite spec.
    */
-  static visualize(params: {
+  static async visualize(params: {
     sql: string;
-    vegaLiteSpec: Record<string, unknown>;
+    vegaLiteSpec: VegaLiteSpecInput
     stationId: string;
-  }): Record<string, unknown> {
+  }): Promise<VegaLiteSpec> {
     const { sql, vegaLiteSpec, stationId } = params;
     const rows = this.sqlQuery({ sql, stationId });
-    return {
+    const spec: VegaLiteSpec = {
       ...vegaLiteSpec,
       data: { values: rows },
     };
+    validateVegaLiteSpec(spec);
+    return spec;
   }
 
   /**
-   * Run SQL then inject rows into a full Vega spec at `data[0].values`.
+   * Run SQL then inject rows into a full Vega spec.
+   *
+   * When `data[0]` derives from a named `source` dataset (e.g. "table") that
+   * doesn't exist in the spec, we create that base dataset with the query
+   * results so downstream datasets can reference it. Otherwise we fall back to
+   * setting `data[0].values` directly.
    */
-  static visualizeVega(params: {
+  static async visualizeVega(params: {
     sql: string;
     vegaSpec: Record<string, unknown>;
     stationId: string;
-  }): Record<string, unknown> {
+  }): Promise<VegaSpec> {
     const { sql, vegaSpec, stationId } = params;
     const rows = this.sqlQuery({ sql, stationId });
-    const data = Array.isArray(vegaSpec.data) ? [...vegaSpec.data] : [{}];
-    data[0] = { ...data[0], values: rows };
-    return { ...vegaSpec, data };
+    const specData = vegaSpec.data;
+    const data: Data[] = Array.isArray(specData)
+      ? [...specData] as Data[]
+      : [];
+
+    const first = data[0] as Data | undefined;
+    const firstSource =
+      first && "source" in first && typeof first.source === "string"
+        ? first.source
+        : null;
+
+    if (firstSource) {
+      const sourceExists = data.some((d) => d.name === firstSource);
+      if (!sourceExists) {
+        // Create the missing base dataset that other datasets derive from
+        const base: ValuesData = { name: firstSource, values: rows };
+        data.unshift(base);
+      } else {
+        const idx = data.findIndex((d) => d.name === firstSource);
+        data[idx] = { ...data[idx], values: rows } as ValuesData;
+      }
+    } else {
+      data[0] = { ...data[0], values: rows } as ValuesData;
+    }
+
+    const spec = { ...vegaSpec, data } as VegaSpec;
+    await validateVegaSpec(spec);
+    return spec;
   }
 
   /**

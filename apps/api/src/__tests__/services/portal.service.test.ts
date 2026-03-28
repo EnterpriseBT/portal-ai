@@ -40,8 +40,10 @@ jest.unstable_mockModule("../../services/analytics.service.js", () => ({
 // buildAnalyticsTools
 const mockBuildAnalyticsTools = jest.fn<() => Promise<Record<string, unknown>>>();
 
-jest.unstable_mockModule("../../services/analytics.tools.js", () => ({
-  buildAnalyticsTools: mockBuildAnalyticsTools,
+jest.unstable_mockModule("../../services/tools.service.js", () => ({
+  ToolService: {
+    buildAnalyticsTools: mockBuildAnalyticsTools,
+  },
 }));
 
 // AiService

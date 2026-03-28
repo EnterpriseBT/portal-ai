@@ -37,21 +37,40 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-// Mock AiService for web_search
-const mockBuildWebSearchTool = jest.fn<() => unknown>();
-jest.unstable_mockModule("../../services/ai.service.js", () => ({
-  AiService: {
-    buildWebSearchTool: mockBuildWebSearchTool,
+// Mock vega/vega-lite (pulled in transitively via AnalyticsService)
+jest.unstable_mockModule("vega", () => ({
+  parse: jest.fn().mockReturnValue({}),
+  View: class {
+    runAsync = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    finalize = jest.fn();
+  },
+}));
+jest.unstable_mockModule("vega-lite", () => ({
+  compile: jest.fn().mockReturnValue({ spec: {} }),
+}));
+
+// Mock tavily + environment for web_search
+const mockTavilySearch = jest.fn<() => Promise<unknown>>();
+jest.unstable_mockModule("@tavily/core", () => ({
+  tavily: () => ({ search: mockTavilySearch }),
+}));
+jest.unstable_mockModule("../../environment.js", () => ({
+  environment: {
+    TAVILY_API_KEY: "test-key",
+    LOG_LEVEL: "silent",
+    LOG_FORMAT: "json",
   },
 }));
 
 // Mock fetch for webhook tests
-const mockFetch = jest.fn<() => Promise<unknown>>();
+const mockFetch = jest.fn<(url: string, options?: Record<string, any>) => Promise<unknown>>();
 (globalThis as any).fetch = mockFetch;
 
-const { buildAnalyticsTools, callWebhook } = await import(
-  "../../services/analytics.tools.js"
+const { ToolService } = await import(
+  "../../services/tools.service.js"
 );
+const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
+const callWebhook = ToolService.callWebhook.bind(ToolService);
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -181,18 +200,14 @@ describe("buildAnalyticsTools()", () => {
   });
 
   it("should register web_search tool when web_search pack is selected", async () => {
-    const fakeTool = { type: "function", description: "Search" };
-    mockBuildWebSearchTool.mockReturnValue(fakeTool);
     setupStationMocks(["web_search"]);
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
 
-    expect(tools.web_search).toBe(fakeTool);
-    expect(mockBuildWebSearchTool).toHaveBeenCalledTimes(1);
+    expect(tools.web_search).toBeDefined();
   });
 
   it("should register tools from all selected packs", async () => {
-    mockBuildWebSearchTool.mockReturnValue({ type: "function" });
     setupStationMocks(["data_query", "statistics", "regression", "financial", "web_search"]);
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
@@ -347,12 +362,12 @@ describe("buildAnalyticsTools()", () => {
     expect(result).toEqual({ result: "success" });
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    const [url, options] = mockFetch.mock.calls[0] as [string, any];
+    const [url, options] = mockFetch.mock.calls[0];
     expect(url).toBe("https://example.com/webhook");
-    expect(options.method).toBe("POST");
-    expect(options.headers["X-Api-Key"]).toBe("secret123");
-    expect(options.headers["Content-Type"]).toBe("application/json");
-    expect(JSON.parse(options.body)).toEqual({ query: "test" });
+    expect(options!.method).toBe("POST");
+    expect(options!.headers["X-Api-Key"]).toBe("secret123");
+    expect(options!.headers["Content-Type"]).toBe("application/json");
+    expect(JSON.parse(options!.body)).toEqual({ query: "test" });
   });
 
   it("should propagate vega-lite chart results from webhook", async () => {
@@ -467,13 +482,13 @@ describe("callWebhook()", () => {
     expect(result).toEqual(responseData);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    const [url, options] = mockFetch.mock.calls[0] as [string, any];
+    const [url, options] = mockFetch.mock.calls[0];
     expect(url).toBe("https://api.example.com/hook");
-    expect(options.method).toBe("POST");
-    expect(options.headers["Authorization"]).toBe("Bearer token123");
-    expect(options.headers["Content-Type"]).toBe("application/json");
-    expect(JSON.parse(options.body)).toEqual({ input: "data" });
-    expect(options.signal).toBeDefined(); // AbortController signal
+    expect(options!.method).toBe("POST");
+    expect(options!.headers["Authorization"]).toBe("Bearer token123");
+    expect(options!.headers["Content-Type"]).toBe("application/json");
+    expect(JSON.parse(options!.body)).toEqual({ input: "data" });
+    expect(options!.signal).toBeDefined(); // AbortController signal
   });
 
   it("should throw on non-OK response", async () => {
@@ -493,9 +508,9 @@ describe("callWebhook()", () => {
 
   it("should enforce timeout via AbortController", async () => {
     // Simulate a timeout by having fetch reject with an abort error
-    mockFetch.mockImplementation(async (_url: unknown, opts: any) => {
+    mockFetch.mockImplementation(async (_url, opts) => {
       // Check that an abort signal is provided
-      expect(opts.signal).toBeDefined();
+      expect(opts!.signal).toBeDefined();
       return { ok: true, json: async () => ({}) };
     });
 
