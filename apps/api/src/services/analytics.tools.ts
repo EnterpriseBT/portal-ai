@@ -31,7 +31,6 @@ const PACK_TOOL_NAMES = new Set([
   "sql_query",
   "visualize",
   "visualize_tree",
-  "build_tree",
   "resolve_identity",
   "describe_column",
   "correlate",
@@ -223,34 +222,6 @@ export async function buildAnalyticsTools(
       }),
       execute: async ({ sql, vegaSpec }) =>
         AnalyticsService.visualizeVega({ sql, vegaSpec, stationId }),
-    });
-
-    tools.build_tree = tool({
-      description:
-        "Build an interactive tree diagram from flat parent-child data. " +
-        "Returns a nested hierarchy for rendering as a collapsible tree.",
-      inputSchema: z.object({
-        sql: z
-          .string()
-          .describe(
-            "SQL returning rows with at least `id`, `parentId`, and `name` columns"
-          ),
-        labelColumn: z
-          .string()
-          .describe("Column to use as node labels")
-          .default("name"),
-        attributeColumns: z
-          .array(z.string())
-          .describe("Extra columns to display on each node")
-          .optional(),
-      }),
-      execute: async ({ sql, labelColumn, attributeColumns }) =>
-        AnalyticsService.buildTree({
-          sql,
-          labelColumn,
-          attributeColumns,
-          stationId,
-        }),
     });
 
     // resolve_identity — only when ≥1 Entity Group has ≥2 loaded members

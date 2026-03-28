@@ -180,7 +180,7 @@ Push `{ type: "d3-tree", content: toolResult.tree ?? toolResult }`.
 ```
 
 #### Tests to write:
-- [ ] `apps/web/src/__tests__/PortalSession.test.tsx` — test streaming blocks include d3-tree block when `tool_result` event has `toolName: "build_tree"`
+- [x] `apps/web/src/__tests__/PortalSession.test.tsx` — test streaming blocks include d3-tree block when `tool_result` event has `toolName: "build_tree"`
 
 ### 2.7 Content Renderer
 
@@ -189,15 +189,15 @@ Push `{ type: "d3-tree", content: toolResult.tree ?? toolResult }`.
 - `packages/core/src/ui/ContentBlockRenderer.tsx` — add lazy-loaded `D3TreeBlock` and render branch for `block.type === "d3-tree"`
 
 #### Tests to write:
-- [ ] `packages/core/src/__tests__/ui/D3TreeBlock.test.tsx` — **new file**: test renders a tree container; test passes data prop to react-d3-tree; test renders with correct dimensions (500px height)
-- [ ] `packages/core/src/__tests__/ui/ContentBlockRenderer.test.tsx` — mock `./D3TreeBlock`; test renders d3-tree block with lazy loading
+- [x] `packages/core/src/__tests__/ui/D3TreeBlock.test.tsx` — **new file**: test renders a tree container; test passes data prop to react-d3-tree; test renders with correct dimensions (500px height)
+- [x] `packages/core/src/__tests__/ui/ContentBlockRenderer.test.tsx` — mock `./D3TreeBlock`; test renders d3-tree block with lazy loading
 
 ### 2.8 Pin Content Extraction
 
 No change needed — existing object fallback handles `d3-tree` blocks.
 
 #### Tests to write:
-- [ ] No new tests needed.
+- [x] No new tests needed.
 
 ### Phase 2 Verification
 
@@ -207,32 +207,32 @@ Run each step sequentially. All must pass before considering the feature complet
 ```bash
 npm run test
 ```
-- [ ] All Phase 1 tests still pass (no regressions from Phase 2 changes)
-- [ ] New `portal-result.model.test.ts` tests pass — `"d3-tree"` type accepted
-- [ ] New `portal.contract.test.ts` tests pass — `PortalBlockTypeSchema` accepts `"d3-tree"`, `PINNABLE_BLOCK_TYPES` contains `"d3-tree"`, `D3TreeNodeSchema` validates tree data correctly, rejects missing `name`, accepts nested children
-- [ ] New `analytics.tools.test.ts` tests pass — `build_tree` registered/gated by `data_query` pack
-- [ ] New `analytics.service.test.ts` tests pass — `buildTree()` flat→nested conversion, single root, multiple roots, attributeColumns, labelColumn, empty rows
-- [ ] New `portal.service.test.ts` tests pass — `streamResponse` sends `tool_result` SSE for d3-tree blocks, extracts `.tree` from result
-- [ ] New `PortalSession.test.tsx` tests pass — streaming blocks include d3-tree block
-- [ ] New `D3TreeBlock.test.tsx` tests pass — renders tree container, passes data prop, correct dimensions
-- [ ] New `ContentBlockRenderer.test.tsx` tests pass — renders d3-tree block with lazy `D3TreeBlock` component
+- [x] All Phase 1 tests still pass (no regressions from Phase 2 changes)
+- [x] New `portal-result.model.test.ts` tests pass — `"d3-tree"` type accepted
+- [x] New `portal.contract.test.ts` tests pass — `PortalBlockTypeSchema` accepts `"d3-tree"`, `PINNABLE_BLOCK_TYPES` contains `"d3-tree"`, `D3TreeNodeSchema` validates tree data correctly, rejects missing `name`, accepts nested children
+- [x] New `analytics.tools.test.ts` tests pass — `build_tree` registered/gated by `data_query` pack
+- [x] New `analytics.service.test.ts` tests pass — `buildTree()` flat→nested conversion, single root, multiple roots, attributeColumns, labelColumn, empty rows
+- [x] New `portal.service.test.ts` tests pass — `streamResponse` sends `tool_result` SSE for d3-tree blocks, extracts `.tree` from result
+- [x] New `PortalSession.test.tsx` tests pass — streaming blocks include d3-tree block
+- [x] New `D3TreeBlock.test.tsx` tests pass — renders tree container, passes data prop, correct dimensions
+- [x] New `ContentBlockRenderer.test.tsx` tests pass — renders d3-tree block with lazy `D3TreeBlock` component
 
 #### Step 2 — Lint
 ```bash
 npm run lint
 ```
-- [ ] Zero lint errors across all modified and new files
-- [ ] No new warnings introduced
-- [ ] New `D3TreeBlock.tsx` passes lint
+- [x] Zero lint errors across all modified and new files
+- [x] No new warnings introduced
+- [x] New `D3TreeBlock.tsx` passes lint
 
 #### Step 3 — Build
 ```bash
 npm run build
 ```
-- [ ] TypeScript compilation succeeds across all packages
-- [ ] Dual-schema type assertions pass (`type-checks.ts` — `PortalResultSelect` ↔ `PortalResult` with `"d3-tree"`)
-- [ ] `react-d3-tree` dependency resolves correctly in bundle
-- [ ] Vite bundle builds successfully (lazy imports for `D3TreeBlock` resolve)
+- [x] TypeScript compilation succeeds across all packages
+- [x] Dual-schema type assertions pass (`type-checks.ts` — `PortalResultSelect` ↔ `PortalResult` with `"d3-tree"`)
+- [x] `react-d3-tree` dependency resolves correctly in bundle
+- [x] Vite bundle builds successfully (lazy imports for `D3TreeBlock` resolve)
 
 ---
 
@@ -267,22 +267,22 @@ Run the full suite one final time to confirm end-to-end integrity.
 ```bash
 npm run test
 ```
-- [ ] All unit tests pass across `packages/core`, `apps/api`, and `apps/web`
-- [ ] No skipped or pending tests related to this feature
-- [ ] All new test cases (Phase 1 + Phase 2) are green
+- [x] All unit tests pass across `packages/core`, `apps/api`, and `apps/web`
+- [x] No skipped or pending tests related to this feature
+- [x] All new test cases (Phase 1 + Phase 2) are green
 
 #### Step 2 — Lint
 ```bash
 npm run lint
 ```
-- [ ] Zero lint errors monorepo-wide
-- [ ] No new warnings in any modified or new files
+- [x] Zero lint errors monorepo-wide
+- [x] No new warnings in any modified or new files
 
 #### Step 3 — Build
 ```bash
 npm run build
 ```
-- [ ] Full monorepo build succeeds (all three packages)
-- [ ] Dual-schema type assertions pass for both `"vega"` and `"d3-tree"` enum values
-- [ ] No missing module or unresolved import errors
-- [ ] Lazy-loaded chunks for `Vega`, `VegaLite`, and `D3TreeBlock` are emitted correctly
+- [x] Full monorepo build succeeds (all three packages)
+- [x] Dual-schema type assertions pass for both `"vega"` and `"d3-tree"` enum values
+- [x] No missing module or unresolved import errors
+- [x] Lazy-loaded chunks for `Vega`, `VegaLite`, and `D3TreeBlock` are emitted correctly

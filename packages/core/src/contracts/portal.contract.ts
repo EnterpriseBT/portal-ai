@@ -101,7 +101,6 @@ export type PinResultBody = z.infer<typeof PinResultBodySchema>;
  * - `text`       — markdown narrative
  * - `vega-lite`  — Vega-Lite chart spec
  * - `vega`       — Full Vega spec (trees, networks, maps, force-directed graphs)
- * - `d3-tree`    — Interactive collapsible hierarchy tree (react-d3-tree)
  * - `data-table` — row-set result from sql_query, detect_outliers, cluster
  * - `tool-call`  — CoreMessage tool-call part (persisted for multi-turn)
  * - `tool-result`— CoreMessage tool-result part (persisted for multi-turn)
@@ -110,7 +109,6 @@ export const PortalBlockTypeSchema = z.enum([
   "text",
   "vega-lite",
   "vega",
-  "d3-tree",
   "data-table",
   "tool-call",
   "tool-result",
@@ -126,27 +124,6 @@ export type PortalBlockType = z.infer<typeof PortalBlockTypeSchema>;
 export const PINNABLE_BLOCK_TYPES: ReadonlySet<PortalResultType> = new Set(
   PortalResultTypeSchema.options
 );
-
-export interface D3TreeNode {
-  name: string;
-  attributes?: Record<string, unknown>;
-  children?: D3TreeNode[];
-}
-
-export const D3TreeNodeSchema: z.ZodType<D3TreeNode> = z.lazy(() =>
-  z.object({
-    name: z.string(),
-    attributes: z.record(z.string(), z.unknown()).optional(),
-    children: z.array(D3TreeNodeSchema).optional(),
-  })
-);
-
-export const D3TreeContentBlockSchema = z.object({
-  type: z.literal("d3-tree"),
-  content: D3TreeNodeSchema,
-});
-
-export type D3TreeContentBlock = z.infer<typeof D3TreeContentBlockSchema>;
 
 export const DataTableContentBlockSchema = z.object({
   type: z.literal("data-table"),

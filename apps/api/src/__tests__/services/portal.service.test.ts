@@ -607,61 +607,6 @@ describe("PortalService", () => {
       );
     });
 
-    it("sends tool_result SSE event for build_tree tool", async () => {
-      const treeResult = { type: "d3-tree", tree: { name: "CEO", children: [] } };
-      const chunks = [
-        {
-          type: "tool-result",
-          toolName: "build_tree",
-          output: treeResult,
-        },
-        { type: "finish" },
-      ];
-      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
-
-      const sse = makeSse();
-      await PortalService.streamResponse({
-        portalId: PORTAL_ID,
-        messages: [],
-        stationContext,
-        organizationId: ORG_ID,
-        sse: sse as any,
-      });
-
-      expect(sse.send).toHaveBeenCalledWith("tool_result", {
-        type: "tool_result",
-        toolName: "build_tree",
-        result: treeResult,
-      });
-    });
-
-    it("persists d3-tree display block with .tree content extracted", async () => {
-      const treeResult = { type: "d3-tree", tree: { name: "Root", children: [] } };
-      const chunks = [
-        { type: "tool-call", toolCallId: "tc-t", toolName: "build_tree", args: {} },
-        { type: "tool-result", toolCallId: "tc-t", toolName: "build_tree", output: treeResult },
-        { type: "finish" },
-      ];
-      mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
-
-      const sse = makeSse();
-      await PortalService.streamResponse({
-        portalId: PORTAL_ID,
-        messages: [],
-        stationContext,
-        organizationId: ORG_ID,
-        sse: sse as any,
-      });
-
-      expect(mockCreate_message).toHaveBeenCalledWith(
-        expect.objectContaining({
-          blocks: expect.arrayContaining([
-            { type: "d3-tree", content: { name: "Root", children: [] } },
-          ]),
-        })
-      );
-    });
-
     it("sends data-table SSE event for sql_query tool results", async () => {
       const queryResult = { rows: [{ id: 1, name: "Alice" }] };
       const chunks = [

@@ -11,7 +11,6 @@ export const portalResultTypeEnum = pgEnum("portal_result_type", [
   "text",
   "vega-lite",
   "vega",
-  "d3-tree",
   "data-table",
 ]);
 

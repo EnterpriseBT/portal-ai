@@ -152,18 +152,6 @@ function resolveDisplayBlock(
     return { block: { type: "vega", content: toolResult } };
   }
 
-  const isD3Tree =
-    toolName === "build_tree" ||
-    (toolResult != null && toolResult.type === "d3-tree");
-  if (isD3Tree) {
-    return {
-      block: {
-        type: "d3-tree",
-        content: toolResult?.tree ?? toolResult,
-      },
-    };
-  }
-
   if (ROW_SET_TOOLS.has(toolName)) {
     const rows = Array.isArray(toolResult?.rows)
       ? (toolResult!.rows as Record<string, unknown>[])
@@ -541,7 +529,7 @@ function reconstructModelMessages(
           result: block.content,
         });
       }
-      // Display-only blocks (vega-lite, vega, d3-tree, data-table) are skipped for
+      // Display-only blocks (vega-lite, vega, data-table) are skipped for
       // ModelMessage reconstruction — they duplicate tool-result data.
     }
 
