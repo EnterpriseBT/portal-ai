@@ -398,13 +398,25 @@ export class PortalService {
       stationContext.stationId
     );
 
-    const result = streamText({
-      model: AiService.providers.anthropic(AiService.DEFAULT_MODEL),
-      system: systemPrompt,
-      messages,
-      tools: analyticsTools,
-      stopWhen: stepCountIs(10),
-    });
+    let result;
+    try {
+      result = streamText({
+        model: AiService.providers.anthropic(AiService.DEFAULT_MODEL),
+        system: systemPrompt,
+        messages,
+        tools: analyticsTools,
+        stopWhen: stepCountIs(10),
+      });
+    } catch (error) {
+      logger.error(
+        { portalId, error: error instanceof Error ? error.message : "Unknown" },
+        "Failed to initialise AI stream"
+      );
+      sse.sendError(
+        error instanceof Error ? error.message : "Failed to start AI stream"
+      );
+      return;
+    }
 
     // Accumulate assistant content blocks (full ModelMessage[] parts)
     const ctx: StreamContext = {
@@ -413,19 +425,30 @@ export class PortalService {
       currentText: "",
     };
 
-    for await (const chunk of result.fullStream) {
-      if (chunk.type === "text-delta") {
-        handleTextDelta(ctx, chunk.text);
-      } else if (chunk.type === "tool-call") {
-        handleToolCall(ctx, chunk);
-      } else if (chunk.type === "tool-result") {
-        handleToolResult(ctx, chunk);
-      } else if (chunk.type === "finish") {
-        if (ctx.currentText) {
-          ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
-          ctx.currentText = "";
+    try {
+      for await (const chunk of result.fullStream) {
+        if (chunk.type === "text-delta") {
+          handleTextDelta(ctx, chunk.text);
+        } else if (chunk.type === "tool-call") {
+          handleToolCall(ctx, chunk);
+        } else if (chunk.type === "tool-result") {
+          handleToolResult(ctx, chunk);
+        } else if (chunk.type === "finish") {
+          if (ctx.currentText) {
+            ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
+            ctx.currentText = "";
+          }
         }
       }
+    } catch (error) {
+      logger.error(
+        { portalId, error: error instanceof Error ? error.message : "Unknown" },
+        "AI stream error"
+      );
+      sse.sendError(
+        error instanceof Error ? error.message : "An error occurred during streaming"
+      );
+      return;
     }
 
     // Final flush in case stream ended without a finish event
@@ -476,19 +499,63 @@ export class PortalService {
 // ---------------------------------------------------------------------------
 
 /**
+ * Number of most-recent assistant messages whose tool results are preserved
+ * in full. Older tool results are replaced with a compact summary to keep
+ * prompt size manageable across long portal sessions.
+ */
+const RECENT_TURNS_FULL_RESULTS = 4;
+
+/**
+ * Build a compact placeholder for a truncated tool result so the model
+ * retains awareness that the tool was called without the full payload.
+ */
+function summarizeToolResult(
+  toolName: string,
+  content: unknown
+): string {
+  if (Array.isArray(content)) {
+    return `[Previous ${toolName} result: ${content.length} rows — truncated]`;
+  }
+  if (content != null && typeof content === "object") {
+    const rows = (content as Record<string, unknown>).rows;
+    if (Array.isArray(rows)) {
+      return `[Previous ${toolName} result: ${rows.length} rows — truncated]`;
+    }
+  }
+  return `[Previous ${toolName} result — truncated]`;
+}
+
+/**
  * Reconstruct the full Vercel AI SDK `ModelMessage[]` array from persisted
  * portal message rows. User messages become `{ role: "user", content }`.
  * Assistant messages are walked block-by-block: text parts become assistant
  * content, tool-call parts become `tool-call` content, and tool-result blocks
  * are grouped into a single `{ role: "tool", content: [...] }` message.
+ *
+ * To prevent unbounded prompt growth, tool-result payloads older than the
+ * most recent {@link RECENT_TURNS_FULL_RESULTS} assistant messages are
+ * replaced with a short summary string.
  */
 function reconstructModelMessages(
   messages: PortalMessageSelect[]
 ): ModelMessage[] {
+  // Determine the cutoff: only assistant messages within the last N keep
+  // full tool-result payloads.
+  const assistantIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role === "assistant") assistantIndices.push(i);
+  }
+  const cutoff =
+    assistantIndices.length > RECENT_TURNS_FULL_RESULTS
+      ? assistantIndices[assistantIndices.length - RECENT_TURNS_FULL_RESULTS]
+      : -1;
+
   const coreMessages: ModelMessage[] = [];
 
-  for (const msg of messages) {
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
     const blocks = (msg.blocks ?? []) as Record<string, unknown>[];
+    const truncateResults = i < cutoff;
 
     if (msg.role === "user") {
       // User turns: extract text content from the first text block
@@ -520,11 +587,14 @@ function reconstructModelMessages(
           args: block.args,
         });
       } else if (block.type === "tool-result") {
+        const toolName = String(block.toolName ?? "tool");
         toolResults.push({
           type: "tool-result",
           toolCallId: block.toolCallId,
-          toolName: block.toolName,
-          result: block.content,
+          toolName,
+          result: truncateResults
+            ? summarizeToolResult(toolName, block.content)
+            : block.content,
         });
       }
       // Display-only blocks (vega-lite, vega, data-table) are skipped for

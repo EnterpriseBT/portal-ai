@@ -29,7 +29,7 @@ import type { TopLevelSpec as VegaLiteSpec } from "vega-lite";
 
 import { DbService } from "./db.service.js";
 import { createLogger } from "../utils/logger.util.js";
-import { VegaLiteSpecInput, VisualizeTool } from "../tools/visualize.tool.js";
+import { VegaLiteSpecInput } from "../tools/visualize.tool.js";
 
 const logger = createLogger({ module: "analytics-service" });
 

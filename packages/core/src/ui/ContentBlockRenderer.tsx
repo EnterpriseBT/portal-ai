@@ -241,7 +241,7 @@ export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
   }
 
   if (block.type === "data-table") {
-    const raw = block.content as {
+    const raw = (block.content ?? {}) as {
       columns?: string[];
       rows?: Record<string, unknown>[];
     };

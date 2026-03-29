@@ -24,6 +24,12 @@ export class SseUtil {
     this.res.write(`data: ${JSON.stringify(data)}\n\n`);
   }
 
+  /** Send an error event and end the stream. */
+  sendError(message: string): void {
+    this.send("stream_error", { type: "stream_error", message });
+    this.res.end();
+  }
+
   /** Flush and end the response */
   end(): void {
     this.res.end();

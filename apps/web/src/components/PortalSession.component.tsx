@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useRouter } from "@tanstack/react-router";
-import { Box } from "@portalai/core/ui";
+import { Box, StatusMessage } from "@portalai/core/ui";
 import { ContentBlockRenderer } from "@portalai/core";
 import type {
   PortalMessageResponse,
@@ -9,6 +9,7 @@ import type {
   DeltaEvent,
   ToolResultEvent,
   DoneEvent,
+  StreamErrorEvent,
 } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
@@ -21,6 +22,7 @@ export interface PortalSessionUIProps {
   portalId: string;
   messages: PortalMessageResponse[];
   streamingBlocks: PortalMessageBlock[] | null;
+  streamError: string | null;
   inputValue: string;
   onInputChange: (value: string) => void;
   onSubmit: () => void;
@@ -34,6 +36,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   portalId,
   messages,
   streamingBlocks,
+  streamError,
   inputValue,
   onInputChange,
   onSubmit,
@@ -65,6 +68,10 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
           ))}
         </Box>
       )}
+
+      {streamError && (
+        <StatusMessage variant="error" message={streamError} />
+      )}
     </ChatWindowUI>
   </Box>
 );
@@ -90,6 +97,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     useState<PortalMessageBlock[] | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
 
   // Keep a ref to the latest streaming blocks so the done handler can
   // read the current value without stale closure issues.
@@ -133,6 +141,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     if (!message || isStreaming) return;
 
     setInputValue("");
+    setStreamError(null);
 
     // Add optimistic user message to local state (called from event handler, not effect).
     const optimisticUserMsg: PortalMessageResponse = {
@@ -257,6 +266,16 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       });
     });
 
+    es.addEventListener("stream_error", (e: MessageEvent) => {
+      const data = JSON.parse(e.data) as StreamErrorEvent;
+      es.close();
+      esRef.current = null;
+      setIsStreaming(false);
+      setStreamingBlocks(null);
+      streamingBlocksRef.current = [];
+      setStreamError(data.message);
+    });
+
     es.onerror = () => {
       es.close();
       esRef.current = null;
@@ -278,6 +297,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       portalId={portalId}
       messages={allMessages}
       streamingBlocks={streamingBlocks}
+      streamError={streamError}
       inputValue={inputValue}
       onInputChange={setInputValue}
       onSubmit={handleSubmit}

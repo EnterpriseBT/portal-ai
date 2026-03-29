@@ -106,6 +106,7 @@ describe("PortalSessionUI", () => {
     portalId: "portal-1",
     messages: [],
     streamingBlocks: null,
+    streamError: null,
     inputValue: "",
     onInputChange: jest.fn(),
     onSubmit: jest.fn(),

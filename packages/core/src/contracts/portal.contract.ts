@@ -158,10 +158,18 @@ export const DoneEventSchema = z.object({
 
 export type DoneEvent = z.infer<typeof DoneEventSchema>;
 
+export const StreamErrorEventSchema = z.object({
+  type: z.literal("stream_error"),
+  message: z.string(),
+});
+
+export type StreamErrorEvent = z.infer<typeof StreamErrorEventSchema>;
+
 export const PortalSSEEventSchema = z.discriminatedUnion("type", [
   DeltaEventSchema,
   ToolResultEventSchema,
   DoneEventSchema,
+  StreamErrorEventSchema,
 ]);
 
 export type PortalSSEEvent = z.infer<typeof PortalSSEEventSchema>;
