@@ -246,6 +246,7 @@ export class PortalService {
       stationName: station.name,
       entities: stationData.entities,
       entityGroups: stationData.entityGroups,
+      toolPacks,
     };
 
     logger.info({ portalId: portal.id, stationId }, "Portal created");
@@ -334,6 +335,53 @@ export class PortalService {
   }
 
   // -------------------------------------------------------------------------
+  // extractRequestedPacks
+  // -------------------------------------------------------------------------
+
+  /**
+   * Scan conversation history for any `request_tools` tool-result messages
+   * and collect the pack names the model previously requested. These are
+   * merged into the active pack set so they stay available in subsequent turns.
+   */
+  /**
+   * Collect tool names referenced in tool-call parts across all assistant
+   * messages. The AI SDK requires that every tool name in history has a
+   * matching definition in the `tools` parameter.
+   */
+  static extractHistoryToolNames(messages: ModelMessage[]): Set<string> {
+    const names = new Set<string>();
+    for (const msg of messages) {
+      if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+      for (const part of msg.content) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const p = part as any;
+        if (p.type === "tool-call" && p.toolName) {
+          names.add(p.toolName as string);
+        }
+      }
+    }
+    return names;
+  }
+
+  static extractRequestedPacks(messages: ModelMessage[]): string[] {
+    const packs: string[] = [];
+    for (const msg of messages) {
+      if (msg.role !== "tool" || !Array.isArray(msg.content)) continue;
+      for (const part of msg.content) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const p = part as any;
+        if (p.type !== "tool-result" || p.toolName !== "request_tools") continue;
+        // AI SDK v6 stores result in `output.value`, legacy in `result`
+        const val = p.output?.value ?? p.result;
+        if (val?.requestedPacks) {
+          packs.push(...(val.requestedPacks as string[]));
+        }
+      }
+    }
+    return packs;
+  }
+
+  // -------------------------------------------------------------------------
   // streamResponse
   // -------------------------------------------------------------------------
 
@@ -393,30 +441,59 @@ export class PortalService {
     sse: SseUtil;
   }): Promise<void> {
     const systemPrompt = buildSystemPrompt(stationContext);
-    const analyticsTools = await ToolService.buildAnalyticsTools(
-      organizationId,
-      stationContext.stationId
+
+    // Extract latest user message for tool pack selection
+    const latestUserMsg = [...messages]
+      .reverse()
+      .find((m) => m.role === "user");
+    const userText =
+      typeof latestUserMsg?.content === "string"
+        ? latestUserMsg.content
+        : "";
+
+    // Check if a prior turn requested additional tool packs via request_tools
+    const requestedPacks = PortalService.extractRequestedPacks(messages);
+
+    // Select tool packs relevant to this turn (packs are fixed per station)
+    const { activePacks, needsViz } = ToolService.selectToolPacks(
+      userText,
+      stationContext.toolPacks
     );
 
-    let result;
-    try {
-      result = streamText({
-        model: AiService.providers.anthropic(AiService.DEFAULT_MODEL),
-        system: systemPrompt,
-        messages,
-        tools: analyticsTools,
-        stopWhen: stepCountIs(10),
-      });
-    } catch (error) {
-      logger.error(
-        { portalId, error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to initialise AI stream"
-      );
-      sse.sendError(
-        error instanceof Error ? error.message : "Failed to start AI stream"
-      );
-      return;
+    // Merge in any packs the model requested on a previous turn
+    for (const p of requestedPacks) {
+      activePacks.add(p as Parameters<typeof activePacks.add>[0]);
     }
+
+    // Ensure packs for tools used in conversation history stay loaded —
+    // the AI SDK validates that every tool-call in history has a matching
+    // tool definition, even if the model won't call it again this turn.
+    const historyToolNames = PortalService.extractHistoryToolNames(messages);
+    const packsNeededByHistory = ToolService.packsForToolNames(historyToolNames);
+    let historyNeedsViz = false;
+    for (const p of packsNeededByHistory) {
+      if (stationContext.toolPacks.includes(p)) {
+        activePacks.add(p as Parameters<typeof activePacks.add>[0]);
+        if (p === "data_query") historyNeedsViz = true;
+      }
+    }
+
+    const analyticsTools = await ToolService.buildAnalyticsTools(
+      organizationId,
+      stationContext.stationId,
+      { activePacks, needsViz: needsViz || historyNeedsViz || requestedPacks.length > 0 }
+    );
+
+    // streamText() is lazy in AI SDK v6 — it returns immediately and
+    // errors surface during fullStream iteration or as "error" chunks.
+    const result = streamText({
+      model: AiService.providers.anthropic(AiService.DEFAULT_MODEL),
+      system: systemPrompt,
+      messages,
+      tools: analyticsTools,
+      stopWhen: stepCountIs(10),
+      maxRetries: 3,
+    });
 
     // Accumulate assistant content blocks (full ModelMessage[] parts)
     const ctx: StreamContext = {
@@ -433,6 +510,16 @@ export class PortalService {
           handleToolCall(ctx, chunk);
         } else if (chunk.type === "tool-result") {
           handleToolResult(ctx, chunk);
+        } else if (chunk.type === "error") {
+          // AI SDK v6 emits error chunks instead of always throwing.
+          // Surface the error to the client and abort the stream.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const err = (chunk as any).error;
+          const message =
+            err instanceof Error ? err.message : String(err ?? "Unknown AI error");
+          logger.error({ portalId, error: message }, "AI stream error chunk");
+          sse.sendError(message);
+          return;
         } else if (chunk.type === "finish") {
           if (ctx.currentText) {
             ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
@@ -441,13 +528,14 @@ export class PortalService {
         }
       }
     } catch (error) {
+      // Thrown errors (e.g. network failures, validation) also land here.
+      const message =
+        error instanceof Error ? error.message : "An error occurred during streaming";
       logger.error(
-        { portalId, error: error instanceof Error ? error.message : "Unknown" },
+        { portalId, error: message },
         "AI stream error"
       );
-      sse.sendError(
-        error instanceof Error ? error.message : "An error occurred during streaming"
-      );
+      sse.sendError(message);
       return;
     }
 
@@ -500,29 +588,82 @@ export class PortalService {
 
 /**
  * Number of most-recent assistant messages whose tool results are preserved
- * in full. Older tool results are replaced with a compact summary to keep
- * prompt size manageable across long portal sessions.
+ * (with row capping). Older tool results are replaced with a compact summary.
  */
-const RECENT_TURNS_FULL_RESULTS = 4;
+const RECENT_TURNS_FULL_RESULTS = 2;
+
+/**
+ * Maximum rows kept in a tool result even for recent turns. Results
+ * exceeding this limit are capped with a note so the model knows more
+ * data exists.
+ */
+const MAX_RESULT_ROWS = 50;
+
+/**
+ * Extract rows from a tool result regardless of shape.
+ * Returns the array of rows and a reference to the parent object (if wrapped).
+ */
+function extractRows(
+  content: unknown
+): { rows: Record<string, unknown>[]; isWrapped: boolean } {
+  if (Array.isArray(content)) {
+    return { rows: content as Record<string, unknown>[], isWrapped: false };
+  }
+  if (content != null && typeof content === "object") {
+    const obj = content as Record<string, unknown>;
+    if (Array.isArray(obj.rows)) {
+      return { rows: obj.rows as Record<string, unknown>[], isWrapped: true };
+    }
+  }
+  return { rows: [], isWrapped: false };
+}
+
+/**
+ * Cap the number of rows in a tool result. Returns the content unchanged if
+ * there are no rows or the count is within limits.
+ */
+function capResultRows(content: unknown): unknown {
+  const { rows, isWrapped } = extractRows(content);
+  if (rows.length <= MAX_RESULT_ROWS) return content;
+
+  const capped = rows.slice(0, MAX_RESULT_ROWS);
+  const note = `[Showing ${MAX_RESULT_ROWS} of ${rows.length} rows]`;
+
+  if (isWrapped) {
+    return { ...(content as Record<string, unknown>), rows: capped, _truncated: note };
+  }
+  // Append a sentinel row so the model sees the note
+  return [...capped, { _truncated: note }];
+}
 
 /**
  * Build a compact placeholder for a truncated tool result so the model
  * retains awareness that the tool was called without the full payload.
+ * Includes column names and a sample row for context.
  */
 function summarizeToolResult(
   toolName: string,
   content: unknown
 ): string {
-  if (Array.isArray(content)) {
-    return `[Previous ${toolName} result: ${content.length} rows — truncated]`;
+  const { rows } = extractRows(content);
+
+  if (rows.length === 0) {
+    return `[Previous ${toolName} result — truncated]`;
   }
-  if (content != null && typeof content === "object") {
-    const rows = (content as Record<string, unknown>).rows;
-    if (Array.isArray(rows)) {
-      return `[Previous ${toolName} result: ${rows.length} rows — truncated]`;
-    }
-  }
-  return `[Previous ${toolName} result — truncated]`;
+
+  const columns = Object.keys(rows[0] as object);
+  const sample = rows[0];
+  const sampleStr = columns
+    .slice(0, 5)
+    .map((c) => `${c}: ${JSON.stringify((sample as Record<string, unknown>)[c])}`)
+    .join(", ");
+  const colExtra = columns.length > 5 ? `, +${columns.length - 5} more` : "";
+
+  return (
+    `[Previous ${toolName} result: ${rows.length} rows, ` +
+    `columns: [${columns.slice(0, 8).join(", ")}${colExtra}], ` +
+    `sample: {${sampleStr}} — truncated]`
+  );
 }
 
 /**
@@ -584,17 +725,27 @@ function reconstructModelMessages(
           type: "tool-call",
           toolCallId: block.toolCallId,
           toolName: block.toolName,
-          args: block.args,
+          // AI SDK v6 renamed `args` → `input`
+          input: block.args ?? block.input,
         });
       } else if (block.type === "tool-result") {
         const toolName = String(block.toolName ?? "tool");
+        const raw = truncateResults
+          ? summarizeToolResult(toolName, block.content)
+          : capResultRows(block.content);
+
+        // AI SDK v6 requires `output` with `{ type, value }` instead of
+        // a plain `result` field.
+        const output =
+          typeof raw === "string"
+            ? { type: "text" as const, value: raw }
+            : { type: "json" as const, value: raw };
+
         toolResults.push({
           type: "tool-result",
           toolCallId: block.toolCallId,
           toolName,
-          result: truncateResults
-            ? summarizeToolResult(toolName, block.content)
-            : block.content,
+          output,
         });
       }
       // Display-only blocks (vega-lite, vega, data-table) are skipped for

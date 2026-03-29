@@ -282,6 +282,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       setIsStreaming(false);
       setStreamingBlocks(null);
       streamingBlocksRef.current = [];
+      setStreamError("Connection to the server was lost. Please try again.");
     };
   };
 

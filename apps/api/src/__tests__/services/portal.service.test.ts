@@ -43,6 +43,11 @@ const mockBuildAnalyticsTools = jest.fn<() => Promise<Record<string, unknown>>>(
 jest.unstable_mockModule("../../services/tools.service.js", () => ({
   ToolService: {
     buildAnalyticsTools: mockBuildAnalyticsTools,
+    selectToolPacks: jest.fn(() => ({
+      activePacks: new Set(["data_query"]),
+      needsViz: false,
+    })),
+    packsForToolNames: jest.fn(() => new Set()),
   },
 }));
 
@@ -325,21 +330,26 @@ describe("PortalService", () => {
         content: "Show me revenue",
       });
 
-      // Assistant message with text + tool-call parts
+      // Assistant message with text + tool-call parts (AI SDK v6: args → input)
       expect(result.coreMessages[1]).toEqual({
         role: "assistant",
         content: [
           { type: "text", text: "Let me query that." },
-          { type: "tool-call", toolCallId: "tc-1", toolName: "sql_query", args: { query: "SELECT *" } },
+          { type: "tool-call", toolCallId: "tc-1", toolName: "sql_query", input: { query: "SELECT *" } },
           { type: "text", text: "Here are the results." },
         ],
       });
 
-      // Tool results message
+      // Tool results message (AI SDK v6: result → output with { type, value })
       expect(result.coreMessages[2]).toEqual({
         role: "tool",
         content: [
-          { type: "tool-result", toolCallId: "tc-1", toolName: "sql_query", result: { rows: [{ id: 1 }] } },
+          {
+            type: "tool-result",
+            toolCallId: "tc-1",
+            toolName: "sql_query",
+            output: { type: "json", value: { rows: [{ id: 1 }] } },
+          },
         ],
       });
     });
@@ -425,6 +435,7 @@ describe("PortalService", () => {
       stationName: "Sales Station",
       entities: ENTITIES,
       entityGroups: [],
+      toolPacks: ["data_query"],
     };
 
     const stationContextWithGroups = {
@@ -845,7 +856,11 @@ describe("PortalService", () => {
         sse: sse as any,
       });
 
-      expect(mockBuildAnalyticsTools).toHaveBeenCalledWith(ORG_ID, STATION_ID);
+      expect(mockBuildAnalyticsTools).toHaveBeenCalledWith(
+        ORG_ID,
+        STATION_ID,
+        expect.objectContaining({ activePacks: expect.any(Set) })
+      );
       expect(capturedTools).toBe(tools);
     });
 

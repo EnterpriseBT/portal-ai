@@ -95,11 +95,15 @@ portalEventsRouter.get(
         portal.organizationId
       );
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolPacks = ((station as any).toolPacks as string[]) ?? [];
+
       const stationContext: StationContext = {
         stationId: station.id,
         stationName: station.name,
         entities: stationData.entities,
         entityGroups: stationData.entityGroups,
+        toolPacks,
       };
 
       sse = new SseUtil(res);
@@ -111,6 +115,11 @@ portalEventsRouter.get(
         organizationId: portal.organizationId,
         sse,
       });
+
+      // Close the SSE connection after the stream completes so the
+      // browser's EventSource does not auto-reconnect and trigger
+      // duplicate Anthropic API calls.
+      sse.end();
     } catch (error) {
       const message =
         error instanceof ApiError

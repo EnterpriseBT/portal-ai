@@ -8,6 +8,7 @@ export interface StationContext {
   stationName: string;
   entities: EntitySchema[];
   entityGroups: EntityGroupContext[];
+  toolPacks: string[];
 }
 
 /**

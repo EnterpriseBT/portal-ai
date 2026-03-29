@@ -427,10 +427,10 @@ export class AnalyticsService {
   }): Promise<VegaLiteSpec> {
     const { sql, vegaLiteSpec, stationId } = params;
     const rows = this.sqlQuery({ sql, stationId });
-    const spec: VegaLiteSpec = {
+    const spec = {
       ...vegaLiteSpec,
       data: { values: rows },
-    };
+    } as VegaLiteSpec;
     validateVegaLiteSpec(spec);
     return spec;
   }
