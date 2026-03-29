@@ -45,46 +45,13 @@ const ResultData: React.FC<ResultDataProps> = ({ id, children }) => {
 
 /**
  * Reconstruct a block that ContentBlockRenderer can handle.
- * Pinned content varies by type: vega-lite spec, data-table, { value } text, or raw string.
+ * Pinned result content is stored exactly as the display block's content field,
+ * so we pass it through directly.
  */
 const toContentBlock = (
   result: PortalResult
 ): { type: string; content: unknown } => {
-  const raw = result.content;
-
-  if (result.type === "vega-lite") {
-    const spec =
-      typeof raw === "object" && raw !== null && "spec" in raw
-        ? (raw as Record<string, unknown>).spec
-        : raw;
-    return { type: "vega-lite", content: spec };
-  }
-
-  if (result.type === "vega") {
-    return { type: "vega", content: raw };
-  }
-
-  if (result.type === "data-table") {
-    const obj = raw as Record<string, unknown> | null;
-    return {
-      type: "data-table",
-      content: {
-        columns: Array.isArray(obj?.columns) ? (obj.columns as string[]) : [],
-        rows: Array.isArray(obj?.rows)
-          ? (obj.rows as Record<string, unknown>[])
-          : [],
-      },
-    };
-  }
-
-  if (typeof raw === "object" && raw !== null && "value" in raw) {
-    return { type: "text", content: (raw as Record<string, unknown>).value };
-  }
-
-  return {
-    type: "text",
-    content: typeof raw === "string" ? raw : JSON.stringify(raw, null, 2),
-  };
+  return { type: result.type, content: result.content };
 };
 
 // ── Pure UI ─────────────────────────────────────────────────────────

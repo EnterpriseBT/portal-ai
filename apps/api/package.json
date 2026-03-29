@@ -8,7 +8,7 @@
     "dev": "concurrently --names server,tunnel --prefix-colors blue,green \"dotenv -e .env -- nodemon\" \"dotenv -e .env -- ngrok http 3001\"",
     "predev:server": "npm run swagger:generate",
     "dev:server": "dotenv -e .env -- nodemon",
-    "build": "dotenv -e .env -- tsc",
+    "build": "dotenv -e .env -- tsc --project tsconfig.build.json",
     "start": "dotenv -e .env -- node dist/index.js",
     "clean": "rm -rf dist .turbo node_modules",
     "type-check": "tsc --noEmit",

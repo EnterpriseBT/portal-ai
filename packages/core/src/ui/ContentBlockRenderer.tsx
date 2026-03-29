@@ -241,12 +241,12 @@ export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
   }
 
   if (block.type === "data-table") {
-    const content = block.content as {
+    const raw = block.content as {
       columns?: string[];
       rows?: Record<string, unknown>[];
-    } | null;
-    const columns = content?.columns ?? [];
-    const rows = content?.rows ?? [];
+    };
+    const columns = raw.columns ?? [];
+    const rows = raw.rows ?? [];
     return <DataTableBlock columns={columns} rows={rows} />;
   }
 

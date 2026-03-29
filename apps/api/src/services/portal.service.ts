@@ -150,17 +150,18 @@ function resolveDisplayBlock(
   }
 
   if (ROW_SET_TOOLS.has(toolName)) {
-    const rows = Array.isArray(toolResult?.rows)
-      ? (toolResult!.rows as Record<string, unknown>[])
-      : [];
+    const rows = Array.isArray(toolResult)
+      ? (toolResult as Record<string, unknown>[])
+      : Array.isArray(toolResult?.rows)
+        ? (toolResult!.rows as Record<string, unknown>[])
+        : [];
     const columns =
       rows.length > 0 ? Object.keys(rows[0] as object) : [];
-    const dataTableBlock = {
-      type: "data-table" as const,
-      columns,
-      rows,
+    const dataTableContent = { type: "data-table" as const, columns, rows };
+    return {
+      block: { type: "data-table" as const, content: dataTableContent },
+      sseResult: dataTableContent,
     };
-    return { block: dataTableBlock, sseResult: dataTableBlock };
   }
 
   return null;

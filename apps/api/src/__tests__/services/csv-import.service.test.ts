@@ -13,8 +13,8 @@ jest.unstable_mockModule("../../services/s3.service.js", () => ({
   },
 }));
 
-const mockFindBySourceIds = jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]);
-const mockUpsertManyBySourceId = jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]);
+const mockFindBySourceIds = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
+const mockUpsertManyBySourceId = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {

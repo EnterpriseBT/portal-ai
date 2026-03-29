@@ -14,7 +14,7 @@ import {
   afterEach,
   jest,
 } from "@jest/globals";
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 
 import type { JobUpdateEvent } from "@portalai/core/contracts";
 

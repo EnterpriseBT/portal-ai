@@ -13,11 +13,16 @@ import type { EntityDataQuery } from "../../../adapters/adapter.interface.js";
 // We need to mock the repository modules before importing the adapter.
 // jest.unstable_mockModule replaces the module at import time.
 
-const mockFindByKey = jest.fn();
-const mockFindByConnectorEntityId = jest.fn();
-const mockCountByConnectorEntityId = jest.fn();
-const mockFindMappingsByEntityId = jest.fn();
-const mockFindColDefById = jest.fn();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockFindByKey = jest.fn<any>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockFindByConnectorEntityId = jest.fn<any>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockCountByConnectorEntityId = jest.fn<any>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockFindMappingsByEntityId = jest.fn<any>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockFindColDefById = jest.fn<any>();
 
 jest.unstable_mockModule(
   "../../../db/repositories/connector-entities.repository.js",

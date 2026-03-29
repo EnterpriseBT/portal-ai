@@ -158,14 +158,14 @@ describe("StationInstancesRepository Integration Tests", () => {
     it("should return instances linked to the station", async () => {
       await repo.create(makeInstance(), db);
 
-      const results = await repo.findByStationId(stationId, db);
+      const results = await repo.findByStationId(stationId, {}, db);
       expect(results).toHaveLength(1);
       expect(results[0].stationId).toBe(stationId);
       expect(results[0].connectorInstanceId).toBe(connectorInstanceId);
     });
 
     it("should return empty array for unknown station", async () => {
-      const results = await repo.findByStationId("unknown-station-id", db);
+      const results = await repo.findByStationId("unknown-station-id", {}, db);
       expect(results).toHaveLength(0);
     });
   });
@@ -179,7 +179,7 @@ describe("StationInstancesRepository Integration Tests", () => {
 
       await repo.hardDelete(created.id, db);
 
-      const results = await repo.findByStationId(stationId, db);
+      const results = await repo.findByStationId(stationId, {}, db);
       expect(results).toHaveLength(0);
     });
   });
