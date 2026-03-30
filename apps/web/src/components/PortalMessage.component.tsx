@@ -8,7 +8,9 @@ import type { PortalMessageResponse, PortalMessageBlock } from "@portalai/core/c
 import { PINNABLE_BLOCK_TYPES } from "@portalai/core/contracts";
 import type { PortalResultType } from "@portalai/core/models";
 
-import { sdk } from "../api/sdk";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch } from "../utils/api.util";
 
 function hasPinnableContent(block: PortalMessageBlock): boolean {
@@ -178,13 +180,19 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
   pinnedBlocks,
   onPinChange,
 }) => {
+  const queryClient = useQueryClient();
   const pin = sdk.portalResults.pin();
   const { fetchWithAuth } = useAuthFetch();
 
   const handlePin = (messageId: string, blockIndex: number, name: string) => {
     pin.mutate(
       { portalId, messageId, blockIndex, name },
-      { onSuccess: onPinChange },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+          onPinChange();
+        },
+      },
     );
   };
 
@@ -193,6 +201,7 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
       `/api/portal-results/${encodeURIComponent(portalResultId)}`,
       { method: "DELETE" },
     );
+    queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
     onPinChange();
   };
 

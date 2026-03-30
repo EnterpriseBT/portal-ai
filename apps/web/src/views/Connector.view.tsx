@@ -83,6 +83,9 @@ export const ConnectorView = () => {
         setDeleteDialogOpen(false);
         setDeleteTarget(null);
         queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
       },
     });
   }, [deleteMutation, queryClient]);

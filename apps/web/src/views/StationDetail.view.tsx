@@ -91,6 +91,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
       onSuccess: () => {
         setDeleteStationOpen(false);
         queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
         navigate({ to: "/stations" });
       },
     });

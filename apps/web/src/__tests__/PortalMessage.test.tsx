@@ -15,6 +15,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
       } as Partial<UseMutationResult>),
     },
   },
+  queryKeys: {
+    portalResults: { root: ["portalResults"] },
+  },
 }));
 
 // Mock react-markdown and react-vega so jsdom doesn't choke on them.

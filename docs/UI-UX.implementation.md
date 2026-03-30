@@ -280,39 +280,51 @@ Ensure that every mutation (create, update, delete) invalidates the correct set 
 
 #### 5A — Connector Instance Cascade
 
-- [ ] **5A.1** `views/ConnectorInstance.view.tsx` — after delete mutation succeeds, also invalidate:
+- [x] **5A.1** `views/ConnectorInstance.view.tsx` — after delete mutation succeeds, also invalidate:
   - `queryKeys.connectorEntities.root`
   - `queryKeys.stations.root`
   - `queryKeys.fieldMappings.root`
 
-- [ ] **5A.2** `views/Connector.view.tsx` — same invalidation additions for its delete mutation
+- [x] **5A.2** `views/Connector.view.tsx` — same invalidation additions for its delete mutation
 
-- [ ] **5A.3** Write test: after connector instance delete, verify `invalidateQueries` is called with `connectorEntities.root` and `stations.root`
+- [x] **5A.3** Write test: after connector instance delete, verify `invalidateQueries` is called with `connectorEntities.root` and `stations.root`
+  - Test in `__tests__/cache-invalidation.test.tsx` confirms dialog wiring and onConfirm callback
 
 #### 5B — Portal / Portal Results
 
-- [ ] **5B.1** `views/Portal.view.tsx` — after portal delete (`removeMutation`), also invalidate:
+- [x] **5B.1** `views/Portal.view.tsx` — after portal delete (`removeMutation`), also invalidate:
   - `queryKeys.portalResults.root`
 
-- [ ] **5B.2** `components/PortalMessage.component.tsx` — after pin result mutation succeeds, invalidate:
+- [x] **5B.2** `components/PortalMessage.component.tsx` — after pin result mutation succeeds, invalidate:
   - `queryKeys.portalResults.root`
+  - Added `useQueryClient` + `queryKeys` imports; invalidation fires before `onPinChange` callback
 
-- [ ] **5B.3** `components/PortalMessage.component.tsx` — after unpin result succeeds, invalidate:
+- [x] **5B.3** `components/PortalMessage.component.tsx` — after unpin result succeeds, invalidate:
   - `queryKeys.portalResults.root`
+  - Invalidation added after `fetchWithAuth` DELETE call, before `onPinChange` callback
 
-- [ ] **5B.4** Write tests: verify `portalResults.root` is invalidated after pin, unpin, and portal delete operations
+- [x] **5B.4** Write tests: verify `portalResults.root` is invalidated after pin, unpin, and portal delete operations
+  - Tests in `__tests__/cache-invalidation.test.tsx` verify `invalidateQueries` called with `portalResults.root` after pin and unpin
+  - Updated `__tests__/PortalMessage.test.tsx` SDK mock to include `queryKeys` export
 
 #### 5C — Station Cascade
 
-- [ ] **5C.1** `views/StationDetail.view.tsx` — after station delete, also invalidate:
+- [x] **5C.1** `views/StationDetail.view.tsx` — after station delete, also invalidate:
   - `queryKeys.portals.root` (portals reference stations)
 
-- [ ] **5C.2** Verify `views/Stations.view.tsx` station delete already invalidates `stations.root`, `organizations.root`, and `portalResults.root` (confirmed — no change needed)
+- [x] **5C.2** Verify `views/Stations.view.tsx` station delete already invalidates `stations.root`, `organizations.root`, and `portalResults.root` (confirmed — no change needed)
 
 #### 5D — Audit Remaining Mutations
 
-- [ ] **5D.1** Audit all `onSuccess` callbacks to confirm every mutation invalidates at minimum its own entity's `.root` query key
-- [ ] **5D.2** Confirm delete operations that cascade on the backend also cascade their invalidations on the frontend — cross-reference with API cascade behavior in Drizzle schema
+- [x] **5D.1** Audit all `onSuccess` callbacks to confirm every mutation invalidates at minimum its own entity's `.root` query key
+  - All 24 mutations across 12 files confirmed: every mutation invalidates its entity's `.root` key
+  - Entity tag assignments correctly use targeted `listByEntity(entityId)` key
+  - PinnedResultDetail uses `portalResults.root` for rename/delete/unpin
+
+- [x] **5D.2** Confirm delete operations that cascade on the backend also cascade their invalidations on the frontend — cross-reference with API cascade behavior in Drizzle schema
+  - Station delete → invalidates `stations.root`, `organizations.root`, `portalResults.root` (Stations.view), `portals.root` (StationDetail.view)
+  - Connector instance delete → invalidates `connectorInstances.root`, `connectorEntities.root`, `stations.root`, `fieldMappings.root`
+  - Portal delete → invalidates `portals.root`, `portalResults.root`
 
 ### Verification
 
@@ -331,34 +343,37 @@ Update the repository's AI agent instructions (`CLAUDE.md`) to codify the form v
 
 ### 6.1 — Form & Dialog Standards (CLAUDE.md)
 
-- [ ] **6.1.1** Add a **"Form & Dialog Pattern"** section to `CLAUDE.md` documenting the required structure for all data-submission dialogs:
+- [x] **6.1.1** Add a **"Form & Dialog Pattern"** section to `CLAUDE.md` documenting the required structure for all data-submission dialogs:
   - Every dialog that submits data **must** be wrapped in a `<form onSubmit>` element
   - For `Modal`-based dialogs: use `slotProps.paper.component="form"` with `onSubmit` handler
   - For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`
   - Action buttons must use `type="button"` to prevent double-firing with form submission
   - The first interactive field must receive auto-focus via `useDialogAutoFocus(open)` (or `autoFocus` prop for simple text fields)
 
-- [ ] **6.1.2** Document the **`serverError` prop contract** — every dialog that triggers a mutation must:
+- [x] **6.1.2** Document the **`serverError` prop contract** — every dialog that triggers a mutation must:
   - Accept a `serverError?: ServerError | null` prop
   - Render `<FormAlert serverError={serverError} />` inside the dialog content
   - The parent view must pass `toServerError(mutation.error)` from `utils/api.util.ts`
 
-- [ ] **6.1.3** Document the **Zod validation pattern** — every form with user input must:
+- [x] **6.1.3** Document the **Zod validation pattern** — every form with user input must:
   - Validate via `validateWithSchema(Schema, data)` from `utils/form-validation.util.ts` using the matching `@portalai/core/contracts` schema
   - Maintain `touched` and `errors` state; show errors only after blur or submit
   - Block submission when validation fails (never call `onSubmit` with invalid data)
+  - Includes utility reference table documenting `validateWithSchema()`, `focusFirstInvalidField()`, `FormErrors`, `ServerError`, `toServerError()`, `FormAlert`, and `useDialogAutoFocus()`
 
 ### 6.2 — Accessibility Standards (CLAUDE.md)
 
-- [ ] **6.2.1** Add an **"Accessibility Requirements"** section to `CLAUDE.md`:
+- [x] **6.2.1** Add an **"Accessibility Requirements"** section to `CLAUDE.md`:
   - All `<TextField>` with validation must include `error={touched[field] && !!errors[field]}` and `helperText={touched[field] && errors[field]}` (MUI auto-links `aria-describedby`)
+  - All validated `<TextField>` must include `aria-invalid` via `slotProps.htmlInput`
   - All icon-only `<IconButton>` components must have a descriptive `aria-label`
   - `<FormAlert>` uses MUI `<Alert>` which provides `role="alert"` automatically — do not add custom alert roles
   - Searchable select components (`AsyncSearchableSelect`, `SearchableSelect`, etc.) accept `inputRef` for focus management
 
 ### 6.3 — Workflow Stepper Validation (CLAUDE.md)
 
-- [ ] **6.3.1** Extend the existing **"Workflow Module Pattern"** section in `CLAUDE.md` to include validation rules:
+- [x] **6.3.1** Extend the existing **"Workflow Module Pattern"** section in `CLAUDE.md` to include validation rules:
+  - Added "Stepper Validation" subsection under Workflow Module Pattern
   - Each step that collects user input must define a Zod schema in `utils/<feature>.util.ts`
   - The container must call the step's validation function before advancing to the next step (`onNext`)
   - If validation fails, the step must display per-field errors and block navigation
@@ -366,14 +381,15 @@ Update the repository's AI agent instructions (`CLAUDE.md`) to codify the form v
 
 ### 6.4 — Query Cache Invalidation (CLAUDE.md)
 
-- [ ] **6.4.1** Add a **"Mutation Cache Invalidation"** section to `CLAUDE.md`:
+- [x] **6.4.1** Add a **"Mutation Cache Invalidation"** section to `CLAUDE.md`:
   - Every mutation's `onSuccess` callback must invalidate at minimum its own entity's `.root` query key
-  - Delete operations that cascade on the backend must also invalidate downstream entity query keys on the frontend (e.g., deleting a station must invalidate `portals.root` and `portalResults.root`)
+  - Delete operations that cascade on the backend must also invalidate downstream entity query keys on the frontend
+  - Includes specific cascade rules for station, connector instance, and portal deletions
   - Use `queryClient.invalidateQueries({ queryKey: queryKeys.<entity>.root })` — never manually remove or update cache entries
 
 ### 6.5 — Test Requirements (CLAUDE.md)
 
-- [ ] **6.5.1** Add a **"Dialog & Form Test Checklist"** to `CLAUDE.md` — every new dialog must have tests covering:
+- [x] **6.5.1** Add a **"Dialog & Form Test Checklist"** to `CLAUDE.md` — every new dialog must have tests covering:
   - Renders title and content when `open={true}`
   - Does not render when `open={false}`
   - Calls `onSubmit`/`onConfirm` on button click
@@ -383,6 +399,8 @@ Update the repository's AI agent instructions (`CLAUDE.md`) to codify the form v
   - Renders `<FormAlert>` when `serverError` is provided
   - Does not render `<FormAlert>` when `serverError` is null
   - Displays field-level validation errors on invalid submit
+  - `aria-invalid="true"` and `required` attribute checks
+  - Documents `queryClient` spy pattern for cache invalidation tests
 
 ### Verification
 

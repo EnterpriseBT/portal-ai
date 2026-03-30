@@ -92,6 +92,65 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 };
 ```
 
+## Form & Dialog Pattern (apps/web)
+
+Every data-submission dialog must follow this structure:
+
+### Form Wrapping
+
+- Every dialog that submits data **must** be wrapped in a `<form onSubmit>` element
+- For `Modal`-based dialogs: use `slotProps.paper.component="form"` with `onSubmit` handler on `slotProps.paper`
+- For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`
+- Action buttons must use `type="button"` to prevent double-firing with form submission
+- The first interactive field must receive auto-focus via `useDialogAutoFocus(open)` from `utils/use-dialog-autofocus.util.ts` (or `autoFocus` prop for simple text fields outside Modal)
+
+### Server Error Display
+
+Every dialog that triggers a mutation must:
+
+- Accept a `serverError?: ServerError | null` prop (type from `utils/api.util.ts`)
+- Render `<FormAlert serverError={serverError} />` (from `components/FormAlert.component.tsx`) inside the dialog content
+- The parent view must pass `toServerError(mutation.error)` from `utils/api.util.ts`
+
+### Zod Validation
+
+Every form with user input must:
+
+- Validate via `validateWithSchema(Schema, data)` from `utils/form-validation.util.ts` using the matching `@portalai/core/contracts` schema
+- Maintain `touched` and `errors` state (`FormErrors` type from `form-validation.util.ts`); show errors only after blur or submit
+- Block submission when validation fails (never call `onSubmit` with invalid data)
+- Call `focusFirstInvalidField()` from `utils/form-validation.util.ts` after setting errors — this finds the first `[aria-invalid="true"]` element, scrolls it into view, and focuses it
+
+### Utility Reference
+
+| Utility | Path | Purpose |
+|---------|------|---------|
+| `ServerError` | `utils/api.util.ts` | Structured error type with `message` and `code` |
+| `toServerError()` | `utils/api.util.ts` | Converts `ApiError \| null` to `ServerError \| null` |
+| `FormAlert` | `components/FormAlert.component.tsx` | Renders `<Alert>` with error message and code |
+| `validateWithSchema()` | `utils/form-validation.util.ts` | Zod `safeParse` wrapper returning `FormErrors` |
+| `focusFirstInvalidField()` | `utils/form-validation.util.ts` | Focuses and scrolls to first invalid field |
+| `FormErrors` | `utils/form-validation.util.ts` | `Record<string, string>` type for field-level errors |
+| `useDialogAutoFocus()` | `utils/use-dialog-autofocus.util.ts` | Returns a ref that auto-focuses after dialog open |
+
+## Accessibility Requirements (apps/web)
+
+- All `<TextField>` with validation must include `error={touched[field] && !!errors[field]}` and `helperText={touched[field] && errors[field]}` — MUI auto-links `aria-describedby` when `helperText` is set
+- All validated `<TextField>` must include `slotProps={{ htmlInput: { "aria-invalid": touched[field] && !!errors[field] } }}`
+- All icon-only `<IconButton>` components must have a descriptive `aria-label`
+- `<FormAlert>` uses MUI `<Alert>` which provides `role="alert"` automatically — do not add custom alert roles
+- Searchable select components (`AsyncSearchableSelect`, `SearchableSelect`, etc.) accept `inputRef` for focus management
+
+## Mutation Cache Invalidation (apps/web)
+
+- Every mutation's `onSuccess` callback must invalidate at minimum its own entity's `.root` query key via `queryClient.invalidateQueries({ queryKey: queryKeys.<entity>.root })`
+- Delete operations that cascade on the backend must also invalidate downstream entity query keys on the frontend:
+  - Station delete → `stations.root`, `portals.root`, `portalResults.root`
+  - Connector instance delete → `connectorInstances.root`, `connectorEntities.root`, `stations.root`, `fieldMappings.root`
+  - Portal delete → `portals.root`, `portalResults.root`
+- Never manually remove or update cache entries — always use `invalidateQueries`
+- Query keys are defined in `api/keys.ts` and re-exported from `api/sdk.ts`
+
 ## Workflow Module Pattern (apps/web)
 
 Multi-step user workflows (e.g., file upload, data import wizards) live in `apps/web/src/workflows/<WorkflowName>/`. Each workflow is a self-contained module with a strict internal structure:
@@ -119,6 +178,13 @@ workflows/
 - **Stories** (`*.stories.tsx`) go in the `stories/` subfolder — co-located with the workflow, not in the top-level `src/stories/`
 - **Container vs. UI**: Each workflow exports both a container component (wires hooks) and a pure `*UI` component (props-only, no hooks) for Storybook and testing
 - **Barrel export** (`index.ts`) re-exports the public API: container, UI component, UI props type, and hooks
+
+### Stepper Validation
+
+- Each step that collects user input must define a Zod schema in `utils/<feature>.util.ts`
+- The container must call the step's validation function before advancing to the next step (`onNext`)
+- If validation fails, the step must display per-field errors and block navigation
+- Reference implementation: `workflows/CSVConnector/utils/csv-validation.util.ts`
 
 ### Reference Implementation
 
@@ -219,6 +285,24 @@ Three themes via `@portalai/core`: Brand (default), Light, Dark. Persisted in lo
 | Swagger Docs | http://localhost:3001/api-docs |
 | Core Storybook | http://localhost:7006 |
 | Web Storybook | http://localhost:6007 |
+
+## Dialog & Form Test Checklist (apps/web)
+
+Every new dialog must have tests covering:
+
+- Renders title and content when `open={true}`
+- Does not render when `open={false}`
+- Calls `onSubmit`/`onConfirm` on button click
+- Supports Enter key submission (form submit event)
+- Calls `onClose` on Cancel click
+- Shows loading state when `isPending={true}`
+- Renders `<FormAlert>` when `serverError` is provided
+- Does not render `<FormAlert>` when `serverError` is null
+- Displays field-level validation errors on invalid submit
+- `aria-invalid="true"` is set on invalid fields
+- `required` attribute is present on required fields
+
+Tests use ESM dynamic imports with `jest.unstable_mockModule` for SDK mocks. The test render utility (`__tests__/test-utils.tsx`) accepts an optional `queryClient` for verifying cache invalidation via `jest.spyOn(queryClient, "invalidateQueries")`.
 
 ## Detailed Documentation
 

@@ -64,6 +64,9 @@ export const ConnectorInstanceView = ({
       onSuccess: () => {
         setDeleteDialogOpen(false);
         queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
         navigate({ to: "/connectors" });
       },
     });

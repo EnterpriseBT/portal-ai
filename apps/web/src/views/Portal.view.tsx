@@ -143,6 +143,7 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
     removeMutation.mutate(undefined, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
         navigate({ to: "/" });
       },
     });
