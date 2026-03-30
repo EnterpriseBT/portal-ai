@@ -22,7 +22,7 @@
     "test:unit": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
     "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
-    "test:integration": "NODE_OPTIONS='--experimental-vm-modules' jest --config jest.integration.config.js --runInBand",
+    "test:integration": "NODE_OPTIONS='--experimental-vm-modules --max-old-space-size=4096' jest --config jest.integration.config.js --runInBand",
     "db:generate": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs migrate",
     "db:push": "dotenv -e .env -- node -r tsx/cjs ../../node_modules/drizzle-kit/bin.cjs push",

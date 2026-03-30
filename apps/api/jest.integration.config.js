@@ -60,10 +60,6 @@ export default {
   // Increase timeout for integration tests
   testTimeout: 60000,
 
-  // Force Jest to exit after all tests complete.
-  // Integration tests open a module-level postgres connection pool (via db/client.ts)
-  // that keeps the process alive. Without this flag, Jest tears down the environment
-  // while pending pool callbacks are still in flight, causing the
-  // "import after teardown" ReferenceError.
-  forceExit: true,
+  // The globalTeardown script closes the database connection pool,
+  // allowing Jest to exit cleanly without forceExit.
 };
