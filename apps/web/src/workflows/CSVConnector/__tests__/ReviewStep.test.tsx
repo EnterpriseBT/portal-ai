@@ -328,6 +328,15 @@ describe("ReviewStep", () => {
       expect(onConfirm).toHaveBeenCalledTimes(1);
     });
 
+    it("triggers onConfirm on form submission (Enter key)", async () => {
+      const onConfirm = jest.fn();
+      render(<ReviewStep {...makeProps({ onConfirm })} />);
+      const form = screen.getByRole("button", { name: "Confirm Import" }).closest("form")!;
+      const { fireEvent } = await import("@testing-library/react");
+      fireEvent.submit(form);
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
     it("triggers onCancel when Cancel Import is clicked", async () => {
       const user = userEvent.setup();
       const onCancel = jest.fn();

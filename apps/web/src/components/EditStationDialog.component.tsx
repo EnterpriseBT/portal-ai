@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 
+import { z } from "zod";
 import type { UpdateStationBody } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { StationToolPackSchema } from "@portalai/core/models";
@@ -10,6 +11,7 @@ import TextField from "@mui/material/TextField";
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
+import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
 
 const TOOL_PACK_LABELS: Record<string, string> = {
   data_query: "Data Query",
@@ -30,20 +32,14 @@ interface FormState {
   connectorInstanceIds: string[];
 }
 
-interface FormErrors {
-  name?: string;
-  toolPacks?: string;
-}
+const EditStationFormSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
+});
 
 function validateForm(form: FormState): FormErrors {
-  const errors: FormErrors = {};
-  if (!form.name.trim()) {
-    errors.name = "Name is required";
-  }
-  if (form.toolPacks.length === 0) {
-    errors.toolPacks = "At least one tool pack is required";
-  }
-  return errors;
+  const result = validateWithSchema(EditStationFormSchema, form);
+  return result.success ? {} : result.errors;
 }
 
 interface StationInstance {
@@ -125,12 +121,22 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
       title="Edit Station"
       maxWidth="sm"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            handleSubmit();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant="contained"
             onClick={handleSubmit}
             disabled={isPending}

@@ -523,6 +523,7 @@ export const PaginationToolbar = React.forwardRef<
         >
           {/* Search */}
           <TextField
+            autoFocus
             size="small"
             placeholder="Search..."
             value={search}

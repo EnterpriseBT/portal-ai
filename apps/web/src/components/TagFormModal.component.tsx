@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 
+import { z } from "zod";
 import type { EntityTag } from "@portalai/core/models";
 import type {
   EntityTagCreateRequestBody,
@@ -17,6 +18,7 @@ import Typography from "@mui/material/Typography";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
+import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
 
 // ── Form types ──────────────────────────────────────────────────────
 
@@ -26,23 +28,21 @@ interface TagFormState {
   description: string;
 }
 
-interface TagFormErrors {
-  name?: string;
-  color?: string;
-}
+const TagFormSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  color: z
+    .string()
+    .refine((v) => !v || /^#[\dA-Fa-f]{6}$/.test(v), {
+      message: "Color must be a valid hex code (e.g. #FF0000)",
+    }),
+});
 
 const DEFAULT_TAG_COLOR = "#3b82f6";
 const INITIAL_FORM: TagFormState = { name: "", color: DEFAULT_TAG_COLOR, description: "" };
 
-function validateTagForm(form: TagFormState): TagFormErrors {
-  const errors: TagFormErrors = {};
-  if (!form.name.trim()) {
-    errors.name = "Name is required";
-  }
-  if (form.color && !/^#[\dA-Fa-f]{6}$/.test(form.color)) {
-    errors.color = "Color must be a valid hex code (e.g. #FF0000)";
-  }
-  return errors;
+function validateTagForm(form: TagFormState): FormErrors {
+  const result = validateWithSchema(TagFormSchema, form);
+  return result.success ? {} : result.errors;
 }
 
 // ── Component ───────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
   const isEdit = tag !== null;
   const [form, setForm] = useState<TagFormState>(INITIAL_FORM);
   const [colorModified, setColorModified] = useState(false);
-  const [errors, setErrors] = useState<TagFormErrors>({});
+  const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
@@ -127,12 +127,22 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
       title={isEdit ? "Edit Tag" : "Create Tag"}
       maxWidth="sm"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            handleSubmit();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant="contained"
             onClick={handleSubmit}
             disabled={isPending}

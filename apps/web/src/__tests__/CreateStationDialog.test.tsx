@@ -115,6 +115,21 @@ describe("CreateStationDialog", () => {
     expect(screen.queryByText("New Station")).not.toBeInTheDocument();
   });
 
+  it("should submit form on Enter key press in text field", async () => {
+    const onSubmit = jest.fn();
+    render(<CreateStationDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Enter Station" },
+    });
+    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        name: "Enter Station",
+        toolPacks: ["data_query"],
+      });
+    });
+  });
+
   it("should show field error on blur", async () => {
     render(<CreateStationDialog {...defaultProps} />);
     const nameField = screen.getByLabelText(/Name/);

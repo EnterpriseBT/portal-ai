@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 
+import { z } from "zod";
 import type { CreateStationBody } from "@portalai/core/contracts";
 import { StationToolPackSchema } from "@portalai/core/models";
 import { Button, Modal, Stack } from "@portalai/core/ui";
@@ -10,6 +11,7 @@ import Chip from "@mui/material/Chip";
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
+import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -30,10 +32,10 @@ interface StationFormState {
   toolPacks: string[];
 }
 
-interface StationFormErrors {
-  name?: string;
-  toolPacks?: string;
-}
+const StationFormSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
+});
 
 const INITIAL_FORM: StationFormState = {
   name: "",
@@ -42,15 +44,9 @@ const INITIAL_FORM: StationFormState = {
   toolPacks: ["data_query"],
 };
 
-function validateForm(form: StationFormState): StationFormErrors {
-  const errors: StationFormErrors = {};
-  if (!form.name.trim()) {
-    errors.name = "Name is required";
-  }
-  if (form.toolPacks.length === 0) {
-    errors.toolPacks = "At least one tool pack is required";
-  }
-  return errors;
+function validateForm(form: StationFormState): FormErrors {
+  const result = validateWithSchema(StationFormSchema, form);
+  return result.success ? {} : result.errors;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -71,7 +67,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   serverError,
 }) => {
   const [form, setForm] = useState<StationFormState>(INITIAL_FORM);
-  const [errors, setErrors] = useState<StationFormErrors>({});
+  const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
@@ -121,12 +117,22 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
       title="New Station"
       maxWidth="sm"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            handleSubmit();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant="contained"
             onClick={handleSubmit}
             disabled={isPending}

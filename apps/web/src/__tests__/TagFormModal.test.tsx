@@ -141,6 +141,18 @@ describe("TagFormModal", () => {
     });
   });
 
+  it("should submit form on Enter key press in text field", async () => {
+    const onSubmit = jest.fn();
+    render(<TagFormModal {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Enter Tag" },
+    });
+    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({ name: "Enter Tag" });
+    });
+  });
+
   it("should show field error on blur", async () => {
     render(<TagFormModal {...defaultProps} />);
     const nameField = screen.getByLabelText(/Name/);

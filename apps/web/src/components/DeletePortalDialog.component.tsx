@@ -23,12 +23,22 @@ export const DeletePortalDialog: React.FC<DeletePortalDialogProps> = ({
     title="Delete Portal"
     maxWidth="sm"
     fullWidth
+    slotProps={{
+      paper: {
+        component: "form",
+        onSubmit: (e: React.FormEvent) => {
+          e.preventDefault();
+          onConfirm();
+        },
+      } as object,
+    }}
     actions={
       <Stack direction="row" spacing={1}>
-        <Button variant="outlined" onClick={onClose} disabled={isPending}>
+        <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
           Cancel
         </Button>
         <Button
+          type="button"
           variant="contained"
           color="error"
           onClick={onConfirm}

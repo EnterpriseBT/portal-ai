@@ -64,6 +64,14 @@ describe("DeleteStationDialog", () => {
     expect(onConfirm).toHaveBeenCalled();
   });
 
+  it("should submit on Enter key press (form submission)", () => {
+    const onConfirm = jest.fn();
+    render(<DeleteStationDialog {...defaultProps} onConfirm={onConfirm} />);
+    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    fireEvent.submit(form);
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
   it("should call onClose when Cancel is clicked", () => {
     const onClose = jest.fn();
     render(<DeleteStationDialog {...defaultProps} onClose={onClose} />);

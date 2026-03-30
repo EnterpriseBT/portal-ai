@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from "react";
 
-import type {
-  EntityGroupCreateRequestBody,
-  EntityGroupListRequestQuery,
-  EntityGroupListResponsePayload,
+import {
+  EntityGroupCreateRequestBodySchema,
+  type EntityGroupCreateRequestBody,
+  type EntityGroupListRequestQuery,
+  type EntityGroupListResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
@@ -35,6 +36,7 @@ import {
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
+import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -216,18 +218,32 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
 }) => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const validate = (data: { name: string }) => {
+    const result = validateWithSchema(EntityGroupCreateRequestBodySchema, data);
+    return result.success ? {} : result.errors;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
+    setTouched({ name: true });
+    const body = {
       name: name.trim(),
       description: description.trim() || undefined,
-    });
+    };
+    const formErrors = validate({ name: body.name });
+    setErrors(formErrors);
+    if (Object.keys(formErrors).length > 0) return;
+    onSubmit(body);
   };
 
   const handleClose = () => {
     setName("");
     setDescription("");
+    setErrors({});
+    setTouched({});
     onClose();
   };
 
@@ -240,7 +256,19 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
             <TextField
               label="Name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (touched.name) {
+                  const errs = validate({ name: e.target.value.trim() });
+                  setErrors(errs);
+                }
+              }}
+              onBlur={() => {
+                setTouched((prev) => ({ ...prev, name: true }));
+                setErrors(validate({ name: name.trim() }));
+              }}
+              error={touched.name && !!errors.name}
+              helperText={touched.name && errors.name}
               required
               fullWidth
               autoFocus
@@ -257,13 +285,13 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button variant="outlined" onClick={handleClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={handleClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
             type="submit"
             variant="contained"
-            disabled={isPending || !name.trim()}
+            disabled={isPending}
           >
             Create
           </Button>

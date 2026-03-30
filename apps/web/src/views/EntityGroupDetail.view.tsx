@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from "react";
 
-import type {
-  EntityGroupGetResponsePayload,
-  EntityGroupMemberOverlapResponsePayload,
-  EntityGroupMemberCreateRequestBody,
-  EntityGroupUpdateRequestBody,
-  ConnectorEntityListResponsePayload,
-  FieldMappingListWithColumnDefinitionResponsePayload,
+import {
+  EntityGroupUpdateRequestBodySchema,
+  type EntityGroupGetResponsePayload,
+  type EntityGroupMemberOverlapResponsePayload,
+  type EntityGroupMemberCreateRequestBody,
+  type EntityGroupUpdateRequestBody,
+  type ConnectorEntityListResponsePayload,
+  type FieldMappingListWithColumnDefinitionResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
@@ -129,50 +130,60 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
   onAddMember,
   isAdding,
 }) => {
+  const addDisabled = !selectedEntityId || !selectedFieldMappingId || isAdding;
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Member</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} sx={{ mt: 1 }}>
-          <AsyncSearchableSelect
-            value={selectedEntityId}
-            onChange={onEntityChange}
-            onSearch={onSearchEntities}
-            label="Connector Entity"
-            placeholder="Search entities…"
-          />
-          <AsyncSearchableSelect
-            value={selectedFieldMappingId}
-            onChange={onFieldMappingChange}
-            onSearch={onSearchFieldMappings}
-            label="Link Field Mapping"
-            placeholder="Search field mappings…"
-            disabled={!selectedEntityId}
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={isPrimary}
-                onChange={(e) => onPrimaryChange(e.target.checked)}
-              />
-            }
-            label="Primary member"
-          />
-          <OverlapPreview overlap={overlap} isLoading={overlapLoading} />
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={isAdding}>
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          onClick={onAddMember}
-          disabled={!selectedEntityId || !selectedFieldMappingId || isAdding}
-        >
-          Submit
-        </Button>
-      </DialogActions>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!addDisabled) onAddMember();
+        }}
+      >
+        <DialogTitle>Add Member</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <AsyncSearchableSelect
+              value={selectedEntityId}
+              onChange={onEntityChange}
+              onSearch={onSearchEntities}
+              label="Connector Entity"
+              placeholder="Search entities…"
+            />
+            <AsyncSearchableSelect
+              value={selectedFieldMappingId}
+              onChange={onFieldMappingChange}
+              onSearch={onSearchFieldMappings}
+              label="Link Field Mapping"
+              placeholder="Search field mappings…"
+              disabled={!selectedEntityId}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={isPrimary}
+                  onChange={(e) => onPrimaryChange(e.target.checked)}
+                />
+              }
+              label="Primary member"
+            />
+            <OverlapPreview overlap={overlap} isLoading={overlapLoading} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button type="button" onClick={onClose} disabled={isAdding}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="contained"
+            onClick={() => { if (!addDisabled) onAddMember(); }}
+            disabled={addDisabled}
+          >
+            Submit
+          </Button>
+        </DialogActions>
+      </form>
     </Dialog>
   );
 };
@@ -242,7 +253,10 @@ export const EntityGroupDetailViewUI: React.FC<
     >(null);
 
     const handleSaveName = () => {
-      if (nameValue.trim() && nameValue.trim() !== group.name) {
+      const result = EntityGroupUpdateRequestBodySchema.safeParse({
+        name: nameValue.trim(),
+      });
+      if (result.success && nameValue.trim() !== group.name) {
         onUpdateGroup({ name: nameValue.trim() });
       }
       setEditingName(false);

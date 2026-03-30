@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 
-import type {
-  CreatePortalBody,
-  OrganizationGetResponse,
-  StationListResponsePayload,
+import {
+  CreatePortalBodySchema,
+  type CreatePortalBody,
+  type OrganizationGetResponse,
+  type StationListResponsePayload,
 } from "@portalai/core/contracts";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -72,6 +73,7 @@ const StationPicker: React.FC<StationPickerProps> = ({
                 label="Station"
                 placeholder="Select a station..."
                 required
+                autoFocus
                 error={!!error}
                 helperText={error}
               />
@@ -114,12 +116,15 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
   }, [open]);
 
   const effectiveStationId = stationId ?? orgDefaultStationId;
-  const error = touched && !effectiveStationId ? "Station is required" : undefined;
+  const error =
+    touched && !effectiveStationId ? "Station is required" : undefined;
 
   const handleSubmit = () => {
     setTouched(true);
-    if (!effectiveStationId) return;
-    onSubmit({ stationId: effectiveStationId });
+    const body = { stationId: effectiveStationId ?? "" };
+    const result = CreatePortalBodySchema.safeParse(body);
+    if (!result.success) return;
+    onSubmit(result.data);
   };
 
   return (
@@ -129,12 +134,22 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
       title="New Portal"
       maxWidth="sm"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            handleSubmit();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant="contained"
             onClick={handleSubmit}
             disabled={isPending}

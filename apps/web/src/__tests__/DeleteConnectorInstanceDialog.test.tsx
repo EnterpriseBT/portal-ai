@@ -124,6 +124,16 @@ describe("DeleteConnectorInstanceDialog", () => {
     expect(onConfirm).toHaveBeenCalled();
   });
 
+  it("should submit on Enter key press (form submission)", () => {
+    const onConfirm = jest.fn();
+    render(
+      <DeleteConnectorInstanceDialog {...defaultProps} onConfirm={onConfirm} />
+    );
+    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    fireEvent.submit(form);
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
   it("should call onClose when Cancel button is clicked", () => {
     const onClose = jest.fn();
     render(

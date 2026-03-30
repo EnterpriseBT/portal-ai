@@ -127,6 +127,18 @@ describe("EditStationDialog", () => {
     expect(screen.queryByText("Edit Station")).not.toBeInTheDocument();
   });
 
+  it("should submit form on Enter key press in text field", async () => {
+    const onSubmit = jest.fn();
+    render(<EditStationDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Updated Station" },
+    });
+    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({ name: "Updated Station" });
+    });
+  });
+
   it("should show field error on blur when name is empty", async () => {
     render(<EditStationDialog {...defaultProps} />);
     const nameField = screen.getByLabelText(/Name/);

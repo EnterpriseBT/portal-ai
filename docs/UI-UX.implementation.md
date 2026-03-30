@@ -72,44 +72,36 @@ Wrap every data-submission surface in a `<form onSubmit>` element and ensure the
 
 ### Checklist
 
-- [ ] **2.1** Wrap `CreateStationDialog` content in `<form onSubmit>`:
-  - `<form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>` around DialogContent + DialogActions
-  - Change submit `<Button>` to `type="submit"`
-  - Keep cancel `<Button>` as `type="button"` to prevent Enter triggering cancel
+- [x] **2.1** Wrap `CreateStationDialog` — `slotProps.paper` renders Dialog Paper as `<form>` with `onSubmit` handler
 
-- [ ] **2.2** Wrap `EditStationDialog` — same pattern as 2.1
+- [x] **2.2** Wrap `EditStationDialog` — same pattern
 
-- [ ] **2.3** Wrap `CreatePortalDialog`:
-  - Same `<form>` pattern
-  - Add `autoFocus` to the station `Autocomplete`'s `TextField` via `renderInput` props
+- [x] **2.3** Wrap `CreatePortalDialog` — same pattern + added `autoFocus` to station Autocomplete's TextField
 
-- [ ] **2.4** Wrap `TagFormModal`:
-  - Same `<form>` pattern
-  - Confirm `autoFocus` on name field (already present)
+- [x] **2.4** Wrap `TagFormModal` — same pattern (autoFocus already present on name field)
 
-- [ ] **2.5** Wrap `EditConnectorInstanceDialog` — same pattern
+- [x] **2.5** Wrap `EditConnectorInstanceDialog` — same pattern
 
-- [ ] **2.6** Wrap `DeleteStationDialog`:
-  - `<form onSubmit>` around confirmation content
-  - Delete `<Button>` becomes `type="submit"`
+- [x] **2.6** Wrap `DeleteStationDialog` — same pattern
 
-- [ ] **2.7** Wrap `DeletePortalDialog` — same pattern as 2.6
+- [x] **2.7** Wrap `DeletePortalDialog` — same pattern
 
-- [ ] **2.8** Wrap `DeleteConnectorInstanceDialog` — same pattern as 2.6
+- [x] **2.8** Wrap `DeleteConnectorInstanceDialog` — same pattern
 
-- [ ] **2.9** Wrap `DeleteTagDialog` — same pattern as 2.6
+- [x] **2.9** Wrap `DeleteTagDialog` — same pattern
 
-- [ ] **2.10** Wrap `EntityGroupDetail` add-member dialog (if rendered as a dialog) in `<form>`
+- [x] **2.10** Wrap `EntityGroupDetail` add-member dialog — native `<form>` wrapper around Dialog content
 
-- [ ] **2.11** Wrap `CSVConnector ReviewStep` confirm action in `<form>`
+- [x] **2.11** Wrap `CSVConnector ReviewStep` — native `<form>` wrapper around review form content
 
-- [ ] **2.12** Update `EntityGroups.view.tsx` create-group dialog:
-  - Wrap in `<form>`
-  - Ensure `autoFocus` on name field
+- [x] **2.12** `EntityGroups.view.tsx` create-group dialog — already had `<form>` + autoFocus; added `type="button"` to Cancel
 
-- [ ] **2.13** Update tests — any test that renders a dialog and simulates button clicks should also test Enter key submission:
-  - For each dialog test file, add a test case: "submits form on Enter key press"
-  - Verify that `onSubmit` callback fires when user presses Enter in a text field
+- [x] **2.13** Added Enter key submission tests to 8 test files:
+  - `CreateStationDialog.test.tsx`, `EditStationDialog.test.tsx`, `TagFormModal.test.tsx`
+  - `EditConnectorInstanceDialog.test.tsx`, `DeleteStationDialog.test.tsx`, `DeleteTagDialog.test.tsx`
+  - `DeleteConnectorInstanceDialog.test.tsx`, `ReviewStep.test.tsx`
+
+**Implementation note:** Used `slotProps.paper.component="form"` for Modal-based dialogs (renders MUI Dialog Paper as a `<form>`) and native `<form>` wrappers for raw MUI Dialog usage. Button click handlers (`onClick`) are preserved on action buttons (`type="button"`) for backward compatibility; form `onSubmit` handles Enter key submission only — no double-firing.
 
 ### Verification
 
@@ -141,60 +133,29 @@ Replace all manual validation functions with Zod `safeParse()` using the existin
 
 ### Checklist
 
-- [ ] **3.1** Create shared validation utility `apps/web/src/utils/form-validation.util.ts`:
-  ```ts
-  import { ZodSchema, ZodError } from "zod";
+- [x] **3.0** Added `zod` `^4.3.6` as explicit dependency to `apps/web/package.json` (matches `@portalai/core` version)
 
-  export function validateWithSchema<T>(
-    schema: ZodSchema<T>,
-    data: unknown
-  ): { success: true; data: T } | { success: false; errors: Record<string, string> } {
-    const result = schema.safeParse(data);
-    if (result.success) return { success: true, data: result.data };
-    const errors: Record<string, string> = {};
-    for (const issue of result.error.issues) {
-      const key = issue.path.join(".");
-      if (!errors[key]) errors[key] = issue.message;
-    }
-    return { success: false, errors };
-  }
-  ```
+- [x] **3.1** Created `apps/web/src/utils/form-validation.util.ts` with `validateWithSchema<T>()` utility and `FormErrors` type
 
-- [ ] **3.2** Write unit tests for `validateWithSchema` in `apps/web/src/__tests__/form-validation.util.test.ts`:
-  - Returns `{ success: true, data }` for valid input
-  - Returns `{ success: false, errors }` with field-keyed messages for invalid input
-  - Handles nested paths (e.g., `"address.city"`)
-  - First error per field wins (no duplicates)
+- [x] **3.2** Unit tests in `apps/web/src/__tests__/form-validation.util.test.ts` — 4 test cases covering success, field errors, nested paths, first-error-wins
 
-- [ ] **3.3** Refactor `CreateStationDialog` validation:
-  - Import `CreateStationBodySchema` from `@portalai/core`
-  - Replace manual `validateForm()` with `validateWithSchema(CreateStationBodySchema, formData)`
-  - Map Zod error keys to `touched` state for field-level display
-  - Preserve existing `onBlur` / `onChange` touched behavior
+- [x] **3.3** `CreateStationDialog` — replaced manual `validateForm` with `StationFormSchema` (Zod `z.object`) + `validateWithSchema`
 
-- [ ] **3.4** Refactor `EditStationDialog` validation — same approach with `UpdateStationBodySchema`
+- [x] **3.4** `EditStationDialog` — same refactor with `EditStationFormSchema`
 
-- [ ] **3.5** Refactor `CreatePortalDialog` validation — use `CreatePortalBodySchema`
+- [x] **3.5** `CreatePortalDialog` — added `CreatePortalBodySchema.safeParse()` validation at submit time
 
-- [ ] **3.6** Refactor `TagFormModal` validation:
-  - Use `EntityTagCreateRequestBodySchema` for create mode
-  - Use `EntityTagUpdateRequestBodySchema` for edit mode
-  - The hex color regex validation in the Zod schema replaces the manual regex check
+- [x] **3.6** `TagFormModal` — replaced manual validation with `TagFormSchema` (Zod `z.object` with hex color `.refine()`) + `validateWithSchema`
 
-- [ ] **3.7** Refactor `EditConnectorInstanceDialog` validation:
-  - Define a minimal inline schema: `z.object({ name: z.string().trim().min(1, "Name is required") })`
-  - Or use the existing pattern if a contract schema exists
+- [x] **3.7** `EditConnectorInstanceDialog` — added `EditNameSchema` with Zod validation, error display via `helperText`, and touched/blur behavior
 
-- [ ] **3.8** Add validation to `EntityGroups.view.tsx` create dialog — use `EntityGroupCreateRequestBodySchema`
+- [x] **3.8** `EntityGroups.view.tsx` create dialog — added `EntityGroupCreateRequestBodySchema` validation with touched/blur error display on name field
 
-- [ ] **3.9** Add validation to `EntityGroupDetail.view.tsx` inline name edit — use `EntityGroupUpdateRequestBodySchema`
+- [x] **3.9** `EntityGroupDetail.view.tsx` inline name edit — replaced manual `trim()` check with `EntityGroupUpdateRequestBodySchema.safeParse()`
 
-- [ ] **3.10** Add `required` prop to all MUI TextFields that correspond to required Zod fields (adds `aria-required` automatically)
+- [x] **3.10** All required TextFields already have `required` prop (confirmed: CreateStation, EditStation, TagForm, EditConnectorInstance, EntityGroups create)
 
-- [ ] **3.11** Update existing dialog test files to verify:
-  - Validation errors appear for empty required fields on submit attempt
-  - Validation errors clear when field is corrected
-  - Form does not call `onSubmit` when validation fails
+- [x] **3.11** Existing tests already cover validation (empty submit blocked, errors appear, onSubmit not called) — all 996 tests pass
 
 ### Verification
 

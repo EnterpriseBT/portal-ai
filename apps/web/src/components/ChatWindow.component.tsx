@@ -45,6 +45,7 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
       <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, minWidth: 0, p: 4 }}>{children}</Box>
       <Box sx={{ flexShrink: 0, p: 2, borderTop: 1, borderColor: "divider" }}>
         <TextField
+          autoFocus
           multiline
           minRows={2}
           maxRows={6}
