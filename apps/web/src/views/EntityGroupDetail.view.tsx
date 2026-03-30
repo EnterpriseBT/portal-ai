@@ -41,7 +41,7 @@ import DataResult from "../components/DataResult.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch, toServerError, type ServerError } from "../utils/api.util";
-import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
 
@@ -241,7 +241,10 @@ const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
     const trimmedDesc = description.trim();
     const formErrors = validate({ name: trimmedName });
     setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) return;
+    if (Object.keys(formErrors).length > 0) {
+      requestAnimationFrame(() => focusFirstInvalidField());
+      return;
+    }
 
     const body: EntityGroupUpdateRequestBody = {};
     if (trimmedName !== group.name) body.name = trimmedName;

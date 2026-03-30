@@ -97,4 +97,18 @@ describe("EditConnectorInstanceDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("should set aria-invalid on name field when validation fails", () => {
+    render(<EditConnectorInstanceDialog {...defaultProps} />);
+    const input = screen.getByRole("textbox", { name: /name/i });
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("should have required attribute on name field", () => {
+    render(<EditConnectorInstanceDialog {...defaultProps} />);
+    const input = screen.getByRole("textbox", { name: /name/i });
+    expect(input).toBeRequired();
+  });
 });

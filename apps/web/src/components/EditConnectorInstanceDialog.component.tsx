@@ -4,7 +4,7 @@ import { z } from "zod";
 import TextField from "@mui/material/TextField";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 
-import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 const EditNameSchema = z.object({
@@ -38,6 +38,7 @@ const EditForm: React.FC<{
     const result = validateWithSchema(EditNameSchema, { name });
     if (!result.success) {
       setErrors(result.errors);
+      requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
     if (result.data.name === currentName) return;

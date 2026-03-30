@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import { render, screen, fireEvent } from "../../../__tests__/test-utils";
 import userEvent from "@testing-library/user-event";
 
 import { ReviewStep } from "../ReviewStep.component";
@@ -483,6 +483,42 @@ describe("ReviewStep", () => {
       expect(
         screen.queryByRole("button", { name: "Cancel Import" }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Accessibility", () => {
+    const emptyNameRecommendations = {
+      ...MOCK_RECOMMENDATIONS,
+      connectorInstance: { ...MOCK_RECOMMENDATIONS.connectorInstance, name: "" },
+    };
+
+    it("should set aria-invalid on connector name field when empty and blurred", () => {
+      render(
+        <ReviewStep {...makeProps({ recommendations: emptyNameRecommendations })} />,
+      );
+      const nameInput = screen.getByLabelText(/Name/);
+      fireEvent.focus(nameInput);
+      fireEvent.blur(nameInput);
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    });
+
+    it("should have required attribute on connector name field", () => {
+      render(
+        <ReviewStep {...makeProps()} />,
+      );
+      const nameInput = screen.getByLabelText(/Name/);
+      expect(nameInput).toBeRequired();
+    });
+
+    it("should block confirm when connector name is empty", async () => {
+      const user = userEvent.setup();
+      const onConfirm = jest.fn();
+      render(
+        <ReviewStep {...makeProps({ recommendations: emptyNameRecommendations, onConfirm })} />,
+      );
+      await user.click(screen.getByRole("button", { name: "Confirm Import" }));
+      expect(onConfirm).not.toHaveBeenCalled();
+      expect(screen.getByText("Connector name is required")).toBeInTheDocument();
     });
   });
 });

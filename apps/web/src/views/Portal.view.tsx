@@ -15,6 +15,7 @@ import { FormAlert } from "../components/FormAlert.component";
 import { PortalSession } from "../components/PortalSession.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
+import { focusFirstInvalidField } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Portal data item component ──────────────────────────────────────
@@ -55,6 +56,7 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
   const handleSubmit = () => {
     if (!name.trim()) {
       setError("Name is required");
+      requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
     if (name.trim() === currentName) {

@@ -37,7 +37,7 @@ import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -237,7 +237,10 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
     };
     const formErrors = validate({ name: body.name });
     setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) return;
+    if (Object.keys(formErrors).length > 0) {
+      requestAnimationFrame(() => focusFirstInvalidField());
+      return;
+    }
     onSubmit(body);
   };
 

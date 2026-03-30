@@ -218,38 +218,37 @@ Add `serverError` display to all forms that currently swallow errors, and apply 
 
 ### 4B — Accessibility Hardening
 
-- [ ] **4B.1** Add `aria-invalid` to all form TextFields:
-  - Pattern: `inputProps={{ "aria-invalid": touched[field] && !!errors[field] }}`
-  - Apply to every `<TextField>` in: CreateStationDialog, EditStationDialog, CreatePortalDialog, TagFormModal, EditConnectorInstanceDialog, EntityGroups create dialog
+- [x] **4B.1** Add `aria-invalid` to all form TextFields:
+  - Pattern: `slotProps={{ htmlInput: { "aria-invalid": touched[field] && !!errors[field] } }}`
+  - Applied to every validated `<TextField>` in: CreateStationDialog, EditStationDialog, TagFormModal, EditConnectorInstanceDialog, EntityGroups create dialog, EntityGroupDetail edit dialog, CSVConnector ReviewStep
 
-- [ ] **4B.2** Verify `aria-describedby` is automatically linked via MUI `helperText`:
-  - MUI TextField auto-generates `aria-describedby` when `helperText` is set — confirm this in rendered output
-  - No manual work needed if using `helperText` for error messages (which all dialogs already do)
+- [x] **4B.2** Verify `aria-describedby` is automatically linked via MUI `helperText`:
+  - MUI TextField auto-generates `aria-describedby` when `helperText` is set — confirmed via test in CreateStationDialog
+  - No manual work needed — all dialogs use `helperText` for error messages
 
-- [ ] **4B.3** Add `aria-label` to all icon-only `<IconButton>` components:
-  - Audit all files importing `IconButton` from MUI
-  - Add descriptive `aria-label` (e.g., `aria-label="Delete station"`, `aria-label="Edit name"`)
-  - Files to audit:
-    - `views/Stations.view.tsx`
-    - `views/StationDetail.view.tsx`
-    - `views/Tags.view.tsx`
-    - `views/EntityGroupDetail.view.tsx`
-    - `views/ConnectorInstance.view.tsx`
-    - `views/EntityDetail.view.tsx`
-    - `views/Portal.view.tsx`
-    - `views/PinnedResultDetail.view.tsx`
-    - `components/AdvancedFilterBuilder.component.tsx`
-    - Any other files found via `grep -r "IconButton" apps/web/src/`
+- [x] **4B.3** Add `aria-label` to all icon-only `<IconButton>` components:
+  - Audited all files importing `IconButton` from MUI and `@portalai/core/ui`
+  - Added descriptive `aria-label` to all icon-only buttons:
+    - `components/AdvancedFilterBuilder.component.tsx` — "Remove filter group", "Remove filter condition"
+    - `components/EntityRecordFieldValue.component.tsx` — "Copy value"
+    - `components/ConnectorEntity.component.tsx` — "Collapse/Expand field mappings"
+    - `components/ConnectorInstance.component.tsx` — "Delete connector instance"
+    - `components/ChatWindow.component.tsx` — "Exit", "Cancel", "Reset", "Submit"
+    - `components/PaginationToolbar.component.tsx` — "Clear search", "First/Previous/Next/Last page"
+    - `components/PinnedResultsList.component.tsx` — "Unpin result"
+    - `components/PortalCard.component.tsx` — "Delete portal"
+  - Already had `aria-label`: StationList, TagCard, SidebarNavToggle, HeaderMenu, ThemeSwitcher, PortalMessage, EntityGroupDetail
 
-- [ ] **4B.4** Add focus-to-first-error on validation failure:
-  - After `handleSubmit` validation fails, call `.focus()` on the first invalid field
-  - Pattern: assign `ref` to the first required field, call `ref.current?.focus()` when errors exist
-  - Apply to: CreateStationDialog, EditStationDialog, TagFormModal
+- [x] **4B.4** Add focus-and-scroll-to-first-error on validation failure:
+  - Created `focusFirstInvalidField()` utility in `form-validation.util.ts`
+  - Queries `[aria-invalid="true"]`, falls back to `.Mui-error input`, scrolls into view, and focuses
+  - Applied to all 10 validation paths: CreateStationDialog, EditStationDialog, TagFormModal, EditConnectorInstanceDialog, CreatePortalDialog, EntityGroupDetail edit dialog, EntityGroups create dialog, Portal rename dialog, CSVConnector entity step, CSVConnector column step, CSVConnector review step
 
-- [ ] **4B.5** Write accessibility-focused tests:
-  - Test that `aria-invalid="true"` appears on fields with errors
-  - Test that `aria-required="true"` appears on required fields (via MUI `required` prop)
-  - Test that `role="alert"` exists on `<FormAlert>` output
+- [x] **4B.5** Write accessibility-focused tests:
+  - `aria-invalid="true"` tested in: CreateStationDialog, EditStationDialog, TagFormModal, EditConnectorInstanceDialog, ReviewStep
+  - `required` attribute tested in: CreateStationDialog, EditStationDialog, TagFormModal, EditConnectorInstanceDialog, ReviewStep
+  - `role="alert"` tested in: FormAlert, CreateStationDialog
+  - `aria-describedby` auto-link tested in: CreateStationDialog
 
 ### Verification
 

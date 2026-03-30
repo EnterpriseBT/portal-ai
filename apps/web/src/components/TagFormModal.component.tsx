@@ -18,7 +18,7 @@ import Typography from "@mui/material/Typography";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
-import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Form types ──────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
     const formErrors = validateTagForm(form);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
-      nameRef.current?.focus();
+      requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
 

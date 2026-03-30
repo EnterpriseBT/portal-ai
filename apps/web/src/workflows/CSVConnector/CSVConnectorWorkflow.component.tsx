@@ -30,6 +30,7 @@ import {
   hasColumnStepErrors,
 } from "./utils/csv-validation.util";
 import type { EntityStepErrors, ColumnStepErrors } from "./utils/csv-validation.util";
+import { focusFirstInvalidField } from "../../utils/form-validation.util";
 import type { ConfirmResponsePayload } from "@portalai/core/contracts";
 
 import type {
@@ -362,13 +363,19 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
     if (workflow.step === 1 && workflow.recommendations) {
       const errors = validateEntityStep(workflow.recommendations.entities);
       setEntityStepErrors(errors);
-      if (hasEntityStepErrors(errors)) return;
+      if (hasEntityStepErrors(errors)) {
+        requestAnimationFrame(() => focusFirstInvalidField());
+        return;
+      }
     }
 
     if (workflow.step === 2 && workflow.recommendations) {
       const errors = validateColumnStep(workflow.recommendations.entities);
       setColumnStepErrors(errors);
-      if (hasColumnStepErrors(errors)) return;
+      if (hasColumnStepErrors(errors)) {
+        requestAnimationFrame(() => focusFirstInvalidField());
+        return;
+      }
     }
 
     workflow.goNext();

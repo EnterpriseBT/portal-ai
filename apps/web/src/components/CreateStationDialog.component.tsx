@@ -11,7 +11,7 @@ import Chip from "@mui/material/Chip";
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
-import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
     const formErrors = validateForm(form);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
-      nameRef.current?.focus();
+      requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
 

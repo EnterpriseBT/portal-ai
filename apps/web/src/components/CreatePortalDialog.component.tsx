@@ -13,6 +13,7 @@ import TextField from "@mui/material/TextField";
 import DataResult from "./DataResult.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
+import { focusFirstInvalidField } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { OrgData } from "./StationList.component";
 import { sdk } from "../api/sdk";
@@ -127,7 +128,10 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
     setTouched(true);
     const body = { stationId: effectiveStationId ?? "" };
     const result = CreatePortalBodySchema.safeParse(body);
-    if (!result.success) return;
+    if (!result.success) {
+      requestAnimationFrame(() => focusFirstInvalidField());
+      return;
+    }
     onSubmit(result.data);
   };
 

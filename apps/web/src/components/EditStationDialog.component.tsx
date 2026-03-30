@@ -11,7 +11,7 @@ import TextField from "@mui/material/TextField";
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
-import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 const TOOL_PACK_LABELS: Record<string, string> = {
@@ -94,7 +94,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     const formErrors = validateForm(form);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
-      nameRef.current?.focus();
+      requestAnimationFrame(() => focusFirstInvalidField());
       return;
     }
 

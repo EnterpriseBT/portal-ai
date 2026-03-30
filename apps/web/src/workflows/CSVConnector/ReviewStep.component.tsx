@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 
+import { z } from "zod";
 import {
   Box,
   Stack,
@@ -12,7 +13,12 @@ import {
 } from "@portalai/core/ui";
 import type { ConfirmResponsePayload } from "@portalai/core/contracts";
 
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../../utils/form-validation.util";
 import type { Recommendations } from "./utils/upload-workflow.util";
+
+const ConnectorNameSchema = z.object({
+  name: z.string().trim().min(1, "Connector name is required"),
+});
 
 // --- Types ---
 
@@ -130,6 +136,8 @@ const ReviewForm: React.FC<{
   isCancelling,
 }) => {
   const { connectorInstance, entities } = recommendations;
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const totalColumns = entities.reduce((sum, e) => sum + e.columns.length, 0);
   const newColumns = entities.reduce(
@@ -138,11 +146,27 @@ const ReviewForm: React.FC<{
   );
   const matchedColumns = totalColumns - newColumns;
 
+  const validate = (data: { name: string }): FormErrors => {
+    const result = validateWithSchema(ConnectorNameSchema, data);
+    return result.success ? {} : result.errors;
+  };
+
+  const handleConfirm = () => {
+    setTouched({ name: true });
+    const formErrors = validate({ name: connectorInstance.name });
+    setErrors(formErrors);
+    if (Object.keys(formErrors).length > 0) {
+      requestAnimationFrame(() => focusFirstInvalidField());
+      return;
+    }
+    onConfirm();
+  };
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (!isConfirming && !isCancelling) onConfirm();
+        if (!isConfirming && !isCancelling) handleConfirm();
       }}
     >
       <Stack spacing={3}>
@@ -162,7 +186,20 @@ const ReviewForm: React.FC<{
           <TextInput
             label="Name"
             value={connectorInstance.name}
-            onChange={(e) => onConnectorNameChange(e.target.value)}
+            onChange={(e) => {
+              onConnectorNameChange(e.target.value);
+              if (touched.name) {
+                setErrors(validate({ name: e.target.value }));
+              }
+            }}
+            onBlur={() => {
+              setTouched((prev) => ({ ...prev, name: true }));
+              setErrors(validate({ name: connectorInstance.name }));
+            }}
+            error={touched.name && !!errors.name}
+            helperText={touched.name && errors.name}
+            slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
+            required
             size="small"
             fullWidth
             disabled={isConfirming}
@@ -246,7 +283,7 @@ const ReviewForm: React.FC<{
           <Button
             type="button"
             variant="contained"
-            onClick={onConfirm}
+            onClick={handleConfirm}
             disabled={isConfirming || isCancelling}
             startIcon={isConfirming ? <CircularProgress size={16} /> : undefined}
           >
