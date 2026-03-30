@@ -111,15 +111,21 @@ describe("CreatePortalDialog", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
-  it("should display server error message", () => {
+  it("should display server error message and code", () => {
     render(
       <MockedCreatePortalDialog
         {...defaultProps}
-        serverError="Failed to create portal"
+        serverError={{
+          message: "Failed to create portal",
+          code: "PORTAL_CREATE_FAILED",
+        }}
       />
     );
     expect(
-      screen.getByText("Failed to create portal")
+      screen.getByText(/Failed to create portal/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/PORTAL_CREATE_FAILED/)
     ).toBeInTheDocument();
   });
 

@@ -9,11 +9,14 @@ import {
   Button,
   Modal,
   Stack,
-  Typography,
   ColorPicker,
   DEFAULT_COLOR_SAMPLES,
 } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
 
 // ── Form types ──────────────────────────────────────────────────────
 
@@ -52,7 +55,7 @@ export interface TagFormModalProps {
     body: EntityTagCreateRequestBody | EntityTagUpdateRequestBody
   ) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 export const TagFormModal: React.FC<TagFormModalProps> = ({
@@ -173,11 +176,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           multiline
           rows={3}
         />
-        {serverError && (
-          <Typography variant="body2" color="error">
-            {serverError}
-          </Typography>
-        )}
+        <FormAlert serverError={serverError} />
       </Stack>
     </Modal>
   );

@@ -3,11 +3,13 @@ import React, { useState } from "react";
 import type { UpdateStationBody } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { StationToolPackSchema } from "@portalai/core/models";
-import { Button, Modal, MultiSearchableSelect, Stack, Typography } from "@portalai/core/ui";
+import { Button, Modal, MultiSearchableSelect, Stack } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
 
 const TOOL_PACK_LABELS: Record<string, string> = {
   data_query: "Data Query",
@@ -54,7 +56,7 @@ export interface EditStationDialogProps {
   station: Station & { instances?: StationInstance[] };
   onSubmit: (body: UpdateStationBody) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 export const EditStationDialog: React.FC<EditStationDialogProps> = ({
@@ -164,11 +166,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}
         />
-        {serverError && (
-          <Typography variant="body2" color="error">
-            {serverError}
-          </Typography>
-        )}
+        <FormAlert serverError={serverError} />
       </Stack>
     </Modal>
   );

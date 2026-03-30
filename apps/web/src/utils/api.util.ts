@@ -13,6 +13,19 @@ import type {
 } from "@portalai/core/contracts";
 import { handleAuthError } from "./auth-error.util";
 
+export interface ServerError {
+  message: string;
+  code: string;
+}
+
+export function toServerError(
+  error: ApiError | null | undefined
+): ServerError | null {
+  return error
+    ? { message: error.message, code: error.code || "UNKNOWN_CODE" }
+    : null;
+}
+
 export class ApiError extends Error {
   code: string;
   status: number;

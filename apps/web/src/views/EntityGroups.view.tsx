@@ -32,7 +32,9 @@ import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
+import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError, type ServerError } from "../utils/api.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -202,7 +204,7 @@ interface CreateGroupDialogProps {
   onClose: () => void;
   onSubmit: (body: EntityGroupCreateRequestBody) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
@@ -251,11 +253,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
               multiline
               rows={3}
             />
-            {serverError && (
-              <Typography color="error" variant="body2">
-                {serverError}
-              </Typography>
-            )}
+            <FormAlert serverError={serverError} />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -317,7 +315,7 @@ export const EntityGroupsView: React.FC = () => {
         onClose={handleCreateClose}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
-        serverError={createMutation.error?.message ?? null}
+        serverError={toServerError(createMutation.error)}
       />
     </>
   );

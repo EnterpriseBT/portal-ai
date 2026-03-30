@@ -29,6 +29,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -241,7 +242,7 @@ export const TagsView: React.FC = () => {
         tag={editingTag}
         onSubmit={handleFormSubmit}
         isPending={activeMutation.isPending}
-        serverError={activeMutation.error?.message ?? null}
+        serverError={toServerError(activeMutation.error)}
       />
 
       <DeleteTagDialog

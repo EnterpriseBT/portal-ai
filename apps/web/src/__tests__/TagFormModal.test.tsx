@@ -197,15 +197,21 @@ describe("TagFormModal", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
-  it("should display server error message", () => {
+  it("should display server error message and code", () => {
     render(
       <TagFormModal
         {...defaultProps}
-        serverError="An entity tag with this name already exists"
+        serverError={{
+          message: "An entity tag with this name already exists",
+          code: "ENTITY_TAG_DUPLICATE_NAME",
+        }}
       />
     );
     expect(
-      screen.getByText("An entity tag with this name already exists")
+      screen.getByText(/An entity tag with this name already exists/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/ENTITY_TAG_DUPLICATE_NAME/)
     ).toBeInTheDocument();
   });
 

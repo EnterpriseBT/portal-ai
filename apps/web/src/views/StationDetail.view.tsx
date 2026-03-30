@@ -27,7 +27,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useAuthFetch, toServerError } from "../utils/api.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -297,7 +297,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       station={station}
                       onSubmit={handleEditSubmit}
                       isPending={updateMutation.isPending}
-                      serverError={updateMutation.error?.message ?? null}
+                      serverError={toServerError(updateMutation.error)}
                     />
                   )}
                   <DeleteStationDialog

@@ -5,11 +5,13 @@ import type {
   OrganizationGetResponse,
   StationListResponsePayload,
 } from "@portalai/core/contracts";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import { Button, Modal, Stack } from "@portalai/core/ui";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 
 import DataResult from "./DataResult.component";
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
 import { OrgData } from "./StationList.component";
 import { sdk } from "../api/sdk";
 
@@ -88,7 +90,7 @@ export interface CreatePortalDialogProps {
   onClose: () => void;
   onSubmit: (body: CreatePortalBody) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
@@ -171,11 +173,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
             </DataResult>
           )}
         </OrgData>
-        {serverError && (
-          <Typography variant="body2" color="error">
-            {serverError}
-          </Typography>
-        )}
+        <FormAlert serverError={serverError} />
       </Stack>
     </Modal>
   );

@@ -2,12 +2,14 @@ import React, { useState } from "react";
 
 import type { CreateStationBody } from "@portalai/core/contracts";
 import { StationToolPackSchema } from "@portalai/core/models";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import { Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import Chip from "@mui/material/Chip";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -58,7 +60,7 @@ export interface CreateStationDialogProps {
   onClose: () => void;
   onSubmit: (body: CreateStationBody) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
@@ -189,11 +191,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}
         />
-        {serverError && (
-          <Typography variant="body2" color="error">
-            {serverError}
-          </Typography>
-        )}
+        <FormAlert serverError={serverError} />
       </Stack>
     </Modal>
   );

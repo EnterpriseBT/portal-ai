@@ -85,15 +85,21 @@ describe("CreateStationDialog", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
-  it("should display server error message", () => {
+  it("should display server error message and code", () => {
     render(
       <CreateStationDialog
         {...defaultProps}
-        serverError="A station with this name already exists"
+        serverError={{
+          message: "A station with this name already exists",
+          code: "STATION_DUPLICATE_NAME",
+        }}
       />
     );
     expect(
-      screen.getByText("A station with this name already exists")
+      screen.getByText(/A station with this name already exists/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/STATION_DUPLICATE_NAME/)
     ).toBeInTheDocument();
   });
 

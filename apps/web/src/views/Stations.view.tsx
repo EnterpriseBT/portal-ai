@@ -25,6 +25,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
 
@@ -202,7 +203,7 @@ export const StationsView: React.FC = () => {
         onClose={handleCreateClose}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
-        serverError={createMutation.error?.message ?? null}
+        serverError={toServerError(createMutation.error)}
       />
 
       <DeleteStationDialog

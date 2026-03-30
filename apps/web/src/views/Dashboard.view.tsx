@@ -19,7 +19,7 @@ import { RecentPortalsListConnected } from "../components/RecentPortalsList.comp
 import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { HealthCheck } from "../components/HealthCheck.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useAuthFetch, toServerError } from "../utils/api.util";
 
 // ── Dashboard UI (pure) ─────────────────────────────────────────────
 
@@ -203,7 +203,7 @@ export const DashboardView: React.FC = () => {
         onClose={handleCreateClose}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
-        serverError={createMutation.error?.message ?? null}
+        serverError={toServerError(createMutation.error)}
       />
     </>
   );
