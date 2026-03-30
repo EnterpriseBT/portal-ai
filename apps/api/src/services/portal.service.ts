@@ -89,7 +89,8 @@ function handleToolCall(ctx: StreamContext, chunk: any): void {
     type: "tool-call",
     toolCallId: chunk.toolCallId,
     toolName: chunk.toolName,
-    args: chunk.args,
+    // AI SDK v6 renamed `args` → `input`
+    input: chunk.input ?? chunk.args,
   });
 }
 
@@ -335,53 +336,6 @@ export class PortalService {
   }
 
   // -------------------------------------------------------------------------
-  // extractRequestedPacks
-  // -------------------------------------------------------------------------
-
-  /**
-   * Scan conversation history for any `request_tools` tool-result messages
-   * and collect the pack names the model previously requested. These are
-   * merged into the active pack set so they stay available in subsequent turns.
-   */
-  /**
-   * Collect tool names referenced in tool-call parts across all assistant
-   * messages. The AI SDK requires that every tool name in history has a
-   * matching definition in the `tools` parameter.
-   */
-  static extractHistoryToolNames(messages: ModelMessage[]): Set<string> {
-    const names = new Set<string>();
-    for (const msg of messages) {
-      if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
-      for (const part of msg.content) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const p = part as any;
-        if (p.type === "tool-call" && p.toolName) {
-          names.add(p.toolName as string);
-        }
-      }
-    }
-    return names;
-  }
-
-  static extractRequestedPacks(messages: ModelMessage[]): string[] {
-    const packs: string[] = [];
-    for (const msg of messages) {
-      if (msg.role !== "tool" || !Array.isArray(msg.content)) continue;
-      for (const part of msg.content) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const p = part as any;
-        if (p.type !== "tool-result" || p.toolName !== "request_tools") continue;
-        // AI SDK v6 stores result in `output.value`, legacy in `result`
-        const val = p.output?.value ?? p.result;
-        if (val?.requestedPacks) {
-          packs.push(...(val.requestedPacks as string[]));
-        }
-      }
-    }
-    return packs;
-  }
-
-  // -------------------------------------------------------------------------
   // streamResponse
   // -------------------------------------------------------------------------
 
@@ -442,46 +396,9 @@ export class PortalService {
   }): Promise<void> {
     const systemPrompt = buildSystemPrompt(stationContext);
 
-    // Extract latest user message for tool pack selection
-    const latestUserMsg = [...messages]
-      .reverse()
-      .find((m) => m.role === "user");
-    const userText =
-      typeof latestUserMsg?.content === "string"
-        ? latestUserMsg.content
-        : "";
-
-    // Check if a prior turn requested additional tool packs via request_tools
-    const requestedPacks = PortalService.extractRequestedPacks(messages);
-
-    // Select tool packs relevant to this turn (packs are fixed per station)
-    const { activePacks, needsViz } = ToolService.selectToolPacks(
-      userText,
-      stationContext.toolPacks
-    );
-
-    // Merge in any packs the model requested on a previous turn
-    for (const p of requestedPacks) {
-      activePacks.add(p as Parameters<typeof activePacks.add>[0]);
-    }
-
-    // Ensure packs for tools used in conversation history stay loaded —
-    // the AI SDK validates that every tool-call in history has a matching
-    // tool definition, even if the model won't call it again this turn.
-    const historyToolNames = PortalService.extractHistoryToolNames(messages);
-    const packsNeededByHistory = ToolService.packsForToolNames(historyToolNames);
-    let historyNeedsViz = false;
-    for (const p of packsNeededByHistory) {
-      if (stationContext.toolPacks.includes(p)) {
-        activePacks.add(p as Parameters<typeof activePacks.add>[0]);
-        if (p === "data_query") historyNeedsViz = true;
-      }
-    }
-
     const analyticsTools = await ToolService.buildAnalyticsTools(
       organizationId,
       stationContext.stationId,
-      { activePacks, needsViz: needsViz || historyNeedsViz || requestedPacks.length > 0 }
     );
 
     // streamText() is lazy in AI SDK v6 — it returns immediately and
@@ -544,7 +461,17 @@ export class PortalService {
       ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
     }
 
-    const assistantBlocks = ctx.assistantBlocks;
+    // Strip orphaned tool-call blocks that have no matching tool-result.
+    // This can happen when the step limit (stopWhen) is reached after the
+    // model emits tool-call chunks but before the SDK executes those tools.
+    const resultIds = new Set(
+      ctx.assistantBlocks
+        .filter((b) => b.type === "tool-result")
+        .map((b) => b.toolCallId)
+    );
+    const assistantBlocks = ctx.assistantBlocks.filter(
+      (b) => b.type !== "tool-call" || resultIds.has(b.toolCallId)
+    );
 
     // Persist the assistant message
     const repo = DbService.repository;
@@ -708,25 +635,78 @@ function reconstructModelMessages(
       continue;
     }
 
-    // Assistant turns: split into assistant content parts + tool results
+    // Assistant turns: split into alternating assistant → tool message
+    // pairs. A single persisted assistant row may contain multiple agentic
+    // steps (text → tool-call → tool-result → text → tool-call → …).
+    // The Anthropic API requires each tool-call batch to be in its own
+    // assistant message, immediately followed by a tool message with the
+    // matching results. Text after a tool-result belongs to the NEXT
+    // assistant message (it was generated after seeing the result).
+
+    // Build a lookup for tool-result blocks keyed by toolCallId.
+    const resultMap = new Map<string, Record<string, unknown>>();
+    for (const block of blocks) {
+      if (block.type === "tool-result" && block.toolCallId) {
+        resultMap.set(String(block.toolCallId), block);
+      }
+    }
+
+    // Walk blocks and split into steps. Each step accumulates text and
+    // tool-call parts into an assistant message. When we hit a
+    // tool-result, the preceding tool-calls (and their results) form a
+    // complete step — flush them as an assistant + tool message pair,
+    // then start a new step for any subsequent text/tool-calls.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const assistantParts: any[] = [];
+    let currentParts: any[] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toolResults: any[] = [];
+    let pendingCalls: any[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let pendingResults: any[] = [];
+
+    const flushStep = () => {
+      if (pendingCalls.length > 0 && pendingResults.length > 0) {
+        // Emit assistant message with text + tool-calls
+        coreMessages.push({
+          role: "assistant",
+          content: [...currentParts, ...pendingCalls],
+        });
+        // Emit tool message with matching results
+        coreMessages.push({ role: "tool", content: pendingResults });
+        currentParts = [];
+      }
+      pendingCalls = [];
+      pendingResults = [];
+    };
 
     for (const block of blocks) {
       if (block.type === "text") {
-        assistantParts.push({
-          type: "text",
-          text: String(block.content ?? ""),
-        });
+        const text = String(block.content ?? "");
+        if (!text) continue;
+
+        // If we have pending results, this text was generated AFTER the
+        // model saw those results — flush the previous step first.
+        if (pendingResults.length > 0) {
+          flushStep();
+        }
+
+        currentParts.push({ type: "text", text });
       } else if (block.type === "tool-call") {
-        assistantParts.push({
+        // Skip orphaned tool-calls (no matching result)
+        if (!resultMap.has(String(block.toolCallId))) continue;
+
+        // If we have pending results from a prior call, flush first —
+        // this tool-call belongs to the next step.
+        if (pendingResults.length > 0) {
+          flushStep();
+        }
+
+        pendingCalls.push({
           type: "tool-call",
           toolCallId: block.toolCallId,
           toolName: block.toolName,
-          // AI SDK v6 renamed `args` → `input`
-          input: block.args ?? block.input,
+          // AI SDK v6 renamed `args` → `input`.
+          // Default to {} for data saved while chunk.args was undefined.
+          input: block.input ?? block.args ?? {},
         });
       } else if (block.type === "tool-result") {
         const toolName = String(block.toolName ?? "tool");
@@ -734,30 +714,28 @@ function reconstructModelMessages(
           ? summarizeToolResult(toolName, block.content)
           : capResultRows(block.content);
 
-        // AI SDK v6 requires `output` with `{ type, value }` instead of
-        // a plain `result` field.
         const output =
           typeof raw === "string"
             ? { type: "text" as const, value: raw }
             : { type: "json" as const, value: raw };
 
-        toolResults.push({
+        pendingResults.push({
           type: "tool-result",
           toolCallId: block.toolCallId,
           toolName,
           output,
         });
       }
-      // Display-only blocks (vega-lite, vega, data-table) are skipped for
-      // ModelMessage reconstruction — they duplicate tool-result data.
+      // Display-only blocks (vega-lite, vega, data-table) are skipped —
+      // they duplicate tool-result data.
     }
 
-    if (assistantParts.length > 0) {
-      coreMessages.push({ role: "assistant", content: assistantParts });
-    }
+    // Flush any remaining step
+    flushStep();
 
-    if (toolResults.length > 0) {
-      coreMessages.push({ role: "tool", content: toolResults });
+    // Emit trailing text (assistant's final response after all tools)
+    if (currentParts.length > 0) {
+      coreMessages.push({ role: "assistant", content: currentParts });
     }
   }
 

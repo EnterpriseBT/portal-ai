@@ -43,11 +43,6 @@ const mockBuildAnalyticsTools = jest.fn<() => Promise<Record<string, unknown>>>(
 jest.unstable_mockModule("../../services/tools.service.js", () => ({
   ToolService: {
     buildAnalyticsTools: mockBuildAnalyticsTools,
-    selectToolPacks: jest.fn(() => ({
-      activePacks: new Set(["data_query"]),
-      needsViz: false,
-    })),
-    packsForToolNames: jest.fn(() => new Set()),
   },
 }));
 
@@ -330,17 +325,16 @@ describe("PortalService", () => {
         content: "Show me revenue",
       });
 
-      // Assistant message with text + tool-call parts (AI SDK v6: args → input)
+      // Step 1: assistant with text + tool-call
       expect(result.coreMessages[1]).toEqual({
         role: "assistant",
         content: [
           { type: "text", text: "Let me query that." },
           { type: "tool-call", toolCallId: "tc-1", toolName: "sql_query", input: { query: "SELECT *" } },
-          { type: "text", text: "Here are the results." },
         ],
       });
 
-      // Tool results message (AI SDK v6: result → output with { type, value })
+      // Step 1: tool results (AI SDK v6: result → output with { type, value })
       expect(result.coreMessages[2]).toEqual({
         role: "tool",
         content: [
@@ -350,6 +344,14 @@ describe("PortalService", () => {
             toolName: "sql_query",
             output: { type: "json", value: { rows: [{ id: 1 }] } },
           },
+        ],
+      });
+
+      // Trailing text after tool step
+      expect(result.coreMessages[3]).toEqual({
+        role: "assistant",
+        content: [
+          { type: "text", text: "Here are the results." },
         ],
       });
     });
@@ -596,7 +598,7 @@ describe("PortalService", () => {
     it("persists vega display block in assistant message", async () => {
       const vegaResult = { data: [{ values: [] }], marks: [] };
       const chunks = [
-        { type: "tool-call", toolCallId: "tc-v", toolName: "visualize_tree", args: {} },
+        { type: "tool-call", toolCallId: "tc-v", toolName: "visualize_tree", input: {} },
         { type: "tool-result", toolCallId: "tc-v", toolName: "visualize_tree", output: vegaResult },
         { type: "finish" },
       ];
@@ -716,7 +718,7 @@ describe("PortalService", () => {
     it("persists assistant message with tool-call, tool-result, and display blocks", async () => {
       const chunks = [
         { type: "text-delta", text: "Analysis: " },
-        { type: "tool-call", toolCallId: "tc-1", toolName: "visualize", args: { type: "bar" } },
+        { type: "tool-call", toolCallId: "tc-1", toolName: "visualize", input: { type: "bar" } },
         { type: "tool-result", toolCallId: "tc-1", toolName: "visualize", output: { chart: true } },
         { type: "text-delta", text: "done" },
         { type: "finish" },
@@ -737,7 +739,7 @@ describe("PortalService", () => {
           role: "assistant",
           blocks: [
             { type: "text", content: "Analysis: " },
-            { type: "tool-call", toolCallId: "tc-1", toolName: "visualize", args: { type: "bar" } },
+            { type: "tool-call", toolCallId: "tc-1", toolName: "visualize", input: { type: "bar" } },
             { type: "tool-result", toolCallId: "tc-1", toolName: "visualize", content: { chart: true } },
             { type: "vega-lite", content: { chart: true } },
             { type: "text", content: "done" },
@@ -859,7 +861,6 @@ describe("PortalService", () => {
       expect(mockBuildAnalyticsTools).toHaveBeenCalledWith(
         ORG_ID,
         STATION_ID,
-        expect.objectContaining({ activePacks: expect.any(Set) })
       );
       expect(capturedTools).toBe(tools);
     });
