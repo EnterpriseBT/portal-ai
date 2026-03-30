@@ -13,6 +13,24 @@ const mockFindByEntityGroupId = jest.fn<() => Promise<unknown[]>>();
 const mockFindById_group = jest.fn<() => Promise<unknown>>();
 const mockFindMany_entities = jest.fn<() => Promise<unknown[]>>();
 
+// Mock vega/vega-lite so data-injection tests don't require valid specs.
+// Dedicated validation tests use the real modules.
+const mockVegaParse = jest.fn<() => unknown>().mockReturnValue({});
+const mockViewRunAsync = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockViewFinalize = jest.fn<() => void>();
+
+jest.unstable_mockModule("vega", () => ({
+  parse: mockVegaParse,
+  View: class {
+    runAsync = mockViewRunAsync;
+    finalize = mockViewFinalize;
+  },
+}));
+
+jest.unstable_mockModule("vega-lite", () => ({
+  compile: jest.fn<() => unknown>().mockReturnValue({ spec: {} }),
+}));
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
@@ -39,6 +57,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
 }));
 
 const { AnalyticsService } = await import("../../services/analytics.service.js");
+
+type VegaLiteSpecInput = import("../../tools/visualize.tool.js").VegaLiteSpecInput;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -367,16 +387,184 @@ describe("AnalyticsService", () => {
         $schema: "https://vega.github.io/schema/vega-lite/v5.json",
         mark: "bar",
         encoding: { x: { field: "name" }, y: { field: "amount" } },
-      };
+      } as unknown as VegaLiteSpecInput;
 
-      const result = AnalyticsService.visualize({
+      const result = await AnalyticsService.visualize({
         sql: "SELECT * FROM [products]",
         vegaLiteSpec: spec,
         stationId: STATION_ID,
       });
 
-      expect(result.mark).toBe("bar");
-      expect((result.data as any).values).toHaveLength(2);
+      expect((result as any).mark).toBe("bar");
+      expect((result.data as { values: unknown[] }).values).toHaveLength(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // visualizeVega
+  // -----------------------------------------------------------------------
+
+  describe("visualizeVega()", () => {
+    it("should inject SQL results into data[0].values of a Vega spec", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const spec = {
+        $schema: "https://vega.github.io/schema/vega/v5.json",
+        data: [{ name: "table" }],
+        marks: [{ type: "rect" }],
+      };
+
+      const result = await AnalyticsService.visualizeVega({
+        sql: "SELECT * FROM [products]",
+        vegaSpec: spec,
+        stationId: STATION_ID,
+      });
+
+      expect((result.data as unknown as Record<string, unknown>[])[0].values).toHaveLength(2);
+      expect((result.data as unknown as Record<string, unknown>[])[0].name).toBe("table");
+      expect(result.marks).toEqual([{ type: "rect" }]);
+    });
+
+    it("should handle specs with no existing data array", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const spec = {
+        $schema: "https://vega.github.io/schema/vega/v5.json",
+        marks: [{ type: "arc" }],
+      };
+
+      const result = await AnalyticsService.visualizeVega({
+        sql: "SELECT * FROM [products]",
+        vegaSpec: spec,
+        stationId: STATION_ID,
+      });
+
+      expect(Array.isArray(result.data)).toBe(true);
+      expect((result.data as unknown as Record<string, unknown>[])[0].values).toHaveLength(2);
+    });
+
+    it("should preserve non-first data entries", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const spec = {
+        data: [
+          { name: "table" },
+          { name: "links", values: [{ source: "a", target: "b" }] },
+        ],
+        marks: [],
+      };
+
+      const result = await AnalyticsService.visualizeVega({
+        sql: "SELECT * FROM [products]",
+        vegaSpec: spec,
+        stationId: STATION_ID,
+      });
+
+      const data = result.data as unknown as Record<string, unknown>[];
+      expect(data).toHaveLength(2);
+      expect(data[1]).toEqual({ name: "links", values: [{ source: "a", target: "b" }] });
+    });
+
+    it("should create a missing base dataset when data[0] has a source reference", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const spec = {
+        $schema: "https://vega.github.io/schema/vega/v5.json",
+        data: [
+          { name: "node-data", source: "table", transform: [{ type: "filter", expr: "datum.type === 'node'" }] },
+          { name: "link-data", source: "table", transform: [{ type: "filter", expr: "datum.type === 'edge'" }] },
+        ],
+        marks: [],
+      };
+
+      const result = await AnalyticsService.visualizeVega({
+        sql: "SELECT * FROM [products]",
+        vegaSpec: spec,
+        stationId: STATION_ID,
+      });
+
+      const data = result.data as unknown as Record<string, unknown>[];
+      // Should have prepended the "table" base dataset
+      expect(data).toHaveLength(3);
+      expect(data[0].name).toBe("table");
+      expect(data[0].values).toHaveLength(2);
+      // Original datasets preserved after the new base dataset
+      expect(data[1].name).toBe("node-data");
+      expect(data[1].source).toBe("table");
+      expect(data[2].name).toBe("link-data");
+      expect(data[2].source).toBe("table");
+    });
+
+    it("should inject into an existing source dataset when it is already defined", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const spec = {
+        data: [
+          { name: "raw", values: [] },
+          { name: "filtered", source: "raw", transform: [{ type: "filter", expr: "true" }] },
+        ],
+        marks: [],
+      };
+
+      const result = await AnalyticsService.visualizeVega({
+        sql: "SELECT * FROM [products]",
+        vegaSpec: spec,
+        stationId: STATION_ID,
+      });
+
+      const data = result.data as unknown as Record<string, unknown>[];
+      // data[0] has no source field, so values injected directly (fallback path)
+      expect(data).toHaveLength(2);
+      expect(data[0].name).toBe("raw");
+      expect(data[0].values).toHaveLength(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Vega spec validation
+  // -----------------------------------------------------------------------
+
+  describe("visualize() validation", () => {
+    it("should throw when vega-lite compile fails", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      const { compile } = await import("vega-lite");
+      (compile as jest.Mock).mockImplementationOnce(() => {
+        throw new Error("Unknown mark type");
+      });
+
+      await expect(
+        AnalyticsService.visualize({
+          sql: "SELECT * FROM [products]",
+          vegaLiteSpec: { mark: "invalid" } as unknown as VegaLiteSpecInput,
+          stationId: STATION_ID,
+        })
+      ).rejects.toThrow("Invalid Vega-Lite spec: Unknown mark type");
+    });
+  });
+
+  describe("visualizeVega() validation", () => {
+    it("should throw when vega view fails", async () => {
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+
+      mockViewRunAsync.mockRejectedValueOnce(
+        new Error("Cannot read properties of undefined")
+      );
+
+      await expect(
+        AnalyticsService.visualizeVega({
+          sql: "SELECT * FROM [products]",
+          vegaSpec: { data: [{ name: "table" }], marks: [{ type: "bad" }] } as Record<string, unknown>,
+          stationId: STATION_ID,
+        })
+      ).rejects.toThrow("Invalid Vega spec: Cannot read properties of undefined");
     });
   });
 
@@ -529,7 +717,7 @@ describe("AnalyticsService", () => {
 
       expect(result.indices).toContain(15); // the outlier is at index 15
       expect(result.outliers.length).toBeGreaterThan(0);
-      expect((result.outliers[0] as any).x).toBe(100);
+      expect((result.outliers[0] as Record<string, unknown>).x).toBe(100);
     });
 
     it("should detect outliers using Z-score method", () => {
@@ -756,7 +944,8 @@ describe("AnalyticsService", () => {
           records: NUMERIC_RECORDS,
           dateColumn: "date",
           valueColumn: "val",
-          indicator: "INVALID" as any,
+          // @ts-expect-error testing unsupported indicator
+          indicator: "INVALID",
         })
       ).toThrow("Unsupported indicator");
     });

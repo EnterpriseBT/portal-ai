@@ -1,8 +1,10 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 // Mock the AWS SDK modules before importing S3Service
-const mockSend = jest.fn();
-const mockGetSignedUrl = jest.fn<() => Promise<string>>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockSend = jest.fn<any>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockGetSignedUrl = jest.fn<any>();
 
 jest.unstable_mockModule("@aws-sdk/client-s3", () => ({
   S3Client: jest.fn().mockImplementation(() => ({ send: mockSend })),

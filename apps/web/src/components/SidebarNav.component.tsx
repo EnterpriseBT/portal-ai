@@ -154,6 +154,12 @@ export const SidebarNav = () => {
         onClick={() => handleClick(ApplicationRoute.Dashboard)}
       />
       <SidebarNavItem
+        icon={IconName.RocketLaunch}
+        label="Stations"
+        selected={pathname.startsWith(ApplicationRoute.Stations)}
+        onClick={() => handleClick(ApplicationRoute.Stations)}
+      />
+      <SidebarNavItem
         icon={IconName.MemoryChip}
         label="Connectors"
         selected={pathname === ApplicationRoute.Connectors}
@@ -188,12 +194,6 @@ export const SidebarNav = () => {
         label="Jobs"
         selected={pathname.startsWith(ApplicationRoute.Jobs)}
         onClick={() => handleClick(ApplicationRoute.Jobs)}
-      />
-      <SidebarNavItem
-        icon={IconName.RocketLaunch}
-        label="Stations"
-        selected={pathname.startsWith(ApplicationRoute.Stations)}
-        onClick={() => handleClick(ApplicationRoute.Stations)}
       />
       <SidebarNavItem
         icon={IconName.PushPin}

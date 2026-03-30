@@ -15,14 +15,16 @@ import type { DeltaEvent, ToolResultEvent, DoneEvent } from "@portalai/core/cont
 import { AiService } from "./ai.service.js";
 import {
   AnalyticsService,
-  type EntitySchema,
-  type EntityGroupContext,
   type StationData,
 } from "./analytics.service.js";
-import { buildAnalyticsTools } from "./analytics.tools.js";
+import { ToolService } from "./tools.service.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import {
+  buildSystemPrompt,
+  type StationContext,
+} from "../prompts/system.prompt.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -34,12 +36,7 @@ const logger = createLogger({ module: "portal-service" });
 // Types
 // ---------------------------------------------------------------------------
 
-export interface StationContext {
-  stationId: string;
-  stationName: string;
-  entities: EntitySchema[];
-  entityGroups: EntityGroupContext[];
-}
+export type { StationContext };
 
 export interface CreatePortalResult {
   portalId: string;
@@ -59,6 +56,117 @@ export interface PortalWithMessages {
 
 /** Tools whose results contain row sets and should be surfaced as data-table blocks. */
 const ROW_SET_TOOLS = new Set(["sql_query", "detect_outliers", "cluster"]);
+
+// ---------------------------------------------------------------------------
+// Stream chunk handlers
+// ---------------------------------------------------------------------------
+
+interface StreamContext {
+  assistantBlocks: Record<string, unknown>[];
+  sse: SseUtil;
+  currentText: string;
+}
+
+/** Handle a text-delta chunk: accumulate text and send SSE. */
+function handleTextDelta(
+  ctx: StreamContext,
+  text: string
+): void {
+  ctx.currentText += text;
+  const event: DeltaEvent = { type: "delta", content: text };
+  ctx.sse.send("delta", event);
+}
+
+/** Handle a tool-call chunk: flush text, persist tool-call block. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function handleToolCall(ctx: StreamContext, chunk: any): void {
+  if (ctx.currentText) {
+    ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
+    ctx.currentText = "";
+  }
+
+  ctx.assistantBlocks.push({
+    type: "tool-call",
+    toolCallId: chunk.toolCallId,
+    toolName: chunk.toolName,
+    // AI SDK v6 renamed `args` → `input`
+    input: chunk.input ?? chunk.args,
+  });
+}
+
+/**
+ * Handle a tool-result chunk: persist the raw tool-result block for
+ * ModelMessage reconstruction, then detect display block types and
+ * emit SSE events + display blocks as needed.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function handleToolResult(ctx: StreamContext, chunk: any): void {
+  const toolResult = chunk.output as Record<string, unknown>;
+  const toolName = chunk.toolName as string;
+  const toolCallId = chunk.toolCallId as string | undefined;
+
+  // Persist tool-result part for ModelMessage[] reconstruction
+  ctx.assistantBlocks.push({
+    type: "tool-result",
+    toolCallId,
+    toolName,
+    content: toolResult,
+  });
+
+  const displayBlock = resolveDisplayBlock(toolName, toolResult);
+  if (displayBlock) {
+    const event: ToolResultEvent = {
+      type: "tool_result",
+      toolName,
+      result: displayBlock.sseResult ?? toolResult,
+    };
+    ctx.sse.send("tool_result", event);
+    ctx.assistantBlocks.push(displayBlock.block);
+  }
+}
+
+/**
+ * Determine if a tool result should produce a display block for inline
+ * rendering. Returns null for scalar/non-display results.
+ */
+function resolveDisplayBlock(
+  toolName: string,
+  toolResult: Record<string, unknown> | null
+): {
+  block: Record<string, unknown>;
+  sseResult?: Record<string, unknown>;
+} | null {
+  const isVegaLite =
+    toolName === "visualize" ||
+    (toolResult != null && toolResult.type === "vega-lite");
+  if (isVegaLite) {
+    return { block: { type: "vega-lite", content: toolResult } };
+  }
+
+  const isVega =
+    toolName === "visualize_tree" ||
+    (toolResult != null && toolResult.type === "vega");
+  if (isVega) {
+    return { block: { type: "vega", content: toolResult } };
+  }
+
+  if (ROW_SET_TOOLS.has(toolName)) {
+    const rows = Array.isArray(toolResult)
+      ? (toolResult as Record<string, unknown>[])
+      : Array.isArray(toolResult?.rows)
+        ? (toolResult!.rows as Record<string, unknown>[])
+        : [];
+    const columns =
+      rows.length > 0 ? Object.keys(rows[0] as object) : [];
+    const dataTableContent = { type: "data-table" as const, columns, rows };
+    return {
+      block: { type: "data-table" as const, content: dataTableContent },
+      sseResult: dataTableContent,
+    };
+  }
+
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // In-memory station data cache (keyed by portalId)
@@ -139,6 +247,7 @@ export class PortalService {
       stationName: station.name,
       entities: stationData.entities,
       entityGroups: stationData.entityGroups,
+      toolPacks,
     };
 
     logger.info({ portalId: portal.id, stationId }, "Portal created");
@@ -286,107 +395,83 @@ export class PortalService {
     sse: SseUtil;
   }): Promise<void> {
     const systemPrompt = buildSystemPrompt(stationContext);
-    const analyticsTools = await buildAnalyticsTools(
+
+    const analyticsTools = await ToolService.buildAnalyticsTools(
       organizationId,
-      stationContext.stationId
+      stationContext.stationId,
     );
 
+    // streamText() is lazy in AI SDK v6 — it returns immediately and
+    // errors surface during fullStream iteration or as "error" chunks.
     const result = streamText({
       model: AiService.providers.anthropic(AiService.DEFAULT_MODEL),
       system: systemPrompt,
       messages,
       tools: analyticsTools,
       stopWhen: stepCountIs(10),
+      maxRetries: 3,
     });
 
     // Accumulate assistant content blocks (full ModelMessage[] parts)
-    const assistantBlocks: Record<string, unknown>[] = [];
-    let currentText = "";
+    const ctx: StreamContext = {
+      assistantBlocks: [],
+      sse,
+      currentText: "",
+    };
 
-    for await (const chunk of result.fullStream) {
-      if (chunk.type === "text-delta") {
-        currentText += chunk.text;
-        const event: DeltaEvent = { type: "delta", content: chunk.text };
-        sse.send("delta", event);
-      } else if (chunk.type === "tool-call") {
-        // Flush any accumulated text into a block before the tool call
-        if (currentText) {
-          assistantBlocks.push({ type: "text", content: currentText });
-          currentText = "";
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolCall = chunk as any;
-        // Persist tool-call part for ModelMessage[] reconstruction
-        assistantBlocks.push({
-          type: "tool-call",
-          toolCallId: toolCall.toolCallId,
-          toolName: toolCall.toolName,
-          args: toolCall.args,
-        });
-      } else if (chunk.type === "tool-result") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolResult = (chunk as any).output as Record<string, unknown>;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolName = (chunk as any).toolName as string;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolCallId = (chunk as any).toolCallId as string | undefined;
-
-        // Persist tool-result part for ModelMessage[] reconstruction
-        assistantBlocks.push({
-          type: "tool-result",
-          toolCallId,
-          toolName,
-          content: toolResult,
-        });
-
-        const isVegaLite =
-          toolName === "visualize" ||
-          (toolResult != null && toolResult.type === "vega-lite");
-
-        if (isVegaLite) {
-          const event: ToolResultEvent = {
-            type: "tool_result",
-            toolName,
-            result: toolResult,
-          };
-          sse.send("tool_result", event);
-          assistantBlocks.push({ type: "vega-lite", content: toolResult });
-        } else if (ROW_SET_TOOLS.has(toolName)) {
-          // Row-set tools emit a data-table SSE event for inline rendering
-          const rows = Array.isArray(toolResult?.rows)
-            ? (toolResult.rows as Record<string, unknown>[])
-            : [];
-          const columns =
-            rows.length > 0 ? Object.keys(rows[0] as object) : [];
-
-          const dataTableBlock = {
-            type: "data-table" as const,
-            columns,
-            rows,
-          };
-
-          const event: ToolResultEvent = {
-            type: "tool_result",
-            toolName,
-            result: dataTableBlock,
-          };
-          sse.send("tool_result", event);
-          assistantBlocks.push(dataTableBlock);
-        }
-      } else if (chunk.type === "finish") {
-        // Flush remaining text on finish
-        if (currentText) {
-          assistantBlocks.push({ type: "text", content: currentText });
-          currentText = "";
+    try {
+      for await (const chunk of result.fullStream) {
+        if (chunk.type === "text-delta") {
+          handleTextDelta(ctx, chunk.text);
+        } else if (chunk.type === "tool-call") {
+          handleToolCall(ctx, chunk);
+        } else if (chunk.type === "tool-result") {
+          handleToolResult(ctx, chunk);
+        } else if (chunk.type === "error") {
+          // AI SDK v6 emits error chunks instead of always throwing.
+          // Surface the error to the client and abort the stream.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const err = (chunk as any).error;
+          const message =
+            err instanceof Error ? err.message : String(err ?? "Unknown AI error");
+          logger.error({ portalId, error: message }, "AI stream error chunk");
+          sse.sendError(message);
+          return;
+        } else if (chunk.type === "finish") {
+          if (ctx.currentText) {
+            ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
+            ctx.currentText = "";
+          }
         }
       }
+    } catch (error) {
+      // Thrown errors (e.g. network failures, validation) also land here.
+      const message =
+        error instanceof Error ? error.message : "An error occurred during streaming";
+      logger.error(
+        { portalId, error: message },
+        "AI stream error"
+      );
+      sse.sendError(message);
+      return;
     }
 
     // Final flush in case stream ended without a finish event
-    if (currentText) {
-      assistantBlocks.push({ type: "text", content: currentText });
+    if (ctx.currentText) {
+      ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
     }
+
+    // Strip orphaned tool-call blocks that have no matching tool-result.
+    // This can happen when the step limit (stopWhen) is reached after the
+    // model emits tool-call chunks but before the SDK executes those tools.
+    const resultIds = new Set(
+      ctx.assistantBlocks
+        .filter((b) => b.type === "tool-result")
+        .map((b) => b.toolCallId)
+    );
+    const assistantBlocks = ctx.assistantBlocks.filter(
+      (b) => b.type !== "tool-call" || resultIds.has(b.toolCallId)
+    );
 
     // Persist the assistant message
     const repo = DbService.repository;
@@ -429,19 +514,116 @@ export class PortalService {
 // ---------------------------------------------------------------------------
 
 /**
+ * Number of most-recent assistant messages whose tool results are preserved
+ * (with row capping). Older tool results are replaced with a compact summary.
+ */
+const RECENT_TURNS_FULL_RESULTS = 2;
+
+/**
+ * Maximum rows kept in a tool result even for recent turns. Results
+ * exceeding this limit are capped with a note so the model knows more
+ * data exists.
+ */
+const MAX_RESULT_ROWS = 50;
+
+/**
+ * Extract rows from a tool result regardless of shape.
+ * Returns the array of rows and a reference to the parent object (if wrapped).
+ */
+function extractRows(
+  content: unknown
+): { rows: Record<string, unknown>[]; isWrapped: boolean } {
+  if (Array.isArray(content)) {
+    return { rows: content as Record<string, unknown>[], isWrapped: false };
+  }
+  if (content != null && typeof content === "object") {
+    const obj = content as Record<string, unknown>;
+    if (Array.isArray(obj.rows)) {
+      return { rows: obj.rows as Record<string, unknown>[], isWrapped: true };
+    }
+  }
+  return { rows: [], isWrapped: false };
+}
+
+/**
+ * Cap the number of rows in a tool result. Returns the content unchanged if
+ * there are no rows or the count is within limits.
+ */
+function capResultRows(content: unknown): unknown {
+  const { rows, isWrapped } = extractRows(content);
+  if (rows.length <= MAX_RESULT_ROWS) return content;
+
+  const capped = rows.slice(0, MAX_RESULT_ROWS);
+  const note = `[Showing ${MAX_RESULT_ROWS} of ${rows.length} rows]`;
+
+  if (isWrapped) {
+    return { ...(content as Record<string, unknown>), rows: capped, _truncated: note };
+  }
+  // Append a sentinel row so the model sees the note
+  return [...capped, { _truncated: note }];
+}
+
+/**
+ * Build a compact placeholder for a truncated tool result so the model
+ * retains awareness that the tool was called without the full payload.
+ * Includes column names and a sample row for context.
+ */
+function summarizeToolResult(
+  toolName: string,
+  content: unknown
+): string {
+  const { rows } = extractRows(content);
+
+  if (rows.length === 0) {
+    return `[Previous ${toolName} result — truncated]`;
+  }
+
+  const columns = Object.keys(rows[0] as object);
+  const sample = rows[0];
+  const sampleStr = columns
+    .slice(0, 5)
+    .map((c) => `${c}: ${JSON.stringify((sample as Record<string, unknown>)[c])}`)
+    .join(", ");
+  const colExtra = columns.length > 5 ? `, +${columns.length - 5} more` : "";
+
+  return (
+    `[Previous ${toolName} result: ${rows.length} rows, ` +
+    `columns: [${columns.slice(0, 8).join(", ")}${colExtra}], ` +
+    `sample: {${sampleStr}} — truncated]`
+  );
+}
+
+/**
  * Reconstruct the full Vercel AI SDK `ModelMessage[]` array from persisted
  * portal message rows. User messages become `{ role: "user", content }`.
  * Assistant messages are walked block-by-block: text parts become assistant
  * content, tool-call parts become `tool-call` content, and tool-result blocks
  * are grouped into a single `{ role: "tool", content: [...] }` message.
+ *
+ * To prevent unbounded prompt growth, tool-result payloads older than the
+ * most recent {@link RECENT_TURNS_FULL_RESULTS} assistant messages are
+ * replaced with a short summary string.
  */
 function reconstructModelMessages(
   messages: PortalMessageSelect[]
 ): ModelMessage[] {
+  // Determine the cutoff: only assistant messages within the last N keep
+  // full tool-result payloads.
+  const assistantIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role === "assistant") assistantIndices.push(i);
+  }
+  const cutoff =
+    assistantIndices.length > RECENT_TURNS_FULL_RESULTS
+      ? assistantIndices[assistantIndices.length - RECENT_TURNS_FULL_RESULTS]
+      : -1;
+
   const coreMessages: ModelMessage[] = [];
 
-  for (const msg of messages) {
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
     const blocks = (msg.blocks ?? []) as Record<string, unknown>[];
+    const truncateResults = i < cutoff;
 
     if (msg.role === "user") {
       // User turns: extract text content from the first text block
@@ -453,95 +635,110 @@ function reconstructModelMessages(
       continue;
     }
 
-    // Assistant turns: split into assistant content parts + tool results
+    // Assistant turns: split into alternating assistant → tool message
+    // pairs. A single persisted assistant row may contain multiple agentic
+    // steps (text → tool-call → tool-result → text → tool-call → …).
+    // The Anthropic API requires each tool-call batch to be in its own
+    // assistant message, immediately followed by a tool message with the
+    // matching results. Text after a tool-result belongs to the NEXT
+    // assistant message (it was generated after seeing the result).
+
+    // Build a lookup for tool-result blocks keyed by toolCallId.
+    const resultMap = new Map<string, Record<string, unknown>>();
+    for (const block of blocks) {
+      if (block.type === "tool-result" && block.toolCallId) {
+        resultMap.set(String(block.toolCallId), block);
+      }
+    }
+
+    // Walk blocks and split into steps. Each step accumulates text and
+    // tool-call parts into an assistant message. When we hit a
+    // tool-result, the preceding tool-calls (and their results) form a
+    // complete step — flush them as an assistant + tool message pair,
+    // then start a new step for any subsequent text/tool-calls.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const assistantParts: any[] = [];
+    let currentParts: any[] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toolResults: any[] = [];
+    let pendingCalls: any[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let pendingResults: any[] = [];
+
+    const flushStep = () => {
+      if (pendingCalls.length > 0 && pendingResults.length > 0) {
+        // Emit assistant message with text + tool-calls
+        coreMessages.push({
+          role: "assistant",
+          content: [...currentParts, ...pendingCalls],
+        });
+        // Emit tool message with matching results
+        coreMessages.push({ role: "tool", content: pendingResults });
+        currentParts = [];
+      }
+      pendingCalls = [];
+      pendingResults = [];
+    };
 
     for (const block of blocks) {
       if (block.type === "text") {
-        assistantParts.push({
-          type: "text",
-          text: String(block.content ?? ""),
-        });
+        const text = String(block.content ?? "");
+        if (!text) continue;
+
+        // If we have pending results, this text was generated AFTER the
+        // model saw those results — flush the previous step first.
+        if (pendingResults.length > 0) {
+          flushStep();
+        }
+
+        currentParts.push({ type: "text", text });
       } else if (block.type === "tool-call") {
-        assistantParts.push({
+        // Skip orphaned tool-calls (no matching result)
+        if (!resultMap.has(String(block.toolCallId))) continue;
+
+        // If we have pending results from a prior call, flush first —
+        // this tool-call belongs to the next step.
+        if (pendingResults.length > 0) {
+          flushStep();
+        }
+
+        pendingCalls.push({
           type: "tool-call",
           toolCallId: block.toolCallId,
           toolName: block.toolName,
-          args: block.args,
+          // AI SDK v6 renamed `args` → `input`.
+          // Default to {} for data saved while chunk.args was undefined.
+          input: block.input ?? block.args ?? {},
         });
       } else if (block.type === "tool-result") {
-        toolResults.push({
+        const toolName = String(block.toolName ?? "tool");
+        const raw = truncateResults
+          ? summarizeToolResult(toolName, block.content)
+          : capResultRows(block.content);
+
+        const output =
+          typeof raw === "string"
+            ? { type: "text" as const, value: raw }
+            : { type: "json" as const, value: raw };
+
+        pendingResults.push({
           type: "tool-result",
           toolCallId: block.toolCallId,
-          toolName: block.toolName,
-          result: block.content,
+          toolName,
+          output,
         });
       }
-      // Display-only blocks (vega-lite, data-table) are skipped for
-      // ModelMessage reconstruction — they duplicate tool-result data.
+      // Display-only blocks (vega-lite, vega, data-table) are skipped —
+      // they duplicate tool-result data.
     }
 
-    if (assistantParts.length > 0) {
-      coreMessages.push({ role: "assistant", content: assistantParts });
-    }
+    // Flush any remaining step
+    flushStep();
 
-    if (toolResults.length > 0) {
-      coreMessages.push({ role: "tool", content: toolResults });
+    // Emit trailing text (assistant's final response after all tools)
+    if (currentParts.length > 0) {
+      coreMessages.push({ role: "assistant", content: currentParts });
     }
   }
 
   return coreMessages;
 }
 
-// ---------------------------------------------------------------------------
-// System prompt builder
-// ---------------------------------------------------------------------------
-
-/**
- * Build the Claude system prompt from station name, entity schemas, and
- * entity group relationship metadata.
- */
-function buildSystemPrompt(stationContext: StationContext): string {
-  const lines: string[] = [
-    `You are an analytics assistant for the "${stationContext.stationName}" station.`,
-    "",
-    "## Available Data",
-    "",
-  ];
-
-  for (const entity of stationContext.entities) {
-    lines.push(`### ${entity.label} (\`${entity.key}\`)`);
-    lines.push("Columns:");
-    for (const col of entity.columns) {
-      lines.push(`  - \`${col.key}\` (${col.type}): ${col.label}`);
-    }
-    lines.push("");
-  }
-
-  if (stationContext.entityGroups.length > 0) {
-    lines.push("## Cross-Entity Relationships");
-    lines.push("");
-    lines.push(
-      "Use the specified link columns when joining across member entities. " +
-      "Prefer data from the primary entity when displaying a unified view."
-    );
-    lines.push("");
-
-    for (const group of stationContext.entityGroups) {
-      lines.push(`### ${group.name}`);
-      lines.push("Members:");
-      for (const member of group.members) {
-        const primaryFlag = member.isPrimary ? " [primary]" : "";
-        lines.push(
-          `  - \`${member.entityKey}\` — link column: \`${member.linkColumnKey}\` (${member.linkColumnLabel})${primaryFlag}`
-        );
-      }
-      lines.push("");
-    }
-  }
-
-  return lines.join("\n");
-}

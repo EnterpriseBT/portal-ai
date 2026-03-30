@@ -1,0 +1,1 @@
+ALTER TYPE "public"."portal_result_type" ADD VALUE 'd3-tree' BEFORE 'data-table';

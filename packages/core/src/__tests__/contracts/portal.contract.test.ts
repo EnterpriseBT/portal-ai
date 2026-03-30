@@ -3,6 +3,8 @@ import {
   SendMessageBodySchema,
   PinResultBodySchema,
   PortalMessageResponseSchema,
+  PortalBlockTypeSchema,
+  PINNABLE_BLOCK_TYPES,
   DeltaEventSchema,
   ToolResultEventSchema,
   DoneEventSchema,
@@ -137,6 +139,24 @@ describe("PortalMessageResponseSchema", () => {
       role: "system",
     });
     expect(result.success).toBe(false);
+  });
+});
+
+// ── PortalBlockTypeSchema ────────────────────────────────────────────
+
+describe("PortalBlockTypeSchema", () => {
+  it("should accept \"vega\" as a valid block type", () => {
+    const result = PortalBlockTypeSchema.safeParse("vega");
+    expect(result.success).toBe(true);
+  });
+
+});
+
+// ── PINNABLE_BLOCK_TYPES ────────────────────────────────────────────
+
+describe("PINNABLE_BLOCK_TYPES", () => {
+  it("should contain \"vega\"", () => {
+    expect(PINNABLE_BLOCK_TYPES.has("vega")).toBe(true);
   });
 });
 

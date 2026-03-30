@@ -190,6 +190,20 @@
       "when": 1774571151909,
       "tag": "0026_add_data_table_portal_result_type",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1774645314894,
+      "tag": "0027_add-vega-portal-result-type",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1774646489134,
+      "tag": "0028_add-d3-tree-portal-result-type",
+      "breakpoints": true
     }
   ]
 }

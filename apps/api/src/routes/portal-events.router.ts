@@ -1,6 +1,4 @@
 import { Router, Request, Response, NextFunction } from "express";
-import type { ModelMessage } from "ai";
-
 import { createLogger } from "../utils/logger.util.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
@@ -73,11 +71,13 @@ portalEventsRouter.get(
   "/:portalId/stream",
   sseAuth,
   async (req: Request, res: Response, next: NextFunction) => {
+    let sse: SseUtil | null = null;
+
     try {
       const { portalId } = req.params;
 
       // Load portal and verify it exists
-      const { portal, messages: dbMessages } =
+      const { portal, coreMessages } =
         await PortalService.getPortal(portalId);
 
       // Load station data (re-populates in-memory AlaSQL tables)
@@ -95,40 +95,50 @@ portalEventsRouter.get(
         portal.organizationId
       );
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolPacks = ((station as any).toolPacks as string[]) ?? [];
+
       const stationContext: StationContext = {
         stationId: station.id,
         stationName: station.name,
         entities: stationData.entities,
         entityGroups: stationData.entityGroups,
+        toolPacks,
       };
 
-      // Convert DB messages to AI SDK ModelMessage format
-      const aiMessages: ModelMessage[] = dbMessages.map((msg) => {
-        const blocks = msg.blocks as Array<{ type: string; content: unknown }>;
-        const textContent = blocks
-          .filter((b) => b.type === "text")
-          .map((b) => String(b.content))
-          .join("");
-        return {
-          role: msg.role as "user" | "assistant",
-          content: textContent || " ",
-        };
-      });
-
-      const sse = new SseUtil(res);
+      sse = new SseUtil(res);
 
       await PortalService.streamResponse({
         portalId,
-        messages: aiMessages,
+        messages: coreMessages,
         stationContext,
         organizationId: portal.organizationId,
         sse,
       });
+
+      // Close the SSE connection after the stream completes so the
+      // browser's EventSource does not auto-reconnect and trigger
+      // duplicate Anthropic API calls.
+      sse.end();
     } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Failed to stream portal response";
+
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown" },
         "Failed to stream portal response"
       );
+
+      // If SSE headers have already been sent, propagate the error over the
+      // event stream so the client can display it. Otherwise fall through to
+      // the Express error handler.
+      if (sse) {
+        sse.sendError(message);
+        return;
+      }
+
       return next(
         error instanceof ApiError
           ? error

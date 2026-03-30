@@ -8,6 +8,7 @@ jest.unstable_mockModule("react-markdown", () => ({
 
 jest.unstable_mockModule("react-vega", () => ({
   VegaLite: () => <div data-testid="vega-lite-chart" />,
+  Vega: () => <div data-testid="vega-chart" />,
 }));
 
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
@@ -35,6 +36,11 @@ describe("ContentBlockRenderer", () => {
   it("renders vega-lite block via VegaLite", async () => {
     render(<ContentBlockRenderer block={{ type: "vega-lite", content: { mark: "bar" } }} />);
     expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
+  });
+
+  it("renders vega block via Vega", async () => {
+    render(<ContentBlockRenderer block={{ type: "vega", content: { data: [], marks: [] } }} />);
+    expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
   });
 
   it("renders data-table block via DataTableBlock", () => {

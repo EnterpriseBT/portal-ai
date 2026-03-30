@@ -155,17 +155,8 @@ portalResultsRouter.post(
       }
       const type = blockType as PortalResultType;
 
-      let content: Record<string, unknown>;
-      if (block.type === "data-table") {
-        content = { columns: block.columns, rows: block.rows };
-      } else if (
-        typeof block.content === "object" &&
-        block.content !== null
-      ) {
-        content = block.content as Record<string, unknown>;
-      } else {
-        content = { value: block.content };
-      }
+      // All display blocks from resolveDisplayBlock follow { type, content }.
+      const content = block.content as Record<string, unknown>;
 
       const now = new DateFactory('UTC').now().getTime()
       const portalResult = await DbService.repository.portalResults.create({

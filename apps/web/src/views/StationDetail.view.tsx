@@ -21,7 +21,6 @@ import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-
 import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
@@ -192,7 +191,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                               {station.description}
                             </Typography>
                           )}
-                          <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                          <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
                             {station.toolPacks.map((pack) => (
                               <Chip
                                 key={pack}
@@ -204,7 +203,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                             ))}
                           </Stack>
                           {(station.instances ?? []).length > 0 && (
-                            <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
                               {station.instances!.map((inst) => (
                                 <Chip
                                   key={inst.id}

@@ -49,6 +49,7 @@ jest.unstable_mockModule("react-markdown", () => ({
 
 jest.unstable_mockModule("react-vega", () => ({
   VegaLite: () => <div data-testid="vega-lite-chart" />,
+  Vega: () => <div data-testid="vega-chart" />,
 }));
 
 jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
@@ -105,6 +106,7 @@ describe("PortalSessionUI", () => {
     portalId: "portal-1",
     messages: [],
     streamingBlocks: null,
+    streamError: null,
     inputValue: "",
     onInputChange: jest.fn(),
     onSubmit: jest.fn(),
@@ -161,6 +163,20 @@ describe("PortalSessionUI", () => {
     expect(screen.getByText("id")).toBeInTheDocument();
     expect(screen.getByText("value")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
+  });
+
+  it("renders vega streaming blocks inline", async () => {
+    const vegaBlock = {
+      type: "vega",
+      content: { data: [{ values: [] }], marks: [] },
+    };
+    render(
+      <PortalSessionUI
+        {...defaultProps}
+        streamingBlocks={[vegaBlock]}
+      />
+    );
+    expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
   });
 
   it("calls onSubmit when submit button clicked", () => {

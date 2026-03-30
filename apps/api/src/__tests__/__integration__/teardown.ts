@@ -1,11 +1,14 @@
 /**
  * Global teardown for integration tests.
  *
- * The postgres-test container from docker-compose remains running.
- * This just logs completion.
+ * Closes the module-level database connection pool so Jest can exit
+ * cleanly without forceExit. The tsx/esm loader is registered via
+ * --import in NODE_OPTIONS, enabling .js → .ts resolution here.
  */
 
+import { closeDatabase } from "../../db/client.js";
+
 export default async function globalTeardown() {
+  await closeDatabase();
   console.log("✅ Integration tests completed");
-  // The postgres-test container keeps running for subsequent test runs
 }

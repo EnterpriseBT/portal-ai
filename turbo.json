@@ -40,7 +40,8 @@
     "test:integration": {
       "dependsOn": ["^build"],
       "outputs": ["coverage-integration/**"],
-      "cache": false
+      "cache": false,
+      "env": ["INTEGRATION_TEST_DATABASE_URL", "REDIS_URL"]
     },
     "storybook": {
       "cache": false,
