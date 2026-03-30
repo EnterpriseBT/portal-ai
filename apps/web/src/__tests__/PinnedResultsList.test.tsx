@@ -11,6 +11,8 @@ const makePinnedResult = (overrides: Partial<PortalResult> = {}): PortalResult =
   organizationId: "org-1",
   stationId: "station-1",
   portalId: "portal-1",
+  messageId: null,
+  blockIndex: null,
   name: "Revenue Summary",
   type: "text",
   content: { text: "Total revenue: $1.2M" },
@@ -47,7 +49,7 @@ describe("PinnedResultCardUI", () => {
   it("should render result name and relative timestamp", () => {
     render(<PinnedResultCardUI {...defaultCardProps} />);
     expect(screen.getByText("Revenue Summary")).toBeInTheDocument();
-    expect(screen.getByText("1h ago")).toBeInTheDocument();
+    expect(screen.getAllByText("1h ago").length).toBeGreaterThan(0);
   });
 
   it("should call onResultClick with result id when card is clicked", () => {

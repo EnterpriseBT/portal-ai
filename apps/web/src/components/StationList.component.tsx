@@ -66,7 +66,7 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   <Card variant="outlined">
     <Stack
       direction={{ xs: "column", sm: "row" }}
-      alignItems={{ xs: "flex-start", sm: "center" }}
+      alignItems={{ xs: "flex-end", sm: "center" }}
     >
       <CardActionArea
         onClick={() => onOpen(station)}

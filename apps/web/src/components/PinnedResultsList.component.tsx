@@ -11,7 +11,7 @@ import Tooltip from "@mui/material/Tooltip";
 import TextSnippetOutlinedIcon from "@mui/icons-material/TextSnippetOutlined";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
-import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
+import PushPinIcon from "@mui/icons-material/PushPin";
 
 import DataResult from "./DataResult.component";
 import { sdk } from "../api/sdk";
@@ -43,34 +43,50 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
   onUnpin,
 }) => (
   <Card variant="outlined">
-    <Stack direction="row" alignItems="center">
+    <Stack
+      direction={{ xs: "column", sm: "row" }}
+      alignItems={{ xs: "stretch", sm: "center" }}
+    >
       <CardActionArea
         onClick={() => onResultClick(result.id)}
         data-testid={`pinned-result-row-${result.id}`}
         sx={{ flex: 1, minWidth: 0 }}
       >
         <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0, flex: 1 }}>
-              <ResultTypeIcon type={result.type} />
-              <Typography variant="subtitle2" noWrap>
-                {result.name}
-              </Typography>
-            </Stack>
-            <Typography variant="caption" color="text.secondary" sx={{ ml: 2, flexShrink: 0 }}>
-              {DateFactory.relativeTime(result.created)}
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
+            <ResultTypeIcon type={result.type} />
+            <Typography variant="subtitle2" noWrap>
+              {result.name}
             </Typography>
           </Stack>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: { xs: "block", sm: "none" }, mt: 0.5, ml: 4 }}
+          >
+            {DateFactory.relativeTime(result.created)}
+          </Typography>
         </CardContent>
       </CardActionArea>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: { xs: "none", sm: "block" }, flexShrink: 0, mr: 1 }}
+      >
+        {DateFactory.relativeTime(result.created)}
+      </Typography>
       <Tooltip title="Unpin result">
         <IconButton
           size="small"
           data-testid={`unpin-btn-${result.id}`}
           onClick={() => onUnpin(result.id)}
-          sx={{ mr: 1 }}
+          sx={{
+            mr: 1,
+            alignSelf: { xs: "flex-end", sm: "center" },
+            mb: { xs: 1, sm: 0 },
+          }}
         >
-          <PushPinOutlinedIcon fontSize="small" />
+          <PushPinIcon fontSize="small" />
         </IconButton>
       </Tooltip>
     </Stack>

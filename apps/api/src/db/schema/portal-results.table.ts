@@ -1,4 +1,4 @@
-import { pgTable, text, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { integer, pgTable, text, jsonb, pgEnum } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { stations } from "./stations.table.js";
@@ -27,6 +27,8 @@ export const portalResults = pgTable("portal_results", {
     .notNull()
     .references(() => stations.id),
   portalId: text("portal_id").references(() => portals.id),
+  messageId: text("message_id"),
+  blockIndex: integer("block_index"),
   name: text("name").notNull(),
   type: portalResultTypeEnum("type").notNull(),
   content: jsonb("content").$type<Record<string, unknown>>().notNull(),

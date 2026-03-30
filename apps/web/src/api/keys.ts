@@ -116,8 +116,8 @@ export const queryKeys = {
     root: ["portals"] as const,
     list: (params?: PortalListRequestQuery) =>
       [...queryKeys.portals.root, "list", params] as const,
-    get: (id: string) =>
-      [...queryKeys.portals.root, "get", id] as const,
+    get: (id: string, params?: Record<string, unknown>) =>
+      [...queryKeys.portals.root, "get", id, params] as const,
   },
   portalResults: {
     root: ["portalResults"] as const,

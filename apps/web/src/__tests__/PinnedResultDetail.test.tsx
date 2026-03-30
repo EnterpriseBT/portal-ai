@@ -13,6 +13,8 @@ const makePinnedResult = (
   organizationId: "org-1",
   stationId: "station-1",
   portalId: "portal-1",
+  messageId: null,
+  blockIndex: null,
   name: "Revenue Summary",
   type: "text",
   content: { value: "Total revenue: **$1.2M**" },

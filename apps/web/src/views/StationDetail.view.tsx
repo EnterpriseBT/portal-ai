@@ -9,11 +9,6 @@ import type {
 import { Box, Breadcrumbs, Button, Stack, Typography, IconName } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import Chip from "@mui/material/Chip";
-import Card from "@mui/material/Card";
-import CardActionArea from "@mui/material/CardActionArea";
-import CardContent from "@mui/material/CardContent";
-import IconButton from "@mui/material/IconButton";
-import Tooltip from "@mui/material/Tooltip";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
 import HandymanOutlined from "@mui/icons-material/HandymanOutlined";
@@ -22,6 +17,7 @@ import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import DataResult from "../components/DataResult.component";
+import { PortalCardUI } from "../components/PortalCard.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
 import { EditStationDialog } from "../components/EditStationDialog.component";
@@ -267,50 +263,21 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                   return (
                                     <Stack spacing={1}>
                                       {portals.portals.map((portal) => (
-                                        <Card key={portal.id} variant="outlined">
-                                          <Stack direction="row" alignItems="center">
-                                            <CardActionArea
-                                              onClick={() =>
-                                                navigate({
-                                                  to: `/portals/${portal.id}`,
-                                                })
-                                              }
-                                              sx={{ flex: 1, minWidth: 0 }}
-                                            >
-                                              <CardContent
-                                                sx={{ "&:last-child": { pb: 2 } }}
-                                              >
-                                                <Stack
-                                                  direction="row"
-                                                  justifyContent="space-between"
-                                                  alignItems="center"
-                                                >
-                                                  <Typography variant="subtitle1" noWrap>
-                                                    {portal.name}
-                                                  </Typography>
-                                                  <Typography
-                                                    variant="caption"
-                                                    color="text.secondary"
-                                                    sx={{ ml: 2, flexShrink: 0 }}
-                                                  >
-                                                    {DateFactory.relativeTime(portal.created)}
-                                                  </Typography>
-                                                </Stack>
-                                              </CardContent>
-                                            </CardActionArea>
-                                            <Tooltip title="Delete portal">
-                                              <IconButton
-                                                size="small"
-                                                color="error"
-                                                onClick={() => setDeleteTarget({ id: portal.id, name: portal.name })}
-                                                sx={{ mr: 1 }}
-                                                data-testid={`delete-portal-${portal.id}`}
-                                              >
-                                                <DeleteOutlineIcon fontSize="small" />
-                                              </IconButton>
-                                            </Tooltip>
-                                          </Stack>
-                                        </Card>
+                                        <PortalCardUI
+                                          key={portal.id}
+                                          id={portal.id}
+                                          name={portal.name}
+                                          created={portal.created}
+                                          onClick={(id) =>
+                                            navigate({ to: `/portals/${id}` })
+                                          }
+                                          onDelete={(id) =>
+                                            setDeleteTarget({
+                                              id,
+                                              name: portal.name,
+                                            })
+                                          }
+                                        />
                                       ))}
                                     </Stack>
                                   );

@@ -49,9 +49,31 @@ export type PortalMessageResponse = z.infer<
   typeof PortalMessageResponseSchema
 >;
 
+// ── Get ───────────────────────────────────────────────────────────────
+
+export const PortalGetRequestQuerySchema = z.object({
+  include: z.string().optional(),
+});
+
+export type PortalGetRequestQuery = z.infer<typeof PortalGetRequestQuerySchema>;
+
+/**
+ * Lightweight pin-status entry returned when `include=pinnedResults`.
+ * Maps a specific message block to its portal-result ID so the UI can
+ * show filled pin icons and trigger unpins without a separate query.
+ */
+export const PinnedBlockEntrySchema = z.object({
+  messageId: z.string(),
+  blockIndex: z.number().int().min(0),
+  portalResultId: z.string(),
+});
+
+export type PinnedBlockEntry = z.infer<typeof PinnedBlockEntrySchema>;
+
 export const PortalGetResponsePayloadSchema = z.object({
   portal: PortalSchema,
   messages: z.array(PortalMessageResponseSchema),
+  pinnedBlocks: z.array(PinnedBlockEntrySchema).optional(),
 });
 
 export type PortalGetResponsePayload = z.infer<
@@ -81,6 +103,17 @@ export const SendMessageBodySchema = z.object({
 });
 
 export type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
+
+// ── Portal Result List ────────────────────────────────────────────────
+
+export const PortalResultListRequestQuerySchema =
+  PortalListRequestQuerySchema.extend({
+    portalId: z.string().optional(),
+  });
+
+export type PortalResultListRequestQuery = z.infer<
+  typeof PortalResultListRequestQuerySchema
+>;
 
 // ── Pin Result ────────────────────────────────────────────────────────
 

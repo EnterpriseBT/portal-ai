@@ -18,6 +18,8 @@ export const PortalResultSchema = CoreSchema.extend({
   organizationId: z.string(),
   stationId: z.string(),
   portalId: z.string().nullable(),
+  messageId: z.string().nullable(),
+  blockIndex: z.number().int().min(0).nullable(),
   name: z.string().min(1),
   type: PortalResultTypeSchema,
   content: z.record(z.string(), z.unknown()),

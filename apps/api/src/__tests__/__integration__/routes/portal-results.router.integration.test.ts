@@ -272,6 +272,36 @@ describe("Portal Results Router", () => {
       expect(res.body.payload.portalResults).toHaveLength(1);
       expect(res.body.payload.portalResults[0].id).toBe(resultA.id);
     });
+    it("filters by portalId", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portalA = createPortal(organizationId, station.id);
+      const portalB = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values([portalA as never, portalB as never]);
+
+      const resultA = createPortalResult(organizationId, station.id, portalA.id);
+      const resultB = createPortalResult(organizationId, station.id, portalB.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values([resultA as never, resultB as never]);
+
+      const res = await request(app)
+        .get(`/api/portal-results?portalId=${portalA.id}`)
+        .expect(200);
+
+      expect(res.body.payload.portalResults).toHaveLength(1);
+      expect(res.body.payload.portalResults[0].id).toBe(resultA.id);
+    });
   });
 
   // ── GET /api/portal-results/:id ─────────────────────────────────
