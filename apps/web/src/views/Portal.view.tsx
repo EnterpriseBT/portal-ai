@@ -13,6 +13,7 @@ import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { PortalSession } from "../components/PortalSession.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Portal data item component ──────────────────────────────────────
 
@@ -45,6 +46,7 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
 }) => {
   const [name, setName] = useState(currentName);
   const [error, setError] = useState("");
+  const nameRef = useDialogAutoFocus(open);
 
   const handleSubmit = () => {
     if (!name.trim()) {
@@ -82,6 +84,7 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
     >
       <Stack spacing={2} sx={{ pt: 1 }}>
         <TextField
+          inputRef={nameRef}
           label="Name"
           value={name}
           onChange={(e) => {
@@ -92,7 +95,6 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
           helperText={error}
           required
           fullWidth
-          autoFocus
         />
       </Stack>
     </Modal>

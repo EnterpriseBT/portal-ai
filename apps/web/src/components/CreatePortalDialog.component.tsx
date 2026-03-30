@@ -73,7 +73,6 @@ const StationPicker: React.FC<StationPickerProps> = ({
                 label="Station"
                 placeholder="Select a station..."
                 required
-                autoFocus
                 error={!!error}
                 helperText={error}
               />

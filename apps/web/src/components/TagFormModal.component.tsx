@@ -19,6 +19,7 @@ import Typography from "@mui/material/Typography";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Form types ──────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
   const [colorModified, setColorModified] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const nameRef = useDialogAutoFocus(open);
 
   React.useEffect(() => {
     if (open) {
@@ -154,6 +156,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
         <TextField
+          inputRef={nameRef}
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
@@ -162,7 +165,6 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           helperText={touched.name && errors.name}
           required
           fullWidth
-          autoFocus
         />
         <Stack spacing={0.5}>
           <ColorPicker

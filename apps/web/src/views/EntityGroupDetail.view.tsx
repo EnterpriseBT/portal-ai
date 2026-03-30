@@ -38,8 +38,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useAuthFetch, toServerError, type ServerError } from "../utils/api.util";
+import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
 
 // ── Overlap preview ─────────────────────────────────────────────────
@@ -188,6 +191,117 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
   );
 };
 
+// ── Edit Entity Group Dialog ────────────────────────────────────────
+
+interface EditEntityGroupDialogProps {
+  open: boolean;
+  onClose: () => void;
+  group: { name: string; description: string | null };
+  onSubmit: (body: EntityGroupUpdateRequestBody) => void;
+  isPending: boolean;
+  serverError: ServerError | null;
+}
+
+const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
+  open,
+  onClose,
+  group,
+  onSubmit,
+  isPending,
+  serverError,
+}) => {
+  const [name, setName] = useState(group.name);
+  const [description, setDescription] = useState(group.description ?? "");
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const nameRef = useDialogAutoFocus(open);
+
+  React.useEffect(() => {
+    if (open) {
+      setName(group.name);
+      setDescription(group.description ?? "");
+      setErrors({});
+      setTouched({});
+    }
+  }, [open, group.name, group.description]);
+
+  const validate = (data: { name: string }) => {
+    const result = validateWithSchema(EntityGroupUpdateRequestBodySchema, data);
+    return result.success ? {} : result.errors;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setTouched({ name: true });
+    const trimmedName = name.trim();
+    const trimmedDesc = description.trim();
+    const formErrors = validate({ name: trimmedName });
+    setErrors(formErrors);
+    if (Object.keys(formErrors).length > 0) return;
+
+    const body: EntityGroupUpdateRequestBody = {};
+    if (trimmedName !== group.name) body.name = trimmedName;
+    if (trimmedDesc !== (group.description ?? "")) {
+      body.description = trimmedDesc || undefined;
+    }
+
+    if (Object.keys(body).length === 0) {
+      onClose();
+      return;
+    }
+
+    onSubmit(body);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <form onSubmit={handleSubmit}>
+        <DialogTitle>Edit Entity Group</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              inputRef={nameRef}
+              label="Name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (touched.name) {
+                  setErrors(validate({ name: e.target.value.trim() }));
+                }
+              }}
+              onBlur={() => {
+                setTouched((prev) => ({ ...prev, name: true }));
+                setErrors(validate({ name: name.trim() }));
+              }}
+              error={touched.name && !!errors.name}
+              helperText={touched.name && errors.name}
+              required
+              fullWidth
+            />
+            <TextField
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              fullWidth
+              multiline
+              rows={3}
+            />
+            <FormAlert serverError={serverError} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button type="button" variant="contained" onClick={() => handleSubmit({ preventDefault: () => {} } as React.FormEvent)} disabled={isPending}>
+            {isPending ? "Saving..." : "Save"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
+};
+
 // ── Pure UI ──────────────────────────────────────────────────────────
 
 export interface EntityGroupDetailViewUIProps {
@@ -197,6 +311,11 @@ export interface EntityGroupDetailViewUIProps {
   onPromoteMember: (memberId: string) => void;
   onDemoteMember: (memberId: string) => void;
   onRemoveMember: (memberId: string) => void;
+  // Edit group dialog
+  editOpen: boolean;
+  onOpenEdit: () => void;
+  onCloseEdit: () => void;
+  editServerError: ServerError | null;
   // Add member dialog
   addMemberOpen: boolean;
   onOpenAddMember: () => void;
@@ -226,6 +345,10 @@ export const EntityGroupDetailViewUI: React.FC<
   onPromoteMember,
   onDemoteMember,
   onRemoveMember,
+  editOpen,
+  onOpenEdit,
+  onCloseEdit,
+  editServerError,
   addMemberOpen,
   onOpenAddMember,
   onCloseAddMember,
@@ -245,22 +368,10 @@ export const EntityGroupDetailViewUI: React.FC<
   isDeletingGroup,
 }) => {
     const navigate = useNavigate();
-    const [editingName, setEditingName] = useState(false);
-    const [nameValue, setNameValue] = useState(group.name);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [removeDialogMemberId, setRemoveDialogMemberId] = useState<
       string | null
     >(null);
-
-    const handleSaveName = () => {
-      const result = EntityGroupUpdateRequestBodySchema.safeParse({
-        name: nameValue.trim(),
-      });
-      if (result.success && nameValue.trim() !== group.name) {
-        onUpdateGroup({ name: nameValue.trim() });
-      }
-      setEditingName(false);
-    };
 
     const handleConfirmDelete = () => {
       setDeleteDialogOpen(false);
@@ -341,25 +452,7 @@ export const EntityGroupDetailViewUI: React.FC<
               spacing={1}
             >
               <Box>
-                {editingName ? (
-                  <TextField
-                    value={nameValue}
-                    onChange={(e) => setNameValue(e.target.value)}
-                    onBlur={handleSaveName}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSaveName();
-                      if (e.key === "Escape") {
-                        setNameValue(group.name);
-                        setEditingName(false);
-                      }
-                    }}
-                    autoFocus
-                    size="small"
-                    slotProps={{ htmlInput: { "aria-label": "Group name" } }}
-                  />
-                ) : (
-                  <Typography variant="h1">{group.name}</Typography>
-                )}
+                <Typography variant="h1">{group.name}</Typography>
                 {group.description && (
                   <Typography variant="body1" color="text.secondary">
                     {group.description}
@@ -370,7 +463,7 @@ export const EntityGroupDetailViewUI: React.FC<
                 <Button
                   variant="outlined"
                   startIcon={<EditIcon />}
-                  onClick={() => setEditingName(true)}
+                  onClick={onOpenEdit}
                   disabled={isUpdatingGroup}
                 >
                   Edit
@@ -428,6 +521,16 @@ export const EntityGroupDetailViewUI: React.FC<
           overlapLoading={overlapLoading}
           onAddMember={onAddMember}
           isAdding={isAddingMember}
+        />
+
+        {/* Edit group dialog */}
+        <EditEntityGroupDialog
+          open={editOpen}
+          onClose={onCloseEdit}
+          group={group}
+          onSubmit={onUpdateGroup}
+          isPending={!!isUpdatingGroup}
+          serverError={editServerError}
         />
 
         {/* Delete group confirmation */}
@@ -500,6 +603,9 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const updateMutation = sdk.entityGroups.update(entityGroupId);
   const deleteMutation = sdk.entityGroups.delete(entityGroupId);
   const addMemberMutation = sdk.entityGroups.addMember(entityGroupId);
+
+  // Edit group dialog state
+  const [editOpen, setEditOpen] = useState(false);
 
   // Add member dialog state
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -588,7 +694,12 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
 
   const handleUpdateGroup = useCallback(
     (body: EntityGroupUpdateRequestBody) => {
-      updateMutation.mutate(body, { onSuccess: invalidate });
+      updateMutation.mutate(body, {
+        onSuccess: () => {
+          setEditOpen(false);
+          invalidate();
+        },
+      });
     },
     [updateMutation, invalidate]
   );
@@ -688,6 +799,10 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             onPromoteMember={handlePromoteMember}
             onDemoteMember={handleDemoteMember}
             onRemoveMember={handleRemoveMember}
+            editOpen={editOpen}
+            onOpenEdit={() => setEditOpen(true)}
+            onCloseEdit={() => setEditOpen(false)}
+            editServerError={toServerError(updateMutation.error)}
             addMemberOpen={addMemberOpen}
             onOpenAddMember={() => setAddMemberOpen(true)}
             onCloseAddMember={handleCloseAddMember}

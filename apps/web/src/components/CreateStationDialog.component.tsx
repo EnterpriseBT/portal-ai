@@ -12,6 +12,7 @@ import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   const [form, setForm] = useState<StationFormState>(INITIAL_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const nameRef = useDialogAutoFocus(open);
 
   React.useEffect(() => {
     if (open) {
@@ -144,6 +146,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
         <TextField
+          inputRef={nameRef}
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
@@ -152,7 +155,6 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           helperText={touched.name && errors.name}
           required
           fullWidth
-          autoFocus
         />
         <TextField
           label="Description"

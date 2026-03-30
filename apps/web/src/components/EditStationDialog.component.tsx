@@ -12,6 +12,7 @@ import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 const TOOL_PACK_LABELS: Record<string, string> = {
   data_query: "Data Query",
@@ -73,6 +74,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const nameRef = useDialogAutoFocus(open);
 
   const handleChange = (field: keyof FormState, value: string | string[]) => {
     const next = { ...form, [field]: value };
@@ -148,6 +150,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
         <TextField
+          inputRef={nameRef}
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
@@ -156,7 +159,6 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           helperText={touched.name && errors.name}
           required
           fullWidth
-          autoFocus
         />
         <MultiSearchableSelect
           options={TOOL_PACK_OPTIONS}

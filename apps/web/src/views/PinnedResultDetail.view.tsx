@@ -28,6 +28,7 @@ import { useNavigate } from "@tanstack/react-router";
 import DataResult from "../components/DataResult.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch } from "../utils/api.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { PortalResultPayload } from "../api/portal-results.api";
 
 // ── Data fetcher ────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
 }) => {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(result.name);
+  const renameRef = useDialogAutoFocus(renameOpen);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const handleRenameSubmit = () => {
@@ -211,7 +213,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
         <DialogTitle>Rename Result</DialogTitle>
         <DialogContent>
           <TextField
-            autoFocus
+            inputRef={renameRef}
             fullWidth
             margin="dense"
             label="Name"

@@ -36,6 +36,7 @@ import {
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
 
 // ── Data list component ─────────────────────────────────────────────
@@ -220,6 +221,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
   const [description, setDescription] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const nameRef = useDialogAutoFocus(open);
 
   const validate = (data: { name: string }) => {
     const result = validateWithSchema(EntityGroupCreateRequestBodySchema, data);
@@ -254,6 +256,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
+              inputRef={nameRef}
               label="Name"
               value={name}
               onChange={(e) => {
@@ -271,7 +274,6 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
               helperText={touched.name && errors.name}
               required
               fullWidth
-              autoFocus
             />
             <TextField
               label="Description"

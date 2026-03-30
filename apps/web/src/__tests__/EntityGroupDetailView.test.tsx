@@ -42,6 +42,7 @@ jest.unstable_mockModule("../utils/api.util", () => ({
   }),
   useAuthQuery: jest.fn(),
   useAuthMutation: jest.fn(),
+  toServerError: (error: unknown) => (error ? { message: String(error), code: "UNKNOWN" } : null),
 }));
 
 const { render, screen } = await import("./test-utils");
@@ -122,6 +123,10 @@ const defaultProps = {
   overlapLoading: false,
   onAddMember: jest.fn(),
   isAddingMember: false,
+  editOpen: false,
+  onOpenEdit: jest.fn(),
+  onCloseEdit: jest.fn(),
+  editServerError: null,
 };
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -221,6 +226,57 @@ describe("EntityGroupDetailViewUI", () => {
     expect(
       screen.getByRole("button", { name: /Delete/i })
     ).toBeInTheDocument();
+  });
+
+  it("clicking Edit button calls onOpenEdit", async () => {
+    const user = userEvent.setup();
+    render(<EntityGroupDetailViewUI {...defaultProps} />);
+    await user.click(screen.getByRole("button", { name: /Edit/i }));
+    expect(defaultProps.onOpenEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it("edit dialog shows name and description fields when open", () => {
+    render(<EntityGroupDetailViewUI {...defaultProps} editOpen={true} />);
+    expect(screen.getByText("Edit Entity Group")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Name/)).toHaveValue("Customer Identity");
+    expect(screen.getByLabelText(/Description/)).toHaveValue(
+      "Groups customer entities across connectors"
+    );
+  });
+
+  it("edit dialog does not call onUpdateGroup when name is cleared", async () => {
+    const user = userEvent.setup();
+    render(<EntityGroupDetailViewUI {...defaultProps} editOpen={true} />);
+    await user.clear(screen.getByLabelText(/Name/));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(defaultProps.onUpdateGroup).not.toHaveBeenCalled();
+  });
+
+  it("edit dialog calls onClose when nothing changed", async () => {
+    const user = userEvent.setup();
+    const onCloseEdit = jest.fn();
+    render(
+      <EntityGroupDetailViewUI
+        {...defaultProps}
+        editOpen={true}
+        onCloseEdit={onCloseEdit}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onCloseEdit).toHaveBeenCalled();
+    expect(defaultProps.onUpdateGroup).not.toHaveBeenCalled();
+  });
+
+  it("edit dialog displays server error when provided", () => {
+    render(
+      <EntityGroupDetailViewUI
+        {...defaultProps}
+        editOpen={true}
+        editServerError={{ message: "Name already taken", code: "ENTITY_GROUP_DUPLICATE" }}
+      />
+    );
+    expect(screen.getByText(/Name already taken/)).toBeInTheDocument();
+    expect(screen.getByText(/ENTITY_GROUP_DUPLICATE/)).toBeInTheDocument();
   });
 
   it("link field mapping select is disabled when no entity is selected", () => {

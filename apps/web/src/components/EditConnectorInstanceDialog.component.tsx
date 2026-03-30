@@ -5,6 +5,7 @@ import TextField from "@mui/material/TextField";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 
 import { validateWithSchema, type FormErrors } from "../utils/form-validation.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 const EditNameSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -27,6 +28,7 @@ const EditForm: React.FC<{
   const [name, setName] = useState(currentName);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState(false);
+  const nameRef = useDialogAutoFocus(true);
 
   const saveDisabled =
     isPending || name.trim() === "" || name.trim() === currentName;
@@ -84,6 +86,7 @@ const EditForm: React.FC<{
     >
       <Stack spacing={2} sx={{ pt: 1 }}>
         <TextField
+          inputRef={nameRef}
           label="Name"
           value={name}
           onChange={(e) => handleChange(e.target.value)}
@@ -96,7 +99,6 @@ const EditForm: React.FC<{
           helperText={touched && errors.name}
           required
           fullWidth
-          autoFocus
         />
       </Stack>
     </Modal>
