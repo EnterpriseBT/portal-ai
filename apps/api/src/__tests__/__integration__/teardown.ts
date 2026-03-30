@@ -2,17 +2,13 @@
  * Global teardown for integration tests.
  *
  * Closes the module-level database connection pool so Jest can exit
- * cleanly without forceExit. Uses tsx to register the TypeScript loader
- * since globalTeardown runs outside ts-jest's transform pipeline.
+ * cleanly without forceExit. The tsx/esm loader is registered via
+ * --import in NODE_OPTIONS, enabling .js → .ts resolution here.
  */
 
-import { register } from "node:module";
-import { pathToFileURL } from "node:url";
-
-register("tsx/esm", pathToFileURL("./"));
+import { closeDatabase } from "../../db/client.js";
 
 export default async function globalTeardown() {
-  const { closeDatabase } = await import("../../db/client.js");
   await closeDatabase();
   console.log("✅ Integration tests completed");
 }
