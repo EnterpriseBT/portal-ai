@@ -60,6 +60,6 @@ export default {
   // Increase timeout for integration tests
   testTimeout: 60000,
 
-  // The globalTeardown script closes the database connection pool,
-  // allowing Jest to exit cleanly without forceExit.
+  // The globalTeardown script registers tsx/esm to resolve .ts imports
+  // and closes the database connection pool, allowing Jest to exit cleanly.
 };
