@@ -2,12 +2,16 @@ import React from "react";
 
 import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 
-interface DeletePortalDialogProps {
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
+
+export interface DeletePortalDialogProps {
   open: boolean;
   onClose: () => void;
   portalName: string;
   onConfirm: () => void;
   isPending?: boolean;
+  serverError?: ServerError | null;
 }
 
 export const DeletePortalDialog: React.FC<DeletePortalDialogProps> = ({
@@ -16,6 +20,7 @@ export const DeletePortalDialog: React.FC<DeletePortalDialogProps> = ({
   portalName,
   onConfirm,
   isPending = false,
+  serverError,
 }) => (
   <Modal
     open={open}
@@ -58,6 +63,7 @@ export const DeletePortalDialog: React.FC<DeletePortalDialogProps> = ({
         All messages will be permanently deleted. Pinned results will not be
         affected. This action cannot be undone.
       </Typography>
+      <FormAlert serverError={serverError ?? null} />
     </Stack>
   </Modal>
 );

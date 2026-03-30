@@ -127,6 +127,8 @@ const defaultProps = {
   onOpenEdit: jest.fn(),
   onCloseEdit: jest.fn(),
   editServerError: null,
+  addMemberServerError: null,
+  deleteServerError: null,
 };
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -283,6 +285,32 @@ describe("EntityGroupDetailViewUI", () => {
     render(<EntityGroupDetailViewUI {...defaultProps} addMemberOpen={true} />);
     const fieldMappingInput = screen.getByLabelText("Link Field Mapping");
     expect(fieldMappingInput).toBeDisabled();
+  });
+
+  it("add member dialog displays server error when provided", () => {
+    render(
+      <EntityGroupDetailViewUI
+        {...defaultProps}
+        addMemberOpen={true}
+        addMemberServerError={{ message: "Member already exists", code: "ENTITY_GROUP_DUPLICATE_MEMBER" }}
+      />
+    );
+    expect(screen.getByText(/Member already exists/)).toBeInTheDocument();
+    expect(screen.getByText(/ENTITY_GROUP_DUPLICATE_MEMBER/)).toBeInTheDocument();
+  });
+
+  it("delete confirmation dialog displays server error when provided", async () => {
+    const user = userEvent.setup();
+    render(
+      <EntityGroupDetailViewUI
+        {...defaultProps}
+        deleteServerError={{ message: "Cannot delete group", code: "ENTITY_GROUP_DELETE_FAILED" }}
+      />
+    );
+    // Open the delete dialog
+    await user.click(screen.getByRole("button", { name: /Delete/i }));
+    expect(screen.getByText(/Cannot delete group/)).toBeInTheDocument();
+    expect(screen.getByText(/ENTITY_GROUP_DELETE_FAILED/)).toBeInTheDocument();
   });
 });
 

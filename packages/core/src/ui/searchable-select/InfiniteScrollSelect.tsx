@@ -31,6 +31,7 @@ export const InfiniteScrollSelect: React.FC<InfiniteScrollSelectProps> = ({
   disabled,
   required,
   size = "small",
+  inputRef,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -146,6 +147,7 @@ export const InfiniteScrollSelect: React.FC<InfiniteScrollSelectProps> = ({
             renderInput={(params) => (
               <TextField
                 {...params}
+                inputRef={inputRef}
                 label={label}
                 placeholder={placeholder}
                 helperText={helperText}

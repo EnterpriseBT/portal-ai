@@ -1,3 +1,5 @@
+import type React from "react";
+
 export interface SelectOption {
   value: string | number;
   label: string;
@@ -12,6 +14,7 @@ export interface SelectBaseProps {
   disabled?: boolean;
   required?: boolean;
   size?: "small" | "medium";
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 export interface FetchPageParams {

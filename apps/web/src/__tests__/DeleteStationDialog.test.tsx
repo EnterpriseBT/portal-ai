@@ -96,4 +96,20 @@ describe("DeleteStationDialog", () => {
     render(<DeleteStationDialog {...defaultProps} station={null} />);
     expect(screen.getByText("Delete Station")).toBeInTheDocument();
   });
+
+  it("should render FormAlert when serverError is provided", () => {
+    render(
+      <DeleteStationDialog
+        {...defaultProps}
+        serverError={{ message: "Station not found", code: "STATION_NOT_FOUND" }}
+      />
+    );
+    expect(screen.getByText(/Station not found/)).toBeInTheDocument();
+    expect(screen.getByText(/STATION_NOT_FOUND/)).toBeInTheDocument();
+  });
+
+  it("should not render FormAlert when serverError is null", () => {
+    render(<DeleteStationDialog {...defaultProps} serverError={null} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

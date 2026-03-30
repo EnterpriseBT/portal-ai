@@ -188,30 +188,30 @@ Add `serverError` display to all forms that currently swallow errors, and apply 
 
 ### 4A — Missing Error Surfaces
 
-- [ ] **4A.1** Add `serverError` prop (type `ServerError | null`) to `DeleteStationDialog`:
+- [x] **4A.1** Add `serverError` prop (type `ServerError | null`) to `DeleteStationDialog`:
   - Add `<FormAlert>` inside the dialog
   - Update `views/Stations.view.tsx` to pass `toServerError(deleteMutation.error)`
 
-- [ ] **4A.2** Add `serverError` prop to `DeletePortalDialog`:
+- [x] **4A.2** Add `serverError` prop to `DeletePortalDialog`:
   - Add `<FormAlert>` inside the dialog
   - Update `views/Portal.view.tsx` to pass `toServerError(removeMutation.error)`
 
-- [ ] **4A.3** Add `serverError` prop to `DeleteTagDialog`:
+- [x] **4A.3** Add `serverError` prop to `DeleteTagDialog`:
   - Add `<FormAlert>` inside the dialog
   - Update `views/Tags.view.tsx` to pass `toServerError(deleteMutation.error)`
 
-- [ ] **4A.4** Add error display to `EntityGroupDetail.view.tsx`:
+- [x] **4A.4** Add error display to `EntityGroupDetail.view.tsx`:
   - Surface `updateMutation.error` on inline name edit (show `<FormAlert>` below the field)
   - Surface `addMemberMutation.error` in the add-member dialog
   - Surface `deleteMutation.error` in the delete confirmation
 
-- [ ] **4A.5** Add error display to `views/Portal.view.tsx` rename dialog:
+- [x] **4A.5** Add error display to `views/Portal.view.tsx` rename dialog:
   - Surface `renameMutation.error` via `<FormAlert>`
 
-- [ ] **4A.6** Add error display to `views/ConnectorInstance.view.tsx` delete dialog:
+- [x] **4A.6** Add error display to `views/ConnectorInstance.view.tsx` delete dialog:
   - Surface `deleteMutation.error` via `<FormAlert>`
 
-- [ ] **4A.7** Update tests for each dialog above:
+- [x] **4A.7** Update tests for each dialog above:
   - Test that `<FormAlert>` renders when `serverError` is provided
   - Test that error code is visible in the rendered output
 

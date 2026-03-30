@@ -162,4 +162,26 @@ describe("DeleteConnectorInstanceDialog", () => {
     );
     expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
   });
+
+  it("should render FormAlert when serverError is provided", () => {
+    render(
+      <DeleteConnectorInstanceDialog
+        {...defaultProps}
+        serverError={{ message: "Delete failed", code: "CONNECTOR_DELETE_FAILED" }}
+      />
+    );
+    expect(screen.getByText(/Delete failed/)).toBeInTheDocument();
+    expect(screen.getByText(/CONNECTOR_DELETE_FAILED/)).toBeInTheDocument();
+  });
+
+  it("should not render FormAlert when serverError is null", () => {
+    render(
+      <DeleteConnectorInstanceDialog {...defaultProps} serverError={null} />
+    );
+    // Only the warning alert should be present, not an error alert
+    const alerts = screen.getAllByRole("alert");
+    alerts.forEach((alert) => {
+      expect(alert).not.toHaveTextContent("Delete failed");
+    });
+  });
 });

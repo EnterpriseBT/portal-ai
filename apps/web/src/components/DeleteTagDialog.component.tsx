@@ -3,12 +3,16 @@ import React from "react";
 import type { EntityTag } from "@portalai/core/models";
 import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
+
 export interface DeleteTagDialogProps {
   open: boolean;
   onClose: () => void;
   tag: EntityTag | null;
   onConfirm: () => void;
   isPending: boolean;
+  serverError?: ServerError | null;
 }
 
 export const DeleteTagDialog: React.FC<DeleteTagDialogProps> = ({
@@ -17,6 +21,7 @@ export const DeleteTagDialog: React.FC<DeleteTagDialogProps> = ({
   tag,
   onConfirm,
   isPending,
+  serverError,
 }) => (
   <Modal
     open={open}
@@ -59,6 +64,7 @@ export const DeleteTagDialog: React.FC<DeleteTagDialogProps> = ({
         entities currently tagged with &quot;{tag?.name}&quot; will have this tag
         detached.
       </Typography>
+      <FormAlert serverError={serverError ?? null} />
     </Stack>
   </Modal>
 );

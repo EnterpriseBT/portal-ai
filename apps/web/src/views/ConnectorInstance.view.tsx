@@ -15,6 +15,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
 import {
   ConnectorEntityDataList,
@@ -245,6 +246,7 @@ export const ConnectorInstanceView = ({
                     isPending={deleteMutation.isPending}
                     impact={impactQuery.data ?? null}
                     isLoadingImpact={impactQuery.isLoading && deleteDialogOpen}
+                    serverError={toServerError(deleteMutation.error)}
                   />
 
                   <EditConnectorInstanceDialog

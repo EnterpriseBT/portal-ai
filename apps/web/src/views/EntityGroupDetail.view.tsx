@@ -115,6 +115,7 @@ interface AddMemberDialogProps {
   overlapLoading: boolean;
   onAddMember: () => void;
   isAdding: boolean;
+  serverError?: ServerError | null;
 }
 
 export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
@@ -132,9 +133,10 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
   overlapLoading,
   onAddMember,
   isAdding,
+  serverError,
 }) => {
   const addDisabled = !selectedEntityId || !selectedFieldMappingId || isAdding;
-
+  const entityInputRef = useDialogAutoFocus(open);
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <form
@@ -147,6 +149,7 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <AsyncSearchableSelect
+              inputRef={entityInputRef}
               value={selectedEntityId}
               onChange={onEntityChange}
               onSearch={onSearchEntities}
@@ -171,6 +174,7 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
               label="Primary member"
             />
             <OverlapPreview overlap={overlap} isLoading={overlapLoading} />
+            <FormAlert serverError={serverError ?? null} />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -293,7 +297,7 @@ const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
           <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button type="button" variant="contained" onClick={() => handleSubmit({ preventDefault: () => {} } as React.FormEvent)} disabled={isPending}>
+          <Button type="button" variant="contained" onClick={() => handleSubmit({ preventDefault: () => { } } as React.FormEvent)} disabled={isPending}>
             {isPending ? "Saving..." : "Save"}
           </Button>
         </DialogActions>
@@ -332,8 +336,10 @@ export interface EntityGroupDetailViewUIProps {
   overlapLoading: boolean;
   onAddMember: () => void;
   isAddingMember: boolean;
+  addMemberServerError?: ServerError | null;
   isUpdatingGroup?: boolean;
   isDeletingGroup?: boolean;
+  deleteServerError?: ServerError | null;
 }
 
 export const EntityGroupDetailViewUI: React.FC<
@@ -364,8 +370,10 @@ export const EntityGroupDetailViewUI: React.FC<
   overlapLoading,
   onAddMember,
   isAddingMember,
+  addMemberServerError,
   isUpdatingGroup,
   isDeletingGroup,
+  deleteServerError,
 }) => {
     const navigate = useNavigate();
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -521,6 +529,7 @@ export const EntityGroupDetailViewUI: React.FC<
           overlapLoading={overlapLoading}
           onAddMember={onAddMember}
           isAdding={isAddingMember}
+          serverError={addMemberServerError}
         />
 
         {/* Edit group dialog */}
@@ -540,10 +549,13 @@ export const EntityGroupDetailViewUI: React.FC<
         >
           <DialogTitle>Delete Entity Group</DialogTitle>
           <DialogContent>
-            <Typography>
-              Are you sure you want to delete &ldquo;{group.name}&rdquo;? This
-              action cannot be undone.
-            </Typography>
+            <Stack spacing={2}>
+              <Typography>
+                Are you sure you want to delete &ldquo;{group.name}&rdquo;? This
+                action cannot be undone.
+              </Typography>
+              <FormAlert serverError={deleteServerError ?? null} />
+            </Stack>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
@@ -818,8 +830,10 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             overlapLoading={overlapLoading}
             onAddMember={handleAddMember}
             isAddingMember={addMemberMutation.isPending}
+            addMemberServerError={toServerError(addMemberMutation.error)}
             isUpdatingGroup={updateMutation.isPending}
             isDeletingGroup={deleteMutation.isPending}
+            deleteServerError={toServerError(deleteMutation.error)}
           />
         );
       }}

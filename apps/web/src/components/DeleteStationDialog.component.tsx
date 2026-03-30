@@ -3,12 +3,16 @@ import React from "react";
 import type { Station } from "@portalai/core/models";
 import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
+
 export interface DeleteStationDialogProps {
   open: boolean;
   onClose: () => void;
   station: Station | null;
   onConfirm: () => void;
   isPending: boolean;
+  serverError?: ServerError | null;
 }
 
 export const DeleteStationDialog: React.FC<DeleteStationDialogProps> = ({
@@ -17,6 +21,7 @@ export const DeleteStationDialog: React.FC<DeleteStationDialogProps> = ({
   station,
   onConfirm,
   isPending,
+  serverError,
 }) => (
   <Modal
     open={open}
@@ -60,6 +65,7 @@ export const DeleteStationDialog: React.FC<DeleteStationDialogProps> = ({
         permanently deleted. Pinned results will be preserved. This action
         cannot be undone.
       </Typography>
+      <FormAlert serverError={serverError ?? null} />
     </Stack>
   </Modal>
 );

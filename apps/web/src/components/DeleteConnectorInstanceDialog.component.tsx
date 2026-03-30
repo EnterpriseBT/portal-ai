@@ -13,6 +13,9 @@ import {
   Typography,
 } from "@portalai/core/ui";
 
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
+
 export interface DeleteConnectorInstanceDialogProps {
   open: boolean;
   onClose: () => void;
@@ -21,6 +24,7 @@ export interface DeleteConnectorInstanceDialogProps {
   isPending?: boolean;
   impact?: ConnectorInstanceImpact | null;
   isLoadingImpact?: boolean;
+  serverError?: ServerError | null;
 }
 
 const IMPACT_LABELS: { key: keyof ConnectorInstanceImpact; label: string }[] = [
@@ -83,6 +87,7 @@ export const DeleteConnectorInstanceDialog: React.FC<
   isPending,
   impact,
   isLoadingImpact,
+  serverError,
 }) => {
   const deleteDisabled = isPending || isLoadingImpact;
 
@@ -131,6 +136,7 @@ export const DeleteConnectorInstanceDialog: React.FC<
           This action will permanently delete all associated data listed above.
           This cannot be undone.
         </Alert>
+        <FormAlert serverError={serverError ?? null} />
       </Stack>
     </Modal>
   );

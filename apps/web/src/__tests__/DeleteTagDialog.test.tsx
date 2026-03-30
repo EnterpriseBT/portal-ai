@@ -90,4 +90,20 @@ describe("DeleteTagDialog", () => {
     render(<DeleteTagDialog {...defaultProps} tag={otherTag} />);
     expect(screen.getByText("Staging")).toBeInTheDocument();
   });
+
+  it("should render FormAlert when serverError is provided", () => {
+    render(
+      <DeleteTagDialog
+        {...defaultProps}
+        serverError={{ message: "Tag not found", code: "TAG_NOT_FOUND" }}
+      />
+    );
+    expect(screen.getByText(/Tag not found/)).toBeInTheDocument();
+    expect(screen.getByText(/TAG_NOT_FOUND/)).toBeInTheDocument();
+  });
+
+  it("should not render FormAlert when serverError is null", () => {
+    render(<DeleteTagDialog {...defaultProps} serverError={null} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

@@ -212,6 +212,7 @@ export const StationsView: React.FC = () => {
         station={deletingStation}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}
+        serverError={toServerError(deleteMutation.error)}
       />
     </>
   );

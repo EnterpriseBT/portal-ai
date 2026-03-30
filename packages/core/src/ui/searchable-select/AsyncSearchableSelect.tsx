@@ -24,6 +24,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   disabled,
   required,
   size = "small",
+  inputRef,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -73,6 +74,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
       renderInput={(params) => (
         <TextField
           {...params}
+          inputRef={inputRef}
           label={label}
           placeholder={placeholder}
           helperText={helperText}

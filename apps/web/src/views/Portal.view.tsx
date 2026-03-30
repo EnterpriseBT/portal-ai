@@ -11,8 +11,10 @@ import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
+import { FormAlert } from "../components/FormAlert.component";
 import { PortalSession } from "../components/PortalSession.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError, type ServerError } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Portal data item component ──────────────────────────────────────
@@ -35,6 +37,7 @@ interface RenamePortalDialogProps {
   currentName: string;
   onSubmit: (name: string) => void;
   isPending: boolean;
+  serverError?: ServerError | null;
 }
 
 const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
@@ -43,6 +46,7 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
   currentName,
   onSubmit,
   isPending,
+  serverError,
 }) => {
   const [name, setName] = useState(currentName);
   const [error, setError] = useState("");
@@ -96,6 +100,7 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
           required
           fullWidth
         />
+        <FormAlert serverError={serverError ?? null} />
       </Stack>
     </Modal>
   );
@@ -220,6 +225,7 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                     currentName={item.portal.name}
                     onSubmit={handleRenameSubmit}
                     isPending={renameMutation.isPending}
+                    serverError={toServerError(renameMutation.error)}
                   />
                 )}
 
@@ -229,6 +235,7 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                   portalName={item.portal.name}
                   onConfirm={handleDeleteConfirm}
                   isPending={removeMutation.isPending}
+                  serverError={toServerError(removeMutation.error)}
                 />
               </>
             )}
