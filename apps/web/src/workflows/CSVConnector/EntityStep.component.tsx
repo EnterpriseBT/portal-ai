@@ -3,6 +3,7 @@ import React, { useCallback, useMemo } from "react";
 import { Box, Stack, Typography, TextInput, Divider } from "@portalai/core/ui";
 
 import type { RecommendedEntity, ParseSummary } from "./utils/upload-workflow.util";
+import type { EntityStepErrors } from "./utils/csv-validation.util";
 
 // --- Types ---
 
@@ -11,6 +12,7 @@ interface EntityStepProps {
   files: File[];
   parseResults: ParseSummary[] | null;
   onUpdateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
+  errors?: EntityStepErrors;
 }
 
 // --- Component ---
@@ -20,6 +22,7 @@ export const EntityStep: React.FC<EntityStepProps> = ({
   files,
   parseResults,
   onUpdateEntity,
+  errors = {},
 }) => {
   const handleKeyChange = useCallback(
     (index: number, key: string) => {
@@ -124,6 +127,9 @@ export const EntityStep: React.FC<EntityStepProps> = ({
                 label="Entity Key"
                 value={entity.connectorEntity.key}
                 onChange={(e) => handleKeyChange(index, e.target.value)}
+                error={!!errors[index]?.key}
+                helperText={errors[index]?.key}
+                required
                 size="small"
                 fullWidth
               />
@@ -131,6 +137,9 @@ export const EntityStep: React.FC<EntityStepProps> = ({
                 label="Entity Label"
                 value={entity.connectorEntity.label}
                 onChange={(e) => handleLabelChange(index, e.target.value)}
+                error={!!errors[index]?.label}
+                helperText={errors[index]?.label}
+                required
                 size="small"
                 fullWidth
               />

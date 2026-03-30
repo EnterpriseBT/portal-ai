@@ -11,6 +11,7 @@ import type {
   RecommendedEntity,
 } from "../utils/upload-workflow.util";
 import type { FileUploadProgress } from "../../../utils/file-upload.util";
+import type { EntityStepErrors, ColumnStepErrors } from "../utils/csv-validation.util";
 
 // ---------------------------------------------------------------------------
 // Mock Data
@@ -418,6 +419,101 @@ describe("CSVConnectorWorkflowUI", () => {
       await user.clear(input);
       await user.type(input, "Renamed");
       expect(onConnectorNameChange).toHaveBeenCalled();
+    });
+  });
+
+  describe("Step 1: Entity validation errors", () => {
+    it("displays entity key error when entityStepErrors is passed", () => {
+      const entityStepErrors: EntityStepErrors = {
+        0: { key: "Entity key is required" },
+      };
+      render(
+        <CSVConnectorWorkflowUI
+          {...makeProps({
+            step: 1,
+            files: MOCK_FILES,
+            recommendations: MOCK_RECOMMENDATIONS,
+            entityStepErrors,
+          })}
+        />
+      );
+      expect(screen.getByText("Entity key is required")).toBeInTheDocument();
+    });
+
+    it("displays entity label error when entityStepErrors is passed", () => {
+      const entityStepErrors: EntityStepErrors = {
+        0: { label: "Entity label is required" },
+      };
+      render(
+        <CSVConnectorWorkflowUI
+          {...makeProps({
+            step: 1,
+            files: MOCK_FILES,
+            recommendations: MOCK_RECOMMENDATIONS,
+            entityStepErrors,
+          })}
+        />
+      );
+      expect(screen.getByText("Entity label is required")).toBeInTheDocument();
+    });
+
+    it("does not display entity errors when entityStepErrors is undefined", () => {
+      render(
+        <CSVConnectorWorkflowUI
+          {...makeProps({
+            step: 1,
+            files: MOCK_FILES,
+            recommendations: MOCK_RECOMMENDATIONS,
+          })}
+        />
+      );
+      expect(screen.queryByText("Entity key is required")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Step 2: Column validation errors", () => {
+    it("displays column key error when columnStepErrors is passed", () => {
+      const columnStepErrors: ColumnStepErrors = {
+        0: { 0: { key: "Column key is required" } },
+      };
+      render(
+        <CSVConnectorWorkflowUI
+          {...makeProps({
+            step: 2,
+            recommendations: MOCK_RECOMMENDATIONS,
+            columnStepErrors,
+          })}
+        />
+      );
+      expect(screen.getByText("Column key is required")).toBeInTheDocument();
+    });
+
+    it("displays column type error when columnStepErrors is passed", () => {
+      const columnStepErrors: ColumnStepErrors = {
+        0: { 0: { type: "Column type is required" } },
+      };
+      render(
+        <CSVConnectorWorkflowUI
+          {...makeProps({
+            step: 2,
+            recommendations: MOCK_RECOMMENDATIONS,
+            columnStepErrors,
+          })}
+        />
+      );
+      expect(screen.getByText("Column type is required")).toBeInTheDocument();
+    });
+
+    it("does not display column errors when columnStepErrors is undefined", () => {
+      render(
+        <CSVConnectorWorkflowUI
+          {...makeProps({
+            step: 2,
+            recommendations: MOCK_RECOMMENDATIONS,
+          })}
+        />
+      );
+      expect(screen.queryByText("Column key is required")).not.toBeInTheDocument();
     });
   });
 });

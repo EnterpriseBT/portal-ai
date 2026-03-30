@@ -155,7 +155,20 @@ Replace all manual validation functions with Zod `safeParse()` using the existin
 
 - [x] **3.10** All required TextFields already have `required` prop (confirmed: CreateStation, EditStation, TagForm, EditConnectorInstance, EntityGroups create)
 
-- [x] **3.11** Existing tests already cover validation (empty submit blocked, errors appear, onSubmit not called) — all 996 tests pass
+- [x] **3.11** Existing tests already cover validation (empty submit blocked, errors appear, onSubmit not called) — all tests pass
+
+- [x] **3.12** CSVConnector EntityStep (Step 2) — entity key and label fields now required with Zod validation:
+  - Created `csv-validation.util.ts` with `EntityFieldSchema`, `validateEntityStep()`, and `EntityStepErrors` type
+  - `EntityStep` accepts `errors` prop, displays field-level errors on key/label TextInputs
+  - Container validates on "Next" click; blocks navigation if errors exist
+
+- [x] **3.13** CSVConnector ColumnMappingStep (Step 3) — column key, label, and type fields now required:
+  - `BaseColumnSchema` validates key, label, type as required
+  - `ReferenceColumnSchema` extends base — requires refEntityKey and refColumnKey/refColumnDefinitionId when type is `reference` or `reference-array`
+  - Format and enum fields remain optional
+  - `ColumnMappingStep` and `ColumnRow` accept `errors`/`fieldErrors` props with per-entity per-column error display
+  - `ReferenceEditor` accepts `fieldErrors` and shows errors on Reference Entity and Reference Column selects
+  - Container validates on "Next" click; blocks navigation if errors exist
 
 ### Verification
 

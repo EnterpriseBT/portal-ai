@@ -21,6 +21,8 @@ import type {
   RecommendedColumn,
   RecommendedEntity,
 } from "./utils/upload-workflow.util";
+import type { ColumnStepErrors } from "./utils/csv-validation.util";
+import type { FormErrors } from "../../utils/form-validation.util";
 
 // --- Constants ---
 
@@ -51,6 +53,7 @@ interface ColumnMappingStepProps {
     columnIndex: number,
     updates: Partial<RecommendedColumn>
   ) => void;
+  errors?: ColumnStepErrors;
 }
 
 // --- Confidence Chip ---
@@ -95,6 +98,7 @@ interface ReferenceEditorProps {
     columnIndex: number,
     updates: Partial<RecommendedColumn>
   ) => void;
+  fieldErrors?: FormErrors;
 }
 
 /** Derive which entity select value is active given current column state. */
@@ -127,6 +131,7 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
   dbEntities,
   isLoadingDbEntities,
   onUpdate,
+  fieldErrors = {},
 }) => {
   const batchOptions: SelectOption[] = allEntities.map((e) => ({
     value: `batch:${e.connectorEntity.key}`,
@@ -240,6 +245,9 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
         options={entityOptions}
         size="small"
         fullWidth
+        required
+        error={!!fieldErrors.refEntityKey}
+        helperText={fieldErrors.refEntityKey}
         placeholder={isLoadingDbEntities ? "Loading..." : "Select entity..."}
         disabled={isLoadingDbEntities}
       />
@@ -250,6 +258,9 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
         options={columnOptions}
         size="small"
         fullWidth
+        required
+        error={!!fieldErrors.refColumnKey}
+        helperText={fieldErrors.refColumnKey}
         disabled={!currentEntityValue || isLoadingDbEntities}
         placeholder="Select column..."
       />
@@ -271,6 +282,7 @@ interface ColumnRowProps {
     columnIndex: number,
     updates: Partial<RecommendedColumn>
   ) => void;
+  fieldErrors?: FormErrors;
 }
 
 const ColumnRow: React.FC<ColumnRowProps> = ({
@@ -281,6 +293,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
   dbEntities,
   isLoadingDbEntities,
   onUpdate,
+  fieldErrors = {},
 }) => {
   const handleKeyChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -389,6 +402,9 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             label="Key"
             value={column.recommended.key}
             onChange={handleKeyChange}
+            required
+            error={!!fieldErrors.key}
+            helperText={fieldErrors.key}
             size="small"
             fullWidth
           />
@@ -396,6 +412,9 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             label="Label"
             value={column.recommended.label}
             onChange={handleLabelChange}
+            required
+            error={!!fieldErrors.label}
+            helperText={fieldErrors.label}
             size="small"
             fullWidth
           />
@@ -404,6 +423,9 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             value={column.recommended.type}
             onChange={handleTypeChange}
             options={COLUMN_TYPE_OPTIONS}
+            required
+            error={!!fieldErrors.type}
+            helperText={fieldErrors.type}
             size="small"
             fullWidth
           />
@@ -418,6 +440,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             dbEntities={dbEntities}
             isLoadingDbEntities={isLoadingDbEntities}
             onUpdate={onUpdate}
+            fieldErrors={fieldErrors}
           />
         )}
 
@@ -466,6 +489,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
   dbEntities,
   isLoadingDbEntities,
   onUpdateColumn,
+  errors = {},
 }) => {
   const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
 
@@ -510,6 +534,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                 dbEntities={dbEntities}
                 isLoadingDbEntities={isLoadingDbEntities}
                 onUpdate={onUpdateColumn}
+                fieldErrors={errors[entityIndex]?.[columnIndex]}
               />
             ))}
           </Stack>
