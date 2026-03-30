@@ -55,8 +55,15 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
         <CardContent sx={{ "&:last-child": { pb: 2 } }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
             <ResultTypeIcon type={result.type} />
-            <Typography variant="subtitle2" noWrap>
+            <Typography variant="subtitle2" noWrap sx={{ flex: 1 }}>
               {result.name}
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: { xs: "none", sm: "block" }, flexShrink: 0 }}
+            >
+              {DateFactory.relativeTime(result.created)}
             </Typography>
           </Stack>
           <Typography
@@ -68,13 +75,6 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
           </Typography>
         </CardContent>
       </CardActionArea>
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ display: { xs: "none", sm: "block" }, flexShrink: 0, mr: 1 }}
-      >
-        {DateFactory.relativeTime(result.created)}
-      </Typography>
       <Tooltip title="Unpin result">
         <IconButton
           size="small"
@@ -86,7 +86,7 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
             mb: { xs: 1, sm: 0 },
           }}
         >
-          <PushPinIcon fontSize="small" />
+          <PushPinIcon fontSize="small" color="primary" />
         </IconButton>
       </Tooltip>
     </Stack>

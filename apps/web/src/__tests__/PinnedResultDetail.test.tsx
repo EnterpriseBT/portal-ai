@@ -31,6 +31,7 @@ const defaultProps = {
   result: makePinnedResult(),
   onRename: jest.fn(),
   onDelete: jest.fn(),
+  onUnpin: jest.fn(),
   onOpenPortal: jest.fn(),
   onNavigate: jest.fn(),
 };
@@ -113,6 +114,13 @@ describe("PinnedResultDetailUI", () => {
     );
     fireEvent.click(screen.getByTestId("open-portal-btn"));
     expect(onOpenPortal).toHaveBeenCalledWith("portal-1");
+  });
+
+  it("should call onUnpin when Unpin button is clicked", () => {
+    const onUnpin = jest.fn();
+    render(<PinnedResultDetailUI {...defaultProps} onUnpin={onUnpin} />);
+    fireEvent.click(screen.getByTestId("unpin-btn"));
+    expect(onUnpin).toHaveBeenCalled();
   });
 
   it("should not render Open Source Portal button when portalId is null", () => {

@@ -21,6 +21,7 @@ import DialogActions from "@mui/material/DialogActions";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import PushPinIcon from "@mui/icons-material/PushPin";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -60,6 +61,7 @@ export interface PinnedResultDetailUIProps {
   result: PortalResult;
   onRename: (name: string) => void;
   onDelete: () => void;
+  onUnpin: () => void;
   onOpenPortal: (portalId: string) => void;
   onNavigate: (href: string) => void;
   renamePending?: boolean;
@@ -69,6 +71,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   result,
   onRename,
   onDelete,
+  onUnpin,
   onOpenPortal,
   onNavigate,
   renamePending,
@@ -179,6 +182,15 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
                   Open Source Portal
                 </Button>
               )}
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<PushPinIcon />}
+                onClick={onUnpin}
+                data-testid="unpin-btn"
+              >
+                Unpin
+              </Button>
             </Stack>
           </Stack>
         </Box>
@@ -291,6 +303,17 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
     navigate({ to: "/portal-results" });
   }, [fetchWithAuth, portalResultId, queryClient, navigate]);
 
+  const handleUnpin = useCallback(async () => {
+    await fetchWithAuth(
+      `/api/portal-results/${encodeURIComponent(portalResultId)}`,
+      { method: "DELETE" }
+    );
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.portalResults.root,
+    });
+    navigate({ to: "/portal-results" });
+  }, [fetchWithAuth, portalResultId, queryClient, navigate]);
+
   const handleOpenPortal = useCallback(
     (portalId: string) => {
       navigate({ to: `/portals/${portalId}` });
@@ -317,6 +340,7 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
                 result={portalResult}
                 onRename={handleRename}
                 onDelete={handleDelete}
+                onUnpin={handleUnpin}
                 onOpenPortal={handleOpenPortal}
                 onNavigate={handleNavigate}
                 renamePending={renameMutation.isPending}
