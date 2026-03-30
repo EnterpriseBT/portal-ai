@@ -279,6 +279,7 @@ const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
               }}
               error={touched.name && !!errors.name}
               helperText={touched.name && errors.name}
+              slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
               required
               fullWidth
             />

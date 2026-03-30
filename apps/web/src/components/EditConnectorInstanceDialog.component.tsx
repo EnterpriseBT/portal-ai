@@ -97,6 +97,7 @@ const EditForm: React.FC<{
           }}
           error={touched && !!errors.name}
           helperText={touched && errors.name}
+          slotProps={{ htmlInput: { "aria-invalid": touched && !!errors.name } }}
           required
           fullWidth
         />

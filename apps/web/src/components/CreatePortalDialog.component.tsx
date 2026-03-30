@@ -13,6 +13,7 @@ import TextField from "@mui/material/TextField";
 import DataResult from "./DataResult.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { OrgData } from "./StationList.component";
 import { sdk } from "../api/sdk";
 
@@ -30,6 +31,7 @@ interface StationPickerProps {
   selected: string | null;
   onChange: (stationId: string | null) => void;
   error?: string;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 const StationPicker: React.FC<StationPickerProps> = ({
@@ -37,6 +39,7 @@ const StationPicker: React.FC<StationPickerProps> = ({
   selected,
   onChange,
   error,
+  inputRef,
 }) => {
   const result = sdk.stations.list({
     limit: 100,
@@ -70,6 +73,7 @@ const StationPicker: React.FC<StationPickerProps> = ({
             renderInput={(params) => (
               <TextField
                 {...params}
+                inputRef={inputRef}
                 label="Station"
                 placeholder="Select a station..."
                 required
@@ -103,6 +107,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
 }) => {
   const [stationId, setStationId] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  const stationRef = useDialogAutoFocus(open);
   const [orgDefaultStationId, setOrgDefaultStationId] = useState<
     string | null
   >(null);
@@ -176,6 +181,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
                   <StationPicker
                     defaultStationId={defaultId}
                     selected={stationId}
+                    inputRef={stationRef}
                     onChange={(id) => {
                       setStationId(id);
                       setTouched(true);

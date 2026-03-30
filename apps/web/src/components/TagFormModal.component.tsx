@@ -110,7 +110,10 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
     setTouched({ name: true, color: true });
     const formErrors = validateTagForm(form);
     setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) return;
+    if (Object.keys(formErrors).length > 0) {
+      nameRef.current?.focus();
+      return;
+    }
 
     const body: EntityTagCreateRequestBody = {
       name: form.name.trim(),
@@ -163,6 +166,7 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           onBlur={() => handleBlur("name")}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
+          slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
           required
           fullWidth
         />

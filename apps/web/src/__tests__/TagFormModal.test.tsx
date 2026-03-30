@@ -235,4 +235,22 @@ describe("TagFormModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  // ── Accessibility ────────────────────────────────────────────────
+
+  it("should set aria-invalid on name field when validation fails", async () => {
+    render(<TagFormModal {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    fireEvent.focus(nameInput);
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    });
+  });
+
+  it("should have aria-required on required fields", () => {
+    render(<TagFormModal {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    expect(nameInput).toBeRequired();
+  });
 });

@@ -165,6 +165,7 @@ export const ConnectorInstanceCardUI = ({
                 size="small"
                 color="error"
                 onClick={() => onDelete(ci)}
+                aria-label="Delete connector instance"
               >
                 <DeleteOutlineIcon fontSize="small" />
               </IconButton>

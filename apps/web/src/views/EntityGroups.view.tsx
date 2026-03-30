@@ -272,6 +272,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
               }}
               error={touched.name && !!errors.name}
               helperText={touched.name && errors.name}
+              slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
               required
               fullWidth
             />

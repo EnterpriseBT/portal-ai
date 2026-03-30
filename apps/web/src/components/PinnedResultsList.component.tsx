@@ -80,6 +80,7 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
           size="small"
           data-testid={`unpin-btn-${result.id}`}
           onClick={() => onUnpin(result.id)}
+          aria-label="Unpin result"
           sx={{
             mr: 1,
             alignSelf: { xs: "flex-end", sm: "center" },

@@ -59,6 +59,7 @@ export const PortalCardUI: React.FC<PortalCardUIProps> = ({
           color="error"
           onClick={() => onDelete(id)}
           data-testid={`delete-portal-${id}`}
+          aria-label="Delete portal"
           sx={{
             mr: 1,
             alignSelf: { xs: "flex-end", sm: "center" },

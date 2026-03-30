@@ -93,7 +93,10 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     setTouched({ name: true, toolPacks: true });
     const formErrors = validateForm(form);
     setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) return;
+    if (Object.keys(formErrors).length > 0) {
+      nameRef.current?.focus();
+      return;
+    }
 
     const body: UpdateStationBody = {};
     if (form.name.trim() !== station.name) {
@@ -157,6 +160,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           onBlur={() => handleBlur("name")}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
+          slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
           required
           fullWidth
         />

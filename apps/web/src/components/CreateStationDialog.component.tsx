@@ -97,7 +97,10 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
     setTouched({ name: true, toolPacks: true });
     const formErrors = validateForm(form);
     setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) return;
+    if (Object.keys(formErrors).length > 0) {
+      nameRef.current?.focus();
+      return;
+    }
 
     const body: CreateStationBody = {
       name: form.name.trim(),
@@ -153,6 +156,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           onBlur={() => handleBlur("name")}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
+          slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
           required
           fullWidth
         />
@@ -192,6 +196,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
               required
               error={touched.toolPacks && !!errors.toolPacks}
               helperText={touched.toolPacks && errors.toolPacks}
+              inputProps={{ ...params.inputProps, "aria-invalid": touched.toolPacks && !!errors.toolPacks || undefined }}
             />
           )}
         />

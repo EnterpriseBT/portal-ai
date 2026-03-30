@@ -8,7 +8,7 @@
 
 ## Phasing Strategy
 
-The work is split into 5 phases ordered by dependency and priority. Each phase is independently shippable and must pass verification before moving to the next.
+The work is split into 6 phases ordered by dependency and priority. Each phase is independently shippable and must pass verification before moving to the next.
 
 | Phase | Focus | Depends On |
 |-------|-------|------------|
@@ -17,6 +17,7 @@ The work is split into 5 phases ordered by dependency and priority. Each phase i
 | 3 | Zod schema validation on all forms | Phase 1 (FormAlert) |
 | 4 | Missing error surfaces + accessibility hardening | Phase 1, Phase 2 |
 | 5 | Query cache invalidation after mutations/deletions | — |
+| 6 | AI agent documentation updates (`CLAUDE.md`) | Phases 1–5 (codifies established patterns) |
 
 ---
 
@@ -321,6 +322,74 @@ npm run type-check
 npm run lint
 npm run test -- --filter=web
 npm run build
+```
+
+---
+
+## Phase 6 — AI Agent Documentation Updates
+
+Update the repository's AI agent instructions (`CLAUDE.md`) to codify the form validation, error handling, and accessibility standards established in Phases 1–5 so that all future AI-generated code follows these patterns by default.
+
+### 6.1 — Form & Dialog Standards (CLAUDE.md)
+
+- [ ] **6.1.1** Add a **"Form & Dialog Pattern"** section to `CLAUDE.md` documenting the required structure for all data-submission dialogs:
+  - Every dialog that submits data **must** be wrapped in a `<form onSubmit>` element
+  - For `Modal`-based dialogs: use `slotProps.paper.component="form"` with `onSubmit` handler
+  - For raw MUI `Dialog`: wrap `DialogContent` + `DialogActions` in a native `<form>`
+  - Action buttons must use `type="button"` to prevent double-firing with form submission
+  - The first interactive field must receive auto-focus via `useDialogAutoFocus(open)` (or `autoFocus` prop for simple text fields)
+
+- [ ] **6.1.2** Document the **`serverError` prop contract** — every dialog that triggers a mutation must:
+  - Accept a `serverError?: ServerError | null` prop
+  - Render `<FormAlert serverError={serverError} />` inside the dialog content
+  - The parent view must pass `toServerError(mutation.error)` from `utils/api.util.ts`
+
+- [ ] **6.1.3** Document the **Zod validation pattern** — every form with user input must:
+  - Validate via `validateWithSchema(Schema, data)` from `utils/form-validation.util.ts` using the matching `@portalai/core/contracts` schema
+  - Maintain `touched` and `errors` state; show errors only after blur or submit
+  - Block submission when validation fails (never call `onSubmit` with invalid data)
+
+### 6.2 — Accessibility Standards (CLAUDE.md)
+
+- [ ] **6.2.1** Add an **"Accessibility Requirements"** section to `CLAUDE.md`:
+  - All `<TextField>` with validation must include `error={touched[field] && !!errors[field]}` and `helperText={touched[field] && errors[field]}` (MUI auto-links `aria-describedby`)
+  - All icon-only `<IconButton>` components must have a descriptive `aria-label`
+  - `<FormAlert>` uses MUI `<Alert>` which provides `role="alert"` automatically — do not add custom alert roles
+  - Searchable select components (`AsyncSearchableSelect`, `SearchableSelect`, etc.) accept `inputRef` for focus management
+
+### 6.3 — Workflow Stepper Validation (CLAUDE.md)
+
+- [ ] **6.3.1** Extend the existing **"Workflow Module Pattern"** section in `CLAUDE.md` to include validation rules:
+  - Each step that collects user input must define a Zod schema in `utils/<feature>.util.ts`
+  - The container must call the step's validation function before advancing to the next step (`onNext`)
+  - If validation fails, the step must display per-field errors and block navigation
+  - Reference implementation: `workflows/CSVConnector/utils/csv-validation.util.ts`
+
+### 6.4 — Query Cache Invalidation (CLAUDE.md)
+
+- [ ] **6.4.1** Add a **"Mutation Cache Invalidation"** section to `CLAUDE.md`:
+  - Every mutation's `onSuccess` callback must invalidate at minimum its own entity's `.root` query key
+  - Delete operations that cascade on the backend must also invalidate downstream entity query keys on the frontend (e.g., deleting a station must invalidate `portals.root` and `portalResults.root`)
+  - Use `queryClient.invalidateQueries({ queryKey: queryKeys.<entity>.root })` — never manually remove or update cache entries
+
+### 6.5 — Test Requirements (CLAUDE.md)
+
+- [ ] **6.5.1** Add a **"Dialog & Form Test Checklist"** to `CLAUDE.md` — every new dialog must have tests covering:
+  - Renders title and content when `open={true}`
+  - Does not render when `open={false}`
+  - Calls `onSubmit`/`onConfirm` on button click
+  - Supports Enter key submission (form submit event)
+  - Calls `onClose` on Cancel click
+  - Shows loading state when `isPending={true}`
+  - Renders `<FormAlert>` when `serverError` is provided
+  - Does not render `<FormAlert>` when `serverError` is null
+  - Displays field-level validation errors on invalid submit
+
+### Verification
+
+```bash
+# No code changes — documentation only. Verify CLAUDE.md is well-formed:
+cat CLAUDE.md | head -300
 ```
 
 ---

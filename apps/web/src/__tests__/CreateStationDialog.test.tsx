@@ -139,4 +139,40 @@ describe("CreateStationDialog", () => {
       expect(screen.getByText("Name is required")).toBeInTheDocument();
     });
   });
+
+  it("should set aria-invalid on name field when validation fails", async () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    fireEvent.focus(nameInput);
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    });
+  });
+
+  it("should have aria-required on required fields", () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    expect(nameInput).toBeRequired();
+  });
+
+  it("should have role='alert' on FormAlert when server error is present", () => {
+    render(
+      <CreateStationDialog
+        {...defaultProps}
+        serverError={{ message: "Oops", code: "ERR" }}
+      />
+    );
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("should auto-link aria-describedby to helper text via MUI", async () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    fireEvent.focus(nameInput);
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(nameInput).toHaveAttribute("aria-describedby");
+    });
+  });
 });

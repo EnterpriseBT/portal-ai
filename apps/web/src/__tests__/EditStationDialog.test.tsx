@@ -148,4 +148,20 @@ describe("EditStationDialog", () => {
       expect(screen.getByText("Name is required")).toBeInTheDocument();
     });
   });
+
+  it("should set aria-invalid on name field when validation fails", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    fireEvent.change(nameInput, { target: { value: "" } });
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    });
+  });
+
+  it("should have aria-required on required fields", () => {
+    render(<EditStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    expect(nameInput).toBeRequired();
+  });
 });
