@@ -270,6 +270,48 @@ export class EntityGroupMembersRepository extends Repository<
     return Repository.transaction((tx) => exec(tx));
   }
   /**
+   * Return all non-deleted entity group members whose `linkFieldMappingId` matches
+   * the given field mapping ID.
+   */
+  async findByLinkFieldMappingId(
+    fieldMappingId: string,
+    client: DbClient = db
+  ): Promise<EntityGroupMemberSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(entityGroupMembers.linkFieldMappingId, fieldMappingId),
+          isNull(entityGroupMembers.deleted)
+        )
+      )) as EntityGroupMemberSelect[];
+  }
+
+  /**
+   * Soft-delete all group members whose `linkFieldMappingId` matches a given
+   * field mapping ID. Returns the number of affected rows.
+   */
+  async softDeleteByLinkFieldMappingId(
+    fieldMappingId: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const now = Date.now();
+    const result = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: now, deletedBy } as any)
+      .where(
+        and(
+          eq(entityGroupMembers.linkFieldMappingId, fieldMappingId),
+          isNull(entityGroupMembers.deleted)
+        )
+      )
+      .returning();
+    return result.length;
+  }
+
+  /**
    * Soft-delete all group members across multiple connector entities.
    * Returns the number of affected rows.
    */

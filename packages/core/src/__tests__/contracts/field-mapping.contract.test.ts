@@ -6,6 +6,8 @@ import {
   FieldMappingCreateResponsePayloadSchema,
   FieldMappingUpdateRequestBodySchema,
   FieldMappingUpdateResponsePayloadSchema,
+  FieldMappingDeleteResponsePayloadSchema,
+  FieldMappingImpactResponsePayloadSchema,
 } from "../../contracts/field-mapping.contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -264,5 +266,62 @@ describe("FieldMappingUpdateResponsePayloadSchema", () => {
       fieldMapping: validFieldMapping,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+// ── Delete response ─────────────────────────────────────────────────
+
+describe("FieldMappingDeleteResponsePayloadSchema", () => {
+  it("should accept a valid delete response with cascaded counts", () => {
+    const result = FieldMappingDeleteResponsePayloadSchema.safeParse({
+      id: "fm-1",
+      cascaded: { entityGroupMembers: 3 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept zero cascaded entity group members", () => {
+    const result = FieldMappingDeleteResponsePayloadSchema.safeParse({
+      id: "fm-1",
+      cascaded: { entityGroupMembers: 0 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject missing cascaded object", () => {
+    const result = FieldMappingDeleteResponsePayloadSchema.safeParse({
+      id: "fm-1",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject missing id", () => {
+    const result = FieldMappingDeleteResponsePayloadSchema.safeParse({
+      cascaded: { entityGroupMembers: 0 },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── Impact response ─────────────────────────────────────────────────
+
+describe("FieldMappingImpactResponsePayloadSchema", () => {
+  it("should accept a valid impact response", () => {
+    const result = FieldMappingImpactResponsePayloadSchema.safeParse({
+      entityGroupMembers: 5,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept zero entity group members", () => {
+    const result = FieldMappingImpactResponsePayloadSchema.safeParse({
+      entityGroupMembers: 0,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject missing entityGroupMembers", () => {
+    const result = FieldMappingImpactResponsePayloadSchema.safeParse({});
+    expect(result.success).toBe(false);
   });
 });

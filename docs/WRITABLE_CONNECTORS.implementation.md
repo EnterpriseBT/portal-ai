@@ -131,40 +131,40 @@ Implements Rule 5 (field mapping delete cascades to entity group members) and en
 
 ### Checklist
 
-- [ ] **2.1** Add `findByLinkFieldMappingId` method to entity group members repository
+- [x] **2.1** Add `findByLinkFieldMappingId` method to entity group members repository
   - File: `apps/api/src/db/repositories/entity-group-members.repository.ts`
   - Returns non-deleted entity group members whose `linkFieldMappingId` matches a given field mapping ID
-- [ ] **2.2** Implement Rule 5 — cascade `DELETE /api/field-mappings/:id` to entity group members
+- [x] **2.2** Implement Rule 5 — cascade `DELETE /api/field-mappings/:id` to entity group members
   - File: `apps/api/src/routes/field-mapping.router.ts`
   - Wrap in a transaction: soft-delete the field mapping, then soft-delete any entity group members where `linkFieldMappingId` matches
   - Return `{ id, cascaded: { entityGroupMembers: <count> } }`
-- [ ] **2.3** Implement `GET /api/field-mappings/:id/impact` endpoint
+- [x] **2.3** Implement `GET /api/field-mappings/:id/impact` endpoint
   - File: `apps/api/src/routes/field-mapping.router.ts`
   - Return `{ entityGroupMembers }` count
-- [ ] **2.4** Verify entity group member `DELETE /api/entity-groups/:groupId/members/:memberId` works as direct soft-delete
+- [x] **2.4** Verify entity group member `DELETE /api/entity-groups/:groupId/members/:memberId` works as direct soft-delete
   - File: `apps/api/src/routes/entity-group-member.router.ts`
   - This endpoint already exists — confirm it uses soft-delete and returns the deleted member
-- [ ] **2.5** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+- [x] **2.5** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
   - `DELETE /api/field-mappings/:id` — document 200 response with `cascaded.entityGroupMembers` count, and 404 response
   - `GET /api/field-mappings/:id/impact` — document response schema with `entityGroupMembers` count
   - Follow the existing `@openapi` JSDoc pattern in `apps/api/src/routes/*.ts`
 
 ### Tests
 
-- [ ] **2.T1** Integration test: `DELETE /api/field-mappings/:id` soft-deletes the field mapping and cascades to entity group members using it as `linkFieldMappingId`
-- [ ] **2.T2** Integration test: `DELETE /api/field-mappings/:id` returns correct `cascaded.entityGroupMembers` count
-- [ ] **2.T3** Integration test: `DELETE /api/field-mappings/:id` with no dependent group members succeeds with `cascaded.entityGroupMembers: 0`
-- [ ] **2.T4** Integration test: `DELETE /api/field-mappings/:id` returns 404 for non-existent mapping
-- [ ] **2.T5** Integration test: `GET /api/field-mappings/:id/impact` returns correct `entityGroupMembers` count
-- [ ] **2.T6** Integration test: `DELETE /api/entity-groups/:groupId/members/:memberId` soft-deletes the member
-- [ ] **2.T7** Integration test: deleted field mapping no longer appears in `GET /api/field-mappings` list
+- [x] **2.T1** Integration test: `DELETE /api/field-mappings/:id` soft-deletes the field mapping and cascades to entity group members using it as `linkFieldMappingId`
+- [x] **2.T2** Integration test: `DELETE /api/field-mappings/:id` returns correct `cascaded.entityGroupMembers` count
+- [x] **2.T3** Integration test: `DELETE /api/field-mappings/:id` with no dependent group members succeeds with `cascaded.entityGroupMembers: 0`
+- [x] **2.T4** Integration test: `DELETE /api/field-mappings/:id` returns 404 for non-existent mapping
+- [x] **2.T5** Integration test: `GET /api/field-mappings/:id/impact` returns correct `entityGroupMembers` count
+- [x] **2.T6** Integration test: `DELETE /api/entity-groups/:groupId/members/:memberId` soft-deletes the member
+- [x] **2.T7** Integration test: deleted field mapping no longer appears in `GET /api/field-mappings` list
 
 ### Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes — all new and existing tests green
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes — all new and existing tests green
 
 ---
 

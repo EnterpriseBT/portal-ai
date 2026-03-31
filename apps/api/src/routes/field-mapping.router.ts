@@ -11,12 +11,15 @@ import {
   type FieldMappingCreateResponsePayload,
   FieldMappingUpdateRequestBodySchema,
   type FieldMappingUpdateResponsePayload,
+  type FieldMappingDeleteResponsePayload,
+  type FieldMappingImpactResponsePayload,
   type FieldMappingBidirectionalValidationResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { Repository } from "../db/repositories/base.repository.js";
 import { fieldMappings } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
@@ -469,12 +472,90 @@ fieldMappingRouter.patch(
 
 /**
  * @openapi
+ * /api/field-mappings/{id}/impact:
+ *   get:
+ *     tags:
+ *       - Field Mappings
+ *     summary: Assess deletion impact of a field mapping
+ *     description: Returns counts of dependent resources that would be affected by deleting this field mapping.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Field mapping ID
+ *     responses:
+ *       200:
+ *         description: Impact assessment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     entityGroupMembers:
+ *                       type: integer
+ *                       description: Number of entity group members using this field mapping as their link field
+ *       404:
+ *         description: Field mapping not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+fieldMappingRouter.get(
+  "/:id/impact",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      logger.info({ id }, "GET /api/field-mappings/:id/impact called");
+
+      const existing = await DbService.repository.fieldMappings.findById(id);
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found")
+        );
+      }
+
+      const dependentMembers = await DbService.repository.entityGroupMembers
+        .findByLinkFieldMappingId(id);
+
+      return HttpService.success<FieldMappingImpactResponsePayload>(res, {
+        entityGroupMembers: dependentMembers.length,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to assess field mapping impact"
+      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_FETCH_FAILED, error instanceof Error ? error.message : "Failed to assess field mapping impact"));
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/field-mappings/{id}:
  *   delete:
  *     tags:
  *       - Field Mappings
  *     summary: Delete a field mapping
- *     description: Soft-deletes a field mapping by ID.
+ *     description: Soft-deletes a field mapping by ID and cascades to any entity group members that use it as their link field mapping.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -500,6 +581,12 @@ fieldMappingRouter.patch(
  *                   properties:
  *                     id:
  *                       type: string
+ *                     cascaded:
+ *                       type: object
+ *                       properties:
+ *                         entityGroupMembers:
+ *                           type: integer
+ *                           description: Number of entity group members that were cascade-deleted
  *       404:
  *         description: Field mapping not found
  *         content:
@@ -529,14 +616,17 @@ fieldMappingRouter.delete(
 
       const { userId } = req.application!.metadata;
 
-      await DbService.repository.fieldMappings.softDelete(id, userId).catch((error) => {
+      const cascadedEntityGroupMembers = await Repository.transaction(async (tx) => {
+        await DbService.repository.fieldMappings.softDelete(id, userId, tx);
+        return DbService.repository.entityGroupMembers.softDeleteByLinkFieldMappingId(id, userId, tx);
+      }).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.FIELD_MAPPING_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete field mapping");
       });
 
-      logger.info({ id }, "Field mapping soft-deleted");
+      logger.info({ id, cascadedEntityGroupMembers }, "Field mapping soft-deleted with cascade");
 
-      return HttpService.success(res, { id });
+      return HttpService.success<FieldMappingDeleteResponsePayload>(res, { id, cascaded: { entityGroupMembers: cascadedEntityGroupMembers } });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

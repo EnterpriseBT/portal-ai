@@ -85,6 +85,25 @@ export const FieldMappingUpdateResponsePayloadSchema = z.object({
 
 export type FieldMappingUpdateResponsePayload = z.infer<typeof FieldMappingUpdateResponsePayloadSchema>;
 
+// ── Delete ───────────────────────────────────────────────────────────
+
+export const FieldMappingDeleteResponsePayloadSchema = z.object({
+  id: z.string(),
+  cascaded: z.object({
+    entityGroupMembers: z.number(),
+  }),
+});
+
+export type FieldMappingDeleteResponsePayload = z.infer<typeof FieldMappingDeleteResponsePayloadSchema>;
+
+// ── Impact ───────────────────────────────────────────────────────────
+
+export const FieldMappingImpactResponsePayloadSchema = z.object({
+  entityGroupMembers: z.number(),
+});
+
+export type FieldMappingImpactResponsePayload = z.infer<typeof FieldMappingImpactResponsePayloadSchema>;
+
 // ── Bidirectional Validation ──────────────────────────────────────────
 
 export const FieldMappingBidirectionalValidationResponsePayloadSchema = z.object({
