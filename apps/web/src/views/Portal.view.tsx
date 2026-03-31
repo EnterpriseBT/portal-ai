@@ -3,6 +3,7 @@ import React, { useState, useCallback } from "react";
 import type { PortalGetResponsePayload } from "@portalai/core/contracts";
 import { Box, Button, Modal, PageHeader, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
+import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -177,7 +178,7 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                       </Button>
                     }
                     secondaryActions={[
-                      { label: "Delete", onClick: () => setDeleteOpen(true), color: "error" },
+                      { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteOpen(true), color: "error" },
                     ]}
                   />
                 </Box>

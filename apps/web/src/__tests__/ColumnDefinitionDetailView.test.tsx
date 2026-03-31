@@ -201,7 +201,7 @@ describe("ColumnDefinitionDetailView", () => {
 
     render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
     expect(
-      screen.getByText(/No field mappings reference this column definition/)
+      screen.getByText(/No field mappings found/)
     ).toBeInTheDocument();
   });
 

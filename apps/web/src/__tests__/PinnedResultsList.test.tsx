@@ -49,20 +49,20 @@ describe("PinnedResultCardUI", () => {
   it("should render result name and relative timestamp", () => {
     render(<PinnedResultCardUI {...defaultCardProps} />);
     expect(screen.getByText("Revenue Summary")).toBeInTheDocument();
-    expect(screen.getAllByText("1h ago").length).toBeGreaterThan(0);
+    expect(screen.getByText("1h ago")).toBeInTheDocument();
   });
 
   it("should call onResultClick with result id when card is clicked", () => {
     const onResultClick = jest.fn();
     render(<PinnedResultCardUI {...defaultCardProps} onResultClick={onResultClick} />);
-    fireEvent.click(screen.getByTestId("pinned-result-row-result-1"));
+    fireEvent.click(screen.getByText("Revenue Summary"));
     expect(onResultClick).toHaveBeenCalledWith("result-1");
   });
 
   it("should call onUnpin with result id when unpin button is clicked", () => {
     const onUnpin = jest.fn();
     render(<PinnedResultCardUI {...defaultCardProps} onUnpin={onUnpin} />);
-    fireEvent.click(screen.getByTestId("unpin-btn-result-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
     expect(onUnpin).toHaveBeenCalledWith("result-1");
   });
 
@@ -76,7 +76,7 @@ describe("PinnedResultCardUI", () => {
         onUnpin={onUnpin}
       />
     );
-    fireEvent.click(screen.getByTestId("unpin-btn-result-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
     expect(onUnpin).toHaveBeenCalledWith("result-1");
     expect(onResultClick).not.toHaveBeenCalled();
   });

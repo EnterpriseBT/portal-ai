@@ -8,7 +8,7 @@ import type {
   EntityGroupMemberWithDetails,
 } from "@portalai/core/contracts";
 import type { EntityGroup } from "@portalai/core/models";
-import { Box, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
@@ -166,10 +166,11 @@ export const RelatedRecordsSection: React.FC<RelatedRecordsSectionProps> = ({
   if (groups.length === 0) return null;
 
   return (
-    <Box data-testid="related-records-section">
-      <Typography variant="h2" sx={{ mb: 2 }}>
-        Related Records
-      </Typography>
+    <PageSection
+      title="Related Records"
+      icon={<Icon name={IconName.Link} />}
+      data-testid="related-records-section"
+    >
       <Stack spacing={1}>
         {groups.map((group) => (
           <RelatedRecordsGroupPanel
@@ -180,7 +181,7 @@ export const RelatedRecordsSection: React.FC<RelatedRecordsSectionProps> = ({
           />
         ))}
       </Stack>
-    </Box>
+    </PageSection>
   );
 };
 
@@ -216,7 +217,7 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
           icon={<Icon name={IconName.DataObject} />}
         />
         {/* Metadata */}
-        <Box>
+        <PageSection title="Metadata" variant="outlined">
           <EntityRecordMetadata record={record} />
           {groups.length > 0 && (
             <Box
@@ -251,13 +252,10 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
               </Box>
             </Box>
           )}
-        </Box>
+        </PageSection>
 
         {/* Fields */}
-        <Box>
-          <Typography variant="h2" sx={{ mb: 2 }}>
-            Fields
-          </Typography>
+        <PageSection title="Fields" variant="outlined">
           <Stack spacing={2}>
             {columns.map((col) => (
               <Box
@@ -283,7 +281,7 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
               </Box>
             ))}
           </Stack>
-        </Box>
+        </PageSection>
 
         {/* Related Records */}
         <RelatedRecordsSection

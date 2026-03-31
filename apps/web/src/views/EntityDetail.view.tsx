@@ -11,7 +11,7 @@ import type {
   AssignedEntityTag,
   ApiSuccessResponse,
 } from "@portalai/core/contracts";
-import { Box, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
@@ -237,51 +237,49 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                 Last sync: {new Date(lastSyncAt).toLocaleString()}
               </Typography>
             )}
-            {/* Tags */}
-            {tags && (
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Tags
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {tags.map((tag) => (
-                    <Chip
-                      key={tag.id}
-                      label={tag.name}
-                      size="small"
-                      icon={
-                        tag.color ? (
-                          <Box
-                            sx={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: "50%",
-                              backgroundColor: tag.color,
-                              flexShrink: 0,
-                            }}
-                          />
-                        ) : undefined
-                      }
-                      onDelete={
-                        onUnassignTag
-                          ? () => onUnassignTag(tag.assignmentId)
-                          : undefined
-                      }
-                    />
-                  ))}
-                </Stack>
-                {onSearchTags && onAssignTag && (
-                  <Box sx={{ mt: 1, maxWidth: 300 }}>
-                    <TagAssignSelect
-                      onSearch={onSearchTags}
-                      onAssign={onAssignTag}
-                    />
-                  </Box>
-                )}
-              </Box>
-            )}
           </Box>
         </PageHeader>
+
+        {/* Tags */}
+        {tags && (
+          <PageSection title="Tags" icon={<Icon name={IconName.Label} />}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {tags.map((tag) => (
+                <Chip
+                  key={tag.id}
+                  label={tag.name}
+                  size="small"
+                  icon={
+                    tag.color ? (
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          backgroundColor: tag.color,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : undefined
+                  }
+                  onDelete={
+                    onUnassignTag
+                      ? () => onUnassignTag(tag.assignmentId)
+                      : undefined
+                  }
+                />
+              ))}
+            </Stack>
+            {onSearchTags && onAssignTag && (
+              <Box sx={{ mt: 1, maxWidth: 300 }}>
+                <TagAssignSelect
+                  onSearch={onSearchTags}
+                  onAssign={onAssignTag}
+                />
+              </Box>
+            )}
+          </PageSection>
+        )}
 
 
         {/* Bidirectional consistency warnings */}
@@ -298,7 +296,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
         )}
 
         {/* Data table */}
-        <Box>
+        <PageSection title="Records" icon={<Icon name={IconName.ViewColumn} />}>
           <PaginationToolbar {...pagination.toolbarProps} />
 
           <Box sx={{ mt: 2 }}>
@@ -363,7 +361,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
               )}
             </EntityRecordDataTable>
           </Box>
-        </Box>
+        </PageSection>
       </Stack>
     </Box>
   );

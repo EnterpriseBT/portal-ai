@@ -12,9 +12,9 @@ import {
   Button,
   Icon,
   IconName,
+  PageEmptyState,
   PageHeader,
   Stack,
-  Typography,
 } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,6 +24,7 @@ import { TagCardUI } from "../components/TagCard.component";
 import { TagFormModal } from "../components/TagFormModal.component";
 import { DeleteTagDialog } from "../components/DeleteTagDialog.component";
 import DataResult from "../components/DataResult.component";
+import { EmptyResults } from "../components/EmptyResults.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
@@ -109,14 +110,24 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityTagListResponsePayload;
                     if (list.entityTags.length === 0) {
-                      return (
-                        <Typography
-                          variant="body1"
-                          color="text.secondary"
-                          sx={{ py: 4, textAlign: "center" }}
-                        >
-                          No tags found
-                        </Typography>
+                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      return hasActiveFilters ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.Label} />}
+                          title="No tags found"
+                          description="Create your first tag to get started."
+                          action={
+                            <Button
+                              variant="contained"
+                              startIcon={<AddIcon />}
+                              onClick={onCreateTag}
+                            >
+                              Create Tag
+                            </Button>
+                          }
+                        />
                       );
                     }
 

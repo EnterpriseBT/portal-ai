@@ -5,8 +5,9 @@ import type {
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Button, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -125,7 +126,7 @@ export const ConnectorInstanceView = ({
                       </Button>
                     }
                     secondaryActions={[
-                      { label: "Delete", onClick: () => setDeleteDialogOpen(true), color: "error" },
+                      { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
                     ]}
                   >
                     <Box>
@@ -166,11 +167,7 @@ export const ConnectorInstanceView = ({
                   </PageHeader>
 
                   {/* Section 2: Entities List */}
-                  <Box>
-                    <Typography variant="h2" sx={{ mb: 2 }}>
-                      Entities
-                    </Typography>
-
+                  <PageSection title="Entities" icon={<Icon name={IconName.DataObject} />}>
                     <PaginationToolbar {...pagination.toolbarProps} />
 
                     <Box sx={{ mt: 2 }}>
@@ -194,13 +191,10 @@ export const ConnectorInstanceView = ({
                               }) => {
                                 if (entities.connectorEntities.length === 0) {
                                   return (
-                                    <Typography
-                                      variant="body1"
-                                      color="text.secondary"
-                                      sx={{ py: 4, textAlign: "center" }}
-                                    >
-                                      No entities found
-                                    </Typography>
+                                    <PageEmptyState
+                                      icon={<Icon name={IconName.DataObject} />}
+                                      title="No entities found"
+                                    />
                                   );
                                 }
 
@@ -222,7 +216,7 @@ export const ConnectorInstanceView = ({
                         )}
                       </ConnectorEntityDataList>
                     </Box>
-                  </Box>
+                  </PageSection>
                   <DeleteConnectorInstanceDialog
                     open={deleteDialogOpen}
                     onClose={() => setDeleteDialogOpen(false)}

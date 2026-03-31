@@ -7,8 +7,8 @@ import {
   Icon,
   IconName,
   PageHeader,
+  PageSection,
   Stack,
-  Typography,
 } from "@portalai/core/ui";
 import RocketLaunch from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
@@ -70,23 +70,17 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
         onViewStation={onViewStation}
       />
 
-      <Box>
-        <Typography variant="h2" sx={{ mb: 2 }}>
-          Pinned Results
-        </Typography>
+      <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
         <PinnedResultsListConnected
           onResultClick={onPinnedResultClick}
           onUnpin={onUnpinResult}
           onViewAll={onViewAllPinnedResults}
         />
-      </Box>
+      </PageSection>
 
-      <Box>
-        <Typography variant="h2" sx={{ mb: 2 }}>
-          Recent Portals
-        </Typography>
+      <PageSection title="Recent Portals" icon={<Icon name={IconName.RocketLaunch} />}>
         <RecentPortalsListConnected onPortalClick={onPortalClick} />
-      </Box>
+      </PageSection>
     </Stack>
   </Box>
 );

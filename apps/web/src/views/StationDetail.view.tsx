@@ -6,9 +6,11 @@ import type {
   PortalListRequestQuery,
   PortalListResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Button, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import Chip from "@mui/material/Chip";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import HandymanOutlined from "@mui/icons-material/HandymanOutlined";
 import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
@@ -155,8 +157,8 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                         </Button>
                       }
                       secondaryActions={[
-                        { label: "Edit", onClick: () => setEditOpen(true) },
-                        { label: "Delete", onClick: () => setDeleteStationOpen(true), color: "error" },
+                        { label: "Edit", icon: <EditIcon />, onClick: () => setEditOpen(true) },
+                        { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteStationOpen(true), color: "error" },
                       ]}
                     >
                       {station.description && (
@@ -196,11 +198,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
 
                     {/* Portals Section */}
-                    <Box>
-                      <Typography variant="h2" sx={{ mb: 2 }}>
-                        Portals
-                      </Typography>
-
+                    <PageSection title="Portals" icon={<Icon name={IconName.RocketLaunch} />}>
                       <PaginationToolbar {...portalsPagination.toolbarProps} />
 
                       <Box sx={{ mt: 2 }}>
@@ -225,13 +223,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                 }) => {
                                   if (portals.portals.length === 0) {
                                     return (
-                                      <Typography
-                                        variant="body1"
-                                        color="text.secondary"
-                                        sx={{ py: 4, textAlign: "center" }}
-                                      >
-                                        No portals yet
-                                      </Typography>
+                                      <PageEmptyState
+                                        icon={<Icon name={IconName.RocketLaunch} />}
+                                        title="No portals yet"
+                                      />
                                     );
                                   }
 
@@ -262,7 +257,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           )}
                         </PortalDataList>
                       </Box>
-                    </Box>
+                    </PageSection>
                   </Stack>
                   {editOpen && (
                     <EditStationDialog

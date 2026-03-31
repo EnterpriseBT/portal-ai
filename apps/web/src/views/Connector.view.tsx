@@ -5,6 +5,7 @@ import {
   Box,
   Icon,
   IconName,
+  PageEmptyState,
   PageHeader,
   Stack,
   Tab,
@@ -187,7 +188,14 @@ export const ConnectorView = () => {
                 <DataResult results={{ connectorInstances: response }}>
                   {({ connectorInstances }) =>
                     connectorInstances.total === 0 ? (
-                      <EmptyResults />
+                      (instancePagination.search || Object.values(instancePagination.filters).some(v => v.length > 0)) ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.MemoryChip} />}
+                          title="No connectors found"
+                        />
+                      )
                     ) : (
                       <Stack spacing={1}>
                         {connectorInstances.connectorInstances.map((ci) => (
@@ -227,7 +235,14 @@ export const ConnectorView = () => {
                 <DataResult results={{ connectorDefinitions: response }}>
                   {({ connectorDefinitions }) =>
                     connectorDefinitions.total === 0 ? (
-                      <EmptyResults />
+                      (catalogPagination.search || Object.values(catalogPagination.filters).some(v => v.length > 0)) ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.MemoryChip} />}
+                          title="No connector definitions found"
+                        />
+                      )
                     ) : (
                       <Stack spacing={1}>
                         {connectorDefinitions.connectorDefinitions.map((cd) => (

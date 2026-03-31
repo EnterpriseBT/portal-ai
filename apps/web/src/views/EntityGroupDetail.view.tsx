@@ -15,6 +15,7 @@ import {
   Icon,
   IconName,
   PageHeader,
+  PageSection,
   Stack,
   Typography,
   AsyncSearchableSelect,
@@ -467,7 +468,7 @@ export const EntityGroupDetailViewUI: React.FC<
               </Button>
             }
             secondaryActions={[
-              { label: "Delete", onClick: () => setDeleteDialogOpen(true), color: "error", disabled: isDeletingGroup },
+              { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error", disabled: isDeletingGroup },
             ]}
           >
             {group.description && (
@@ -478,11 +479,10 @@ export const EntityGroupDetailViewUI: React.FC<
           </PageHeader>
 
           {/* Members table */}
-          <Box>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography variant="h6">
-                Members
-              </Typography>
+          <PageSection
+            title="Members"
+            icon={<Icon name={IconName.Person} />}
+            primaryAction={
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
@@ -490,14 +490,15 @@ export const EntityGroupDetailViewUI: React.FC<
               >
                 Add Member
               </Button>
-            </Stack>
+            }
+          >
             <DataTable
               columns={membersColumns}
               rows={group.members.map((m) => ({ ...m } as Record<string, unknown>))}
               emptyMessage="No members yet"
               onRowClick={(row) => navigate({ to: "/entities/$entityId", params: { entityId: row.connectorEntityId as string } })}
             />
-          </Box>
+          </PageSection>
 
         </Stack>
 

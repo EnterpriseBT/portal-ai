@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 
 import type { PortalResult } from "@portalai/core/models";
-import { Icon, IconName, PageHeader, Stack } from "@portalai/core/ui";
+import { Icon, IconName, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -91,7 +91,15 @@ export const PinnedResultsListView: React.FC = () => {
                   const payload = pinned as unknown as PortalResultsListPayload;
                   const results = payload.portalResults as unknown as PortalResult[];
                   if (payload.total === 0) {
-                    return <EmptyResults />;
+                    const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                    return hasActiveFilters ? (
+                      <EmptyResults />
+                    ) : (
+                      <PageEmptyState
+                        icon={<Icon name={IconName.PushPin} />}
+                        title="No pinned results"
+                      />
+                    );
                   }
                   return (
                     <Stack spacing={1}>

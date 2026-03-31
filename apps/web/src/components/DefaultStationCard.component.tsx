@@ -5,7 +5,7 @@ import type {
   OrganizationGetResponse,
   StationGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Button, Stack, Typography } from "@portalai/core/ui";
+import { Button, Icon, IconName, PageEmptyState, Stack, Typography } from "@portalai/core/ui";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
@@ -44,19 +44,17 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
 }) => {
   if (!station) {
     return (
-      <Card variant="outlined" data-testid="default-station-card">
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Default Station
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            No default station — go to Stations to set one
-          </Typography>
-          <Button variant="outlined" size="small" onClick={onChangeDefault}>
+      <PageEmptyState
+        data-testid="default-station-card"
+        icon={<Icon name={IconName.RocketLaunch} />}
+        title="No default station"
+        description="Go to Stations to set one."
+        action={
+          <Button variant="contained" size="small" onClick={onChangeDefault}>
             Go to Stations
           </Button>
-        </CardContent>
-      </Card>
+        }
+      />
     );
   }
 

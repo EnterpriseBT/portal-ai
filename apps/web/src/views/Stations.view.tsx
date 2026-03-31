@@ -84,6 +84,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
             onSetDefault={onSetDefault}
             onOpen={onOpen}
             onDelete={onDelete}
+            hasActiveFilters={!!(pagination.search || Object.values(pagination.filters).some(v => v.length > 0))}
           />
         </Box>
       </Stack>

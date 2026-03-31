@@ -11,15 +11,14 @@ import {
   Button,
   Icon,
   IconName,
+  PageEmptyState,
   PageHeader,
   Stack,
   Typography,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import AddIcon from "@mui/icons-material/Add";
-import Card from "@mui/material/Card";
-import CardActionArea from "@mui/material/CardActionArea";
-import CardContent from "@mui/material/CardContent";
+import { DetailCard } from "@portalai/core/ui";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -29,6 +28,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { EmptyResults } from "../components/EmptyResults.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
@@ -67,32 +67,21 @@ interface EntityGroupCardProps {
 }
 
 const EntityGroupCard: React.FC<EntityGroupCardProps> = ({ group, onClick }) => (
-  <Card variant="outlined">
-    <CardActionArea onClick={onClick}>
-      <CardContent>
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" noWrap>
-              {group.name}
-            </Typography>
-            {group.description && (
-              <Typography variant="caption" color="text.secondary">
-                {group.description}
-              </Typography>
-            )}
-            <Stack direction="row" spacing={2} sx={{ mt: 0.5 }}>
-              <Typography variant="caption" color="text.secondary">
-                {group.memberCount} {group.memberCount === 1 ? "member" : "members"}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Created on {dates.format(group.created, "MM/dd/yyyy")}
-              </Typography>
-            </Stack>
-          </Box>
-        </Stack>
-      </CardContent>
-    </CardActionArea>
-  </Card>
+  <DetailCard title={group.name} onClick={onClick}>
+    {group.description && (
+      <Typography variant="caption" color="text.secondary">
+        {group.description}
+      </Typography>
+    )}
+    <Stack direction="row" spacing={2}>
+      <Typography variant="caption" color="text.secondary">
+        {group.memberCount} {group.memberCount === 1 ? "member" : "members"}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        Created on {dates.format(group.created, "MM/dd/yyyy")}
+      </Typography>
+    </Stack>
+  </DetailCard>
 );
 
 // ── Entity Groups list view (pure UI) ──────────────────────────────
@@ -162,14 +151,24 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityGroupListResponsePayload;
                     if (list.entityGroups.length === 0) {
-                      return (
-                        <Typography
-                          variant="body1"
-                          color="text.secondary"
-                          sx={{ py: 4, textAlign: "center" }}
-                        >
-                          No entity groups found
-                        </Typography>
+                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      return hasActiveFilters ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.Hub} />}
+                          title="No entity groups found"
+                          description="Create your first entity group to get started."
+                          action={
+                            <Button
+                              variant="contained"
+                              startIcon={<AddIcon />}
+                              onClick={onCreateGroup}
+                            >
+                              Create Group
+                            </Button>
+                          }
+                        />
                       );
                     }
 

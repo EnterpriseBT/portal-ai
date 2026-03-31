@@ -94,7 +94,7 @@ describe("StationCardUI", () => {
   it("should navigate when card is clicked", () => {
     const onOpen = jest.fn();
     render(<StationCardUI {...defaultCardProps} onOpen={onOpen} />);
-    fireEvent.click(screen.getByTestId("station-card"));
+    fireEvent.click(screen.getByText("Sales Analytics"));
     expect(onOpen).toHaveBeenCalledWith(station1);
   });
 });

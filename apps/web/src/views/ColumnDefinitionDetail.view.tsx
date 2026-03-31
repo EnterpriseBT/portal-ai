@@ -4,7 +4,7 @@ import type {
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingWithConnectorEntity,
 } from "@portalai/core/contracts";
-import { Box, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -94,53 +94,54 @@ export const ColumnDefinitionDetailView: React.FC<
                         <Chip label="Required" size="small" color="error" />
                       )}
                     </Stack>
-                    <Typography variant="body2" color="text.secondary">
-                      Key:{" "}
-                      <Typography
-                        component="span"
-                        variant="body2"
-                        sx={{ fontFamily: "monospace" }}
-                      >
-                        {cd.key}
-                      </Typography>
-                    </Typography>
-
-                    {cd.description && (
-                      <Typography variant="body2" color="text.secondary">
-                        Description: {cd.description}
-                      </Typography>
-                    )}
-
-                    {cd.format && (
-                      <Typography variant="body2" color="text.secondary">
-                        Format: {cd.format}
-                      </Typography>
-                    )}
-
-                    {cd.defaultValue && (
-                      <Typography variant="body2" color="text.secondary">
-                        Default Value: {cd.defaultValue}
-                      </Typography>
-                    )}
-
-                    {cd.enumValues && cd.enumValues.length > 0 && (
-                      <Typography variant="body2" color="text.secondary">
-                        Enum Values: {cd.enumValues.join(", ")}
-                      </Typography>
-                    )}
-
-                    <Typography variant="body2" color="text.secondary">
-                      Created: {new Date(cd.created).toLocaleString()}
-                    </Typography>
                   </PageHeader>
 
+                  {/* Details Section */}
+                  <PageSection title="Details" variant="outlined">
+                    <Stack spacing={1}>
+                      <Typography variant="body2" color="text.secondary">
+                        Key:{" "}
+                        <Typography
+                          component="span"
+                          variant="body2"
+                          sx={{ fontFamily: "monospace" }}
+                        >
+                          {cd.key}
+                        </Typography>
+                      </Typography>
+
+                      {cd.description && (
+                        <Typography variant="body2" color="text.secondary">
+                          Description: {cd.description}
+                        </Typography>
+                      )}
+
+                      {cd.format && (
+                        <Typography variant="body2" color="text.secondary">
+                          Format: {cd.format}
+                        </Typography>
+                      )}
+
+                      {cd.defaultValue && (
+                        <Typography variant="body2" color="text.secondary">
+                          Default Value: {cd.defaultValue}
+                        </Typography>
+                      )}
+
+                      {cd.enumValues && cd.enumValues.length > 0 && (
+                        <Typography variant="body2" color="text.secondary">
+                          Enum Values: {cd.enumValues.join(", ")}
+                        </Typography>
+                      )}
+
+                      <Typography variant="body2" color="text.secondary">
+                        Created: {new Date(cd.created).toLocaleString()}
+                      </Typography>
+                    </Stack>
+                  </PageSection>
 
                   {/* Field Mappings Section */}
-                  <Box>
-                    <Typography variant="h2" sx={{ mb: 2 }}>
-                      Field Mappings
-                    </Typography>
-
+                  <PageSection title="Field Mappings" icon={<Icon name={IconName.Link} />}>
                     <PaginationToolbar {...mappingsPagination.toolbarProps} />
 
                     <Box sx={{ mt: 2 }}>
@@ -166,14 +167,10 @@ export const ColumnDefinitionDetailView: React.FC<
                               }) => {
                                 if (mappings.fieldMappings.length === 0) {
                                   return (
-                                    <Typography
-                                      variant="body1"
-                                      color="text.secondary"
-                                      sx={{ py: 4, textAlign: "center" }}
-                                    >
-                                      No field mappings reference this column
-                                      definition
-                                    </Typography>
+                                    <PageEmptyState
+                                      icon={<Icon name={IconName.Link} />}
+                                      title="No field mappings found"
+                                    />
                                   );
                                 }
 
@@ -188,7 +185,7 @@ export const ColumnDefinitionDetailView: React.FC<
                         )}
                       </FieldMappingDataList>
                     </Box>
-                  </Box>
+                  </PageSection>
                 </Stack>
               );
             }}

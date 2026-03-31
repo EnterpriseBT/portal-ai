@@ -1,4 +1,4 @@
-import { Icon, IconName, PageHeader, Stack } from "@portalai/core/ui";
+import { Icon, IconName, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -71,7 +71,14 @@ export const JobsView = () => {
               <DataResult results={{ jobs: response }}>
                 {({ jobs }) =>
                   jobs.total === 0 ? (
-                    <EmptyResults />
+                    (pagination.search || Object.values(pagination.filters).some(v => v.length > 0)) ? (
+                      <EmptyResults />
+                    ) : (
+                      <PageEmptyState
+                        icon={<Icon name={IconName.Work} />}
+                        title="No jobs found"
+                      />
+                    )
                   ) : (
                     <Stack spacing={1}>
                       {jobs.jobs.map((job) => (

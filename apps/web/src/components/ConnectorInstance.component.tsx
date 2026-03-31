@@ -11,17 +11,12 @@ import type {
 import type { ConnectorDefinition } from "@portalai/core/models";
 import {
   Avatar,
-  Box,
-  Card,
-  CardContent,
-  Stack,
+  DetailCard,
   Typography,
 } from "@portalai/core/ui";
-import CardActionArea from "@mui/material/CardActionArea";
+import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-import IconButton from "@mui/material/IconButton";
-import Tooltip from "@mui/material/Tooltip";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { upperFirst } from "lodash-es";
 
 import { sdk } from "../api/sdk";
@@ -92,87 +87,42 @@ export const ConnectorInstanceCardUI = ({
   onClick,
   onDelete,
 }: ConnectorInstanceCardUIProps) => {
+  const actions: ActionSuiteItem[] = [];
+  if (onDelete) {
+    actions.push({ label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(ci), color: "error" });
+  }
+
   return (
-    <Card variant="outlined">
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        alignItems={{ xs: "flex-end", sm: "center" }}
-      >
-        <CardActionArea
-          onClick={() => onClick?.(ci)}
-          disabled={!onClick}
-          sx={{ flex: 1, minWidth: 0 }}
+    <DetailCard
+      title={ci.name}
+      icon={
+        <Avatar
+          src={cd?.iconUrl ?? undefined}
+          alt={ci.name}
+          sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
         >
-          <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={2}
-              alignItems={{ xs: "center", sm: "center" }}
-            >
-              <Avatar
-                src={cd?.iconUrl ?? undefined}
-                alt={ci.name}
-                sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
-              >
-                {ci.name.charAt(0).toUpperCase()}
-              </Avatar>
-
-              <Box
-                sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  textAlign: { xs: "center", sm: "left" },
-                }}
-              >
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  alignItems="center"
-                  justifyContent={{ xs: "center", sm: "flex-start" }}
-                  flexWrap="wrap"
-                >
-                  <Typography variant="subtitle1" noWrap>
-                    {ci.name}
-                  </Typography>
-                  <Chip
-                    label={upperFirst(ci.status)}
-                    size="small"
-                    color={STATUS_COLOR[ci.status] ?? "default"}
-                    variant="outlined"
-                  />
-                </Stack>
-
-                <Typography variant="body2" color="text.secondary">
-                  {cd?.display ?? "Unknown connector"}
-                  {ci.lastSyncAt &&
-                    ` · Last sync: ${new Date(ci.lastSyncAt).toLocaleDateString()}`}
-                </Typography>
-
-                {ci.status === "error" && ci.lastErrorMessage && (
-                  <Typography variant="body2" color="error" noWrap>
-                    {ci.lastErrorMessage}
-                  </Typography>
-                )}
-              </Box>
-            </Stack>
-          </CardContent>
-        </CardActionArea>
-
-        {onDelete && (
-          <Box sx={{ flexShrink: 0, pr: 2, py: 1 }}>
-            <Tooltip title="Delete">
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => onDelete(ci)}
-                aria-label="Delete connector instance"
-              >
-                <DeleteOutlineIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        )}
-      </Stack>
-    </Card>
+          {ci.name.charAt(0).toUpperCase()}
+        </Avatar>
+      }
+      onClick={onClick ? () => onClick(ci) : undefined}
+      actions={actions.length > 0 ? actions : undefined}
+    >
+      <Chip
+        label={upperFirst(ci.status)}
+        size="small"
+        color={STATUS_COLOR[ci.status] ?? "default"}
+        variant="outlined"
+      />
+      <Typography variant="body2" color="text.secondary">
+        {cd?.display ?? "Unknown connector"}
+        {ci.lastSyncAt &&
+          ` · Last sync: ${new Date(ci.lastSyncAt).toLocaleDateString()}`}
+      </Typography>
+      {ci.status === "error" && ci.lastErrorMessage && (
+        <Typography variant="body2" color="error" noWrap>
+          {ci.lastErrorMessage}
+        </Typography>
+      )}
+    </DetailCard>
   );
 };

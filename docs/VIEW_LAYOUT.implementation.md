@@ -212,36 +212,36 @@ Wrap titled content blocks in `<PageSection>` to replace manual h2 + spacing pat
 
 ### Checklist
 
-- [ ] **2.1** `views/Dashboard.view.tsx`
+- [x] **2.1** `views/Dashboard.view.tsx`
   - Wrap Pinned Results list in PageSection title="Pinned Results", icon=PushPin
   - Wrap Recent Portals list in PageSection title="Recent Portals", icon=RocketLaunch
 
-- [ ] **2.2** `views/StationDetail.view.tsx`
+- [x] **2.2** `views/StationDetail.view.tsx`
   - Wrap Portals list in PageSection title="Portals", icon=RocketLaunch
 
-- [ ] **2.3** `views/ConnectorInstance.view.tsx`
+- [x] **2.3** `views/ConnectorInstance.view.tsx`
   - Wrap Entities list in PageSection title="Entities", icon=DataObject
 
-- [ ] **2.4** `views/EntityDetail.view.tsx`
+- [x] **2.4** `views/EntityDetail.view.tsx`
   - Wrap Tags section in PageSection title="Tags", icon=Label
   - Wrap Records table in PageSection title="Records", icon=ViewColumn
 
-- [ ] **2.5** `views/EntityGroupDetail.view.tsx`
+- [x] **2.5** `views/EntityGroupDetail.view.tsx`
   - Wrap Members table in PageSection title="Members", icon=Person, primaryAction=Add Member button
 
-- [ ] **2.6** `views/EntityRecordDetail.view.tsx`
+- [x] **2.6** `views/EntityRecordDetail.view.tsx`
   - Wrap Metadata block in PageSection title="Metadata", variant="outlined"
   - Wrap Fields block in PageSection title="Fields", variant="outlined"
   - Wrap Related Records in PageSection title="Related Records", icon=Link
 
-- [ ] **2.7** `views/ColumnDefinitionDetail.view.tsx`
+- [x] **2.7** `views/ColumnDefinitionDetail.view.tsx`
   - Wrap Details block in PageSection title="Details", variant="outlined"
   - Wrap Field Mappings table in PageSection title="Field Mappings", icon=Link
 
-- [ ] **2.8** `views/PinnedResultDetail.view.tsx`
+- [x] **2.8** `views/PinnedResultDetail.view.tsx`
   - Wrap ContentBlockRenderer in PageSection variant="outlined" (no title)
 
-- [ ] **2.9** `views/Settings.view.tsx`
+- [x] **2.9** `views/Settings.view.tsx`
   - Wrap Profile tab content in PageSection title="Profile", variant="outlined"
   - Wrap Organization tab content in PageSection title="Organization", variant="outlined"
 
@@ -285,31 +285,31 @@ Replace ad-hoc empty state Typography and `EmptyResults` components with `<PageE
 
 ### Checklist
 
-- [ ] **3.1** `views/Stations.view.tsx` — icon=Hub, title="No stations found", action=New Station button
+- [x] **3.1** `views/Stations.view.tsx` — icon=Hub, title="No stations found", action=New Station button
 
-- [ ] **3.2** `views/StationDetail.view.tsx` — icon=RocketLaunch, title="No portals yet"
+- [x] **3.2** `views/StationDetail.view.tsx` — icon=RocketLaunch, title="No portals yet"
 
-- [ ] **3.3** `views/Connector.view.tsx` (Connected tab) — icon=Link, title="No connectors found"
+- [x] **3.3** `views/Connector.view.tsx` (Connected tab) — icon=Link, title="No connectors found"
 
-- [ ] **3.4** `views/Connector.view.tsx` (Catalog tab) — icon=Link, title="No connector definitions found"
+- [x] **3.4** `views/Connector.view.tsx` (Catalog tab) — icon=Link, title="No connector definitions found"
 
-- [ ] **3.5** `views/ConnectorInstance.view.tsx` — icon=DataObject, title="No entities found"
+- [x] **3.5** `views/ConnectorInstance.view.tsx` — icon=DataObject, title="No entities found"
 
-- [ ] **3.6** `views/Entities.view.tsx` — icon=DataObject, title="No entities found"
+- [x] **3.6** `views/Entities.view.tsx` — icon=DataObject, title="No entities found"
 
-- [ ] **3.7** `views/EntityGroups.view.tsx` — icon=DataObject, title="No entity groups found", action=Create Group button
+- [x] **3.7** `views/EntityGroups.view.tsx` — icon=DataObject, title="No entity groups found", action=Create Group button
 
-- [ ] **3.8** `views/ColumnDefinitionList.view.tsx` — icon=ViewColumn, title="No column definitions found"
+- [x] **3.8** `views/ColumnDefinitionList.view.tsx` — icon=ViewColumn, title="No column definitions found"
 
-- [ ] **3.9** `views/ColumnDefinitionDetail.view.tsx` — icon=Link, title="No field mappings found"
+- [x] **3.9** `views/ColumnDefinitionDetail.view.tsx` — icon=Link, title="No field mappings found"
 
-- [ ] **3.10** `views/Tags.view.tsx` — icon=Label, title="No tags found", action=Create Tag button
+- [x] **3.10** `views/Tags.view.tsx` — icon=Label, title="No tags found", action=Create Tag button
 
-- [ ] **3.11** `views/Jobs.view.tsx` — icon=Work, title="No jobs found"
+- [x] **3.11** `views/Jobs.view.tsx` — icon=Work, title="No jobs found"
 
-- [ ] **3.12** `views/PinnedResultsListView.view.tsx` — icon=PushPin, title="No pinned results"
+- [x] **3.12** `views/PinnedResultsListView.view.tsx` — icon=PushPin, title="No pinned results"
 
-- [ ] **3.13** `views/Dashboard.view.tsx` — DefaultStationCardUI empty state → icon=Hub, title="No default station", action=Go to Stations button
+- [x] **3.13** `views/Dashboard.view.tsx` — DefaultStationCardUI empty state → icon=Hub, title="No default station", action=Go to Stations button
 
 ### Phase 3 — Verification
 
@@ -361,65 +361,65 @@ Refactor presentational card components to use `<DetailCard>` with `actions` pro
 
 #### 4.1 — TagCardUI
 
-- [ ] **4.1.1** Refactor `components/TagCard.component.tsx`
+- [x] **4.1.1** Refactor `components/TagCard.component.tsx`
   - title=tag.name, icon=color dot Box, actions=[Edit, Delete (color:error)]
   - Remove manual IconButton layout
-- [ ] **4.1.2** Update `__tests__/TagCard.test.tsx` — query buttons by role+name instead of icon
-- [ ] **4.1.3** Update `stories/TagCard.stories.tsx`
-- [ ] **4.1.4** Verify `views/Tags.view.tsx` passes correct props
+- [x] **4.1.2** Update `__tests__/TagCard.test.tsx` — query buttons by role+name instead of icon
+- [x] **4.1.3** Update `stories/TagCard.stories.tsx`
+- [x] **4.1.4** Verify `views/Tags.view.tsx` passes correct props
 
 #### 4.2 — PortalCardUI
 
-- [ ] **4.2.1** Refactor `components/PortalCard.component.tsx`
+- [x] **4.2.1** Refactor `components/PortalCard.component.tsx`
   - title=name, children=relative created date, actions=[Delete (color:error)], onClick
   - Remove manual CardActionArea + IconButton layout
-- [ ] **4.2.2** Update `__tests__/PortalCard.test.tsx`
-- [ ] **4.2.3** Update `stories/PortalCard.stories.tsx`
-- [ ] **4.2.4** Verify `views/StationDetail.view.tsx` passes correct props
+- [x] **4.2.2** Update `__tests__/PortalCard.test.tsx`
+- [x] **4.2.3** Update `stories/PortalCard.stories.tsx`
+- [x] **4.2.4** Verify `views/StationDetail.view.tsx` passes correct props
 
 #### 4.3 — Entity cards (inline in Entities.view)
 
-- [ ] **4.3.1** Extract inline Card JSX from `views/Entities.view.tsx` into a `DetailCard`
+- [x] **4.3.1** Extract inline Card JSX from `views/Entities.view.tsx` into a `DetailCard`
   - title=entity.label, children=connector name + key chip + tag chips, onClick=navigate
   - Remove inline Card/CardActionArea/CardContent
-- [ ] **4.3.2** Update any related tests
+- [x] **4.3.2** Update any related tests
 
 #### 4.4 — EntityGroup cards (inline in EntityGroups.view)
 
-- [ ] **4.4.1** Replace inline Card JSX in `views/EntityGroups.view.tsx` with `DetailCard`
+- [x] **4.4.1** Replace inline Card JSX in `views/EntityGroups.view.tsx` with `DetailCard`
   - title=group.name, children=description + member count + created date, onClick=navigate
-- [ ] **4.4.2** Update any related tests
+- [x] **4.4.2** Update any related tests
 
 #### 4.5 — ConnectorInstanceCardUI
 
-- [ ] **4.5.1** Refactor `components/ConnectorInstance.component.tsx`
+- [x] **4.5.1** Refactor `components/ConnectorInstance.component.tsx`
   - title=name, icon=avatar, children=status chip + definition name + sync date + error message, actions=[Delete (color:error)], onClick
   - Remove manual Avatar + CardActionArea + IconButton layout
-- [ ] **4.5.2** Update `__tests__/ConnectorInstance.test.tsx`
-- [ ] **4.5.3** Update `stories/ConnectorInstance.stories.tsx`
-- [ ] **4.5.4** Verify `views/Connector.view.tsx` passes correct props
+- [x] **4.5.2** Update `__tests__/ConnectorInstance.test.tsx`
+- [x] **4.5.3** Update `stories/ConnectorInstance.stories.tsx`
+- [x] **4.5.4** Verify `views/Connector.view.tsx` passes correct props
 
 #### 4.6 — ConnectorDefinitionCardUI
 
-- [ ] **4.6.1** Refactor `components/ConnectorDefinition.component.tsx`
+- [x] **4.6.1** Refactor `components/ConnectorDefinition.component.tsx`
   - title=displayName, icon=avatar, children=category + auth type + version + capability chips, actions=[Connect (variant:contained)]
   - Remove manual Avatar + Button layout
-- [ ] **4.6.2** Update `__tests__/ConnectorDefinition.test.tsx`
-- [ ] **4.6.3** Update `stories/ConnectorDefinition.stories.tsx`
-- [ ] **4.6.4** Verify `views/Connector.view.tsx` passes correct props
+- [x] **4.6.2** Update `__tests__/ConnectorDefinition.test.tsx`
+- [x] **4.6.3** Update `stories/ConnectorDefinition.stories.tsx`
+- [x] **4.6.4** Verify `views/Connector.view.tsx` passes correct props
 
 #### 4.7 — ColumnDefinitionCardUI
 
-- [ ] **4.7.1** Refactor column definition card in `views/ColumnDefinitionList.view.tsx`
+- [x] **4.7.1** Refactor column definition card in `views/ColumnDefinitionList.view.tsx`
   - title=label, children=key (monospace) + type chip + required chip, onClick=navigate
-- [ ] **4.7.2** Update any related tests
+- [x] **4.7.2** Update any related tests
 
 #### 4.8 — PinnedResultCardUI
 
-- [ ] **4.8.1** Refactor `components/PinnedResultCard.component.tsx` (or inline in PinnedResultsList)
+- [x] **4.8.1** Refactor `components/PinnedResultCard.component.tsx` (or inline in PinnedResultsList)
   - title=result.name, children=type chip + relative date, actions=[Unpin], onClick=navigate
-- [ ] **4.8.2** Update related tests
-- [ ] **4.8.3** Verify `views/PinnedResultsListView.view.tsx` passes correct props
+- [x] **4.8.2** Update related tests
+- [x] **4.8.3** Verify `views/PinnedResultsListView.view.tsx` passes correct props
 
 ### Phase 4 — Verification
 

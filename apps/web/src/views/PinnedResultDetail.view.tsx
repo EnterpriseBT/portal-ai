@@ -7,6 +7,7 @@ import {
   Icon,
   IconName,
   PageHeader,
+  PageSection,
   Stack,
   Typography,
 } from "@portalai/core/ui";
@@ -19,6 +20,9 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -120,6 +124,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
           secondaryActions={[
             {
               label: "Rename",
+              icon: <EditIcon />,
               onClick: () => {
                 setRenameValue(result.name);
                 setRenameOpen(true);
@@ -127,25 +132,21 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             },
             ...(result.portalId
               ? [
-                  {
-                    label: "Open Source Portal",
-                    onClick: () => onOpenPortal(result.portalId!),
-                  },
-                ]
+                {
+                  label: "Open Source Portal",
+                  icon: <OpenInNewIcon />,
+                  onClick: () => onOpenPortal(result.portalId!),
+                },
+              ]
               : []),
             {
               label: "Delete",
+              icon: <DeleteIcon />,
               onClick: () => setDeleteOpen(true),
               color: "error" as const,
             },
           ]}
         >
-          <Chip
-            label={result.type === "vega-lite" ? "Chart" : "Text"}
-            size="small"
-            variant="outlined"
-            data-testid="result-type-chip"
-          />
           <Typography
             variant="caption"
             color="text.secondary"
@@ -153,17 +154,21 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
           >
             {DateFactory.relativeTime(result.created)}
           </Typography>
+          <Box>
+            <Chip
+              label={result.type === "vega-lite" ? "Chart" : "Text"}
+              size="small"
+              variant="outlined"
+              data-testid="result-type-chip"
+            />
+          </Box>
         </PageHeader>
 
-        <Box
-          data-testid="result-content"
-          sx={{
-            overflow: "auto",
-            width: '100% !important'
-          }}
-        >
-          <ContentBlockRenderer block={contentBlock} />
-        </Box>
+        <PageSection variant="outlined" data-testid="result-content">
+          <Box sx={{ overflow: "auto" }}>
+            <ContentBlockRenderer block={contentBlock} />
+          </Box>
+        </PageSection>
       </Stack>
 
       {/* Rename dialog */}

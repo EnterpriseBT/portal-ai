@@ -1,13 +1,9 @@
 import React from "react";
 
 import type { PortalResult } from "@portalai/core/models";
-import { Box, Stack, Typography } from "@portalai/core/ui";
+import { Box, DetailCard, Stack, Typography } from "@portalai/core/ui";
+import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
-import Card from "@mui/material/Card";
-import CardActionArea from "@mui/material/CardActionArea";
-import CardContent from "@mui/material/CardContent";
-import IconButton from "@mui/material/IconButton";
-import Tooltip from "@mui/material/Tooltip";
 import TextSnippetOutlinedIcon from "@mui/icons-material/TextSnippetOutlined";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
@@ -41,58 +37,25 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
   result,
   onResultClick,
   onUnpin,
-}) => (
-  <Card variant="outlined">
-    <Stack
-      direction={{ xs: "column", sm: "row" }}
-      alignItems={{ xs: "stretch", sm: "center" }}
+}) => {
+  const actions: ActionSuiteItem[] = [
+    { label: "Unpin", icon: <PushPinIcon />, onClick: () => onUnpin(result.id) },
+  ];
+
+  return (
+    <DetailCard
+      title={result.name}
+      icon={<ResultTypeIcon type={result.type} />}
+      onClick={() => onResultClick(result.id)}
+      actions={actions}
+      data-testid={`pinned-result-row-${result.id}`}
     >
-      <CardActionArea
-        onClick={() => onResultClick(result.id)}
-        data-testid={`pinned-result-row-${result.id}`}
-        sx={{ flex: 1, minWidth: 0 }}
-      >
-        <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
-            <ResultTypeIcon type={result.type} />
-            <Typography variant="subtitle2" noWrap sx={{ flex: 1 }}>
-              {result.name}
-            </Typography>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: { xs: "none", sm: "block" }, flexShrink: 0 }}
-            >
-              {DateFactory.relativeTime(result.created)}
-            </Typography>
-          </Stack>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: { xs: "block", sm: "none" }, mt: 0.5, ml: 4 }}
-          >
-            {DateFactory.relativeTime(result.created)}
-          </Typography>
-        </CardContent>
-      </CardActionArea>
-      <Tooltip title="Unpin result">
-        <IconButton
-          size="small"
-          data-testid={`unpin-btn-${result.id}`}
-          onClick={() => onUnpin(result.id)}
-          aria-label="Unpin result"
-          sx={{
-            mr: 1,
-            alignSelf: { xs: "flex-end", sm: "center" },
-            mb: { xs: 1, sm: 0 },
-          }}
-        >
-          <PushPinIcon fontSize="small" color="primary" />
-        </IconButton>
-      </Tooltip>
-    </Stack>
-  </Card>
-);
+      <Typography variant="caption" color="text.secondary">
+        {DateFactory.relativeTime(result.created)}
+      </Typography>
+    </DetailCard>
+  );
+};
 
 // ── List UI (pure) ──────────────────────────────────────────────────
 

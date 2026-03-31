@@ -71,7 +71,7 @@ describe("TagCardUI", () => {
     const onEdit = jest.fn();
     const tag = makeTag();
     render(<TagCardUI tag={tag} onEdit={onEdit} onDelete={jest.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(onEdit).toHaveBeenCalledWith(tag);
   });
 
@@ -79,7 +79,7 @@ describe("TagCardUI", () => {
     const onDelete = jest.fn();
     const tag = makeTag();
     render(<TagCardUI tag={tag} onEdit={jest.fn()} onDelete={onDelete} />);
-    fireEvent.click(screen.getByRole("button", { name: "delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(onDelete).toHaveBeenCalledWith(tag);
   });
 });
