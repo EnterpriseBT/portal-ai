@@ -14,6 +14,7 @@ import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import type { FilterExpression } from "@portalai/core/contracts";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
   seedUserAndOrg,
@@ -54,7 +55,7 @@ const {
 
 const now = Date.now();
 
-function createConnectorDefinition() {
+function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>) {
   return {
     id: generateId(),
     slug: `slug-${generateId()}`,
@@ -72,12 +73,14 @@ function createConnectorDefinition() {
     updatedBy: null,
     deleted: null,
     deletedBy: null,
+    ...overrides,
   };
 }
 
 function createConnectorInstance(
   connectorDefinitionId: string,
-  organizationId: string
+  organizationId: string,
+  overrides?: Partial<Record<string, unknown>>
 ) {
   return {
     id: generateId(),
@@ -96,6 +99,7 @@ function createConnectorInstance(
     updatedBy: null,
     deleted: null,
     deletedBy: null,
+    ...overrides,
   };
 }
 
@@ -1471,5 +1475,213 @@ describe("Entity Record Router — GET /:recordId", () => {
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe("ENTITY_RECORD_NOT_FOUND");
+  });
+});
+
+// ── Phase 3: Write Capability Guarded Deletes ───────────────────────
+
+describe("Entity Record Router — Write Capability Deletes", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  /** Seed a chain with configurable capability flags. */
+  async function seedWithCapabilities(
+    db: ReturnType<typeof drizzle>,
+    opts: {
+      definitionWrite: boolean;
+      enabledCapabilityFlags?: { write?: boolean; read?: boolean } | null;
+    }
+  ) {
+    const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+
+    const def = createConnectorDefinition({
+      capabilityFlags: { sync: true, query: true, write: opts.definitionWrite },
+    });
+    await db.insert(connectorDefinitions).values(def as never);
+
+    const inst = createConnectorInstance(def.id, organizationId, {
+      enabledCapabilityFlags: opts.enabledCapabilityFlags ?? null,
+    });
+    await db.insert(connectorInstances).values(inst as never);
+
+    const entity = createConnEntity(organizationId, inst.id);
+    await db.insert(connectorEntities).values(entity as never);
+
+    const colDef = createColumnDef(organizationId, "name", "string", "Name");
+    await db.insert(columnDefinitions).values(colDef as never);
+
+    const mapping = createFieldMapping(organizationId, entity.id, colDef.id, "name");
+    await db.insert(fieldMappings).values(mapping as never);
+
+    return { userId, organizationId, connectorEntityId: entity.id };
+  }
+
+  const recordsUrl = (connectorEntityId: string) =>
+    `/api/connector-entities/${connectorEntityId}/records`;
+
+  const singleRecordUrl = (connectorEntityId: string, recordId: string) =>
+    `/api/connector-entities/${connectorEntityId}/records/${recordId}`;
+
+  // ── DELETE /:recordId — Single record delete ──────────────────────
+
+  describe("DELETE /api/connector-entities/:id/records/:recordId", () => {
+    it("should return 422 when instance has write disabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: false },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should return 422 when definition does not support write even if instance tries to enable it", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: false,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Bob" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should soft-delete record when write capability is resolved to true", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Charlie" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.id).toBe(row.id);
+    });
+
+    it("should return 404 for non-existent record", async () => {
+      const { connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, generateId()))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_NOT_FOUND);
+    });
+
+    it("should succeed when enabledCapabilityFlags is null and definition has write: true", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: null,
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Dave" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.id).toBe(row.id);
+    });
+
+    it("deleted record should no longer appear in GET records list", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Eve" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      // Delete
+      await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      // Verify not in list
+      const listRes = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .set("Authorization", "Bearer test-token");
+
+      expect(listRes.status).toBe(200);
+      expect(listRes.body.payload.records).toHaveLength(0);
+      expect(listRes.body.payload.total).toBe(0);
+    });
+  });
+
+  // ── DELETE / — Bulk clear with write guard ────────────────────────
+
+  describe("DELETE /api/connector-entities/:id/records (bulk)", () => {
+    it("should return 422 when write is disabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: false },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Frank" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(recordsUrl(connectorEntityId))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should succeed when write capability is enabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row1 = createEntityRecord(organizationId, connectorEntityId, { name: "Gina" }, "src-1", userId);
+      const row2 = createEntityRecord(organizationId, connectorEntityId, { name: "Hank" }, "src-2", userId);
+      await db.insert(entityRecords).values([row1, row2] as never);
+
+      const res = await request(app)
+        .delete(recordsUrl(connectorEntityId))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.deleted).toBe(2);
+    });
   });
 });

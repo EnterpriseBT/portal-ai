@@ -174,36 +174,36 @@ Implements Rule 6: entity record deletion guarded by the connector instance's re
 
 ### Checklist
 
-- [ ] **3.1** Implement `DELETE /api/connector-entities/:connectorEntityId/records/:id` endpoint
+- [x] **3.1** Implement `DELETE /api/connector-entities/:connectorEntityId/records/:id` endpoint
   - File: `apps/api/src/routes/entity-record.router.ts`
   - Call `assertWriteCapability(connectorEntityId)` — resolves entity -> instance -> definition, checks `resolveCapabilities().write`
   - If `write` is `false`, returns `422 CONNECTOR_INSTANCE_WRITE_DISABLED`
   - If writable, soft-delete the record
-- [ ] **3.2** Update existing `DELETE /api/connector-entities/:connectorEntityId/records` (bulk clear) with write capability check
+- [x] **3.2** Update existing `DELETE /api/connector-entities/:connectorEntityId/records` (bulk clear) with write capability check
   - File: `apps/api/src/routes/entity-record.router.ts`
   - Add the same `assertWriteCapability()` guard before bulk soft-delete
-- [ ] **3.3** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+- [x] **3.3** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
   - `DELETE .../records/:id` — document 200, 404, and 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`) responses
   - `DELETE .../records` (bulk) — update existing annotation to include 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`) response
   - Follow the existing `@openapi` JSDoc pattern in `apps/api/src/routes/*.ts`
 
 ### Tests
 
-- [ ] **3.T1** Integration test: `DELETE .../records/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when instance has `write` disabled
-- [ ] **3.T2** Integration test: `DELETE .../records/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when definition doesn't support `write` (even if instance tries to enable it)
-- [ ] **3.T3** Integration test: `DELETE .../records/:id` soft-deletes record when `write` capability is resolved to `true`
-- [ ] **3.T4** Integration test: `DELETE .../records/:id` returns 404 for non-existent record
-- [ ] **3.T5** Integration test: bulk `DELETE .../records` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when `write` is disabled
-- [ ] **3.T6** Integration test: bulk `DELETE .../records` succeeds when `write` capability is enabled
-- [ ] **3.T7** Integration test: deleted record no longer appears in `GET .../records` list
-- [ ] **3.T8** Integration test: `DELETE .../records/:id` succeeds when `enabledCapabilityFlags` is `null` (inherits definition's `write: true`)
+- [x] **3.T1** Integration test: `DELETE .../records/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when instance has `write` disabled
+- [x] **3.T2** Integration test: `DELETE .../records/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when definition doesn't support `write` (even if instance tries to enable it)
+- [x] **3.T3** Integration test: `DELETE .../records/:id` soft-deletes record when `write` capability is resolved to `true`
+- [x] **3.T4** Integration test: `DELETE .../records/:id` returns 404 for non-existent record
+- [x] **3.T5** Integration test: bulk `DELETE .../records` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when `write` is disabled
+- [x] **3.T6** Integration test: bulk `DELETE .../records` succeeds when `write` capability is enabled
+- [x] **3.T7** Integration test: deleted record no longer appears in `GET .../records` list
+- [x] **3.T8** Integration test: `DELETE .../records/:id` succeeds when `enabledCapabilityFlags` is `null` (inherits definition's `write: true`)
 
 ### Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes — all new and existing tests green
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes — all new and existing tests green
 
 ---
 

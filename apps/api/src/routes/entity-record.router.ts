@@ -17,6 +17,7 @@ import {
   EntityRecordImportRequestBodySchema,
   type EntityRecordImportResponsePayload,
   type EntityRecordSyncResponsePayload,
+  type EntityRecordDeleteOneResponsePayload,
   type EntityRecordDeleteResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
@@ -26,6 +27,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { SyncService } from "../services/sync.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
@@ -492,8 +494,165 @@ entityRecordRouter.post(
   }
 );
 
+// ── DELETE /:recordId — Delete single record ───────────────────────
+
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records/{recordId}:
+ *   delete:
+ *     tags:
+ *       - Entity Records
+ *     summary: Delete a single entity record
+ *     description: Soft-deletes a single entity record. Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *       - in: path
+ *         name: recordId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Entity record ID
+ *     responses:
+ *       200:
+ *         description: Record deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *       404:
+ *         description: Entity record not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+entityRecordRouter.delete(
+  "/:recordId",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { connectorEntityId, recordId } = req.params;
+      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      if (!entity) return;
+
+      await assertWriteCapability(connectorEntityId);
+
+      const record = await DbService.repository.entityRecords.findById(recordId);
+      if (!record || record.connectorEntityId !== connectorEntityId) {
+        return next(
+          new ApiError(404, ApiCode.ENTITY_RECORD_NOT_FOUND, "Entity record not found")
+        );
+      }
+
+      const { userId } = req.application!.metadata;
+
+      await DbService.repository.entityRecords.softDelete(recordId, userId).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_RECORD_DELETE_FAILED,
+          error instanceof Error ? error.message : "Failed to delete record"
+        );
+      });
+
+      logger.info({ connectorEntityId, recordId }, "Entity record soft-deleted");
+
+      return HttpService.success<EntityRecordDeleteOneResponsePayload>(res, { id: recordId });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to delete entity record"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_RECORD_DELETE_FAILED,
+              error instanceof Error ? error.message : "Failed to delete entity record"
+            )
+      );
+    }
+  }
+);
+
 // ── DELETE / — Clear all records ────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records:
+ *   delete:
+ *     tags:
+ *       - Entity Records
+ *     summary: Clear all entity records
+ *     description: Soft-deletes all records for a connector entity. Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *     responses:
+ *       200:
+ *         description: Records deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     deleted:
+ *                       type: integer
+ *                       description: Number of records that were soft-deleted
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 entityRecordRouter.delete(
   "/",
   getApplicationMetadata,
@@ -502,6 +661,8 @@ entityRecordRouter.delete(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
+
+      await assertWriteCapability(connectorEntityId);
 
       const { userId } = req.application!.metadata;
       const deleted =

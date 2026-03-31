@@ -83,6 +83,14 @@ export const EntityRecordGetResponsePayloadSchema = z.object({
 
 export type EntityRecordGetResponsePayload = z.infer<typeof EntityRecordGetResponsePayloadSchema>;
 
+// ── Delete single record ────────────────────────────────────────────
+
+export const EntityRecordDeleteOneResponsePayloadSchema = z.object({
+  id: z.string(),
+});
+
+export type EntityRecordDeleteOneResponsePayload = z.infer<typeof EntityRecordDeleteOneResponsePayloadSchema>;
+
 // ── Delete (clear) ──────────────────────────────────────────────────
 
 export const EntityRecordDeleteResponsePayloadSchema = z.object({
