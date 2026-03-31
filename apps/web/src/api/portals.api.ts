@@ -1,5 +1,6 @@
 import type {
   PortalListRequestQuery,
+  PortalGetRequestQuery,
   PortalListResponsePayload,
   PortalGetResponsePayload,
   PortalCreateResponsePayload,
@@ -24,10 +25,14 @@ export const portals = {
       options
     ),
 
-  get: (id: string, options?: QueryOptions<PortalGetResponsePayload>) =>
+  get: (
+    id: string,
+    params?: PortalGetRequestQuery,
+    options?: QueryOptions<PortalGetResponsePayload>,
+  ) =>
     useAuthQuery<PortalGetResponsePayload>(
-      queryKeys.portals.get(id),
-      buildUrl(`/api/portals/${encodeURIComponent(id)}`),
+      queryKeys.portals.get(id, params),
+      buildUrl(`/api/portals/${encodeURIComponent(id)}`, params),
       undefined,
       options
     ),

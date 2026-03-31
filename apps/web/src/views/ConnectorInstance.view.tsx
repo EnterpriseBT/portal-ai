@@ -5,16 +5,16 @@ import type {
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Button, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, MetadataList, PageEmptyState, PageHeader, PageSection, Stack } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { upperFirst } from "lodash-es";
 
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
 import {
   ConnectorEntityDataList,
@@ -63,6 +63,9 @@ export const ConnectorInstanceView = ({
       onSuccess: () => {
         setDeleteDialogOpen(false);
         queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
         navigate({ to: "/connectors" });
       },
     });
@@ -104,87 +107,53 @@ export const ConnectorInstanceView = ({
               const ci = instance.connectorInstance;
               return (
                 <Stack spacing={4}>
-                  <Box>
-                    <Breadcrumbs
-                      items={[
-                        { label: "Dashboard", href: "/", icon: IconName.Home },
-                        { label: "Connectors", href: "/connectors" },
-                        { label: ci.name },
-                      ]}
-                      onNavigate={(href) => navigate({ to: href })}
-                    />
-
-                    {/* Section 1: Instance Details */}
-                    <Box>
-                      <Stack
-                        direction="row"
-                        spacing={2}
-                        alignItems="center"
-                        sx={{ mb: 2 }}
+                  <PageHeader
+                    breadcrumbs={[
+                      { label: "Dashboard", href: "/" },
+                      { label: "Connectors", href: "/connectors" },
+                      { label: ci.name },
+                    ]}
+                    onNavigate={(href) => navigate({ to: href })}
+                    title={ci.name}
+                    icon={<Icon name={IconName.MemoryChip} />}
+                    primaryAction={
+                      <Button
+                        variant="contained"
+                        startIcon={<EditIcon />}
+                        onClick={() => setEditDialogOpen(true)}
                       >
-                        <Typography variant="h1">{ci.name}</Typography>
-                        <Chip
-                          label={upperFirst(ci.status)}
-                          size="small"
-                          color={STATUS_COLOR[ci.status] ?? "default"}
-                          variant="outlined"
-                        />
-                        <Box sx={{ flexGrow: 1 }} />
-                        <Button
-                          variant="outlined"
-                          startIcon={<EditIcon />}
-                          onClick={() => setEditDialogOpen(true)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="contained"
-                          color="error"
-                          startIcon={<DeleteOutlineIcon />}
-                          onClick={() => setDeleteDialogOpen(true)}
-                        >
-                          Delete
-                        </Button>
-                      </Stack>
-
-                      <Stack spacing={1}>
-                        {ci.connectorDefinition && (
-                          <Typography variant="body1" color="text.secondary">
-                            Connector: {ci.connectorDefinition.display}
-                          </Typography>
-                        )}
-
-                        {ci.config && Object.keys(ci.config).length > 0 && (
-                          <Typography variant="body2" color="text.secondary">
-                            Config: {JSON.stringify(ci.config)}
-                          </Typography>
-                        )}
-
-                        {ci.lastSyncAt && (
-                          <Typography variant="body2" color="text.secondary">
-                            Last sync: {new Date(ci.lastSyncAt).toLocaleString()}
-                          </Typography>
-                        )}
-
-                        {ci.status === "error" && ci.lastErrorMessage && (
-                          <Typography variant="body2" color="error">
-                            Error: {ci.lastErrorMessage}
-                          </Typography>
-                        )}
-
-                        <Typography variant="body2" color="text.secondary">
-                          Created: {new Date(ci.created).toLocaleString()}
-                        </Typography>
-                      </Stack>
-                    </Box>
-                  </Box>
+                        Edit
+                      </Button>
+                    }
+                    secondaryActions={[
+                      { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
+                    ]}
+                  >
+                    <MetadataList
+                      items={[
+                        {
+                          label: "Status",
+                          value: (
+                            <Chip
+                              label={upperFirst(ci.status)}
+                              size="small"
+                              color={STATUS_COLOR[ci.status] ?? "default"}
+                              variant="outlined"
+                            />
+                          ),
+                          variant: "chip",
+                        },
+                        { label: "Connector", value: ci.connectorDefinition?.display ?? "", hidden: !ci.connectorDefinition },
+                        { label: "Config", value: ci.config ? JSON.stringify(ci.config) : "", hidden: !ci.config || Object.keys(ci.config).length === 0, variant: "mono" },
+                        { label: "Last sync", value: ci.lastSyncAt ? new Date(ci.lastSyncAt).toLocaleString() : "", hidden: !ci.lastSyncAt },
+                        { label: "Error", value: ci.lastErrorMessage ?? "", hidden: !(ci.status === "error" && ci.lastErrorMessage) },
+                        { label: "Created", value: new Date(ci.created).toLocaleString() },
+                      ]}
+                    />
+                  </PageHeader>
 
                   {/* Section 2: Entities List */}
-                  <Box>
-                    <Typography variant="h2" sx={{ mb: 2 }}>
-                      Entities
-                    </Typography>
-
+                  <PageSection title="Entities" icon={<Icon name={IconName.DataObject} />}>
                     <PaginationToolbar {...pagination.toolbarProps} />
 
                     <Box sx={{ mt: 2 }}>
@@ -208,13 +177,10 @@ export const ConnectorInstanceView = ({
                               }) => {
                                 if (entities.connectorEntities.length === 0) {
                                   return (
-                                    <Typography
-                                      variant="body1"
-                                      color="text.secondary"
-                                      sx={{ py: 4, textAlign: "center" }}
-                                    >
-                                      No entities found
-                                    </Typography>
+                                    <PageEmptyState
+                                      icon={<Icon name={IconName.DataObject} />}
+                                      title="No entities found"
+                                    />
                                   );
                                 }
 
@@ -236,7 +202,7 @@ export const ConnectorInstanceView = ({
                         )}
                       </ConnectorEntityDataList>
                     </Box>
-                  </Box>
+                  </PageSection>
                   <DeleteConnectorInstanceDialog
                     open={deleteDialogOpen}
                     onClose={() => setDeleteDialogOpen(false)}
@@ -245,6 +211,7 @@ export const ConnectorInstanceView = ({
                     isPending={deleteMutation.isPending}
                     impact={impactQuery.data ?? null}
                     isLoadingImpact={impactQuery.isLoading && deleteDialogOpen}
+                    serverError={toServerError(deleteMutation.error)}
                   />
 
                   <EditConnectorInstanceDialog

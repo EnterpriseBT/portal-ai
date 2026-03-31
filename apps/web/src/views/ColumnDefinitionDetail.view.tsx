@@ -4,8 +4,7 @@ import type {
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingWithConnectorEntity,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, Icon, IconName, MetadataList, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -71,25 +70,20 @@ export const ColumnDefinitionDetailView: React.FC<
               const cd = item.columnDefinition;
               return (
                 <Stack spacing={4}>
-                  <Box>
-                    <Breadcrumbs
-                      items={[
-                        { label: "Dashboard", href: "/", icon: IconName.Home },
-                        {
-                          label: "Column Definitions",
-                          href: "/column-definitions",
-                        },
-                        { label: cd.label },
-                      ]}
-                      onNavigate={(href) => navigate({ to: href })}
-                    />
-                    <Stack
-                      direction="row"
-                      spacing={2}
-                      alignItems="center"
-                      sx={{ mb: 1 }}
-                    >
-                      <Typography variant="h1">{cd.label}</Typography>
+                  <PageHeader
+                    breadcrumbs={[
+                      { label: "Dashboard", href: "/" },
+                      {
+                        label: "Column Definitions",
+                        href: "/column-definitions",
+                      },
+                      { label: cd.label },
+                    ]}
+                    onNavigate={(href) => navigate({ to: href })}
+                    title={cd.label}
+                    icon={<Icon name={IconName.ViewColumn} />}
+                  >
+                    <Stack direction="row" spacing={1} alignItems="center">
                       <Chip
                         label={cd.type}
                         size="small"
@@ -100,107 +94,76 @@ export const ColumnDefinitionDetailView: React.FC<
                         <Chip label="Required" size="small" color="error" />
                       )}
                     </Stack>
+                  </PageHeader>
 
-                    {/* Metadata Section */}
-                    <Box>
-                      <Stack spacing={1}>
-                        <Typography variant="body2" color="text.secondary">
-                          Key:{" "}
-                          <Typography
-                            component="span"
-                            variant="body2"
-                            sx={{ fontFamily: "monospace" }}
+
+
+                  <PageGrid columns={{ xs: 1, lg: 2 }}>
+                    {/* Details Section */}
+                    <PageGridItem>
+                      <PageSection title="Details" variant="outlined">
+                        <MetadataList
+                          items={[
+                            { label: "Key", value: cd.key, variant: "mono" },
+                            { label: "Description", value: cd.description ?? "", hidden: !cd.description },
+                            { label: "Format", value: cd.format ?? "", hidden: !cd.format },
+                            { label: "Default Value", value: cd.defaultValue ?? "", hidden: !cd.defaultValue },
+                            { label: "Enum Values", value: cd.enumValues?.join(", ") ?? "", hidden: !cd.enumValues || cd.enumValues.length === 0 },
+                            { label: "Created", value: new Date(cd.created).toLocaleString() },
+                          ]}
+                        />
+                      </PageSection>
+                    </PageGridItem>
+
+                    {/* Field Mappings Section */}
+                    <PageGridItem>
+                      <PageSection title="Field Mappings" icon={<Icon name={IconName.Link} />}>
+                        <PaginationToolbar {...mappingsPagination.toolbarProps} />
+
+                        <Box sx={{ mt: 2 }}>
+                          <FieldMappingDataList<FieldMappingListWithConnectorEntityResponsePayload>
+                            query={
+                              {
+                                columnDefinitionId,
+                                include: "connectorEntity",
+                                ...mappingsPagination.queryParams,
+                              } as FieldMappingListRequestQuery
+                            }
                           >
-                            {cd.key}
-                          </Typography>
-                        </Typography>
+                            {(mappingsResult) => (
+                              <SyncTotal
+                                total={mappingsResult.data?.total}
+                                setTotal={mappingsPagination.setTotal}
+                              >
+                                <DataResult results={{ mappings: mappingsResult }}>
+                                  {({
+                                    mappings,
+                                  }: {
+                                    mappings: FieldMappingListWithConnectorEntityResponsePayload;
+                                  }) => {
+                                    if (mappings.fieldMappings.length === 0) {
+                                      return (
+                                        <PageEmptyState
+                                          icon={<Icon name={IconName.Link} />}
+                                          title="No field mappings found"
+                                        />
+                                      );
+                                    }
 
-                        {cd.description && (
-                          <Typography variant="body2" color="text.secondary">
-                            Description: {cd.description}
-                          </Typography>
-                        )}
-
-                        {cd.format && (
-                          <Typography variant="body2" color="text.secondary">
-                            Format: {cd.format}
-                          </Typography>
-                        )}
-
-                        {cd.defaultValue && (
-                          <Typography variant="body2" color="text.secondary">
-                            Default Value: {cd.defaultValue}
-                          </Typography>
-                        )}
-
-                        {cd.enumValues && cd.enumValues.length > 0 && (
-                          <Typography variant="body2" color="text.secondary">
-                            Enum Values: {cd.enumValues.join(", ")}
-                          </Typography>
-                        )}
-
-                        <Typography variant="body2" color="text.secondary">
-                          Created: {new Date(cd.created).toLocaleString()}
-                        </Typography>
-                      </Stack>
-                    </Box>
-                  </Box>
-
-
-                  {/* Field Mappings Section */}
-                  <Box>
-                    <Typography variant="h2" sx={{ mb: 2 }}>
-                      Field Mappings
-                    </Typography>
-
-                    <PaginationToolbar {...mappingsPagination.toolbarProps} />
-
-                    <Box sx={{ mt: 2 }}>
-                      <FieldMappingDataList<FieldMappingListWithConnectorEntityResponsePayload>
-                        query={
-                          {
-                            columnDefinitionId,
-                            include: "connectorEntity",
-                            ...mappingsPagination.queryParams,
-                          } as FieldMappingListRequestQuery
-                        }
-                      >
-                        {(mappingsResult) => (
-                          <SyncTotal
-                            total={mappingsResult.data?.total}
-                            setTotal={mappingsPagination.setTotal}
-                          >
-                            <DataResult results={{ mappings: mappingsResult }}>
-                              {({
-                                mappings,
-                              }: {
-                                mappings: FieldMappingListWithConnectorEntityResponsePayload;
-                              }) => {
-                                if (mappings.fieldMappings.length === 0) {
-                                  return (
-                                    <Typography
-                                      variant="body1"
-                                      color="text.secondary"
-                                      sx={{ py: 4, textAlign: "center" }}
-                                    >
-                                      No field mappings reference this column
-                                      definition
-                                    </Typography>
-                                  );
-                                }
-
-                                return (
-                                  <FieldMappingTable
-                                    fieldMappings={mappings.fieldMappings}
-                                  />
-                                );
-                              }}
-                            </DataResult>
-                          </SyncTotal>
-                        )}
-                      </FieldMappingDataList>
-                    </Box>
-                  </Box>
+                                    return (
+                                      <FieldMappingTable
+                                        fieldMappings={mappings.fieldMappings}
+                                      />
+                                    );
+                                  }}
+                                </DataResult>
+                              </SyncTotal>
+                            )}
+                          </FieldMappingDataList>
+                        </Box>
+                      </PageSection>
+                    </PageGridItem>
+                  </PageGrid>
                 </Stack>
               );
             }}

@@ -11,6 +11,8 @@ const makePinnedResult = (overrides: Partial<PortalResult> = {}): PortalResult =
   organizationId: "org-1",
   stationId: "station-1",
   portalId: "portal-1",
+  messageId: null,
+  blockIndex: null,
   name: "Revenue Summary",
   type: "text",
   content: { text: "Total revenue: $1.2M" },
@@ -53,14 +55,14 @@ describe("PinnedResultCardUI", () => {
   it("should call onResultClick with result id when card is clicked", () => {
     const onResultClick = jest.fn();
     render(<PinnedResultCardUI {...defaultCardProps} onResultClick={onResultClick} />);
-    fireEvent.click(screen.getByTestId("pinned-result-row-result-1"));
+    fireEvent.click(screen.getByText("Revenue Summary"));
     expect(onResultClick).toHaveBeenCalledWith("result-1");
   });
 
   it("should call onUnpin with result id when unpin button is clicked", () => {
     const onUnpin = jest.fn();
     render(<PinnedResultCardUI {...defaultCardProps} onUnpin={onUnpin} />);
-    fireEvent.click(screen.getByTestId("unpin-btn-result-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
     expect(onUnpin).toHaveBeenCalledWith("result-1");
   });
 
@@ -74,7 +76,7 @@ describe("PinnedResultCardUI", () => {
         onUnpin={onUnpin}
       />
     );
-    fireEvent.click(screen.getByTestId("unpin-btn-result-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
     expect(onUnpin).toHaveBeenCalledWith("result-1");
     expect(onResultClick).not.toHaveBeenCalled();
   });

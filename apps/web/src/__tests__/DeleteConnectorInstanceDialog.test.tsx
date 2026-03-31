@@ -124,6 +124,16 @@ describe("DeleteConnectorInstanceDialog", () => {
     expect(onConfirm).toHaveBeenCalled();
   });
 
+  it("should submit on Enter key press (form submission)", () => {
+    const onConfirm = jest.fn();
+    render(
+      <DeleteConnectorInstanceDialog {...defaultProps} onConfirm={onConfirm} />
+    );
+    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    fireEvent.submit(form);
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
   it("should call onClose when Cancel button is clicked", () => {
     const onClose = jest.fn();
     render(
@@ -151,5 +161,27 @@ describe("DeleteConnectorInstanceDialog", () => {
       />
     );
     expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+  });
+
+  it("should render FormAlert when serverError is provided", () => {
+    render(
+      <DeleteConnectorInstanceDialog
+        {...defaultProps}
+        serverError={{ message: "Delete failed", code: "CONNECTOR_DELETE_FAILED" }}
+      />
+    );
+    expect(screen.getByText(/Delete failed/)).toBeInTheDocument();
+    expect(screen.getByText(/CONNECTOR_DELETE_FAILED/)).toBeInTheDocument();
+  });
+
+  it("should not render FormAlert when serverError is null", () => {
+    render(
+      <DeleteConnectorInstanceDialog {...defaultProps} serverError={null} />
+    );
+    // Only the warning alert should be present, not an error alert
+    const alerts = screen.getAllByRole("alert");
+    alerts.forEach((alert) => {
+      expect(alert).not.toHaveTextContent("Delete failed");
+    });
   });
 });

@@ -13,6 +13,8 @@ const makePinnedResult = (
   organizationId: "org-1",
   stationId: "station-1",
   portalId: "portal-1",
+  messageId: null,
+  blockIndex: null,
   name: "Revenue Summary",
   type: "text",
   content: { value: "Total revenue: **$1.2M**" },
@@ -29,6 +31,7 @@ const defaultProps = {
   result: makePinnedResult(),
   onRename: jest.fn(),
   onDelete: jest.fn(),
+  onUnpin: jest.fn(),
   onOpenPortal: jest.fn(),
   onNavigate: jest.fn(),
 };
@@ -40,10 +43,8 @@ describe("PinnedResultDetailUI", () => {
 
   it("should render result name and type chip", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
-    expect(screen.getByTestId("result-name")).toHaveTextContent(
-      "Revenue Summary"
-    );
-    expect(screen.getByTestId("result-type-chip")).toHaveTextContent("Text");
+    expect(screen.getByRole("heading", { name: "Revenue Summary" })).toBeInTheDocument();
+    expect(screen.getByText("Text")).toBeInTheDocument();
   });
 
   it("should render Chart chip for vega-lite type", () => {
@@ -53,12 +54,12 @@ describe("PinnedResultDetailUI", () => {
         result={makePinnedResult({ type: "vega-lite", content: { $schema: "https://vega.github.io/schema/vega-lite/v5.json" } })}
       />
     );
-    expect(screen.getByTestId("result-type-chip")).toHaveTextContent("Chart");
+    expect(screen.getByText("Chart")).toBeInTheDocument();
   });
 
   it("should render relative created timestamp", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
-    expect(screen.getByTestId("result-created")).toHaveTextContent("1h ago");
+    expect(screen.getByText("1h ago")).toBeInTheDocument();
   });
 
   it("should render text content", () => {
@@ -78,7 +79,9 @@ describe("PinnedResultDetailUI", () => {
     const onRename = jest.fn();
     render(<PinnedResultDetailUI {...defaultProps} onRename={onRename} />);
 
-    fireEvent.click(screen.getByTestId("rename-btn"));
+    // Open the actions menu
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rename/i }));
     expect(screen.getByText("Rename Result")).toBeInTheDocument();
 
     const input = screen.getByTestId("rename-input").querySelector("input")!;
@@ -92,16 +95,19 @@ describe("PinnedResultDetailUI", () => {
     const onDelete = jest.fn();
     render(<PinnedResultDetailUI {...defaultProps} onDelete={onDelete} />);
 
-    fireEvent.click(screen.getByTestId("delete-btn"));
+    // Open the actions menu
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete/i }));
     expect(screen.getByText("Delete Pinned Result")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("delete-confirm"));
     expect(onDelete).toHaveBeenCalled();
   });
 
-  it("should render Open Source Portal button when portalId is present", () => {
+  it("should render Open Source Portal in actions menu when portalId is present", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
-    expect(screen.getByTestId("open-portal-btn")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    expect(screen.getByRole("menuitem", { name: /Open Source Portal/i })).toBeInTheDocument();
   });
 
   it("should call onOpenPortal when Open Source Portal is clicked", () => {
@@ -109,8 +115,16 @@ describe("PinnedResultDetailUI", () => {
     render(
       <PinnedResultDetailUI {...defaultProps} onOpenPortal={onOpenPortal} />
     );
-    fireEvent.click(screen.getByTestId("open-portal-btn"));
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Open Source Portal/i }));
     expect(onOpenPortal).toHaveBeenCalledWith("portal-1");
+  });
+
+  it("should call onUnpin when Unpin button is clicked", () => {
+    const onUnpin = jest.fn();
+    render(<PinnedResultDetailUI {...defaultProps} onUnpin={onUnpin} />);
+    fireEvent.click(screen.getByTestId("unpin-btn"));
+    expect(onUnpin).toHaveBeenCalled();
   });
 
   it("should not render Open Source Portal button when portalId is null", () => {

@@ -7,11 +7,11 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   Button,
-  Stack,
-  Typography,
+  Icon,
   IconName,
+  PageHeader,
+  Stack,
 } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,6 +25,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 
 // ── Stations list view (pure UI) ────────────────────────────────────
 
@@ -55,21 +56,15 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Stations" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <Typography variant="h1">Stations</Typography>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Stations" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Stations"
+          icon={<Icon name={IconName.SatelliteAlt} />}
+          primaryAction={
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -77,8 +72,8 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
             >
               New Station
             </Button>
-          </Stack>
-        </Box>
+          }
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
@@ -89,6 +84,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
             onSetDefault={onSetDefault}
             onOpen={onOpen}
             onDelete={onDelete}
+            hasActiveFilters={!!(pagination.search || Object.values(pagination.filters).some(v => v.length > 0))}
           />
         </Box>
       </Stack>
@@ -202,7 +198,7 @@ export const StationsView: React.FC = () => {
         onClose={handleCreateClose}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
-        serverError={createMutation.error?.message ?? null}
+        serverError={toServerError(createMutation.error)}
       />
 
       <DeleteStationDialog
@@ -211,6 +207,7 @@ export const StationsView: React.FC = () => {
         station={deletingStation}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}
+        serverError={toServerError(deleteMutation.error)}
       />
     </>
   );

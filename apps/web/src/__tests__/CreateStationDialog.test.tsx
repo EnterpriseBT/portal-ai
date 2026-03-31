@@ -85,15 +85,21 @@ describe("CreateStationDialog", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
-  it("should display server error message", () => {
+  it("should display server error message and code", () => {
     render(
       <CreateStationDialog
         {...defaultProps}
-        serverError="A station with this name already exists"
+        serverError={{
+          message: "A station with this name already exists",
+          code: "STATION_DUPLICATE_NAME",
+        }}
       />
     );
     expect(
-      screen.getByText("A station with this name already exists")
+      screen.getByText(/A station with this name already exists/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/STATION_DUPLICATE_NAME/)
     ).toBeInTheDocument();
   });
 
@@ -109,6 +115,21 @@ describe("CreateStationDialog", () => {
     expect(screen.queryByText("New Station")).not.toBeInTheDocument();
   });
 
+  it("should submit form on Enter key press in text field", async () => {
+    const onSubmit = jest.fn();
+    render(<CreateStationDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Enter Station" },
+    });
+    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        name: "Enter Station",
+        toolPacks: ["data_query"],
+      });
+    });
+  });
+
   it("should show field error on blur", async () => {
     render(<CreateStationDialog {...defaultProps} />);
     const nameField = screen.getByLabelText(/Name/);
@@ -116,6 +137,42 @@ describe("CreateStationDialog", () => {
     fireEvent.blur(nameField);
     await waitFor(() => {
       expect(screen.getByText("Name is required")).toBeInTheDocument();
+    });
+  });
+
+  it("should set aria-invalid on name field when validation fails", async () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    fireEvent.focus(nameInput);
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    });
+  });
+
+  it("should have aria-required on required fields", () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    expect(nameInput).toBeRequired();
+  });
+
+  it("should have role='alert' on FormAlert when server error is present", () => {
+    render(
+      <CreateStationDialog
+        {...defaultProps}
+        serverError={{ message: "Oops", code: "ERR" }}
+      />
+    );
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("should auto-link aria-describedby to helper text via MUI", async () => {
+    render(<CreateStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    fireEvent.focus(nameInput);
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(nameInput).toHaveAttribute("aria-describedby");
     });
   });
 });

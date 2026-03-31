@@ -21,6 +21,8 @@ import { PortalMessage } from "./PortalMessage.component";
 export interface PortalSessionUIProps {
   portalId: string;
   messages: PortalMessageResponse[];
+  pinnedBlocks: Map<string, string>;
+  onPinChange: () => void;
   streamingBlocks: PortalMessageBlock[] | null;
   streamError: string | null;
   inputValue: string;
@@ -35,6 +37,8 @@ export interface PortalSessionUIProps {
 export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   portalId,
   messages,
+  pinnedBlocks,
+  onPinChange,
   streamingBlocks,
   streamError,
   inputValue,
@@ -56,7 +60,13 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
       disabled={isStreaming}
     >
       {messages.map((msg) => (
-        <PortalMessage key={msg.id} message={msg} portalId={portalId} />
+        <PortalMessage
+          key={msg.id}
+          message={msg}
+          portalId={portalId}
+          pinnedBlocks={pinnedBlocks}
+          onPinChange={onPinChange}
+        />
       ))}
 
       {streamingBlocks !== null && streamingBlocks.length > 0 && (
@@ -87,8 +97,19 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const router = useRouter();
 
   // Server messages come directly from the query (no local copy).
-  const portalQuery = sdk.portals.get(portalId);
+  const portalQuery = sdk.portals.get(portalId, { include: "pinnedResults" });
   const serverMessages = portalQuery.data?.messages ?? [];
+
+  // Build a lookup map from the server-side pinnedBlocks data:
+  // "messageId:blockIndex" → portalResultId
+  const pinnedBlocks = new Map<string, string>();
+  for (const entry of portalQuery.data?.pinnedBlocks ?? []) {
+    pinnedBlocks.set(`${entry.messageId}:${entry.blockIndex}`, entry.portalResultId);
+  }
+
+  const handlePinChange = () => {
+    portalQuery.refetch();
+  };
 
   // Local messages: optimistic user messages + finalized assistant messages
   // added during this session. Combined with serverMessages for display.
@@ -297,6 +318,8 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     <PortalSessionUI
       portalId={portalId}
       messages={allMessages}
+      pinnedBlocks={pinnedBlocks}
+      onPinChange={handlePinChange}
       streamingBlocks={streamingBlocks}
       streamError={streamError}
       inputValue={inputValue}

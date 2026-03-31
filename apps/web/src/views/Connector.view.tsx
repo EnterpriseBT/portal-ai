@@ -3,15 +3,16 @@ import type { ComponentType } from "react";
 
 import {
   Box,
-  Breadcrumbs,
+  Icon,
+  IconName,
+  PageEmptyState,
+  PageHeader,
   Stack,
   Tab,
   TabPanel,
   Tabs,
-  Typography,
   useTabs,
 } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
 import type { ConnectorDefinition } from "@portalai/core/models";
 import type {
   ConnectorDefinitionListRequestQuery,
@@ -83,6 +84,9 @@ export const ConnectorView = () => {
         setDeleteDialogOpen(false);
         setDeleteTarget(null);
         queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
       },
     });
   }, [deleteMutation, queryClient]);
@@ -156,14 +160,15 @@ export const ConnectorView = () => {
 
   return (
     <Box>
-      <Breadcrumbs
-        items={[
-          { label: "Dashboard", href: "/", icon: IconName.Home },
+      <PageHeader
+        breadcrumbs={[
+          { label: "Dashboard", href: "/" },
           { label: "Connectors" },
         ]}
         onNavigate={(href) => navigate({ to: href })}
+        title="Connectors"
+        icon={<Icon name={IconName.MemoryChip} />}
       />
-      <Typography variant="h1">Connectors</Typography>
       <Tabs {...tabsProps}>
         <Tab label="Connected" {...getTabProps(0)} />
         <Tab label="Catalog" {...getTabProps(1)} />
@@ -183,7 +188,14 @@ export const ConnectorView = () => {
                 <DataResult results={{ connectorInstances: response }}>
                   {({ connectorInstances }) =>
                     connectorInstances.total === 0 ? (
-                      <EmptyResults />
+                      (instancePagination.search || Object.values(instancePagination.filters).some(v => v.length > 0)) ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.MemoryChip} />}
+                          title="No connectors found"
+                        />
+                      )
                     ) : (
                       <Stack spacing={1}>
                         {connectorInstances.connectorInstances.map((ci) => (
@@ -223,7 +235,14 @@ export const ConnectorView = () => {
                 <DataResult results={{ connectorDefinitions: response }}>
                   {({ connectorDefinitions }) =>
                     connectorDefinitions.total === 0 ? (
-                      <EmptyResults />
+                      (catalogPagination.search || Object.values(catalogPagination.filters).some(v => v.length > 0)) ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.MemoryChip} />}
+                          title="No connector definitions found"
+                        />
+                      )
                     ) : (
                       <Stack spacing={1}>
                         {connectorDefinitions.connectorDefinitions.map((cd) => (

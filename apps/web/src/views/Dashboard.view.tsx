@@ -3,11 +3,14 @@ import React, { useState, useCallback } from "react";
 import type { CreatePortalBody } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   Button,
-  Stack,
-  Typography,
+  Icon,
   IconName,
+  PageGrid,
+  PageGridItem,
+  PageHeader,
+  PageSection,
+  Stack,
 } from "@portalai/core/ui";
 import RocketLaunch from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,7 +22,7 @@ import { RecentPortalsListConnected } from "../components/RecentPortalsList.comp
 import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { HealthCheck } from "../components/HealthCheck.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useAuthFetch, toServerError } from "../utils/api.util";
 
 // ── Dashboard UI (pure) ─────────────────────────────────────────────
 
@@ -46,18 +49,11 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 }) => (
   <Box>
     <Stack spacing={4}>
-      <Box>
-        <Breadcrumbs items={[{ label: "Home", icon: IconName.Home }]} />
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          justifyContent="space-between"
-          alignItems={{ xs: "flex-start", sm: "center" }}
-          spacing={1}
-        >
-          <Stack direction="row" alignItems="center" gap={1}>
-            <HealthCheck />
-            <Typography variant="h1">Dashboard</Typography>
-          </Stack>
+      <PageHeader
+        breadcrumbs={[{ label: "Home" }]}
+        title="Dashboard"
+        icon={<Icon name={IconName.Home} />}
+        primaryAction={
           <Button
             variant="contained"
             startIcon={<RocketLaunch />}
@@ -65,32 +61,38 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
           >
             Launch New Portal
           </Button>
-        </Stack>
-      </Box>
+        }
+      >
+        <HealthCheck showLabel />
+      </PageHeader>
 
-      <DefaultStationCardConnected
-        onLaunchPortal={onLaunchPortal}
-        onChangeDefault={onChangeDefault}
-        onViewStation={onViewStation}
-      />
+      <PageGrid columns={{ xs: 1, md: 2 }}>
+        <PageGridItem>
+          <PageSection title="Default Station" icon={<Icon name={IconName.SatelliteAlt} />}>
+            <DefaultStationCardConnected
+              onLaunchPortal={onLaunchPortal}
+              onChangeDefault={onChangeDefault}
+              onViewStation={onViewStation}
+            />
+          </PageSection>
+        </PageGridItem>
 
-      <Box>
-        <Typography variant="h2" sx={{ mb: 2 }}>
-          Pinned Results
-        </Typography>
-        <PinnedResultsListConnected
-          onResultClick={onPinnedResultClick}
-          onUnpin={onUnpinResult}
-          onViewAll={onViewAllPinnedResults}
-        />
-      </Box>
+        <PageGridItem>
+          <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
+            <PinnedResultsListConnected
+              onResultClick={onPinnedResultClick}
+              onUnpin={onUnpinResult}
+              onViewAll={onViewAllPinnedResults}
+            />
+          </PageSection>
+        </PageGridItem>
 
-      <Box>
-        <Typography variant="h2" sx={{ mb: 2 }}>
-          Recent Portals
-        </Typography>
-        <RecentPortalsListConnected onPortalClick={onPortalClick} />
-      </Box>
+        <PageGridItem span={{ xs: 1, md: 2 }}>
+          <PageSection title="Recent Portals" icon={<Icon name={IconName.RocketLaunch} />}>
+            <RecentPortalsListConnected onPortalClick={onPortalClick} />
+          </PageSection>
+        </PageGridItem>
+      </PageGrid>
     </Stack>
   </Box>
 );
@@ -203,7 +205,7 @@ export const DashboardView: React.FC = () => {
         onClose={handleCreateClose}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
-        serverError={createMutation.error?.message ?? null}
+        serverError={toServerError(createMutation.error)}
       />
     </>
   );

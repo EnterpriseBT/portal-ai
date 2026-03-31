@@ -45,6 +45,7 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
       <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, minWidth: 0, p: 4 }}>{children}</Box>
       <Box sx={{ flexShrink: 0, p: 2, borderTop: 1, borderColor: "divider" }}>
         <TextField
+          autoFocus
           multiline
           minRows={2}
           maxRows={6}
@@ -63,6 +64,7 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
                 <IconButton
                   icon={IconName.ArrowBack}
                   onClick={onExit}
+                  aria-label="Exit"
                 />
               </Tooltip>
               <Box sx={{ flex: 1 }} />
@@ -73,11 +75,12 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
                     color="secondary"
                     onClick={onCancel}
                     disabled={!disabled}
+                    aria-label="Cancel"
                   />
                 </span>
               </Tooltip>
               <Tooltip title="Reset">
-                <IconButton icon={IconName.Refresh} onClick={onReset} />
+                <IconButton icon={IconName.Refresh} onClick={onReset} aria-label="Reset" />
               </Tooltip>
               <Tooltip title="Submit">
                 <span>
@@ -86,6 +89,7 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
                     color="primary"
                     onClick={onSubmit}
                     disabled={disabled || !value.trim()}
+                    aria-label="Submit"
                   />
                 </span>
               </Tooltip>

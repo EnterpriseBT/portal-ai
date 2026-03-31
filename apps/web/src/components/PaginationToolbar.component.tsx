@@ -523,6 +523,7 @@ export const PaginationToolbar = React.forwardRef<
         >
           {/* Search */}
           <TextField
+            autoFocus
             size="small"
             placeholder="Search..."
             value={search}
@@ -540,6 +541,7 @@ export const PaginationToolbar = React.forwardRef<
                       size="small"
                       onClick={() => onSearchChange("")}
                       edge="end"
+                      aria-label="Clear search"
                     >
                       <CloseIcon fontSize="small" />
                     </IconButton>
@@ -816,6 +818,7 @@ export const PaginationToolbar = React.forwardRef<
               size="small"
               onClick={onFirst}
               disabled={currentPage <= 1}
+              aria-label="First page"
             >
               <FirstPageIcon fontSize="small" />
             </IconButton>
@@ -823,6 +826,7 @@ export const PaginationToolbar = React.forwardRef<
               size="small"
               onClick={onPrev}
               disabled={currentPage <= 1}
+              aria-label="Previous page"
             >
               <ChevronLeftIcon fontSize="small" />
             </IconButton>
@@ -830,6 +834,7 @@ export const PaginationToolbar = React.forwardRef<
               size="small"
               onClick={onNext}
               disabled={currentPage >= totalPages}
+              aria-label="Next page"
             >
               <ChevronRightIcon fontSize="small" />
             </IconButton>
@@ -837,6 +842,7 @@ export const PaginationToolbar = React.forwardRef<
               size="small"
               onClick={onLast}
               disabled={currentPage >= totalPages}
+              aria-label="Last page"
             >
               <LastPageIcon fontSize="small" />
             </IconButton>

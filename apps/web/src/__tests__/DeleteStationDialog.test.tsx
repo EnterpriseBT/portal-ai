@@ -64,6 +64,14 @@ describe("DeleteStationDialog", () => {
     expect(onConfirm).toHaveBeenCalled();
   });
 
+  it("should submit on Enter key press (form submission)", () => {
+    const onConfirm = jest.fn();
+    render(<DeleteStationDialog {...defaultProps} onConfirm={onConfirm} />);
+    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    fireEvent.submit(form);
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
   it("should call onClose when Cancel is clicked", () => {
     const onClose = jest.fn();
     render(<DeleteStationDialog {...defaultProps} onClose={onClose} />);
@@ -87,5 +95,21 @@ describe("DeleteStationDialog", () => {
   it("should handle null station gracefully", () => {
     render(<DeleteStationDialog {...defaultProps} station={null} />);
     expect(screen.getByText("Delete Station")).toBeInTheDocument();
+  });
+
+  it("should render FormAlert when serverError is provided", () => {
+    render(
+      <DeleteStationDialog
+        {...defaultProps}
+        serverError={{ message: "Station not found", code: "STATION_NOT_FOUND" }}
+      />
+    );
+    expect(screen.getByText(/Station not found/)).toBeInTheDocument();
+    expect(screen.getByText(/STATION_NOT_FOUND/)).toBeInTheDocument();
+  });
+
+  it("should not render FormAlert when serverError is null", () => {
+    render(<DeleteStationDialog {...defaultProps} serverError={null} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

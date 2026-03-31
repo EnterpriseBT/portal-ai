@@ -5,17 +5,14 @@ import type {
   ConnectorEntityListWithInstanceResponsePayload,
 } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, DetailCard, Icon, IconName, MetadataList, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
 import type { FetchPageParams, FetchPageResult } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-import Card from "@mui/material/Card";
-import CardActionArea from "@mui/material/CardActionArea";
-import CardContent from "@mui/material/CardContent";
 
 import { useNavigate } from "@tanstack/react-router";
 
 import { ConnectorEntityDataList } from "../components/ConnectorEntity.component";
+import { EmptyResults } from "../components/EmptyResults.component";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
@@ -37,20 +34,16 @@ interface EntityCardProps {
 }
 
 const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
-  <Card variant="outlined">
-    <CardActionArea onClick={onClick}>
-      <CardContent>
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" noWrap>
-              {entity.label}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {entity.connectorInstance.name}
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
-              <Chip label={entity.key} size="small" variant="outlined" />
-              {entity.tags?.map((tag) => (
+  <DetailCard title={entity.label} onClick={onClick}>
+    <MetadataList
+      items={[
+        { label: "Connector", value: entity.connectorInstance.name },
+        { label: "Key", value: entity.key, variant: "mono" },
+        {
+          label: "Tags",
+          value: (
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+              {(entity.tags ?? []).map((tag) => (
                 <Chip
                   key={tag.id}
                   label={tag.name}
@@ -71,11 +64,13 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
                 />
               ))}
             </Stack>
-          </Box>
-        </Stack>
-      </CardContent>
-    </CardActionArea>
-  </Card>
+          ),
+          variant: "chip",
+          hidden: !entity.tags || entity.tags.length === 0,
+        },
+      ]}
+    />
+  </DetailCard>
 );
 
 // ── Entities list view (pure UI) ────────────────────────────────────
@@ -124,17 +119,15 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Entities" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Typography variant="h1">Entities</Typography>
-        </Box>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entities" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Entities"
+          icon={<Icon name={IconName.DataObject} />}
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
@@ -157,14 +150,14 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
                     const list =
                       data.list as unknown as ConnectorEntityListWithInstanceResponsePayload;
                     if (list.connectorEntities.length === 0) {
-                      return (
-                        <Typography
-                          variant="body1"
-                          color="text.secondary"
-                          sx={{ py: 4, textAlign: "center" }}
-                        >
-                          No entities found
-                        </Typography>
+                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      return hasActiveFilters ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.DataObject} />}
+                          title="No entities found"
+                        />
                       );
                     }
 

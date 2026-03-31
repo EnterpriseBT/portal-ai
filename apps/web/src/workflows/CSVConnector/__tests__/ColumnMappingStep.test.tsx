@@ -9,6 +9,7 @@ import type {
   RecommendedColumn,
   RecommendedEntity,
 } from "../utils/upload-workflow.util";
+import type { ColumnStepErrors } from "../utils/csv-validation.util";
 
 // ---------------------------------------------------------------------------
 // Mock Data
@@ -985,6 +986,138 @@ describe("ColumnMappingStep", () => {
           }),
         })
       );
+    });
+  });
+
+  describe("Validation errors", () => {
+    it("displays key error on a column row", () => {
+      const errors: ColumnStepErrors = {
+        0: { 0: { key: "Column key is required" } },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          errors={errors}
+        />
+      );
+      expect(screen.getByText("Column key is required")).toBeInTheDocument();
+    });
+
+    it("displays label error on a column row", () => {
+      const errors: ColumnStepErrors = {
+        0: { 1: { label: "Column label is required" } },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          errors={errors}
+        />
+      );
+      expect(screen.getByText("Column label is required")).toBeInTheDocument();
+    });
+
+    it("displays type error on a column row", () => {
+      const errors: ColumnStepErrors = {
+        0: { 0: { type: "Column type is required" } },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          errors={errors}
+        />
+      );
+      expect(screen.getByText("Column type is required")).toBeInTheDocument();
+    });
+
+    it("displays reference entity error on reference column", () => {
+      const refColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: {
+          ...MOCK_COLUMN_HIGH.recommended,
+          type: "reference",
+          refEntityKey: null,
+          refColumnKey: null,
+        },
+      };
+      const errors: ColumnStepErrors = {
+        0: { 0: { refEntityKey: "Reference entity is required" } },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          errors={errors}
+        />
+      );
+      expect(screen.getByText("Reference entity is required")).toBeInTheDocument();
+    });
+
+    it("displays reference column error on reference column", () => {
+      const refColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: {
+          ...MOCK_COLUMN_HIGH.recommended,
+          type: "reference",
+          refEntityKey: "other",
+          refColumnKey: null,
+          refColumnDefinitionId: null,
+        },
+      };
+      const errors: ColumnStepErrors = {
+        0: { 0: { refColumnKey: "Reference column is required" } },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          errors={errors}
+        />
+      );
+      expect(screen.getByText("Reference column is required")).toBeInTheDocument();
+    });
+
+    it("does not display errors when errors prop is empty", () => {
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          errors={{}}
+        />
+      );
+      expect(screen.queryByText("Column key is required")).not.toBeInTheDocument();
+      expect(screen.queryByText("Column label is required")).not.toBeInTheDocument();
+      expect(screen.queryByText("Column type is required")).not.toBeInTheDocument();
+    });
+
+    it("marks key, label, and type fields as required", () => {
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+      // Each column row has key, label, type — check first column's inputs
+      const keyInput = screen.getAllByDisplayValue("email")[0];
+      const labelInput = screen.getByDisplayValue("Email");
+      expect(keyInput).toBeRequired();
+      expect(labelInput).toBeRequired();
     });
   });
 });

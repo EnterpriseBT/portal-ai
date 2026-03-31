@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { sdk } from "../../api/sdk";
 import type { ConnectorEntityListWithMappingsResponsePayload, ConnectorEntityWithMappings } from "@portalai/core/contracts";
@@ -23,6 +23,14 @@ import {
   useUploadWorkflow,
   WORKFLOW_STEPS,
 } from "./utils/upload-workflow.util";
+import {
+  validateEntityStep,
+  validateColumnStep,
+  hasEntityStepErrors,
+  hasColumnStepErrors,
+} from "./utils/csv-validation.util";
+import type { EntityStepErrors, ColumnStepErrors } from "./utils/csv-validation.util";
+import { focusFirstInvalidField } from "../../utils/form-validation.util";
 import type { ConfirmResponsePayload } from "@portalai/core/contracts";
 
 import type {
@@ -66,10 +74,12 @@ export interface CSVConnectorWorkflowUIProps {
   recommendations: Recommendations | null;
   parseResults: ParseSummary[] | null;
   onUpdateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
+  entityStepErrors?: EntityStepErrors;
 
   // Column mapping step
   dbEntities: ConnectorEntityWithMappings[];
   isLoadingDbEntities: boolean;
+  columnStepErrors?: ColumnStepErrors;
   onUpdateColumn: (
     entityIndex: number,
     columnIndex: number,
@@ -117,8 +127,10 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
   recommendations,
   parseResults,
   onUpdateEntity,
+  entityStepErrors,
   dbEntities,
   isLoadingDbEntities,
+  columnStepErrors,
   onUpdateColumn,
   onConnectorNameChange,
   onConfirm,
@@ -171,6 +183,7 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
                 files={files}
                 parseResults={parseResults}
                 onUpdateEntity={onUpdateEntity}
+                errors={entityStepErrors}
               />
             ) : (
               <Typography color="text.secondary">
@@ -187,6 +200,7 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
                 dbEntities={dbEntities}
                 isLoadingDbEntities={isLoadingDbEntities}
                 onUpdateColumn={onUpdateColumn}
+                errors={columnStepErrors}
               />
             ) : (
               <Typography color="text.secondary">
@@ -317,6 +331,8 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
   connectorDefinitionId,
 }) => {
   const workflow = useUploadWorkflow();
+  const [entityStepErrors, setEntityStepErrors] = useState<EntityStepErrors>({});
+  const [columnStepErrors, setColumnStepErrors] = useState<ColumnStepErrors>({});
 
   const { data: dbEntitiesData, isLoading: isLoadingDbEntities } =
     sdk.connectorEntities.list(
@@ -329,6 +345,8 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
 
   const handleClose = useCallback(() => {
     workflow.reset();
+    setEntityStepErrors({});
+    setColumnStepErrors({});
     onClose();
   }, [workflow, onClose]);
 
@@ -339,9 +357,28 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
   const handleNext = useCallback(async () => {
     if (workflow.step === 0 && workflow.uploadPhase === "idle") {
       await handleStartUpload();
-    } else {
-      workflow.goNext();
+      return;
     }
+
+    if (workflow.step === 1 && workflow.recommendations) {
+      const errors = validateEntityStep(workflow.recommendations.entities);
+      setEntityStepErrors(errors);
+      if (hasEntityStepErrors(errors)) {
+        requestAnimationFrame(() => focusFirstInvalidField());
+        return;
+      }
+    }
+
+    if (workflow.step === 2 && workflow.recommendations) {
+      const errors = validateColumnStep(workflow.recommendations.entities);
+      setColumnStepErrors(errors);
+      if (hasColumnStepErrors(errors)) {
+        requestAnimationFrame(() => focusFirstInvalidField());
+        return;
+      }
+    }
+
+    workflow.goNext();
   }, [workflow, handleStartUpload]);
 
   const handleBack = useCallback(() => {
@@ -384,8 +421,10 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
       recommendations={workflow.recommendations}
       parseResults={workflow.parseResults}
       onUpdateEntity={workflow.updateEntity}
+      entityStepErrors={entityStepErrors}
       dbEntities={dbEntities}
       isLoadingDbEntities={isLoadingDbEntities}
+      columnStepErrors={columnStepErrors}
       onUpdateColumn={workflow.updateColumn}
       onConnectorNameChange={workflow.updateConnectorName}
       onConfirm={handleConfirm}

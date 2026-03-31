@@ -57,6 +57,14 @@ describe("DeleteTagDialog", () => {
     expect(onConfirm).toHaveBeenCalled();
   });
 
+  it("should submit on Enter key press (form submission)", () => {
+    const onConfirm = jest.fn();
+    render(<DeleteTagDialog {...defaultProps} onConfirm={onConfirm} />);
+    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    fireEvent.submit(form);
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
   it("should call onClose when Cancel button is clicked", () => {
     const onClose = jest.fn();
     render(<DeleteTagDialog {...defaultProps} onClose={onClose} />);
@@ -81,5 +89,21 @@ describe("DeleteTagDialog", () => {
     const otherTag = { ...sampleTag, id: "tag-2", name: "Staging" };
     render(<DeleteTagDialog {...defaultProps} tag={otherTag} />);
     expect(screen.getByText("Staging")).toBeInTheDocument();
+  });
+
+  it("should render FormAlert when serverError is provided", () => {
+    render(
+      <DeleteTagDialog
+        {...defaultProps}
+        serverError={{ message: "Tag not found", code: "TAG_NOT_FOUND" }}
+      />
+    );
+    expect(screen.getByText(/Tag not found/)).toBeInTheDocument();
+    expect(screen.getByText(/TAG_NOT_FOUND/)).toBeInTheDocument();
+  });
+
+  it("should not render FormAlert when serverError is null", () => {
+    render(<DeleteTagDialog {...defaultProps} serverError={null} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

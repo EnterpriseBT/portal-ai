@@ -13,6 +13,9 @@ import {
   Typography,
 } from "@portalai/core/ui";
 
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
+
 export interface DeleteConnectorInstanceDialogProps {
   open: boolean;
   onClose: () => void;
@@ -21,6 +24,7 @@ export interface DeleteConnectorInstanceDialogProps {
   isPending?: boolean;
   impact?: ConnectorInstanceImpact | null;
   isLoadingImpact?: boolean;
+  serverError?: ServerError | null;
 }
 
 const IMPACT_LABELS: { key: keyof ConnectorInstanceImpact; label: string }[] = [
@@ -83,6 +87,7 @@ export const DeleteConnectorInstanceDialog: React.FC<
   isPending,
   impact,
   isLoadingImpact,
+  serverError,
 }) => {
   const deleteDisabled = isPending || isLoadingImpact;
 
@@ -93,15 +98,25 @@ export const DeleteConnectorInstanceDialog: React.FC<
       title="Delete Connector Instance"
       maxWidth="sm"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            if (!deleteDisabled) onConfirm();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant="contained"
             color="error"
-            onClick={onConfirm}
+            onClick={() => { if (!deleteDisabled) onConfirm(); }}
             disabled={deleteDisabled}
           >
             {isPending ? "Deleting..." : "Delete"}
@@ -121,6 +136,7 @@ export const DeleteConnectorInstanceDialog: React.FC<
           This action will permanently delete all associated data listed above.
           This cannot be undone.
         </Alert>
+        <FormAlert serverError={serverError ?? null} />
       </Stack>
     </Modal>
   );

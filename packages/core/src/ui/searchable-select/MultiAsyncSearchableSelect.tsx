@@ -24,6 +24,7 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
   disabled,
   required,
   size = "small",
+  inputRef,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<SelectOption[]>([]);
@@ -92,6 +93,7 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
       renderInput={(params) => (
         <TextField
           {...params}
+          inputRef={inputRef}
           label={label}
           placeholder={placeholder}
           helperText={helperText}

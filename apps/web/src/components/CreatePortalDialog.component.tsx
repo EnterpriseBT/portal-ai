@@ -1,15 +1,20 @@
 import React, { useState } from "react";
 
-import type {
-  CreatePortalBody,
-  OrganizationGetResponse,
-  StationListResponsePayload,
+import {
+  CreatePortalBodySchema,
+  type CreatePortalBody,
+  type OrganizationGetResponse,
+  type StationListResponsePayload,
 } from "@portalai/core/contracts";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import { Button, Modal, Stack } from "@portalai/core/ui";
 import Autocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 
 import DataResult from "./DataResult.component";
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
+import { focusFirstInvalidField } from "../utils/form-validation.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { OrgData } from "./StationList.component";
 import { sdk } from "../api/sdk";
 
@@ -27,6 +32,7 @@ interface StationPickerProps {
   selected: string | null;
   onChange: (stationId: string | null) => void;
   error?: string;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 const StationPicker: React.FC<StationPickerProps> = ({
@@ -34,6 +40,7 @@ const StationPicker: React.FC<StationPickerProps> = ({
   selected,
   onChange,
   error,
+  inputRef,
 }) => {
   const result = sdk.stations.list({
     limit: 100,
@@ -67,6 +74,7 @@ const StationPicker: React.FC<StationPickerProps> = ({
             renderInput={(params) => (
               <TextField
                 {...params}
+                inputRef={inputRef}
                 label="Station"
                 placeholder="Select a station..."
                 required
@@ -88,7 +96,7 @@ export interface CreatePortalDialogProps {
   onClose: () => void;
   onSubmit: (body: CreatePortalBody) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
@@ -100,6 +108,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
 }) => {
   const [stationId, setStationId] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  const stationRef = useDialogAutoFocus(open);
   const [orgDefaultStationId, setOrgDefaultStationId] = useState<
     string | null
   >(null);
@@ -112,12 +121,18 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
   }, [open]);
 
   const effectiveStationId = stationId ?? orgDefaultStationId;
-  const error = touched && !effectiveStationId ? "Station is required" : undefined;
+  const error =
+    touched && !effectiveStationId ? "Station is required" : undefined;
 
   const handleSubmit = () => {
     setTouched(true);
-    if (!effectiveStationId) return;
-    onSubmit({ stationId: effectiveStationId });
+    const body = { stationId: effectiveStationId ?? "" };
+    const result = CreatePortalBodySchema.safeParse(body);
+    if (!result.success) {
+      requestAnimationFrame(() => focusFirstInvalidField());
+      return;
+    }
+    onSubmit(result.data);
   };
 
   return (
@@ -127,12 +142,22 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
       title="New Portal"
       maxWidth="sm"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            handleSubmit();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant="contained"
             onClick={handleSubmit}
             disabled={isPending}
@@ -160,6 +185,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
                   <StationPicker
                     defaultStationId={defaultId}
                     selected={stationId}
+                    inputRef={stationRef}
                     onChange={(id) => {
                       setStationId(id);
                       setTouched(true);
@@ -171,11 +197,7 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
             </DataResult>
           )}
         </OrgData>
-        {serverError && (
-          <Typography variant="body2" color="error">
-            {serverError}
-          </Typography>
-        )}
+        <FormAlert serverError={serverError} />
       </Stack>
     </Modal>
   );

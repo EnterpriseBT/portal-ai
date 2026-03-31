@@ -239,6 +239,11 @@ portalRouter.get(
  *         schema:
  *           type: string
  *         description: Portal ID
+ *       - in: query
+ *         name: include
+ *         schema:
+ *           type: string
+ *         description: Comma-separated relations to include (e.g. "pinnedResults")
  *     responses:
  *       200:
  *         description: Portal retrieved successfully
@@ -272,8 +277,16 @@ portalRouter.get(
     try {
       const { id } = req.params;
       const { organizationId } = req.application!.metadata;
+      const include_ =
+        (req.query.include as string | undefined)
+          ?.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean) ?? [];
 
-      const { portal, messages } = await PortalService.getPortal(id);
+      const { portal, messages, pinnedBlocks } = await PortalService.getPortal(
+        id,
+        { include: include_ },
+      );
 
       if (portal.organizationId !== organizationId) {
         return next(
@@ -284,6 +297,7 @@ portalRouter.get(
       return HttpService.success<PortalGetResponsePayload>(res, {
         portal: portal as unknown as PortalGetResponsePayload["portal"],
         messages: messages as unknown as PortalGetResponsePayload["messages"],
+        ...(pinnedBlocks ? { pinnedBlocks } : {}),
       });
     } catch (error) {
       logger.error(

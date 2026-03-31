@@ -58,6 +58,7 @@ export const EntityRecordFieldValue: React.FC<EntityRecordFieldValueProps> = ({
             size="small"
             onClick={handleCopy}
             sx={{ position: "absolute", top: 4, right: 4 }}
+            aria-label="Copy value"
           >
             {copied ? (
               <CheckIcon fontSize="inherit" color="success" />

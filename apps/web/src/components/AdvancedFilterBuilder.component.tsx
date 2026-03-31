@@ -175,7 +175,7 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
         <Box sx={{ flex: 1 }} />
 
         {!isRoot && onRemove && (
-          <IconButton size="small" onClick={onRemove} color="error">
+          <IconButton size="small" onClick={onRemove} color="error" aria-label="Remove filter group">
             <DeleteOutlineIcon fontSize="small" />
           </IconButton>
         )}
@@ -318,7 +318,7 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
       )}
 
       {/* Remove */}
-      <IconButton size="small" onClick={onRemove} color="error">
+      <IconButton size="small" onClick={onRemove} color="error" aria-label="Remove filter condition">
         <DeleteOutlineIcon fontSize="small" />
       </IconButton>
     </Box>

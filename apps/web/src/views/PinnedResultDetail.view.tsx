@@ -3,30 +3,33 @@ import React, { useState, useCallback } from "react";
 import type { PortalResult } from "@portalai/core/models";
 import {
   Box,
-  Breadcrumbs,
   Button,
-  Stack,
-  Typography,
+  Icon,
   IconName,
+  MetadataList,
+  PageHeader,
+  PageSection,
+  Stack,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import { ContentBlockRenderer } from "@portalai/core/ui";
-import Chip from "@mui/material/Chip";
 import TextField from "@mui/material/TextField";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
-import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import PushPinIcon from "@mui/icons-material/PushPin";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch } from "../utils/api.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { PortalResultPayload } from "../api/portal-results.api";
 
 // ── Data fetcher ────────────────────────────────────────────────────
@@ -60,6 +63,7 @@ export interface PinnedResultDetailUIProps {
   result: PortalResult;
   onRename: (name: string) => void;
   onDelete: () => void;
+  onUnpin: () => void;
   onOpenPortal: (portalId: string) => void;
   onNavigate: (href: string) => void;
   renamePending?: boolean;
@@ -69,12 +73,14 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   result,
   onRename,
   onDelete,
+  onUnpin,
   onOpenPortal,
   onNavigate,
   renamePending,
 }) => {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(result.name);
+  const renameRef = useDialogAutoFocus(renameOpen);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const handleRenameSubmit = () => {
@@ -94,104 +100,65 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Pinned Results", href: "/portal-results" },
-              { label: result.name },
-            ]}
-            onNavigate={onNavigate}
-          />
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            justifyContent="space-between"
-            alignItems={{ xs: "flex-start", md: "center" }}
-            spacing={2}
-          >
-            <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                alignItems={{ xs: "flex-start", sm: "center" }}
-                spacing={{ xs: 0.5, sm: 1.5 }}
-                sx={{ minWidth: 0 }}
-              >
-                <Typography
-                  variant="h1"
-                  data-testid="result-name"
-                  noWrap
-                  sx={{ minWidth: 0, maxWidth: "100%" }}
-                >
-                  {result.name}
-                </Typography>
-                <Chip
-                  label={result.type === "vega-lite" ? "Chart" : "Text"}
-                  size="small"
-                  variant="outlined"
-                  data-testid="result-type-chip"
-                  sx={{ flexShrink: 0 }}
-                />
-              </Stack>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                data-testid="result-created"
-              >
-                {DateFactory.relativeTime(result.created)}
-              </Typography>
-            </Stack>
-
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={1}
-              sx={{ flexShrink: 0, width: { xs: "100%", sm: "auto" } }}
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Pinned Results", href: "/portal-results" },
+            { label: result.name },
+          ]}
+          onNavigate={onNavigate}
+          title={result.name}
+          icon={<Icon name={IconName.PushPin} />}
+          primaryAction={
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<PushPinIcon />}
+              onClick={onUnpin}
+              data-testid="unpin-btn"
             >
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<EditIcon />}
-                onClick={() => {
-                  setRenameValue(result.name);
-                  setRenameOpen(true);
-                }}
-                data-testid="rename-btn"
-              >
-                Rename
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                color="error"
-                startIcon={<DeleteIcon />}
-                onClick={() => setDeleteOpen(true)}
-                data-testid="delete-btn"
-              >
-                Delete
-              </Button>
-              {result.portalId && (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<OpenInNewIcon />}
-                  onClick={() => onOpenPortal(result.portalId!)}
-                  data-testid="open-portal-btn"
-                >
-                  Open Source Portal
-                </Button>
-              )}
-            </Stack>
-          </Stack>
-        </Box>
-
-        <Box
-          data-testid="result-content"
-          sx={{
-            overflow: "auto",
-            width: '100% !important'
-          }}
+              Unpin
+            </Button>
+          }
+          secondaryActions={[
+            {
+              label: "Rename",
+              icon: <EditIcon />,
+              onClick: () => {
+                setRenameValue(result.name);
+                setRenameOpen(true);
+              },
+            },
+            ...(result.portalId
+              ? [
+                {
+                  label: "Open Source Portal",
+                  icon: <OpenInNewIcon />,
+                  onClick: () => onOpenPortal(result.portalId!),
+                },
+              ]
+              : []),
+            {
+              label: "Delete",
+              icon: <DeleteIcon />,
+              onClick: () => setDeleteOpen(true),
+              color: "error" as const,
+            },
+          ]}
         >
-          <ContentBlockRenderer block={contentBlock} />
-        </Box>
+          <MetadataList
+            items={[
+              { label: "Type", value: result.type === "vega-lite" ? "Chart" : "Text", variant: "chip" },
+              { label: "Created", value: DateFactory.relativeTime(result.created) },
+            ]}
+          />
+        </PageHeader>
+
+        <PageSection variant="outlined" data-testid="result-content">
+          <Box sx={{ overflow: "auto" }}>
+            <ContentBlockRenderer block={contentBlock} />
+          </Box>
+        </PageSection>
       </Stack>
 
       {/* Rename dialog */}
@@ -199,7 +166,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
         <DialogTitle>Rename Result</DialogTitle>
         <DialogContent>
           <TextField
-            autoFocus
+            inputRef={renameRef}
             fullWidth
             margin="dense"
             label="Name"
@@ -291,6 +258,17 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
     navigate({ to: "/portal-results" });
   }, [fetchWithAuth, portalResultId, queryClient, navigate]);
 
+  const handleUnpin = useCallback(async () => {
+    await fetchWithAuth(
+      `/api/portal-results/${encodeURIComponent(portalResultId)}`,
+      { method: "DELETE" }
+    );
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.portalResults.root,
+    });
+    navigate({ to: "/portal-results" });
+  }, [fetchWithAuth, portalResultId, queryClient, navigate]);
+
   const handleOpenPortal = useCallback(
     (portalId: string) => {
       navigate({ to: `/portals/${portalId}` });
@@ -317,6 +295,7 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
                 result={portalResult}
                 onRename={handleRename}
                 onDelete={handleDelete}
+                onUnpin={handleUnpin}
                 onOpenPortal={handleOpenPortal}
                 onNavigate={handleNavigate}
                 renamePending={renameMutation.isPending}

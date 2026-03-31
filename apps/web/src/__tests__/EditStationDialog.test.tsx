@@ -97,15 +97,21 @@ describe("EditStationDialog", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
-  it("should display server error message", () => {
+  it("should display server error message and code", () => {
     render(
       <EditStationDialog
         {...defaultProps}
-        serverError="Station name already exists"
+        serverError={{
+          message: "Station name already exists",
+          code: "STATION_DUPLICATE_NAME",
+        }}
       />
     );
     expect(
-      screen.getByText("Station name already exists")
+      screen.getByText(/Station name already exists/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/STATION_DUPLICATE_NAME/)
     ).toBeInTheDocument();
   });
 
@@ -121,6 +127,18 @@ describe("EditStationDialog", () => {
     expect(screen.queryByText("Edit Station")).not.toBeInTheDocument();
   });
 
+  it("should submit form on Enter key press in text field", async () => {
+    const onSubmit = jest.fn();
+    render(<EditStationDialog {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Updated Station" },
+    });
+    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({ name: "Updated Station" });
+    });
+  });
+
   it("should show field error on blur when name is empty", async () => {
     render(<EditStationDialog {...defaultProps} />);
     const nameField = screen.getByLabelText(/Name/);
@@ -129,5 +147,21 @@ describe("EditStationDialog", () => {
     await waitFor(() => {
       expect(screen.getByText("Name is required")).toBeInTheDocument();
     });
+  });
+
+  it("should set aria-invalid on name field when validation fails", async () => {
+    render(<EditStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    fireEvent.change(nameInput, { target: { value: "" } });
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    });
+  });
+
+  it("should have aria-required on required fields", () => {
+    render(<EditStationDialog {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    expect(nameInput).toBeRequired();
   });
 });

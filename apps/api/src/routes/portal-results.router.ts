@@ -3,7 +3,7 @@ import { eq, and, ilike, type SQL } from "drizzle-orm";
 
 import {
   PinResultBodySchema,
-  PortalListRequestQuerySchema,
+  PortalResultListRequestQuerySchema,
   PINNABLE_BLOCK_TYPES,
 } from "@portalai/core/contracts";
 import type { PortalResultType } from "@portalai/core/models";
@@ -164,6 +164,8 @@ portalResultsRouter.post(
         organizationId,
         stationId: portal.stationId,
         portalId,
+        messageId: messageId ?? null,
+        blockIndex: blockIndex ?? null,
         name,
         type,
         content,
@@ -220,6 +222,11 @@ portalResultsRouter.post(
  *         schema:
  *           type: string
  *         description: Filter results by station ID
+ *       - in: query
+ *         name: portalId
+ *         schema:
+ *           type: string
+ *         description: Filter results by portal ID
  *     responses:
  *       200:
  *         description: Portal results retrieved successfully
@@ -245,8 +252,8 @@ portalResultsRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortOrder, search, stationId } =
-        PortalListRequestQuerySchema.parse(req.query);
+      const { limit, offset, sortOrder, search, stationId, portalId } =
+        PortalResultListRequestQuerySchema.parse(req.query);
       const { organizationId } = req.application!.metadata;
 
       const filters: SQL[] = [
@@ -254,6 +261,9 @@ portalResultsRouter.get(
       ];
       if (stationId) {
         filters.push(eq(portalResults.stationId, stationId));
+      }
+      if (portalId) {
+        filters.push(eq(portalResults.portalId, portalId));
       }
       if (search) {
         filters.push(ilike(portalResults.name, `%${search}%`));

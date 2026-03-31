@@ -75,6 +75,20 @@ describe("EditConnectorInstanceDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("New Name");
   });
 
+  it("should submit form on Enter key press in text field", () => {
+    const onConfirm = jest.fn();
+    render(
+      <EditConnectorInstanceDialog
+        {...defaultProps}
+        onConfirm={onConfirm}
+      />
+    );
+    const input = screen.getByRole("textbox", { name: /name/i });
+    fireEvent.change(input, { target: { value: "New Name" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(onConfirm).toHaveBeenCalledWith("New Name");
+  });
+
   it("should call onClose when Cancel button is clicked", () => {
     const onClose = jest.fn();
     render(
@@ -82,5 +96,19 @@ describe("EditConnectorInstanceDialog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("should set aria-invalid on name field when validation fails", () => {
+    render(<EditConnectorInstanceDialog {...defaultProps} />);
+    const input = screen.getByRole("textbox", { name: /name/i });
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("should have required attribute on name field", () => {
+    render(<EditConnectorInstanceDialog {...defaultProps} />);
+    const input = screen.getByRole("textbox", { name: /name/i });
+    expect(input).toBeRequired();
   });
 });

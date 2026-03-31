@@ -141,6 +141,18 @@ describe("TagFormModal", () => {
     });
   });
 
+  it("should submit form on Enter key press in text field", async () => {
+    const onSubmit = jest.fn();
+    render(<TagFormModal {...defaultProps} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/Name/), {
+      target: { value: "Enter Tag" },
+    });
+    fireEvent.submit(screen.getByLabelText(/Name/).closest("form")!);
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({ name: "Enter Tag" });
+    });
+  });
+
   it("should show field error on blur", async () => {
     render(<TagFormModal {...defaultProps} />);
     const nameField = screen.getByLabelText(/Name/);
@@ -197,15 +209,21 @@ describe("TagFormModal", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
-  it("should display server error message", () => {
+  it("should display server error message and code", () => {
     render(
       <TagFormModal
         {...defaultProps}
-        serverError="An entity tag with this name already exists"
+        serverError={{
+          message: "An entity tag with this name already exists",
+          code: "ENTITY_TAG_DUPLICATE_NAME",
+        }}
       />
     );
     expect(
-      screen.getByText("An entity tag with this name already exists")
+      screen.getByText(/An entity tag with this name already exists/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/ENTITY_TAG_DUPLICATE_NAME/)
     ).toBeInTheDocument();
   });
 
@@ -216,5 +234,23 @@ describe("TagFormModal", () => {
     render(<TagFormModal {...defaultProps} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // ── Accessibility ────────────────────────────────────────────────
+
+  it("should set aria-invalid on name field when validation fails", async () => {
+    render(<TagFormModal {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    fireEvent.focus(nameInput);
+    fireEvent.blur(nameInput);
+    await waitFor(() => {
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    });
+  });
+
+  it("should have aria-required on required fields", () => {
+    render(<TagFormModal {...defaultProps} />);
+    const nameInput = screen.getByLabelText(/Name/);
+    expect(nameInput).toBeRequired();
   });
 });

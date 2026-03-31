@@ -90,7 +90,7 @@ describe("JobsView", () => {
     } as Partial<ListQuery>;
 
     render(<JobsView />);
-    expect(screen.getByText("No results found")).toBeInTheDocument();
+    expect(screen.getByText("No jobs found")).toBeInTheDocument();
   });
 
   it("should display job rows when jobs exist", () => {

@@ -6,15 +6,10 @@ import type {
   PortalListRequestQuery,
   PortalListResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Button, Stack, Typography, IconName } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, MetadataList, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import Chip from "@mui/material/Chip";
-import Card from "@mui/material/Card";
-import CardActionArea from "@mui/material/CardActionArea";
-import CardContent from "@mui/material/CardContent";
-import IconButton from "@mui/material/IconButton";
-import Tooltip from "@mui/material/Tooltip";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import HandymanOutlined from "@mui/icons-material/HandymanOutlined";
 import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
@@ -22,6 +17,7 @@ import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import DataResult from "../components/DataResult.component";
+import { PortalCardUI } from "../components/PortalCard.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
 import { EditStationDialog } from "../components/EditStationDialog.component";
@@ -31,7 +27,7 @@ import {
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useAuthFetch, toServerError } from "../utils/api.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -95,6 +91,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
       onSuccess: () => {
         setDeleteStationOpen(false);
         queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
         navigate({ to: "/stations" });
       },
     });
@@ -140,96 +137,82 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
               return (
                 <>
                   <Stack spacing={4}>
-                    <Box>
-                      <Breadcrumbs
+                    <PageHeader
+                      breadcrumbs={[
+                        { label: "Dashboard", href: "/" },
+                        { label: "Stations", href: "/stations" },
+                        { label: station.name },
+                      ]}
+                      onNavigate={(href) => navigate({ to: href })}
+                      title={station.name}
+                      icon={<Icon name={IconName.SatelliteAlt} />}
+                      primaryAction={
+                        <Button
+                          variant="contained"
+                          startIcon={<RocketLaunchIcon />}
+                          onClick={handleLaunchPortal}
+                          disabled={createPortalMutation.isPending}
+                        >
+                          {createPortalMutation.isPending ? "Opening..." : "Open Portal"}
+                        </Button>
+                      }
+                      secondaryActions={[
+                        { label: "Edit", icon: <EditIcon />, onClick: () => setEditOpen(true) },
+                        { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteStationOpen(true), color: "error" },
+                      ]}
+                    >
+                      {station.description && (
+                        <Typography variant="body2" color="text.secondary">
+                          {station.description}
+                        </Typography>
+                      )}
+                      <MetadataList
                         items={[
-                          { label: "Dashboard", href: "/", icon: IconName.Home },
-                          { label: "Stations", href: "/stations" },
-                          { label: station.name },
+                          {
+                            label: "Tool Packs",
+                            value: (
+                              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+                                {station.toolPacks.map((pack) => (
+                                  <Chip
+                                    key={pack}
+                                    icon={<HandymanOutlined fontSize="small" />}
+                                    label={pack}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                ))}
+                              </Stack>
+                            ),
+                            variant: "chip",
+                            hidden: station.toolPacks.length === 0,
+                          },
+                          {
+                            label: "Connectors",
+                            value: (
+                              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+                                {(station.instances ?? []).map((inst) => (
+                                  <Chip
+                                    key={inst.id}
+                                    icon={<MemoryOutlined fontSize="small" />}
+                                    label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                  />
+                                ))}
+                              </Stack>
+                            ),
+                            variant: "chip",
+                            hidden: (station.instances ?? []).length === 0,
+                          },
+                          { label: "Created", value: DateFactory.relativeTime(station.created) },
                         ]}
-                        onNavigate={(href) => navigate({ to: href })}
                       />
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={2}
-                        alignItems={{ xs: "flex-start", sm: "center" }}
-                        justifyContent="space-between"
-                        sx={{ mb: 2 }}
-                      >
-                        <Typography variant="h1">{station.name}</Typography>
-                        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                          <Button
-                            variant="outlined"
-                            startIcon={<EditIcon />}
-                            onClick={() => setEditOpen(true)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            startIcon={<DeleteOutlineIcon />}
-                            onClick={() => setDeleteStationOpen(true)}
-                          >
-                            Delete
-                          </Button>
-                          <Button
-                            variant="contained"
-                            startIcon={<RocketLaunchIcon />}
-                            onClick={handleLaunchPortal}
-                            disabled={createPortalMutation.isPending}
-                          >
-                            {createPortalMutation.isPending ? "Opening..." : "Open Portal"}
-                          </Button>
-                        </Stack>
-                      </Stack>
-                      <Box>
-                        {/* Metadata Section */}
-                        <Stack spacing={1}>
-                          {station.description && (
-                            <Typography variant="body2" color="text.secondary">
-                              {station.description}
-                            </Typography>
-                          )}
-                          <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
-                            {station.toolPacks.map((pack) => (
-                              <Chip
-                                key={pack}
-                                icon={<HandymanOutlined fontSize="small" />}
-                                label={pack}
-                                size="small"
-                                variant="outlined"
-                              />
-                            ))}
-                          </Stack>
-                          {(station.instances ?? []).length > 0 && (
-                            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
-                              {station.instances!.map((inst) => (
-                                <Chip
-                                  key={inst.id}
-                                  icon={<MemoryOutlined fontSize="small" />}
-                                  label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                />
-                              ))}
-                            </Stack>
-                          )}
-                          <Typography variant="body2" color="text.secondary">
-                            Created: {DateFactory.relativeTime(station.created)}
-                          </Typography>
-                        </Stack>
-                      </Box>
-                    </Box>
+                    </PageHeader>
 
 
                     {/* Portals Section */}
-                    <Box>
-                      <Typography variant="h2" sx={{ mb: 2 }}>
-                        Portals
-                      </Typography>
-
+                    <PageSection title="Portals" icon={<Icon name={IconName.RocketLaunch} />}>
                       <PaginationToolbar {...portalsPagination.toolbarProps} />
 
                       <Box sx={{ mt: 2 }}>
@@ -254,63 +237,31 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                 }) => {
                                   if (portals.portals.length === 0) {
                                     return (
-                                      <Typography
-                                        variant="body1"
-                                        color="text.secondary"
-                                        sx={{ py: 4, textAlign: "center" }}
-                                      >
-                                        No portals yet
-                                      </Typography>
+                                      <PageEmptyState
+                                        icon={<Icon name={IconName.RocketLaunch} />}
+                                        title="No portals yet"
+                                      />
                                     );
                                   }
 
                                   return (
                                     <Stack spacing={1}>
                                       {portals.portals.map((portal) => (
-                                        <Card key={portal.id} variant="outlined">
-                                          <Stack direction="row" alignItems="center">
-                                            <CardActionArea
-                                              onClick={() =>
-                                                navigate({
-                                                  to: `/portals/${portal.id}`,
-                                                })
-                                              }
-                                              sx={{ flex: 1, minWidth: 0 }}
-                                            >
-                                              <CardContent
-                                                sx={{ "&:last-child": { pb: 2 } }}
-                                              >
-                                                <Stack
-                                                  direction="row"
-                                                  justifyContent="space-between"
-                                                  alignItems="center"
-                                                >
-                                                  <Typography variant="subtitle1" noWrap>
-                                                    {portal.name}
-                                                  </Typography>
-                                                  <Typography
-                                                    variant="caption"
-                                                    color="text.secondary"
-                                                    sx={{ ml: 2, flexShrink: 0 }}
-                                                  >
-                                                    {DateFactory.relativeTime(portal.created)}
-                                                  </Typography>
-                                                </Stack>
-                                              </CardContent>
-                                            </CardActionArea>
-                                            <Tooltip title="Delete portal">
-                                              <IconButton
-                                                size="small"
-                                                color="error"
-                                                onClick={() => setDeleteTarget({ id: portal.id, name: portal.name })}
-                                                sx={{ mr: 1 }}
-                                                data-testid={`delete-portal-${portal.id}`}
-                                              >
-                                                <DeleteOutlineIcon fontSize="small" />
-                                              </IconButton>
-                                            </Tooltip>
-                                          </Stack>
-                                        </Card>
+                                        <PortalCardUI
+                                          key={portal.id}
+                                          id={portal.id}
+                                          name={portal.name}
+                                          created={portal.created}
+                                          onClick={(id) =>
+                                            navigate({ to: `/portals/${id}` })
+                                          }
+                                          onDelete={(id) =>
+                                            setDeleteTarget({
+                                              id,
+                                              name: portal.name,
+                                            })
+                                          }
+                                        />
                                       ))}
                                     </Stack>
                                   );
@@ -320,7 +271,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           )}
                         </PortalDataList>
                       </Box>
-                    </Box>
+                    </PageSection>
                   </Stack>
                   {editOpen && (
                     <EditStationDialog
@@ -330,7 +281,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       station={station}
                       onSubmit={handleEditSubmit}
                       isPending={updateMutation.isPending}
-                      serverError={updateMutation.error?.message ?? null}
+                      serverError={toServerError(updateMutation.error)}
                     />
                   )}
                   <DeleteStationDialog

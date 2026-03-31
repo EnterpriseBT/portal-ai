@@ -6,15 +6,13 @@ import type {
   StationListResponsePayload,
 } from "@portalai/core/contracts";
 import type { OrganizationGetResponse } from "@portalai/core/contracts";
-import { Box, Stack, Typography } from "@portalai/core/ui";
-import Card from "@mui/material/Card";
-import CardActionArea from "@mui/material/CardActionArea";
-import CardContent from "@mui/material/CardContent";
+import { DetailCard, Icon, IconName, MetadataList, PageEmptyState, Stack } from "@portalai/core/ui";
+import type { ActionSuiteItem } from "@portalai/core/ui";
+import { EmptyResults } from "./EmptyResults.component";
 import Chip from "@mui/material/Chip";
-import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
-import StarIcon from "@mui/icons-material/Star";
 import DeleteIcon from "@mui/icons-material/Delete";
+import StarIcon from "@mui/icons-material/Star";
+import StarOutlineIcon from "@mui/icons-material/StarOutline";
 
 import DataResult from "./DataResult.component";
 import { SyncTotal } from "./SyncTotal.component";
@@ -62,23 +60,26 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
   onSetDefault,
   onOpen,
   onDelete,
-}) => (
-  <Card variant="outlined">
-    <Stack
-      direction={{ xs: "column", sm: "row" }}
-      alignItems={{ xs: "flex-start", sm: "center" }}
+}) => {
+  const actions: ActionSuiteItem[] = [
+    ...(!isDefault
+      ? [{ label: "Set as default", icon: <StarOutlineIcon />, onClick: () => onSetDefault(station) }]
+      : []),
+    { label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(station), color: "error" as const },
+  ];
+
+  return (
+    <DetailCard
+      title={station.name}
+      onClick={() => onOpen(station)}
+      actions={actions}
+      data-testid="station-card"
     >
-      <CardActionArea
-        onClick={() => onOpen(station)}
-        data-testid="station-card"
-        sx={{ flex: 1, minWidth: 0 }}
-      >
-        <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography variant="subtitle1" noWrap>
-              {station.name}
-            </Typography>
-            {isDefault && (
+      <MetadataList
+        items={[
+          {
+            label: "Status",
+            value: (
               <Chip
                 label="Default"
                 size="small"
@@ -86,44 +87,17 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
                 icon={<StarIcon />}
                 data-testid="default-badge"
               />
-            )}
-          </Stack>
-          {station.description && (
-            <Typography variant="body2" color="text.secondary" noWrap>
-              {station.description}
-            </Typography>
-          )}
-          <Typography variant="caption" color="text.secondary">
-            Tool packs: {station.toolPacks.join(", ")}
-          </Typography>
-        </CardContent>
-      </CardActionArea>
-
-      <Box sx={{ flexShrink: 0, pr: 2, py: 1 }}>
-        <Stack direction="row" spacing={1} alignItems="center">
-          {!isDefault && (
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => onSetDefault(station)}
-              aria-label="Set as default"
-            >
-              Set as default
-            </Button>
-          )}
-          <IconButton
-            size="small"
-            color="error"
-            onClick={() => onDelete(station)}
-            aria-label="Delete station"
-          >
-            <DeleteIcon fontSize="small" />
-          </IconButton>
-        </Stack>
-      </Box>
-    </Stack>
-  </Card>
-);
+            ),
+            variant: "chip",
+            hidden: !isDefault,
+          },
+          { label: "Description", value: station.description ?? "", hidden: !station.description },
+          { label: "Tool packs", value: station.toolPacks.join(", "), hidden: station.toolPacks.length === 0 },
+        ]}
+      />
+    </DetailCard>
+  );
+};
 
 // ── Station list (pure UI) ──────────────────────────────────────────
 
@@ -133,6 +107,8 @@ export interface StationListUIProps {
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
   onDelete: (station: Station) => void;
+  /** When true, shows a "no results" message instead of the full empty state. */
+  hasActiveFilters?: boolean;
 }
 
 export const StationListUI: React.FC<StationListUIProps> = ({
@@ -141,16 +117,17 @@ export const StationListUI: React.FC<StationListUIProps> = ({
   onSetDefault,
   onOpen,
   onDelete,
+  hasActiveFilters,
 }) => {
   if (stations.length === 0) {
-    return (
-      <Typography
-        variant="body1"
-        color="text.secondary"
-        sx={{ py: 4, textAlign: "center" }}
-      >
-        No stations found
-      </Typography>
+    return hasActiveFilters ? (
+      <EmptyResults />
+    ) : (
+      <PageEmptyState
+        icon={<Icon name={IconName.SatelliteAlt} />}
+        title="No stations found"
+        description="Create your first station to get started."
+      />
     );
   }
 
@@ -177,6 +154,7 @@ export interface StationListConnectedProps {
   setTotal: (t: number) => void;
   onSetDefault: (station: Station) => void;
   onOpen: (station: Station) => void;
+  hasActiveFilters?: boolean;
   onDelete: (station: Station) => void;
 }
 
@@ -186,6 +164,7 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
   onSetDefault,
   onOpen,
   onDelete,
+  hasActiveFilters,
 }) => (
   <OrgData>
     {(orgResult) => (
@@ -205,6 +184,7 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
                     onSetDefault={onSetDefault}
                     onOpen={onOpen}
                     onDelete={onDelete}
+                    hasActiveFilters={hasActiveFilters}
                   />
                 );
               }}

@@ -9,6 +9,7 @@ import type {
   RecommendedEntity,
   ParseSummary,
 } from "../utils/upload-workflow.util";
+import type { EntityStepErrors } from "../utils/csv-validation.util";
 
 // ---------------------------------------------------------------------------
 // Mock Data
@@ -283,6 +284,95 @@ describe("EntityStep", () => {
           connectorEntity: expect.objectContaining({ label: expect.any(String) }),
         })
       );
+    });
+  });
+
+  describe("Validation errors", () => {
+    it("displays key error when errors prop has key error for entity", () => {
+      const errors: EntityStepErrors = {
+        0: { key: "Entity key is required" },
+      };
+      render(
+        <EntityStep
+          entities={MOCK_ENTITIES}
+          files={MOCK_FILES}
+          parseResults={null}
+          onUpdateEntity={jest.fn()}
+          errors={errors}
+        />
+      );
+      expect(screen.getByText("Entity key is required")).toBeInTheDocument();
+    });
+
+    it("displays label error when errors prop has label error for entity", () => {
+      const errors: EntityStepErrors = {
+        0: { label: "Entity label is required" },
+      };
+      render(
+        <EntityStep
+          entities={MOCK_ENTITIES}
+          files={MOCK_FILES}
+          parseResults={null}
+          onUpdateEntity={jest.fn()}
+          errors={errors}
+        />
+      );
+      expect(screen.getByText("Entity label is required")).toBeInTheDocument();
+    });
+
+    it("does not display errors for entities without errors", () => {
+      const multiEntities: RecommendedEntity[] = [
+        ...MOCK_ENTITIES,
+        {
+          connectorEntity: { key: "products", label: "Products" },
+          sourceFileName: "products.csv",
+          columns: [MOCK_COLUMN],
+        },
+      ];
+      const errors: EntityStepErrors = {
+        1: { key: "Entity key is required" },
+      };
+      render(
+        <EntityStep
+          entities={multiEntities}
+          files={MOCK_FILES}
+          parseResults={null}
+          onUpdateEntity={jest.fn()}
+          errors={errors}
+        />
+      );
+      // Only one error message should appear (for entity index 1)
+      const errorTexts = screen.getAllByText("Entity key is required");
+      expect(errorTexts).toHaveLength(1);
+    });
+
+    it("does not display errors when errors prop is empty", () => {
+      render(
+        <EntityStep
+          entities={MOCK_ENTITIES}
+          files={MOCK_FILES}
+          parseResults={null}
+          onUpdateEntity={jest.fn()}
+          errors={{}}
+        />
+      );
+      expect(screen.queryByText("Entity key is required")).not.toBeInTheDocument();
+      expect(screen.queryByText("Entity label is required")).not.toBeInTheDocument();
+    });
+
+    it("marks entity key and label fields as required", () => {
+      render(
+        <EntityStep
+          entities={MOCK_ENTITIES}
+          files={MOCK_FILES}
+          parseResults={null}
+          onUpdateEntity={jest.fn()}
+        />
+      );
+      const keyInput = screen.getByDisplayValue("contacts");
+      const labelInput = screen.getByDisplayValue("Contacts");
+      expect(keyInput).toBeRequired();
+      expect(labelInput).toBeRequired();
     });
   });
 });

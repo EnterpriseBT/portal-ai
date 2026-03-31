@@ -21,6 +21,7 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
   disabled,
   required,
   size = "small",
+  inputRef,
 }) => {
   const selectedOptions = value
     .map((v) => options.find((o) => String(o.value) === v))
@@ -39,6 +40,7 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
       renderInput={(params) => (
         <TextField
           {...params}
+          inputRef={inputRef}
           label={label}
           placeholder={placeholder}
           helperText={helperText}

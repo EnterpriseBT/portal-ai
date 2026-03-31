@@ -9,11 +9,12 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   Button,
-  Stack,
-  Typography,
+  Icon,
   IconName,
+  PageEmptyState,
+  PageHeader,
+  Stack,
 } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,12 +24,14 @@ import { TagCardUI } from "../components/TagCard.component";
 import { TagFormModal } from "../components/TagFormModal.component";
 import { DeleteTagDialog } from "../components/DeleteTagDialog.component";
 import DataResult from "../components/DataResult.component";
+import { EmptyResults } from "../components/EmptyResults.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -72,21 +75,15 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Tags" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <Typography variant="h1">Tags</Typography>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Tags" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Tags"
+          icon={<Icon name={IconName.Label} />}
+          primaryAction={
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -94,8 +91,8 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
             >
               Create Tag
             </Button>
-          </Stack>
-        </Box>
+          }
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
@@ -113,14 +110,24 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityTagListResponsePayload;
                     if (list.entityTags.length === 0) {
-                      return (
-                        <Typography
-                          variant="body1"
-                          color="text.secondary"
-                          sx={{ py: 4, textAlign: "center" }}
-                        >
-                          No tags found
-                        </Typography>
+                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      return hasActiveFilters ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.Label} />}
+                          title="No tags found"
+                          description="Create your first tag to get started."
+                          action={
+                            <Button
+                              variant="contained"
+                              startIcon={<AddIcon />}
+                              onClick={onCreateTag}
+                            >
+                              Create Tag
+                            </Button>
+                          }
+                        />
                       );
                     }
 
@@ -241,7 +248,7 @@ export const TagsView: React.FC = () => {
         tag={editingTag}
         onSubmit={handleFormSubmit}
         isPending={activeMutation.isPending}
-        serverError={activeMutation.error?.message ?? null}
+        serverError={toServerError(activeMutation.error)}
       />
 
       <DeleteTagDialog
@@ -250,6 +257,7 @@ export const TagsView: React.FC = () => {
         tag={deletingTag}
         onConfirm={handleDeleteConfirm}
         isPending={deleteMutation.isPending}
+        serverError={toServerError(deleteMutation.error)}
       />
     </>
   );

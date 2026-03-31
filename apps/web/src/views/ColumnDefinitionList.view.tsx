@@ -5,8 +5,7 @@ import type {
   ColumnDefinitionListResponsePayload,
 } from "@portalai/core/contracts";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
 
 import { useNavigate } from "@tanstack/react-router";
 
@@ -14,6 +13,7 @@ import {
   ColumnDefinitionDataList,
   ColumnDefinitionCardUI,
 } from "../components/ColumnDefinition.component";
+import { EmptyResults } from "../components/EmptyResults.component";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
@@ -56,17 +56,15 @@ export const ColumnDefinitionListView: React.FC = () => {
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Column Definitions" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Typography variant="h1">Column Definitions</Typography>
-        </Box>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Column Definitions" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Column Definitions"
+          icon={<Icon name={IconName.ViewColumn} />}
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
@@ -86,14 +84,14 @@ export const ColumnDefinitionListView: React.FC = () => {
                     list: ColumnDefinitionListResponsePayload;
                   }) => {
                     if (list.columnDefinitions.length === 0) {
-                      return (
-                        <Typography
-                          variant="body1"
-                          color="text.secondary"
-                          sx={{ py: 4, textAlign: "center" }}
-                        >
-                          No column definitions found
-                        </Typography>
+                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      return hasActiveFilters ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.ViewColumn} />}
+                          title="No column definitions found"
+                        />
                       );
                     }
 

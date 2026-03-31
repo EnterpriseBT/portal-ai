@@ -1,13 +1,18 @@
 import React, { useState } from "react";
 
+import { z } from "zod";
 import type { CreateStationBody } from "@portalai/core/contracts";
 import { StationToolPackSchema } from "@portalai/core/models";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import { Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import Chip from "@mui/material/Chip";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -28,10 +33,10 @@ interface StationFormState {
   toolPacks: string[];
 }
 
-interface StationFormErrors {
-  name?: string;
-  toolPacks?: string;
-}
+const StationFormSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
+});
 
 const INITIAL_FORM: StationFormState = {
   name: "",
@@ -40,15 +45,9 @@ const INITIAL_FORM: StationFormState = {
   toolPacks: ["data_query"],
 };
 
-function validateForm(form: StationFormState): StationFormErrors {
-  const errors: StationFormErrors = {};
-  if (!form.name.trim()) {
-    errors.name = "Name is required";
-  }
-  if (form.toolPacks.length === 0) {
-    errors.toolPacks = "At least one tool pack is required";
-  }
-  return errors;
+function validateForm(form: StationFormState): FormErrors {
+  const result = validateWithSchema(StationFormSchema, form);
+  return result.success ? {} : result.errors;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -58,7 +57,7 @@ export interface CreateStationDialogProps {
   onClose: () => void;
   onSubmit: (body: CreateStationBody) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
@@ -69,8 +68,9 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
   serverError,
 }) => {
   const [form, setForm] = useState<StationFormState>(INITIAL_FORM);
-  const [errors, setErrors] = useState<StationFormErrors>({});
+  const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const nameRef = useDialogAutoFocus(open);
 
   React.useEffect(() => {
     if (open) {
@@ -97,7 +97,10 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
     setTouched({ name: true, toolPacks: true });
     const formErrors = validateForm(form);
     setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) return;
+    if (Object.keys(formErrors).length > 0) {
+      requestAnimationFrame(() => focusFirstInvalidField());
+      return;
+    }
 
     const body: CreateStationBody = {
       name: form.name.trim(),
@@ -119,12 +122,22 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
       title="New Station"
       maxWidth="sm"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            handleSubmit();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant="contained"
             onClick={handleSubmit}
             disabled={isPending}
@@ -136,15 +149,16 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
         <TextField
+          inputRef={nameRef}
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
           onBlur={() => handleBlur("name")}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
+          slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
           required
           fullWidth
-          autoFocus
         />
         <TextField
           label="Description"
@@ -182,6 +196,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
               required
               error={touched.toolPacks && !!errors.toolPacks}
               helperText={touched.toolPacks && errors.toolPacks}
+              inputProps={{ ...params.inputProps, "aria-invalid": touched.toolPacks && !!errors.toolPacks || undefined }}
             />
           )}
         />
@@ -189,11 +204,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}
         />
-        {serverError && (
-          <Typography variant="body2" color="error">
-            {serverError}
-          </Typography>
-        )}
+        <FormAlert serverError={serverError} />
       </Stack>
     </Modal>
   );

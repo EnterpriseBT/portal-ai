@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 
 import type { PortalResult } from "@portalai/core/models";
-import { Box, Breadcrumbs, Stack, Typography, IconName } from "@portalai/core/ui";
+import { Icon, IconName, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -67,18 +67,15 @@ export const PinnedResultsListView: React.FC = () => {
 
   return (
     <Stack spacing={4}>
-      <Box>
-        <Breadcrumbs
-          items={[
-            { label: "Dashboard", href: "/", icon: IconName.Home },
-            { label: "Pinned Results" },
-          ]}
-          onNavigate={(href) => navigate({ to: href })}
-        />
-        <Typography variant="h1">
-          Pinned Results
-        </Typography>
-      </Box>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Dashboard", href: "/" },
+          { label: "Pinned Results" },
+        ]}
+        onNavigate={(href) => navigate({ to: href })}
+        title="Pinned Results"
+        icon={<Icon name={IconName.PushPin} />}
+      />
       <Stack spacing={2}>
         <PaginationToolbar {...pagination.toolbarProps} />
         <PinnedResultsDataList
@@ -94,7 +91,15 @@ export const PinnedResultsListView: React.FC = () => {
                   const payload = pinned as unknown as PortalResultsListPayload;
                   const results = payload.portalResults as unknown as PortalResult[];
                   if (payload.total === 0) {
-                    return <EmptyResults />;
+                    const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                    return hasActiveFilters ? (
+                      <EmptyResults />
+                    ) : (
+                      <PageEmptyState
+                        icon={<Icon name={IconName.PushPin} />}
+                        title="No pinned results"
+                      />
+                    );
                   }
                   return (
                     <Stack spacing={1}>

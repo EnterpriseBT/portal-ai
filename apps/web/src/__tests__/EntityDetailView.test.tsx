@@ -145,12 +145,10 @@ describe("EntityDetailViewUI", () => {
         lastSyncAt={Date.now()}
       />
     );
-    expect(screen.getByText("Connector: My CSV")).toBeInTheDocument();
-    expect(screen.getByText("Access mode: import")).toBeInTheDocument();
-    expect(screen.getByText("Records: 150")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Last sync:/)
-    ).toBeInTheDocument();
+    expect(screen.getByText("My CSV")).toBeInTheDocument();
+    expect(screen.getByText("import")).toBeInTheDocument();
+    expect(screen.getByText("150")).toBeInTheDocument();
+    expect(screen.getByText("Last sync")).toBeInTheDocument();
   });
 
   it("renders sync button for import access mode", () => {

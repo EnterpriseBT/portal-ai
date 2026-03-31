@@ -11,8 +11,8 @@ import type {
   AssignedEntityTag,
   ApiSuccessResponse,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName, AsyncSearchableSelect } from "@portalai/core/ui";
+import { Box, Icon, IconName, MetadataList, PageHeader, PageSection, Stack } from "@portalai/core/ui";
+import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
@@ -187,107 +187,79 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entities", href: "/entities" },
+            { label: entity.label },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title={entity.label}
+          icon={<Icon name={IconName.DataObject} />}
+          primaryAction={
+            showSyncButton ? (
+              <Button
+                variant="contained"
+                startIcon={<RefreshIcon />}
+                onClick={onSync}
+                disabled={isSyncing}
+              >
+                {isSyncing ? "Syncing…" : "Sync"}
+              </Button>
+            ) : undefined
+          }
+        >
+          <MetadataList
             items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Entities", href: "/entities" },
-              { label: entity.label },
+              { label: "Key", value: entity.key, variant: "mono" },
+              { label: "Connector", value: connectorInstanceName ?? "", hidden: !connectorInstanceName },
+              { label: "Access mode", value: accessMode ?? "", hidden: !accessMode },
+              { label: "Records", value: recordCount != null ? recordCount.toLocaleString() : "", hidden: recordCount == null },
+              { label: "Last sync", value: lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "", hidden: !lastSyncAt },
             ]}
-            onNavigate={(href) => navigate({ to: href })}
           />
-          {/* Header */}
-          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
-            <Typography variant="h1">{entity.label}</Typography>
-            <Chip
-              label={entity.key}
-              size="small"
-              variant="outlined"
-              sx={{ fontFamily: "monospace" }}
-            />
-          </Stack>
-          <Stack spacing={0.5}>
-            {connectorInstanceName && (
-              <Typography variant="body2" color="text.secondary">
-                Connector: {connectorInstanceName}
-              </Typography>
-            )}
-            {accessMode && (
-              <Typography variant="body2" color="text.secondary">
-                Access mode: {accessMode}
-              </Typography>
-            )}
-            {recordCount != null && (
-              <Typography variant="body2" color="text.secondary">
-                Records: {recordCount.toLocaleString()}
-              </Typography>
-            )}
-            {lastSyncAt && (
-              <Typography variant="body2" color="text.secondary">
-                Last sync: {new Date(lastSyncAt).toLocaleString()}
-              </Typography>
-            )}
-          </Stack>
-          <Box>
-            {/* Tags */}
-            {tags && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Tags
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {tags.map((tag) => (
-                    <Chip
-                      key={tag.id}
-                      label={tag.name}
-                      size="small"
-                      icon={
-                        tag.color ? (
-                          <Box
-                            sx={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: "50%",
-                              backgroundColor: tag.color,
-                              flexShrink: 0,
-                            }}
-                          />
-                        ) : undefined
-                      }
-                      onDelete={
-                        onUnassignTag
-                          ? () => onUnassignTag(tag.assignmentId)
-                          : undefined
-                      }
-                    />
-                  ))}
-                </Stack>
-                {onSearchTags && onAssignTag && (
-                  <Box sx={{ mt: 1, maxWidth: 300 }}>
-                    <TagAssignSelect
-                      onSearch={onSearchTags}
-                      onAssign={onAssignTag}
-                    />
-                  </Box>
-                )}
-              </Box>
-            )}
+        </PageHeader>
 
-            {showSyncButton && (
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  variant="outlined"
+        {/* Tags */}
+        {tags && (
+          <PageSection title="Tags" icon={<Icon name={IconName.Label} />}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {tags.map((tag) => (
+                <Chip
+                  key={tag.id}
+                  label={tag.name}
                   size="small"
-                  startIcon={<RefreshIcon />}
-                  onClick={onSync}
-                  disabled={isSyncing}
-                >
-                  {isSyncing ? "Syncing…" : "Sync"}
-                </Button>
+                  icon={
+                    tag.color ? (
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          backgroundColor: tag.color,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : undefined
+                  }
+                  onDelete={
+                    onUnassignTag
+                      ? () => onUnassignTag(tag.assignmentId)
+                      : undefined
+                  }
+                />
+              ))}
+            </Stack>
+            {onSearchTags && onAssignTag && (
+              <Box sx={{ mt: 1, maxWidth: 300 }}>
+                <TagAssignSelect
+                  onSearch={onSearchTags}
+                  onAssign={onAssignTag}
+                />
               </Box>
             )}
-          </Box>
-        </Box>
+          </PageSection>
+        )}
 
 
         {/* Bidirectional consistency warnings */}
@@ -304,7 +276,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
         )}
 
         {/* Data table */}
-        <Box>
+        <PageSection title="Records" icon={<Icon name={IconName.ViewColumn} />}>
           <PaginationToolbar {...pagination.toolbarProps} />
 
           <Box sx={{ mt: 2 }}>
@@ -369,7 +341,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
               )}
             </EntityRecordDataTable>
           </Box>
-        </Box>
+        </PageSection>
       </Stack>
     </Box>
   );

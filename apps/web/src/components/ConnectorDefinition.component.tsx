@@ -10,13 +10,11 @@ import { ConnectorDefinition } from "@portalai/core/models";
 import { ApiError } from "../utils";
 import {
   Avatar,
-  Box,
-  Button,
-  Card,
-  CardContent,
+  DetailCard,
+  MetadataList,
   Stack,
-  Typography,
 } from "@portalai/core/ui";
+import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import LinkIcon from "@mui/icons-material/Link";
 
@@ -72,74 +70,55 @@ export const ConnectorDefinitionCardUI = ({
     (c) => cd.capabilityFlags[c]
   );
 
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={2}
-          alignItems={{ xs: "center", sm: "center" }}
-        >
-          <Avatar
-            src={cd.iconUrl ?? undefined}
-            alt={cd.display}
-            sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
-          >
-            {cd.display.charAt(0).toUpperCase()}
-          </Avatar>
+  const actions: ActionSuiteItem[] = [
+    { label: "Connect", icon: <LinkIcon />, onClick: () => onConnect?.(cd), variant: "contained" },
+  ];
 
-          <Box
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              textAlign: { xs: "center", sm: "left" },
-            }}
-          >
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              justifyContent={{ xs: "center", sm: "flex-start" }}
-              flexWrap="wrap"
-            >
-              <Typography variant="subtitle1" noWrap>
-                {cd.display}
-              </Typography>
+  return (
+    <DetailCard
+      title={cd.display}
+      icon={
+        <Avatar
+          src={cd.iconUrl ?? undefined}
+          alt={cd.display}
+          sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
+        >
+          {cd.display.charAt(0).toUpperCase()}
+        </Avatar>
+      }
+      actions={actions}
+    >
+      <MetadataList
+        items={[
+          {
+            label: "Status",
+            value: (
               <Chip
                 label={cd.isActive ? "Active" : "Inactive"}
                 size="small"
                 color={cd.isActive ? "success" : "default"}
                 variant="outlined"
               />
-            </Stack>
-
-            <Typography variant="body2" color="text.secondary">
-              {cd.category} &middot; {cd.authType} &middot; v{cd.version}
-            </Typography>
-
-            {capabilities.length > 0 && (
-              <Stack
-                direction="row"
-                spacing={0.5}
-                justifyContent={{ xs: "center", sm: "flex-start" }}
-                sx={{ mt: 0.5 }}
-              >
+            ),
+            variant: "chip",
+          },
+          { label: "Category", value: cd.category },
+          { label: "Auth", value: cd.authType },
+          { label: "Version", value: `v${cd.version}` },
+          {
+            label: "Capabilities",
+            value: (
+              <Stack direction="row" spacing={0.5}>
                 {capabilities.map((cap) => (
                   <Chip key={cap} label={cap} size="small" variant="outlined" />
                 ))}
               </Stack>
-            )}
-          </Box>
-
-          <Button
-            size="small"
-            startIcon={<LinkIcon />}
-            onClick={() => onConnect?.(cd)}
-          >
-            Connect
-          </Button>
-        </Stack>
-      </CardContent>
-    </Card>
+            ),
+            variant: "chip",
+            hidden: capabilities.length === 0,
+          },
+        ]}
+      />
+    </DetailCard>
   );
 };

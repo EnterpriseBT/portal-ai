@@ -22,7 +22,8 @@
 		"@tanstack/router-plugin": "^1.159.5",
 		"drizzle-orm": "^0.45.1",
 		"turbo": "^2.3.3",
-		"typescript": "^5.7.2"
+		"typescript": "^5.7.2",
+		"wait-on": "^9.0.4"
 	},
 	"packageManager": "npm@10.9.2",
 	"workspaces": [

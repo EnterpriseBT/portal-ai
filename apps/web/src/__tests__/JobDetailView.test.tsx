@@ -116,7 +116,9 @@ describe("JobDetailView", () => {
     } as Partial<GetQuery>;
 
     render(<JobDetailView jobId="job-1" />);
-    expect(screen.getByText("Completed")).toBeInTheDocument();
+    // StatusBadge chip renders the status label
+    const badges = screen.getAllByText("Completed");
+    expect(badges.length).toBeGreaterThanOrEqual(1);
   });
 
   it("should display job details", () => {

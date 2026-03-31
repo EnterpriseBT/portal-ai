@@ -48,9 +48,7 @@ describe("StationCardUI", () => {
 
   it("should render tool packs", () => {
     render(<StationCardUI {...defaultCardProps} />);
-    expect(
-      screen.getByText("Tool packs: data_query, statistics")
-    ).toBeInTheDocument();
+    expect(screen.getByText("data_query, statistics")).toBeInTheDocument();
   });
 
   it("should show Default badge when isDefault is true", () => {
@@ -94,7 +92,7 @@ describe("StationCardUI", () => {
   it("should navigate when card is clicked", () => {
     const onOpen = jest.fn();
     render(<StationCardUI {...defaultCardProps} onOpen={onOpen} />);
-    fireEvent.click(screen.getByTestId("station-card"));
+    fireEvent.click(screen.getByText("Sales Analytics"));
     expect(onOpen).toHaveBeenCalledWith(station1);
   });
 });

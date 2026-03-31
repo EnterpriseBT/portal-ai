@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "wait-on tcp:3001 && vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
@@ -38,7 +38,8 @@
     "react-vega": "^7.6.0",
     "remark-gfm": "^4.0.0",
     "vega": "^5.30.0",
-    "vega-lite": "^5.21.0"
+    "vega-lite": "^5.21.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@storybook/addon-essentials": "^8.6.15",

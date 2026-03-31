@@ -42,6 +42,8 @@ const makePinnedResult = (
   organizationId: "org-1",
   stationId: "station-1",
   portalId: "portal-1",
+  messageId: null,
+  blockIndex: null,
   name: "Revenue Summary",
   type: "text",
   content: { text: "Total revenue: $1.2M" },
@@ -82,7 +84,7 @@ describe("PinnedResultsListView", () => {
     } as Partial<ListQuery>;
 
     render(<PinnedResultsListView />);
-    expect(screen.getByText("No results found")).toBeInTheDocument();
+    expect(screen.getByText("No pinned results")).toBeInTheDocument();
   });
 
   it("should display pinned result cards when results exist", () => {

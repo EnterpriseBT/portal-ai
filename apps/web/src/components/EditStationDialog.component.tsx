@@ -1,13 +1,18 @@
 import React, { useState } from "react";
 
+import { z } from "zod";
 import type { UpdateStationBody } from "@portalai/core/contracts";
 import type { Station } from "@portalai/core/models";
 import { StationToolPackSchema } from "@portalai/core/models";
-import { Button, Modal, MultiSearchableSelect, Stack, Typography } from "@portalai/core/ui";
+import { Button, Modal, MultiSearchableSelect, Stack } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
+import { FormAlert } from "./FormAlert.component";
+import type { ServerError } from "../utils/api.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 const TOOL_PACK_LABELS: Record<string, string> = {
   data_query: "Data Query",
@@ -28,20 +33,14 @@ interface FormState {
   connectorInstanceIds: string[];
 }
 
-interface FormErrors {
-  name?: string;
-  toolPacks?: string;
-}
+const EditStationFormSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  toolPacks: z.array(z.string()).min(1, "At least one tool pack is required"),
+});
 
 function validateForm(form: FormState): FormErrors {
-  const errors: FormErrors = {};
-  if (!form.name.trim()) {
-    errors.name = "Name is required";
-  }
-  if (form.toolPacks.length === 0) {
-    errors.toolPacks = "At least one tool pack is required";
-  }
-  return errors;
+  const result = validateWithSchema(EditStationFormSchema, form);
+  return result.success ? {} : result.errors;
 }
 
 interface StationInstance {
@@ -54,7 +53,7 @@ export interface EditStationDialogProps {
   station: Station & { instances?: StationInstance[] };
   onSubmit: (body: UpdateStationBody) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 export const EditStationDialog: React.FC<EditStationDialogProps> = ({
@@ -75,6 +74,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const nameRef = useDialogAutoFocus(open);
 
   const handleChange = (field: keyof FormState, value: string | string[]) => {
     const next = { ...form, [field]: value };
@@ -93,7 +93,10 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     setTouched({ name: true, toolPacks: true });
     const formErrors = validateForm(form);
     setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) return;
+    if (Object.keys(formErrors).length > 0) {
+      requestAnimationFrame(() => focusFirstInvalidField());
+      return;
+    }
 
     const body: UpdateStationBody = {};
     if (form.name.trim() !== station.name) {
@@ -123,12 +126,22 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
       title="Edit Station"
       maxWidth="sm"
       fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            handleSubmit();
+          },
+        } as object,
+      }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant="contained"
             onClick={handleSubmit}
             disabled={isPending}
@@ -140,15 +153,16 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
     >
       <Stack spacing={2.5} sx={{ pt: 1 }}>
         <TextField
+          inputRef={nameRef}
           label="Name"
           value={form.name}
           onChange={(e) => handleChange("name", e.target.value)}
           onBlur={() => handleBlur("name")}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
+          slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
           required
           fullWidth
-          autoFocus
         />
         <MultiSearchableSelect
           options={TOOL_PACK_OPTIONS}
@@ -164,11 +178,7 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           selected={form.connectorInstanceIds}
           onChange={(ids) => handleChange("connectorInstanceIds", ids)}
         />
-        {serverError && (
-          <Typography variant="body2" color="error">
-            {serverError}
-          </Typography>
-        )}
+        <FormAlert serverError={serverError} />
       </Stack>
     </Modal>
   );

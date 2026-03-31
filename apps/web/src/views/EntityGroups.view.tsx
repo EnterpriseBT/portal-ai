@@ -1,23 +1,24 @@
 import React, { useState, useCallback } from "react";
 
-import type {
-  EntityGroupCreateRequestBody,
-  EntityGroupListRequestQuery,
-  EntityGroupListResponsePayload,
+import {
+  EntityGroupCreateRequestBodySchema,
+  type EntityGroupCreateRequestBody,
+  type EntityGroupListRequestQuery,
+  type EntityGroupListResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   Button,
-  Stack,
-  Typography,
+  Icon,
   IconName,
+  PageEmptyState,
+  PageHeader,
+  DetailCard,
+  MetadataList,
+  Stack,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import AddIcon from "@mui/icons-material/Add";
-import Card from "@mui/material/Card";
-import CardActionArea from "@mui/material/CardActionArea";
-import CardContent from "@mui/material/CardContent";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -27,12 +28,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { EmptyResults } from "../components/EmptyResults.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
+import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { toServerError, type ServerError } from "../utils/api.util";
+import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
@@ -61,32 +67,15 @@ interface EntityGroupCardProps {
 }
 
 const EntityGroupCard: React.FC<EntityGroupCardProps> = ({ group, onClick }) => (
-  <Card variant="outlined">
-    <CardActionArea onClick={onClick}>
-      <CardContent>
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" noWrap>
-              {group.name}
-            </Typography>
-            {group.description && (
-              <Typography variant="caption" color="text.secondary">
-                {group.description}
-              </Typography>
-            )}
-            <Stack direction="row" spacing={2} sx={{ mt: 0.5 }}>
-              <Typography variant="caption" color="text.secondary">
-                {group.memberCount} {group.memberCount === 1 ? "member" : "members"}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Created on {dates.format(group.created, "MM/dd/yyyy")}
-              </Typography>
-            </Stack>
-          </Box>
-        </Stack>
-      </CardContent>
-    </CardActionArea>
-  </Card>
+  <DetailCard title={group.name} onClick={onClick}>
+    <MetadataList
+      items={[
+        { label: "Description", value: group.description ?? "", hidden: !group.description },
+        { label: "Members", value: `${group.memberCount} ${group.memberCount === 1 ? "member" : "members"}` },
+        { label: "Created", value: dates.format(group.created, "MM/dd/yyyy") },
+      ]}
+    />
+  </DetailCard>
 );
 
 // ── Entity Groups list view (pure UI) ──────────────────────────────
@@ -118,21 +107,15 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Entity Groups" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <Typography variant="h1">Entity Groups</Typography>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entity Groups" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Entity Groups"
+          icon={<Icon name={IconName.Hub} />}
+          primaryAction={
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -140,8 +123,8 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
             >
               Create Group
             </Button>
-          </Stack>
-        </Box>
+          }
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
@@ -162,14 +145,24 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityGroupListResponsePayload;
                     if (list.entityGroups.length === 0) {
-                      return (
-                        <Typography
-                          variant="body1"
-                          color="text.secondary"
-                          sx={{ py: 4, textAlign: "center" }}
-                        >
-                          No entity groups found
-                        </Typography>
+                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      return hasActiveFilters ? (
+                        <EmptyResults />
+                      ) : (
+                        <PageEmptyState
+                          icon={<Icon name={IconName.Hub} />}
+                          title="No entity groups found"
+                          description="Create your first entity group to get started."
+                          action={
+                            <Button
+                              variant="contained"
+                              startIcon={<AddIcon />}
+                              onClick={onCreateGroup}
+                            >
+                              Create Group
+                            </Button>
+                          }
+                        />
                       );
                     }
 
@@ -202,7 +195,7 @@ interface CreateGroupDialogProps {
   onClose: () => void;
   onSubmit: (body: EntityGroupCreateRequestBody) => void;
   isPending: boolean;
-  serverError: string | null;
+  serverError: ServerError | null;
 }
 
 const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
@@ -214,18 +207,36 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
 }) => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const nameRef = useDialogAutoFocus(open);
+
+  const validate = (data: { name: string }) => {
+    const result = validateWithSchema(EntityGroupCreateRequestBodySchema, data);
+    return result.success ? {} : result.errors;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
+    setTouched({ name: true });
+    const body = {
       name: name.trim(),
       description: description.trim() || undefined,
-    });
+    };
+    const formErrors = validate({ name: body.name });
+    setErrors(formErrors);
+    if (Object.keys(formErrors).length > 0) {
+      requestAnimationFrame(() => focusFirstInvalidField());
+      return;
+    }
+    onSubmit(body);
   };
 
   const handleClose = () => {
     setName("");
     setDescription("");
+    setErrors({});
+    setTouched({});
     onClose();
   };
 
@@ -236,12 +247,25 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
+              inputRef={nameRef}
               label="Name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (touched.name) {
+                  const errs = validate({ name: e.target.value.trim() });
+                  setErrors(errs);
+                }
+              }}
+              onBlur={() => {
+                setTouched((prev) => ({ ...prev, name: true }));
+                setErrors(validate({ name: name.trim() }));
+              }}
+              error={touched.name && !!errors.name}
+              helperText={touched.name && errors.name}
+              slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
               required
               fullWidth
-              autoFocus
             />
             <TextField
               label="Description"
@@ -251,21 +275,17 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
               multiline
               rows={3}
             />
-            {serverError && (
-              <Typography color="error" variant="body2">
-                {serverError}
-              </Typography>
-            )}
+            <FormAlert serverError={serverError} />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button variant="outlined" onClick={handleClose} disabled={isPending}>
+          <Button type="button" variant="outlined" onClick={handleClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
             type="submit"
             variant="contained"
-            disabled={isPending || !name.trim()}
+            disabled={isPending}
           >
             Create
           </Button>
@@ -317,7 +337,7 @@ export const EntityGroupsView: React.FC = () => {
         onClose={handleCreateClose}
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
-        serverError={createMutation.error?.message ?? null}
+        serverError={toServerError(createMutation.error)}
       />
     </>
   );

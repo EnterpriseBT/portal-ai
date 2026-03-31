@@ -10,7 +10,8 @@
 
 import { streamText, stepCountIs, type ModelMessage } from "ai";
 
-import type { DeltaEvent, ToolResultEvent, DoneEvent } from "@portalai/core/contracts";
+import type { DeltaEvent, ToolResultEvent, DoneEvent, PinnedBlockEntry } from "@portalai/core/contracts";
+import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
 import {
@@ -29,6 +30,7 @@ import { SseUtil } from "../utils/sse.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import type { PortalSelect, PortalMessageSelect } from "../db/schema/zod.js";
+import { portalResults } from "../db/schema/index.js";
 
 const logger = createLogger({ module: "portal-service" });
 
@@ -48,6 +50,8 @@ export interface PortalWithMessages {
   messages: PortalMessageSelect[];
   /** Full Vercel AI SDK ModelMessage[] reconstructed from persisted blocks. */
   coreMessages: ModelMessage[];
+  /** Present when `include` contains `"pinnedResults"`. */
+  pinnedBlocks?: PinnedBlockEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +267,10 @@ export class PortalService {
    * array (user + assistant turns, including tool call/result pairs) for
    * multi-turn continuity with `streamText`.
    */
-  static async getPortal(portalId: string): Promise<PortalWithMessages> {
+  static async getPortal(
+    portalId: string,
+    opts?: { include?: string[] },
+  ): Promise<PortalWithMessages> {
     const repo = DbService.repository;
 
     const portal = await repo.portals.findById(portalId);
@@ -273,7 +280,24 @@ export class PortalService {
 
     const messages = await repo.portalMessages.findByPortal(portalId);
     const coreMessages = reconstructModelMessages(messages);
-    return { portal, messages, coreMessages };
+
+    const result: PortalWithMessages = { portal, messages, coreMessages };
+
+    if (opts?.include?.includes("pinnedResults")) {
+      const allPins = await repo.portalResults.findMany(
+        and(eq(portalResults.portalId, portalId))
+      );
+
+      result.pinnedBlocks = allPins
+        .filter((r) => r.messageId != null && r.blockIndex != null)
+        .map((r) => ({
+          messageId: r.messageId!,
+          blockIndex: r.blockIndex!,
+          portalResultId: r.id,
+        }));
+    }
+
+    return result;
   }
 
   // -------------------------------------------------------------------------

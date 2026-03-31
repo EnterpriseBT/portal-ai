@@ -105,6 +105,8 @@ describe("PortalSessionUI", () => {
   const defaultProps = {
     portalId: "portal-1",
     messages: [],
+    pinnedBlocks: new Map<string, string>(),
+    onPinChange: jest.fn(),
     streamingBlocks: null,
     streamError: null,
     inputValue: "",

@@ -8,8 +8,7 @@ import type {
   EntityGroupMemberWithDetails,
 } from "@portalai/core/contracts";
 import type { EntityGroup } from "@portalai/core/models";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, Icon, IconName, MetadataList, PageGrid, PageGridItem, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
@@ -167,10 +166,11 @@ export const RelatedRecordsSection: React.FC<RelatedRecordsSectionProps> = ({
   if (groups.length === 0) return null;
 
   return (
-    <Box data-testid="related-records-section">
-      <Typography variant="h2" sx={{ mb: 2 }}>
-        Related Records
-      </Typography>
+    <PageSection
+      title="Related Records"
+      icon={<Icon name={IconName.Link} />}
+      data-testid="related-records-section"
+    >
       <Stack spacing={1}>
         {groups.map((group) => (
           <RelatedRecordsGroupPanel
@@ -181,7 +181,7 @@ export const RelatedRecordsSection: React.FC<RelatedRecordsSectionProps> = ({
           />
         ))}
       </Stack>
-    </Box>
+    </PageSection>
   );
 };
 
@@ -205,98 +205,77 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Entities", href: "/entities" },
-              { label: entity.label, href: `/entities/${entity.id}` },
-              { label: `Record ${record.sourceId}` },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Typography variant="h1">
-            Record Details
-          </Typography>
-
-        </Box>
-        {/* Metadata */}
-        <Box>
-          <EntityRecordMetadata record={record} />
-          {groups.length > 0 && (
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: { xs: "column", sm: "row" },
-                gap: { xs: 0.5, sm: 2 },
-                alignItems: "flex-start",
-                mt: 1.5,
-              }}
-              data-testid="entity-groups-metadata"
-            >
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ minWidth: 160, flexShrink: 0 }}
-              >
-                Entity Groups
-              </Typography>
-              <Box sx={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 1 }}>
-                {groups.map((g) => (
-                  <Link
-                    key={g.id}
-                    component="button"
-                    variant="body2"
-                    onClick={() => navigate({ to: `/entity-groups/${g.id}` })}
-                    sx={{ cursor: "pointer" }}
-                  >
-                    {g.name}
-                  </Link>
-                ))}
-              </Box>
-            </Box>
-          )}
-        </Box>
-
-        {/* Fields */}
-        <Box>
-          <Typography variant="h2" sx={{ mb: 2 }}>
-            Fields
-          </Typography>
-          <Stack spacing={2}>
-            {columns.map((col) => (
-              <Box
-                key={col.key}
-                sx={{
-                  display: "flex",
-                  flexDirection: { xs: "column", sm: "row" },
-                  gap: { xs: 0.5, sm: 2 },
-                  alignItems: "flex-start",
-                }}
-              >
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ minWidth: 200, flexShrink: 0 }}
-                >
-                  {col.label}
-                </Typography>
-                <EntityRecordFieldValue
-                  value={record.normalizedData[col.key]}
-                  type={col.type}
-                />
-              </Box>
-            ))}
-          </Stack>
-        </Box>
-
-        {/* Related Records */}
-        <RelatedRecordsSection
-          groups={groups}
-          record={record}
-          connectorEntityId={entity.id}
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entities", href: "/entities" },
+            { label: entity.label, href: `/entities/${entity.id}` },
+            { label: `Record ${record.sourceId}` },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Record Details"
+          icon={<Icon name={IconName.DataObject} />}
         />
+        <PageGrid columns={{ xs: 1, md: 2 }}>
+          {/* Metadata */}
+          <PageGridItem>
+            <PageSection title="Metadata" variant="outlined">
+              <EntityRecordMetadata record={record} />
+              {groups.length > 0 && (
+                <MetadataList
+                  data-testid="entity-groups-metadata"
+                  items={[
+                    {
+                      label: "Entity Groups",
+                      value: (
+                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                          {groups.map((g) => (
+                            <Link
+                              key={g.id}
+                              component="button"
+                              variant="body2"
+                              onClick={() => navigate({ to: `/entity-groups/${g.id}` })}
+                              sx={{ cursor: "pointer" }}
+                            >
+                              {g.name}
+                            </Link>
+                          ))}
+                        </Box>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </PageSection>
+          </PageGridItem>
+
+          {/* Fields */}
+          <PageGridItem span={{ xs: 1, md: 2 }}>
+            <PageSection title="Fields" variant="outlined">
+              <MetadataList
+                spacing={2}
+                items={columns.map((col) => ({
+                  label: col.label,
+                  value: (
+                    <EntityRecordFieldValue
+                      value={record.normalizedData[col.key]}
+                      type={col.type}
+                    />
+                  ),
+                }))}
+              />
+            </PageSection>
+          </PageGridItem>
+
+          {/* Related Records */}
+          <PageGridItem span={{ xs: 1, md: 2 }}>
+            <RelatedRecordsSection
+              groups={groups}
+              record={record}
+              connectorEntityId={entity.id}
+            />
+          </PageGridItem>
+        </PageGrid>
       </Stack>
     </Box>
   );
