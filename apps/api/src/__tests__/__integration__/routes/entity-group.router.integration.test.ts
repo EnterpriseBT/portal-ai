@@ -478,6 +478,7 @@ describe("Entity Group Router", () => {
 
       expect(deleteRes.status).toBe(200);
       expect(deleteRes.body.payload.id).toBe(group.id);
+      expect(deleteRes.body.payload.cascaded.entityGroupMembers).toBe(1);
 
       // Group should no longer be retrievable
       const getRes = await request(app)
@@ -498,6 +499,70 @@ describe("Entity Group Router", () => {
 
       const res = await request(app)
         .delete(`/api/entity-groups/${generateId()}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_NOT_FOUND);
+    });
+  });
+
+  // ── GET /api/entity-groups/:id/impact ───────────────────────────────
+
+  describe("GET /api/entity-groups/:id/impact", () => {
+    it("should return correct entityGroupMembers count", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const group = createEntityGroup(organizationId, { name: "impact-test" });
+      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+
+      // Create two members
+      const connDef = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(connDef as never);
+      const connInst = createConnectorInstance(connDef.id, organizationId);
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(connInst as never);
+
+      const entity1 = createConnectorEntity(organizationId, connInst.id, { label: "Entity A" });
+      const entity2 = createConnectorEntity(organizationId, connInst.id, { label: "Entity B" });
+      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values([entity1, entity2] as never);
+
+      const colDef = createColumnDef(organizationId, { key: "email" });
+      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef as never);
+
+      const mapping1 = createFieldMapping(organizationId, entity1.id, colDef.id);
+      const mapping2 = createFieldMapping(organizationId, entity2.id, colDef.id);
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values([mapping1, mapping2] as never);
+
+      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values([
+        {
+          id: generateId(), organizationId, entityGroupId: group.id,
+          connectorEntityId: entity1.id, linkFieldMappingId: mapping1.id,
+          isPrimary: true, created: now, createdBy: "SYSTEM_TEST",
+          updated: null, updatedBy: null, deleted: null, deletedBy: null,
+        },
+        {
+          id: generateId(), organizationId, entityGroupId: group.id,
+          connectorEntityId: entity2.id, linkFieldMappingId: mapping2.id,
+          isPrimary: false, created: now, createdBy: "SYSTEM_TEST",
+          updated: null, updatedBy: null, deleted: null, deletedBy: null,
+        },
+      ] as never);
+
+      const res = await request(app)
+        .get(`/api/entity-groups/${group.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.entityGroupMembers).toBe(2);
+    });
+
+    it("should return 404 for non-existent group", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .get(`/api/entity-groups/${generateId()}/impact`)
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(404);

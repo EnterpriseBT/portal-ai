@@ -12,6 +12,8 @@ import {
   type ConnectorEntityGetResponsePayload,
   ConnectorEntityCreateRequestBodySchema,
   type ConnectorEntityCreateResponsePayload,
+  type ConnectorEntityDeleteResponsePayload,
+  type ConnectorEntityImpactResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -19,6 +21,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { entityRecordRouter } from "./entity-record.router.js";
 import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
 
@@ -352,12 +355,110 @@ connectorEntityRouter.post(
 
 /**
  * @openapi
+ * /api/connector-entities/{id}/impact:
+ *   get:
+ *     tags:
+ *       - Connector Entities
+ *     summary: Get deletion impact for a connector entity
+ *     description: >
+ *       Returns counts of all associated objects that would be affected
+ *       if this connector entity were deleted. Used for pre-flight
+ *       confirmation dialogs.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *     responses:
+ *       200:
+ *         description: Impact assessment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     entityRecords:
+ *                       type: integer
+ *                     fieldMappings:
+ *                       type: integer
+ *                     entityTagAssignments:
+ *                       type: integer
+ *                     entityGroupMembers:
+ *                       type: integer
+ *                     refFieldMappings:
+ *                       type: integer
+ *       404:
+ *         description: Connector entity not found
+ *       500:
+ *         description: Internal server error
+ */
+connectorEntityRouter.get(
+  "/:id/impact",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+
+      const existing = await DbService.repository.connectorEntities.findById(id);
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.CONNECTOR_ENTITY_NOT_FOUND, "Connector entity not found")
+        );
+      }
+
+      const entityIds = [id];
+
+      const [entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers, refFieldMappings] =
+        await Promise.all([
+          DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
+          DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
+          DbService.repository.entityTagAssignments.countByConnectorEntityIds(entityIds),
+          DbService.repository.entityGroupMembers.countByConnectorEntityIds(entityIds),
+          DbService.repository.fieldMappings.countByRefEntityKey(existing.key, id),
+        ]);
+
+      return HttpService.success<ConnectorEntityImpactResponsePayload>(res, {
+        entityRecords,
+        fieldMappings,
+        entityTagAssignments,
+        entityGroupMembers,
+        refFieldMappings,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch connector entity impact"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector entity impact")
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/connector-entities/{id}:
  *   delete:
  *     tags:
  *       - Connector Entities
  *     summary: Delete a connector entity
- *     description: Soft-deletes a connector entity by ID.
+ *     description: >
+ *       Soft-deletes a connector entity after checking write capability and
+ *       external references. Cascades to entity records, field mappings,
+ *       tag assignments, and group members.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -383,18 +484,25 @@ connectorEntityRouter.post(
  *                   properties:
  *                     id:
  *                       type: string
+ *                     cascaded:
+ *                       type: object
+ *                       properties:
+ *                         entityRecords:
+ *                           type: integer
+ *                         fieldMappings:
+ *                           type: integer
+ *                         entityTagAssignments:
+ *                           type: integer
+ *                         entityGroupMembers:
+ *                           type: integer
  *       404:
  *         description: Connector entity not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: >
+ *           Write capability disabled (`CONNECTOR_INSTANCE_WRITE_DISABLED`)
+ *           or entity has external references (`ENTITY_HAS_EXTERNAL_REFERENCES`)
  *       500:
  *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiErrorResponse'
  */
 connectorEntityRouter.delete(
   "/:id",
@@ -410,16 +518,46 @@ connectorEntityRouter.delete(
         );
       }
 
-      const { userId } = req.application!.metadata;
+      // Check 1: write capability
+      await assertWriteCapability(id);
 
-      await DbService.repository.connectorEntities.softDelete(id, userId).catch((error) => {
+      // Check 2: external references
+      const externalRefs = await DbService.repository.fieldMappings.findByRefEntityKey(existing.key, id);
+      if (externalRefs.length > 0) {
+        return next(
+          new ApiError(
+            422,
+            ApiCode.ENTITY_HAS_EXTERNAL_REFERENCES,
+            "Cannot delete entity — other entities have field mappings referencing it via refEntityKey",
+            { refFieldMappings: externalRefs.map((fm) => ({ id: fm.id, connectorEntityId: fm.connectorEntityId })) }
+          )
+        );
+      }
+
+      const { userId } = req.application!.metadata;
+      const entityIds = [id];
+
+      // Cascade in transaction
+      const cascaded = await DbService.transaction(async (tx) => {
+        const [entityGroupMembers, entityTagAssignments, fieldMappings, entityRecords] =
+          await Promise.all([
+            DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+            DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+            DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+            DbService.repository.entityRecords.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+          ]);
+
+        await DbService.repository.connectorEntities.softDelete(id, userId, tx);
+
+        return { entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers };
+      }).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete connector entity");
       });
 
-      logger.info({ id }, "Connector entity soft-deleted");
+      logger.info({ id, cascaded }, "Connector entity soft-deleted with cascade");
 
-      return HttpService.success(res, { id });
+      return HttpService.success<ConnectorEntityDeleteResponsePayload>(res, { id, cascaded });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

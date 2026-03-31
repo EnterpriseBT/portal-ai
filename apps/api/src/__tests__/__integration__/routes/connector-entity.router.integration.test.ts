@@ -8,6 +8,7 @@ import {
 } from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
@@ -40,7 +41,7 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 
-const { connectorDefinitions, connectorInstances, connectorEntities, fieldMappings, columnDefinitions } = schema;
+const { connectorDefinitions, connectorInstances, connectorEntities, fieldMappings, columnDefinitions, entityRecords, entityTagAssignments, entityTags, entityGroups, entityGroupMembers } = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -763,12 +764,16 @@ describe("Connector Entity Router", () => {
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
       );
-      const { connectorInstanceId } = await seedConnectorInstance(
-        db as ReturnType<typeof drizzle>,
-        organizationId
-      );
 
-      const entity = createConnEntity(organizationId, connectorInstanceId);
+      // Use a write-enabled definition so the delete guard passes
+      const def = createConnectorDefinition({
+        capabilityFlags: { sync: true, query: true, write: true },
+      });
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const inst = createConnectorInstance(def.id, organizationId);
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(inst as never);
+
+      const entity = createConnEntity(organizationId, inst.id);
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorEntities)
         .values(entity as never);
@@ -786,6 +791,327 @@ describe("Connector Entity Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(getRes.status).toBe(404);
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 4: Entity Delete with Guards & Impact
+// ═══════════════════════════════════════════════════════════════════
+
+describe("Connector Entity Router — Delete with Guards & Impact", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  /** Seed a chain with configurable capability flags and optionally related data. */
+  async function seedWithCapabilities(opts: {
+    definitionWrite: boolean;
+    enabledCapabilityFlags?: { write?: boolean; read?: boolean } | null;
+  }) {
+    const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+
+    const def = createConnectorDefinition({
+      capabilityFlags: { sync: true, query: true, write: opts.definitionWrite },
+    });
+    await db.insert(connectorDefinitions).values(def as never);
+
+    const inst = createConnectorInstance(def.id, organizationId, {
+      enabledCapabilityFlags: opts.enabledCapabilityFlags ?? null,
+    });
+    await db.insert(connectorInstances).values(inst as never);
+
+    const entity = createConnEntity(organizationId, inst.id);
+    await db.insert(connectorEntities).values(entity as never);
+
+    return { userId, organizationId, connectorInstanceId: inst.id, connectorDefinitionId: def.id, entity };
+  }
+
+  /** Seed related child data for an entity (records, mappings, tags, group members). */
+  async function seedRelatedData(
+    organizationId: string,
+    entityId: string,
+  ) {
+    // Column definition + field mapping
+    const colDef = createColumnDefinition(organizationId);
+    await db.insert(columnDefinitions).values(colDef as never);
+
+    const mapping = createFieldMapping(organizationId, entityId, colDef.id);
+    await db.insert(fieldMappings).values(mapping as never);
+
+    // Entity record
+    const record = {
+      id: generateId(),
+      organizationId,
+      connectorEntityId: entityId,
+      data: { name: "Alice" },
+      normalizedData: { name: "Alice" },
+      sourceId: `src-${generateId().slice(0, 8)}`,
+      checksum: "abc123",
+      syncedAt: now,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await db.insert(entityRecords).values(record as never);
+
+    // Entity tag + assignment
+    const tag = {
+      id: generateId(),
+      organizationId,
+      name: `tag-${generateId().slice(0, 8)}`,
+      color: "#000000",
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await db.insert(entityTags).values(tag as never);
+
+    const tagAssignment = {
+      id: generateId(),
+      organizationId,
+      connectorEntityId: entityId,
+      entityTagId: tag.id,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await db.insert(entityTagAssignments).values(tagAssignment as never);
+
+    // Entity group + member
+    const group = {
+      id: generateId(),
+      organizationId,
+      name: `group-${generateId().slice(0, 8)}`,
+      description: null,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await db.insert(entityGroups).values(group as never);
+
+    const member = {
+      id: generateId(),
+      organizationId,
+      entityGroupId: group.id,
+      connectorEntityId: entityId,
+      linkFieldMappingId: mapping.id,
+      isPrimary: false,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    };
+    await db.insert(entityGroupMembers).values(member as never);
+
+    return { colDef, mapping, record, tag, tagAssignment, group, member };
+  }
+
+  // ── DELETE /api/connector-entities/:id ──────────────────────────
+
+  describe("DELETE /api/connector-entities/:id (with guards)", () => {
+    it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when instance lacks write capability", async () => {
+      const { entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: false },
+      });
+
+      const res = await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should return 422 ENTITY_HAS_EXTERNAL_REFERENCES when other entities reference it via refEntityKey", async () => {
+      const { organizationId, connectorInstanceId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      // Create another entity with a field mapping that references the first entity's key
+      const otherEntity = createConnEntity(organizationId, connectorInstanceId);
+      await db.insert(connectorEntities).values(otherEntity as never);
+
+      const colDef = createColumnDefinition(organizationId, { type: "reference" });
+      await db.insert(columnDefinitions).values(colDef as never);
+
+      const refMapping = createFieldMapping(organizationId, otherEntity.id, colDef.id, {
+        refEntityKey: entity.key,
+      });
+      await db.insert(fieldMappings).values(refMapping as never);
+
+      const res = await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.ENTITY_HAS_EXTERNAL_REFERENCES);
+    });
+
+    it("should succeed and cascade soft-delete to records, field mappings, tag assignments, and group members", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      await seedRelatedData(organizationId, entity.id);
+
+      const res = await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.id).toBe(entity.id);
+      expect(res.body.payload.cascaded.entityRecords).toBe(1);
+      expect(res.body.payload.cascaded.fieldMappings).toBe(1);
+      expect(res.body.payload.cascaded.entityTagAssignments).toBe(1);
+      expect(res.body.payload.cascaded.entityGroupMembers).toBe(1);
+    });
+
+    it("should set deleted timestamp on all cascaded child records", async () => {
+      const { organizationId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const related = await seedRelatedData(organizationId, entity.id);
+
+      await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      // Query with includeDeleted to verify timestamps
+      const [recordRows] = await db.select().from(entityRecords).where(
+        eq(entityRecords.id, related.record.id)
+      );
+      expect(recordRows.deleted).not.toBeNull();
+
+      const [mappingRows] = await db.select().from(fieldMappings).where(
+        eq(fieldMappings.id, related.mapping.id)
+      );
+      expect(mappingRows.deleted).not.toBeNull();
+
+      const [tagAssignmentRows] = await db.select().from(entityTagAssignments).where(
+        eq(entityTagAssignments.id, related.tagAssignment.id)
+      );
+      expect(tagAssignmentRows.deleted).not.toBeNull();
+
+      const [memberRows] = await db.select().from(entityGroupMembers).where(
+        eq(entityGroupMembers.id, related.member.id)
+      );
+      expect(memberRows.deleted).not.toBeNull();
+    });
+
+    it("should return 404 for non-existent entity", async () => {
+      await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .delete(`/api/connector-entities/${generateId()}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+    });
+
+    it("deleted entity should no longer appear in GET list", async () => {
+      const { connectorInstanceId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      await request(app)
+        .delete(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      const listRes = await request(app)
+        .get(`/api/connector-entities?connectorInstanceIds=${connectorInstanceId}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(listRes.status).toBe(200);
+      expect(listRes.body.payload.connectorEntities).toHaveLength(0);
+    });
+  });
+
+  // ── GET /api/connector-entities/:id/impact ─────────────────────
+
+  describe("GET /api/connector-entities/:id/impact", () => {
+    it("should return correct counts including refFieldMappings", async () => {
+      const { organizationId, connectorInstanceId, entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      await seedRelatedData(organizationId, entity.id);
+
+      // Create an external reference from another entity
+      const otherEntity = createConnEntity(organizationId, connectorInstanceId);
+      await db.insert(connectorEntities).values(otherEntity as never);
+
+      const refColDef = createColumnDefinition(organizationId, { type: "reference" });
+      await db.insert(columnDefinitions).values(refColDef as never);
+
+      await db.insert(fieldMappings).values(
+        createFieldMapping(organizationId, otherEntity.id, refColDef.id, {
+          refEntityKey: entity.key,
+        }) as never
+      );
+
+      const res = await request(app)
+        .get(`/api/connector-entities/${entity.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.entityRecords).toBe(1);
+      expect(res.body.payload.fieldMappings).toBe(1);
+      expect(res.body.payload.entityTagAssignments).toBe(1);
+      expect(res.body.payload.entityGroupMembers).toBe(1);
+      expect(res.body.payload.refFieldMappings).toBe(1);
+    });
+
+    it("should return 404 for non-existent entity", async () => {
+      await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .get(`/api/connector-entities/${generateId()}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
     });
   });
 });

@@ -213,28 +213,28 @@ Implements Rule 7: entity deletion with write capability check, cross-entity ref
 
 ### Checklist
 
-- [ ] **4.1** Add `findByRefEntityKey` method to field mappings repository
+- [x] **4.1** Add `findByRefEntityKey` method to field mappings repository
   - File: `apps/api/src/db/repositories/field-mappings.repository.ts`
   - Returns non-deleted field mappings from *other* entities where `refEntityKey` matches a given entity key
   - Must exclude field mappings belonging to the entity being deleted (same `connectorEntityId`)
-- [ ] **4.2** Add `countByRefEntityKey` method to field mappings repository
+- [x] **4.2** Add `countByRefEntityKey` method to field mappings repository
   - For the impact endpoint — count of external reference field mappings
-- [ ] **4.3** Implement `DELETE /api/connector-entities/:id` endpoint
+- [x] **4.3** Implement `DELETE /api/connector-entities/:id` endpoint
   - File: `apps/api/src/routes/connector-entity.router.ts`
   - **Check 1:** Call `assertWriteCapability(connectorEntityId)` — if `write` is `false`, return `422 CONNECTOR_INSTANCE_WRITE_DISABLED`
   - **Check 2:** Query field mappings where `refEntityKey` matches this entity's key (excluding self); if any exist, return `422 ENTITY_HAS_EXTERNAL_REFERENCES` with dependency list
   - **Cascade (in transaction):** soft-delete entity records, field mappings, entity tag assignments, entity group members, then the entity itself
   - Follow the existing pattern from `DELETE /api/connector-instances/:id`
-- [ ] **4.4** Implement `GET /api/connector-entities/:id/impact` endpoint
+- [x] **4.4** Implement `GET /api/connector-entities/:id/impact` endpoint
   - File: `apps/api/src/routes/connector-entity.router.ts`
   - Return `{ entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers, refFieldMappings }`
-- [ ] **4.5** Implement `DELETE /api/entity-groups/:id` cascade (if not already cascading)
+- [x] **4.5** Implement `DELETE /api/entity-groups/:id` cascade (if not already cascading)
   - File: `apps/api/src/routes/entity-group.router.ts`
   - Wrap in transaction: soft-delete all entity group members, then soft-delete the group
-- [ ] **4.6** Implement `GET /api/entity-groups/:id/impact` endpoint
+- [x] **4.6** Implement `GET /api/entity-groups/:id/impact` endpoint
   - File: `apps/api/src/routes/entity-group.router.ts`
   - Return `{ entityGroupMembers }` count
-- [ ] **4.7** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+- [x] **4.7** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
   - `DELETE /api/connector-entities/:id` — document 200 with cascade counts, 404, 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`, `ENTITY_HAS_EXTERNAL_REFERENCES`) responses
   - `GET /api/connector-entities/:id/impact` — document response schema with all count fields
   - `DELETE /api/entity-groups/:id` — document 200 with cascade counts, 404 responses
@@ -243,23 +243,23 @@ Implements Rule 7: entity deletion with write capability check, cross-entity ref
 
 ### Tests
 
-- [ ] **4.T1** Integration test: `DELETE /api/connector-entities/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when instance lacks write capability
-- [ ] **4.T2** Integration test: `DELETE /api/connector-entities/:id` returns 422 `ENTITY_HAS_EXTERNAL_REFERENCES` when other entities' field mappings reference it via `refEntityKey`
-- [ ] **4.T3** Integration test: `DELETE /api/connector-entities/:id` succeeds and cascades soft-delete to records, field mappings, tag assignments, and group members
-- [ ] **4.T4** Integration test: verify each cascaded child table has `deleted` timestamp set (query with `includeDeleted`)
-- [ ] **4.T5** Integration test: `DELETE /api/connector-entities/:id` returns 404 for non-existent entity
-- [ ] **4.T6** Integration test: deleted entity no longer appears in `GET /api/connector-entities` list
-- [ ] **4.T7** Integration test: `GET /api/connector-entities/:id/impact` returns correct counts including `refFieldMappings`
-- [ ] **4.T8** Integration test: `DELETE /api/entity-groups/:id` cascades soft-delete to all group members
-- [ ] **4.T9** Integration test: `GET /api/entity-groups/:id/impact` returns correct `entityGroupMembers` count
-- [ ] **4.T10** Integration test: `DELETE /api/entity-groups/:id` returns 404 for non-existent group
+- [x] **4.T1** Integration test: `DELETE /api/connector-entities/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when instance lacks write capability
+- [x] **4.T2** Integration test: `DELETE /api/connector-entities/:id` returns 422 `ENTITY_HAS_EXTERNAL_REFERENCES` when other entities' field mappings reference it via `refEntityKey`
+- [x] **4.T3** Integration test: `DELETE /api/connector-entities/:id` succeeds and cascades soft-delete to records, field mappings, tag assignments, and group members
+- [x] **4.T4** Integration test: verify each cascaded child table has `deleted` timestamp set (query with `includeDeleted`)
+- [x] **4.T5** Integration test: `DELETE /api/connector-entities/:id` returns 404 for non-existent entity
+- [x] **4.T6** Integration test: deleted entity no longer appears in `GET /api/connector-entities` list
+- [x] **4.T7** Integration test: `GET /api/connector-entities/:id/impact` returns correct counts including `refFieldMappings`
+- [x] **4.T8** Integration test: `DELETE /api/entity-groups/:id` cascades soft-delete to all group members
+- [x] **4.T9** Integration test: `GET /api/entity-groups/:id/impact` returns correct `entityGroupMembers` count
+- [x] **4.T10** Integration test: `DELETE /api/entity-groups/:id` returns 404 for non-existent group
 
 ### Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes — all new and existing tests green
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes — all new and existing tests green
 
 ---
 
