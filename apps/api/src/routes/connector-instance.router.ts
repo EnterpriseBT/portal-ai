@@ -434,6 +434,7 @@ connectorInstanceRouter.post(
         credentials: credentials ? encryptCredentials(credentials) : null,
         lastSyncAt: null,
         lastErrorMessage: null,
+        enabledCapabilityFlags: null,
       });
 
       const connectorInstance = await DbService.repository.connectorInstances.create(

@@ -106,6 +106,7 @@ describe("StationInstancesRepository Integration Tests", () => {
         credentials: null,
         lastSyncAt: null,
         lastErrorMessage: null,
+        enabledCapabilityFlags: null,
         created: now,
         createdBy: "SYSTEM_TEST",
         updated: null,

@@ -80,6 +80,7 @@ describe("FieldMappingsRepository Integration Tests", () => {
       credentials: null,
       lastSyncAt: null,
       lastErrorMessage: null,
+      enabledCapabilityFlags: null,
       created: now,
       createdBy: "test-system",
       updated: null,

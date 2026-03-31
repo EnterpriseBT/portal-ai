@@ -1,6 +1,11 @@
 import { pgTable, text, bigint, jsonb, pgEnum } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 
+export interface EnabledCapabilityFlags {
+  read?: boolean;
+  write?: boolean;
+}
+
 export const connectorInstanceStatusEnum = pgEnum("connector_instance_status", [
   "active",
   "inactive",
@@ -23,4 +28,6 @@ export const connectorInstances = pgTable("connector_instances", {
   credentials: text("credentials"),
   lastSyncAt: bigint("last_sync_at", { mode: "number" }),
   lastErrorMessage: text("last_error_message"),
+  enabledCapabilityFlags:
+    jsonb("enabled_capability_flags").$type<EnabledCapabilityFlags>(),
 });

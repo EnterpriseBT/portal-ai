@@ -74,6 +74,7 @@ const stubInstance: ConnectorInstance = {
   credentials: null,
   lastSyncAt: null,
   lastErrorMessage: null,
+  enabledCapabilityFlags: null,
   created: Date.now(),
   createdBy: "system",
   updated: null,

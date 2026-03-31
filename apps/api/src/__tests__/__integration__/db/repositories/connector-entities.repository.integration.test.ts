@@ -83,6 +83,7 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
         credentials: null,
         lastSyncAt: null,
         lastErrorMessage: null,
+        enabledCapabilityFlags: null,
         created: Date.now(),
         createdBy: "test-system",
         updated: null,

@@ -20,6 +20,12 @@ export const ConnectorInstanceSchema = CoreSchema.extend({
   credentials: z.string().nullable(),
   lastSyncAt: z.number().nullable(),
   lastErrorMessage: z.string().nullable(),
+  enabledCapabilityFlags: z
+    .object({
+      read: z.boolean().optional(),
+      write: z.boolean().optional(),
+    })
+    .nullable(),
 });
 
 export type ConnectorInstance = z.infer<typeof ConnectorInstanceSchema>;

@@ -214,6 +214,7 @@ export class UploadsService {
           credentials: null,
           lastSyncAt: null,
           lastErrorMessage: null,
+          enabledCapabilityFlags: null,
           created: now,
           createdBy: userId,
           updated: null,

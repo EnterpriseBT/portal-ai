@@ -276,7 +276,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
         )}
 
         {/* Data table */}
-        <PageSection title="Records" icon={<Icon name={IconName.ViewColumn} />}>
+        <PageSection title="Records" icon={<Icon name={IconName.DataObject} />}>
           <PaginationToolbar {...pagination.toolbarProps} />
 
           <Box sx={{ mt: 2 }}>
