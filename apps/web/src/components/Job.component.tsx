@@ -168,9 +168,6 @@ export const JobDetailContent = ({
         gap={2}
       >
         <Box>
-          <Typography variant="h1" gutterBottom>
-            {job.type}
-          </Typography>
           <StatusBadge status={status} />
         </Box>
         {!isTerminal && (

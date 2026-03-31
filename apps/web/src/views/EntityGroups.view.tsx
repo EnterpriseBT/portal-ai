@@ -8,11 +8,12 @@ import {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   Button,
+  Icon,
+  IconName,
+  PageHeader,
   Stack,
   Typography,
-  IconName,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import AddIcon from "@mui/icons-material/Add";
@@ -123,21 +124,15 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Entity Groups" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <Typography variant="h1">Entity Groups</Typography>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entity Groups" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Entity Groups"
+          icon={<Icon name={IconName.Hub} />}
+          primaryAction={
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -145,8 +140,8 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
             >
               Create Group
             </Button>
-          </Stack>
-        </Box>
+          }
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 

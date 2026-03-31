@@ -9,11 +9,12 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   Button,
+  Icon,
+  IconName,
+  PageHeader,
   Stack,
   Typography,
-  IconName,
 } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
@@ -73,21 +74,15 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Tags" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <Typography variant="h1">Tags</Typography>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Tags" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Tags"
+          icon={<Icon name={IconName.Label} />}
+          primaryAction={
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -95,8 +90,8 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
             >
               Create Tag
             </Button>
-          </Stack>
-        </Box>
+          }
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 

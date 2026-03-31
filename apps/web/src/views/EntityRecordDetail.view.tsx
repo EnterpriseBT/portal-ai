@@ -8,8 +8,7 @@ import type {
   EntityGroupMemberWithDetails,
 } from "@portalai/core/contracts";
 import type { EntityGroup } from "@portalai/core/models";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
@@ -205,22 +204,17 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Entities", href: "/entities" },
-              { label: entity.label, href: `/entities/${entity.id}` },
-              { label: `Record ${record.sourceId}` },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Typography variant="h1">
-            Record Details
-          </Typography>
-
-        </Box>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entities", href: "/entities" },
+            { label: entity.label, href: `/entities/${entity.id}` },
+            { label: `Record ${record.sourceId}` },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Record Details"
+          icon={<Icon name={IconName.DataObject} />}
+        />
         {/* Metadata */}
         <Box>
           <EntityRecordMetadata record={record} />

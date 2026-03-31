@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Tooltip } from "@portalai/core/ui";
+import { Box, Stack, Tooltip, Typography } from "@portalai/core/ui";
 import { keyframes } from "@mui/material/styles";
 import type { HealthGetResponse } from "@portalai/core/contracts";
 import { DataResult } from "./DataResult.component";
@@ -55,53 +55,75 @@ export const HealthCheckUI: React.FC<HealthCheckUIProps> = ({
 };
 
 export interface HealthCheckProps {
+  /** When true, renders a text caption next to the indicator dot. */
+  showLabel?: boolean;
   className?: string;
   [key: `data-${string}`]: string;
 }
 
 export const HealthCheck: React.FC<HealthCheckProps> = ({
+  showLabel,
   className,
   ...rest
 }) => {
   const query = sdk.health.check();
+
+  const withLabel = (indicator: React.ReactNode, label: string) =>
+    showLabel ? (
+      <Stack direction="row" alignItems="center" spacing={1}>
+        {indicator}
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+      </Stack>
+    ) : (
+      indicator
+    );
 
   return (
     <DataResult
       results={{ health: query }}
       options={{
         health: {
-          renderError: (error) => (
-            <Tooltip title={error.message ?? "Health check failed"}>
-              <Box
-                className={className}
-                {...rest}
-                sx={{
-                  ...indicatorStyles,
-                  bgcolor: "error.main",
-                  animation: `${glow("#FF5630")} 2s ease-in-out infinite`,
-                }}
-              />
-            </Tooltip>
-          ),
-          renderLoading: () => (
-            <Tooltip title="Checking health...">
-              <Box
-                className={className}
-                {...rest}
-                sx={{
-                  ...indicatorStyles,
-                  bgcolor: "grey.500",
-                  animation: `${pulse} 1.5s ease-in-out infinite`,
-                }}
-              />
-            </Tooltip>
-          ),
+          renderError: (error) =>
+            withLabel(
+              <Tooltip title={error.message ?? "Health check failed"}>
+                <Box
+                  className={className}
+                  {...rest}
+                  sx={{
+                    ...indicatorStyles,
+                    bgcolor: "error.main",
+                    animation: `${glow("#FF5630")} 2s ease-in-out infinite`,
+                  }}
+                />
+              </Tooltip>,
+              "API unreachable"
+            ),
+          renderLoading: () =>
+            withLabel(
+              <Tooltip title="Checking health...">
+                <Box
+                  className={className}
+                  {...rest}
+                  sx={{
+                    ...indicatorStyles,
+                    bgcolor: "grey.500",
+                    animation: `${pulse} 1.5s ease-in-out infinite`,
+                  }}
+                />
+              </Tooltip>,
+              "Checking API…"
+            ),
         },
       }}
     >
-      {({ health }) => (
-        <HealthCheckUI data={health} className={className} {...rest} />
-      )}
+      {({ health }) =>
+        withLabel(
+          <HealthCheckUI data={health} className={className} {...rest} />,
+          "API connected"
+        )
+      }
     </DataResult>
   );
 };

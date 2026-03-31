@@ -6,11 +6,9 @@ import type {
   PortalListRequestQuery,
   PortalListResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Button, Stack, Typography, IconName } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import Chip from "@mui/material/Chip";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import EditIcon from "@mui/icons-material/Edit";
 import HandymanOutlined from "@mui/icons-material/HandymanOutlined";
 import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
@@ -137,88 +135,64 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
               return (
                 <>
                   <Stack spacing={4}>
-                    <Box>
-                      <Breadcrumbs
-                        items={[
-                          { label: "Dashboard", href: "/", icon: IconName.Home },
-                          { label: "Stations", href: "/stations" },
-                          { label: station.name },
-                        ]}
-                        onNavigate={(href) => navigate({ to: href })}
-                      />
-                      <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        spacing={2}
-                        alignItems={{ xs: "flex-start", sm: "center" }}
-                        justifyContent="space-between"
-                        sx={{ mb: 2 }}
-                      >
-                        <Typography variant="h1">{station.name}</Typography>
-                        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                          <Button
+                    <PageHeader
+                      breadcrumbs={[
+                        { label: "Dashboard", href: "/" },
+                        { label: "Stations", href: "/stations" },
+                        { label: station.name },
+                      ]}
+                      onNavigate={(href) => navigate({ to: href })}
+                      title={station.name}
+                      icon={<Icon name={IconName.RocketLaunch} />}
+                      primaryAction={
+                        <Button
+                          variant="contained"
+                          startIcon={<RocketLaunchIcon />}
+                          onClick={handleLaunchPortal}
+                          disabled={createPortalMutation.isPending}
+                        >
+                          {createPortalMutation.isPending ? "Opening..." : "Open Portal"}
+                        </Button>
+                      }
+                      secondaryActions={[
+                        { label: "Edit", onClick: () => setEditOpen(true) },
+                        { label: "Delete", onClick: () => setDeleteStationOpen(true), color: "error" },
+                      ]}
+                    >
+                      {station.description && (
+                        <Typography variant="body2" color="text.secondary">
+                          {station.description}
+                        </Typography>
+                      )}
+                      <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+                        {station.toolPacks.map((pack) => (
+                          <Chip
+                            key={pack}
+                            icon={<HandymanOutlined fontSize="small" />}
+                            label={pack}
+                            size="small"
                             variant="outlined"
-                            startIcon={<EditIcon />}
-                            onClick={() => setEditOpen(true)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            startIcon={<DeleteOutlineIcon />}
-                            onClick={() => setDeleteStationOpen(true)}
-                          >
-                            Delete
-                          </Button>
-                          <Button
-                            variant="contained"
-                            startIcon={<RocketLaunchIcon />}
-                            onClick={handleLaunchPortal}
-                            disabled={createPortalMutation.isPending}
-                          >
-                            {createPortalMutation.isPending ? "Opening..." : "Open Portal"}
-                          </Button>
-                        </Stack>
+                          />
+                        ))}
                       </Stack>
-                      <Box>
-                        {/* Metadata Section */}
-                        <Stack spacing={1}>
-                          {station.description && (
-                            <Typography variant="body2" color="text.secondary">
-                              {station.description}
-                            </Typography>
-                          )}
-                          <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
-                            {station.toolPacks.map((pack) => (
-                              <Chip
-                                key={pack}
-                                icon={<HandymanOutlined fontSize="small" />}
-                                label={pack}
-                                size="small"
-                                variant="outlined"
-                              />
-                            ))}
-                          </Stack>
-                          {(station.instances ?? []).length > 0 && (
-                            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
-                              {station.instances!.map((inst) => (
-                                <Chip
-                                  key={inst.id}
-                                  icon={<MemoryOutlined fontSize="small" />}
-                                  label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                />
-                              ))}
-                            </Stack>
-                          )}
-                          <Typography variant="body2" color="text.secondary">
-                            Created: {DateFactory.relativeTime(station.created)}
-                          </Typography>
+                      {(station.instances ?? []).length > 0 && (
+                        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+                          {station.instances!.map((inst) => (
+                            <Chip
+                              key={inst.id}
+                              icon={<MemoryOutlined fontSize="small" />}
+                              label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
+                              size="small"
+                              variant="outlined"
+                              color="primary"
+                            />
+                          ))}
                         </Stack>
-                      </Box>
-                    </Box>
+                      )}
+                      <Typography variant="body2" color="text.secondary">
+                        Created: {DateFactory.relativeTime(station.created)}
+                      </Typography>
+                    </PageHeader>
 
 
                     {/* Portals Section */}

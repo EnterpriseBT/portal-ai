@@ -43,9 +43,7 @@ describe("PinnedResultDetailUI", () => {
 
   it("should render result name and type chip", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
-    expect(screen.getByTestId("result-name")).toHaveTextContent(
-      "Revenue Summary"
-    );
+    expect(screen.getByRole("heading", { name: "Revenue Summary" })).toBeInTheDocument();
     expect(screen.getByTestId("result-type-chip")).toHaveTextContent("Text");
   });
 
@@ -81,7 +79,9 @@ describe("PinnedResultDetailUI", () => {
     const onRename = jest.fn();
     render(<PinnedResultDetailUI {...defaultProps} onRename={onRename} />);
 
-    fireEvent.click(screen.getByTestId("rename-btn"));
+    // Open the actions menu
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rename/i }));
     expect(screen.getByText("Rename Result")).toBeInTheDocument();
 
     const input = screen.getByTestId("rename-input").querySelector("input")!;
@@ -95,16 +95,19 @@ describe("PinnedResultDetailUI", () => {
     const onDelete = jest.fn();
     render(<PinnedResultDetailUI {...defaultProps} onDelete={onDelete} />);
 
-    fireEvent.click(screen.getByTestId("delete-btn"));
+    // Open the actions menu
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete/i }));
     expect(screen.getByText("Delete Pinned Result")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("delete-confirm"));
     expect(onDelete).toHaveBeenCalled();
   });
 
-  it("should render Open Source Portal button when portalId is present", () => {
+  it("should render Open Source Portal in actions menu when portalId is present", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
-    expect(screen.getByTestId("open-portal-btn")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    expect(screen.getByRole("menuitem", { name: /Open Source Portal/i })).toBeInTheDocument();
   });
 
   it("should call onOpenPortal when Open Source Portal is clicked", () => {
@@ -112,7 +115,8 @@ describe("PinnedResultDetailUI", () => {
     render(
       <PinnedResultDetailUI {...defaultProps} onOpenPortal={onOpenPortal} />
     );
-    fireEvent.click(screen.getByTestId("open-portal-btn"));
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Open Source Portal/i }));
     expect(onOpenPortal).toHaveBeenCalledWith("portal-1");
   });
 

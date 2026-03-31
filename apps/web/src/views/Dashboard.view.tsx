@@ -3,11 +3,12 @@ import React, { useState, useCallback } from "react";
 import type { CreatePortalBody } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   Button,
+  Icon,
+  IconName,
+  PageHeader,
   Stack,
   Typography,
-  IconName,
 } from "@portalai/core/ui";
 import RocketLaunch from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
@@ -46,18 +47,11 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 }) => (
   <Box>
     <Stack spacing={4}>
-      <Box>
-        <Breadcrumbs items={[{ label: "Home", icon: IconName.Home }]} />
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          justifyContent="space-between"
-          alignItems={{ xs: "flex-start", sm: "center" }}
-          spacing={1}
-        >
-          <Stack direction="row" alignItems="center" gap={1}>
-            <HealthCheck />
-            <Typography variant="h1">Dashboard</Typography>
-          </Stack>
+      <PageHeader
+        breadcrumbs={[{ label: "Home" }]}
+        title="Dashboard"
+        icon={<Icon name={IconName.Home} />}
+        primaryAction={
           <Button
             variant="contained"
             startIcon={<RocketLaunch />}
@@ -65,8 +59,10 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
           >
             Launch New Portal
           </Button>
-        </Stack>
-      </Box>
+        }
+      >
+        <HealthCheck showLabel />
+      </PageHeader>
 
       <DefaultStationCardConnected
         onLaunchPortal={onLaunchPortal}

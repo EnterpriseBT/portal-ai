@@ -5,8 +5,7 @@ import type {
   ConnectorEntityListWithInstanceResponsePayload,
 } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
 import type { FetchPageParams, FetchPageResult } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Card from "@mui/material/Card";
@@ -124,17 +123,15 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Entities" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Typography variant="h1">Entities</Typography>
-        </Box>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entities" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Entities"
+          icon={<Icon name={IconName.DataObject} />}
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 

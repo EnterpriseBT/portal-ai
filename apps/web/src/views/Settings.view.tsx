@@ -12,6 +12,7 @@ import {
   Stack,
   Icon,
   IconName,
+  PageHeader,
 } from "@portalai/core/ui";
 import { DataResult } from "../components/DataResult.component";
 import { sdk } from "../api/sdk";
@@ -22,9 +23,10 @@ export const SettingsView = () => {
 
   return (
     <Box>
-      <Typography variant="h1" gutterBottom>
-        Settings
-      </Typography>
+      <PageHeader
+        title="Settings"
+        icon={<Icon name={IconName.Settings} />}
+      />
 
       <Tabs {...tabsProps} variant="scrollable">
         <Tab label="Profile" {...getTabProps(0)} />

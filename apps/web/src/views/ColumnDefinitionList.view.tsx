@@ -5,8 +5,7 @@ import type {
   ColumnDefinitionListResponsePayload,
 } from "@portalai/core/contracts";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
 
 import { useNavigate } from "@tanstack/react-router";
 
@@ -56,17 +55,15 @@ export const ColumnDefinitionListView: React.FC = () => {
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Column Definitions" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Typography variant="h1">Column Definitions</Typography>
-        </Box>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Column Definitions" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Column Definitions"
+          icon={<Icon name={IconName.ViewColumn} />}
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 

@@ -1,11 +1,9 @@
 import React, { useState, useCallback } from "react";
 
 import type { PortalGetResponsePayload } from "@portalai/core/contracts";
-import { Box, Button, Modal, Stack, Typography } from "@portalai/core/ui";
-import { DateFactory } from "@portalai/core/utils";
+import { Box, Button, Modal, PageHeader, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -166,58 +164,22 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                     borderColor: "divider",
                   }}
                 >
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    alignItems={{ xs: "flex-start", sm: "center" }}
-                    justifyContent="space-between"
-                    spacing={{ xs: 1, sm: 0 }}
-                  >
-                    <Stack
-                      direction={{ xs: "column", sm: "row" }}
-                      spacing={{ xs: 0.25, sm: 1 }}
-                      alignItems={{ xs: "flex-start", sm: "baseline" }}
-                      sx={{ minWidth: 0 }}
-                    >
-                      <Typography
-                        variant="h6"
-                        noWrap
-                        sx={{ minWidth: 0, maxWidth: "100%" }}
-                      >
-                        {item.portal.name}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ flexShrink: 0 }}
-                      >
-                        Created{" "}
-                        {DateFactory.relativeTime(item.portal.created)}
-                      </Typography>
-                    </Stack>
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{ flexShrink: 0, width: { xs: "100%", sm: "auto" } }}
-                    >
+                  <PageHeader
+                    title={item.portal.name}
+                    primaryAction={
                       <Button
                         size="small"
-                        variant="outlined"
+                        variant="contained"
                         startIcon={<EditIcon />}
                         onClick={() => setRenameOpen(true)}
                       >
                         Rename
                       </Button>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        color="error"
-                        startIcon={<DeleteIcon />}
-                        onClick={() => setDeleteOpen(true)}
-                      >
-                        Delete
-                      </Button>
-                    </Stack>
-                  </Stack>
+                    }
+                    secondaryActions={[
+                      { label: "Delete", onClick: () => setDeleteOpen(true), color: "error" },
+                    ]}
+                  />
                 </Box>
 
                 {renameOpen && (

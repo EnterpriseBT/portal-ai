@@ -5,10 +5,8 @@ import type {
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Button, Stack, Typography } from "@portalai/core/ui";
-import { IconName } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -108,80 +106,64 @@ export const ConnectorInstanceView = ({
               const ci = instance.connectorInstance;
               return (
                 <Stack spacing={4}>
-                  <Box>
-                    <Breadcrumbs
-                      items={[
-                        { label: "Dashboard", href: "/", icon: IconName.Home },
-                        { label: "Connectors", href: "/connectors" },
-                        { label: ci.name },
-                      ]}
-                      onNavigate={(href) => navigate({ to: href })}
-                    />
-
-                    {/* Section 1: Instance Details */}
-                    <Box>
-                      <Stack
-                        direction="row"
-                        spacing={2}
-                        alignItems="center"
-                        sx={{ mb: 2 }}
+                  <PageHeader
+                    breadcrumbs={[
+                      { label: "Dashboard", href: "/" },
+                      { label: "Connectors", href: "/connectors" },
+                      { label: ci.name },
+                    ]}
+                    onNavigate={(href) => navigate({ to: href })}
+                    title={ci.name}
+                    icon={<Icon name={IconName.MemoryChip} />}
+                    primaryAction={
+                      <Button
+                        variant="contained"
+                        startIcon={<EditIcon />}
+                        onClick={() => setEditDialogOpen(true)}
                       >
-                        <Typography variant="h1">{ci.name}</Typography>
-                        <Chip
-                          label={upperFirst(ci.status)}
-                          size="small"
-                          color={STATUS_COLOR[ci.status] ?? "default"}
-                          variant="outlined"
-                        />
-                        <Box sx={{ flexGrow: 1 }} />
-                        <Button
-                          variant="outlined"
-                          startIcon={<EditIcon />}
-                          onClick={() => setEditDialogOpen(true)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="contained"
-                          color="error"
-                          startIcon={<DeleteOutlineIcon />}
-                          onClick={() => setDeleteDialogOpen(true)}
-                        >
-                          Delete
-                        </Button>
-                      </Stack>
-
-                      <Stack spacing={1}>
-                        {ci.connectorDefinition && (
-                          <Typography variant="body1" color="text.secondary">
-                            Connector: {ci.connectorDefinition.display}
-                          </Typography>
-                        )}
-
-                        {ci.config && Object.keys(ci.config).length > 0 && (
-                          <Typography variant="body2" color="text.secondary">
-                            Config: {JSON.stringify(ci.config)}
-                          </Typography>
-                        )}
-
-                        {ci.lastSyncAt && (
-                          <Typography variant="body2" color="text.secondary">
-                            Last sync: {new Date(ci.lastSyncAt).toLocaleString()}
-                          </Typography>
-                        )}
-
-                        {ci.status === "error" && ci.lastErrorMessage && (
-                          <Typography variant="body2" color="error">
-                            Error: {ci.lastErrorMessage}
-                          </Typography>
-                        )}
-
-                        <Typography variant="body2" color="text.secondary">
-                          Created: {new Date(ci.created).toLocaleString()}
+                        Edit
+                      </Button>
+                    }
+                    secondaryActions={[
+                      { label: "Delete", onClick: () => setDeleteDialogOpen(true), color: "error" },
+                    ]}
+                  >
+                    <Box>
+                      <Chip
+                        label={upperFirst(ci.status)}
+                        size="small"
+                        color={STATUS_COLOR[ci.status] ?? "default"}
+                        variant="outlined"
+                      />
+                      {ci.connectorDefinition && (
+                        <Typography variant="body1" color="text.secondary">
+                          Connector: {ci.connectorDefinition.display}
                         </Typography>
-                      </Stack>
+                      )}
+
+                      {ci.config && Object.keys(ci.config).length > 0 && (
+                        <Typography variant="body2" color="text.secondary">
+                          Config: {JSON.stringify(ci.config)}
+                        </Typography>
+                      )}
+
+                      {ci.lastSyncAt && (
+                        <Typography variant="body2" color="text.secondary">
+                          Last sync: {new Date(ci.lastSyncAt).toLocaleString()}
+                        </Typography>
+                      )}
+
+                      {ci.status === "error" && ci.lastErrorMessage && (
+                        <Typography variant="body2" color="error">
+                          Error: {ci.lastErrorMessage}
+                        </Typography>
+                      )}
+
+                      <Typography variant="body2" color="text.secondary">
+                        Created: {new Date(ci.created).toLocaleString()}
+                      </Typography>
                     </Box>
-                  </Box>
+                  </PageHeader>
 
                   {/* Section 2: Entities List */}
                   <Box>

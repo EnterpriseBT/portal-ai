@@ -11,11 +11,12 @@ import {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   DataTable,
+  Icon,
+  IconName,
+  PageHeader,
   Stack,
   Typography,
-  IconName,
   AsyncSearchableSelect,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
@@ -446,52 +447,35 @@ export const EntityGroupDetailViewUI: React.FC<
     return (
       <Box>
         <Stack spacing={4}>
-          {/* Breadcrumbs */}
-          <Box>
-            <Breadcrumbs
-              items={[
-                { label: "Dashboard", href: "/", icon: IconName.Home },
-                { label: "Entity Groups", href: "/entity-groups" },
-                { label: group.name },
-              ]}
-              onNavigate={(href) => navigate({ to: href })}
-            />
-            {/* Header */}
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              justifyContent="space-between"
-              alignItems={{ xs: "flex-start", sm: "center" }}
-              spacing={1}
-            >
-              <Box>
-                <Typography variant="h1">{group.name}</Typography>
-                {group.description && (
-                  <Typography variant="body1" color="text.secondary">
-                    {group.description}
-                  </Typography>
-                )}
-              </Box>
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="outlined"
-                  startIcon={<EditIcon />}
-                  onClick={onOpenEdit}
-                  disabled={isUpdatingGroup}
-                >
-                  Edit
-                </Button>
-                <Button
-                  color="error"
-                  variant="contained"
-                  startIcon={<DeleteIcon />}
-                  onClick={() => setDeleteDialogOpen(true)}
-                  disabled={isDeletingGroup}
-                >
-                  Delete
-                </Button>
-              </Stack>
-            </Stack>
-          </Box>
+          <PageHeader
+            breadcrumbs={[
+              { label: "Dashboard", href: "/" },
+              { label: "Entity Groups", href: "/entity-groups" },
+              { label: group.name },
+            ]}
+            onNavigate={(href) => navigate({ to: href })}
+            title={group.name}
+            icon={<Icon name={IconName.Hub} />}
+            primaryAction={
+              <Button
+                variant="contained"
+                startIcon={<EditIcon />}
+                onClick={onOpenEdit}
+                disabled={isUpdatingGroup}
+              >
+                Edit
+              </Button>
+            }
+            secondaryActions={[
+              { label: "Delete", onClick: () => setDeleteDialogOpen(true), color: "error", disabled: isDeletingGroup },
+            ]}
+          >
+            {group.description && (
+              <Typography variant="body1" color="text.secondary">
+                {group.description}
+              </Typography>
+            )}
+          </PageHeader>
 
           {/* Members table */}
           <Box>

@@ -3,11 +3,12 @@ import React, { useState, useCallback } from "react";
 import type { PortalResult } from "@portalai/core/models";
 import {
   Box,
-  Breadcrumbs,
   Button,
+  Icon,
+  IconName,
+  PageHeader,
   Stack,
   Typography,
-  IconName,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import { ContentBlockRenderer } from "@portalai/core/ui";
@@ -18,9 +19,6 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
-import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -99,103 +97,63 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Pinned Results", href: "/portal-results" },
-              { label: result.name },
-            ]}
-            onNavigate={onNavigate}
-          />
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            justifyContent="space-between"
-            alignItems={{ xs: "flex-start", md: "center" }}
-            spacing={2}
-          >
-            <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                alignItems={{ xs: "flex-start", sm: "center" }}
-                spacing={{ xs: 0.5, sm: 1.5 }}
-                sx={{ minWidth: 0 }}
-              >
-                <Typography
-                  variant="h1"
-                  data-testid="result-name"
-                  noWrap
-                  sx={{ minWidth: 0, maxWidth: "100%" }}
-                >
-                  {result.name}
-                </Typography>
-                <Chip
-                  label={result.type === "vega-lite" ? "Chart" : "Text"}
-                  size="small"
-                  variant="outlined"
-                  data-testid="result-type-chip"
-                  sx={{ flexShrink: 0 }}
-                />
-              </Stack>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                data-testid="result-created"
-              >
-                {DateFactory.relativeTime(result.created)}
-              </Typography>
-            </Stack>
-
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={1}
-              sx={{ flexShrink: 0, width: { xs: "100%", sm: "auto" } }}
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Pinned Results", href: "/portal-results" },
+            { label: result.name },
+          ]}
+          onNavigate={onNavigate}
+          title={result.name}
+          icon={<Icon name={IconName.PushPin} />}
+          primaryAction={
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<PushPinIcon />}
+              onClick={onUnpin}
+              data-testid="unpin-btn"
             >
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<EditIcon />}
-                onClick={() => {
-                  setRenameValue(result.name);
-                  setRenameOpen(true);
-                }}
-                data-testid="rename-btn"
-              >
-                Rename
-              </Button>
-              <Button
-                variant="outlined"
-                size="small"
-                color="error"
-                startIcon={<DeleteIcon />}
-                onClick={() => setDeleteOpen(true)}
-                data-testid="delete-btn"
-              >
-                Delete
-              </Button>
-              {result.portalId && (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<OpenInNewIcon />}
-                  onClick={() => onOpenPortal(result.portalId!)}
-                  data-testid="open-portal-btn"
-                >
-                  Open Source Portal
-                </Button>
-              )}
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<PushPinIcon />}
-                onClick={onUnpin}
-                data-testid="unpin-btn"
-              >
-                Unpin
-              </Button>
-            </Stack>
-          </Stack>
-        </Box>
+              Unpin
+            </Button>
+          }
+          secondaryActions={[
+            {
+              label: "Rename",
+              onClick: () => {
+                setRenameValue(result.name);
+                setRenameOpen(true);
+              },
+            },
+            ...(result.portalId
+              ? [
+                  {
+                    label: "Open Source Portal",
+                    onClick: () => onOpenPortal(result.portalId!),
+                  },
+                ]
+              : []),
+            {
+              label: "Delete",
+              onClick: () => setDeleteOpen(true),
+              color: "error" as const,
+            },
+          ]}
+        >
+          <Chip
+            label={result.type === "vega-lite" ? "Chart" : "Text"}
+            size="small"
+            variant="outlined"
+            data-testid="result-type-chip"
+          />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            data-testid="result-created"
+          >
+            {DateFactory.relativeTime(result.created)}
+          </Typography>
+        </PageHeader>
 
         <Box
           data-testid="result-content"

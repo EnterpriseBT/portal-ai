@@ -11,8 +11,8 @@ import type {
   AssignedEntityTag,
   ApiSuccessResponse,
 } from "@portalai/core/contracts";
-import { Box, Breadcrumbs, Stack, Typography } from "@portalai/core/ui";
-import { IconName, AsyncSearchableSelect } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageHeader, Stack, Typography } from "@portalai/core/ui";
+import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
@@ -187,26 +187,36 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Entities", href: "/entities" },
-              { label: entity.label },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-          {/* Header */}
-          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
-            <Typography variant="h1">{entity.label}</Typography>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entities", href: "/entities" },
+            { label: entity.label },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title={entity.label}
+          icon={<Icon name={IconName.DataObject} />}
+          primaryAction={
+            showSyncButton ? (
+              <Button
+                variant="contained"
+                startIcon={<RefreshIcon />}
+                onClick={onSync}
+                disabled={isSyncing}
+              >
+                {isSyncing ? "Syncing…" : "Sync"}
+              </Button>
+            ) : undefined
+          }
+        >
+          <Box>
+
             <Chip
               label={entity.key}
               size="small"
               variant="outlined"
               sx={{ fontFamily: "monospace" }}
             />
-          </Stack>
-          <Stack spacing={0.5}>
             {connectorInstanceName && (
               <Typography variant="body2" color="text.secondary">
                 Connector: {connectorInstanceName}
@@ -227,11 +237,9 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                 Last sync: {new Date(lastSyncAt).toLocaleString()}
               </Typography>
             )}
-          </Stack>
-          <Box>
             {/* Tags */}
             {tags && (
-              <Box sx={{ mt: 2 }}>
+              <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
                   Tags
                 </Typography>
@@ -272,22 +280,8 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                 )}
               </Box>
             )}
-
-            {showSyncButton && (
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<RefreshIcon />}
-                  onClick={onSync}
-                  disabled={isSyncing}
-                >
-                  {isSyncing ? "Syncing…" : "Sync"}
-                </Button>
-              </Box>
-            )}
           </Box>
-        </Box>
+        </PageHeader>
 
 
         {/* Bidirectional consistency warnings */}

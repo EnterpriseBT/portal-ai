@@ -7,11 +7,11 @@ import type {
 } from "@portalai/core/contracts";
 import {
   Box,
-  Breadcrumbs,
   Button,
-  Stack,
-  Typography,
+  Icon,
   IconName,
+  PageHeader,
+  Stack,
 } from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
@@ -56,21 +56,15 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={4}>
-        <Box>
-          <Breadcrumbs
-            items={[
-              { label: "Dashboard", href: "/", icon: IconName.Home },
-              { label: "Stations" },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-          />
-
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <Typography variant="h1">Stations</Typography>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Stations" },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title="Stations"
+          icon={<Icon name={IconName.RocketLaunch} />}
+          primaryAction={
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -78,8 +72,8 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
             >
               New Station
             </Button>
-          </Stack>
-        </Box>
+          }
+        />
 
         <PaginationToolbar {...pagination.toolbarProps} />
 

@@ -222,12 +222,13 @@ describe("EntityGroupDetailViewUI", () => {
     expect(defaultProps.onRemoveMember).toHaveBeenCalledWith("mem-1");
   });
 
-  it("renders edit and delete action buttons", () => {
+  it("renders edit and delete action buttons", async () => {
+    const user = userEvent.setup();
     render(<EntityGroupDetailViewUI {...defaultProps} />);
     expect(screen.getByRole("button", { name: /Edit/i })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Delete/i })
-    ).toBeInTheDocument();
+    // Delete is now in the ActionsMenu
+    await user.click(screen.getByRole("button", { name: /More actions/i }));
+    expect(screen.getByRole("menuitem", { name: /Delete/i })).toBeInTheDocument();
   });
 
   it("clicking Edit button calls onOpenEdit", async () => {
@@ -307,8 +308,9 @@ describe("EntityGroupDetailViewUI", () => {
         deleteServerError={{ message: "Cannot delete group", code: "ENTITY_GROUP_DELETE_FAILED" }}
       />
     );
-    // Open the delete dialog
-    await user.click(screen.getByRole("button", { name: /Delete/i }));
+    // Delete is now in the ActionsMenu
+    await user.click(screen.getByRole("button", { name: /More actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /Delete/i }));
     expect(screen.getByText(/Cannot delete group/)).toBeInTheDocument();
     expect(screen.getByText(/ENTITY_GROUP_DELETE_FAILED/)).toBeInTheDocument();
   });
