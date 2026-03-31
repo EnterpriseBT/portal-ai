@@ -70,3 +70,21 @@ export const ColumnDefinitionUpdateResponsePayloadSchema = z.object({
 });
 
 export type ColumnDefinitionUpdateResponsePayload = z.infer<typeof ColumnDefinitionUpdateResponsePayloadSchema>;
+
+// ── Impact ───────────────────────────────────────────────────────────
+
+export const ColumnDefinitionImpactResponsePayloadSchema = z.object({
+  fieldMappings: z.number(),
+  refFieldMappings: z.number(),
+  entityRecords: z.number(),
+});
+
+export type ColumnDefinitionImpactResponsePayload = z.infer<typeof ColumnDefinitionImpactResponsePayloadSchema>;
+
+// ── Delete ───────────────────────────────────────────────────────────
+
+export const ColumnDefinitionDeleteResponsePayloadSchema = z.object({
+  id: z.string(),
+});
+
+export type ColumnDefinitionDeleteResponsePayload = z.infer<typeof ColumnDefinitionDeleteResponsePayloadSchema>;

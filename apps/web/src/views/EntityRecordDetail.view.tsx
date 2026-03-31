@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 
 import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
 import type {
@@ -15,13 +15,18 @@ import AccordionDetails from "@mui/material/AccordionDetails";
 import Chip from "@mui/material/Chip";
 import Link from "@mui/material/Link";
 import CircularProgress from "@mui/material/CircularProgress";
+import DeleteIcon from "@mui/icons-material/Delete";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import StarIcon from "@mui/icons-material/Star";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
-import { sdk } from "../api/sdk";
+import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
+import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
+import { DeleteEntityRecordDialog } from "../components/DeleteEntityRecordDialog.component";
 import { EntityRecordFieldValue } from "../components/EntityRecordFieldValue.component";
 import { EntityRecordMetadata } from "../components/EntityRecordMetadata.component";
 
@@ -192,6 +197,13 @@ export interface EntityRecordDetailViewUIProps {
   record: EntityRecord;
   columns: ColumnDefinitionSummary[];
   groups?: EntityGroup[];
+  isWriteEnabled?: boolean;
+  onDelete?: () => void;
+  isDeleting?: boolean;
+  deleteServerError?: ServerError | null;
+  deleteDialogOpen?: boolean;
+  onOpenDeleteDialog?: () => void;
+  onCloseDeleteDialog?: () => void;
 }
 
 export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> = ({
@@ -199,6 +211,13 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
   record,
   columns,
   groups = [],
+  isWriteEnabled,
+  onDelete,
+  isDeleting,
+  deleteServerError,
+  deleteDialogOpen,
+  onOpenDeleteDialog,
+  onCloseDeleteDialog,
 }) => {
   const navigate = useNavigate();
 
@@ -215,6 +234,11 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
           onNavigate={(href) => navigate({ to: href })}
           title="Record Details"
           icon={<Icon name={IconName.DataObject} />}
+          secondaryActions={
+            isWriteEnabled
+              ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onOpenDeleteDialog?.(), color: "error", disabled: isDeleting }]
+              : undefined
+          }
         />
         <PageGrid columns={{ xs: 1, md: 2 }}>
           {/* Metadata */}
@@ -276,6 +300,17 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
             />
           </PageGridItem>
         </PageGrid>
+
+        {deleteDialogOpen !== undefined && onCloseDeleteDialog && onDelete && (
+          <DeleteEntityRecordDialog
+            open={!!deleteDialogOpen}
+            onClose={onCloseDeleteDialog}
+            recordSourceId={record.sourceId}
+            onConfirm={onDelete}
+            isPending={isDeleting}
+            serverError={deleteServerError ?? null}
+          />
+        )}
       </Stack>
     </Box>
   );
@@ -292,9 +327,42 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   entityId,
   recordId,
 }) => {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
   const entityResult = sdk.connectorEntities.get(entityId);
   const recordResult = sdk.entityRecords.get(entityId, recordId);
   const groupsResult = sdk.entityGroups.listByEntity(entityId);
+  const deleteMutation = sdk.entityRecords.delete(entityId, recordId);
+
+  // Resolve write capability
+  const connectorInstanceId = entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
+  const instanceResult = sdk.connectorInstances.get(connectorInstanceId, {
+    enabled: !!connectorInstanceId,
+  });
+  const connectorDefinitionId = instanceResult.data?.connectorInstance?.connectorDefinitionId ?? "";
+  const definitionResult = sdk.connectorDefinitions.get(connectorDefinitionId, {
+    enabled: !!connectorDefinitionId,
+  });
+
+  const instance = instanceResult.data?.connectorInstance;
+  const definition = definitionResult.data?.connectorDefinition;
+  const isWriteEnabled = !!(
+    definition?.capabilityFlags?.write &&
+    (instance?.enabledCapabilityFlags?.write ?? true)
+  );
+
+  const handleDelete = useCallback(() => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        navigate({ to: `/entities/${entityId}` });
+      },
+    });
+  }, [deleteMutation, queryClient, navigate, entityId]);
 
   return (
     <DataResult results={{ entity: entityResult, record: recordResult }}>
@@ -310,6 +378,13 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
           record={recordPayload.record}
           columns={recordPayload.columns}
           groups={groupsResult.data?.entityGroups ?? []}
+          isWriteEnabled={isWriteEnabled}
+          onDelete={handleDelete}
+          isDeleting={deleteMutation.isPending}
+          deleteServerError={toServerError(deleteMutation.error)}
+          deleteDialogOpen={deleteDialogOpen}
+          onOpenDeleteDialog={() => setDeleteDialogOpen(true)}
+          onCloseDeleteDialog={() => setDeleteDialogOpen(false)}
         />
       )}
     </DataResult>

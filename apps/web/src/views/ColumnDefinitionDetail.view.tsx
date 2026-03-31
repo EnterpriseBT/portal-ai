@@ -1,3 +1,5 @@
+import React, { useState, useCallback } from "react";
+
 import type {
   ColumnDefinitionGetResponsePayload,
   FieldMappingListRequestQuery,
@@ -13,11 +15,15 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import CheckIcon from "@mui/icons-material/Check";
-import React from "react";
+import DeleteIcon from "@mui/icons-material/Delete";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
+import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
 import { FieldMappingDataList } from "../components/FieldMapping.component";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
@@ -51,6 +57,24 @@ export const ColumnDefinitionDetailView: React.FC<
   ColumnDefinitionDetailViewProps
 > = ({ columnDefinitionId }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const deleteMutation = sdk.columnDefinitions.delete(columnDefinitionId);
+  const impactQuery = sdk.columnDefinitions.impact(columnDefinitionId, {
+    enabled: deleteDialogOpen,
+  });
+
+  const handleDelete = useCallback(() => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+        navigate({ to: "/column-definitions" });
+      },
+    });
+  }, [deleteMutation, queryClient, navigate]);
 
   const mappingsPagination = usePagination({
     sortFields: [
@@ -82,6 +106,9 @@ export const ColumnDefinitionDetailView: React.FC<
                     onNavigate={(href) => navigate({ to: href })}
                     title={cd.label}
                     icon={<Icon name={IconName.ViewColumn} />}
+                    secondaryActions={[
+                      { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
+                    ]}
                   >
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Chip
@@ -164,6 +191,16 @@ export const ColumnDefinitionDetailView: React.FC<
                       </PageSection>
                     </PageGridItem>
                   </PageGrid>
+                  <DeleteColumnDefinitionDialog
+                    open={deleteDialogOpen}
+                    onClose={() => setDeleteDialogOpen(false)}
+                    columnDefinitionLabel={cd.label}
+                    onConfirm={handleDelete}
+                    isPending={deleteMutation.isPending}
+                    impact={impactQuery.data ?? null}
+                    isLoadingImpact={impactQuery.isLoading && deleteDialogOpen}
+                    serverError={toServerError(deleteMutation.error)}
+                  />
                 </Stack>
               );
             }}

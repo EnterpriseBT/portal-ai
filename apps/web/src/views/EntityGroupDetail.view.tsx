@@ -41,6 +41,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch, toServerError, type ServerError } from "../utils/api.util";
@@ -347,6 +348,9 @@ export interface EntityGroupDetailViewUIProps {
   isUpdatingGroup?: boolean;
   isDeletingGroup?: boolean;
   deleteServerError?: ServerError | null;
+  deleteImpact?: { entityGroupMembers: number } | null;
+  isLoadingDeleteImpact?: boolean;
+  onDeleteDialogOpenChange?: (open: boolean) => void;
 }
 
 export const EntityGroupDetailViewUI: React.FC<
@@ -381,6 +385,9 @@ export const EntityGroupDetailViewUI: React.FC<
   isUpdatingGroup,
   isDeletingGroup,
   deleteServerError,
+  deleteImpact,
+  isLoadingDeleteImpact,
+  onDeleteDialogOpenChange,
 }) => {
     const navigate = useNavigate();
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -388,8 +395,17 @@ export const EntityGroupDetailViewUI: React.FC<
       string | null
     >(null);
 
-    const handleConfirmDelete = () => {
+    const openDeleteDialog = () => {
+      setDeleteDialogOpen(true);
+      onDeleteDialogOpenChange?.(true);
+    };
+    const closeDeleteDialog = () => {
       setDeleteDialogOpen(false);
+      onDeleteDialogOpenChange?.(false);
+    };
+
+    const handleConfirmDelete = () => {
+      closeDeleteDialog();
       onDeleteGroup();
     };
 
@@ -469,7 +485,7 @@ export const EntityGroupDetailViewUI: React.FC<
               </Button>
             }
             secondaryActions={[
-              { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error", disabled: isDeletingGroup },
+              { label: "Delete", icon: <DeleteIcon />, onClick: openDeleteDialog, color: "error", disabled: isDeletingGroup },
             ]}
           >
             <MetadataList
@@ -534,31 +550,16 @@ export const EntityGroupDetailViewUI: React.FC<
         />
 
         {/* Delete group confirmation */}
-        <Dialog
+        <DeleteEntityGroupDialog
           open={deleteDialogOpen}
-          onClose={() => setDeleteDialogOpen(false)}
-        >
-          <DialogTitle>Delete Entity Group</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2}>
-              <Typography>
-                Are you sure you want to delete &ldquo;{group.name}&rdquo;? This
-                action cannot be undone.
-              </Typography>
-              <FormAlert serverError={deleteServerError ?? null} />
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-            <Button
-              color="error"
-              variant="contained"
-              onClick={handleConfirmDelete}
-            >
-              Delete
-            </Button>
-          </DialogActions>
-        </Dialog>
+          onClose={closeDeleteDialog}
+          entityGroupName={group.name}
+          onConfirm={handleConfirmDelete}
+          isPending={isDeletingGroup}
+          impact={deleteImpact ?? null}
+          isLoadingImpact={isLoadingDeleteImpact}
+          serverError={deleteServerError ?? null}
+        />
 
         {/* Remove member confirmation */}
         <Dialog
@@ -606,6 +607,12 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const updateMutation = sdk.entityGroups.update(entityGroupId);
   const deleteMutation = sdk.entityGroups.delete(entityGroupId);
   const addMemberMutation = sdk.entityGroups.addMember(entityGroupId);
+
+  // Delete impact - the dialog state is inside the UI, but we track it here for the query
+  const [deleteDialogOpenForImpact, setDeleteDialogOpenForImpact] = useState(false);
+  const impactQuery = sdk.entityGroups.impact(entityGroupId, {
+    enabled: deleteDialogOpenForImpact,
+  });
 
   // Edit group dialog state
   const [editOpen, setEditOpen] = useState(false);
@@ -825,6 +832,9 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             isUpdatingGroup={updateMutation.isPending}
             isDeletingGroup={deleteMutation.isPending}
             deleteServerError={toServerError(deleteMutation.error)}
+            deleteImpact={impactQuery.data ?? null}
+            isLoadingDeleteImpact={impactQuery.isLoading && deleteDialogOpenForImpact}
+            onDeleteDialogOpenChange={setDeleteDialogOpenForImpact}
           />
         );
       }}

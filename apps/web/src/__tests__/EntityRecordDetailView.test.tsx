@@ -6,15 +6,22 @@ const mockResolve = jest.fn();
 const mockListByEntity = jest.fn();
 const mockEntityGroupsGet = jest.fn();
 
+const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    connectorEntities: { get: jest.fn() },
-    entityRecords: { get: jest.fn() },
+    connectorEntities: { get: jest.fn(() => ({ data: { connectorEntity: { connectorInstanceId: "" } } })) },
+    entityRecords: { get: jest.fn(), delete: () => noopMutation },
     entityGroups: {
       listByEntity: mockListByEntity,
       get: mockEntityGroupsGet,
       resolve: mockResolve,
     },
+    connectorInstances: { get: () => ({ data: null }) },
+    connectorDefinitions: { get: () => ({ data: null }) },
+  },
+  queryKeys: {
+    entityRecords: { root: ["entityRecords"] },
   },
 }));
 

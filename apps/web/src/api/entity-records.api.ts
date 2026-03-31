@@ -72,4 +72,10 @@ export const entityRecords = {
       undefined,
       options
     ),
+
+  delete: (connectorEntityId: string, recordId: string) =>
+    useAuthMutation<void, void>({
+      url: recordsUrl(connectorEntityId, `/${encodeURIComponent(recordId)}`),
+      method: "DELETE",
+    }),
 };

@@ -307,80 +307,80 @@ Adds delete UI for all entities with impact pre-flight checks where applicable.
 
 ### Checklist
 
-- [ ] **6.1** Add query key entries for new impact endpoints
+- [x] **6.1** Add query key entries for new impact endpoints
   - File: `apps/web/src/api/keys.ts`
   - Add `impact()` keys under `columnDefinitions`, `connectorEntities`, `fieldMappings`, `entityGroups`
-- [ ] **6.2** Add API client functions for new endpoints
+- [x] **6.2** Add API client functions for new endpoints
   - Files: `apps/web/src/api/column-definitions.api.ts`, `connector-entities.api.ts`, `field-mappings.api.ts`, `entity-groups.api.ts`, `entity-records.api.ts`
   - Add `delete`, `impact`, and `update` hooks following existing `sdk` patterns
-- [ ] **6.3** Create `DeleteColumnDefinitionDialog` component
+- [x] **6.3** Create `DeleteColumnDefinitionDialog` component
   - File: `apps/web/src/components/DeleteColumnDefinitionDialog.component.tsx`
   - Shows impact summary (field mappings, ref field mappings, entity records)
   - When `fieldMappings + refFieldMappings > 0`, show blocked state with dependency explanation instead of a confirm button
   - Accept `serverError` prop; render `FormAlert`
-- [ ] **6.4** Create `DeleteConnectorEntityDialog` component
+- [x] **6.4** Create `DeleteConnectorEntityDialog` component
   - File: `apps/web/src/components/DeleteConnectorEntityDialog.component.tsx`
   - Shows impact summary (records, field mappings, tag assignments, group members, ref field mappings)
   - When `refFieldMappings > 0`, show blocked state with external reference explanation
   - Accept `serverError` prop; render `FormAlert`
-- [ ] **6.5** Create `DeleteFieldMappingDialog` component
+- [x] **6.5** Create `DeleteFieldMappingDialog` component
   - File: `apps/web/src/components/DeleteFieldMappingDialog.component.tsx`
   - Shows impact summary (entity group members that will be cascaded)
   - Warn user about cascade before confirming
   - Accept `serverError` prop; render `FormAlert`
-- [ ] **6.6** Create `DeleteEntityGroupDialog` component (or update existing inline dialog)
+- [x] **6.6** Create `DeleteEntityGroupDialog` component (or update existing inline dialog)
   - File: `apps/web/src/components/DeleteEntityGroupDialog.component.tsx`
   - Shows impact summary (group members)
   - Accept `serverError` prop; render `FormAlert`
-- [ ] **6.7** Create `DeleteEntityRecordDialog` component
+- [x] **6.7** Create `DeleteEntityRecordDialog` component
   - File: `apps/web/src/components/DeleteEntityRecordDialog.component.tsx`
   - Simple confirmation (no impact — records have no dependents)
   - Accept `serverError` prop; render `FormAlert`
-- [ ] **6.8** Wire delete dialogs into views
+- [x] **6.8** Wire delete dialogs into views
   - `ColumnDefinitionDetail.view.tsx` — add delete button + `DeleteColumnDefinitionDialog`
   - `EntityDetail.view.tsx` — add delete button + `DeleteConnectorEntityDialog`
   - `EntityRecordDetail.view.tsx` — add delete button + `DeleteEntityRecordDialog`
   - `EntityGroupDetail.view.tsx` — replace inline dialog with `DeleteEntityGroupDialog`
   - Field mapping delete — determine appropriate view (entity detail or field mapping list) and wire
-- [ ] **6.9** Implement mutation `onSuccess` cache invalidation for each delete
+- [x] **6.9** Implement mutation `onSuccess` cache invalidation for each delete
   - Column definition delete -> `columnDefinitions.root`
   - Connector entity delete -> `connectorEntities.root`, `entityRecords.root`, `fieldMappings.root`, `entityGroups.root`
   - Field mapping delete -> `fieldMappings.root`, `entityGroups.root`
   - Entity group delete -> `entityGroups.root`
   - Entity record delete -> `entityRecords.root`
   - Entity group member delete -> `entityGroups.root`
-- [ ] **6.10** Handle `CONNECTOR_INSTANCE_WRITE_DISABLED` in entity and record views
+- [x] **6.10** Handle `CONNECTOR_INSTANCE_WRITE_DISABLED` in entity and record views
   - When delete/update mutation returns this code, display via `FormAlert`
   - Disable delete/edit buttons in the UI when the resolved capabilities for the parent connector instance do not include `write: true`
   - Resolve capabilities by fetching the connector instance (via `include=connectorInstance`) and its definition
 
 ### Tests
 
-- [ ] **6.T1** `DeleteColumnDefinitionDialog` — renders title and content when `open={true}`
-- [ ] **6.T2** `DeleteColumnDefinitionDialog` — does not render when `open={false}`
-- [ ] **6.T3** `DeleteColumnDefinitionDialog` — shows blocked state when impact has `fieldMappings > 0`
-- [ ] **6.T4** `DeleteColumnDefinitionDialog` — calls `onConfirm` when no dependencies
-- [ ] **6.T5** `DeleteColumnDefinitionDialog` — shows loading state when `isPending={true}`
-- [ ] **6.T6** `DeleteColumnDefinitionDialog` — renders `FormAlert` when `serverError` provided
-- [ ] **6.T7** `DeleteConnectorEntityDialog` — renders impact summary with counts
-- [ ] **6.T8** `DeleteConnectorEntityDialog` — shows blocked state when `refFieldMappings > 0`
-- [ ] **6.T9** `DeleteConnectorEntityDialog` — calls `onConfirm` when no blocking dependencies
-- [ ] **6.T10** `DeleteConnectorEntityDialog` — renders `FormAlert` when `serverError` provided
-- [ ] **6.T11** `DeleteFieldMappingDialog` — shows cascade warning with group member count
-- [ ] **6.T12** `DeleteFieldMappingDialog` — calls `onConfirm` on confirm click
-- [ ] **6.T13** `DeleteEntityGroupDialog` — shows impact summary with member count
-- [ ] **6.T14** `DeleteEntityRecordDialog` — simple confirmation renders correctly
-- [ ] **6.T15** All dialogs — supports Enter key submission (form submit event)
-- [ ] **6.T16** All dialogs — calls `onClose` on Cancel click
-- [ ] **6.T17** Verify cache invalidation: spy on `queryClient.invalidateQueries` in mutation `onSuccess` for each delete
+- [x] **6.T1** `DeleteColumnDefinitionDialog` — renders title and content when `open={true}`
+- [x] **6.T2** `DeleteColumnDefinitionDialog` — does not render when `open={false}`
+- [x] **6.T3** `DeleteColumnDefinitionDialog` — shows blocked state when impact has `fieldMappings > 0`
+- [x] **6.T4** `DeleteColumnDefinitionDialog` — calls `onConfirm` when no dependencies
+- [x] **6.T5** `DeleteColumnDefinitionDialog` — shows loading state when `isPending={true}`
+- [x] **6.T6** `DeleteColumnDefinitionDialog` — renders `FormAlert` when `serverError` provided
+- [x] **6.T7** `DeleteConnectorEntityDialog` — renders impact summary with counts
+- [x] **6.T8** `DeleteConnectorEntityDialog` — shows blocked state when `refFieldMappings > 0`
+- [x] **6.T9** `DeleteConnectorEntityDialog` — calls `onConfirm` when no blocking dependencies
+- [x] **6.T10** `DeleteConnectorEntityDialog` — renders `FormAlert` when `serverError` provided
+- [x] **6.T11** `DeleteFieldMappingDialog` — shows cascade warning with group member count
+- [x] **6.T12** `DeleteFieldMappingDialog` — calls `onConfirm` on confirm click
+- [x] **6.T13** `DeleteEntityGroupDialog` — shows impact summary with member count
+- [x] **6.T14** `DeleteEntityRecordDialog` — simple confirmation renders correctly
+- [x] **6.T15** All dialogs — supports Enter key submission (form submit event)
+- [x] **6.T16** All dialogs — calls `onClose` on Cancel click
+- [x] **6.T17** Verify cache invalidation: spy on `queryClient.invalidateQueries` in mutation `onSuccess` for each delete
 
 ### Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes — all new and existing tests green
-- [ ] `npm run storybook` — each new dialog has a story and renders correctly
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes — all new and existing tests green
+- [x] `npm run storybook` — each new dialog has a story and renders correctly
 
 ---
 

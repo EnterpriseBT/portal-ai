@@ -40,6 +40,8 @@ export const queryKeys = {
       [...queryKeys.connectorEntities.root, "list", params] as const,
     get: (id: string) =>
       [...queryKeys.connectorEntities.root, "get", id] as const,
+    impact: (id: string) =>
+      [...queryKeys.connectorEntities.root, "impact", id] as const,
   },
   connectorInstances: {
     root: ["connectorInstances"] as const,
@@ -56,6 +58,8 @@ export const queryKeys = {
       [...queryKeys.columnDefinitions.root, "list", params] as const,
     get: (id: string) =>
       [...queryKeys.columnDefinitions.root, "get", id] as const,
+    impact: (id: string) =>
+      [...queryKeys.columnDefinitions.root, "impact", id] as const,
   },
   fieldMappings: {
     root: ["fieldMappings"] as const,
@@ -63,6 +67,8 @@ export const queryKeys = {
       [...queryKeys.fieldMappings.root, "list", params] as const,
     validateBidirectional: (id: string) =>
       [...queryKeys.fieldMappings.root, "validateBidirectional", id] as const,
+    impact: (id: string) =>
+      [...queryKeys.fieldMappings.root, "impact", id] as const,
   },
   entityRecords: {
     root: ["entityRecords"] as const,
@@ -81,6 +87,8 @@ export const queryKeys = {
       [...queryKeys.entityGroups.root, "listByEntity", connectorEntityId] as const,
     get: (id: string) =>
       [...queryKeys.entityGroups.root, "get", id] as const,
+    impact: (id: string) =>
+      [...queryKeys.entityGroups.root, "impact", id] as const,
     memberOverlap: (id: string, params?: EntityGroupMemberOverlapRequestQuery) =>
       [...queryKeys.entityGroups.root, "memberOverlap", id, params] as const,
     resolve: (id: string, params?: EntityGroupResolveRequestQuery) =>

@@ -1,10 +1,11 @@
 import type {
   ConnectorEntityGetResponsePayload,
+  ConnectorEntityImpactResponsePayload,
   ConnectorEntityListRequestQuery,
   ConnectorEntityListResponsePayload,
   ConnectorEntityListWithMappingsResponsePayload,
 } from "@portalai/core/contracts";
-import { useAuthQuery } from "../utils/api.util";
+import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -31,4 +32,21 @@ export const connectorEntities = {
       undefined,
       options
     ),
+
+  impact: (
+    id: string,
+    options?: QueryOptions<ConnectorEntityImpactResponsePayload>
+  ) =>
+    useAuthQuery<ConnectorEntityImpactResponsePayload>(
+      queryKeys.connectorEntities.impact(id),
+      buildUrl(`/api/connector-entities/${encodeURIComponent(id)}/impact`),
+      undefined,
+      options
+    ),
+
+  delete: (id: string) =>
+    useAuthMutation<void, void>({
+      url: `/api/connector-entities/${encodeURIComponent(id)}`,
+      method: "DELETE",
+    }),
 };

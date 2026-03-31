@@ -13,14 +13,21 @@ type ListQuery = UseQueryResult<FieldMappingListResponsePayload, ApiError>;
 let currentGetQuery: Partial<GetQuery> = {};
 let currentFieldMappingListQuery: Partial<ListQuery> = {};
 
+const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     columnDefinitions: {
       get: () => currentGetQuery,
+      delete: () => noopMutation,
+      impact: () => ({ data: null, isLoading: false }),
     },
     fieldMappings: {
       list: () => currentFieldMappingListQuery,
     },
+  },
+  queryKeys: {
+    columnDefinitions: { root: ["columnDefinitions"] },
   },
 }));
 

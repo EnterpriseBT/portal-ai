@@ -1,9 +1,10 @@
 import type {
   ColumnDefinitionGetResponsePayload,
+  ColumnDefinitionImpactResponsePayload,
   ColumnDefinitionListRequestQuery,
   ColumnDefinitionListResponsePayload,
 } from "@portalai/core/contracts";
-import { useAuthQuery } from "../utils/api.util";
+import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -30,4 +31,21 @@ export const columnDefinitions = {
       undefined,
       options
     ),
+
+  impact: (
+    id: string,
+    options?: QueryOptions<ColumnDefinitionImpactResponsePayload>
+  ) =>
+    useAuthQuery<ColumnDefinitionImpactResponsePayload>(
+      queryKeys.columnDefinitions.impact(id),
+      buildUrl(`/api/column-definitions/${encodeURIComponent(id)}/impact`),
+      undefined,
+      options
+    ),
+
+  delete: (id: string) =>
+    useAuthMutation<void, void>({
+      url: `/api/column-definitions/${encodeURIComponent(id)}`,
+      method: "DELETE",
+    }),
 };

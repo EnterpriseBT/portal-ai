@@ -31,9 +31,9 @@ export class SeedService {
           isActive: true,
           configSchema: {},
           capabilityFlags: {
-            sync: true,
+            sync: false,
             query: true,
-            write: false,
+            write: true,
           },
           version: "1.0.0",
           iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1773338114/CSV_Icons_oad8ko.png',

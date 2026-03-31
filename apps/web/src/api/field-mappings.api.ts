@@ -3,8 +3,9 @@ import type {
   FieldMappingListResponsePayload,
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingBidirectionalValidationResponsePayload,
+  FieldMappingImpactResponsePayload,
 } from "@portalai/core/contracts";
-import { useAuthQuery } from "../utils/api.util";
+import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
@@ -36,4 +37,21 @@ export const fieldMappings = {
       undefined,
       options
     ),
+
+  impact: (
+    id: string,
+    options?: QueryOptions<FieldMappingImpactResponsePayload>
+  ) =>
+    useAuthQuery<FieldMappingImpactResponsePayload>(
+      queryKeys.fieldMappings.impact(id),
+      buildUrl(`/api/field-mappings/${encodeURIComponent(id)}/impact`),
+      undefined,
+      options
+    ),
+
+  delete: (id: string) =>
+    useAuthMutation<void, void>({
+      url: `/api/field-mappings/${encodeURIComponent(id)}`,
+      method: "DELETE",
+    }),
 };
