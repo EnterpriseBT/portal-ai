@@ -24,8 +24,8 @@ const meta = {
       options: ["small", "medium"],
     },
     dividers: { control: "boolean" },
+    raised: { control: "boolean" },
     spacing: { control: "number" },
-
   },
   decorators: [
     (Story) => (
@@ -156,6 +156,31 @@ export const LongLabels: Story = {
       { label: "Max Connections", value: "25" },
       { label: "Connection Timeout", value: "30s" },
       { label: "SSL Mode", value: "require", variant: "chip" },
+    ],
+  },
+};
+
+export const Raised: Story = {
+  args: {
+    raised: true,
+    items: [
+      { label: "ID", value: "usr_abc123def456", variant: "mono" },
+      { label: "Name", value: "Acme Corporation" },
+      { label: "Status", value: "Active", variant: "chip" },
+      { label: "Created", value: "March 15, 2026" },
+    ],
+  },
+};
+
+export const RaisedWithDividers: Story = {
+  args: {
+    raised: true,
+    dividers: true,
+    size: "medium",
+    items: [
+      { label: "Email", value: "admin@acme.com" },
+      { label: "Timezone", value: "America/New_York" },
+      { label: "Created", value: "Jan 1, 2026" },
     ],
   },
 };

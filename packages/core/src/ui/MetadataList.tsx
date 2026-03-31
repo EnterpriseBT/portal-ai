@@ -2,6 +2,7 @@ import React from "react";
 import Box from "@mui/material/Box";
 import MuiTypography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
+import Paper from "@mui/material/Paper";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 
@@ -32,6 +33,8 @@ export interface MetadataListProps {
   spacing?: number;
   /** Controls typography size. "small" uses body2, "medium" uses body1. Default: "small". */
   size?: "small" | "medium";
+  /** When true, wraps the list in an outlined Paper card. Default: false. */
+  raised?: boolean;
   className?: string;
   [key: `data-${string}`]: string;
 }
@@ -158,6 +161,7 @@ export const MetadataList = React.forwardRef<HTMLDivElement, MetadataListProps>(
       dividers = false,
       spacing = 1.5,
       size = "small",
+      raised = false,
       className,
       ...rest
     },
@@ -165,13 +169,13 @@ export const MetadataList = React.forwardRef<HTMLDivElement, MetadataListProps>(
   ) => {
     const visible = items.filter((i) => !i.hidden);
 
-    return (
+    const list = (
       <Stack
-        ref={ref}
+        ref={raised ? undefined : ref}
         spacing={dividers ? spacing / 2 : spacing}
-        className={className}
+        className={raised ? undefined : className}
         data-testid="metadata-list"
-        {...rest}
+        {...(raised ? {} : rest)}
       >
         {visible.map((item, i) => (
           <React.Fragment key={`${item.label}-${i}`}>
@@ -185,6 +189,16 @@ export const MetadataList = React.forwardRef<HTMLDivElement, MetadataListProps>(
         ))}
       </Stack>
     );
+
+    if (raised) {
+      return (
+        <Paper ref={ref} variant="outlined" className={className} sx={{ p: 2.5 }} {...rest}>
+          {list}
+        </Paper>
+      );
+    }
+
+    return list;
   },
 );
 

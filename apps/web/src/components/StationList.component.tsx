@@ -6,7 +6,7 @@ import type {
   StationListResponsePayload,
 } from "@portalai/core/contracts";
 import type { OrganizationGetResponse } from "@portalai/core/contracts";
-import { Box, DetailCard, Icon, IconName, PageEmptyState, Stack, Typography } from "@portalai/core/ui";
+import { DetailCard, Icon, IconName, MetadataList, PageEmptyState, Stack } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { EmptyResults } from "./EmptyResults.component";
 import Chip from "@mui/material/Chip";
@@ -75,27 +75,26 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
       actions={actions}
       data-testid="station-card"
     >
-      <Stack spacing={1}>
-        {isDefault && (
-          <Box>
-            <Chip
-              label="Default"
-              size="small"
-              color="primary"
-              icon={<StarIcon />}
-              data-testid="default-badge"
-            />
-          </Box>
-        )}
-        {station.description && (
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {station.description}
-          </Typography>
-        )}
-        <Typography variant="caption" color="text.secondary">
-          Tool packs: {station.toolPacks.join(", ")}
-        </Typography>
-      </Stack>
+      <MetadataList
+        items={[
+          {
+            label: "Status",
+            value: (
+              <Chip
+                label="Default"
+                size="small"
+                color="primary"
+                icon={<StarIcon />}
+                data-testid="default-badge"
+              />
+            ),
+            variant: "chip",
+            hidden: !isDefault,
+          },
+          { label: "Description", value: station.description ?? "", hidden: !station.description },
+          { label: "Tool packs", value: station.toolPacks.join(", "), hidden: station.toolPacks.length === 0 },
+        ]}
+      />
     </DetailCard>
   );
 };

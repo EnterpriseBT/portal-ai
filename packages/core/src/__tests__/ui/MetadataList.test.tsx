@@ -158,6 +158,50 @@ describe("MetadataList", () => {
     });
   });
 
+  describe("Raised", () => {
+    it("should wrap in an outlined Paper when raised=true", () => {
+      const { container } = render(
+        <MetadataList raised items={baseItems} />,
+      );
+      expect(
+        container.querySelector(".MuiPaper-outlined"),
+      ).toBeInTheDocument();
+    });
+
+    it("should not wrap in Paper by default", () => {
+      const { container } = render(<MetadataList items={baseItems} />);
+      expect(
+        container.querySelector(".MuiPaper-outlined"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("should forward ref to Paper when raised", () => {
+      const ref = React.createRef<HTMLDivElement>();
+      render(<MetadataList ref={ref} raised items={baseItems} />);
+      expect(ref.current).toBeInstanceOf(HTMLDivElement);
+      expect(ref.current?.classList.contains("MuiPaper-root")).toBe(true);
+    });
+
+    it("should forward className and data attributes to Paper when raised", () => {
+      render(
+        <MetadataList
+          raised
+          className="raised-meta"
+          data-testid="raised-list"
+          items={baseItems}
+        />,
+      );
+      const paper = screen.getByTestId("raised-list");
+      expect(paper).toHaveClass("raised-meta");
+      expect(paper.classList.contains("MuiPaper-root")).toBe(true);
+    });
+
+    it("should still render the metadata-list testid inside when raised", () => {
+      render(<MetadataList raised items={baseItems} />);
+      expect(screen.getByTestId("metadata-list")).toBeInTheDocument();
+    });
+  });
+
   describe("Custom Props", () => {
     it("should accept custom className", () => {
       const { container } = render(

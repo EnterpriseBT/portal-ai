@@ -13,12 +13,12 @@ import {
   IconName,
   PageEmptyState,
   PageHeader,
+  DetailCard,
+  MetadataList,
   Stack,
-  Typography,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import AddIcon from "@mui/icons-material/Add";
-import { DetailCard } from "@portalai/core/ui";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -68,19 +68,13 @@ interface EntityGroupCardProps {
 
 const EntityGroupCard: React.FC<EntityGroupCardProps> = ({ group, onClick }) => (
   <DetailCard title={group.name} onClick={onClick}>
-    {group.description && (
-      <Typography variant="caption" color="text.secondary">
-        {group.description}
-      </Typography>
-    )}
-    <Stack direction="row" spacing={2}>
-      <Typography variant="caption" color="text.secondary">
-        {group.memberCount} {group.memberCount === 1 ? "member" : "members"}
-      </Typography>
-      <Typography variant="caption" color="text.secondary">
-        Created on {dates.format(group.created, "MM/dd/yyyy")}
-      </Typography>
-    </Stack>
+    <MetadataList
+      items={[
+        { label: "Description", value: group.description ?? "", hidden: !group.description },
+        { label: "Members", value: `${group.memberCount} ${group.memberCount === 1 ? "member" : "members"}` },
+        { label: "Created", value: dates.format(group.created, "MM/dd/yyyy") },
+      ]}
+    />
   </DetailCard>
 );
 

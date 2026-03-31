@@ -5,7 +5,7 @@ import type {
   ConnectorEntityListWithInstanceResponsePayload,
 } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
-import { Box, DetailCard, Icon, IconName, PageEmptyState, PageHeader, Stack, Typography } from "@portalai/core/ui";
+import { Box, DetailCard, Icon, IconName, MetadataList, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
 import type { FetchPageParams, FetchPageResult } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 
@@ -35,32 +35,41 @@ interface EntityCardProps {
 
 const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
   <DetailCard title={entity.label} onClick={onClick}>
-    <Typography variant="caption" color="text.secondary">
-      {entity.connectorInstance.name}
-    </Typography>
-    <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap" }}>
-      <Chip label={entity.key} size="small" variant="outlined" />
-      {entity.tags?.map((tag) => (
-        <Chip
-          key={tag.id}
-          label={tag.name}
-          size="small"
-          icon={
-            tag.color ? (
-              <Box
-                sx={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: "50%",
-                  backgroundColor: tag.color,
-                  flexShrink: 0,
-                }}
-              />
-            ) : undefined
-          }
-        />
-      ))}
-    </Stack>
+    <MetadataList
+      items={[
+        { label: "Connector", value: entity.connectorInstance.name },
+        { label: "Key", value: entity.key, variant: "mono" },
+        {
+          label: "Tags",
+          value: (
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+              {(entity.tags ?? []).map((tag) => (
+                <Chip
+                  key={tag.id}
+                  label={tag.name}
+                  size="small"
+                  icon={
+                    tag.color ? (
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          backgroundColor: tag.color,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : undefined
+                  }
+                />
+              ))}
+            </Stack>
+          ),
+          variant: "chip",
+          hidden: !entity.tags || entity.tags.length === 0,
+        },
+      ]}
+    />
   </DetailCard>
 );
 

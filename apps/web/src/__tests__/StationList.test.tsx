@@ -48,9 +48,7 @@ describe("StationCardUI", () => {
 
   it("should render tool packs", () => {
     render(<StationCardUI {...defaultCardProps} />);
-    expect(
-      screen.getByText("Tool packs: data_query, statistics")
-    ).toBeInTheDocument();
+    expect(screen.getByText("data_query, statistics")).toBeInTheDocument();
   });
 
   it("should show Default badge when isDefault is true", () => {
