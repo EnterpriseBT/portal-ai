@@ -14,6 +14,7 @@ import {
   DataTable,
   Icon,
   IconName,
+  MetadataList,
   PageHeader,
   PageSection,
   Stack,
@@ -471,11 +472,12 @@ export const EntityGroupDetailViewUI: React.FC<
               { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error", disabled: isDeletingGroup },
             ]}
           >
-            {group.description && (
-              <Typography variant="body1" color="text.secondary">
-                {group.description}
-              </Typography>
-            )}
+            <MetadataList
+              size="medium"
+              items={[
+                { label: "Description", value: group.description ?? "", hidden: !group.description },
+              ]}
+            />
           </PageHeader>
 
           {/* Members table */}

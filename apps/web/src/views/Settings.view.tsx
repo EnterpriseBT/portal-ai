@@ -2,6 +2,7 @@ import {
   Avatar,
   Box,
   Divider,
+  MetadataList,
   Typography,
   Tabs,
   Tab,
@@ -84,43 +85,13 @@ export const SettingsView = () => {
                     </Stack>
                   </Stack>
                   <Divider />
-                  <Stack spacing={1.5}>
-                    <Typography
-                      variant="body1"
-                      sx={{
-                        fontSize: { xs: "0.8125rem", sm: "1rem" },
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      <Box
-                        component="span"
-                        fontWeight={600}
-                        color="text.primary"
-                      >
-                        Email:
-                      </Box>{" "}
-                      <Box component="span" color="text.secondary">
-                        {profile.email}
-                      </Box>
-                    </Typography>
-                    {profileResult.lastLogin && (
-                      <Typography
-                        variant="body1"
-                        sx={{ fontSize: { xs: "0.8125rem", sm: "1rem" } }}
-                      >
-                        <Box
-                          component="span"
-                          fontWeight={600}
-                          color="text.primary"
-                        >
-                          Last login:
-                        </Box>{" "}
-                        <Box component="span" color="text.secondary">
-                          {new Date(profileResult.lastLogin).toLocaleString()}
-                        </Box>
-                      </Typography>
-                    )}
-                  </Stack>
+                  <MetadataList
+                    size="medium"
+                    items={[
+                      { label: "Email", value: profile.email },
+                      { label: "Last login", value: profileResult.lastLogin ? new Date(profileResult.lastLogin).toLocaleString() : "", hidden: !profileResult.lastLogin },
+                    ]}
+                  />
                 </Stack>
               );
             }}
@@ -156,55 +127,14 @@ export const SettingsView = () => {
                     </Typography>
                   </Stack>
                   <Divider />
-                  <Stack spacing={1.5}>
-                    <Typography
-                      variant="body1"
-                      sx={{ fontSize: { xs: "0.8125rem", sm: "1rem" } }}
-                    >
-                      <Box
-                        component="span"
-                        fontWeight={600}
-                        color="text.primary"
-                      >
-                        Timezone:
-                      </Box>{" "}
-                      <Box component="span" color="text.secondary">
-                        {organization.timezone}
-                      </Box>
-                    </Typography>
-                    <Typography
-                      variant="body1"
-                      sx={{ fontSize: { xs: "0.8125rem", sm: "1rem" } }}
-                    >
-                      <Box
-                        component="span"
-                        fontWeight={600}
-                        color="text.primary"
-                      >
-                        Created:
-                      </Box>{" "}
-                      <Box component="span" color="text.secondary">
-                        {new Date(organization.created).toLocaleString()}
-                      </Box>
-                    </Typography>
-                    {organization.updated && (
-                      <Typography
-                        variant="body1"
-                        sx={{ fontSize: { xs: "0.8125rem", sm: "1rem" } }}
-                      >
-                        <Box
-                          component="span"
-                          fontWeight={600}
-                          color="text.primary"
-                        >
-                          Updated:
-                        </Box>{" "}
-                        <Box component="span" color="text.secondary">
-                          {new Date(organization.updated).toLocaleString()}
-                        </Box>
-                      </Typography>
-                    )}
-                  </Stack>
+                  <MetadataList
+                    size="medium"
+                    items={[
+                      { label: "Timezone", value: organization.timezone },
+                      { label: "Created", value: new Date(organization.created).toLocaleString() },
+                      { label: "Updated", value: organization.updated ? new Date(organization.updated).toLocaleString() : "", hidden: !organization.updated },
+                    ]}
+                  />
                 </Stack>
               );
             }}

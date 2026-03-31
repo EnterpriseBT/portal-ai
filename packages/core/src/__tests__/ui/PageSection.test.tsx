@@ -84,9 +84,9 @@ describe("PageSection Component", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("should render a divider in default variant when header is present", () => {
+    it("should render a divider in divider variant when header is present", () => {
       const { container } = render(
-        <PageSection title="Connectors">
+        <PageSection title="Connectors" variant="divider">
           <p>Body</p>
         </PageSection>,
       );
@@ -113,9 +113,9 @@ describe("PageSection Component", () => {
       ).toBeInTheDocument();
     });
 
-    it("should not wrap content in Paper for default variant", () => {
+    it("should not wrap content in Paper for divider variant", () => {
       const { container } = render(
-        <PageSection title="Connectors">
+        <PageSection title="Connectors" variant="divider">
           <p>Body</p>
         </PageSection>,
       );

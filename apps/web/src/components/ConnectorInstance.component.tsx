@@ -12,7 +12,7 @@ import type { ConnectorDefinition } from "@portalai/core/models";
 import {
   Avatar,
   DetailCard,
-  Typography,
+  MetadataList,
 } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
@@ -107,22 +107,25 @@ export const ConnectorInstanceCardUI = ({
       onClick={onClick ? () => onClick(ci) : undefined}
       actions={actions.length > 0 ? actions : undefined}
     >
-      <Chip
-        label={upperFirst(ci.status)}
-        size="small"
-        color={STATUS_COLOR[ci.status] ?? "default"}
-        variant="outlined"
+      <MetadataList
+        items={[
+          {
+            label: "Status",
+            value: (
+              <Chip
+                label={upperFirst(ci.status)}
+                size="small"
+                color={STATUS_COLOR[ci.status] ?? "default"}
+                variant="outlined"
+              />
+            ),
+            variant: "chip",
+          },
+          { label: "Connector", value: cd?.display ?? "Unknown connector" },
+          { label: "Last sync", value: ci.lastSyncAt ? new Date(ci.lastSyncAt).toLocaleDateString() : "", hidden: !ci.lastSyncAt },
+          { label: "Error", value: ci.lastErrorMessage ?? "", hidden: !(ci.status === "error" && ci.lastErrorMessage) },
+        ]}
       />
-      <Typography variant="body2" color="text.secondary">
-        {cd?.display ?? "Unknown connector"}
-        {ci.lastSyncAt &&
-          ` · Last sync: ${new Date(ci.lastSyncAt).toLocaleDateString()}`}
-      </Typography>
-      {ci.status === "error" && ci.lastErrorMessage && (
-        <Typography variant="body2" color="error" noWrap>
-          {ci.lastErrorMessage}
-        </Typography>
-      )}
     </DetailCard>
   );
 };

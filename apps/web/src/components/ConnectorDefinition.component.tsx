@@ -11,8 +11,8 @@ import { ApiError } from "../utils";
 import {
   Avatar,
   DetailCard,
+  MetadataList,
   Stack,
-  Typography,
 } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
@@ -88,22 +88,37 @@ export const ConnectorDefinitionCardUI = ({
       }
       actions={actions}
     >
-      <Chip
-        label={cd.isActive ? "Active" : "Inactive"}
-        size="small"
-        color={cd.isActive ? "success" : "default"}
-        variant="outlined"
+      <MetadataList
+        items={[
+          {
+            label: "Status",
+            value: (
+              <Chip
+                label={cd.isActive ? "Active" : "Inactive"}
+                size="small"
+                color={cd.isActive ? "success" : "default"}
+                variant="outlined"
+              />
+            ),
+            variant: "chip",
+          },
+          { label: "Category", value: cd.category },
+          { label: "Auth", value: cd.authType },
+          { label: "Version", value: `v${cd.version}` },
+          {
+            label: "Capabilities",
+            value: (
+              <Stack direction="row" spacing={0.5}>
+                {capabilities.map((cap) => (
+                  <Chip key={cap} label={cap} size="small" variant="outlined" />
+                ))}
+              </Stack>
+            ),
+            variant: "chip",
+            hidden: capabilities.length === 0,
+          },
+        ]}
       />
-      <Typography variant="body2" color="text.secondary">
-        {cd.category} &middot; {cd.authType} &middot; v{cd.version}
-      </Typography>
-      {capabilities.length > 0 && (
-        <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
-          {capabilities.map((cap) => (
-            <Chip key={cap} label={cap} size="small" variant="outlined" />
-          ))}
-        </Stack>
-      )}
     </DetailCard>
   );
 };

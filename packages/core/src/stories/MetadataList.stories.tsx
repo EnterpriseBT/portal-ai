@@ -25,7 +25,7 @@ const meta = {
     },
     dividers: { control: "boolean" },
     spacing: { control: "number" },
-    labelWidth: { control: "number" },
+
   },
   decorators: [
     (Story) => (
@@ -149,9 +149,8 @@ export const MediumSize: Story = {
   },
 };
 
-export const WiderLabels: Story = {
+export const LongLabels: Story = {
   args: {
-    labelWidth: 200,
     items: [
       { label: "Connection String", value: "postgresql://...", variant: "mono" },
       { label: "Max Connections", value: "25" },

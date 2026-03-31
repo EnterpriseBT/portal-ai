@@ -154,7 +154,7 @@ export const SidebarNav = () => {
         onClick={() => handleClick(ApplicationRoute.Dashboard)}
       />
       <SidebarNavItem
-        icon={IconName.RocketLaunch}
+        icon={IconName.SatelliteAlt}
         label="Stations"
         selected={pathname.startsWith(ApplicationRoute.Stations)}
         onClick={() => handleClick(ApplicationRoute.Stations)}

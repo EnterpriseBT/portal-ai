@@ -121,7 +121,7 @@ describe("ColumnDefinitionDetailView", () => {
     expect(screen.getByText("string")).toBeInTheDocument();
     expect(screen.getByText("Required")).toBeInTheDocument();
     expect(screen.getByText(/Primary email/)).toBeInTheDocument();
-    expect(screen.getByText(/Format: RFC5322/)).toBeInTheDocument();
+    expect(screen.getByText("RFC5322")).toBeInTheDocument();
     expect(screen.getByText(/user@example\.com/)).toBeInTheDocument();
   });
 

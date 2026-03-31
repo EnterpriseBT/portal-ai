@@ -68,11 +68,13 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 
       <PageGrid columns={{ xs: 1, md: 2 }}>
         <PageGridItem>
-          <DefaultStationCardConnected
-            onLaunchPortal={onLaunchPortal}
-            onChangeDefault={onChangeDefault}
-            onViewStation={onViewStation}
-          />
+          <PageSection title="Default Station" icon={<Icon name={IconName.SatelliteAlt} />}>
+            <DefaultStationCardConnected
+              onLaunchPortal={onLaunchPortal}
+              onChangeDefault={onChangeDefault}
+              onViewStation={onViewStation}
+            />
+          </PageSection>
         </PageGridItem>
 
         <PageGridItem>

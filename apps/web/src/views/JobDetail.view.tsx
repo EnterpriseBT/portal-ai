@@ -1,12 +1,11 @@
 import {
   Box,
   Button,
-  Card,
-  CardContent,
-  Divider,
   Icon,
   IconName,
+  MetadataList,
   PageHeader,
+  PageSection,
   Progress,
   Stack,
   StatusBadge,
@@ -26,20 +25,6 @@ const dates = new DateFactory("UTC");
 
 const formatDate = (timestamp: number | null) =>
   timestamp ? dates.format(timestamp, "MM/dd/yyyy hh:mm:ss a") : "—";
-
-const DetailRow = ({ label, value }: { label: string; value: string }) => (
-  <>
-    <Typography variant="body1">
-      <Box component="span" fontWeight={600} color="text.primary">
-        {label}:
-      </Box>{" "}
-      <Box component="span" color="text.secondary">
-        {value}
-      </Box>
-    </Typography>
-    <Divider />
-  </>
-);
 
 interface JobDetailViewProps {
   jobId: string;
@@ -100,71 +85,56 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                       <Progress value={progress} height={10} color="info" />
                     )}
 
-                    <Card>
-                      <CardContent>
-                        <Stack spacing={1.5}>
-                          <DetailRow label="Job ID" value={job.id} />
-                          <DetailRow label="Type" value={job.type} />
-                          <DetailRow label="Progress" value={`${Math.round(progress)}%`} />
-                          <DetailRow label="Created" value={formatDate(job.created)} />
-                          <DetailRow label="Started" value={formatDate(startedAt)} />
-                          <DetailRow label="Completed" value={formatDate(completedAt)} />
-                          <DetailRow
-                            label="Attempts"
-                            value={`${job.attempts} / ${job.maxAttempts}`}
-                          />
-                        </Stack>
-                      </CardContent>
-                    </Card>
+                    <PageSection title="Details" icon={<Icon name={IconName.Info} />} variant="outlined">
+                      <MetadataList
+                        layout="responsive"
+                        size="medium"
+                        items={[
+                          { label: "Job ID", value: job.id, variant: "mono" },
+                          { label: "Type", value: job.type },
+                          { label: "Progress", value: `${Math.round(progress)}%` },
+                          { label: "Created", value: formatDate(job.created) },
+                          { label: "Started", value: formatDate(startedAt) },
+                          { label: "Completed", value: formatDate(completedAt) },
+                          { label: "Attempts", value: `${job.attempts} / ${job.maxAttempts}` },
+                        ]}
+                      />
+                    </PageSection>
 
                     {error && (
-                      <Card>
-                        <CardContent>
-                          <Typography variant="h2" color="error.main" gutterBottom>
-                            Error
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}
-                          >
-                            {error}
-                          </Typography>
-                        </CardContent>
-                      </Card>
+                      <PageSection title="Error" icon={<Icon name={IconName.Error} />} variant="outlined">
+                        <Typography
+                          variant="body2"
+                          color="error.main"
+                          sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}
+                        >
+                          {error}
+                        </Typography>
+                      </PageSection>
                     )}
 
                     {result && Object.keys(result).length > 0 && (
-                      <Card>
-                        <CardContent>
-                          <Typography variant="h2" gutterBottom>
-                            Result
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            component="pre"
-                            sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap", m: 0 }}
-                          >
-                            {JSON.stringify(result, null, 2)}
-                          </Typography>
-                        </CardContent>
-                      </Card>
+                      <PageSection title="Result" variant="outlined">
+                        <Typography
+                          variant="body2"
+                          component="pre"
+                          sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap", m: 0 }}
+                        >
+                          {JSON.stringify(result, null, 2)}
+                        </Typography>
+                      </PageSection>
                     )}
 
                     {job.metadata && Object.keys(job.metadata).length > 0 && (
-                      <Card>
-                        <CardContent>
-                          <Typography variant="h2" gutterBottom>
-                            Metadata
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            component="pre"
-                            sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap", m: 0 }}
-                          >
-                            {JSON.stringify(job.metadata, null, 2)}
-                          </Typography>
-                        </CardContent>
-                      </Card>
+                      <PageSection title="Metadata" variant="outlined">
+                        <Typography
+                          variant="body2"
+                          component="pre"
+                          sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap", m: 0 }}
+                        >
+                          {JSON.stringify(job.metadata, null, 2)}
+                        </Typography>
+                      </PageSection>
                     )}
                   </Stack>
                 );

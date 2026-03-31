@@ -63,7 +63,7 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
           ]}
           onNavigate={(href) => navigate({ to: href })}
           title="Stations"
-          icon={<Icon name={IconName.RocketLaunch} />}
+          icon={<Icon name={IconName.SatelliteAlt} />}
           primaryAction={
             <Button
               variant="contained"

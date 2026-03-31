@@ -4,7 +4,7 @@ import type {
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingWithConnectorEntity,
 } from "@portalai/core/contracts";
-import { Box, Icon, IconName, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
+import { Box, Icon, IconName, MetadataList, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -96,50 +96,22 @@ export const ColumnDefinitionDetailView: React.FC<
                     </Stack>
                   </PageHeader>
 
+
+
                   <PageGrid columns={{ xs: 1, lg: 2 }}>
                     {/* Details Section */}
                     <PageGridItem>
                       <PageSection title="Details" variant="outlined">
-                        <Stack spacing={1}>
-                          <Typography variant="body2" color="text.secondary">
-                            Key:{" "}
-                            <Typography
-                              component="span"
-                              variant="body2"
-                              sx={{ fontFamily: "monospace" }}
-                            >
-                              {cd.key}
-                            </Typography>
-                          </Typography>
-
-                          {cd.description && (
-                            <Typography variant="body2" color="text.secondary">
-                              Description: {cd.description}
-                            </Typography>
-                          )}
-
-                          {cd.format && (
-                            <Typography variant="body2" color="text.secondary">
-                              Format: {cd.format}
-                            </Typography>
-                          )}
-
-                          {cd.defaultValue && (
-                            <Typography variant="body2" color="text.secondary">
-                              Default Value: {cd.defaultValue}
-                            </Typography>
-                          )}
-
-                          {cd.enumValues && cd.enumValues.length > 0 && (
-                            <Typography variant="body2" color="text.secondary">
-                              Enum Values: {cd.enumValues.join(", ")}
-                            </Typography>
-                          )}
-
-                          <Typography variant="body2" color="text.secondary">
-                            Created: {new Date(cd.created).toLocaleString()}
-                          </Typography>
-                        </Stack>
+                        <MetadataList
+                          items={[
+                            { label: "Key", value: cd.key, variant: "mono" },
+                            { label: "Description", value: cd.description ?? "", hidden: !cd.description },
+                            { label: "Format", value: cd.format ?? "", hidden: !cd.format },
+                            { label: "Default Value", value: cd.defaultValue ?? "", hidden: !cd.defaultValue },
+                            { label: "Enum Values", value: cd.enumValues?.join(", ") ?? "", hidden: !cd.enumValues || cd.enumValues.length === 0 },
+                            { label: "Created", value: new Date(cd.created).toLocaleString() },
+                          ]}
+                        />
                       </PageSection>
                     </PageGridItem>
 

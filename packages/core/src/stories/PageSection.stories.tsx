@@ -24,7 +24,7 @@ const meta = {
     },
     variant: {
       control: "select",
-      options: ["default", "outlined"],
+      options: ["divider", "outlined"],
       description: "Visual variant",
     },
     spacing: {

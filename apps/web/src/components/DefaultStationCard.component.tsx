@@ -5,10 +5,9 @@ import type {
   OrganizationGetResponse,
   StationGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Button, Icon, IconName, PageEmptyState, Stack, Typography } from "@portalai/core/ui";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
+import { Button, DetailCard, Icon, IconName, MetadataList, PageEmptyState, Stack, Typography } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import Link from "@mui/material/Link";
 import RocketLaunch from "@mui/icons-material/RocketLaunch";
 
 import DataResult from "./DataResult.component";
@@ -46,7 +45,7 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
     return (
       <PageEmptyState
         data-testid="default-station-card"
-        icon={<Icon name={IconName.RocketLaunch} />}
+        icon={<Icon name={IconName.SatelliteAlt} />}
         title="No default station"
         description="Go to Stations to set one."
         action={
@@ -59,54 +58,54 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
   }
 
   return (
-    <Card variant="outlined" data-testid="default-station-card">
-      <CardContent>
-        <Stack direction="row" alignItems="baseline" spacing={1}>
-          <Typography variant="h6" gutterBottom>{station.name}</Typography>
-          {onViewStation && (
-            <Typography
-              variant="caption"
-              color="primary"
-              onClick={() => onViewStation(station.id)}
-              sx={{ cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
-            >
-              View Station
-            </Typography>
-          )}
+    <DetailCard
+      title={station.name}
+      data-testid="default-station-card"
+      onClick={onViewStation ? () => onViewStation(station.id) : undefined}
+      actions={[
+        {
+          label: "Open Portal",
+          icon: <RocketLaunch />,
+          variant: "contained",
+          onClick: () => onLaunchPortal(station.id),
+        },
+      ]}
+    >
+      <Stack spacing={1}>
+        <Stack direction="row" spacing={0.5} alignItems="baseline">
+          <Typography variant="caption" color="text.secondary">Default Station</Typography>
+          <Link
+            component="span"
+            variant="caption"
+            role="link"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onChangeDefault(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onChangeDefault(); } }}
+            sx={{ cursor: "pointer" }}
+          >
+            (change)
+          </Link>
         </Stack>
-        <Stack spacing={1} sx={{ mb: 2 }}>
-          <Stack direction="row" spacing={0.5} alignItems="baseline">
-            <Typography variant="caption" color="text.secondary">Default Station</Typography>
-            <Typography
-              variant="caption"
-              color="primary"
-              onClick={onChangeDefault}
-              sx={{ cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
-            >
-              (change)
-            </Typography>
-          </Stack>
-          {station.description && (
-            <Typography variant="body2" color="text.secondary">
-              {station.description}
-            </Typography>
-          )}
-          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-            {station.toolPacks.map((pack) => (
-              <Chip key={pack} label={pack} size="small" variant="outlined" />
-            ))}
-          </Stack>
-        </Stack>
-        <Button
-          variant="contained"
-          size="small"
-          startIcon={<RocketLaunch />}
-          onClick={() => onLaunchPortal(station.id)}
-        >
-          Open Portal
-        </Button>
-      </CardContent>
-    </Card>
+        <MetadataList
+          layout="stacked"
+          items={[
+            { label: "Description", value: station.description ?? "", hidden: !station.description },
+            {
+              label: "Tool Packs",
+              value: (
+                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                  {station.toolPacks.map((pack) => (
+                    <Chip key={pack} label={pack} size="small" variant="outlined" />
+                  ))}
+                </Stack>
+              ),
+              variant: 'chip',
+              hidden: station.toolPacks.length === 0,
+            },
+          ]}
+        />
+      </Stack>
+    </DetailCard>
   );
 };
 

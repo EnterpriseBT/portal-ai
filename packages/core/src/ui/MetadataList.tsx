@@ -26,8 +26,6 @@ export interface MetadataListProps {
    * - "stacked" — label above value, always vertical
    */
   layout?: "inline" | "stacked" | "responsive";
-  /** Fixed width for the label column (px). Only applies to "responsive" and "stacked" layouts. Default: 160. */
-  labelWidth?: number;
   /** Show a divider between items. Default: false. */
   dividers?: boolean;
   /** Vertical spacing between items. Default: 1.5. */
@@ -110,8 +108,7 @@ const InlineRow: React.FC<{
 const ResponsiveRow: React.FC<{
   item: MetadataItem;
   size: "small" | "medium";
-  labelWidth: number;
-}> = ({ item, size, labelWidth }) => {
+}> = ({ item, size }) => {
   const typographyVariant = size === "small" ? "body2" : "body1";
 
   return (
@@ -126,11 +123,11 @@ const ResponsiveRow: React.FC<{
       <MuiTypography
         variant={typographyVariant}
         color="text.secondary"
-        sx={{ minWidth: labelWidth, flexShrink: 0 }}
+        sx={{ flexShrink: 0 }}
       >
         {item.label}
       </MuiTypography>
-      <Box sx={{ flex: 1 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
         <MetadataValue item={item} size={size} />
       </Box>
     </Box>
@@ -158,7 +155,6 @@ export const MetadataList = React.forwardRef<HTMLDivElement, MetadataListProps>(
     {
       items,
       layout = "responsive",
-      labelWidth = 160,
       dividers = false,
       spacing = 1.5,
       size = "small",
@@ -181,11 +177,7 @@ export const MetadataList = React.forwardRef<HTMLDivElement, MetadataListProps>(
           <React.Fragment key={`${item.label}-${i}`}>
             {layout === "inline" && <InlineRow item={item} size={size} />}
             {layout === "responsive" && (
-              <ResponsiveRow
-                item={item}
-                size={size}
-                labelWidth={labelWidth}
-              />
+              <ResponsiveRow item={item} size={size} />
             )}
             {layout === "stacked" && <StackedRow item={item} size={size} />}
             {dividers && i < visible.length - 1 && <Divider />}

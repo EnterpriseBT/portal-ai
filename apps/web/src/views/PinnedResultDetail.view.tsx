@@ -6,14 +6,13 @@ import {
   Button,
   Icon,
   IconName,
+  MetadataList,
   PageHeader,
   PageSection,
   Stack,
-  Typography,
 } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import { ContentBlockRenderer } from "@portalai/core/ui";
-import Chip from "@mui/material/Chip";
 import TextField from "@mui/material/TextField";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -147,21 +146,12 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             },
           ]}
         >
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            data-testid="result-created"
-          >
-            {DateFactory.relativeTime(result.created)}
-          </Typography>
-          <Box>
-            <Chip
-              label={result.type === "vega-lite" ? "Chart" : "Text"}
-              size="small"
-              variant="outlined"
-              data-testid="result-type-chip"
-            />
-          </Box>
+          <MetadataList
+            items={[
+              { label: "Type", value: result.type === "vega-lite" ? "Chart" : "Text", variant: "chip" },
+              { label: "Created", value: DateFactory.relativeTime(result.created) },
+            ]}
+          />
         </PageHeader>
 
         <PageSection variant="outlined" data-testid="result-content">

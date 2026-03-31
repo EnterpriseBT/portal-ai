@@ -44,7 +44,7 @@ describe("PinnedResultDetailUI", () => {
   it("should render result name and type chip", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
     expect(screen.getByRole("heading", { name: "Revenue Summary" })).toBeInTheDocument();
-    expect(screen.getByTestId("result-type-chip")).toHaveTextContent("Text");
+    expect(screen.getByText("Text")).toBeInTheDocument();
   });
 
   it("should render Chart chip for vega-lite type", () => {
@@ -54,12 +54,12 @@ describe("PinnedResultDetailUI", () => {
         result={makePinnedResult({ type: "vega-lite", content: { $schema: "https://vega.github.io/schema/vega-lite/v5.json" } })}
       />
     );
-    expect(screen.getByTestId("result-type-chip")).toHaveTextContent("Chart");
+    expect(screen.getByText("Chart")).toBeInTheDocument();
   });
 
   it("should render relative created timestamp", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
-    expect(screen.getByTestId("result-created")).toHaveTextContent("1h ago");
+    expect(screen.getByText("1h ago")).toBeInTheDocument();
   });
 
   it("should render text content", () => {

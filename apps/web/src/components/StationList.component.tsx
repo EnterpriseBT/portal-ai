@@ -125,7 +125,7 @@ export const StationListUI: React.FC<StationListUIProps> = ({
       <EmptyResults />
     ) : (
       <PageEmptyState
-        icon={<Icon name={IconName.RocketLaunch} />}
+        icon={<Icon name={IconName.SatelliteAlt} />}
         title="No stations found"
         description="Create your first station to get started."
       />

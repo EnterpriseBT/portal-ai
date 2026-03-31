@@ -19,8 +19,8 @@ export interface PageSectionProps {
   secondaryActions?: ActionMenuItem[];
   /** Section body content. */
   children: React.ReactNode;
-  /** Visual variant. "default" uses a top divider, "outlined" wraps in an outlined Paper. */
-  variant?: "default" | "outlined";
+  /** Visual variant. "outlined" wraps in an outlined Paper (default), "divider" uses a top divider. */
+  variant?: "divider" | "outlined";
   /** Spacing between the title row and the body content. Defaults to 2. */
   spacing?: number;
   /** Optional padding applied inside the section (useful with "outlined" variant). */
@@ -37,7 +37,7 @@ export const PageSection = React.forwardRef<HTMLDivElement, PageSectionProps>(
       primaryAction,
       secondaryActions,
       children,
-      variant = "default",
+      variant = "outlined",
       spacing = 2,
       padding,
       className,
@@ -94,7 +94,7 @@ export const PageSection = React.forwardRef<HTMLDivElement, PageSectionProps>(
 
     const content = (
       <Stack spacing={hasHeader ? spacing : 0}>
-        {variant === "default" && hasHeader && <Divider />}
+        {variant === "divider" && hasHeader && <Divider />}
         {header}
         <Box>{children}</Box>
       </Stack>

@@ -6,7 +6,7 @@ import type {
   PortalListRequestQuery,
   PortalListResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Button, Icon, IconName, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, MetadataList, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -145,7 +145,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       ]}
                       onNavigate={(href) => navigate({ to: href })}
                       title={station.name}
-                      icon={<Icon name={IconName.RocketLaunch} />}
+                      icon={<Icon name={IconName.SatelliteAlt} />}
                       primaryAction={
                         <Button
                           variant="contained"
@@ -166,34 +166,48 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           {station.description}
                         </Typography>
                       )}
-                      <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
-                        {station.toolPacks.map((pack) => (
-                          <Chip
-                            key={pack}
-                            icon={<HandymanOutlined fontSize="small" />}
-                            label={pack}
-                            size="small"
-                            variant="outlined"
-                          />
-                        ))}
-                      </Stack>
-                      {(station.instances ?? []).length > 0 && (
-                        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
-                          {station.instances!.map((inst) => (
-                            <Chip
-                              key={inst.id}
-                              icon={<MemoryOutlined fontSize="small" />}
-                              label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
-                              size="small"
-                              variant="outlined"
-                              color="primary"
-                            />
-                          ))}
-                        </Stack>
-                      )}
-                      <Typography variant="body2" color="text.secondary">
-                        Created: {DateFactory.relativeTime(station.created)}
-                      </Typography>
+                      <MetadataList
+                        items={[
+                          {
+                            label: "Tool Packs",
+                            value: (
+                              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+                                {station.toolPacks.map((pack) => (
+                                  <Chip
+                                    key={pack}
+                                    icon={<HandymanOutlined fontSize="small" />}
+                                    label={pack}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                ))}
+                              </Stack>
+                            ),
+                            variant: "chip",
+                            hidden: station.toolPacks.length === 0,
+                          },
+                          {
+                            label: "Connectors",
+                            value: (
+                              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+                                {(station.instances ?? []).map((inst) => (
+                                  <Chip
+                                    key={inst.id}
+                                    icon={<MemoryOutlined fontSize="small" />}
+                                    label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                  />
+                                ))}
+                              </Stack>
+                            ),
+                            variant: "chip",
+                            hidden: (station.instances ?? []).length === 0,
+                          },
+                          { label: "Created", value: DateFactory.relativeTime(station.created) },
+                        ]}
+                      />
                     </PageHeader>
 
 

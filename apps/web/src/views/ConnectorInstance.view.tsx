@@ -5,7 +5,7 @@ import type {
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Button, Icon, IconName, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, MetadataList, PageEmptyState, PageHeader, PageSection, Stack } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -129,41 +129,27 @@ export const ConnectorInstanceView = ({
                       { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
                     ]}
                   >
-                    <Box>
-                      <Chip
-                        label={upperFirst(ci.status)}
-                        size="small"
-                        color={STATUS_COLOR[ci.status] ?? "default"}
-                        variant="outlined"
-                      />
-                      {ci.connectorDefinition && (
-                        <Typography variant="body1" color="text.secondary">
-                          Connector: {ci.connectorDefinition.display}
-                        </Typography>
-                      )}
-
-                      {ci.config && Object.keys(ci.config).length > 0 && (
-                        <Typography variant="body2" color="text.secondary">
-                          Config: {JSON.stringify(ci.config)}
-                        </Typography>
-                      )}
-
-                      {ci.lastSyncAt && (
-                        <Typography variant="body2" color="text.secondary">
-                          Last sync: {new Date(ci.lastSyncAt).toLocaleString()}
-                        </Typography>
-                      )}
-
-                      {ci.status === "error" && ci.lastErrorMessage && (
-                        <Typography variant="body2" color="error">
-                          Error: {ci.lastErrorMessage}
-                        </Typography>
-                      )}
-
-                      <Typography variant="body2" color="text.secondary">
-                        Created: {new Date(ci.created).toLocaleString()}
-                      </Typography>
-                    </Box>
+                    <MetadataList
+                      items={[
+                        {
+                          label: "Status",
+                          value: (
+                            <Chip
+                              label={upperFirst(ci.status)}
+                              size="small"
+                              color={STATUS_COLOR[ci.status] ?? "default"}
+                              variant="outlined"
+                            />
+                          ),
+                          variant: "chip",
+                        },
+                        { label: "Connector", value: ci.connectorDefinition?.display ?? "", hidden: !ci.connectorDefinition },
+                        { label: "Config", value: ci.config ? JSON.stringify(ci.config) : "", hidden: !ci.config || Object.keys(ci.config).length === 0, variant: "mono" },
+                        { label: "Last sync", value: ci.lastSyncAt ? new Date(ci.lastSyncAt).toLocaleString() : "", hidden: !ci.lastSyncAt },
+                        { label: "Error", value: ci.lastErrorMessage ?? "", hidden: !(ci.status === "error" && ci.lastErrorMessage) },
+                        { label: "Created", value: new Date(ci.created).toLocaleString() },
+                      ]}
+                    />
                   </PageHeader>
 
                   {/* Section 2: Entities List */}

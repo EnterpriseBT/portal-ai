@@ -11,7 +11,7 @@ import type {
   AssignedEntityTag,
   ApiSuccessResponse,
 } from "@portalai/core/contracts";
-import { Box, Icon, IconName, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
+import { Box, Icon, IconName, MetadataList, PageHeader, PageSection, Stack } from "@portalai/core/ui";
 import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
@@ -209,35 +209,15 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
             ) : undefined
           }
         >
-          <Box>
-
-            <Chip
-              label={entity.key}
-              size="small"
-              variant="outlined"
-              sx={{ fontFamily: "monospace" }}
-            />
-            {connectorInstanceName && (
-              <Typography variant="body2" color="text.secondary">
-                Connector: {connectorInstanceName}
-              </Typography>
-            )}
-            {accessMode && (
-              <Typography variant="body2" color="text.secondary">
-                Access mode: {accessMode}
-              </Typography>
-            )}
-            {recordCount != null && (
-              <Typography variant="body2" color="text.secondary">
-                Records: {recordCount.toLocaleString()}
-              </Typography>
-            )}
-            {lastSyncAt && (
-              <Typography variant="body2" color="text.secondary">
-                Last sync: {new Date(lastSyncAt).toLocaleString()}
-              </Typography>
-            )}
-          </Box>
+          <MetadataList
+            items={[
+              { label: "Key", value: entity.key, variant: "mono" },
+              { label: "Connector", value: connectorInstanceName ?? "", hidden: !connectorInstanceName },
+              { label: "Access mode", value: accessMode ?? "", hidden: !accessMode },
+              { label: "Records", value: recordCount != null ? recordCount.toLocaleString() : "", hidden: recordCount == null },
+              { label: "Last sync", value: lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "", hidden: !lastSyncAt },
+            ]}
+          />
         </PageHeader>
 
         {/* Tags */}
