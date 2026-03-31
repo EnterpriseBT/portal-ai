@@ -4,7 +4,7 @@ import type {
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingWithConnectorEntity,
 } from "@portalai/core/contracts";
-import { Box, Icon, IconName, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
+import { Box, Icon, IconName, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -96,96 +96,102 @@ export const ColumnDefinitionDetailView: React.FC<
                     </Stack>
                   </PageHeader>
 
-                  {/* Details Section */}
-                  <PageSection title="Details" variant="outlined">
-                    <Stack spacing={1}>
-                      <Typography variant="body2" color="text.secondary">
-                        Key:{" "}
-                        <Typography
-                          component="span"
-                          variant="body2"
-                          sx={{ fontFamily: "monospace" }}
-                        >
-                          {cd.key}
-                        </Typography>
-                      </Typography>
+                  <PageGrid columns={{ xs: 1, lg: 2 }}>
+                    {/* Details Section */}
+                    <PageGridItem>
+                      <PageSection title="Details" variant="outlined">
+                        <Stack spacing={1}>
+                          <Typography variant="body2" color="text.secondary">
+                            Key:{" "}
+                            <Typography
+                              component="span"
+                              variant="body2"
+                              sx={{ fontFamily: "monospace" }}
+                            >
+                              {cd.key}
+                            </Typography>
+                          </Typography>
 
-                      {cd.description && (
-                        <Typography variant="body2" color="text.secondary">
-                          Description: {cd.description}
-                        </Typography>
-                      )}
+                          {cd.description && (
+                            <Typography variant="body2" color="text.secondary">
+                              Description: {cd.description}
+                            </Typography>
+                          )}
 
-                      {cd.format && (
-                        <Typography variant="body2" color="text.secondary">
-                          Format: {cd.format}
-                        </Typography>
-                      )}
+                          {cd.format && (
+                            <Typography variant="body2" color="text.secondary">
+                              Format: {cd.format}
+                            </Typography>
+                          )}
 
-                      {cd.defaultValue && (
-                        <Typography variant="body2" color="text.secondary">
-                          Default Value: {cd.defaultValue}
-                        </Typography>
-                      )}
+                          {cd.defaultValue && (
+                            <Typography variant="body2" color="text.secondary">
+                              Default Value: {cd.defaultValue}
+                            </Typography>
+                          )}
 
-                      {cd.enumValues && cd.enumValues.length > 0 && (
-                        <Typography variant="body2" color="text.secondary">
-                          Enum Values: {cd.enumValues.join(", ")}
-                        </Typography>
-                      )}
+                          {cd.enumValues && cd.enumValues.length > 0 && (
+                            <Typography variant="body2" color="text.secondary">
+                              Enum Values: {cd.enumValues.join(", ")}
+                            </Typography>
+                          )}
 
-                      <Typography variant="body2" color="text.secondary">
-                        Created: {new Date(cd.created).toLocaleString()}
-                      </Typography>
-                    </Stack>
-                  </PageSection>
+                          <Typography variant="body2" color="text.secondary">
+                            Created: {new Date(cd.created).toLocaleString()}
+                          </Typography>
+                        </Stack>
+                      </PageSection>
+                    </PageGridItem>
 
-                  {/* Field Mappings Section */}
-                  <PageSection title="Field Mappings" icon={<Icon name={IconName.Link} />}>
-                    <PaginationToolbar {...mappingsPagination.toolbarProps} />
+                    {/* Field Mappings Section */}
+                    <PageGridItem>
+                      <PageSection title="Field Mappings" icon={<Icon name={IconName.Link} />}>
+                        <PaginationToolbar {...mappingsPagination.toolbarProps} />
 
-                    <Box sx={{ mt: 2 }}>
-                      <FieldMappingDataList<FieldMappingListWithConnectorEntityResponsePayload>
-                        query={
-                          {
-                            columnDefinitionId,
-                            include: "connectorEntity",
-                            ...mappingsPagination.queryParams,
-                          } as FieldMappingListRequestQuery
-                        }
-                      >
-                        {(mappingsResult) => (
-                          <SyncTotal
-                            total={mappingsResult.data?.total}
-                            setTotal={mappingsPagination.setTotal}
+                        <Box sx={{ mt: 2 }}>
+                          <FieldMappingDataList<FieldMappingListWithConnectorEntityResponsePayload>
+                            query={
+                              {
+                                columnDefinitionId,
+                                include: "connectorEntity",
+                                ...mappingsPagination.queryParams,
+                              } as FieldMappingListRequestQuery
+                            }
                           >
-                            <DataResult results={{ mappings: mappingsResult }}>
-                              {({
-                                mappings,
-                              }: {
-                                mappings: FieldMappingListWithConnectorEntityResponsePayload;
-                              }) => {
-                                if (mappings.fieldMappings.length === 0) {
-                                  return (
-                                    <PageEmptyState
-                                      icon={<Icon name={IconName.Link} />}
-                                      title="No field mappings found"
-                                    />
-                                  );
-                                }
+                            {(mappingsResult) => (
+                              <SyncTotal
+                                total={mappingsResult.data?.total}
+                                setTotal={mappingsPagination.setTotal}
+                              >
+                                <DataResult results={{ mappings: mappingsResult }}>
+                                  {({
+                                    mappings,
+                                  }: {
+                                    mappings: FieldMappingListWithConnectorEntityResponsePayload;
+                                  }) => {
+                                    if (mappings.fieldMappings.length === 0) {
+                                      return (
+                                        <PageEmptyState
+                                          icon={<Icon name={IconName.Link} />}
+                                          title="No field mappings found"
+                                        />
+                                      );
+                                    }
 
-                                return (
-                                  <FieldMappingTable
-                                    fieldMappings={mappings.fieldMappings}
-                                  />
-                                );
-                              }}
-                            </DataResult>
-                          </SyncTotal>
-                        )}
-                      </FieldMappingDataList>
-                    </Box>
-                  </PageSection>
+                                    return (
+                                      <FieldMappingTable
+                                        fieldMappings={mappings.fieldMappings}
+                                      />
+                                    );
+                                  }}
+                                </DataResult>
+                              </SyncTotal>
+                            )}
+                          </FieldMappingDataList>
+                        </Box>
+                      </PageSection>
+                    </PageGridItem>
+                  </PageGrid>
                 </Stack>
               );
             }}

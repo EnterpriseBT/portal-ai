@@ -464,32 +464,32 @@ Introduce responsive grid layouts where views currently use single-column stacks
 
 ### Checklist
 
-- [ ] **6.1** `views/Dashboard.view.tsx`
+- [x] **6.1** `views/Dashboard.view.tsx`
   - PageGrid columns={xs:1, md:2}
   - PageGridItem: Default Station card (1 col)
   - PageGridItem: Pinned Results section (1 col)
   - PageGridItem span={xs:1, md:2}: Recent Portals section (full width)
 
-- [ ] **6.2** `views/EntityRecordDetail.view.tsx`
+- [x] **6.2** `views/EntityRecordDetail.view.tsx`
   - PageGrid columns={xs:1, md:2}
   - PageGridItem: Metadata section
   - PageGridItem: Entity Groups metadata
   - PageGridItem span={xs:1, md:2}: Fields section (full width)
   - PageGridItem span={xs:1, md:2}: Related Records section (full width)
 
-- [ ] **6.3** `views/ColumnDefinitionDetail.view.tsx`
+- [x] **6.3** `views/ColumnDefinitionDetail.view.tsx`
   - PageGrid columns={xs:1, lg:2}
   - PageGridItem: Details section (outlined)
   - PageGridItem: Field Mappings section
   - Assess whether content width is sufficient at lg breakpoint; fall back to single column if not
 
-- [ ] **6.4** `views/Settings.view.tsx`
+- [x] **6.4** `views/Settings.view.tsx`
   - PageGrid columns={xs:1, md:2}
   - PageGridItem: Profile section (outlined)
   - PageGridItem: Organization section (outlined)
   - Only applies if tabs are removed in favor of side-by-side; otherwise skip
 
-- [ ] **6.5** `views/ConnectorInstance.view.tsx`
+- [x] **6.5** `views/ConnectorInstance.view.tsx`
   - Assess whether metadata and entities section benefit from side-by-side layout
   - If metadata is short enough: PageGrid columns={xs:1, lg:2}, metadata + entities side by side
   - If not: skip — single column is fine
@@ -518,10 +518,10 @@ npm run build               # Production build all packages
 
 ### Manual Smoke Tests
 
-- [ ] Open each list page → confirm PageHeader renders breadcrumbs, title, icon, and primary action correctly
-- [ ] Open each detail page → click ⋮ overflow menu → confirm secondary actions appear and fire
-- [ ] Resize browser from mobile → desktop → confirm responsive stacking on PageHeader, PageSection, DetailCard, and PageGrid
-- [ ] Navigate to an empty list → confirm PageEmptyState renders icon, title, description, and action button
-- [ ] Click a DetailCard → confirm navigation fires; click an action button on a clickable card → confirm only the action fires (not the card click)
-- [ ] Verify no console warnings about nested `<button>` elements or hydration mismatches
-- [ ] Run Lighthouse accessibility audit on at least 3 views → confirm no new a11y violations
+- [x] Open each list page → confirm PageHeader renders breadcrumbs, title, icon, and primary action correctly
+- [x] Open each detail page → click ⋮ overflow menu → confirm secondary actions appear and fire
+- [x] Resize browser from mobile → desktop → confirm responsive stacking on PageHeader, PageSection, DetailCard, and PageGrid
+- [x] Navigate to an empty list → confirm PageEmptyState renders icon, title, description, and action button
+- [x] Click a DetailCard → confirm navigation fires; click an action button on a clickable card → confirm only the action fires (not the card click)
+- [x] Verify no console warnings about nested `<button>` elements or hydration mismatches
+- [x] Run Lighthouse accessibility audit on at least 3 views → confirm no new a11y violations

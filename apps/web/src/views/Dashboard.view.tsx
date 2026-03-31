@@ -6,6 +6,8 @@ import {
   Button,
   Icon,
   IconName,
+  PageGrid,
+  PageGridItem,
   PageHeader,
   PageSection,
   Stack,
@@ -64,23 +66,31 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
         <HealthCheck showLabel />
       </PageHeader>
 
-      <DefaultStationCardConnected
-        onLaunchPortal={onLaunchPortal}
-        onChangeDefault={onChangeDefault}
-        onViewStation={onViewStation}
-      />
+      <PageGrid columns={{ xs: 1, md: 2 }}>
+        <PageGridItem>
+          <DefaultStationCardConnected
+            onLaunchPortal={onLaunchPortal}
+            onChangeDefault={onChangeDefault}
+            onViewStation={onViewStation}
+          />
+        </PageGridItem>
 
-      <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
-        <PinnedResultsListConnected
-          onResultClick={onPinnedResultClick}
-          onUnpin={onUnpinResult}
-          onViewAll={onViewAllPinnedResults}
-        />
-      </PageSection>
+        <PageGridItem>
+          <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
+            <PinnedResultsListConnected
+              onResultClick={onPinnedResultClick}
+              onUnpin={onUnpinResult}
+              onViewAll={onViewAllPinnedResults}
+            />
+          </PageSection>
+        </PageGridItem>
 
-      <PageSection title="Recent Portals" icon={<Icon name={IconName.RocketLaunch} />}>
-        <RecentPortalsListConnected onPortalClick={onPortalClick} />
-      </PageSection>
+        <PageGridItem span={{ xs: 1, md: 2 }}>
+          <PageSection title="Recent Portals" icon={<Icon name={IconName.RocketLaunch} />}>
+            <RecentPortalsListConnected onPortalClick={onPortalClick} />
+          </PageSection>
+        </PageGridItem>
+      </PageGrid>
     </Stack>
   </Box>
 );
