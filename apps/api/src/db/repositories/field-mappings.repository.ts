@@ -86,6 +86,38 @@ export class FieldMappingsRepository extends Repository<
       )) as FieldMappingSelect[];
   }
 
+  /** Find all field mappings that reference a given column definition via refColumnDefinitionId. */
+  async findByRefColumnDefinitionId(
+    refColumnDefinitionId: string,
+    client: DbClient = db
+  ): Promise<FieldMappingSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(fieldMappings.refColumnDefinitionId, refColumnDefinitionId),
+          this.notDeleted()
+        )
+      )) as FieldMappingSelect[];
+  }
+
+  /** Count field mappings for a given column definition (soft-delete aware). */
+  async countByColumnDefinitionId(
+    columnDefinitionId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    return this.count(eq(fieldMappings.columnDefinitionId, columnDefinitionId), client);
+  }
+
+  /** Count field mappings referencing a given column definition via refColumnDefinitionId (soft-delete aware). */
+  async countByRefColumnDefinitionId(
+    refColumnDefinitionId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    return this.count(eq(fieldMappings.refColumnDefinitionId, refColumnDefinitionId), client);
+  }
+
   /**
    * Return field mappings with their associated connector entity attached.
    * Uses a LEFT JOIN so mappings are returned even if the entity is missing.

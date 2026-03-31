@@ -5,11 +5,13 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 export class ApiError extends Error {
   status?: number;
   code: ApiCode;
+  details?: Record<string, unknown>;
 
-  constructor(status: number, code: ApiCode, message: string) {
+  constructor(status: number, code: ApiCode, message: string, details?: Record<string, unknown>) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -32,6 +34,7 @@ export class HttpService {
       success: false,
       message: error.message,
       code: error.code,
+      ...(error.details ? { details: error.details } : {}),
     } as ApiErrorResponse);
   }
 }

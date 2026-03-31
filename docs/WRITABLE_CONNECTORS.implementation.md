@@ -70,53 +70,58 @@ Implements Rules 1-4 from the discovery doc: dependency-blocked delete, immutabl
 
 ### Checklist
 
-- [ ] **1.1** Add `findByColumnDefinitionId` and `findByRefColumnDefinitionId` methods to field mappings repository (if not already present)
+- [x] **1.1** Add `findByColumnDefinitionId` and `findByRefColumnDefinitionId` methods to field mappings repository (if not already present)
   - File: `apps/api/src/db/repositories/field-mappings.repository.ts`
   - These query non-deleted field mappings referencing a given column definition via `columnDefinitionId` or `refColumnDefinitionId`
-- [ ] **1.2** Implement Rule 1 — block `DELETE /api/column-definitions/:id` when field mappings reference it
+- [x] **1.2** Implement Rule 1 — block `DELETE /api/column-definitions/:id` when field mappings reference it
   - File: `apps/api/src/routes/column-definition.router.ts`
   - Before soft-deleting, query field mappings by `columnDefinitionId` and `refColumnDefinitionId`
   - If any exist, return `422 COLUMN_DEFINITION_HAS_DEPENDENCIES` with dependency list
   - If none, proceed with `softDelete`
-- [ ] **1.3** Implement Rule 2 — reject `key` in `PATCH /api/column-definitions/:id`
+- [x] **1.3** Implement Rule 2 — reject `key` in `PATCH /api/column-definitions/:id`
   - File: `apps/api/src/routes/column-definition.router.ts`
   - If request body contains `key`, return `422 COLUMN_DEFINITION_KEY_IMMUTABLE`
-- [ ] **1.4** Implement Rule 3 — validate type transitions in `PATCH /api/column-definitions/:id`
+- [x] **1.4** Implement Rule 3 — validate type transitions in `PATCH /api/column-definitions/:id`
   - File: `apps/api/src/routes/column-definition.router.ts`
   - If request body contains `type`, check current type -> requested type against `ALLOWED_TYPE_TRANSITIONS`
   - Block all transitions to/from `reference` and `reference-array`
   - If blocked, return `422 COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED`
-- [ ] **1.5** Implement Rule 4 — warn on enum value removal in `PATCH /api/column-definitions/:id`
+- [x] **1.5** Implement Rule 4 — warn on enum value removal in `PATCH /api/column-definitions/:id`
   - File: `apps/api/src/routes/column-definition.router.ts`
   - If `enumValues` is in request body for an `enum`-type column, compare old vs new arrays
   - If values were removed, include `warnings` array in response body
-- [ ] **1.6** Implement `GET /api/column-definitions/:id/impact` endpoint
+- [x] **1.6** Implement `GET /api/column-definitions/:id/impact` endpoint
   - File: `apps/api/src/routes/column-definition.router.ts`
   - Return `{ fieldMappings, refFieldMappings, entityRecords }` counts
   - Follow the existing pattern from `GET /api/connector-instances/:id/impact`
+- [x] **1.7** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+  - `DELETE /api/column-definitions/:id` — document 200, 404, and 422 (`COLUMN_DEFINITION_HAS_DEPENDENCIES`) responses
+  - `PATCH /api/column-definitions/:id` — document 422 codes (`COLUMN_DEFINITION_KEY_IMMUTABLE`, `COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED`), `warnings` array in 200 response
+  - `GET /api/column-definitions/:id/impact` — document response schema with `fieldMappings`, `refFieldMappings`, `entityRecords` counts
+  - Follow the existing `@openapi` JSDoc pattern in `apps/api/src/routes/*.ts` (parsed by `swagger-jsdoc`)
 
 ### Tests
 
-- [ ] **1.T1** Integration test: `DELETE /api/column-definitions/:id` returns 422 when field mappings reference it via `columnDefinitionId`
-- [ ] **1.T2** Integration test: `DELETE /api/column-definitions/:id` returns 422 when field mappings reference it via `refColumnDefinitionId`
-- [ ] **1.T3** Integration test: `DELETE /api/column-definitions/:id` succeeds when no field mappings reference it
-- [ ] **1.T4** Integration test: `DELETE /api/column-definitions/:id` returns 404 for non-existent column
-- [ ] **1.T5** Integration test: `DELETE /api/column-definitions/:id` returns 404 for already-deleted column
-- [ ] **1.T6** Integration test: `PATCH /api/column-definitions/:id` with `key` in body returns 422 `COLUMN_DEFINITION_KEY_IMMUTABLE`
-- [ ] **1.T7** Integration test: `PATCH /api/column-definitions/:id` with allowed type transition succeeds (e.g., `string` -> `enum`)
-- [ ] **1.T8** Integration test: `PATCH /api/column-definitions/:id` with blocked type transition returns 422 (e.g., `string` -> `boolean`)
-- [ ] **1.T9** Integration test: `PATCH /api/column-definitions/:id` with transition to/from `reference` returns 422
-- [ ] **1.T10** Integration test: `PATCH /api/column-definitions/:id` removing enum values returns 200 with `warnings` array
-- [ ] **1.T11** Integration test: `PATCH /api/column-definitions/:id` adding enum values returns 200 without warnings
-- [ ] **1.T12** Integration test: `GET /api/column-definitions/:id/impact` returns correct counts
-- [ ] **1.T13** Integration test: `GET /api/column-definitions/:id/impact` returns 404 for non-existent column
+- [x] **1.T1** Integration test: `DELETE /api/column-definitions/:id` returns 422 when field mappings reference it via `columnDefinitionId`
+- [x] **1.T2** Integration test: `DELETE /api/column-definitions/:id` returns 422 when field mappings reference it via `refColumnDefinitionId`
+- [x] **1.T3** Integration test: `DELETE /api/column-definitions/:id` succeeds when no field mappings reference it
+- [x] **1.T4** Integration test: `DELETE /api/column-definitions/:id` returns 404 for non-existent column
+- [x] **1.T5** Integration test: `DELETE /api/column-definitions/:id` returns 404 for already-deleted column
+- [x] **1.T6** Integration test: `PATCH /api/column-definitions/:id` with `key` in body returns 422 `COLUMN_DEFINITION_KEY_IMMUTABLE`
+- [x] **1.T7** Integration test: `PATCH /api/column-definitions/:id` with allowed type transition succeeds (e.g., `string` -> `enum`)
+- [x] **1.T8** Integration test: `PATCH /api/column-definitions/:id` with blocked type transition returns 422 (e.g., `string` -> `boolean`)
+- [x] **1.T9** Integration test: `PATCH /api/column-definitions/:id` with transition to/from `reference` returns 422
+- [x] **1.T10** Integration test: `PATCH /api/column-definitions/:id` removing enum values returns 200 with `warnings` array
+- [x] **1.T11** Integration test: `PATCH /api/column-definitions/:id` adding enum values returns 200 without warnings
+- [x] **1.T12** Integration test: `GET /api/column-definitions/:id/impact` returns correct counts
+- [x] **1.T13** Integration test: `GET /api/column-definitions/:id/impact` returns 404 for non-existent column
 
 ### Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes — all new and existing tests green
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes — all new and existing tests green
 
 ---
 
@@ -139,6 +144,10 @@ Implements Rule 5 (field mapping delete cascades to entity group members) and en
 - [ ] **2.4** Verify entity group member `DELETE /api/entity-groups/:groupId/members/:memberId` works as direct soft-delete
   - File: `apps/api/src/routes/entity-group-member.router.ts`
   - This endpoint already exists — confirm it uses soft-delete and returns the deleted member
+- [ ] **2.5** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+  - `DELETE /api/field-mappings/:id` — document 200 response with `cascaded.entityGroupMembers` count, and 404 response
+  - `GET /api/field-mappings/:id/impact` — document response schema with `entityGroupMembers` count
+  - Follow the existing `@openapi` JSDoc pattern in `apps/api/src/routes/*.ts`
 
 ### Tests
 
@@ -173,6 +182,10 @@ Implements Rule 6: entity record deletion guarded by the connector instance's re
 - [ ] **3.2** Update existing `DELETE /api/connector-entities/:connectorEntityId/records` (bulk clear) with write capability check
   - File: `apps/api/src/routes/entity-record.router.ts`
   - Add the same `assertWriteCapability()` guard before bulk soft-delete
+- [ ] **3.3** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+  - `DELETE .../records/:id` — document 200, 404, and 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`) responses
+  - `DELETE .../records` (bulk) — update existing annotation to include 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`) response
+  - Follow the existing `@openapi` JSDoc pattern in `apps/api/src/routes/*.ts`
 
 ### Tests
 
@@ -221,6 +234,12 @@ Implements Rule 7: entity deletion with write capability check, cross-entity ref
 - [ ] **4.6** Implement `GET /api/entity-groups/:id/impact` endpoint
   - File: `apps/api/src/routes/entity-group.router.ts`
   - Return `{ entityGroupMembers }` count
+- [ ] **4.7** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+  - `DELETE /api/connector-entities/:id` — document 200 with cascade counts, 404, 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`, `ENTITY_HAS_EXTERNAL_REFERENCES`) responses
+  - `GET /api/connector-entities/:id/impact` — document response schema with all count fields
+  - `DELETE /api/entity-groups/:id` — document 200 with cascade counts, 404 responses
+  - `GET /api/entity-groups/:id/impact` — document response schema with `entityGroupMembers` count
+  - Follow the existing `@openapi` JSDoc pattern in `apps/api/src/routes/*.ts`
 
 ### Tests
 
@@ -259,6 +278,10 @@ Implements update endpoints for entity records and entities, guarded by write ca
   - File: `apps/api/src/routes/connector-entity.router.ts`
   - Call `assertWriteCapability(id)`; if `write` is `false`, return `422 CONNECTOR_INSTANCE_WRITE_DISABLED`
   - Accept updates to mutable entity fields (e.g., `label`, `description`)
+- [ ] **5.3** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+  - `PATCH .../records/:id` — document request body, 200, 404, and 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`) responses
+  - `PATCH /api/connector-entities/:id` — document request body, 200, 404, and 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`) responses
+  - Follow the existing `@openapi` JSDoc pattern in `apps/api/src/routes/*.ts`
 
 ### Tests
 
@@ -434,8 +457,11 @@ Final sweep to confirm everything works together and documentation is up to date
   - Create field mapping -> use as `linkFieldMappingId` on entity group member -> delete field mapping -> verify group member is also soft-deleted
 - [ ] **8.11** Manual smoke test — null `enabledCapabilityFlags` (backwards compatibility):
   - Create instance with `enabledCapabilityFlags: null` on a definition with `write: true` -> verify all write operations succeed (inherits definition capabilities)
-- [ ] **8.12** Update Swagger/OpenAPI docs if auto-generated; otherwise update API README
-  - Document new endpoints, error codes, and response shapes
+- [ ] **8.12** Verify Swagger/OpenAPI completeness for all new and modified endpoints
+  - Run `npm run build` from `apps/api/` and open http://localhost:3001/api-docs to visually confirm all new endpoints appear
+  - Verify each new endpoint has: summary, description, tags, parameters, request body (if applicable), and all response codes (200, 404, 422 with error code names)
+  - Verify the raw spec at http://localhost:3001/api-docs/spec includes all new `@openapi` annotations
+  - If any endpoints are missing or incomplete, fix the `@openapi` JSDoc in the corresponding route file — `swagger-jsdoc` parses `apps/api/src/routes/*.ts` (configured in `apps/api/src/config/swagger.config.ts`)
 - [ ] **8.13** Mark `WRITABLE_CONNECTORS.discovery.md` as implemented or archive
 
 ### Verification

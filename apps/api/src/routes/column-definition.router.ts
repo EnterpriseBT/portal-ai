@@ -14,6 +14,7 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { ALLOWED_TYPE_TRANSITIONS, BLOCKED_TYPES } from "../constants/column-definition-transitions.constants.js";
 import { DbService } from "../services/db.service.js";
 import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -400,7 +401,7 @@ columnDefinitionRouter.post(
  *                 nullable: true
  *     responses:
  *       200:
- *         description: Column definition updated
+ *         description: Column definition updated. May include a `warnings` array when enum values are removed.
  *         content:
  *           application/json:
  *             schema:
@@ -410,7 +411,15 @@ columnDefinitionRouter.post(
  *                   type: boolean
  *                   example: true
  *                 payload:
- *                   $ref: '#/components/schemas/ColumnDefinitionGetResponse'
+ *                   type: object
+ *                   properties:
+ *                     columnDefinition:
+ *                       $ref: '#/components/schemas/ColumnDefinition'
+ *                     warnings:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       description: Present when enum values are removed
  *       400:
  *         description: Invalid request body
  *         content:
@@ -419,6 +428,15 @@ columnDefinitionRouter.post(
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       404:
  *         description: Column definition not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: >
+ *           Guardrail violation. Possible codes:
+ *           COLUMN_DEFINITION_KEY_IMMUTABLE (key field cannot be changed),
+ *           COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED (type transition not allowed)
  *         content:
  *           application/json:
  *             schema:
@@ -443,11 +461,40 @@ columnDefinitionRouter.patch(
         );
       }
 
+      // Rule 2: reject key changes — key is immutable
+      if ("key" in req.body) {
+        return next(
+          new ApiError(422, ApiCode.COLUMN_DEFINITION_KEY_IMMUTABLE, "Column definition key cannot be changed after creation")
+        );
+      }
+
       const existing = await DbService.repository.columnDefinitions.findById(id);
       if (!existing) {
         return next(
           new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
         );
+      }
+
+      // Rule 3: validate type transitions
+      if (parsed.data.type && parsed.data.type !== existing.type) {
+        const oldType = existing.type;
+        const newType = parsed.data.type;
+
+        if (
+          (BLOCKED_TYPES as readonly string[]).includes(oldType) ||
+          (BLOCKED_TYPES as readonly string[]).includes(newType)
+        ) {
+          return next(
+            new ApiError(422, ApiCode.COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED, `Type transitions to or from '${oldType}' and '${newType}' are not allowed`)
+          );
+        }
+
+        const allowed = ALLOWED_TYPE_TRANSITIONS[oldType];
+        if (!allowed || !allowed.includes(newType)) {
+          return next(
+            new ApiError(422, ApiCode.COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED, `Type transition from '${oldType}' to '${newType}' is not allowed`)
+          );
+        }
       }
 
       const { userId } = req.application!.metadata;
@@ -463,8 +510,20 @@ columnDefinitionRouter.patch(
 
       logger.info({ id }, "Column definition updated");
 
+      // Rule 4: warn on enum value removal
+      const warnings: string[] = [];
+      if (parsed.data.enumValues && existing.type === "enum" && existing.enumValues) {
+        const removed = (existing.enumValues as string[]).filter(
+          (v) => !(parsed.data.enumValues as string[]).includes(v)
+        );
+        if (removed.length > 0) {
+          warnings.push(`Removed enum values: ${removed.join(", ")}. Existing records with these values will not be automatically updated.`);
+        }
+      }
+
       return HttpService.success<ColumnDefinitionUpdateResponsePayload>(res, {
         columnDefinition: columnDefinition as unknown as ColumnDefinitionUpdateResponsePayload["columnDefinition"],
+        ...(warnings.length > 0 ? { warnings } : {}),
       });
     } catch (error) {
       logger.error(
@@ -478,12 +537,110 @@ columnDefinitionRouter.patch(
 
 /**
  * @openapi
+ * /api/column-definitions/{id}/impact:
+ *   get:
+ *     tags:
+ *       - Column Definitions
+ *     summary: Get deletion impact for a column definition
+ *     description: >
+ *       Returns counts of all associated objects that would be affected
+ *       if this column definition were deleted. Used for pre-flight
+ *       confirmation in the delete dialog.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Column definition ID
+ *     responses:
+ *       200:
+ *         description: Impact counts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     fieldMappings:
+ *                       type: integer
+ *                     refFieldMappings:
+ *                       type: integer
+ *                     entityRecords:
+ *                       type: integer
+ *       404:
+ *         description: Column definition not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+columnDefinitionRouter.get(
+  "/:id/impact",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+
+      const existing = await DbService.repository.columnDefinitions.findById(id);
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+        );
+      }
+
+      const [fieldMappingCount, refFieldMappingCount, fieldMappingsForRecords] = await Promise.all([
+        DbService.repository.fieldMappings.countByColumnDefinitionId(id),
+        DbService.repository.fieldMappings.countByRefColumnDefinitionId(id),
+        DbService.repository.fieldMappings.findByColumnDefinitionId(id),
+      ]);
+
+      // Count entity records across all entities that use this column definition
+      const entityIds = [...new Set(fieldMappingsForRecords.map((fm) => fm.connectorEntityId))];
+      const entityRecords = entityIds.length > 0
+        ? await DbService.repository.entityRecords.countByConnectorEntityIds(entityIds)
+        : 0;
+
+      return HttpService.success(res, {
+        fieldMappings: fieldMappingCount,
+        refFieldMappings: refFieldMappingCount,
+        entityRecords,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch column definition impact"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.COLUMN_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch column definition impact")
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/column-definitions/{id}:
  *   delete:
  *     tags:
  *       - Column Definitions
  *     summary: Delete a column definition
- *     description: Soft-deletes a column definition by ID.
+ *     description: Soft-deletes a column definition by ID. Returns 422 if field mappings reference this column definition.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -515,6 +672,12 @@ columnDefinitionRouter.patch(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: Column definition has dependent field mappings (COLUMN_DEFINITION_HAS_DEPENDENCIES)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
  *       500:
  *         description: Internal server error
  *         content:
@@ -533,6 +696,21 @@ columnDefinitionRouter.delete(
       if (!existing) {
         return next(
           new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+        );
+      }
+
+      // Rule 1: block delete when field mappings reference this column definition
+      const [depsByColumn, depsByRef] = await Promise.all([
+        DbService.repository.fieldMappings.findByColumnDefinitionId(id),
+        DbService.repository.fieldMappings.findByRefColumnDefinitionId(id),
+      ]);
+
+      if (depsByColumn.length > 0 || depsByRef.length > 0) {
+        return next(
+          new ApiError(422, ApiCode.COLUMN_DEFINITION_HAS_DEPENDENCIES, "Column definition has dependent field mappings", {
+            fieldMappings: depsByColumn.map((fm) => fm.id),
+            refFieldMappings: depsByRef.map((fm) => fm.id),
+          })
         );
       }
 

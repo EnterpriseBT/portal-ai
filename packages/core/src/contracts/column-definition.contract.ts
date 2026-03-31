@@ -66,6 +66,7 @@ export type ColumnDefinitionUpdateRequestBody = z.infer<typeof ColumnDefinitionU
 
 export const ColumnDefinitionUpdateResponsePayloadSchema = z.object({
   columnDefinition: ColumnDefinitionSchema,
+  warnings: z.array(z.string()).optional(),
 });
 
 export type ColumnDefinitionUpdateResponsePayload = z.infer<typeof ColumnDefinitionUpdateResponsePayloadSchema>;
