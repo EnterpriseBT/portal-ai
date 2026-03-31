@@ -9,8 +9,8 @@ import type {
 import type { ColumnDefinition } from "@portalai/core/models";
 import {
   DetailCard,
+  MetadataList,
   Stack,
-  Typography,
 } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 
@@ -77,46 +77,32 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
       title={cd.label}
       onClick={onClick ? () => onClick(cd) : undefined}
     >
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-        <Chip
-          label={cd.type}
-          size="small"
-          color={TYPE_COLOR[cd.type] ?? "default"}
-          variant="outlined"
-        />
-        {cd.required && (
-          <Chip label="Required" size="small" color="error" />
-        )}
-      </Stack>
-      <Stack direction="row" spacing={2} alignItems="baseline">
-        <Typography variant="body2" sx={{ fontFamily: "monospace" }} color="text.secondary">
-          {cd.key}
-        </Typography>
-        {cd.description && (
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {cd.description}
-          </Typography>
-        )}
-      </Stack>
-      {(cd.format || cd.defaultValue || cd.enumValues) && (
-        <Stack direction="row" spacing={2} flexWrap="wrap">
-          {cd.format && (
-            <Typography variant="caption" color="text.secondary">
-              Format: {cd.format}
-            </Typography>
-          )}
-          {cd.defaultValue && (
-            <Typography variant="caption" color="text.secondary">
-              Default: {cd.defaultValue}
-            </Typography>
-          )}
-          {cd.enumValues && cd.enumValues.length > 0 && (
-            <Typography variant="caption" color="text.secondary">
-              Values: {cd.enumValues.join(", ")}
-            </Typography>
-          )}
-        </Stack>
-      )}
+      <MetadataList
+        items={[
+          {
+            label: "Type",
+            value: (
+              <Stack direction="row" spacing={1}>
+                <Chip
+                  label={cd.type}
+                  size="small"
+                  color={TYPE_COLOR[cd.type] ?? "default"}
+                  variant="outlined"
+                />
+                {cd.required && (
+                  <Chip label="Required" size="small" color="error" />
+                )}
+              </Stack>
+            ),
+            variant: "chip",
+          },
+          { label: "Key", value: cd.key, variant: "mono" },
+          { label: "Description", value: cd.description ?? "", hidden: !cd.description },
+          { label: "Format", value: cd.format ?? "", hidden: !cd.format },
+          { label: "Default", value: cd.defaultValue ?? "", hidden: !cd.defaultValue },
+          { label: "Values", value: cd.enumValues?.join(", ") ?? "", hidden: !cd.enumValues || cd.enumValues.length === 0 },
+        ]}
+      />
     </DetailCard>
   );
 };

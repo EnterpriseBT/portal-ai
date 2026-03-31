@@ -148,9 +148,9 @@ describe("ColumnDefinitionCardUI", () => {
       enumValues: ["active", "inactive"],
     });
     render(<ColumnDefinitionCardUI columnDefinition={cd} />);
-    expect(screen.getByText("Format: yyyy-MM-dd")).toBeInTheDocument();
-    expect(screen.getByText("Default: 2024-01-01")).toBeInTheDocument();
-    expect(screen.getByText("Values: active, inactive")).toBeInTheDocument();
+    expect(screen.getByText("yyyy-MM-dd")).toBeInTheDocument();
+    expect(screen.getByText("2024-01-01")).toBeInTheDocument();
+    expect(screen.getByText("active, inactive")).toBeInTheDocument();
   });
 
   it("should not render metadata row when no format, default, or enum values", () => {
@@ -160,9 +160,9 @@ describe("ColumnDefinitionCardUI", () => {
       enumValues: null,
     });
     render(<ColumnDefinitionCardUI columnDefinition={cd} />);
-    expect(screen.queryByText(/Format:/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Default:/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Values:/)).not.toBeInTheDocument();
+    expect(screen.queryByText("yyyy-MM-dd")).not.toBeInTheDocument();
+    expect(screen.queryByText("2024-01-01")).not.toBeInTheDocument();
+    expect(screen.queryByText("active, inactive")).not.toBeInTheDocument();
   });
 
   it("should call onClick with column definition when clicked", () => {
