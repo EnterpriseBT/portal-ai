@@ -17,6 +17,8 @@ import {
   EntityRecordImportRequestBodySchema,
   type EntityRecordImportResponsePayload,
   type EntityRecordSyncResponsePayload,
+  EntityRecordPatchRequestBodySchema,
+  type EntityRecordPatchResponsePayload,
   type EntityRecordDeleteOneResponsePayload,
   type EntityRecordDeleteResponsePayload,
 } from "@portalai/core/contracts";
@@ -488,6 +490,154 @@ entityRecordRouter.post(
               error instanceof Error
                 ? error.message
                 : "Failed to sync entity records"
+            )
+      );
+    }
+  }
+);
+
+// ── PATCH /:recordId — Update single record ────────────────────────
+
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records/{recordId}:
+ *   patch:
+ *     tags:
+ *       - Entity Records
+ *     summary: Update a single entity record
+ *     description: >
+ *       Partially updates an entity record's data and/or normalizedData.
+ *       Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *       - in: path
+ *         name: recordId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Entity record ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               data:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Raw source data
+ *               normalizedData:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Normalized data mapped through field mappings
+ *     responses:
+ *       200:
+ *         description: Record updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     record:
+ *                       $ref: '#/components/schemas/EntityRecord'
+ *       404:
+ *         description: Entity record not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+entityRecordRouter.patch(
+  "/:recordId",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { connectorEntityId, recordId } = req.params;
+      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      if (!entity) return;
+
+      await assertWriteCapability(connectorEntityId);
+
+      const parsed = EntityRecordPatchRequestBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(400, ApiCode.ENTITY_RECORD_INVALID_PAYLOAD, "Invalid entity record payload")
+        );
+      }
+
+      if (!parsed.data.data && !parsed.data.normalizedData) {
+        return next(
+          new ApiError(400, ApiCode.ENTITY_RECORD_INVALID_PAYLOAD, "At least one of data or normalizedData must be provided")
+        );
+      }
+
+      const record = await DbService.repository.entityRecords.findById(recordId);
+      if (!record || record.connectorEntityId !== connectorEntityId) {
+        return next(
+          new ApiError(404, ApiCode.ENTITY_RECORD_NOT_FOUND, "Entity record not found")
+        );
+      }
+
+      const { userId } = req.application!.metadata;
+
+      const updated = await DbService.repository.entityRecords
+        .update(recordId, {
+          ...(parsed.data.data && { data: parsed.data.data }),
+          ...(parsed.data.normalizedData && { normalizedData: parsed.data.normalizedData }),
+          updatedBy: userId,
+        })
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_RECORD_UPDATE_FAILED,
+            error instanceof Error ? error.message : "Failed to update record"
+          );
+        });
+
+      logger.info({ connectorEntityId, recordId }, "Entity record updated");
+
+      return HttpService.success<EntityRecordPatchResponsePayload>(res, {
+        record: updated as unknown as EntityRecordPatchResponsePayload["record"],
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to update entity record"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_RECORD_UPDATE_FAILED,
+              error instanceof Error ? error.message : "Failed to update entity record"
             )
       );
     }

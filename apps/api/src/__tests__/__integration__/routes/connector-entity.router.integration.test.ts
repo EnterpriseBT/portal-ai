@@ -1114,4 +1114,54 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
     });
   });
+
+  // ── PATCH /:id — Update connector entity ───────────────────────────
+
+  describe("PATCH /api/connector-entities/:id", () => {
+    it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when write is disabled", async () => {
+      const { entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: false },
+      });
+
+      const res = await request(app)
+        .patch(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ label: "Updated Label" });
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should update entity when write is enabled", async () => {
+      const { entity } = await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .patch(`/api/connector-entities/${entity.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ label: "Updated Label" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorEntity.id).toBe(entity.id);
+      expect(res.body.payload.connectorEntity.label).toBe("Updated Label");
+    });
+
+    it("should return 404 for non-existent entity", async () => {
+      await seedWithCapabilities({
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .patch(`/api/connector-entities/${generateId()}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ label: "Updated Label" });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+    });
+  });
 });

@@ -12,6 +12,8 @@ import {
   type ConnectorEntityGetResponsePayload,
   ConnectorEntityCreateRequestBodySchema,
   type ConnectorEntityCreateResponsePayload,
+  ConnectorEntityPatchRequestBodySchema,
+  type ConnectorEntityPatchResponsePayload,
   type ConnectorEntityDeleteResponsePayload,
   type ConnectorEntityImpactResponsePayload,
 } from "@portalai/core/contracts";
@@ -349,6 +351,136 @@ connectorEntityRouter.post(
         "Failed to create connector entity"
       );
       return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_ENTITY_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create connector entity"));
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connector-entities/{id}:
+ *   patch:
+ *     tags:
+ *       - Connector Entities
+ *     summary: Update a connector entity
+ *     description: >
+ *       Partially updates a connector entity's mutable fields (e.g. label).
+ *       Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               label:
+ *                 type: string
+ *                 minLength: 1
+ *                 description: Human-readable label
+ *     responses:
+ *       200:
+ *         description: Connector entity updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   $ref: '#/components/schemas/ConnectorEntityGetResponse'
+ *       400:
+ *         description: Invalid request body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Connector entity not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+connectorEntityRouter.patch(
+  "/:id",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+
+      const parsed = ConnectorEntityPatchRequestBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(400, ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD, "Invalid connector entity payload")
+        );
+      }
+
+      const existing = await DbService.repository.connectorEntities.findById(id);
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.CONNECTOR_ENTITY_NOT_FOUND, "Connector entity not found")
+        );
+      }
+
+      await assertWriteCapability(id);
+
+      const { userId } = req.application!.metadata;
+
+      const updated = await DbService.repository.connectorEntities
+        .update(id, {
+          ...(parsed.data.label && { label: parsed.data.label }),
+          updatedBy: userId,
+        })
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.CONNECTOR_ENTITY_UPDATE_FAILED,
+            error instanceof Error ? error.message : "Failed to update connector entity"
+          );
+        });
+
+      logger.info({ id }, "Connector entity updated");
+
+      return HttpService.success<ConnectorEntityPatchResponsePayload>(res, {
+        connectorEntity: updated as unknown as ConnectorEntityPatchResponsePayload["connectorEntity"],
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to update connector entity"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_ENTITY_UPDATE_FAILED,
+              error instanceof Error ? error.message : "Failed to update connector entity"
+            )
+      );
     }
   }
 );

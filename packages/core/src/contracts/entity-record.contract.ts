@@ -91,6 +91,21 @@ export const EntityRecordDeleteOneResponsePayloadSchema = z.object({
 
 export type EntityRecordDeleteOneResponsePayload = z.infer<typeof EntityRecordDeleteOneResponsePayloadSchema>;
 
+// ── Update single record ────────────────────────────────────────────
+
+export const EntityRecordPatchRequestBodySchema = z.object({
+  data: z.record(z.string(), z.unknown()).optional(),
+  normalizedData: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type EntityRecordPatchRequestBody = z.infer<typeof EntityRecordPatchRequestBodySchema>;
+
+export const EntityRecordPatchResponsePayloadSchema = z.object({
+  record: EntityRecordSchema,
+});
+
+export type EntityRecordPatchResponsePayload = z.infer<typeof EntityRecordPatchResponsePayloadSchema>;
+
 // ── Delete (clear) ──────────────────────────────────────────────────
 
 export const EntityRecordDeleteResponsePayloadSchema = z.object({

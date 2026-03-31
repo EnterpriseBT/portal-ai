@@ -1646,6 +1646,63 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     });
   });
 
+  // ── PATCH /:recordId — Update single record ───────────────────────
+
+  describe("PATCH /api/connector-entities/:id/records/:recordId", () => {
+    it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when write is disabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: false },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .patch(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token")
+        .send({ data: { name: "Updated" } });
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should update record when write is enabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .patch(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token")
+        .send({ data: { name: "Updated" }, normalizedData: { name: "Updated" } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.record.id).toBe(row.id);
+      expect(res.body.payload.record.data).toEqual({ name: "Updated" });
+      expect(res.body.payload.record.normalizedData).toEqual({ name: "Updated" });
+    });
+
+    it("should return 404 for non-existent record", async () => {
+      const { connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .patch(singleRecordUrl(connectorEntityId, generateId()))
+        .set("Authorization", "Bearer test-token")
+        .send({ data: { name: "Updated" } });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_NOT_FOUND);
+    });
+  });
+
   // ── DELETE / — Bulk clear with write guard ────────────────────────
 
   describe("DELETE /api/connector-entities/:id/records (bulk)", () => {

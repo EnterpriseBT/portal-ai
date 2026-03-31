@@ -269,35 +269,35 @@ Implements update endpoints for entity records and entities, guarded by write ca
 
 ### Checklist
 
-- [ ] **5.1** Implement `PATCH /api/connector-entities/:connectorEntityId/records/:id` endpoint
+- [x] **5.1** Implement `PATCH /api/connector-entities/:connectorEntityId/records/:id` endpoint
   - File: `apps/api/src/routes/entity-record.router.ts`
   - Call `assertWriteCapability(connectorEntityId)`; if `write` is `false`, return `422 CONNECTOR_INSTANCE_WRITE_DISABLED`
   - Accept updates to `data` and/or `normalizedData` fields
   - Validate payload structure before updating
-- [ ] **5.2** Implement `PATCH /api/connector-entities/:id` endpoint
+- [x] **5.2** Implement `PATCH /api/connector-entities/:id` endpoint
   - File: `apps/api/src/routes/connector-entity.router.ts`
   - Call `assertWriteCapability(id)`; if `write` is `false`, return `422 CONNECTOR_INSTANCE_WRITE_DISABLED`
   - Accept updates to mutable entity fields (e.g., `label`, `description`)
-- [ ] **5.3** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
+- [x] **5.3** Add/update `@openapi` JSDoc annotations for all new and modified endpoints
   - `PATCH .../records/:id` — document request body, 200, 404, and 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`) responses
   - `PATCH /api/connector-entities/:id` — document request body, 200, 404, and 422 (`CONNECTOR_INSTANCE_WRITE_DISABLED`) responses
   - Follow the existing `@openapi` JSDoc pattern in `apps/api/src/routes/*.ts`
 
 ### Tests
 
-- [ ] **5.T1** Integration test: `PATCH .../records/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when write is disabled
-- [ ] **5.T2** Integration test: `PATCH .../records/:id` updates record when write is enabled
-- [ ] **5.T3** Integration test: `PATCH .../records/:id` returns 404 for non-existent record
-- [ ] **5.T4** Integration test: `PATCH /api/connector-entities/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when write is disabled
-- [ ] **5.T5** Integration test: `PATCH /api/connector-entities/:id` updates entity when write is enabled
-- [ ] **5.T6** Integration test: `PATCH /api/connector-entities/:id` returns 404 for non-existent entity
+- [x] **5.T1** Integration test: `PATCH .../records/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when write is disabled
+- [x] **5.T2** Integration test: `PATCH .../records/:id` updates record when write is enabled
+- [x] **5.T3** Integration test: `PATCH .../records/:id` returns 404 for non-existent record
+- [x] **5.T4** Integration test: `PATCH /api/connector-entities/:id` returns 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` when write is disabled
+- [x] **5.T5** Integration test: `PATCH /api/connector-entities/:id` updates entity when write is enabled
+- [x] **5.T6** Integration test: `PATCH /api/connector-entities/:id` returns 404 for non-existent entity
 
 ### Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes — all new and existing tests green
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes — all new and existing tests green
 
 ---
 
