@@ -31,6 +31,9 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         findById: mockJobsFindById,
         update: mockJobsUpdate,
       },
+      connectorDefinitions: {
+        findById: jest.fn<() => Promise<unknown>>().mockResolvedValue({ capabilityFlags: { sync: false, query: false, write: true } }),
+      },
       connectorInstances: {
         findByOrgDefinitionAndName: mockConnectorInstancesFindByOrgDefinitionAndName,
         create: mockConnectorInstancesCreate,

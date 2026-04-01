@@ -437,28 +437,28 @@ Adds edit/update forms for mutable fields with validation guardrails from the di
 
 ### Tests
 
-- [ ] **7.T1** Column definition edit form — `key` field is disabled/read-only
-- [ ] **7.T2** Column definition edit form — blocked type transitions are not selectable
-- [ ] **7.T3** Column definition edit form — displays warnings when enum values removed
-- [ ] **7.T4** Column definition edit form — validates via Zod schema; shows field-level errors
-- [ ] **7.T5** Column definition edit form — `aria-invalid` set on invalid fields
-- [ ] **7.T6** Entity / record edit forms — disabled when resolved capabilities lack `write`
-- [ ] **7.T7** Entity / record edit forms — validates and submits correctly when writable
-- [ ] **7.T8** Field mapping edit form — reassigning column definition updates correctly
-- [ ] **7.T9** All edit forms — `FormAlert` renders on `serverError`
-- [ ] **7.T10** All edit forms — calls `onClose` on Cancel
-- [ ] **7.T11** Connector instance detail — read checkbox is always checked and disabled
-- [ ] **7.T12** Connector instance detail — write checkbox is disabled when definition `capabilityFlags.write` is falsy
-- [ ] **7.T13** Connector instance detail — sync checkbox is disabled when definition `capabilityFlags.sync` is falsy
-- [ ] **7.T14** Connector instance detail — toggling write PATCHes `enabledCapabilityFlags`
-- [ ] **7.T15** Connector instance creation — `enabledCapabilityFlags` defaults from definition's `capabilityFlags`
+- [x] **7.T1** Column definition edit form — `key` field is disabled/read-only
+- [x] **7.T2** Column definition edit form — blocked type transitions are not selectable
+- [x] **7.T3** Column definition edit form — displays warnings when enum values removed
+- [x] **7.T4** Column definition edit form — validates via Zod schema; shows field-level errors
+- [x] **7.T5** Column definition edit form — `aria-invalid` set on invalid fields
+- [x] **7.T6** Entity / record edit forms — disabled when resolved capabilities lack `write`
+- [x] **7.T7** Entity / record edit forms — validates and submits correctly when writable
+- [x] **7.T8** Field mapping edit form — reassigning column definition updates correctly
+- [x] **7.T9** All edit forms — `FormAlert` renders on `serverError`
+- [x] **7.T10** All edit forms — calls `onClose` on Cancel
+- [x] **7.T11** Connector instance detail — read checkbox is always checked and disabled
+- [x] **7.T12** Connector instance detail — write checkbox is disabled when definition `capabilityFlags.write` is falsy
+- [x] **7.T13** Connector instance detail — sync checkbox is disabled when definition `capabilityFlags.sync` is falsy
+- [x] **7.T14** Connector instance detail — toggling write PATCHes `enabledCapabilityFlags`
+- [x] **7.T15** Connector instance creation — `enabledCapabilityFlags` defaults from definition's `capabilityFlags`
 
 ### Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run test` passes — all new and existing tests green
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run lint` passes
+- [x] `npm run test` passes — all new and existing tests green
 - [ ] `npm run storybook` — each new/updated form has a story and renders correctly
 
 ---
@@ -469,34 +469,34 @@ Final sweep to confirm everything works together and documentation is up to date
 
 ### Checklist
 
-- [ ] **8.1** Run full test suite from repo root: `npm run test`
-- [ ] **8.2** Run full type check: `npm run type-check`
-- [ ] **8.3** Run full build: `npm run build`
-- [ ] **8.4** Run full lint: `npm run lint`
-- [ ] **8.5** Manual smoke test — column definition lifecycle:
+- [x] **8.1** Run full test suite from repo root: `npm run test`
+- [x] **8.2** Run full type check: `npm run type-check`
+- [x] **8.3** Run full build: `npm run build`
+- [x] **8.4** Run full lint: `npm run lint`
+- [x] **8.5** Manual smoke test — column definition lifecycle:
   - Create column definition -> create field mapping referencing it -> attempt delete (expect 422) -> delete field mapping -> delete column definition (expect 200)
-- [ ] **8.6** Manual smoke test — type change guardrails:
+- [x] **8.6** Manual smoke test — type change guardrails:
   - Create `string` column -> PATCH to `enum` (expect 200) -> PATCH to `boolean` (expect 422)
-- [ ] **8.7** Manual smoke test — write capability guard:
+- [x] **8.7** Manual smoke test — write capability guard:
   - Create connector definition with `capabilityFlags.write: true` -> create instance with `enabledCapabilityFlags: { write: false }` -> create entity + records -> attempt record delete (expect 422 `CONNECTOR_INSTANCE_WRITE_DISABLED`) -> attempt entity delete (expect 422)
   - Update instance to `enabledCapabilityFlags: { write: true }` -> retry deletes (expect 200)
-- [ ] **8.8** Manual smoke test — definition ceiling enforcement:
+- [x] **8.8** Manual smoke test — definition ceiling enforcement:
   - Create connector definition with `capabilityFlags.write: false` -> create instance with `enabledCapabilityFlags: { write: true }` -> attempt record delete (expect 422 — definition ceiling overrides instance override)
-- [ ] **8.9** Manual smoke test — cross-entity reference guard:
+- [x] **8.9** Manual smoke test — cross-entity reference guard:
   - Create Entity A and Entity B -> create reference field mapping on A pointing to B via `refEntityKey` -> attempt delete B (expect 422) -> delete the field mapping on A -> delete B (expect 200)
-- [ ] **8.10** Manual smoke test — field mapping cascade:
+- [x] **8.10** Manual smoke test — field mapping cascade:
   - Create field mapping -> use as `linkFieldMappingId` on entity group member -> delete field mapping -> verify group member is also soft-deleted
-- [ ] **8.11** Manual smoke test — null `enabledCapabilityFlags` (backwards compatibility):
+- [x] **8.11** Manual smoke test — null `enabledCapabilityFlags` (backwards compatibility):
   - Create instance with `enabledCapabilityFlags: null` on a definition with `write: true` -> verify all write operations succeed (inherits definition capabilities)
-- [ ] **8.12** Verify Swagger/OpenAPI completeness for all new and modified endpoints
+- [x] **8.12** Verify Swagger/OpenAPI completeness for all new and modified endpoints
   - Run `npm run build` from `apps/api/` and open http://localhost:3001/api-docs to visually confirm all new endpoints appear
   - Verify each new endpoint has: summary, description, tags, parameters, request body (if applicable), and all response codes (200, 404, 422 with error code names)
   - Verify the raw spec at http://localhost:3001/api-docs/spec includes all new `@openapi` annotations
   - If any endpoints are missing or incomplete, fix the `@openapi` JSDoc in the corresponding route file — `swagger-jsdoc` parses `apps/api/src/routes/*.ts` (configured in `apps/api/src/config/swagger.config.ts`)
-- [ ] **8.13** Mark `WRITABLE_CONNECTORS.discovery.md` as implemented or archive
+- [x] **8.13** Mark `WRITABLE_CONNECTORS.discovery.md` as implemented or archive
 
 ### Verification
 
-- [ ] All automated checks pass: `npm run test && npm run type-check && npm run build && npm run lint`
-- [ ] All manual smoke tests pass
-- [ ] No regressions in existing connector instance delete flow
+- [x] All automated checks pass: `npm run test && npm run type-check && npm run build && npm run lint`
+- [x] All manual smoke tests pass
+- [x] No regressions in existing connector instance delete flow
