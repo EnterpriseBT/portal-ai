@@ -1,4 +1,6 @@
 import type {
+  ColumnDefinitionCreateRequestBody,
+  ColumnDefinitionCreateResponsePayload,
   ColumnDefinitionGetResponsePayload,
   ColumnDefinitionImpactResponsePayload,
   ColumnDefinitionListRequestQuery,
@@ -44,6 +46,12 @@ export const columnDefinitions = {
       undefined,
       options
     ),
+
+  create: () =>
+    useAuthMutation<ColumnDefinitionCreateResponsePayload, ColumnDefinitionCreateRequestBody>({
+      url: "/api/column-definitions",
+      method: "POST",
+    }),
 
   update: (id: string) =>
     useAuthMutation<ColumnDefinitionUpdateResponsePayload, ColumnDefinitionUpdateRequestBody>({

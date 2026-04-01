@@ -1,0 +1,2 @@
+ALTER TABLE "column_definitions" DROP CONSTRAINT "column_definitions_org_key_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "column_definitions_org_key_unique" ON "column_definitions" USING btree ("organization_id","key") WHERE "column_definitions"."deleted" is null;

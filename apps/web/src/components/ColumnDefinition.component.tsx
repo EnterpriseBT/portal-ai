@@ -12,7 +12,9 @@ import {
   MetadataList,
   Stack,
 } from "@portalai/core/ui";
+import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 import { sdk } from "../api/sdk";
 import { ApiError } from "../utils";
@@ -66,16 +68,23 @@ const TYPE_COLOR: Record<string, "primary" | "secondary" | "success" | "warning"
 export interface ColumnDefinitionCardUIProps {
   columnDefinition: ColumnDefinition;
   onClick?: (columnDefinition: ColumnDefinition) => void;
+  onDelete?: (columnDefinition: ColumnDefinition) => void;
 }
 
 export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
   columnDefinition: cd,
   onClick,
+  onDelete,
 }) => {
+  const actions: ActionSuiteItem[] = onDelete
+    ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(cd), color: "error" }]
+    : [];
+
   return (
     <DetailCard
       title={cd.label}
       onClick={onClick ? () => onClick(cd) : undefined}
+      actions={actions}
     >
       <MetadataList
         items={[

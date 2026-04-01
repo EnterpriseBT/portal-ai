@@ -218,6 +218,13 @@
       "when": 1774986800569,
       "tag": "0030_add_enabled_capability_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1775081850875,
+      "tag": "0031_column_definitions_soft_delete_unique_index",
+      "breakpoints": true
     }
   ]
 }
