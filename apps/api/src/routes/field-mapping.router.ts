@@ -392,6 +392,9 @@ fieldMappingRouter.post(
  *                 minLength: 1
  *               isPrimaryKey:
  *                 type: boolean
+ *               columnDefinitionId:
+ *                 type: string
+ *                 description: Reassign this field mapping to a different column definition
  *     responses:
  *       200:
  *         description: Field mapping updated
@@ -442,6 +445,29 @@ fieldMappingRouter.patch(
         return next(
           new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found")
         );
+      }
+
+      if (parsed.data.columnDefinitionId) {
+        const colDef = await DbService.repository.columnDefinitions.findById(parsed.data.columnDefinitionId);
+        if (!colDef) {
+          return next(
+            new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Target column definition not found")
+          );
+        }
+
+        if (parsed.data.columnDefinitionId !== existing.columnDefinitionId) {
+          const duplicate = await DbService.repository.fieldMappings.findMany(
+            and(
+              eq(fieldMappings.connectorEntityId, existing.connectorEntityId),
+              eq(fieldMappings.columnDefinitionId, parsed.data.columnDefinitionId),
+            )
+          );
+          if (duplicate.length > 0) {
+            return next(
+              new ApiError(409, ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN, "A field mapping already exists for this column definition on the same entity")
+            );
+          }
+        }
       }
 
       const { userId } = req.application!.metadata;

@@ -217,42 +217,57 @@ describe("FieldMappingCreateResponsePayloadSchema", () => {
 // ── Update request body ──────────────────────────────────────────────
 
 describe("FieldMappingUpdateRequestBodySchema", () => {
-  it("should accept a partial update with sourceField only", () => {
+  it("should accept an update with required fields", () => {
     const result = FieldMappingUpdateRequestBodySchema.safeParse({
       sourceField: "new_field",
+      columnDefinitionId: "cd-1",
     });
     expect(result.success).toBe(true);
   });
 
-  it("should allow partial update with refBidirectionalFieldMappingId set to a string", () => {
+  it("should allow update with refBidirectionalFieldMappingId set to a string", () => {
     const result = FieldMappingUpdateRequestBodySchema.parse({
+      sourceField: "email",
+      columnDefinitionId: "cd-1",
       refBidirectionalFieldMappingId: "fm-42",
     });
     expect(result.refBidirectionalFieldMappingId).toBe("fm-42");
   });
 
-  it("should allow partial update clearing refBidirectionalFieldMappingId to null", () => {
+  it("should allow update clearing refBidirectionalFieldMappingId to null", () => {
     const result = FieldMappingUpdateRequestBodySchema.parse({
+      sourceField: "email",
+      columnDefinitionId: "cd-1",
       refBidirectionalFieldMappingId: null,
     });
     expect(result.refBidirectionalFieldMappingId).toBeNull();
   });
 
-  it("should accept a partial update with isPrimaryKey only", () => {
+  it("should accept update with isPrimaryKey", () => {
     const result = FieldMappingUpdateRequestBodySchema.safeParse({
+      sourceField: "email",
+      columnDefinitionId: "cd-1",
       isPrimaryKey: true,
     });
     expect(result.success).toBe(true);
   });
 
-  it("should accept an empty object (no-op update)", () => {
+  it("should reject missing required fields", () => {
     const result = FieldMappingUpdateRequestBodySchema.safeParse({});
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject missing columnDefinitionId", () => {
+    const result = FieldMappingUpdateRequestBodySchema.safeParse({
+      sourceField: "email",
+    });
+    expect(result.success).toBe(false);
   });
 
   it("should reject empty sourceField", () => {
     const result = FieldMappingUpdateRequestBodySchema.safeParse({
       sourceField: "",
+      columnDefinitionId: "cd-1",
     });
     expect(result.success).toBe(false);
   });

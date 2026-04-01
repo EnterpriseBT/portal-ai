@@ -20,8 +20,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch, toServerError, ApiError } from "../utils/api.util";
-import type { ServerError } from "../utils/api.util";
+import { useAuthFetch, toServerError } from "../utils/api.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
 import { EditColumnDefinitionDialog } from "../components/EditColumnDefinitionDialog.component";
@@ -66,11 +65,10 @@ export const ColumnDefinitionDetailView: React.FC<
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [updateWarnings, setUpdateWarnings] = useState<string[]>([]);
   const [editingFieldMapping, setEditingFieldMapping] = useState<FieldMappingWithConnectorEntity | null>(null);
-  const [fmUpdatePending, setFmUpdatePending] = useState(false);
-  const [fmUpdateError, setFmUpdateError] = useState<ServerError | null>(null);
 
   const deleteMutation = sdk.columnDefinitions.delete(columnDefinitionId);
   const updateMutation = sdk.columnDefinitions.update(columnDefinitionId);
+  const fmUpdateMutation = sdk.fieldMappings.update(editingFieldMapping?.id ?? "");
   const impactQuery = sdk.columnDefinitions.impact(columnDefinitionId, {
     enabled: deleteDialogOpen,
   });
@@ -101,29 +99,32 @@ export const ColumnDefinitionDetailView: React.FC<
     [updateMutation, queryClient, columnDefinitionId]
   );
 
-  const handleFieldMappingUpdate = useCallback(
-    async (body: FieldMappingUpdateRequestBody) => {
-      if (!editingFieldMapping) return;
-      setFmUpdatePending(true);
-      setFmUpdateError(null);
-      try {
-        await fetchWithAuth(
-          `/api/field-mappings/${encodeURIComponent(editingFieldMapping.id)}`,
-          { method: "PATCH", body: JSON.stringify(body) }
-        );
-        setEditingFieldMapping(null);
-        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
-      } catch (err) {
-        setFmUpdateError(
-          err instanceof ApiError
-            ? { message: err.message, code: err.code }
-            : { message: "Failed to update field mapping", code: "UNKNOWN" }
-        );
-      } finally {
-        setFmUpdatePending(false);
-      }
+  const handleSearchColumnDefinitions = useCallback(
+    async (query: string) => {
+      const res = await fetchWithAuth<{ payload: { columnDefinitions: Array<{ id: string; label: string }> } }>(
+        `/api/column-definitions?search=${encodeURIComponent(query)}&limit=20`
+      );
+      return res.payload.columnDefinitions.map((cd) => ({
+        value: cd.id,
+        label: cd.label,
+      }));
     },
-    [editingFieldMapping, fetchWithAuth, queryClient]
+    [fetchWithAuth]
+  );
+
+  const handleFieldMappingUpdate = useCallback(
+    (body: FieldMappingUpdateRequestBody) => {
+      fmUpdateMutation.mutate(body, {
+        onSuccess: () => {
+          setEditingFieldMapping(null);
+          queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+          if (body.columnDefinitionId) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+          }
+        },
+      });
+    },
+    [fmUpdateMutation, queryClient]
   );
 
   const mappingsPagination = usePagination({
@@ -239,7 +240,7 @@ export const ColumnDefinitionDetailView: React.FC<
                                     return (
                                       <FieldMappingTable
                                         fieldMappings={mappings.fieldMappings}
-                                        onEdit={(fm) => { setEditingFieldMapping(fm); setFmUpdateError(null); }}
+                                        onEdit={(fm) => setEditingFieldMapping(fm)}
                                       />
                                     );
                                   }}
@@ -254,10 +255,14 @@ export const ColumnDefinitionDetailView: React.FC<
                   <EditFieldMappingDialog
                     open={!!editingFieldMapping}
                     onClose={() => setEditingFieldMapping(null)}
-                    fieldMapping={editingFieldMapping ?? { sourceField: "", isPrimaryKey: false }}
+                    fieldMapping={editingFieldMapping
+                      ? { ...editingFieldMapping, columnDefinitionLabel: cd.label }
+                      : { sourceField: "", isPrimaryKey: false, columnDefinitionId: "", columnDefinitionLabel: "" }
+                    }
                     onSubmit={handleFieldMappingUpdate}
-                    isPending={fmUpdatePending}
-                    serverError={fmUpdateError}
+                    onSearchColumnDefinitions={handleSearchColumnDefinitions}
+                    isPending={fmUpdateMutation.isPending}
+                    serverError={toServerError(fmUpdateMutation.error)}
                   />
                   <EditColumnDefinitionDialog
                     open={editDialogOpen}

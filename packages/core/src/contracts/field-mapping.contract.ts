@@ -72,8 +72,9 @@ export type FieldMappingCreateResponsePayload = z.infer<typeof FieldMappingCreat
 // ── Update ────────────────────────────────────────────────────────────
 
 export const FieldMappingUpdateRequestBodySchema = z.object({
-  sourceField: z.string().min(1).optional(),
+  sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional(),
+  columnDefinitionId: z.string(),
   refBidirectionalFieldMappingId: z.string().nullable().optional(),
 });
 

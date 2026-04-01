@@ -549,12 +549,12 @@ describe("Field Mapping Router", () => {
 
   describe("PATCH /api/field-mappings/:id", () => {
     it("should return 404 when field mapping does not exist", async () => {
-      await seedFullChain(db as ReturnType<typeof drizzle>);
+      const { columnDefinitionId } = await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const res = await request(app)
         .patch(`/api/field-mappings/${generateId()}`)
         .set("Authorization", "Bearer test-token")
-        .send({ sourceField: "updated" });
+        .send({ sourceField: "updated", columnDefinitionId });
 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
@@ -575,7 +575,7 @@ describe("Field Mapping Router", () => {
       const res = await request(app)
         .patch(`/api/field-mappings/${mapping.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ sourceField: "updated_field", isPrimaryKey: true });
+        .send({ sourceField: "updated_field", columnDefinitionId, isPrimaryKey: true });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -638,7 +638,7 @@ describe("Field Mapping Router", () => {
       const res = await request(app)
         .patch(`/api/field-mappings/${mappingA.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ refBidirectionalFieldMappingId: mappingB.id });
+        .send({ sourceField: "field_a", columnDefinitionId, refBidirectionalFieldMappingId: mappingB.id });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.fieldMapping.refBidirectionalFieldMappingId).toBe(mappingB.id);
@@ -666,13 +666,13 @@ describe("Field Mapping Router", () => {
       await request(app)
         .patch(`/api/field-mappings/${mappingA.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ refBidirectionalFieldMappingId: mappingB.id });
+        .send({ sourceField: "field_a", columnDefinitionId, refBidirectionalFieldMappingId: mappingB.id });
 
       // Clear it
       const res = await request(app)
         .patch(`/api/field-mappings/${mappingA.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ refBidirectionalFieldMappingId: null });
+        .send({ sourceField: "field_a", columnDefinitionId, refBidirectionalFieldMappingId: null });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.fieldMapping.refBidirectionalFieldMappingId).toBeNull();

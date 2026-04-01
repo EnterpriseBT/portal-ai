@@ -19,11 +19,13 @@ jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     columnDefinitions: {
       get: () => currentGetQuery,
+      update: () => noopMutation,
       delete: () => noopMutation,
       impact: () => ({ data: null, isLoading: false }),
     },
     fieldMappings: {
       list: () => currentFieldMappingListQuery,
+      update: () => noopMutation,
     },
   },
   queryKeys: {
