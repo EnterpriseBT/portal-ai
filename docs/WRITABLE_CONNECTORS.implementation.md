@@ -404,7 +404,7 @@ Adds edit/update forms for mutable fields with validation guardrails from the di
   - Disable edit when resolved capabilities do not include `write: true`
 - [x] **7.4** Create or update field mapping edit form
   - Allow reassigning `columnDefinitionId` (for resolving column definition dependencies before delete)
-- [ ] **7.5** Create or update entity group edit form
+- [x] **7.5** Create or update entity group edit form
   - Allow editing group metadata (e.g., `name`, `description`)
 - [ ] **7.6** Wire `onSuccess` cache invalidation for each update mutation
   - Follow existing invalidation patterns from Phase 6
