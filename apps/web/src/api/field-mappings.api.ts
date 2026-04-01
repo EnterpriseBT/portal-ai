@@ -4,6 +4,8 @@ import type {
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingBidirectionalValidationResponsePayload,
   FieldMappingImpactResponsePayload,
+  FieldMappingUpdateRequestBody,
+  FieldMappingUpdateResponsePayload,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -48,6 +50,12 @@ export const fieldMappings = {
       undefined,
       options
     ),
+
+  update: (id: string) =>
+    useAuthMutation<FieldMappingUpdateResponsePayload, FieldMappingUpdateRequestBody>({
+      url: `/api/field-mappings/${encodeURIComponent(id)}`,
+      method: "PATCH",
+    }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({

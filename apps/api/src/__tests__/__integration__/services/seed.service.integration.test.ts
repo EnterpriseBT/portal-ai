@@ -66,9 +66,9 @@ describe("SeedService Integration Tests", () => {
       expect(csv?.version).toBe("1.0.0");
       expect(csv?.configSchema).toEqual({});
       expect(csv?.capabilityFlags).toEqual({
-        sync: true,
+        sync: false,
         query: true,
-        write: false,
+        write: true,
       });
     });
 

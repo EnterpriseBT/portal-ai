@@ -4,6 +4,8 @@ import type {
   ConnectorEntityListRequestQuery,
   ConnectorEntityListResponsePayload,
   ConnectorEntityListWithMappingsResponsePayload,
+  ConnectorEntityPatchRequestBody,
+  ConnectorEntityPatchResponsePayload,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -43,6 +45,12 @@ export const connectorEntities = {
       undefined,
       options
     ),
+
+  update: (id: string) =>
+    useAuthMutation<ConnectorEntityPatchResponsePayload, ConnectorEntityPatchRequestBody>({
+      url: `/api/connector-entities/${encodeURIComponent(id)}`,
+      method: "PATCH",
+    }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({

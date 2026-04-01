@@ -3,6 +3,8 @@ import type {
   ColumnDefinitionImpactResponsePayload,
   ColumnDefinitionListRequestQuery,
   ColumnDefinitionListResponsePayload,
+  ColumnDefinitionUpdateRequestBody,
+  ColumnDefinitionUpdateResponsePayload,
 } from "@portalai/core/contracts";
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
@@ -42,6 +44,12 @@ export const columnDefinitions = {
       undefined,
       options
     ),
+
+  update: (id: string) =>
+    useAuthMutation<ColumnDefinitionUpdateResponsePayload, ColumnDefinitionUpdateRequestBody>({
+      url: `/api/column-definitions/${encodeURIComponent(id)}`,
+      method: "PATCH",
+    }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({

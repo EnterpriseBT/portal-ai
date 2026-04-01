@@ -396,18 +396,44 @@ Adds edit/update forms for mutable fields with validation guardrails from the di
   - `type` field restricted to allowed transitions (gray out blocked options)
   - Show warnings inline when enum values are removed (from API response `warnings` array)
   - Validate with Zod schema via `validateWithSchema`
-- [ ] **7.2** Create or update connector entity edit form
+- [x] **7.2** Create or update connector entity edit form
   - Mutable fields as applicable (e.g., `label`, `description`)
   - Disable edit when resolved capabilities do not include `write: true`
-- [ ] **7.3** Create or update entity record edit form
+- [x] **7.3** Create or update entity record edit form
   - Allow editing `data` and/or `normalizedData`
   - Disable edit when resolved capabilities do not include `write: true`
-- [ ] **7.4** Create or update field mapping edit form
+- [x] **7.4** Create or update field mapping edit form
   - Allow reassigning `columnDefinitionId` (for resolving column definition dependencies before delete)
 - [ ] **7.5** Create or update entity group edit form
   - Allow editing group metadata (e.g., `name`, `description`)
 - [ ] **7.6** Wire `onSuccess` cache invalidation for each update mutation
   - Follow existing invalidation patterns from Phase 6
+- [ ] **7.7** Default `enabledCapabilityFlags` from definition on connector instance creation
+  - File: `apps/api/src/routes/upload.router.ts` (confirm handler)
+  - When the confirm handler creates the connector instance, set `enabledCapabilityFlags` by copying the definition's `capabilityFlags` (`{ read: query, write, sync }` where `read` is always `true`)
+  - This ensures every new instance starts with explicit flags rather than relying on `null` fallback
+- [ ] **7.8** Expand connector instance PATCH endpoint to accept `enabledCapabilityFlags`
+  - File: `apps/api/src/routes/connector-instance.router.ts`
+  - Extend `ConnectorInstancePatchBodySchema` to accept optional `enabledCapabilityFlags`:
+    ```
+    enabledCapabilityFlags: z.object({
+      read: z.boolean().optional(),
+      write: z.boolean().optional(),
+    }).nullable().optional()
+    ```
+  - Update the PATCH handler to persist `enabledCapabilityFlags` when provided
+  - Validate that the instance cannot enable a flag the definition doesn't support (e.g., reject `write: true` when `definition.capabilityFlags.write` is falsy)
+- [ ] **7.9** Add capability flag editing to connector instance detail page
+  - File: `apps/web/src/views/ConnectorInstance.view.tsx`
+  - Fetch the connector definition to read its `capabilityFlags` ceiling
+  - Display a "Permissions" section with three checkboxes:
+    - **Read** — always checked, always disabled (read is a baseline requirement)
+    - **Write** — editable checkbox; disabled + greyed out when `definition.capabilityFlags.write` is falsy; tooltip on disabled: "This connector type does not support writes"
+    - **Sync** — editable checkbox; disabled + greyed out when `definition.capabilityFlags.sync` is falsy; tooltip on disabled: "This connector type does not support sync"
+  - Checked state reflects current `instance.enabledCapabilityFlags` values
+  - On change, PATCH the connector instance with updated `enabledCapabilityFlags`
+  - File: `apps/web/src/api/connector-instances.api.ts`
+  - Expand `rename` to a general `update` mutation, or add a separate `updateCapabilities` mutation
 
 ### Tests
 
@@ -421,6 +447,11 @@ Adds edit/update forms for mutable fields with validation guardrails from the di
 - [ ] **7.T8** Field mapping edit form — reassigning column definition updates correctly
 - [ ] **7.T9** All edit forms — `FormAlert` renders on `serverError`
 - [ ] **7.T10** All edit forms — calls `onClose` on Cancel
+- [ ] **7.T11** Connector instance detail — read checkbox is always checked and disabled
+- [ ] **7.T12** Connector instance detail — write checkbox is disabled when definition `capabilityFlags.write` is falsy
+- [ ] **7.T13** Connector instance detail — sync checkbox is disabled when definition `capabilityFlags.sync` is falsy
+- [ ] **7.T14** Connector instance detail — toggling write PATCHes `enabledCapabilityFlags`
+- [ ] **7.T15** Connector instance creation — `enabledCapabilityFlags` defaults from definition's `capabilityFlags`
 
 ### Verification
 

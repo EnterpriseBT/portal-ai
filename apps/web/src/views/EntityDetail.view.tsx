@@ -2,6 +2,7 @@ import React, { useCallback, useState } from "react";
 
 import type {
   ConnectorEntityGetResponsePayload,
+  ConnectorEntityPatchRequestBody,
   ColumnDefinitionSummary,
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
@@ -17,6 +18,7 @@ import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -27,6 +29,7 @@ import { useAuthFetch, toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
 import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
+import { EditConnectorEntityDialog } from "../components/EditConnectorEntityDialog.component";
 import { BidirectionalConsistencyBanner } from "../components/BidirectionalConsistencyBanner.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { SyncColumns } from "../components/SyncColumns.component";
@@ -123,6 +126,13 @@ export interface EntityDetailViewUIProps {
   /** Open/close the delete dialog. */
   onOpenDeleteDialog?: () => void;
   onCloseDeleteDialog?: () => void;
+  /** Called when user submits entity edit. */
+  onUpdate?: (body: ConnectorEntityPatchRequestBody) => void;
+  isUpdating?: boolean;
+  updateServerError?: ServerError | null;
+  editDialogOpen?: boolean;
+  onOpenEditDialog?: () => void;
+  onCloseEditDialog?: () => void;
 }
 
 export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
@@ -148,6 +158,12 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   deleteDialogOpen,
   onOpenDeleteDialog,
   onCloseDeleteDialog,
+  onUpdate,
+  isUpdating,
+  updateServerError,
+  editDialogOpen,
+  onOpenEditDialog,
+  onCloseEditDialog,
 }) => {
   const navigate = useNavigate();
 
@@ -237,11 +253,14 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
               </Button>
             ) : undefined
           }
-          secondaryActions={
-            isWriteEnabled
-              ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onOpenDeleteDialog?.(), color: "error", disabled: isDeleting }]
-              : undefined
-          }
+          secondaryActions={[
+            ...(isWriteEnabled
+              ? [{ label: "Edit", icon: <EditIcon />, onClick: () => onOpenEditDialog?.(), disabled: isUpdating }]
+              : []),
+            ...(isWriteEnabled
+              ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onOpenDeleteDialog?.(), color: "error" as const, disabled: isDeleting }]
+              : []),
+          ]}
         >
           <MetadataList
             items={[
@@ -377,6 +396,17 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           </Box>
         </PageSection>
 
+        {editDialogOpen !== undefined && onCloseEditDialog && onUpdate && (
+          <EditConnectorEntityDialog
+            open={!!editDialogOpen}
+            onClose={onCloseEditDialog}
+            entity={entity}
+            onSubmit={onUpdate}
+            isPending={isUpdating}
+            serverError={updateServerError ?? null}
+          />
+        )}
+
         {deleteDialogOpen !== undefined && onCloseDeleteDialog && onDelete && (
           <DeleteConnectorEntityDialog
             open={!!deleteDialogOpen}
@@ -408,6 +438,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const { fetchWithAuth } = useAuthFetch();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const entityResult = sdk.connectorEntities.get(entityId);
   const connectorInstanceId = entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
@@ -421,6 +452,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 
   const countResult = sdk.entityRecords.count(entityId);
   const syncMutation = sdk.entityRecords.sync(entityId);
+  const updateMutation = sdk.connectorEntities.update(entityId);
   const deleteMutation = sdk.connectorEntities.delete(entityId);
   const impactQuery = sdk.connectorEntities.impact(entityId, {
     enabled: deleteDialogOpen,
@@ -461,6 +493,19 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
       );
     },
     [unassignMutation, invalidateTags]
+  );
+
+  const handleUpdate = useCallback(
+    (body: ConnectorEntityPatchRequestBody) => {
+      updateMutation.mutate(body, {
+        onSuccess: () => {
+          setEditDialogOpen(false);
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.get(entityId) });
+        },
+      });
+    },
+    [updateMutation, queryClient, entityId]
   );
 
   const handleDelete = useCallback(() => {
@@ -553,6 +598,12 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             deleteDialogOpen={deleteDialogOpen}
             onOpenDeleteDialog={() => setDeleteDialogOpen(true)}
             onCloseDeleteDialog={() => setDeleteDialogOpen(false)}
+            onUpdate={handleUpdate}
+            isUpdating={updateMutation.isPending}
+            updateServerError={toServerError(updateMutation.error)}
+            editDialogOpen={editDialogOpen}
+            onOpenEditDialog={() => setEditDialogOpen(true)}
+            onCloseEditDialog={() => setEditDialogOpen(false)}
           />
         );
       }}

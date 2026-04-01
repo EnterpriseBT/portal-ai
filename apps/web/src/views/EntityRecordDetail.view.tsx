@@ -5,6 +5,7 @@ import type {
   ColumnDefinitionSummary,
   ConnectorEntityGetResponsePayload,
   EntityRecordGetResponsePayload,
+  EntityRecordPatchRequestBody,
   EntityGroupMemberWithDetails,
 } from "@portalai/core/contracts";
 import type { EntityGroup } from "@portalai/core/models";
@@ -16,6 +17,7 @@ import Chip from "@mui/material/Chip";
 import Link from "@mui/material/Link";
 import CircularProgress from "@mui/material/CircularProgress";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import StarIcon from "@mui/icons-material/Star";
 
@@ -27,6 +29,7 @@ import { toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
 import { DeleteEntityRecordDialog } from "../components/DeleteEntityRecordDialog.component";
+import { EditEntityRecordDialog } from "../components/EditEntityRecordDialog.component";
 import { EntityRecordFieldValue } from "../components/EntityRecordFieldValue.component";
 import { EntityRecordMetadata } from "../components/EntityRecordMetadata.component";
 
@@ -204,6 +207,12 @@ export interface EntityRecordDetailViewUIProps {
   deleteDialogOpen?: boolean;
   onOpenDeleteDialog?: () => void;
   onCloseDeleteDialog?: () => void;
+  onUpdate?: (body: EntityRecordPatchRequestBody) => void;
+  isUpdating?: boolean;
+  updateServerError?: ServerError | null;
+  editDialogOpen?: boolean;
+  onOpenEditDialog?: () => void;
+  onCloseEditDialog?: () => void;
 }
 
 export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> = ({
@@ -218,6 +227,12 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
   deleteDialogOpen,
   onOpenDeleteDialog,
   onCloseDeleteDialog,
+  onUpdate,
+  isUpdating,
+  updateServerError,
+  editDialogOpen,
+  onOpenEditDialog,
+  onCloseEditDialog,
 }) => {
   const navigate = useNavigate();
 
@@ -234,11 +249,14 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
           onNavigate={(href) => navigate({ to: href })}
           title="Record Details"
           icon={<Icon name={IconName.DataObject} />}
-          secondaryActions={
-            isWriteEnabled
-              ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onOpenDeleteDialog?.(), color: "error", disabled: isDeleting }]
-              : undefined
-          }
+          secondaryActions={[
+            ...(isWriteEnabled
+              ? [{ label: "Edit", icon: <EditIcon />, onClick: () => onOpenEditDialog?.(), disabled: isUpdating }]
+              : []),
+            ...(isWriteEnabled
+              ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onOpenDeleteDialog?.(), color: "error" as const, disabled: isDeleting }]
+              : []),
+          ]}
         />
         <PageGrid columns={{ xs: 1, md: 2 }}>
           {/* Metadata */}
@@ -301,6 +319,18 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
           </PageGridItem>
         </PageGrid>
 
+        {editDialogOpen !== undefined && onCloseEditDialog && onUpdate && (
+          <EditEntityRecordDialog
+            open={!!editDialogOpen}
+            onClose={onCloseEditDialog}
+            columns={columns}
+            normalizedData={record.normalizedData}
+            onSubmit={onUpdate}
+            isPending={isUpdating}
+            serverError={updateServerError ?? null}
+          />
+        )}
+
         {deleteDialogOpen !== undefined && onCloseDeleteDialog && onDelete && (
           <DeleteEntityRecordDialog
             open={!!deleteDialogOpen}
@@ -331,10 +361,12 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   const navigate = useNavigate();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const entityResult = sdk.connectorEntities.get(entityId);
   const recordResult = sdk.entityRecords.get(entityId, recordId);
   const groupsResult = sdk.entityGroups.listByEntity(entityId);
+  const updateMutation = sdk.entityRecords.update(entityId, recordId);
   const deleteMutation = sdk.entityRecords.delete(entityId, recordId);
 
   // Resolve write capability
@@ -352,6 +384,19 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   const isWriteEnabled = !!(
     definition?.capabilityFlags?.write &&
     (instance?.enabledCapabilityFlags?.write ?? true)
+  );
+
+  const handleUpdate = useCallback(
+    (body: EntityRecordPatchRequestBody) => {
+      updateMutation.mutate(body, {
+        onSuccess: () => {
+          setEditDialogOpen(false);
+          queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+          queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.get(entityId, recordId) });
+        },
+      });
+    },
+    [updateMutation, queryClient, entityId, recordId]
   );
 
   const handleDelete = useCallback(() => {
@@ -385,6 +430,12 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
           deleteDialogOpen={deleteDialogOpen}
           onOpenDeleteDialog={() => setDeleteDialogOpen(true)}
           onCloseDeleteDialog={() => setDeleteDialogOpen(false)}
+          onUpdate={handleUpdate}
+          isUpdating={updateMutation.isPending}
+          updateServerError={toServerError(updateMutation.error)}
+          editDialogOpen={editDialogOpen}
+          onOpenEditDialog={() => setEditDialogOpen(true)}
+          onCloseEditDialog={() => setEditDialogOpen(false)}
         />
       )}
     </DataResult>

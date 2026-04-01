@@ -2,28 +2,30 @@ import React, { useState, useCallback } from "react";
 
 import type {
   ColumnDefinitionGetResponsePayload,
+  ColumnDefinitionUpdateRequestBody,
   FieldMappingListRequestQuery,
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingWithConnectorEntity,
+  FieldMappingUpdateRequestBody,
 } from "@portalai/core/contracts";
-import { Box, Icon, IconName, MetadataList, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack } from "@portalai/core/ui";
+import { Box, Button, DataTable, Icon, IconName, MetadataList, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack } from "@portalai/core/ui";
+import type { DataTableColumn } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
+import IconButton from "@mui/material/IconButton";
 import CheckIcon from "@mui/icons-material/Check";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { toServerError } from "../utils/api.util";
+import { useAuthFetch, toServerError, ApiError } from "../utils/api.util";
+import type { ServerError } from "../utils/api.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
+import { EditColumnDefinitionDialog } from "../components/EditColumnDefinitionDialog.component";
+import { EditFieldMappingDialog } from "../components/EditFieldMappingDialog.component";
 import { FieldMappingDataList } from "../components/FieldMapping.component";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
@@ -59,9 +61,16 @@ export const ColumnDefinitionDetailView: React.FC<
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const { fetchWithAuth } = useAuthFetch();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [updateWarnings, setUpdateWarnings] = useState<string[]>([]);
+  const [editingFieldMapping, setEditingFieldMapping] = useState<FieldMappingWithConnectorEntity | null>(null);
+  const [fmUpdatePending, setFmUpdatePending] = useState(false);
+  const [fmUpdateError, setFmUpdateError] = useState<ServerError | null>(null);
 
   const deleteMutation = sdk.columnDefinitions.delete(columnDefinitionId);
+  const updateMutation = sdk.columnDefinitions.update(columnDefinitionId);
   const impactQuery = sdk.columnDefinitions.impact(columnDefinitionId, {
     enabled: deleteDialogOpen,
   });
@@ -75,6 +84,47 @@ export const ColumnDefinitionDetailView: React.FC<
       },
     });
   }, [deleteMutation, queryClient, navigate]);
+
+  const handleUpdate = useCallback(
+    (body: ColumnDefinitionUpdateRequestBody) => {
+      updateMutation.mutate(body, {
+        onSuccess: (data) => {
+          setUpdateWarnings(data.warnings ?? []);
+          if (!data.warnings?.length) {
+            setEditDialogOpen(false);
+          }
+          queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+          queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.get(columnDefinitionId) });
+        },
+      });
+    },
+    [updateMutation, queryClient, columnDefinitionId]
+  );
+
+  const handleFieldMappingUpdate = useCallback(
+    async (body: FieldMappingUpdateRequestBody) => {
+      if (!editingFieldMapping) return;
+      setFmUpdatePending(true);
+      setFmUpdateError(null);
+      try {
+        await fetchWithAuth(
+          `/api/field-mappings/${encodeURIComponent(editingFieldMapping.id)}`,
+          { method: "PATCH", body: JSON.stringify(body) }
+        );
+        setEditingFieldMapping(null);
+        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+      } catch (err) {
+        setFmUpdateError(
+          err instanceof ApiError
+            ? { message: err.message, code: err.code }
+            : { message: "Failed to update field mapping", code: "UNKNOWN" }
+        );
+      } finally {
+        setFmUpdatePending(false);
+      }
+    },
+    [editingFieldMapping, fetchWithAuth, queryClient]
+  );
 
   const mappingsPagination = usePagination({
     sortFields: [
@@ -106,6 +156,15 @@ export const ColumnDefinitionDetailView: React.FC<
                     onNavigate={(href) => navigate({ to: href })}
                     title={cd.label}
                     icon={<Icon name={IconName.ViewColumn} />}
+                    primaryAction={
+                      <Button
+                        variant="contained"
+                        startIcon={<EditIcon />}
+                        onClick={() => setEditDialogOpen(true)}
+                      >
+                        Edit
+                      </Button>
+                    }
                     secondaryActions={[
                       { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
                     ]}
@@ -180,6 +239,7 @@ export const ColumnDefinitionDetailView: React.FC<
                                     return (
                                       <FieldMappingTable
                                         fieldMappings={mappings.fieldMappings}
+                                        onEdit={(fm) => { setEditingFieldMapping(fm); setFmUpdateError(null); }}
                                       />
                                     );
                                   }}
@@ -191,6 +251,23 @@ export const ColumnDefinitionDetailView: React.FC<
                       </PageSection>
                     </PageGridItem>
                   </PageGrid>
+                  <EditFieldMappingDialog
+                    open={!!editingFieldMapping}
+                    onClose={() => setEditingFieldMapping(null)}
+                    fieldMapping={editingFieldMapping ?? { sourceField: "", isPrimaryKey: false }}
+                    onSubmit={handleFieldMappingUpdate}
+                    isPending={fmUpdatePending}
+                    serverError={fmUpdateError}
+                  />
+                  <EditColumnDefinitionDialog
+                    open={editDialogOpen}
+                    onClose={() => { setEditDialogOpen(false); setUpdateWarnings([]); }}
+                    columnDefinition={cd}
+                    onSubmit={handleUpdate}
+                    isPending={updateMutation.isPending}
+                    serverError={toServerError(updateMutation.error)}
+                    warnings={updateWarnings}
+                  />
                   <DeleteColumnDefinitionDialog
                     open={deleteDialogOpen}
                     onClose={() => setDeleteDialogOpen(false)}
@@ -215,42 +292,69 @@ export const ColumnDefinitionDetailView: React.FC<
 
 interface FieldMappingTableProps {
   fieldMappings: FieldMappingWithConnectorEntity[];
+  onEdit?: (fm: FieldMappingWithConnectorEntity) => void;
 }
 
 const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
   fieldMappings,
-}) => (
-  <TableContainer>
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>Source Field</TableCell>
-          <TableCell>Connector Entity</TableCell>
-          <TableCell>Primary Key</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {fieldMappings.map((fm) => (
-          <TableRow key={fm.id}>
-            <TableCell>{fm.sourceField}</TableCell>
-            <TableCell>
-              {fm.connectorEntity ? (
-                <Link
-                  to="/entities/$entityId"
-                  params={{ entityId: fm.connectorEntity.id }}
+  onEdit,
+}) => {
+  const navigate = useNavigate();
+
+  const columns: DataTableColumn[] = [
+    { key: "sourceField", label: "Source Field" },
+    {
+      key: "connectorEntity",
+      label: "Connector Entity",
+      render: (_value, row) => {
+        const fm = fieldMappings.find((f) => f.id === row.id) ?? null;
+        if (fm?.connectorEntity) {
+          return fm.connectorEntity.label;
+        }
+        return row.connectorEntityId as string;
+      },
+      onCellClick: (_value, _col, row) => {
+        const fm = fieldMappings.find((f) => f.id === row.id);
+        if (fm?.connectorEntity) {
+          navigate({ to: "/entities/$entityId", params: { entityId: fm.connectorEntity.id } });
+        }
+      },
+    },
+    {
+      key: "isPrimaryKey",
+      label: "Primary Key",
+      render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+    },
+    ...(onEdit
+      ? [
+          {
+            key: "actions",
+            label: "Actions",
+            render: (_value: unknown, row: Record<string, unknown>) => {
+              const fm = fieldMappings.find((f) => f.id === row.id);
+              return fm ? (
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(fm);
+                  }}
+                  aria-label="Edit field mapping"
                 >
-                  {fm.connectorEntity.label}
-                </Link>
-              ) : (
-                fm.connectorEntityId
-              )}
-            </TableCell>
-            <TableCell>
-              {fm.isPrimaryKey && <CheckIcon fontSize="small" />}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  </TableContainer>
-);
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              ) : null;
+            },
+          } as DataTableColumn,
+        ]
+      : []),
+  ];
+
+  return (
+    <DataTable
+      columns={columns}
+      rows={fieldMappings.map((fm) => ({ ...fm } as Record<string, unknown>))}
+      emptyMessage="No field mappings found"
+    />
+  );
+};

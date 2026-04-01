@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from "react";
 
 import {
-  EntityGroupUpdateRequestBodySchema,
   type EntityGroupGetResponsePayload,
   type EntityGroupMemberOverlapResponsePayload,
   type EntityGroupMemberCreateRequestBody,
@@ -31,7 +30,6 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
-import TextField from "@mui/material/TextField";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -42,10 +40,10 @@ import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
+import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch, toServerError, type ServerError } from "../utils/api.util";
-import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
 
@@ -192,121 +190,6 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
             disabled={addDisabled}
           >
             Submit
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
-  );
-};
-
-// ── Edit Entity Group Dialog ────────────────────────────────────────
-
-interface EditEntityGroupDialogProps {
-  open: boolean;
-  onClose: () => void;
-  group: { name: string; description: string | null };
-  onSubmit: (body: EntityGroupUpdateRequestBody) => void;
-  isPending: boolean;
-  serverError: ServerError | null;
-}
-
-const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
-  open,
-  onClose,
-  group,
-  onSubmit,
-  isPending,
-  serverError,
-}) => {
-  const [name, setName] = useState(group.name);
-  const [description, setDescription] = useState(group.description ?? "");
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const nameRef = useDialogAutoFocus(open);
-
-  React.useEffect(() => {
-    if (open) {
-      setName(group.name);
-      setDescription(group.description ?? "");
-      setErrors({});
-      setTouched({});
-    }
-  }, [open, group.name, group.description]);
-
-  const validate = (data: { name: string }) => {
-    const result = validateWithSchema(EntityGroupUpdateRequestBodySchema, data);
-    return result.success ? {} : result.errors;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setTouched({ name: true });
-    const trimmedName = name.trim();
-    const trimmedDesc = description.trim();
-    const formErrors = validate({ name: trimmedName });
-    setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) {
-      requestAnimationFrame(() => focusFirstInvalidField());
-      return;
-    }
-
-    const body: EntityGroupUpdateRequestBody = {};
-    if (trimmedName !== group.name) body.name = trimmedName;
-    if (trimmedDesc !== (group.description ?? "")) {
-      body.description = trimmedDesc || undefined;
-    }
-
-    if (Object.keys(body).length === 0) {
-      onClose();
-      return;
-    }
-
-    onSubmit(body);
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <form onSubmit={handleSubmit}>
-        <DialogTitle>Edit Entity Group</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              inputRef={nameRef}
-              label="Name"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (touched.name) {
-                  setErrors(validate({ name: e.target.value.trim() }));
-                }
-              }}
-              onBlur={() => {
-                setTouched((prev) => ({ ...prev, name: true }));
-                setErrors(validate({ name: name.trim() }));
-              }}
-              error={touched.name && !!errors.name}
-              helperText={touched.name && errors.name}
-              slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              fullWidth
-              multiline
-              rows={3}
-            />
-            <FormAlert serverError={serverError} />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="button" variant="contained" onClick={() => handleSubmit({ preventDefault: () => { } } as React.FormEvent)} disabled={isPending}>
-            {isPending ? "Saving..." : "Save"}
           </Button>
         </DialogActions>
       </form>

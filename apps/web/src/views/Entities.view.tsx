@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 
 import type {
   ConnectorEntityListRequestQuery,
@@ -6,12 +6,14 @@ import type {
 } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
 import { Box, DetailCard, Icon, IconName, MetadataList, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
-import type { FetchPageParams, FetchPageResult } from "@portalai/core/ui";
+import type { ActionSuiteItem, FetchPageParams, FetchPageResult } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
-
+import DeleteIcon from "@mui/icons-material/Delete";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { ConnectorEntityDataList } from "../components/ConnectorEntity.component";
+import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
 import DataResult from "../components/DataResult.component";
 import { SyncTotal } from "../components/SyncTotal.component";
@@ -19,6 +21,8 @@ import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
+import { sdk, queryKeys } from "../api/sdk";
+import { toServerError } from "../utils/api.util";
 import { useEntityTagFilter } from "../api/entity-tags.api";
 import { useConnectorInstanceFilter } from "../api/connector-instances.api";
 
@@ -31,10 +35,16 @@ type EntityWithTags = ConnectorEntityListWithInstanceResponsePayload["connectorE
 interface EntityCardProps {
   entity: EntityWithTags;
   onClick: () => void;
+  onDelete: () => void;
 }
 
-const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
-  <DetailCard title={entity.label} onClick={onClick}>
+const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick, onDelete }) => {
+  const actions: ActionSuiteItem[] = [
+    { label: "Delete", icon: <DeleteIcon />, onClick: onDelete, color: "error" as const },
+  ];
+
+  return (
+  <DetailCard title={entity.label} onClick={onClick} actions={actions}>
     <MetadataList
       items={[
         { label: "Connector", value: entity.connectorInstance.name },
@@ -71,7 +81,8 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick }) => (
       ]}
     />
   </DetailCard>
-);
+  );
+};
 
 // ── Entities list view (pure UI) ────────────────────────────────────
 
@@ -80,6 +91,7 @@ export interface EntitiesViewUIProps {
   connectorInstanceLabelMap: Record<string, string>;
   tagFetchPage: (params: FetchPageParams) => Promise<FetchPageResult>;
   tagLabelMap: Record<string, string>;
+  onDeleteEntity: (entity: EntityWithTags) => void;
 }
 
 export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
@@ -87,6 +99,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
   connectorInstanceLabelMap,
   tagFetchPage,
   tagLabelMap,
+  onDeleteEntity,
 }) => {
   const navigate = useNavigate();
 
@@ -172,6 +185,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
                                 to: `/entities/${entity.id}`,
                               })
                             }
+                            onDelete={() => onDeleteEntity(entity)}
                           />
                         ))}
                       </Stack>
@@ -190,16 +204,56 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
 // ── Container (wires hooks) ─────────────────────────────────────────
 
 export const EntitiesView: React.FC = () => {
+  const queryClient = useQueryClient();
   const { fetchPage: connectorInstanceFetchPage, labelMap: connectorInstanceLabelMap } =
     useConnectorInstanceFilter();
   const { fetchPage: tagFetchPage, labelMap: tagLabelMap } =
     useEntityTagFilter();
+
+  const [deletingEntity, setDeletingEntity] = useState<EntityWithTags | null>(null);
+
+  const deleteMutation = sdk.connectorEntities.delete(deletingEntity?.id ?? "");
+  const impactQuery = sdk.connectorEntities.impact(deletingEntity?.id ?? "", {
+    enabled: !!deletingEntity,
+  });
+
+  const handleDeleteEntity = useCallback((entity: EntityWithTags) => {
+    setDeletingEntity(entity);
+  }, []);
+
+  const handleDeleteClose = useCallback(() => {
+    setDeletingEntity(null);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        setDeletingEntity(null);
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+      },
+    });
+  }, [deleteMutation, queryClient]);
+
   return (
-    <EntitiesViewUI
-      connectorInstanceFetchPage={connectorInstanceFetchPage}
-      connectorInstanceLabelMap={connectorInstanceLabelMap}
-      tagFetchPage={tagFetchPage}
-      tagLabelMap={tagLabelMap}
-    />
+    <>
+      <EntitiesViewUI
+        connectorInstanceFetchPage={connectorInstanceFetchPage}
+        connectorInstanceLabelMap={connectorInstanceLabelMap}
+        tagFetchPage={tagFetchPage}
+        tagLabelMap={tagLabelMap}
+        onDeleteEntity={handleDeleteEntity}
+      />
+
+      <DeleteConnectorEntityDialog
+        open={!!deletingEntity}
+        onClose={handleDeleteClose}
+        connectorEntityLabel={deletingEntity?.label ?? ""}
+        onConfirm={handleDeleteConfirm}
+        isPending={deleteMutation.isPending}
+        impact={impactQuery.data ?? null}
+        isLoadingImpact={impactQuery.isLoading && !!deletingEntity}
+        serverError={toServerError(deleteMutation.error)}
+      />
+    </>
   );
 };
