@@ -406,7 +406,7 @@ Adds edit/update forms for mutable fields with validation guardrails from the di
   - Allow reassigning `columnDefinitionId` (for resolving column definition dependencies before delete)
 - [x] **7.5** Create or update entity group edit form
   - Allow editing group metadata (e.g., `name`, `description`)
-- [ ] **7.6** Wire `onSuccess` cache invalidation for each update mutation
+- [x] **7.6** Wire `onSuccess` cache invalidation for each update mutation
   - Follow existing invalidation patterns from Phase 6
 - [ ] **7.7** Default `enabledCapabilityFlags` from definition on connector instance creation
   - File: `apps/api/src/routes/upload.router.ts` (confirm handler)

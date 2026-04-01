@@ -230,6 +230,9 @@ export const EntitiesView: React.FC = () => {
       onSuccess: () => {
         setDeletingEntity(null);
         queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
       },
     });
   }, [deleteMutation, queryClient]);

@@ -513,7 +513,8 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
-  }, [queryClient]);
+    queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.get(entityGroupId) });
+  }, [queryClient, entityGroupId]);
 
   const fetchOverlap = useCallback(
     async (entityId: string, fieldMappingId: string) => {
