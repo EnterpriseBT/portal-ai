@@ -423,7 +423,7 @@ Adds edit/update forms for mutable fields with validation guardrails from the di
     ```
   - Update the PATCH handler to persist `enabledCapabilityFlags` when provided
   - Validate that the instance cannot enable a flag the definition doesn't support (e.g., reject `write: true` when `definition.capabilityFlags.write` is falsy)
-- [ ] **7.9** Add capability flag editing to connector instance detail page
+- [x] **7.9** Add capability flag editing to connector instance detail page
   - File: `apps/web/src/views/ConnectorInstance.view.tsx`
   - Fetch the connector definition to read its `capabilityFlags` ceiling
   - Display a "Permissions" section with three checkboxes:

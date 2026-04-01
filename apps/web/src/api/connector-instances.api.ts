@@ -8,6 +8,7 @@ import type {
   ConnectorInstanceListRequestQuery,
   ConnectorInstanceListResponsePayload,
   ConnectorInstanceListWithDefinitionResponsePayload,
+  ConnectorInstancePatchRequestBody,
 } from "@portalai/core/contracts";
 import { useInfiniteFilterOptions, useAsyncFilterOptions } from "@portalai/core/ui";
 import type { InfiniteFilterOptionsConfig, AsyncFilterOptionsConfig } from "@portalai/core/ui";
@@ -113,6 +114,12 @@ export const connectorInstances = {
 
   rename: (id: string) =>
     useAuthMutation<ConnectorInstanceGetResponsePayload, { name: string }>({
+      url: `/api/connector-instances/${encodeURIComponent(id)}`,
+      method: "PATCH",
+    }),
+
+  update: (id: string) =>
+    useAuthMutation<ConnectorInstanceGetResponsePayload, ConnectorInstancePatchRequestBody>({
       url: `/api/connector-instances/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),

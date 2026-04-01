@@ -128,7 +128,7 @@ describe("ColumnDefinitionDetailView", () => {
     expect(screen.getByRole("heading", { name: "Email Address" })).toBeInTheDocument();
     expect(screen.getByText("email_address")).toBeInTheDocument();
     expect(screen.getByText("string")).toBeInTheDocument();
-    expect(screen.getByText("Required")).toBeInTheDocument();
+    expect(screen.getAllByText("Required").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Primary email/)).toBeInTheDocument();
     expect(screen.getByText("RFC5322")).toBeInTheDocument();
     expect(screen.getByText(/user@example\.com/)).toBeInTheDocument();

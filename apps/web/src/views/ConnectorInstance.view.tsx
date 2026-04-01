@@ -1,12 +1,16 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 
 import type {
   ConnectorEntityListRequestQuery,
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
+  ConnectorInstancePatchRequestBody,
 } from "@portalai/core/contracts";
 import { Box, Button, Icon, IconName, MetadataList, PageEmptyState, PageHeader, PageSection, Stack } from "@portalai/core/ui";
+import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Tooltip from "@mui/material/Tooltip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import { useQueryClient } from "@tanstack/react-query";
@@ -54,6 +58,7 @@ export const ConnectorInstanceView = ({
 
   const deleteMutation = sdk.connectorInstances.delete(connectorInstanceId);
   const renameMutation = sdk.connectorInstances.rename(connectorInstanceId);
+  const updateMutation = sdk.connectorInstances.update(connectorInstanceId);
   const impactQuery = sdk.connectorInstances.impact(connectorInstanceId, {
     enabled: deleteDialogOpen,
   });
@@ -82,6 +87,18 @@ export const ConnectorInstanceView = ({
       });
     },
     [renameMutation, queryClient, connectorInstanceId]
+  );
+
+  const handleCapabilityChange = useCallback(
+    (body: ConnectorInstancePatchRequestBody) => {
+      updateMutation.mutate(body, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.get(connectorInstanceId) });
+        },
+      });
+    },
+    [updateMutation, queryClient, connectorInstanceId]
   );
 
   const pagination = usePagination({
@@ -148,6 +165,65 @@ export const ConnectorInstanceView = ({
                         { label: "Last sync", value: ci.lastSyncAt ? new Date(ci.lastSyncAt).toLocaleString() : "", hidden: !ci.lastSyncAt },
                         { label: "Error", value: ci.lastErrorMessage ?? "", hidden: !(ci.status === "error" && ci.lastErrorMessage) },
                         { label: "Created", value: new Date(ci.created).toLocaleString() },
+                        {
+                          label: "Capabilities",
+                          value: (() => {
+                            const defFlags = ci.connectorDefinition?.capabilityFlags;
+                            const flags = ci.enabledCapabilityFlags;
+                            const writeSupported = !!defFlags?.write;
+                            const syncSupported = !!defFlags?.sync;
+
+                            const makeHandler = (flag: "write" | "sync") => (
+                              _e: React.ChangeEvent<HTMLInputElement>,
+                              checked: boolean
+                            ) => {
+                              handleCapabilityChange({
+                                name: ci.name,
+                                enabledCapabilityFlags: {
+                                  ...flags,
+                                  read: true,
+                                  [flag]: checked,
+                                },
+                              });
+                            };
+
+                            return (
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <FormControlLabel
+                                  control={<Checkbox checked disabled size="small" />}
+                                  label="Read"
+                                />
+                                <Tooltip title={writeSupported ? "" : "This connector type does not support writes"}>
+                                  <FormControlLabel
+                                    control={
+                                      <Checkbox
+                                        checked={!!flags?.write}
+                                        onChange={makeHandler("write")}
+                                        disabled={!writeSupported || updateMutation.isPending}
+                                        size="small"
+                                      />
+                                    }
+                                    label="Write"
+                                  />
+                                </Tooltip>
+                                <Tooltip title={syncSupported ? "" : "This connector type does not support sync"}>
+                                  <FormControlLabel
+                                    control={
+                                      <Checkbox
+                                        checked={!!flags?.sync}
+                                        onChange={makeHandler("sync")}
+                                        disabled={!syncSupported || updateMutation.isPending}
+                                        size="small"
+                                      />
+                                    }
+                                    label="Sync"
+                                  />
+                                </Tooltip>
+                              </Stack>
+                            );
+                          })(),
+                          variant: "chip",
+                        },
                       ]}
                     />
                   </PageHeader>
