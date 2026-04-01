@@ -4,6 +4,8 @@ import type {
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingBidirectionalValidationResponsePayload,
   FieldMappingImpactResponsePayload,
+  FieldMappingCreateRequestBody,
+  FieldMappingCreateResponsePayload,
   FieldMappingUpdateRequestBody,
   FieldMappingUpdateResponsePayload,
 } from "@portalai/core/contracts";
@@ -50,6 +52,12 @@ export const fieldMappings = {
       undefined,
       options
     ),
+
+  create: () =>
+    useAuthMutation<FieldMappingCreateResponsePayload, FieldMappingCreateRequestBody>({
+      url: "/api/field-mappings",
+      method: "POST",
+    }),
 
   update: (id: string) =>
     useAuthMutation<FieldMappingUpdateResponsePayload, FieldMappingUpdateRequestBody>({

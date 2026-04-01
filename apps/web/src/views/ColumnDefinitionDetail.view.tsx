@@ -3,6 +3,7 @@ import React, { useState, useCallback } from "react";
 import type {
   ColumnDefinitionGetResponsePayload,
   ColumnDefinitionUpdateRequestBody,
+  FieldMappingCreateRequestBody,
   FieldMappingListRequestQuery,
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingWithConnectorEntity,
@@ -12,6 +13,7 @@ import { Box, Button, DataTable, Icon, IconName, MetadataList, PageEmptyState, P
 import type { DataTableColumn } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
+import AddIcon from "@mui/icons-material/Add";
 import CheckIcon from "@mui/icons-material/Check";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -22,6 +24,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch, toServerError } from "../utils/api.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
+import { CreateFieldMappingDialog } from "../components/CreateFieldMappingDialog.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
 import { EditColumnDefinitionDialog } from "../components/EditColumnDefinitionDialog.component";
 import { EditFieldMappingDialog } from "../components/EditFieldMappingDialog.component";
@@ -65,9 +68,11 @@ export const ColumnDefinitionDetailView: React.FC<
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [updateWarnings, setUpdateWarnings] = useState<string[]>([]);
   const [editingFieldMapping, setEditingFieldMapping] = useState<FieldMappingWithConnectorEntity | null>(null);
+  const [createFieldMappingOpen, setCreateFieldMappingOpen] = useState(false);
 
   const deleteMutation = sdk.columnDefinitions.delete(columnDefinitionId);
   const updateMutation = sdk.columnDefinitions.update(columnDefinitionId);
+  const fmCreateMutation = sdk.fieldMappings.create();
   const fmUpdateMutation = sdk.fieldMappings.update(editingFieldMapping?.id ?? "");
   const impactQuery = sdk.columnDefinitions.impact(columnDefinitionId, {
     enabled: deleteDialogOpen,
@@ -110,6 +115,66 @@ export const ColumnDefinitionDetailView: React.FC<
       }));
     },
     [fetchWithAuth]
+  );
+
+  const handleSearchConnectorEntities = useCallback(
+    async (query: string) => {
+      const res = await fetchWithAuth<{
+        payload: { connectorEntities: Array<{ id: string; key: string; label: string }> };
+      }>(`/api/connector-entities?search=${encodeURIComponent(query)}&limit=20`);
+      return res.payload.connectorEntities.map((ce) => ({
+        value: ce.id,
+        label: ce.label,
+      }));
+    },
+    [fetchWithAuth]
+  );
+
+  const handleSearchConnectorEntitiesForRefKey = useCallback(
+    async (query: string) => {
+      const res = await fetchWithAuth<{
+        payload: { connectorEntities: Array<{ id: string; key: string; label: string }> };
+      }>(`/api/connector-entities?search=${encodeURIComponent(query)}&limit=20`);
+      return res.payload.connectorEntities.map((ce) => ({
+        value: ce.key,
+        label: `${ce.label} (${ce.key})`,
+      }));
+    },
+    [fetchWithAuth]
+  );
+
+  const handleSearchFieldMappings = useCallback(
+    async (query: string) => {
+      const res = await fetchWithAuth<{
+        payload: {
+          fieldMappings: Array<{
+            id: string;
+            sourceField: string;
+            connectorEntity: { label: string } | null;
+          }>;
+        };
+      }>(`/api/field-mappings?search=${encodeURIComponent(query)}&include=connectorEntity&limit=20`);
+      return res.payload.fieldMappings.map((fm) => ({
+        value: fm.id,
+        label: fm.connectorEntity
+          ? `${fm.sourceField} (${fm.connectorEntity.label})`
+          : fm.sourceField,
+      }));
+    },
+    [fetchWithAuth]
+  );
+
+  const handleFieldMappingCreate = useCallback(
+    (body: FieldMappingCreateRequestBody) => {
+      fmCreateMutation.mutate(body, {
+        onSuccess: () => {
+          setCreateFieldMappingOpen(false);
+          queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+          queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+        },
+      });
+    },
+    [fmCreateMutation, queryClient]
   );
 
   const handleFieldMappingUpdate = useCallback(
@@ -215,7 +280,20 @@ export const ColumnDefinitionDetailView: React.FC<
 
                     {/* Field Mappings Section */}
                     <PageGridItem>
-                      <PageSection title="Field Mappings" icon={<Icon name={IconName.Link} />}>
+                      <PageSection
+                        title="Field Mappings"
+                        icon={<Icon name={IconName.Link} />}
+                        primaryAction={
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<AddIcon />}
+                            onClick={() => setCreateFieldMappingOpen(true)}
+                          >
+                            Create
+                          </Button>
+                        }
+                      >
                         <PaginationToolbar {...mappingsPagination.toolbarProps} />
 
                         <Box sx={{ mt: 2 }}>
@@ -263,6 +341,19 @@ export const ColumnDefinitionDetailView: React.FC<
                       </PageSection>
                     </PageGridItem>
                   </PageGrid>
+                  <CreateFieldMappingDialog
+                    open={createFieldMappingOpen}
+                    onClose={() => setCreateFieldMappingOpen(false)}
+                    onSubmit={handleFieldMappingCreate}
+                    onSearchConnectorEntities={handleSearchConnectorEntities}
+                    onSearchColumnDefinitions={handleSearchColumnDefinitions}
+                    onSearchConnectorEntitiesForRefKey={handleSearchConnectorEntitiesForRefKey}
+                    onSearchFieldMappings={handleSearchFieldMappings}
+                    isPending={fmCreateMutation.isPending}
+                    serverError={toServerError(fmCreateMutation.error)}
+                    columnDefinitionId={columnDefinitionId}
+                    columnDefinitionLabel={cd.label}
+                  />
                   <EditFieldMappingDialog
                     open={!!editingFieldMapping}
                     onClose={() => setEditingFieldMapping(null)}

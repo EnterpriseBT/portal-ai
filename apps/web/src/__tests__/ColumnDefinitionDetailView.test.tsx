@@ -25,15 +25,17 @@ jest.unstable_mockModule("../api/sdk", () => ({
     },
     fieldMappings: {
       list: () => currentFieldMappingListQuery,
+      create: () => noopMutation,
       update: () => noopMutation,
     },
   },
   queryKeys: {
     columnDefinitions: { root: ["columnDefinitions"] },
+    fieldMappings: { root: ["fieldMappings"] },
   },
 }));
 
-const { render, screen } = await import("./test-utils");
+const { render, screen, fireEvent } = await import("./test-utils");
 const { ColumnDefinitionDetailView } = await import(
   "../views/ColumnDefinitionDetail.view"
 );
@@ -251,5 +253,41 @@ describe("ColumnDefinitionDetailView", () => {
     expect(breadcrumbLinks).toHaveLength(2);
     // "My Column" appears in both breadcrumb and heading
     expect(screen.getAllByText("My Column")).toHaveLength(2);
+  });
+
+  describe("Create Field Mapping", () => {
+    beforeEach(() => {
+      const cd = makeColumnDefinition({ label: "First Name" });
+      currentGetQuery = {
+        data: { columnDefinition: cd },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<GetQuery>;
+      currentFieldMappingListQuery = {
+        data: { fieldMappings: [], total: 0, limit: 10, offset: 0 },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<ListQuery>;
+    });
+
+    it("should display Create button in the Field Mappings section", () => {
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+      expect(screen.getByRole("button", { name: /Create/ })).toBeInTheDocument();
+    });
+
+    it("should open create dialog when Create button is clicked", () => {
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+      fireEvent.click(screen.getByRole("button", { name: /Create/ }));
+      expect(screen.getByText("New Field Mapping")).toBeInTheDocument();
+    });
+
+    it("should show locked column definition label in create dialog", () => {
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+      fireEvent.click(screen.getByRole("button", { name: /Create/ }));
+      const cdField = screen.getByDisplayValue("First Name");
+      expect(cdField).toBeDisabled();
+    });
   });
 });
