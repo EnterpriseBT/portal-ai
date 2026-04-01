@@ -1,6 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { eq, and, ilike, inArray, type SQL, type Column } from "drizzle-orm";
-import { z } from "zod";
 import { ConnectorInstanceModelFactory } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -13,6 +12,7 @@ import {
   type ConnectorInstanceListWithDefinitionResponsePayload,
   type ConnectorInstanceGetResponsePayload,
   ConnectorInstanceCreateRequestBodySchema,
+  ConnectorInstancePatchRequestBodySchema,
   type ConnectorInstanceCreateResponsePayload,
   type ConnectorInstanceApi,
   type ConnectorInstanceWithDefinitionApi,
@@ -560,10 +560,7 @@ connectorInstanceRouter.delete(
   }
 );
 
-/** Zod schema for PATCH request body. */
-const ConnectorInstancePatchBodySchema = z.object({
-  name: z.string().min(1, "Name is required"),
-});
+/** @see ConnectorInstancePatchRequestBodySchema in @portalai/core/contracts */
 
 /**
  * @openapi
@@ -588,12 +585,18 @@ const ConnectorInstancePatchBodySchema = z.object({
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - name
  *             properties:
  *               name:
  *                 type: string
  *                 minLength: 1
+ *               enabledCapabilityFlags:
+ *                 type: object
+ *                 nullable: true
+ *                 properties:
+ *                   read:
+ *                     type: boolean
+ *                   write:
+ *                     type: boolean
  *     responses:
  *       200:
  *         description: Connector instance updated
@@ -612,7 +615,7 @@ connectorInstanceRouter.patch(
       const { id } = req.params;
       const { userId } = req.application!.metadata;
 
-      const parsed = ConnectorInstancePatchBodySchema.safeParse(req.body);
+      const parsed = ConnectorInstancePatchRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
           new ApiError(400, ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD, "Invalid connector instance payload")
@@ -626,10 +629,39 @@ connectorInstanceRouter.patch(
         );
       }
 
-      const updated = await DbService.repository.connectorInstances.update(id, {
-        name: parsed.data.name,
-        updatedBy: userId,
-      });
+      // Validate enabledCapabilityFlags against the definition's ceiling
+      if (parsed.data.enabledCapabilityFlags) {
+        const definition = await DbService.repository.connectorDefinitions.findById(
+          existing.connectorDefinitionId
+        );
+        const defFlags = definition?.capabilityFlags;
+
+        if (parsed.data.enabledCapabilityFlags.write && !defFlags?.write) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.CONNECTOR_INSTANCE_CAPABILITY_NOT_SUPPORTED,
+              "This connector type does not support writes"
+            )
+          );
+        }
+        if (parsed.data.enabledCapabilityFlags.sync && !defFlags?.sync) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.CONNECTOR_INSTANCE_CAPABILITY_NOT_SUPPORTED,
+              "This connector type does not support sync"
+            )
+          );
+        }
+      }
+
+      const updateData: Record<string, unknown> = { name: parsed.data.name, updatedBy: userId };
+      if (parsed.data.enabledCapabilityFlags !== undefined) {
+        updateData.enabledCapabilityFlags = parsed.data.enabledCapabilityFlags;
+      }
+
+      const updated = await DbService.repository.connectorInstances.update(id, updateData);
 
       logger.info({ id }, "Connector instance updated");
       return HttpService.success(res, { connectorInstance: updated as unknown as ConnectorInstanceApi });

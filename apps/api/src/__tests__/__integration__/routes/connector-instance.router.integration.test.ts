@@ -866,6 +866,56 @@ describe("Connector Instance Router", () => {
       expect(res.body.payload.connectorInstance.id).toBe(instance.id);
       expect(res.body.payload.connectorInstance.updatedBy).toBeDefined();
     });
+
+    it("should update enabledCapabilityFlags", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const def = createConnectorDefinition({ capabilityFlags: { sync: true, query: true, write: true } });
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, orgId);
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "Test Instance", enabledCapabilityFlags: { read: true, write: true } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstance.enabledCapabilityFlags).toEqual({ read: true, write: true });
+    });
+
+    it("should reject write: true when definition does not support writes", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const def = createConnectorDefinition({ capabilityFlags: { sync: true, query: true, write: false } });
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, orgId);
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "Test Instance", enabledCapabilityFlags: { read: true, write: true } });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_CAPABILITY_NOT_SUPPORTED);
+    });
+
+    it("should allow setting enabledCapabilityFlags to null", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, orgId, {
+        enabledCapabilityFlags: { read: true, write: false },
+      });
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "Test Instance", enabledCapabilityFlags: null });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstance.enabledCapabilityFlags).toBeNull();
+    });
   });
 
   // ── POST /api/connector-instances ───────────────────────────────

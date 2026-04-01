@@ -67,6 +67,17 @@ export type ConnectorInstanceCreateResponsePayload = z.infer<
   typeof ConnectorInstanceCreateResponseSchema
 >;
 
+export const ConnectorInstancePatchRequestBodySchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  enabledCapabilityFlags: z.object({
+    read: z.boolean().optional(),
+    write: z.boolean().optional(),
+    sync: z.boolean().optional(),
+  }).nullable().optional(),
+});
+
+export type ConnectorInstancePatchRequestBody = z.infer<typeof ConnectorInstancePatchRequestBodySchema>;
+
 export const ConnectorInstanceImpactResponseSchema = z.object({
   connectorEntities: z.number(),
   entityRecords: z.number(),

@@ -24,6 +24,7 @@ export const ConnectorInstanceSchema = CoreSchema.extend({
     .object({
       read: z.boolean().optional(),
       write: z.boolean().optional(),
+      sync: z.boolean().optional(),
     })
     .nullable(),
 });

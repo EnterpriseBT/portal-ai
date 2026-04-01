@@ -412,7 +412,7 @@ Adds edit/update forms for mutable fields with validation guardrails from the di
   - File: `apps/api/src/routes/upload.router.ts` (confirm handler)
   - When the confirm handler creates the connector instance, set `enabledCapabilityFlags` by copying the definition's `capabilityFlags` (`{ read: query, write, sync }` where `read` is always `true`)
   - This ensures every new instance starts with explicit flags rather than relying on `null` fallback
-- [ ] **7.8** Expand connector instance PATCH endpoint to accept `enabledCapabilityFlags`
+- [x] **7.8** Expand connector instance PATCH endpoint to accept `enabledCapabilityFlags`
   - File: `apps/api/src/routes/connector-instance.router.ts`
   - Extend `ConnectorInstancePatchBodySchema` to accept optional `enabledCapabilityFlags`:
     ```
