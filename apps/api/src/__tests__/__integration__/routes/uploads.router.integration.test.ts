@@ -728,6 +728,7 @@ describe("Uploads Router", () => {
       expect(ci).toBeDefined();
       expect(ci.name).toBe("My CSV Import");
       expect(ci.organizationId).toBe(organizationId);
+      expect(ci.enabledCapabilityFlags).toEqual({ read: true, write: true });
 
       // Verify connector entity in DB
       const ceRows = await (db as ReturnType<typeof drizzle>)
