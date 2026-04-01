@@ -170,17 +170,28 @@ export const ColumnDefinitionDetailView: React.FC<
                       { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
                     ]}
                   >
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Chip
-                        label={cd.type}
-                        size="small"
-                        color={TYPE_COLOR[cd.type] ?? "default"}
-                        variant="outlined"
-                      />
-                      {cd.required && (
-                        <Chip label="Required" size="small" color="error" />
-                      )}
-                    </Stack>
+                    <MetadataList
+                      items={[
+                        {
+                          label: "Type",
+                          value: (
+                            <Chip
+                              label={cd.type}
+                              size="small"
+                              color={TYPE_COLOR[cd.type] ?? "default"}
+                              variant="outlined"
+                            />
+                          ),
+                          variant: "chip",
+                        },
+                        {
+                          label: "Required",
+                          value: <Chip label="Required" size="small" color="error" />,
+                          variant: "chip",
+                          hidden: !cd.required,
+                        },
+                      ]}
+                    />
                   </PageHeader>
 
 
@@ -332,26 +343,26 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
     },
     ...(onEdit
       ? [
-          {
-            key: "actions",
-            label: "Actions",
-            render: (_value: unknown, row: Record<string, unknown>) => {
-              const fm = fieldMappings.find((f) => f.id === row.id);
-              return fm ? (
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(fm);
-                  }}
-                  aria-label="Edit field mapping"
-                >
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              ) : null;
-            },
-          } as DataTableColumn,
-        ]
+        {
+          key: "actions",
+          label: "Actions",
+          render: (_value: unknown, row: Record<string, unknown>) => {
+            const fm = fieldMappings.find((f) => f.id === row.id);
+            return fm ? (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(fm);
+                }}
+                aria-label="Edit field mapping"
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            ) : null;
+          },
+        } as DataTableColumn,
+      ]
       : []),
   ];
 

@@ -34,7 +34,6 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
