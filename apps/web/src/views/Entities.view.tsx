@@ -12,7 +12,7 @@ import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-
+import AddIcon from "@mui/icons-material/Add";
 import { ConnectorEntityDataList } from "../components/ConnectorEntity.component";
 import { CreateConnectorEntityDialog } from "../components/CreateConnectorEntityDialog.component";
 import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
@@ -46,43 +46,43 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick, onDelete }) =>
   ];
 
   return (
-  <DetailCard title={entity.label} onClick={onClick} actions={actions}>
-    <MetadataList
-      items={[
-        { label: "Connector", value: entity.connectorInstance.name },
-        { label: "Key", value: entity.key, variant: "mono" },
-        {
-          label: "Tags",
-          value: (
-            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-              {(entity.tags ?? []).map((tag) => (
-                <Chip
-                  key={tag.id}
-                  label={tag.name}
-                  size="small"
-                  icon={
-                    tag.color ? (
-                      <Box
-                        sx={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: "50%",
-                          backgroundColor: tag.color,
-                          flexShrink: 0,
-                        }}
-                      />
-                    ) : undefined
-                  }
-                />
-              ))}
-            </Stack>
-          ),
-          variant: "chip",
-          hidden: !entity.tags || entity.tags.length === 0,
-        },
-      ]}
-    />
-  </DetailCard>
+    <DetailCard title={entity.label} onClick={onClick} actions={actions}>
+      <MetadataList
+        items={[
+          { label: "Connector", value: entity.connectorInstance.name },
+          { label: "Key", value: entity.key, variant: "mono" },
+          {
+            label: "Tags",
+            value: (
+              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                {(entity.tags ?? []).map((tag) => (
+                  <Chip
+                    key={tag.id}
+                    label={tag.name}
+                    size="small"
+                    icon={
+                      tag.color ? (
+                        <Box
+                          sx={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: "50%",
+                            backgroundColor: tag.color,
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : undefined
+                    }
+                  />
+                ))}
+              </Stack>
+            ),
+            variant: "chip",
+            hidden: !entity.tags || entity.tags.length === 0,
+          },
+        ]}
+      />
+    </DetailCard>
   );
 };
 
@@ -145,7 +145,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
           title="Entities"
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
-            <Button variant="contained" onClick={onCreate}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={onCreate}>
               Create Entity
             </Button>
           }

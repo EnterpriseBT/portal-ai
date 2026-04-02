@@ -290,7 +290,7 @@ describe("FieldMappingDeleteResponsePayloadSchema", () => {
   it("should accept a valid delete response with cascaded counts", () => {
     const result = FieldMappingDeleteResponsePayloadSchema.safeParse({
       id: "fm-1",
-      cascaded: { entityGroupMembers: 3 },
+      cascaded: { entityGroupMembers: 3, bidirectionalCleared: false },
     });
     expect(result.success).toBe(true);
   });
@@ -298,7 +298,7 @@ describe("FieldMappingDeleteResponsePayloadSchema", () => {
   it("should accept zero cascaded entity group members", () => {
     const result = FieldMappingDeleteResponsePayloadSchema.safeParse({
       id: "fm-1",
-      cascaded: { entityGroupMembers: 0 },
+      cascaded: { entityGroupMembers: 0, bidirectionalCleared: false },
     });
     expect(result.success).toBe(true);
   });
@@ -324,6 +324,8 @@ describe("FieldMappingImpactResponsePayloadSchema", () => {
   it("should accept a valid impact response", () => {
     const result = FieldMappingImpactResponsePayloadSchema.safeParse({
       entityGroupMembers: 5,
+      entityRecords: 10,
+      bidirectionalCounterpart: { id: "fm-2", sourceField: "email" },
     });
     expect(result.success).toBe(true);
   });
@@ -331,6 +333,8 @@ describe("FieldMappingImpactResponsePayloadSchema", () => {
   it("should accept zero entity group members", () => {
     const result = FieldMappingImpactResponsePayloadSchema.safeParse({
       entityGroupMembers: 0,
+      entityRecords: 0,
+      bidirectionalCounterpart: null,
     });
     expect(result.success).toBe(true);
   });
