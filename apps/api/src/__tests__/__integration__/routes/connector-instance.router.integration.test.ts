@@ -940,6 +940,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: generateId(),
           organizationId: generateId(),
           name: "",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       expect(res.status).toBe(400);
@@ -959,6 +961,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: generateId(),
           organizationId: generateId(),
           name: "New Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       expect(res.status).toBe(404);
@@ -978,6 +982,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: def.id,
           organizationId: generateId(),
           name: "New Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       expect(res.status).toBe(404);
@@ -1003,6 +1009,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: def.id,
           organizationId: orgId,
           name: "My New Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       expect(res.status).toBe(201);
@@ -1011,7 +1019,7 @@ describe("Connector Instance Router", () => {
       expect(created.name).toBe("My New Instance");
       expect(created.connectorDefinitionId).toBe(def.id);
       expect(created.organizationId).toBe(orgId);
-      expect(created.status).toBe("pending");
+      expect(created.status).toBe("active");
       expect(created.config).toBeNull();
       expect(created.credentials).toBeNull();
     });
@@ -1035,6 +1043,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: def.id,
           organizationId: orgId,
           name: "Configured Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: true, sync: false },
           config: { endpoint: "https://api.example.com" },
           credentials: { apiKey: "secret-key-123" },
         });
@@ -1065,6 +1075,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: def.id,
           organizationId: orgId,
           name: "Retrievable Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       const id = createRes.body.payload.connectorInstance.id;
