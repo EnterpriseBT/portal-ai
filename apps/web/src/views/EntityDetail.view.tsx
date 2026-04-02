@@ -15,6 +15,7 @@ import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
+import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -348,8 +349,8 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
             isWriteEnabled && columnDefs.length > 0 && onOpenCreateRecordDialog ? (
-              <Button variant="contained" onClick={onOpenCreateRecordDialog}>
-                New Record
+              <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={onOpenCreateRecordDialog}>
+                Create
               </Button>
             ) : undefined
           }

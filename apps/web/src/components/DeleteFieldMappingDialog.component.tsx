@@ -44,7 +44,11 @@ const ImpactSummary: React.FC<{
 
   if (!impact) return null;
 
-  if (impact.entityGroupMembers === 0) {
+  const hasRecords = impact.entityRecords > 0;
+  const hasEntityGroupMembers = impact.entityGroupMembers > 0;
+  const hasBidirectional = !!impact.bidirectionalCounterpart;
+
+  if (!hasRecords && !hasEntityGroupMembers && !hasBidirectional) {
     return (
       <Typography variant="body2" color="text.secondary">
         No associated data found.
@@ -54,12 +58,30 @@ const ImpactSummary: React.FC<{
 
   return (
     <List dense disablePadding>
-      <ListItem disableGutters sx={{ py: 0 }}>
-        <ListItemText
-          primary={`${impact.entityGroupMembers} entity group members`}
-          slotProps={{ primary: { variant: "body2" } }}
-        />
-      </ListItem>
+      {hasRecords && (
+        <ListItem disableGutters sx={{ py: 0 }}>
+          <ListItemText
+            primary={`${impact.entityRecords} entity record${impact.entityRecords !== 1 ? "s" : ""} on this connector entity`}
+            slotProps={{ primary: { variant: "body2" } }}
+          />
+        </ListItem>
+      )}
+      {hasEntityGroupMembers && (
+        <ListItem disableGutters sx={{ py: 0 }}>
+          <ListItemText
+            primary={`${impact.entityGroupMembers} entity group member${impact.entityGroupMembers !== 1 ? "s" : ""}`}
+            slotProps={{ primary: { variant: "body2" } }}
+          />
+        </ListItem>
+      )}
+      {hasBidirectional && (
+        <ListItem disableGutters sx={{ py: 0 }}>
+          <ListItemText
+            primary={`Bidirectional link to "${impact.bidirectionalCounterpart!.sourceField}" will be cleared`}
+            slotProps={{ primary: { variant: "body2" } }}
+          />
+        </ListItem>
+      )}
     </List>
   );
 };
@@ -76,8 +98,10 @@ export const DeleteFieldMappingDialog: React.FC<
   isLoadingImpact,
   serverError,
 }) => {
-  const deleteDisabled = isPending || isLoadingImpact;
-  const hasCascade = impact && impact.entityGroupMembers > 0;
+  const hasRecords = impact ? impact.entityRecords > 0 : false;
+  const deleteBlocked = hasRecords;
+  const deleteDisabled = isPending || isLoadingImpact || deleteBlocked;
+  const hasCascade = impact && (impact.entityGroupMembers > 0 || !!impact.bidirectionalCounterpart);
 
   return (
     <Modal
@@ -120,12 +144,15 @@ export const DeleteFieldMappingDialog: React.FC<
 
         <ImpactSummary impact={impact} isLoading={isLoadingImpact} />
 
-        {hasCascade ? (
+        {deleteBlocked ? (
+          <Alert severity="error">
+            This field mapping cannot be deleted because its connector entity
+            has existing records. Delete the entity records first.
+          </Alert>
+        ) : hasCascade ? (
           <Alert severity="warning">
-            Deleting this field mapping will also remove{" "}
-            {impact.entityGroupMembers} entity group member
-            {impact.entityGroupMembers !== 1 ? "s" : ""} that depend on it. This
-            cannot be undone.
+            Deleting this field mapping will also affect the associated data
+            listed above. This cannot be undone.
           </Alert>
         ) : (
           <Alert severity="warning">

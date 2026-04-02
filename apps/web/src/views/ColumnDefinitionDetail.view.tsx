@@ -30,6 +30,7 @@ import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.compone
 import { CreateFieldMappingDialog } from "../components/CreateFieldMappingDialog.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
 import { EditColumnDefinitionDialog } from "../components/EditColumnDefinitionDialog.component";
+import { DeleteFieldMappingDialog } from "../components/DeleteFieldMappingDialog.component";
 import { EditFieldMappingDialog } from "../components/EditFieldMappingDialog.component";
 import { FieldMappingDataList } from "../components/FieldMapping.component";
 import DataResult from "../components/DataResult.component";
@@ -70,12 +71,17 @@ export const ColumnDefinitionDetailView: React.FC<
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [updateWarnings, setUpdateWarnings] = useState<string[]>([]);
   const [editingFieldMapping, setEditingFieldMapping] = useState<FieldMappingWithConnectorEntity | null>(null);
+  const [deletingFieldMapping, setDeletingFieldMapping] = useState<FieldMappingWithConnectorEntity | null>(null);
   const [createFieldMappingOpen, setCreateFieldMappingOpen] = useState(false);
 
   const deleteMutation = sdk.columnDefinitions.delete(columnDefinitionId);
   const updateMutation = sdk.columnDefinitions.update(columnDefinitionId);
   const fmCreateMutation = sdk.fieldMappings.create();
   const fmUpdateMutation = sdk.fieldMappings.update(editingFieldMapping?.id ?? "");
+  const fmDeleteMutation = sdk.fieldMappings.delete(deletingFieldMapping?.id ?? "");
+  const fmImpactQuery = sdk.fieldMappings.impact(deletingFieldMapping?.id ?? "", {
+    enabled: !!deletingFieldMapping,
+  });
   const impactQuery = sdk.columnDefinitions.impact(columnDefinitionId, {
     enabled: deleteDialogOpen,
   });
@@ -140,6 +146,16 @@ export const ColumnDefinitionDetailView: React.FC<
     },
     [fmUpdateMutation, queryClient]
   );
+
+  const handleFieldMappingDelete = useCallback(() => {
+    fmDeleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        setDeletingFieldMapping(null);
+        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+      },
+    });
+  }, [fmDeleteMutation, queryClient]);
 
   const mappingsPagination = usePagination({
     sortFields: [
@@ -279,6 +295,7 @@ export const ColumnDefinitionDetailView: React.FC<
                                       <FieldMappingTable
                                         fieldMappings={mappings.fieldMappings}
                                         onEdit={(fm) => setEditingFieldMapping(fm)}
+                                        onDelete={(fm) => setDeletingFieldMapping(fm)}
                                       />
                                     );
                                   }}
@@ -309,20 +326,20 @@ export const ColumnDefinitionDetailView: React.FC<
                     onClose={() => setEditingFieldMapping(null)}
                     fieldMapping={editingFieldMapping
                       ? {
-                          ...editingFieldMapping,
-                          columnDefinitionLabel: cd.label,
-                          connectorEntityLabel: editingFieldMapping.connectorEntity?.label,
-                        }
+                        ...editingFieldMapping,
+                        columnDefinitionLabel: cd.label,
+                        connectorEntityLabel: editingFieldMapping.connectorEntity?.label,
+                      }
                       : {
-                          sourceField: "",
-                          isPrimaryKey: false,
-                          columnDefinitionId: "",
-                          columnDefinitionLabel: "",
-                          connectorEntityLabel: "",
-                          refColumnDefinitionId: null,
-                          refEntityKey: null,
-                          refBidirectionalFieldMappingId: null,
-                        }
+                        sourceField: "",
+                        isPrimaryKey: false,
+                        columnDefinitionId: "",
+                        columnDefinitionLabel: "",
+                        connectorEntityLabel: "",
+                        refColumnDefinitionId: null,
+                        refEntityKey: null,
+                        refBidirectionalFieldMappingId: null,
+                      }
                     }
                     onSubmit={handleFieldMappingUpdate}
                     onSearchColumnDefinitions={handleSearchColumnDefinitions}
@@ -331,6 +348,16 @@ export const ColumnDefinitionDetailView: React.FC<
                     isPending={fmUpdateMutation.isPending}
                     serverError={toServerError(fmUpdateMutation.error)}
                     columnDefinitionType={cd.type}
+                  />
+                  <DeleteFieldMappingDialog
+                    open={!!deletingFieldMapping}
+                    onClose={() => setDeletingFieldMapping(null)}
+                    fieldMappingSourceField={deletingFieldMapping?.sourceField ?? ""}
+                    onConfirm={handleFieldMappingDelete}
+                    isPending={fmDeleteMutation.isPending}
+                    impact={fmImpactQuery.data ?? null}
+                    isLoadingImpact={fmImpactQuery.isLoading && !!deletingFieldMapping}
+                    serverError={toServerError(fmDeleteMutation.error)}
                   />
                   <EditColumnDefinitionDialog
                     open={editDialogOpen}
@@ -366,11 +393,13 @@ export const ColumnDefinitionDetailView: React.FC<
 interface FieldMappingTableProps {
   fieldMappings: FieldMappingWithConnectorEntity[];
   onEdit?: (fm: FieldMappingWithConnectorEntity) => void;
+  onDelete?: (fm: FieldMappingWithConnectorEntity) => void;
 }
 
 const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
   fieldMappings,
   onEdit,
+  onDelete,
 }) => {
   const navigate = useNavigate();
 
@@ -398,25 +427,43 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
       label: "Primary Key",
       render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
     },
-    ...(onEdit
+    ...((onEdit || onDelete)
       ? [
         {
           key: "actions",
           label: "Actions",
           render: (_value: unknown, row: Record<string, unknown>) => {
             const fm = fieldMappings.find((f) => f.id === row.id);
-            return fm ? (
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(fm);
-                }}
-                aria-label="Edit field mapping"
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            ) : null;
+            if (!fm) return null;
+            return (
+              <Stack direction="row" spacing={0.5}>
+                {onEdit && (
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(fm);
+                    }}
+                    aria-label="Edit field mapping"
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                )}
+                {onDelete && (
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(fm);
+                    }}
+                    aria-label="Delete field mapping"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Stack>
+            );
           },
         } as DataTableColumn,
       ]

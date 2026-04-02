@@ -8,10 +8,32 @@ const { DeleteFieldMappingDialog } = await import(
 
 const impactWithCascade: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 5,
+  entityRecords: 0,
+  bidirectionalCounterpart: null,
 };
 
 const zeroImpact: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 0,
+  entityRecords: 0,
+  bidirectionalCounterpart: null,
+};
+
+const impactWithBidirectional: FieldMappingImpactResponsePayload = {
+  entityGroupMembers: 0,
+  entityRecords: 0,
+  bidirectionalCounterpart: { id: "fm-counterpart", sourceField: "related_id" },
+};
+
+const impactWithBoth: FieldMappingImpactResponsePayload = {
+  entityGroupMembers: 3,
+  entityRecords: 0,
+  bidirectionalCounterpart: { id: "fm-counterpart", sourceField: "related_id" },
+};
+
+const impactWithRecords: FieldMappingImpactResponsePayload = {
+  entityGroupMembers: 0,
+  entityRecords: 42,
+  bidirectionalCounterpart: null,
 };
 
 const defaultProps = {
@@ -52,7 +74,35 @@ describe("DeleteFieldMappingDialog", () => {
     );
     expect(screen.getByText("5 entity group members")).toBeInTheDocument();
     expect(
-      screen.getByText(/will also remove 5 entity group members/)
+      screen.getByText(/will also affect the associated data/)
+    ).toBeInTheDocument();
+  });
+
+  it("should show bidirectional counterpart in impact summary", () => {
+    render(
+      <DeleteFieldMappingDialog
+        {...defaultProps}
+        impact={impactWithBidirectional}
+      />
+    );
+    expect(
+      screen.getByText(/Bidirectional link to "related_id" will be cleared/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/will also affect the associated data/)
+    ).toBeInTheDocument();
+  });
+
+  it("should show both entity group members and bidirectional counterpart", () => {
+    render(
+      <DeleteFieldMappingDialog
+        {...defaultProps}
+        impact={impactWithBoth}
+      />
+    );
+    expect(screen.getByText("3 entity group members")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Bidirectional link to "related_id" will be cleared/)
     ).toBeInTheDocument();
   });
 
@@ -132,5 +182,57 @@ describe("DeleteFieldMappingDialog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("should disable Delete button when entity records exist", () => {
+    render(
+      <DeleteFieldMappingDialog {...defaultProps} impact={impactWithRecords} />
+    );
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+  });
+
+  it("should show error alert when entity records block deletion", () => {
+    render(
+      <DeleteFieldMappingDialog {...defaultProps} impact={impactWithRecords} />
+    );
+    expect(
+      screen.getByText(/cannot be deleted because its connector entity has existing records/)
+    ).toBeInTheDocument();
+  });
+
+  it("should show entity record count in impact summary", () => {
+    render(
+      <DeleteFieldMappingDialog {...defaultProps} impact={impactWithRecords} />
+    );
+    expect(
+      screen.getByText("42 entity records on this connector entity")
+    ).toBeInTheDocument();
+  });
+
+  it("should not call onConfirm when Delete is clicked while blocked by records", () => {
+    const onConfirm = jest.fn();
+    render(
+      <DeleteFieldMappingDialog
+        {...defaultProps}
+        impact={impactWithRecords}
+        onConfirm={onConfirm}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("should not call onConfirm on form submit when blocked by records", () => {
+    const onConfirm = jest.fn();
+    render(
+      <DeleteFieldMappingDialog
+        {...defaultProps}
+        impact={impactWithRecords}
+        onConfirm={onConfirm}
+      />
+    );
+    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    fireEvent.submit(form);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });

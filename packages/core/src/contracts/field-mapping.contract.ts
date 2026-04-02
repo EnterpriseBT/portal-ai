@@ -99,6 +99,7 @@ export const FieldMappingDeleteResponsePayloadSchema = z.object({
   id: z.string(),
   cascaded: z.object({
     entityGroupMembers: z.number(),
+    bidirectionalCleared: z.boolean(),
   }),
 });
 
@@ -108,6 +109,13 @@ export type FieldMappingDeleteResponsePayload = z.infer<typeof FieldMappingDelet
 
 export const FieldMappingImpactResponsePayloadSchema = z.object({
   entityGroupMembers: z.number(),
+  entityRecords: z.number(),
+  bidirectionalCounterpart: z
+    .object({
+      id: z.string(),
+      sourceField: z.string(),
+    })
+    .nullable(),
 });
 
 export type FieldMappingImpactResponsePayload = z.infer<typeof FieldMappingImpactResponsePayloadSchema>;

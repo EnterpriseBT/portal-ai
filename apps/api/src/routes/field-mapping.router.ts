@@ -571,11 +571,28 @@ fieldMappingRouter.get(
         );
       }
 
-      const dependentMembers = await DbService.repository.entityGroupMembers
-        .findByLinkFieldMappingId(id);
+      const [dependentMembers, entityRecordCount] = await Promise.all([
+        DbService.repository.entityGroupMembers.findByLinkFieldMappingId(id),
+        DbService.repository.entityRecords.countByConnectorEntityId(existing.connectorEntityId),
+      ]);
+
+      let bidirectionalCounterpart: { id: string; sourceField: string } | null = null;
+      if (existing.refBidirectionalFieldMappingId) {
+        const counterpart = await DbService.repository.fieldMappings.findById(
+          existing.refBidirectionalFieldMappingId
+        );
+        if (counterpart) {
+          bidirectionalCounterpart = {
+            id: counterpart.id,
+            sourceField: counterpart.sourceField,
+          };
+        }
+      }
 
       return HttpService.success<FieldMappingImpactResponsePayload>(res, {
         entityGroupMembers: dependentMembers.length,
+        entityRecords: entityRecordCount,
+        bidirectionalCounterpart,
       });
     } catch (error) {
       logger.error(
@@ -653,19 +670,56 @@ fieldMappingRouter.delete(
         );
       }
 
+      // Block delete if the connector entity has any entity records
+      const recordCount = await DbService.repository.entityRecords.countByConnectorEntityId(
+        existing.connectorEntityId
+      );
+      if (recordCount > 0) {
+        return next(
+          new ApiError(
+            409,
+            ApiCode.FIELD_MAPPING_DELETE_HAS_RECORDS,
+            `Cannot delete field mapping: the connector entity has ${recordCount} record${recordCount !== 1 ? "s" : ""}. Delete the records first.`
+          )
+        );
+      }
+
       const { userId } = req.application!.metadata;
 
-      const cascadedEntityGroupMembers = await Repository.transaction(async (tx) => {
+      const result = await Repository.transaction(async (tx) => {
         await DbService.repository.fieldMappings.softDelete(id, userId, tx);
-        return DbService.repository.entityGroupMembers.softDeleteByLinkFieldMappingId(id, userId, tx);
+        const cascadedEntityGroupMembers = await DbService.repository.entityGroupMembers.softDeleteByLinkFieldMappingId(id, userId, tx);
+
+        // Clear bidirectional reference on the counterpart
+        let bidirectionalCleared = false;
+        if (existing.refBidirectionalFieldMappingId) {
+          await DbService.repository.fieldMappings.updateWhere(
+            eq(fieldMappings.id, existing.refBidirectionalFieldMappingId),
+            { refBidirectionalFieldMappingId: null, updated: Date.now(), updatedBy: userId } as never,
+            tx,
+          );
+          bidirectionalCleared = true;
+          logger.info(
+            { counterpartId: existing.refBidirectionalFieldMappingId },
+            "Cleared bidirectional reference on counterpart field mapping"
+          );
+        }
+
+        return { cascadedEntityGroupMembers, bidirectionalCleared };
       }).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.FIELD_MAPPING_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete field mapping");
       });
 
-      logger.info({ id, cascadedEntityGroupMembers }, "Field mapping soft-deleted with cascade");
+      logger.info({ id, ...result }, "Field mapping soft-deleted with cascade");
 
-      return HttpService.success<FieldMappingDeleteResponsePayload>(res, { id, cascaded: { entityGroupMembers: cascadedEntityGroupMembers } });
+      return HttpService.success<FieldMappingDeleteResponsePayload>(res, {
+        id,
+        cascaded: {
+          entityGroupMembers: result.cascadedEntityGroupMembers,
+          bidirectionalCleared: result.bidirectionalCleared,
+        },
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
