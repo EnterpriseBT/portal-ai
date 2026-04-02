@@ -50,7 +50,7 @@ describe("SeedService Integration Tests", () => {
 
       const rows = await connectorDefsRepo.findMany(undefined, {}, db);
 
-      expect(rows.length).toBeGreaterThanOrEqual(1);
+      expect(rows.length).toBeGreaterThanOrEqual(2);
     });
 
     it("should create a CSV connector definition with correct fields", async () => {
@@ -72,6 +72,26 @@ describe("SeedService Integration Tests", () => {
       });
     });
 
+    it("should create a Sandbox connector definition with correct fields", async () => {
+      await seedService.seed();
+
+      const rows = await connectorDefsRepo.findMany(undefined, {}, db);
+      const sandbox = rows.find((r) => r.slug === "sandbox");
+
+      expect(sandbox).toBeDefined();
+      expect(sandbox?.display).toBe("Sandbox");
+      expect(sandbox?.category).toBe("Built-in");
+      expect(sandbox?.authType).toBe("none");
+      expect(sandbox?.isActive).toBe(true);
+      expect(sandbox?.version).toBe("1.0.0");
+      expect(sandbox?.configSchema).toEqual({});
+      expect(sandbox?.capabilityFlags).toEqual({
+        sync: false,
+        query: true,
+        write: true,
+      });
+    });
+
     it("should be idempotent — running seed twice should not duplicate rows", async () => {
       await seedService.seed();
       await seedService.seed();
@@ -80,6 +100,16 @@ describe("SeedService Integration Tests", () => {
       const csvRows = rows.filter((r) => r.slug === "csv");
 
       expect(csvRows).toHaveLength(1);
+    });
+
+    it("should be idempotent for sandbox — running seed twice should not duplicate rows", async () => {
+      await seedService.seed();
+      await seedService.seed();
+
+      const rows = await connectorDefsRepo.findMany(undefined, {}, db);
+      const sandboxRows = rows.filter((r) => r.slug === "sandbox");
+
+      expect(sandboxRows).toHaveLength(1);
     });
 
     it("should update existing connector definitions on re-seed (upsert)", async () => {

@@ -1,4 +1,4 @@
-import { ConnectorDefinition, CSVConnectorDefinitionModelFactory } from "@portalai/core/models";
+import { ConnectorDefinition, CSVConnectorDefinitionModelFactory, SandboxConnectorDefinitionModelFactory } from "@portalai/core/models";
 import { DbClient } from "../db/index.js";
 import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
@@ -37,9 +37,24 @@ export class SeedService {
           },
           version: "1.0.0",
           iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1773338114/CSV_Icons_oad8ko.png',
-        }).parse()
+        }).parse(),
 
-      // Add more connectors as needed
+      new SandboxConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
+        .update({
+          slug: "sandbox",
+          display: "Sandbox",
+          category: "Built-in",
+          authType: "none",
+          isActive: true,
+          configSchema: {},
+          capabilityFlags: {
+            sync: false,
+            query: true,
+            write: true,
+          },
+          version: "1.0.0",
+          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1775089873/sandbox_ntatbt.png',
+        }).parse(),
     ];
 
     await DbService.repository.connectorDefinitions.upsertManyBySlug(connectors, db)

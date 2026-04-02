@@ -13,10 +13,10 @@ Step-by-step implementation checklist with tests and verification gates.
 
 Append after the CSV section (after line 107), following the identical pattern:
 
-- [ ] Add `SandboxConnectorDefinitionSchema` extending `ConnectorDefinitionSchema.extend({})`
-- [ ] Add `SandboxConnectorDefinition` type export
-- [ ] Add `SandboxConnectorDefinitionModel` class extending `CoreModel<SandboxConnectorDefinition>` with `parse()` and `validate()`
-- [ ] Add `SandboxConnectorDefinitionModelFactory` class extending `ModelFactory` with `create(createdBy)`
+- [x] Add `SandboxConnectorDefinitionSchema` extending `ConnectorDefinitionSchema.extend({})`
+- [x] Add `SandboxConnectorDefinition` type export
+- [x] Add `SandboxConnectorDefinitionModel` class extending `CoreModel<SandboxConnectorDefinition>` with `parse()` and `validate()`
+- [x] Add `SandboxConnectorDefinitionModelFactory` class extending `ModelFactory` with `create(createdBy)`
 
 ### Verify
 
@@ -34,9 +34,9 @@ Extract the generic import-mode `queryRows` logic from `csv.adapter.ts` into a s
 
 **New file:** `apps/api/src/utils/adapter.util.ts`
 
-- [ ] Move `resolveColumns()` helper (csv.adapter.ts lines 39–75) into this file
-- [ ] Move the `queryRows` body (csv.adapter.ts lines 82–194) into an exported `importModeQueryRows(instance, query)` function
-- [ ] Import dependencies from their existing locations:
+- [x] Move `resolveColumns()` helper (csv.adapter.ts lines 39–75) into this file
+- [x] Move the `queryRows` body (csv.adapter.ts lines 82–194) into an exported `importModeQueryRows(instance, query)` function
+- [x] Import dependencies from their existing locations:
   - `connectorEntitiesRepo` from `../db/repositories/connector-entities.repository.js`
   - `entityRecordsRepo` from `../db/repositories/entity-records.repository.js`
   - `fieldMappingsRepo` from `../db/repositories/field-mappings.repository.js`
@@ -50,10 +50,10 @@ Extract the generic import-mode `queryRows` logic from `csv.adapter.ts` into a s
 
 **File:** `apps/api/src/adapters/csv/csv.adapter.ts`
 
-- [ ] Remove the inline `resolveColumns` helper and `queryRows` implementation
-- [ ] Import `importModeQueryRows` from `../../utils/adapter.util.js`
-- [ ] Set `queryRows: importModeQueryRows` on the adapter object
-- [ ] Keep `syncEntity`, `discoverEntities`, `discoverColumns` as existing no-ops
+- [x] Remove the inline `resolveColumns` helper and `queryRows` implementation
+- [x] Import `importModeQueryRows` from `../../utils/adapter.util.js`
+- [x] Set `queryRows: importModeQueryRows` on the adapter object
+- [x] Keep `syncEntity`, `discoverEntities`, `discoverColumns` as existing no-ops
 
 The refactored CSV adapter should be ~15 lines:
 
@@ -85,9 +85,9 @@ npx jest apps/api/src/__tests__/adapters/csv/csv.adapter.test.ts       # All exi
 
 **New file:** `apps/api/src/adapters/sandbox/sandbox.adapter.ts`
 
-- [ ] Import `ConnectorAdapter` type from `../adapter.interface.js`
-- [ ] Import `importModeQueryRows` from `../../utils/adapter.util.js`
-- [ ] Export `sandboxAdapter: ConnectorAdapter` with:
+- [x] Import `ConnectorAdapter` type from `../adapter.interface.js`
+- [x] Import `importModeQueryRows` from `../../utils/adapter.util.js`
+- [x] Export `sandboxAdapter: ConnectorAdapter` with:
   - `accessMode: "import"`
   - `queryRows: importModeQueryRows`
   - `syncEntity` → returns `{ created: 0, updated: 0, unchanged: 0, errors: 0 }`
@@ -98,8 +98,8 @@ npx jest apps/api/src/__tests__/adapters/csv/csv.adapter.test.ts       # All exi
 
 **File:** `apps/api/src/adapters/register.ts`
 
-- [ ] Import `sandboxAdapter` from `./sandbox/sandbox.adapter.js`
-- [ ] Add `ConnectorAdapterRegistry.register("sandbox", sandboxAdapter)` inside `registerAdapters()`
+- [x] Import `sandboxAdapter` from `./sandbox/sandbox.adapter.js`
+- [x] Add `ConnectorAdapterRegistry.register("sandbox", sandboxAdapter)` inside `registerAdapters()`
 
 ### 3c. Write unit tests
 
@@ -107,25 +107,25 @@ npx jest apps/api/src/__tests__/adapters/csv/csv.adapter.test.ts       # All exi
 
 Follow the pattern of `apps/api/src/__tests__/adapters/csv/csv.adapter.test.ts`:
 
-- [ ] Mock the same four repository modules using `jest.unstable_mockModule()`:
+- [x] Mock the same four repository modules using `jest.unstable_mockModule()`:
   - `../../../db/repositories/connector-entities.repository.js`
   - `../../../db/repositories/entity-records.repository.js`
   - `../../../db/repositories/field-mappings.repository.js`
   - `../../../db/repositories/column-definitions.repository.js`
-- [ ] Dynamic import `sandboxAdapter` after mocks
-- [ ] Reuse the same fixture objects (stubInstance, stubEntity, stubMappings, stubColDefs, stubRecords) with sandbox-appropriate names
-- [ ] Reuse `setupMocks()` and `baseQuery()` helpers
+- [x] Dynamic import `sandboxAdapter` after mocks
+- [x] Reuse the same fixture objects (stubInstance, stubEntity, stubMappings, stubColDefs, stubRecords) with sandbox-appropriate names
+- [x] Reuse `setupMocks()` and `baseQuery()` helpers
 
 **Test cases:**
 
-- [ ] `has accessMode "import"`
-- [ ] `queryRows` — returns rows from entity_records
-- [ ] `queryRows` — returns `source: "cache"`
-- [ ] `queryRows` — returns column metadata from field mappings
-- [ ] `queryRows` — returns empty result for unknown entity key
-- [ ] `syncEntity` — returns zero counts (no-op)
-- [ ] `discoverEntities` — returns empty array
-- [ ] `discoverColumns` — returns empty array
+- [x] `has accessMode "import"`
+- [x] `queryRows` — returns rows from entity_records
+- [x] `queryRows` — returns `source: "cache"`
+- [x] `queryRows` — returns column metadata from field mappings
+- [x] `queryRows` — returns empty result for unknown entity key
+- [x] `syncEntity` — returns zero counts (no-op)
+- [x] `discoverEntities` — returns empty array
+- [x] `discoverColumns` — returns empty array
 
 ### Verify
 
@@ -141,8 +141,8 @@ npx jest apps/api/src/__tests__/adapters/                                    # C
 
 **File:** `apps/api/src/services/seed.service.ts`
 
-- [ ] Import `SandboxConnectorDefinitionModelFactory` from `@portalai/core/models`
-- [ ] Add sandbox entry to the `connectors` array in `seedConnectorDefinitions()`:
+- [x] Import `SandboxConnectorDefinitionModelFactory` from `@portalai/core/models`
+- [x] Add sandbox entry to the `connectors` array in `seedConnectorDefinitions()`:
 
 ```typescript
 new SandboxConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
@@ -165,7 +165,7 @@ new SandboxConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
 
 The existing tests assert `rows.length >= 1`. These will still pass, but add explicit sandbox coverage:
 
-- [ ] Add test: `should create a Sandbox connector definition with correct fields` — after `seed()`, find row with `slug === "sandbox"` and assert:
+- [x] Add test: `should create a Sandbox connector definition with correct fields` — after `seed()`, find row with `slug === "sandbox"` and assert:
   - `display` === `"Sandbox"`
   - `category` === `"Built-in"`
   - `authType` === `"none"`
@@ -173,8 +173,8 @@ The existing tests assert `rows.length >= 1`. These will still pass, but add exp
   - `capabilityFlags` deep equals `{ sync: false, query: true, write: true }`
   - `configSchema` deep equals `{}`
   - `version` === `"1.0.0"`
-- [ ] Add test: `should be idempotent for sandbox — running seed twice should not duplicate rows` — seed twice, filter by `slug === "sandbox"`, assert length 1
-- [ ] Update existing count assertion in `should insert connector definitions into the database` from `>= 1` to `>= 2` (now seeds both CSV and sandbox)
+- [x] Add test: `should be idempotent for sandbox — running seed twice should not duplicate rows` — seed twice, filter by `slug === "sandbox"`, assert length 1
+- [x] Update existing count assertion in `should insert connector definitions into the database` from `>= 1` to `>= 2` (now seeds both CSV and sandbox)
 
 ### Verify
 
@@ -191,7 +191,7 @@ npx jest apps/api/src/__tests__/__integration__/services/seed.service.integratio
 
 ### 5a. Add imports
 
-- [ ] Add to existing imports from `@portalai/core/models`:
+- [x] Add to existing imports from `@portalai/core/models`:
   - `ConnectorInstanceModelFactory`
   - `StationModelFactory`
   - `StationInstanceModelFactory`
@@ -200,37 +200,37 @@ npx jest apps/api/src/__tests__/__integration__/services/seed.service.integratio
 
 Inside the existing `DbService.transaction(async (tx) => { ... })` block, after the org-user creation (after line 77):
 
-- [ ] **Look up sandbox definition:**
+- [x] **Look up sandbox definition:**
   ```typescript
   const sandboxDef = await DbService.repository.connectorDefinitions.findBySlug("sandbox", tx);
   ```
   If `undefined`, log warning and return early with existing `{ user, organization, organizationUser }`. Do not fail signup.
 
-- [ ] **Create connector instance:**
+- [x] **Create connector instance:**
   - Use `ConnectorInstanceModelFactory().create(systemId).update({...}).parse()`
   - Fields: `connectorDefinitionId: sandboxDef.id`, `organizationId: createdOrg.id`, `name: "Sandbox"`, `status: "active"`, `config: {}`, `credentials: null`, `lastSyncAt: null`, `lastErrorMessage: null`, `enabledCapabilityFlags: { read: true, write: true, sync: false }`
   - Call `DbService.repository.connectorInstances.create(model, tx)`
 
-- [ ] **Create default station:**
+- [x] **Create default station:**
   - Use `StationModelFactory().create(systemId).update({...}).parse()`
   - Fields: `organizationId: createdOrg.id`, `name: "My Station"`, `description: "Default organization sandbox station"`, `toolPacks: ["data_query"]`
   - Call `DbService.repository.stations.create(model, tx)`
 
-- [ ] **Link via station_instances:**
+- [x] **Link via station_instances:**
   - Use `StationInstanceModelFactory().create(systemId).update({...}).parse()`
   - Fields: `stationId: createdStation.id`, `connectorInstanceId: createdInstance.id`
   - Call `DbService.repository.stationInstances.create(model, tx)`
 
-- [ ] **Set defaultStationId on organization:**
+- [x] **Set defaultStationId on organization:**
   - Call `DbService.repository.organizations.update(createdOrg.id, { defaultStationId: createdStation.id }, tx)`
 
-- [ ] **Update return value:**
+- [x] **Update return value:**
   - Spread `createdOrg` with updated `defaultStationId`:
     ```typescript
     organization: { ...createdOrg, defaultStationId: createdStation.id }
     ```
 
-- [ ] **Add logging** for the full provisioning:
+- [x] **Add logging** for the full provisioning:
   ```typescript
   logger.info({
     userId: createdUser.id,
@@ -254,35 +254,35 @@ Option (a) is preferred — it mirrors production behavior.
 
 **New tests to add under `describe("setupOrganization")`:**
 
-- [ ] `should create a sandbox connector instance for the new organization`
+- [x] `should create a sandbox connector instance for the new organization`
   - After `setupOrganization(owner)`, query `connectorInstances` table
   - Assert row exists with `organizationId` matching created org
   - Assert `name === "Sandbox"` and `status === "active"`
   - Assert `enabledCapabilityFlags` deep equals `{ read: true, write: true, sync: false }`
   - Assert `connectorDefinitionId` matches the sandbox definition's ID
 
-- [ ] `should create a default station with data_query tool pack`
+- [x] `should create a default station with data_query tool pack`
   - After `setupOrganization(owner)`, query `stations` table
   - Assert row exists with `organizationId` matching created org
   - Assert `name === "My Station"`
   - Assert `toolPacks` deep equals `["data_query"]`
 
-- [ ] `should link the sandbox connector instance to the default station`
+- [x] `should link the sandbox connector instance to the default station`
   - After `setupOrganization(owner)`, query `stationInstances` table
   - Assert row exists linking the created connector instance to the created station
 
-- [ ] `should set defaultStationId on the organization`
+- [x] `should set defaultStationId on the organization`
   - After `setupOrganization(owner)`, query `organizations` table
   - Assert `defaultStationId` equals the created station's ID
   - Also verify `result.organization.defaultStationId` matches
 
-- [ ] `should still succeed if sandbox definition does not exist`
+- [x] `should still succeed if sandbox definition does not exist`
   - Delete sandbox definition from DB before calling `setupOrganization`
   - Assert call does not throw
   - Assert returned `user`, `organization`, `organizationUser` are valid
   - Assert no connector instances or stations were created
 
-- [ ] `should roll back sandbox provisioning if station creation fails`
+- [x] `should roll back sandbox provisioning if station creation fails`
   - Verify that if any provisioning step fails, neither connector instance nor station exist in DB (transaction atomicity)
 
 ### Verify

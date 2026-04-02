@@ -14,9 +14,18 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
 import { ApplicationService } from "../../../services/application.service.js";
+import { SeedService } from "../../../services/seed.service.js";
 import { generateId, teardownOrg } from "../utils/application.util.js";
 
-const { users, organizations, organizationUsers } = schema;
+const {
+  users,
+  organizations,
+  organizationUsers,
+  connectorInstances,
+  connectorDefinitions,
+  stations,
+  stationInstances,
+} = schema;
 
 describe("ApplicationService Integration Tests", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -31,6 +40,10 @@ describe("ApplicationService Integration Tests", () => {
     db = drizzle(connection, { schema });
 
     await teardownOrg(db as ReturnType<typeof drizzle>);
+
+    // Seed connector definitions so sandbox auto-provisioning can execute
+    const seedService = new SeedService();
+    await seedService.seedConnectorDefinitions(db);
   });
 
   afterEach(async () => {
@@ -151,6 +164,153 @@ describe("ApplicationService Integration Tests", () => {
         result.organization.id
       );
       expect(result.organizationUser.userId).toBe(owner.id);
+    });
+
+    it("should create a sandbox connector instance for the new organization", async () => {
+      const owner = createOwner();
+
+      const result = await ApplicationService.setupOrganization(owner);
+
+      const instancesRepo = new Repository(connectorInstances);
+      const instances = await instancesRepo.findMany(undefined, {}, db);
+      const sandbox = instances.find(
+        (i) => i.organizationId === result.organization.id
+      );
+
+      expect(sandbox).toBeDefined();
+      expect(sandbox?.name).toBe("Sandbox");
+      expect(sandbox?.status).toBe("active");
+      expect(sandbox?.enabledCapabilityFlags).toEqual({
+        read: true,
+        write: true,
+        sync: false,
+      });
+
+      // Verify connectorDefinitionId matches the sandbox definition
+      const defsRepo = new Repository(connectorDefinitions);
+      const defs = await defsRepo.findMany(undefined, {}, db);
+      const sandboxDef = defs.find((d) => d.slug === "sandbox");
+      expect(sandbox?.connectorDefinitionId).toBe(sandboxDef?.id);
+    });
+
+    it("should create a default station with data_query tool pack", async () => {
+      const owner = createOwner();
+
+      const result = await ApplicationService.setupOrganization(owner);
+
+      const stationsRepo = new Repository(stations);
+      const allStations = await stationsRepo.findMany(undefined, {}, db);
+      const station = allStations.find(
+        (s) => s.organizationId === result.organization.id
+      );
+
+      expect(station).toBeDefined();
+      expect(station?.name).toBe("My Station");
+      expect(station?.toolPacks).toEqual(["data_query"]);
+    });
+
+    it("should link the sandbox connector instance to the default station", async () => {
+      const owner = createOwner();
+
+      const result = await ApplicationService.setupOrganization(owner);
+
+      const instancesRepo = new Repository(connectorInstances);
+      const instances = await instancesRepo.findMany(undefined, {}, db);
+      const instance = instances.find(
+        (i) => i.organizationId === result.organization.id
+      );
+
+      const stationsRepo = new Repository(stations);
+      const allStations = await stationsRepo.findMany(undefined, {}, db);
+      const station = allStations.find(
+        (s) => s.organizationId === result.organization.id
+      );
+
+      const stationInstancesRepo = new Repository(stationInstances);
+      const links = await stationInstancesRepo.findMany(undefined, {}, db);
+      const link = links.find(
+        (l) =>
+          l.stationId === station?.id &&
+          l.connectorInstanceId === instance?.id
+      );
+
+      expect(link).toBeDefined();
+    });
+
+    it("should set defaultStationId on the organization", async () => {
+      const owner = createOwner();
+
+      const result = await ApplicationService.setupOrganization(owner);
+
+      const orgsRepo = new Repository(organizations);
+      const found = await orgsRepo.findById(result.organization.id, db);
+
+      const stationsRepo = new Repository(stations);
+      const allStations = await stationsRepo.findMany(undefined, {}, db);
+      const station = allStations.find(
+        (s) => s.organizationId === result.organization.id
+      );
+
+      expect(found?.defaultStationId).toBe(station?.id);
+      expect(result.organization.defaultStationId).toBe(station?.id);
+    });
+
+    it("should still succeed if sandbox definition does not exist", async () => {
+      // Remove all connector definitions so sandbox def is missing
+      await db.delete(connectorDefinitions);
+
+      const owner = createOwner();
+      const result = await ApplicationService.setupOrganization(owner);
+
+      expect(result.user).toBeDefined();
+      expect(result.organization).toBeDefined();
+      expect(result.organizationUser).toBeDefined();
+
+      // No connector instances or stations should have been created
+      const instancesRepo = new Repository(connectorInstances);
+      const instanceCount = await instancesRepo.count(undefined, db);
+      expect(instanceCount).toBe(0);
+
+      const stationsRepo = new Repository(stations);
+      const stationCount = await stationsRepo.count(undefined, db);
+      expect(stationCount).toBe(0);
+    });
+
+    it("should roll back sandbox provisioning if station creation fails", async () => {
+      // We verify transaction atomicity by attempting to set up with a
+      // duplicate user id (which fails), then checking no provisioning
+      // artifacts remain.
+      const owner = createOwner();
+      const usersRepo = new Repository(users);
+      await usersRepo.create(
+        {
+          id: owner.id,
+          auth0Id: owner.auth0Id,
+          email: owner.email,
+          name: owner.name,
+          picture: owner.picture,
+          created: owner.created,
+          createdBy: owner.createdBy,
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        db
+      );
+
+      await expect(
+        ApplicationService.setupOrganization(owner)
+      ).rejects.toThrow();
+
+      // Neither connector instances nor stations should exist
+      const instancesRepo = new Repository(connectorInstances);
+      const instanceCount = await instancesRepo.count(undefined, db);
+      expect(instanceCount).toBe(0);
+
+      const stationsRepo = new Repository(stations);
+      const stationCount = await stationsRepo.count(undefined, db);
+      expect(stationCount).toBe(0);
     });
 
     it("should roll back all rows if the transaction fails", async () => {

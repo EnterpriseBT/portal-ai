@@ -1,19 +1,17 @@
 /**
- * CSV Connector Adapter.
+ * Sandbox Connector Adapter.
  *
  * Access mode: `import` — all reads come from the local `entity_records`
- * table. Syncing re-imports from the source file.
+ * table via the shared import-mode utility.
  *
- * `queryRows` delegates to the shared `importModeQueryRows` utility.
- *
- * `syncEntity` and discovery methods are no-ops for CSV — data is imported
- * via the bulk import API endpoint during the CSV upload workflow.
+ * `syncEntity` and discovery methods are no-ops — sandbox data is
+ * managed directly through the API.
  */
 
 import type { ConnectorAdapter } from "../adapter.interface.js";
 import { importModeQueryRows } from "../../utils/adapter.util.js";
 
-export const csvAdapter: ConnectorAdapter = {
+export const sandboxAdapter: ConnectorAdapter = {
   accessMode: "import",
   queryRows: importModeQueryRows,
   async syncEntity() {
