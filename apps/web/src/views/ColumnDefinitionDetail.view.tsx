@@ -302,18 +302,35 @@ export const ColumnDefinitionDetailView: React.FC<
                     serverError={toServerError(fmCreateMutation.error)}
                     columnDefinitionId={columnDefinitionId}
                     columnDefinitionLabel={cd.label}
+                    columnDefinitionType={cd.type}
                   />
                   <EditFieldMappingDialog
                     open={!!editingFieldMapping}
                     onClose={() => setEditingFieldMapping(null)}
                     fieldMapping={editingFieldMapping
-                      ? { ...editingFieldMapping, columnDefinitionLabel: cd.label }
-                      : { sourceField: "", isPrimaryKey: false, columnDefinitionId: "", columnDefinitionLabel: "" }
+                      ? {
+                          ...editingFieldMapping,
+                          columnDefinitionLabel: cd.label,
+                          connectorEntityLabel: editingFieldMapping.connectorEntity?.label,
+                        }
+                      : {
+                          sourceField: "",
+                          isPrimaryKey: false,
+                          columnDefinitionId: "",
+                          columnDefinitionLabel: "",
+                          connectorEntityLabel: "",
+                          refColumnDefinitionId: null,
+                          refEntityKey: null,
+                          refBidirectionalFieldMappingId: null,
+                        }
                     }
                     onSubmit={handleFieldMappingUpdate}
                     onSearchColumnDefinitions={handleSearchColumnDefinitions}
+                    onSearchConnectorEntitiesForRefKey={handleSearchConnectorEntitiesForRefKey}
+                    onSearchFieldMappings={handleSearchFieldMappings}
                     isPending={fmUpdateMutation.isPending}
                     serverError={toServerError(fmUpdateMutation.error)}
+                    columnDefinitionType={cd.type}
                   />
                   <EditColumnDefinitionDialog
                     open={editDialogOpen}

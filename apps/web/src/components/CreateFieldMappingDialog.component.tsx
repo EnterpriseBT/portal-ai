@@ -65,6 +65,7 @@ export interface CreateFieldMappingDialogProps {
   serverError: ServerError | null;
   columnDefinitionId: string;
   columnDefinitionLabel: string;
+  columnDefinitionType: string;
 }
 
 export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> = ({
@@ -79,6 +80,7 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
   serverError,
   columnDefinitionId,
   columnDefinitionLabel,
+  columnDefinitionType,
 }) => {
   const [form, setForm] = useState<CreateFieldMappingFormState>(INITIAL_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -193,24 +195,28 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
           }
           label="Primary Key"
         />
-        <AsyncSearchableSelect
-          label="Ref Column Definition"
-          value={form.refColumnDefinitionId}
-          onChange={(val) => handleChange("refColumnDefinitionId", val)}
-          onSearch={onSearchColumnDefinitions}
-        />
-        <AsyncSearchableSelect
-          label="Ref Entity Key"
-          value={form.refEntityKey}
-          onChange={(val) => handleChange("refEntityKey", val)}
-          onSearch={onSearchConnectorEntitiesForRefKey}
-        />
-        <AsyncSearchableSelect
-          label="Ref Bidirectional Field Mapping"
-          value={form.refBidirectionalFieldMappingId}
-          onChange={(val) => handleChange("refBidirectionalFieldMappingId", val)}
-          onSearch={onSearchFieldMappings}
-        />
+        {(columnDefinitionType === "reference" || columnDefinitionType === "reference-array") && (
+          <>
+            <AsyncSearchableSelect
+              label="Ref Column Definition"
+              value={form.refColumnDefinitionId}
+              onChange={(val) => handleChange("refColumnDefinitionId", val)}
+              onSearch={onSearchColumnDefinitions}
+            />
+            <AsyncSearchableSelect
+              label="Ref Entity Key"
+              value={form.refEntityKey}
+              onChange={(val) => handleChange("refEntityKey", val)}
+              onSearch={onSearchConnectorEntitiesForRefKey}
+            />
+            <AsyncSearchableSelect
+              label="Ref Bidirectional Field Mapping"
+              value={form.refBidirectionalFieldMappingId}
+              onChange={(val) => handleChange("refBidirectionalFieldMappingId", val)}
+              onSearch={onSearchFieldMappings}
+            />
+          </>
+        )}
         <FormAlert serverError={serverError} />
       </Stack>
     </Modal>

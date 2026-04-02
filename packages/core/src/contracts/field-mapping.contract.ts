@@ -51,14 +51,19 @@ export type FieldMappingGetResponsePayload = z.infer<typeof FieldMappingGetRespo
 
 // ── Create ────────────────────────────────────────────────────────────
 
+const nullableString = z
+  .string()
+  .nullable()
+  .transform((v) => (v === "" ? null : v));
+
 export const FieldMappingCreateRequestBodySchema = z.object({
   connectorEntityId: z.string(),
   columnDefinitionId: z.string(),
   sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional().default(false),
-  refColumnDefinitionId: z.string().nullable().optional().default(null),
-  refEntityKey: z.string().nullable().optional().default(null),
-  refBidirectionalFieldMappingId: z.string().nullable().optional().default(null),
+  refColumnDefinitionId: nullableString.optional().default(null),
+  refEntityKey: nullableString.optional().default(null),
+  refBidirectionalFieldMappingId: nullableString.optional().default(null),
 });
 
 export type FieldMappingCreateRequestBody = z.infer<typeof FieldMappingCreateRequestBodySchema>;
@@ -75,7 +80,9 @@ export const FieldMappingUpdateRequestBodySchema = z.object({
   sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional(),
   columnDefinitionId: z.string(),
-  refBidirectionalFieldMappingId: z.string().nullable().optional(),
+  refColumnDefinitionId: nullableString.optional(),
+  refEntityKey: nullableString.optional(),
+  refBidirectionalFieldMappingId: nullableString.optional(),
 });
 
 export type FieldMappingUpdateRequestBody = z.infer<typeof FieldMappingUpdateRequestBodySchema>;

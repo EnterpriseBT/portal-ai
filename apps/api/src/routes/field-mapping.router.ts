@@ -322,6 +322,19 @@ fieldMappingRouter.post(
         );
       }
 
+      // Check for duplicate mapping (same entity + column definition)
+      const duplicate = await DbService.repository.fieldMappings.findMany(
+        and(
+          eq(fieldMappings.connectorEntityId, parsed.data.connectorEntityId),
+          eq(fieldMappings.columnDefinitionId, parsed.data.columnDefinitionId),
+        )
+      );
+      if (duplicate.length > 0) {
+        return next(
+          new ApiError(409, ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN, "A field mapping already exists for this column definition on the same connector entity")
+        );
+      }
+
       const { userId, organizationId } = req.application!.metadata;
 
       const factory = new FieldMappingModelFactory();

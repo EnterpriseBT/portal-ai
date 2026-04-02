@@ -519,6 +519,67 @@ describe("Field Mapping Router", () => {
       expect(created.columnDefinitionId).toBe(columnDefinitionId);
     });
 
+    it("should return 409 when a field mapping already exists for the same entity and column definition", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      // Seed an existing field mapping
+      const existing = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        sourceField: "existing_field",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(existing as never);
+
+      // Attempt to create a duplicate
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "duplicate_field",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN);
+    });
+
+    it("should allow creating a field mapping for the same column definition on a different entity", async () => {
+      const { connectorEntityId, columnDefinitionId, connectorInstanceId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      // Seed an existing field mapping on entity 1
+      const existing = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        sourceField: "entity1_field",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(existing as never);
+
+      // Create a second entity
+      const entity2 = createConnEntity(organizationId, connectorInstanceId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity2 as never);
+
+      // Create on entity 2 with the same column definition — should succeed
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: entity2.id,
+          columnDefinitionId,
+          sourceField: "entity2_field",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.fieldMapping.connectorEntityId).toBe(entity2.id);
+    });
+
     it("created field mapping should be retrievable via GET", async () => {
       const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
         db as ReturnType<typeof drizzle>

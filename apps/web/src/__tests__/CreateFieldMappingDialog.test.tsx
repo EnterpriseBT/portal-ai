@@ -17,6 +17,7 @@ const defaultProps = {
   serverError: null,
   columnDefinitionId: "cd-1",
   columnDefinitionLabel: "First Name",
+  columnDefinitionType: "string",
 };
 
 describe("CreateFieldMappingDialog", () => {
@@ -30,12 +31,25 @@ describe("CreateFieldMappingDialog", () => {
     expect(screen.getByLabelText(/Source Field/)).toBeInTheDocument();
     expect(screen.getByText("Primary Key")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Connector Entity" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Ref Column Definition" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Ref Entity Key" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Ref Bidirectional Field Mapping" })).toBeInTheDocument();
+    // Ref fields hidden for non-reference types
+    expect(screen.queryByRole("combobox", { name: "Ref Column Definition" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Ref Entity Key" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Ref Bidirectional Field Mapping" })).not.toBeInTheDocument();
     // Locked column definition field
     const cdField = screen.getByDisplayValue("First Name");
     expect(cdField).toBeDisabled();
+  });
+
+  it("should show ref fields when column definition type is reference", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference" />);
+    expect(screen.getByRole("combobox", { name: "Ref Column Definition" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Ref Entity Key" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Ref Bidirectional Field Mapping" })).toBeInTheDocument();
+  });
+
+  it("should show ref fields when column definition type is reference-array", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference-array" />);
+    expect(screen.getByRole("combobox", { name: "Ref Column Definition" })).toBeInTheDocument();
   });
 
   it("should not render when open is false", () => {
@@ -246,7 +260,7 @@ describe("CreateFieldMappingDialog", () => {
   });
 
   it("should call onSearchColumnDefinitions when typing in ref column definition select", async () => {
-    render(<CreateFieldMappingDialog {...defaultProps} />);
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference" />);
     const refColDefInput = screen.getByRole("combobox", { name: "Ref Column Definition" });
     fireEvent.change(refColDefInput, { target: { value: "test" } });
     await waitFor(() => {
@@ -255,7 +269,7 @@ describe("CreateFieldMappingDialog", () => {
   });
 
   it("should call onSearchFieldMappings when typing in ref bidirectional select", async () => {
-    render(<CreateFieldMappingDialog {...defaultProps} />);
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference" />);
     const refBidiInput = screen.getByRole("combobox", { name: "Ref Bidirectional Field Mapping" });
     fireEvent.change(refBidiInput, { target: { value: "test" } });
     await waitFor(() => {
