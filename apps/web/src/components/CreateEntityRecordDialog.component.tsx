@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 
 import type {
-  EntityRecordPatchRequestBody,
+  EntityRecordCreateRequestBody,
   ColumnDefinitionSummary,
 } from "@portalai/core/contracts";
-import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
+import { Button, Modal, Stack } from "@portalai/core/ui";
 
 import { DynamicRecordField } from "./DynamicRecordField.component";
 import { FormAlert } from "./FormAlert.component";
@@ -17,26 +17,24 @@ import {
   initializeRecordFields,
 } from "../utils/record-field-serialization.util";
 
-export interface EditEntityRecordDialogProps {
+export interface CreateEntityRecordDialogProps {
   open: boolean;
   onClose: () => void;
   columns: ColumnDefinitionSummary[];
-  normalizedData: Record<string, unknown>;
-  onSubmit: (body: EntityRecordPatchRequestBody) => void;
+  onSubmit: (body: EntityRecordCreateRequestBody) => void;
   isPending?: boolean;
   serverError?: ServerError | null;
 }
 
-const EditForm: React.FC<{
+const CreateForm: React.FC<{
   columns: ColumnDefinitionSummary[];
-  normalizedData: Record<string, unknown>;
-  onSubmit: (body: EntityRecordPatchRequestBody) => void;
+  onSubmit: (body: EntityRecordCreateRequestBody) => void;
   onClose: () => void;
   isPending?: boolean;
   serverError?: ServerError | null;
-}> = ({ columns, normalizedData, onSubmit, onClose, isPending, serverError }) => {
+}> = ({ columns, onSubmit, onClose, isPending, serverError }) => {
   const [values, setValues] = useState<Record<string, unknown>>(() =>
-    initializeRecordFields(columns, normalizedData)
+    initializeRecordFields(columns)
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -44,7 +42,6 @@ const EditForm: React.FC<{
 
   const handleChange = (key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }));
-    // Clear error on change
     if (errors[key]) {
       setErrors((prev) => {
         const next = { ...prev };
@@ -78,23 +75,6 @@ const EditForm: React.FC<{
       return;
     }
 
-    // Change detection: compare serialized values against original normalizedData
-    let hasChanges = false;
-    for (const col of columns) {
-      if (
-        JSON.stringify(serializedData[col.key]) !==
-        JSON.stringify(normalizedData[col.key])
-      ) {
-        hasChanges = true;
-        break;
-      }
-    }
-
-    if (!hasChanges) {
-      onClose();
-      return;
-    }
-
     onSubmit({ normalizedData: serializedData });
   };
 
@@ -102,7 +82,7 @@ const EditForm: React.FC<{
     <Modal
       open
       onClose={onClose}
-      title="Edit Record"
+      title="New Record"
       maxWidth="sm"
       fullWidth
       slotProps={{
@@ -120,15 +100,12 @@ const EditForm: React.FC<{
             Cancel
           </Button>
           <Button type="button" variant="contained" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Saving..." : "Save"}
+            {isPending ? "Creating..." : "Create"}
           </Button>
         </Stack>
       }
     >
       <Stack spacing={2} sx={{ pt: 1 }}>
-        <Typography variant="body2" color="text.secondary">
-          Edit the normalized field values for this record.
-        </Typography>
         {columns.map((col, i) => (
           <DynamicRecordField
             key={col.key}
@@ -148,11 +125,10 @@ const EditForm: React.FC<{
   );
 };
 
-export const EditEntityRecordDialog: React.FC<EditEntityRecordDialogProps> = ({
+export const CreateEntityRecordDialog: React.FC<CreateEntityRecordDialogProps> = ({
   open,
   onClose,
   columns,
-  normalizedData,
   onSubmit,
   isPending,
   serverError,
@@ -160,10 +136,9 @@ export const EditEntityRecordDialog: React.FC<EditEntityRecordDialogProps> = ({
   if (!open) return null;
 
   return (
-    <EditForm
-      key={JSON.stringify(normalizedData)}
+    <CreateForm
+      key="create-record"
       columns={columns}
-      normalizedData={normalizedData}
       onSubmit={onSubmit}
       onClose={onClose}
       isPending={isPending}

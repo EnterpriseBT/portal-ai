@@ -2,6 +2,8 @@ import type {
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
+  EntityRecordCreateRequestBody,
+  EntityRecordCreateResponsePayload,
   EntityRecordImportRequestBody,
   EntityRecordImportResponsePayload,
   EntityRecordSyncResponsePayload,
@@ -43,6 +45,11 @@ export const entityRecords = {
       undefined,
       options
     ),
+
+  create: (connectorEntityId: string) =>
+    useAuthMutation<EntityRecordCreateResponsePayload, EntityRecordCreateRequestBody>({
+      url: recordsUrl(connectorEntityId),
+    }),
 
   import: (connectorEntityId: string) =>
     useAuthMutation<

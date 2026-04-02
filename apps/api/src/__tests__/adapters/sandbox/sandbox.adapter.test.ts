@@ -266,8 +266,8 @@ describe("sandboxAdapter", () => {
 
       expect(result.columns).toEqual(
         expect.arrayContaining([
-          { key: "first_name", label: "First Name", type: "string" },
-          { key: "email", label: "Email", type: "string" },
+          { key: "first_name", label: "First Name", type: "string", required: false, enumValues: null, defaultValue: null },
+          { key: "email", label: "Email", type: "string", required: true, enumValues: null, defaultValue: null },
         ])
       );
     });

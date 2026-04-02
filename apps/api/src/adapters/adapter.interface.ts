@@ -1,5 +1,5 @@
-import type { ConnectorInstance } from "@portalai/core/models";
-import type { ColumnDataType } from "@portalai/core/models";
+import type { ConnectorInstance, ColumnDataType } from "@portalai/core/models";
+import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
 
 // ── Query / Result types ────────────────────────────────────────────
 
@@ -17,11 +17,7 @@ export interface EntityDataQuery {
   >;
 }
 
-export interface ColumnDefinitionSummary {
-  key: string;
-  label: string;
-  type: ColumnDataType;
-}
+export type { ColumnDefinitionSummary };
 
 export interface EntityDataResult {
   rows: Record<string, unknown>[];

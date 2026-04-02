@@ -10,17 +10,17 @@ import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/c
 // ── Sample data ─────────────────────────────────────────────────────
 
 const sampleColumns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string" },
-  { key: "email", label: "Email", type: "string" },
-  { key: "age", label: "Age", type: "number" },
-  { key: "salary", label: "Salary", type: "currency" },
-  { key: "active", label: "Active", type: "boolean" },
-  { key: "signup_date", label: "Signup Date", type: "date" },
-  { key: "last_login", label: "Last Login", type: "datetime" },
-  { key: "status", label: "Status", type: "enum" },
-  { key: "tags", label: "Tags", type: "array" },
-  { key: "metadata", label: "Metadata", type: "json" },
-  { key: "manager_id", label: "Manager", type: "reference" },
+  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null },
+  { key: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null },
+  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
+  { key: "salary", label: "Salary", type: "currency", required: false, enumValues: null, defaultValue: null },
+  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
+  { key: "signup_date", label: "Signup Date", type: "date", required: false, enumValues: null, defaultValue: null },
+  { key: "last_login", label: "Last Login", type: "datetime", required: false, enumValues: null, defaultValue: null },
+  { key: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null },
+  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null },
+  { key: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null },
+  { key: "manager_id", label: "Manager", type: "reference", required: false, enumValues: null, defaultValue: null },
 ];
 
 const emptyExpression: FilterExpression = {

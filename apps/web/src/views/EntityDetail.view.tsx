@@ -29,6 +29,8 @@ import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
 import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
 import { EditConnectorEntityDialog } from "../components/EditConnectorEntityDialog.component";
+import { CreateEntityRecordDialog } from "../components/CreateEntityRecordDialog.component";
+import type { EntityRecordCreateRequestBody } from "@portalai/core/contracts";
 import { BidirectionalConsistencyBanner } from "../components/BidirectionalConsistencyBanner.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { SyncColumns } from "../components/SyncColumns.component";
@@ -132,6 +134,13 @@ export interface EntityDetailViewUIProps {
   editDialogOpen?: boolean;
   onOpenEditDialog?: () => void;
   onCloseEditDialog?: () => void;
+  /** Create record dialog state */
+  createRecordDialogOpen?: boolean;
+  onOpenCreateRecordDialog?: () => void;
+  onCloseCreateRecordDialog?: () => void;
+  onCreateRecord?: (body: EntityRecordCreateRequestBody) => void;
+  isCreatingRecord?: boolean;
+  createRecordServerError?: ServerError | null;
 }
 
 export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
@@ -163,6 +172,12 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   editDialogOpen,
   onOpenEditDialog,
   onCloseEditDialog,
+  createRecordDialogOpen,
+  onOpenCreateRecordDialog,
+  onCloseCreateRecordDialog,
+  onCreateRecord,
+  isCreatingRecord,
+  createRecordServerError,
 }) => {
   const navigate = useNavigate();
 
@@ -328,7 +343,17 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
         )}
 
         {/* Data table */}
-        <PageSection title="Records" icon={<Icon name={IconName.DataObject} />}>
+        <PageSection
+          title="Records"
+          icon={<Icon name={IconName.DataObject} />}
+          primaryAction={
+            isWriteEnabled && columnDefs.length > 0 && onOpenCreateRecordDialog ? (
+              <Button variant="contained" onClick={onOpenCreateRecordDialog}>
+                New Record
+              </Button>
+            ) : undefined
+          }
+        >
           <PaginationToolbar {...pagination.toolbarProps} />
 
           <Box sx={{ mt: 2 }}>
@@ -406,6 +431,17 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           />
         )}
 
+        {createRecordDialogOpen !== undefined && onCloseCreateRecordDialog && onCreateRecord && (
+          <CreateEntityRecordDialog
+            open={!!createRecordDialogOpen}
+            onClose={onCloseCreateRecordDialog}
+            columns={columnDefs}
+            onSubmit={onCreateRecord}
+            isPending={isCreatingRecord}
+            serverError={createRecordServerError ?? null}
+          />
+        )}
+
         {deleteDialogOpen !== undefined && onCloseDeleteDialog && onDelete && (
           <DeleteConnectorEntityDialog
             open={!!deleteDialogOpen}
@@ -438,6 +474,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [createRecordDialogOpen, setCreateRecordDialogOpen] = useState(false);
 
   const entityResult = sdk.connectorEntities.get(entityId);
   const connectorInstanceId = entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
@@ -451,6 +488,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 
   const countResult = sdk.entityRecords.count(entityId);
   const syncMutation = sdk.entityRecords.sync(entityId);
+  const createRecordMutation = sdk.entityRecords.create(entityId);
   const updateMutation = sdk.connectorEntities.update(entityId);
   const deleteMutation = sdk.connectorEntities.delete(entityId);
   const impactQuery = sdk.connectorEntities.impact(entityId, {
@@ -520,6 +558,18 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
     });
   }, [deleteMutation, queryClient, navigate]);
 
+  const handleCreateRecord = useCallback(
+    (body: EntityRecordCreateRequestBody) => {
+      createRecordMutation.mutate(body, {
+        onSuccess: () => {
+          setCreateRecordDialogOpen(false);
+          createRecordMutation.reset();
+          queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        },
+      });
+    },
+    [createRecordMutation, queryClient]
+  );
 
   return (
     <DataResult results={{ entity: entityResult }}>
@@ -589,6 +639,12 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             editDialogOpen={editDialogOpen}
             onOpenEditDialog={() => setEditDialogOpen(true)}
             onCloseEditDialog={() => setEditDialogOpen(false)}
+            createRecordDialogOpen={createRecordDialogOpen}
+            onOpenCreateRecordDialog={() => setCreateRecordDialogOpen(true)}
+            onCloseCreateRecordDialog={() => setCreateRecordDialogOpen(false)}
+            onCreateRecord={handleCreateRecord}
+            isCreatingRecord={createRecordMutation.isPending}
+            createRecordServerError={toServerError(createRecordMutation.error)}
           />
         );
       }}

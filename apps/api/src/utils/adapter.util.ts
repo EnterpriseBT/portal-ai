@@ -51,17 +51,19 @@ export async function resolveColumns(
       .map((cd) => [cd.id, cd])
   );
 
-  return mappings
-    .map((m) => {
-      const cd = colDefMap.get(m.columnDefinitionId);
-      if (!cd) return null;
-      return {
-        key: cd.key,
-        label: cd.label,
-        type: cd.type as ColumnDataType,
-      };
-    })
-    .filter((c): c is ColumnDefinitionSummary => c != null);
+  return mappings.reduce<ColumnDefinitionSummary[]>((acc, m) => {
+    const cd = colDefMap.get(m.columnDefinitionId);
+    if (!cd) return acc;
+    acc.push({
+      key: cd.key,
+      label: cd.label,
+      type: cd.type as ColumnDataType,
+      required: cd.required,
+      enumValues: cd.enumValues ?? null,
+      defaultValue: cd.defaultValue ?? null,
+    });
+    return acc;
+  }, []);
 }
 
 // ── Import-mode queryRows ───────────────────────────────────────────

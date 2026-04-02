@@ -9,6 +9,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { eq, and, sql, type SQL } from "drizzle-orm";
 
 import { EntityRecordModelFactory, SORTABLE_COLUMN_TYPES } from "@portalai/core/models";
+import { UUIDv4Factory } from "@portalai/core/utils";
 import {
   EntityRecordListRequestQuerySchema,
   type EntityRecordListResponsePayload,
@@ -17,6 +18,8 @@ import {
   EntityRecordImportRequestBodySchema,
   type EntityRecordImportResponsePayload,
   type EntityRecordSyncResponsePayload,
+  EntityRecordCreateRequestBodySchema,
+  type EntityRecordCreateResponsePayload,
   EntityRecordPatchRequestBodySchema,
   type EntityRecordPatchResponsePayload,
   type EntityRecordDeleteOneResponsePayload,
@@ -97,13 +100,19 @@ async function resolveColumns(
       .map((cd) => [cd.id, cd])
   );
 
-  return mappings
-    .map((m) => {
-      const cd = colDefMap.get(m.columnDefinitionId);
-      if (!cd) return null;
-      return { key: cd.key, label: cd.label, type: cd.type as ColumnDataType };
-    })
-    .filter((c): c is ColumnDefinitionSummary => c != null);
+  return mappings.reduce<ColumnDefinitionSummary[]>((acc, m) => {
+    const cd = colDefMap.get(m.columnDefinitionId);
+    if (!cd) return acc;
+    acc.push({
+      key: cd.key,
+      label: cd.label,
+      type: cd.type as ColumnDataType,
+      required: cd.required,
+      enumValues: cd.enumValues ?? null,
+      defaultValue: cd.defaultValue ?? null,
+    });
+    return acc;
+  }, []);
 }
 
 async function resolveEntityOrThrow(
@@ -336,6 +345,158 @@ entityRecordRouter.get(
               500,
               ApiCode.ENTITY_RECORD_FETCH_FAILED,
               error instanceof Error ? error.message : "Failed to get entity record"
+            )
+      );
+    }
+  }
+);
+
+// ── POST / — Create single record ───────────────────────────────────
+
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records:
+ *   post:
+ *     tags:
+ *       - Entity Records
+ *     summary: Create a single entity record
+ *     description: >
+ *       Creates a new entity record with the provided normalizedData.
+ *       Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - normalizedData
+ *             properties:
+ *               normalizedData:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Record data mapped through field mappings
+ *               sourceId:
+ *                 type: string
+ *                 description: Optional source identifier (auto-generated UUID if omitted)
+ *     responses:
+ *       201:
+ *         description: Record created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     record:
+ *                       $ref: '#/components/schemas/EntityRecord'
+ *       400:
+ *         description: Invalid request body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Connector entity not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+entityRecordRouter.post(
+  "/",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const connectorEntityId = req.params.connectorEntityId;
+      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      if (!entity) return;
+
+      await assertWriteCapability(connectorEntityId);
+
+      const parsed = EntityRecordCreateRequestBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_RECORD_INVALID_PAYLOAD,
+            "Invalid entity record payload"
+          )
+        );
+      }
+
+      const { userId, organizationId } = req.application!.metadata;
+      const factory = new EntityRecordModelFactory();
+      const idFactory = new UUIDv4Factory();
+      const model = factory.create(userId);
+      model.update({
+        organizationId,
+        connectorEntityId,
+        data: parsed.data.normalizedData,
+        normalizedData: parsed.data.normalizedData,
+        sourceId: parsed.data.sourceId ?? idFactory.generate(),
+        checksum: "manual",
+        syncedAt: Date.now(),
+      });
+
+      const record = await DbService.repository.entityRecords
+        .create(model.parse())
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_RECORD_CREATE_FAILED,
+            error instanceof Error ? error.message : "Failed to create record"
+          );
+        });
+
+      logger.info({ connectorEntityId, recordId: record.id }, "Entity record created");
+
+      return HttpService.success<EntityRecordCreateResponsePayload>(
+        res,
+        { record: record as unknown as EntityRecordCreateResponsePayload["record"] },
+        201
+      );
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to create entity record"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_RECORD_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create entity record"
             )
       );
     }

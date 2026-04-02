@@ -49,8 +49,8 @@ const stubRecordsList = {
       },
     ],
     columns: [
-      { key: "first_name", label: "First Name", type: "string" as const },
-      { key: "email", label: "Email", type: "string" as const },
+      { key: "first_name", label: "First Name", type: "string" as const, required: false, enumValues: null, defaultValue: null },
+      { key: "email", label: "Email", type: "string" as const, required: false, enumValues: null, defaultValue: null },
     ],
     source: "cache" as const,
     total: 1,
@@ -85,6 +85,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
+const userEvent = (await import("@testing-library/user-event")).default;
 const { EntityDetailViewUI } = await import("../views/EntityDetail.view");
 const { BidirectionalConsistencyBannerUI } = await import(
   "../components/BidirectionalConsistencyBanner.component"
@@ -344,6 +345,91 @@ describe("EntityDetailViewUI", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
     // Records are still displayed
     expect(screen.getByText("Jane")).toBeInTheDocument();
+  });
+});
+
+// ── Create Record Dialog ───────────────────────────────────────────
+
+describe("EntityDetailViewUI — New Record button", () => {
+  beforeEach(() => {
+    mockRecordsList.mockReturnValue(stubRecordsList);
+    mockRecordsCount.mockReturnValue(emptyQueryResult);
+    mockRecordsSync.mockReturnValue({ mutate: jest.fn(), isPending: false });
+    mockEntityGet.mockReturnValue(emptyQueryResult);
+    mockFieldMappingsValidate.mockReturnValue({ data: undefined });
+  });
+
+  it("shows New Record button when isWriteEnabled and columns exist", () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        isWriteEnabled={true}
+        onOpenCreateRecordDialog={jest.fn()}
+        createRecordDialogOpen={false}
+        onCloseCreateRecordDialog={jest.fn()}
+        onCreateRecord={jest.fn()}
+      />
+    );
+    expect(screen.getByRole("button", { name: "New Record" })).toBeInTheDocument();
+  });
+
+  it("hides New Record button when isWriteEnabled is false", () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        isWriteEnabled={false}
+        onOpenCreateRecordDialog={jest.fn()}
+        createRecordDialogOpen={false}
+        onCloseCreateRecordDialog={jest.fn()}
+        onCreateRecord={jest.fn()}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "New Record" })).not.toBeInTheDocument();
+  });
+
+  it("hides New Record button when no columns defined", () => {
+    mockRecordsList.mockReturnValue(emptyRecordsList);
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        isWriteEnabled={true}
+        onOpenCreateRecordDialog={jest.fn()}
+        createRecordDialogOpen={false}
+        onCloseCreateRecordDialog={jest.fn()}
+        onCreateRecord={jest.fn()}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "New Record" })).not.toBeInTheDocument();
+  });
+
+  it("opens CreateEntityRecordDialog on New Record click", async () => {
+    const onOpen = jest.fn();
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        isWriteEnabled={true}
+        onOpenCreateRecordDialog={onOpen}
+        createRecordDialogOpen={false}
+        onCloseCreateRecordDialog={jest.fn()}
+        onCreateRecord={jest.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: "New Record" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders CreateEntityRecordDialog when createRecordDialogOpen is true", () => {
+    render(
+      <EntityDetailViewUI
+        entity={stubEntity}
+        isWriteEnabled={true}
+        onOpenCreateRecordDialog={jest.fn()}
+        createRecordDialogOpen={true}
+        onCloseCreateRecordDialog={jest.fn()}
+        onCreateRecord={jest.fn()}
+      />
+    );
+    expect(screen.getByText("New Record", { selector: "h2, h6, [class*='MuiTypography']" })).toBeInTheDocument();
   });
 });
 
