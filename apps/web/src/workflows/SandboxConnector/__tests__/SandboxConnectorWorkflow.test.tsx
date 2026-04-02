@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent, waitFor } = await import(
+const { render, screen, fireEvent } = await import(
   "../../../__tests__/test-utils"
 );
 const { SandboxConnectorWorkflowUI } = await import(
