@@ -22,7 +22,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch, toServerError } from "../utils/api.util";
+import { useColumnDefinitionSearch } from "../api/column-definitions.api";
+import { useConnectorEntitySearch } from "../api/connector-entities.api";
+import { useFieldMappingWithEntitySearch } from "../api/field-mappings.api";
+import { toServerError } from "../utils/api.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
 import { CreateFieldMappingDialog } from "../components/CreateFieldMappingDialog.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
@@ -63,7 +66,6 @@ export const ColumnDefinitionDetailView: React.FC<
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { fetchWithAuth } = useAuthFetch();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [updateWarnings, setUpdateWarnings] = useState<string[]>([]);
@@ -104,65 +106,12 @@ export const ColumnDefinitionDetailView: React.FC<
     [updateMutation, queryClient, columnDefinitionId]
   );
 
-  const handleSearchColumnDefinitions = useCallback(
-    async (query: string) => {
-      const res = await fetchWithAuth<{ payload: { columnDefinitions: Array<{ id: string; label: string }> } }>(
-        `/api/column-definitions?search=${encodeURIComponent(query)}&limit=20`
-      );
-      return res.payload.columnDefinitions.map((cd) => ({
-        value: cd.id,
-        label: cd.label,
-      }));
-    },
-    [fetchWithAuth]
-  );
-
-  const handleSearchConnectorEntities = useCallback(
-    async (query: string) => {
-      const res = await fetchWithAuth<{
-        payload: { connectorEntities: Array<{ id: string; key: string; label: string }> };
-      }>(`/api/connector-entities?search=${encodeURIComponent(query)}&limit=20`);
-      return res.payload.connectorEntities.map((ce) => ({
-        value: ce.id,
-        label: ce.label,
-      }));
-    },
-    [fetchWithAuth]
-  );
-
-  const handleSearchConnectorEntitiesForRefKey = useCallback(
-    async (query: string) => {
-      const res = await fetchWithAuth<{
-        payload: { connectorEntities: Array<{ id: string; key: string; label: string }> };
-      }>(`/api/connector-entities?search=${encodeURIComponent(query)}&limit=20`);
-      return res.payload.connectorEntities.map((ce) => ({
-        value: ce.key,
-        label: `${ce.label} (${ce.key})`,
-      }));
-    },
-    [fetchWithAuth]
-  );
-
-  const handleSearchFieldMappings = useCallback(
-    async (query: string) => {
-      const res = await fetchWithAuth<{
-        payload: {
-          fieldMappings: Array<{
-            id: string;
-            sourceField: string;
-            connectorEntity: { label: string } | null;
-          }>;
-        };
-      }>(`/api/field-mappings?search=${encodeURIComponent(query)}&include=connectorEntity&limit=20`);
-      return res.payload.fieldMappings.map((fm) => ({
-        value: fm.id,
-        label: fm.connectorEntity
-          ? `${fm.sourceField} (${fm.connectorEntity.label})`
-          : fm.sourceField,
-      }));
-    },
-    [fetchWithAuth]
-  );
+  const { onSearch: handleSearchColumnDefinitions } = useColumnDefinitionSearch();
+  const { onSearch: handleSearchConnectorEntities } = useConnectorEntitySearch();
+  const { onSearch: handleSearchConnectorEntitiesForRefKey } = useConnectorEntitySearch({
+    mapItem: (ce) => ({ value: ce.key, label: `${ce.label} (${ce.key})` }),
+  });
+  const { onSearch: handleSearchFieldMappings } = useFieldMappingWithEntitySearch();
 
   const handleFieldMappingCreate = useCallback(
     (body: FieldMappingCreateRequestBody) => {

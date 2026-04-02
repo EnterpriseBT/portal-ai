@@ -5,8 +5,6 @@ import {
   type EntityGroupMemberOverlapResponsePayload,
   type EntityGroupMemberCreateRequestBody,
   type EntityGroupUpdateRequestBody,
-  type ConnectorEntityListResponsePayload,
-  type FieldMappingListWithColumnDefinitionResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
@@ -43,6 +41,8 @@ import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.c
 import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { useConnectorEntitySearch } from "../api/connector-entities.api";
+import { useFieldMappingWithColumnDefinitionSearch } from "../api/field-mappings.api";
 import { useAuthFetch, toServerError, type ServerError } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
@@ -557,33 +557,25 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     [selectedEntityId, fetchOverlap]
   );
 
-  const handleSearchEntities = useCallback(
-    async (query: string): Promise<SelectOption[]> => {
-      const res = await fetchWithAuth<
-        ApiSuccessResponse<ConnectorEntityListResponsePayload>
-      >(`/api/connector-entities?search=${encodeURIComponent(query)}&limit=20`);
-      return res.payload.connectorEntities.map((e) => ({
-        value: e.id,
-        label: e.label,
-      }));
-    },
-    [fetchWithAuth]
-  );
+  const { onSearch: handleSearchEntities } = useConnectorEntitySearch();
 
+  const fieldMappingDefaultParams = React.useMemo(
+    () =>
+      selectedEntityId
+        ? { connectorEntityId: selectedEntityId, limit: "100" }
+        : undefined,
+    [selectedEntityId]
+  );
+  const { onSearch: fieldMappingSearch } =
+    useFieldMappingWithColumnDefinitionSearch({
+      defaultParams: fieldMappingDefaultParams,
+    });
   const handleSearchFieldMappings = useCallback(
     async (query: string): Promise<SelectOption[]> => {
       if (!selectedEntityId) return [];
-      const res = await fetchWithAuth<
-        ApiSuccessResponse<FieldMappingListWithColumnDefinitionResponsePayload>
-      >(
-        `/api/field-mappings?connectorEntityId=${encodeURIComponent(selectedEntityId)}&search=${encodeURIComponent(query)}&limit=100&include=columnDefinition`
-      );
-      return res.payload.fieldMappings.map((fm) => ({
-        value: fm.id,
-        label: fm.columnDefinition?.label ?? fm.sourceField,
-      }));
+      return fieldMappingSearch(query);
     },
-    [fetchWithAuth, selectedEntityId]
+    [selectedEntityId, fieldMappingSearch]
   );
 
   const handleUpdateGroup = useCallback(

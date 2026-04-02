@@ -1,4 +1,7 @@
+import { useMemo } from "react";
+
 import type {
+  ApiSuccessResponse,
   ColumnDefinitionCreateRequestBody,
   ColumnDefinitionCreateResponsePayload,
   ColumnDefinitionGetResponsePayload,
@@ -8,10 +11,45 @@ import type {
   ColumnDefinitionUpdateRequestBody,
   ColumnDefinitionUpdateResponsePayload,
 } from "@portalai/core/contracts";
-import { useAuthQuery, useAuthMutation } from "../utils/api.util";
+import type { ColumnDefinition } from "@portalai/core/models";
+import { useAsyncFilterOptions } from "@portalai/core/ui";
+import type { AsyncFilterOptionsConfig } from "@portalai/core/ui";
+import { useAuthQuery, useAuthMutation, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions } from "./types";
+
+const COLUMN_DEFINITION_SEARCH_BASE = {
+  url: "/api/column-definitions",
+  getItems: (res: ApiSuccessResponse<ColumnDefinitionListResponsePayload>) =>
+    res.payload.columnDefinitions,
+  mapItem: (cd: ColumnDefinition) => ({
+    value: cd.id,
+    label: cd.label,
+  }),
+} as const;
+
+export function useColumnDefinitionSearch(options?: {
+  defaultParams?: Record<string, string>;
+}) {
+  const { fetchWithAuth } = useAuthFetch();
+
+  const config = useMemo<
+    AsyncFilterOptionsConfig<
+      ApiSuccessResponse<ColumnDefinitionListResponsePayload>,
+      ColumnDefinition
+    >
+  >(
+    () => ({
+      ...COLUMN_DEFINITION_SEARCH_BASE,
+      fetcher: fetchWithAuth,
+      ...(options?.defaultParams && { defaultParams: options.defaultParams }),
+    }),
+    [fetchWithAuth, options]
+  );
+
+  return useAsyncFilterOptions(config);
+}
 
 export const columnDefinitions = {
   list: (

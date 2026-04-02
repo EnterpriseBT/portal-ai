@@ -30,7 +30,9 @@ const CONNECTOR_INSTANCE_FILTER_BASE = {
   sortBy: "name",
 } as const;
 
-export function useConnectorInstanceSearch() {
+export function useConnectorInstanceSearch(options?: {
+  defaultParams?: Record<string, string>;
+}) {
   const { fetchWithAuth } = useAuthFetch();
 
   const config = useMemo<
@@ -42,8 +44,9 @@ export function useConnectorInstanceSearch() {
     () => ({
       ...CONNECTOR_INSTANCE_FILTER_BASE,
       fetcher: fetchWithAuth,
+      ...(options?.defaultParams && { defaultParams: options.defaultParams }),
     }),
-    [fetchWithAuth]
+    [fetchWithAuth, options]
   );
 
   return useAsyncFilterOptions(config);

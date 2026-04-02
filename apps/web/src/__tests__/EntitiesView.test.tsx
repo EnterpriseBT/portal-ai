@@ -40,6 +40,10 @@ jest.unstable_mockModule("../api/entity-tags.api", () => ({
 }));
 
 jest.unstable_mockModule("../api/connector-instances.api", () => ({
+  useConnectorInstanceSearch: () => ({
+    onSearch: jest.fn(() => Promise.resolve([])),
+    labelMap: {},
+  }),
   useConnectorInstanceFilter: () => ({
     fetchPage: mockConnectorInstanceFetchPage,
     labelMap: {},

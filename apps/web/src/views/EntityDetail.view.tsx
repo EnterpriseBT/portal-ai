@@ -8,9 +8,7 @@ import type {
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
   FieldMappingListResponsePayload,
-  EntityTagListResponsePayload,
   AssignedEntityTag,
-  ApiSuccessResponse,
 } from "@portalai/core/contracts";
 import { Box, Icon, IconName, MetadataList, PageHeader, PageSection, Stack } from "@portalai/core/ui";
 import { AsyncSearchableSelect } from "@portalai/core/ui";
@@ -25,7 +23,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch, toServerError } from "../utils/api.util";
+import { useEntityTagSearch } from "../api/entity-tags.api";
+import { toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
 import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
@@ -435,7 +434,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { fetchWithAuth } = useAuthFetch();
+  const { onSearch: handleSearchTags } = useEntityTagSearch();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -521,20 +520,6 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
     });
   }, [deleteMutation, queryClient, navigate]);
 
-  const handleSearchTags = useCallback(
-    async (query: string): Promise<SelectOption[]> => {
-      const res = await fetchWithAuth<
-        ApiSuccessResponse<EntityTagListResponsePayload>
-      >(
-        `/api/entity-tags?search=${encodeURIComponent(query)}&limit=20&offset=0&sortBy=name&sortOrder=asc`
-      );
-      return res.payload.entityTags.map((tag) => ({
-        value: tag.id,
-        label: tag.name,
-      }));
-    },
-    [fetchWithAuth]
-  );
 
   return (
     <DataResult results={{ entity: entityResult }}>

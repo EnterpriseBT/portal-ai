@@ -1,14 +1,13 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 
 import { z } from "zod";
-import type { ConnectorEntityCreateRequestBody, ConnectorInstanceListResponsePayload } from "@portalai/core/contracts";
-import type { ApiSuccessResponse } from "@portalai/core/contracts";
+import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts";
 import { AsyncSearchableSelect, Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
+import { useConnectorInstanceSearch } from "../api/connector-instances.api";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
-import { useAuthFetch } from "../utils/api.util";
 import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
@@ -65,27 +64,9 @@ export const CreateConnectorEntityDialog: React.FC<CreateConnectorEntityDialogPr
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const labelRef = useDialogAutoFocus(open);
-  const { fetchWithAuth } = useAuthFetch();
-
-  const handleSearchConnectorInstances = useCallback(
-    async (query: string) => {
-      const params = new URLSearchParams({
-        capability: "write",
-        limit: "20",
-        sortBy: "name",
-        sortOrder: "asc",
-      });
-      if (query) params.set("search", query);
-      const res = await fetchWithAuth<ApiSuccessResponse<ConnectorInstanceListResponsePayload>>(
-        `/api/connector-instances?${params.toString()}`
-      );
-      return res.payload.connectorInstances.map((ci) => ({
-        value: ci.id,
-        label: ci.name,
-      }));
-    },
-    [fetchWithAuth]
-  );
+  const { onSearch: handleSearchConnectorInstances } = useConnectorInstanceSearch({
+    defaultParams: { capability: "write" },
+  });
 
   React.useEffect(() => {
     if (open) {

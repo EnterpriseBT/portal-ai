@@ -18,6 +18,8 @@ export interface InfiniteFilterOptionsConfig<TResponse, TItem> {
   sortBy?: string;
   /** Default sort order (defaults to "asc"). */
   sortOrder?: "asc" | "desc";
+  /** Extra query parameters appended to every fetch request (e.g. `{ capability: "write" }`). */
+  defaultParams?: Record<string, string | number>;
 }
 
 export interface InfiniteFilterOptionsResult {
@@ -47,6 +49,7 @@ export function useInfiniteFilterOptions<TResponse, TItem>(
     async (params: FetchPageParams): Promise<FetchPageResult> => {
       const cfg = configRef.current;
       const query: Record<string, string | number> = {
+        ...cfg.defaultParams,
         limit: params.pageSize,
         offset: params.page * params.pageSize,
         sortBy: cfg.sortBy ?? "name",
