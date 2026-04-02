@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, ilike, inArray, type SQL, type Column } from "drizzle-orm";
+import { eq, and, ilike, inArray, sql, type SQL, type Column } from "drizzle-orm";
 import { ConnectorInstanceModelFactory } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -77,6 +77,11 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         schema:
  *           type: string
  *         description: Comma-separated list of related data to include — connectorDefinition
+ *       - in: query
+ *         name: capability
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of required capability flags (read, write, sync). Only instances where all specified flags are enabled will be returned.
  *     responses:
  *       200:
  *         description: Paginated list of connector instances
@@ -102,8 +107,10 @@ connectorInstanceRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, connectorDefinitionId, status, search, include } =
+      const { limit, offset, sortBy, sortOrder, connectorDefinitionId, status, search, include, capability } =
         ConnectorInstanceListRequestQuerySchema.parse(req.query);
+
+      const VALID_CAPABILITIES = ["read", "write", "sync"] as const;
 
       const filters: SQL[] = [eq(connectorInstances.organizationId, req.application?.metadata.organizationId as string)];
 
@@ -120,6 +127,14 @@ connectorInstanceRouter.get(
       }
       if (search) {
         filters.push(ilike(connectorInstances.name, `%${search}%`));
+      }
+      if (capability) {
+        const caps = capability.split(",").map((s) => s.trim()).filter(Boolean);
+        for (const cap of caps) {
+          if (VALID_CAPABILITIES.includes(cap as (typeof VALID_CAPABILITIES)[number])) {
+            filters.push(sql`${connectorInstances.enabledCapabilityFlags}->>${sql.raw(`'${cap}'`)} = 'true'`);
+          }
+        }
       }
 
       const where = and(...filters);

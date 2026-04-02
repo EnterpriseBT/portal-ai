@@ -5,7 +5,8 @@ import type {
   ConnectorEntityListWithInstanceResponsePayload,
 } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
-import { Box, DetailCard, Icon, IconName, MetadataList, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
+import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts";
+import { Box, Button, DetailCard, Icon, IconName, MetadataList, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
 import type { ActionSuiteItem, FetchPageParams, FetchPageResult } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -13,6 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { ConnectorEntityDataList } from "../components/ConnectorEntity.component";
+import { CreateConnectorEntityDialog } from "../components/CreateConnectorEntityDialog.component";
 import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
 import DataResult from "../components/DataResult.component";
@@ -92,6 +94,7 @@ export interface EntitiesViewUIProps {
   tagFetchPage: (params: FetchPageParams) => Promise<FetchPageResult>;
   tagLabelMap: Record<string, string>;
   onDeleteEntity: (entity: EntityWithTags) => void;
+  onCreate: () => void;
 }
 
 export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
@@ -100,6 +103,7 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
   tagFetchPage,
   tagLabelMap,
   onDeleteEntity,
+  onCreate,
 }) => {
   const navigate = useNavigate();
 
@@ -140,6 +144,11 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
           onNavigate={(href) => navigate({ to: href })}
           title="Entities"
           icon={<Icon name={IconName.DataObject} />}
+          primaryAction={
+            <Button variant="contained" onClick={onCreate}>
+              Create Entity
+            </Button>
+          }
         />
 
         <PaginationToolbar {...pagination.toolbarProps} />
@@ -210,12 +219,31 @@ export const EntitiesView: React.FC = () => {
   const { fetchPage: tagFetchPage, labelMap: tagLabelMap } =
     useEntityTagFilter();
 
+  const [createOpen, setCreateOpen] = useState(false);
+  const createMutation = sdk.connectorEntities.create();
   const [deletingEntity, setDeletingEntity] = useState<EntityWithTags | null>(null);
 
   const deleteMutation = sdk.connectorEntities.delete(deletingEntity?.id ?? "");
   const impactQuery = sdk.connectorEntities.impact(deletingEntity?.id ?? "", {
     enabled: !!deletingEntity,
   });
+
+  const handleCreateClose = useCallback(() => {
+    setCreateOpen(false);
+    createMutation.reset();
+  }, [createMutation]);
+
+  const handleCreateSubmit = useCallback(
+    (body: ConnectorEntityCreateRequestBody) => {
+      createMutation.mutate(body, {
+        onSuccess: () => {
+          handleCreateClose();
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        },
+      });
+    },
+    [createMutation, handleCreateClose, queryClient]
+  );
 
   const handleDeleteEntity = useCallback((entity: EntityWithTags) => {
     setDeletingEntity(entity);
@@ -245,6 +273,16 @@ export const EntitiesView: React.FC = () => {
         tagFetchPage={tagFetchPage}
         tagLabelMap={tagLabelMap}
         onDeleteEntity={handleDeleteEntity}
+        onCreate={() => setCreateOpen(true)}
+      />
+
+      <CreateConnectorEntityDialog
+        open={createOpen}
+        onClose={handleCreateClose}
+        onSubmit={handleCreateSubmit}
+        isPending={createMutation.isPending}
+        serverError={toServerError(createMutation.error)}
+        lockedConnectorInstance={null}
       />
 
       <DeleteConnectorEntityDialog

@@ -1,4 +1,6 @@
 import type {
+  ConnectorEntityCreateRequestBody,
+  ConnectorEntityCreateResponsePayload,
   ConnectorEntityGetResponsePayload,
   ConnectorEntityImpactResponsePayload,
   ConnectorEntityListRequestQuery,
@@ -50,6 +52,12 @@ export const connectorEntities = {
     useAuthMutation<ConnectorEntityPatchResponsePayload, ConnectorEntityPatchRequestBody>({
       url: `/api/connector-entities/${encodeURIComponent(id)}`,
       method: "PATCH",
+    }),
+
+  create: () =>
+    useAuthMutation<ConnectorEntityCreateResponsePayload, ConnectorEntityCreateRequestBody>({
+      url: "/api/connector-entities",
+      method: "POST",
     }),
 
   delete: (id: string) =>

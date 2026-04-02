@@ -18,6 +18,7 @@ export const ConnectorInstanceListRequestQuerySchema = PaginationRequestQuerySch
   connectorDefinitionId: z.string().optional(),
   status: z.string().optional(),
   include: z.string().optional(),
+  capability: z.string().optional(),
 });
 
 export type ConnectorInstanceListRequestQuery = z.infer<typeof ConnectorInstanceListRequestQuerySchema>;

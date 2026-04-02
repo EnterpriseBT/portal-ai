@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from "react";
 
 import type {
+  ConnectorEntityCreateRequestBody,
   ConnectorEntityListRequestQuery,
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorInstanceGetResponsePayload,
@@ -24,6 +25,7 @@ import {
   ConnectorEntityDataList,
   ConnectorEntityCardUI,
 } from "../components/ConnectorEntity.component";
+import { CreateConnectorEntityDialog } from "../components/CreateConnectorEntityDialog.component";
 import DataResult from "../components/DataResult.component";
 import { DeleteConnectorInstanceDialog } from "../components/DeleteConnectorInstanceDialog.component";
 import { EditConnectorInstanceDialog } from "../components/EditConnectorInstanceDialog.component";
@@ -55,7 +57,9 @@ export const ConnectorInstanceView = ({
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [createEntityOpen, setCreateEntityOpen] = useState(false);
 
+  const createEntityMutation = sdk.connectorEntities.create();
   const deleteMutation = sdk.connectorInstances.delete(connectorInstanceId);
   const renameMutation = sdk.connectorInstances.rename(connectorInstanceId);
   const updateMutation = sdk.connectorInstances.update(connectorInstanceId);
@@ -99,6 +103,23 @@ export const ConnectorInstanceView = ({
       });
     },
     [updateMutation, queryClient, connectorInstanceId]
+  );
+
+  const handleCreateEntityClose = useCallback(() => {
+    setCreateEntityOpen(false);
+    createEntityMutation.reset();
+  }, [createEntityMutation]);
+
+  const handleCreateEntitySubmit = useCallback(
+    (body: ConnectorEntityCreateRequestBody) => {
+      createEntityMutation.mutate(body, {
+        onSuccess: () => {
+          handleCreateEntityClose();
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        },
+      });
+    },
+    [createEntityMutation, handleCreateEntityClose, queryClient]
   );
 
   const pagination = usePagination({
@@ -229,7 +250,15 @@ export const ConnectorInstanceView = ({
                   </PageHeader>
 
                   {/* Section 2: Entities List */}
-                  <PageSection title="Entities" icon={<Icon name={IconName.DataObject} />}>
+                  <PageSection
+                    title="Entities"
+                    icon={<Icon name={IconName.DataObject} />}
+                    primaryAction={
+                      <Button variant="contained" size="small" onClick={() => setCreateEntityOpen(true)}>
+                        Create Entity
+                      </Button>
+                    }
+                  >
                     <PaginationToolbar {...pagination.toolbarProps} />
 
                     <Box sx={{ mt: 2 }}>
@@ -296,6 +325,15 @@ export const ConnectorInstanceView = ({
                     currentName={ci.name}
                     onConfirm={handleRename}
                     isPending={renameMutation.isPending}
+                  />
+
+                  <CreateConnectorEntityDialog
+                    open={createEntityOpen}
+                    onClose={handleCreateEntityClose}
+                    onSubmit={handleCreateEntitySubmit}
+                    isPending={createEntityMutation.isPending}
+                    serverError={toServerError(createEntityMutation.error)}
+                    lockedConnectorInstance={{ id: connectorInstanceId, name: ci.name }}
                   />
                 </Stack>
               );

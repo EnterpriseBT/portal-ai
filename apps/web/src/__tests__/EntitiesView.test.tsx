@@ -116,6 +116,7 @@ describe("EntitiesView", () => {
     tagFetchPage: mockTagFetchPage,
     tagLabelMap: {} as Record<string, string>,
     onDeleteEntity: mockOnDeleteEntity,
+    onCreate: jest.fn(),
   };
 
   beforeEach(() => {
