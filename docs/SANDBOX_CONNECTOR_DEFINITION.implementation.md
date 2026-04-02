@@ -2,6 +2,9 @@
 
 Step-by-step implementation checklist with tests and verification gates.
 
+> **Note:** This plan is based on the corresponding spec and discovery docs:
+> `SANDBOX_CONNECTOR_DEFINITION.spec.md` and `SANDBOX_CONNECTOR_DEFINITION.discovery.md`.
+
 ---
 
 ## Step 1: Core Model — Sandbox Connector Definition

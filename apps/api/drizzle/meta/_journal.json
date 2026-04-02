@@ -225,6 +225,13 @@
       "when": 1775081850875,
       "tag": "0031_column_definitions_soft_delete_unique_index",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1775088591444,
+      "tag": "0032_column_definitions_partial_index_to_unique_constraint",
+      "breakpoints": true
     }
   ]
 }
