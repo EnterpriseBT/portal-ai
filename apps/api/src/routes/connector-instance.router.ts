@@ -391,7 +391,7 @@ connectorInstanceRouter.post(
         );
       }
 
-      const { connectorDefinitionId, organizationId, name, config, credentials } = parsed.data;
+      const { connectorDefinitionId, organizationId, name, status, enabledCapabilityFlags, config, credentials } = parsed.data;
 
       // Verify the connector definition exists
       const definition = await DbService.repository.connectorDefinitions.findById(connectorDefinitionId).catch((error) => {
@@ -429,12 +429,12 @@ connectorInstanceRouter.post(
         connectorDefinitionId,
         organizationId,
         name,
-        status: "pending",
+        status,
         config: config ?? null,
         credentials: credentials ? encryptCredentials(credentials) : null,
         lastSyncAt: null,
         lastErrorMessage: null,
-        enabledCapabilityFlags: null,
+        enabledCapabilityFlags,
       });
 
       const connectorInstance = await DbService.repository.connectorInstances.create(

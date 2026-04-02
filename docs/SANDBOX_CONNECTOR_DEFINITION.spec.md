@@ -317,7 +317,82 @@ import {
 
 ---
 
-## 7. Files Changed
+## 7. Sandbox Connector Workflow (Frontend)
+
+When a user clicks **Connect** on a sandbox connector definition card in the Catalog tab, a simple form modal opens to name the new connector instance. No multi-step wizard or background job is needed — the modal submits a single `POST /api/connector-instances` request using the existing `ConnectorInstanceCreateRequestBodySchema`.
+
+### Trigger
+
+The `WORKFLOW_REGISTRY` in `apps/web/src/views/Connector.view.tsx` maps connector slugs to workflow components. Register the sandbox workflow:
+
+```typescript
+import { SandboxConnectorWorkflow } from "../workflows/SandboxConnector";
+
+const WORKFLOW_REGISTRY: Record<string, ComponentType<ConnectorWorkflowProps>> = {
+  csv: CSVConnectorWorkflow,
+  sandbox: SandboxConnectorWorkflow,
+};
+```
+
+When the user clicks **Connect** on a sandbox card, `handleConnect` captures the slug `"sandbox"` and opens the workflow component.
+
+### Workflow Component
+
+**New file:** `apps/web/src/workflows/SandboxConnector/`
+
+```
+workflows/
+  SandboxConnector/
+    index.ts                                    # Barrel exports
+    SandboxConnectorWorkflow.component.tsx       # Container + UI
+    __tests__/
+      SandboxConnectorWorkflow.test.tsx          # Unit tests
+    stories/
+      SandboxConnectorWorkflow.stories.tsx       # Storybook stories
+```
+
+The component renders a `<Modal>` with:
+- **Title:** "Connect Sandbox"
+- **Body:** A single `<TextField>` for the connector instance name (auto-focused, required)
+- **Actions:** Cancel and Connect buttons
+- **Validation:** `ConnectorInstanceCreateRequestBodySchema` via `validateWithSchema()`
+- **Error display:** `<FormAlert serverError={serverError} />` for mutation errors
+
+### Props
+
+Implements the existing `ConnectorWorkflowProps` interface:
+
+```typescript
+interface ConnectorWorkflowProps {
+  open: boolean;
+  onClose: () => void;
+  organizationId: string;
+  connectorDefinitionId: string;
+}
+```
+
+### Submit Behavior
+
+On form submit:
+1. Validate with `ConnectorInstanceCreateRequestBodySchema` — fields: `{ connectorDefinitionId, organizationId, name }`
+2. `POST /api/connector-instances` with the validated payload (config and credentials omitted — the backend defaults them)
+3. On success: invalidate `queryKeys.connectorInstances.root`, call `onClose()`
+4. On error: display server error via `<FormAlert>`
+
+No background job is created. The connector instance is immediately available after the POST succeeds.
+
+### Backend
+
+No backend changes required. The existing `POST /api/connector-instances` route already:
+- Parses the body with `ConnectorInstanceCreateRequestBodySchema`
+- Creates the connector instance row
+- Returns the created instance
+
+**File:** `apps/api/src/routes/connector-instance.router.ts` (line 382)
+
+---
+
+## 8. Files Changed
 
 | File | Action | Description |
 |------|--------|-------------|
@@ -328,10 +403,12 @@ import {
 | `apps/api/src/adapters/register.ts` | Modify | Register `"sandbox"` adapter |
 | `apps/api/src/services/seed.service.ts` | Modify | Add sandbox definition to seed array |
 | `apps/api/src/services/application.service.ts` | Modify | Auto-provision sandbox instance + station on signup |
+| `apps/web/src/workflows/SandboxConnector/` | Create | Sandbox connector workflow (modal form + tests + stories) |
+| `apps/web/src/views/Connector.view.tsx` | Modify | Register `sandbox` in `WORKFLOW_REGISTRY` |
 
 ---
 
-## 8. Verification
+## 9. Verification
 
 ### Type Check
 ```bash

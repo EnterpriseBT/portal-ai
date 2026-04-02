@@ -53,6 +53,12 @@ export const ConnectorInstanceCreateRequestBodySchema = z.object({
   connectorDefinitionId: z.string(),
   organizationId: z.string(),
   name: z.string().min(1),
+  status: z.enum(["active", "inactive", "error", "pending"]),
+  enabledCapabilityFlags: z.object({
+    read: z.boolean().optional(),
+    write: z.boolean().optional(),
+    sync: z.boolean().optional(),
+  }),
   config: z.record(z.string(), z.unknown()).nullable().optional(),
   credentials: z.record(z.string(), z.unknown()).nullable().optional(),
 });

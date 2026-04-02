@@ -22,23 +22,6 @@ export class SeedService {
 
   async seedConnectorDefinitions(db: DbClient) {
     const connectors: ConnectorDefinition[] = [
-      new CSVConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
-        .update({
-          slug: "csv",
-          display: "CSV Connector",
-          category: "File-based",
-          authType: "none",
-          isActive: true,
-          configSchema: {},
-          capabilityFlags: {
-            sync: false,
-            query: true,
-            write: true,
-          },
-          version: "1.0.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1773338114/CSV_Icons_oad8ko.png',
-        }).parse(),
-
       new SandboxConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
         .update({
           slug: "sandbox",
@@ -54,6 +37,22 @@ export class SeedService {
           },
           version: "1.0.0",
           iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1775089873/sandbox_ntatbt.png',
+        }).parse(),
+      new CSVConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
+        .update({
+          slug: "csv",
+          display: "CSV Connector",
+          category: "File-based",
+          authType: "none",
+          isActive: true,
+          configSchema: {},
+          capabilityFlags: {
+            sync: false,
+            query: true,
+            write: true,
+          },
+          version: "1.0.0",
+          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1773338114/CSV_Icons_oad8ko.png',
         }).parse(),
     ];
 

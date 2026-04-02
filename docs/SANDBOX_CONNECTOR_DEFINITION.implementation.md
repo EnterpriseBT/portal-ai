@@ -294,7 +294,45 @@ npx jest apps/api/src/__tests__/__integration__/services/application.service.int
 
 ---
 
-## Step 6: Final Verification
+## Step 6: Sandbox Connector Workflow (Frontend)
+
+### 6a. Add `create` method to connector instances SDK
+
+**File:** `apps/web/src/api/connector-instances.api.ts`
+
+- [x] Import `ConnectorInstanceCreateRequestBody` and `ConnectorInstanceCreateResponsePayload` from `@portalai/core/contracts`
+- [x] Add `create()` method using `useAuthMutation` with `POST /api/connector-instances`
+
+### 6b. Create workflow component
+
+**New file:** `apps/web/src/workflows/SandboxConnector/SandboxConnectorWorkflow.component.tsx`
+
+- [x] Export `SandboxConnectorWorkflowUI` — pure props-only component with Modal, TextField for name, FormAlert, Cancel/Connect buttons
+- [x] Export `SandboxConnectorWorkflow` — container component with hooks: state management, Zod validation via `ConnectorInstanceCreateRequestBodySchema`, mutation, cache invalidation
+- [x] Follow form & dialog pattern: `slotProps.paper.component="form"`, `useDialogAutoFocus`, `validateWithSchema`, `focusFirstInvalidField`, `FormAlert`
+
+### 6c. Create barrel export
+
+**New file:** `apps/web/src/workflows/SandboxConnector/index.ts`
+
+- [x] Re-export `SandboxConnectorWorkflow`, `SandboxConnectorWorkflowUI`, and `SandboxConnectorWorkflowUIProps`
+
+### 6d. Register in workflow registry
+
+**File:** `apps/web/src/views/Connector.view.tsx`
+
+- [x] Import `SandboxConnectorWorkflow` from `../workflows/SandboxConnector`
+- [x] Add `sandbox: SandboxConnectorWorkflow` to `WORKFLOW_REGISTRY`
+
+### Verify
+
+```bash
+npm run type-check          # No new errors (web + api)
+```
+
+---
+
+## Step 7: Final Verification
 
 Run the complete verification suite to confirm no regressions across the entire codebase.
 
@@ -364,3 +402,6 @@ npm run build
 | 8 | `apps/api/src/__tests__/adapters/sandbox/sandbox.adapter.test.ts` | **Create** — sandbox adapter unit tests |
 | 9 | `apps/api/src/__tests__/__integration__/services/seed.service.integration.test.ts` | Modify — add sandbox seed assertions |
 | 10 | `apps/api/src/__tests__/__integration__/services/application.service.integration.test.ts` | Modify — add auto-provisioning assertions |
+| 11 | `apps/web/src/api/connector-instances.api.ts` | Modify — add `create()` mutation |
+| 12 | `apps/web/src/workflows/SandboxConnector/` | **Create** — sandbox connector workflow (modal form) |
+| 13 | `apps/web/src/views/Connector.view.tsx` | Modify — register `sandbox` in `WORKFLOW_REGISTRY` |

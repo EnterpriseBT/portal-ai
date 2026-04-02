@@ -40,6 +40,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { CSVConnectorWorkflow } from "../workflows/CSVConnector";
+import { SandboxConnectorWorkflow } from "../workflows/SandboxConnector";
 
 export interface ConnectorWorkflowProps {
   open: boolean;
@@ -53,6 +54,7 @@ const WORKFLOW_REGISTRY: Record<
   ComponentType<ConnectorWorkflowProps>
 > = {
   csv: CSVConnectorWorkflow,
+  sandbox: SandboxConnectorWorkflow,
 };
 
 export const ConnectorView = () => {

@@ -3,6 +3,8 @@ import { useMemo } from "react";
 import type {
   ApiSuccessResponse,
   ConnectorInstanceApi,
+  ConnectorInstanceCreateRequestBody,
+  ConnectorInstanceCreateResponsePayload,
   ConnectorInstanceGetResponsePayload,
   ConnectorInstanceImpact,
   ConnectorInstanceListRequestQuery,
@@ -105,6 +107,12 @@ export const connectorInstances = {
       undefined,
       options
     ),
+
+  create: () =>
+    useAuthMutation<ConnectorInstanceCreateResponsePayload, ConnectorInstanceCreateRequestBody>({
+      url: `/api/connector-instances`,
+      method: "POST",
+    }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
