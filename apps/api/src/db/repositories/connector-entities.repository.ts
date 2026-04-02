@@ -182,6 +182,7 @@ export class ConnectorEntitiesRepository extends Repository<
           connectorEntities.connectorInstanceId,
           connectorEntities.key,
         ] as IndexColumn[],
+        targetWhere: isNull(connectorEntities.deleted),
         set: {
           label: data.label,
           updated: data.updated ?? Date.now(),

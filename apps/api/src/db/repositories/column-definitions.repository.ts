@@ -5,7 +5,7 @@
  * and key-based upserts.
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { columnDefinitions } from "../schema/index.js";
@@ -77,6 +77,7 @@ export class ColumnDefinitionsRepository extends Repository<
           columnDefinitions.organizationId,
           columnDefinitions.key,
         ] as IndexColumn[],
+        targetWhere: isNull(columnDefinitions.deleted),
         set: {
           label: data.label,
           type: data.type,

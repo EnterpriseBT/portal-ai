@@ -3,9 +3,10 @@ import {
   text,
   bigint,
   jsonb,
-  unique,
+  uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { connectorEntities } from "./connector-entities.table.js";
@@ -34,10 +35,9 @@ export const entityRecords = pgTable(
     syncedAt: bigint("synced_at", { mode: "number" }).notNull(),
   },
   (table) => [
-    unique("entity_records_entity_source_unique").on(
-      table.connectorEntityId,
-      table.sourceId
-    ),
+    uniqueIndex("entity_records_entity_source_unique")
+      .on(table.connectorEntityId, table.sourceId)
+      .where(sql`deleted IS NULL`),
     index("entity_records_normalized_data_gin").using(
       "gin",
       table.normalizedData

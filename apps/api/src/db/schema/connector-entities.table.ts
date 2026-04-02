@@ -1,4 +1,5 @@
-import { pgTable, text, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { connectorInstances } from "./connector-instances.table.js";
@@ -22,9 +23,8 @@ export const connectorEntities = pgTable(
     label: text("label").notNull(),
   },
   (table) => [
-    unique("connector_entities_instance_key_unique").on(
-      table.connectorInstanceId,
-      table.key,
-    ),
+    uniqueIndex("connector_entities_instance_key_unique")
+      .on(table.connectorInstanceId, table.key)
+      .where(sql`deleted IS NULL`),
   ],
 );

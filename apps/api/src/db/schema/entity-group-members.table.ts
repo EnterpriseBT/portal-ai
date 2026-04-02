@@ -1,4 +1,5 @@
-import { boolean, pgTable, text, unique } from "drizzle-orm/pg-core";
+import { boolean, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
@@ -25,9 +26,8 @@ export const entityGroupMembers = pgTable(
     isPrimary: boolean("is_primary").notNull().default(false),
   },
   (table) => [
-    unique("entity_group_members_group_entity_unique").on(
-      table.entityGroupId,
-      table.connectorEntityId,
-    ),
+    uniqueIndex("entity_group_members_group_entity_unique")
+      .on(table.entityGroupId, table.connectorEntityId)
+      .where(sql`deleted IS NULL`),
   ],
 );

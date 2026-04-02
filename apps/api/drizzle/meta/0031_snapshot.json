@@ -1,5 +1,5 @@
 {
-  "id": "8a67d4ff-a452-438f-b53b-9ea1147d2895",
+  "id": "20af3343-ef09-43b1-9fbb-a6b288fef363",
   "prevId": "8496b538-3319-44af-8f7a-1a2d501b30e7",
   "version": "7",
   "dialect": "postgresql",
@@ -124,7 +124,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"column_definitions\".\"deleted\" is null",
+          "where": "deleted IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -252,18 +252,27 @@
           "notNull": false
         }
       },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
+      "indexes": {
         "connector_definitions_slug_unique": {
           "name": "connector_definitions_slug_unique",
-          "nullsNotDistinct": false,
           "columns": [
-            "slug"
-          ]
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "deleted IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -339,7 +348,30 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "connector_entities_instance_key_unique": {
+          "name": "connector_entities_instance_key_unique",
+          "columns": [
+            {
+              "expression": "connector_instance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "deleted IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "connector_entities_organization_id_organizations_id_fk": {
           "name": "connector_entities_organization_id_organizations_id_fk",
@@ -369,16 +401,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "connector_entities_instance_key_unique": {
-          "name": "connector_entities_instance_key_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "connector_instance_id",
-            "key"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -571,7 +594,30 @@
           "default": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "entity_group_members_group_entity_unique": {
+          "name": "entity_group_members_group_entity_unique",
+          "columns": [
+            {
+              "expression": "entity_group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "connector_entity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "deleted IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "entity_group_members_organization_id_organizations_id_fk": {
           "name": "entity_group_members_organization_id_organizations_id_fk",
@@ -627,16 +673,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "entity_group_members_group_entity_unique": {
-          "name": "entity_group_members_group_entity_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "entity_group_id",
-            "connector_entity_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -818,6 +855,28 @@
         }
       },
       "indexes": {
+        "entity_records_entity_source_unique": {
+          "name": "entity_records_entity_source_unique",
+          "columns": [
+            {
+              "expression": "connector_entity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "deleted IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "entity_records_normalized_data_gin": {
           "name": "entity_records_normalized_data_gin",
           "columns": [
@@ -884,16 +943,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "entity_records_entity_source_unique": {
-          "name": "entity_records_entity_source_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "connector_entity_id",
-            "source_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -963,7 +1013,30 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "entity_tag_assignments_entity_tag_unique": {
+          "name": "entity_tag_assignments_entity_tag_unique",
+          "columns": [
+            {
+              "expression": "connector_entity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "entity_tag_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "deleted IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "entity_tag_assignments_organization_id_organizations_id_fk": {
           "name": "entity_tag_assignments_organization_id_organizations_id_fk",
@@ -1006,16 +1079,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "entity_tag_assignments_entity_tag_unique": {
-          "name": "entity_tag_assignments_entity_tag_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "connector_entity_id",
-            "entity_tag_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1208,7 +1272,30 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "field_mappings_entity_column_unique": {
+          "name": "field_mappings_entity_column_unique",
+          "columns": [
+            {
+              "expression": "connector_entity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "column_definition_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "deleted IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "field_mappings_organization_id_organizations_id_fk": {
           "name": "field_mappings_organization_id_organizations_id_fk",
@@ -1277,16 +1364,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "field_mappings_entity_column_unique": {
-          "name": "field_mappings_entity_column_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "connector_entity_id",
-            "column_definition_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2127,7 +2205,30 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "station_instances_station_connector_unique": {
+          "name": "station_instances_station_connector_unique",
+          "columns": [
+            {
+              "expression": "station_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "connector_instance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "deleted IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "station_instances_station_id_stations_id_fk": {
           "name": "station_instances_station_id_stations_id_fk",
@@ -2157,16 +2258,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "station_instances_station_connector_unique": {
-          "name": "station_instances_station_connector_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "station_id",
-            "connector_instance_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2230,7 +2322,30 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "station_tools_station_tool_unique": {
+          "name": "station_tools_station_tool_unique",
+          "columns": [
+            {
+              "expression": "station_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "organization_tool_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "deleted IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "station_tools_station_id_stations_id_fk": {
           "name": "station_tools_station_id_stations_id_fk",
@@ -2260,16 +2375,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "station_tools_station_tool_unique": {
-          "name": "station_tools_station_tool_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "station_id",
-            "organization_tool_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

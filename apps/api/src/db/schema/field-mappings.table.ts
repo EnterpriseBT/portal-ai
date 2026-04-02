@@ -1,4 +1,5 @@
-import { pgTable, text, boolean, unique, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, uniqueIndex, foreignKey } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { connectorEntities } from "./connector-entities.table.js";
@@ -36,10 +37,9 @@ export const fieldMappings = pgTable(
     refBidirectionalFieldMappingId: text("ref_bidirectional_field_mapping_id"),
   },
   (table) => [
-    unique("field_mappings_entity_column_unique").on(
-      table.connectorEntityId,
-      table.columnDefinitionId,
-    ),
+    uniqueIndex("field_mappings_entity_column_unique")
+      .on(table.connectorEntityId, table.columnDefinitionId)
+      .where(sql`deleted IS NULL`),
     foreignKey({
       columns: [table.refBidirectionalFieldMappingId],
       foreignColumns: [table.id],

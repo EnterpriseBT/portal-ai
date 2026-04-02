@@ -5,7 +5,7 @@
  * column-definition-scoped queries and composite-key upserts.
  */
 
-import { eq, and, not, asc, desc, getTableColumns, type SQL, or, inArray } from "drizzle-orm";
+import { eq, and, not, asc, desc, getTableColumns, type SQL, or, inArray, isNull } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { fieldMappings, connectorEntities, columnDefinitions } from "../schema/index.js";
@@ -217,6 +217,7 @@ export class FieldMappingsRepository extends Repository<
           fieldMappings.connectorEntityId,
           fieldMappings.columnDefinitionId,
         ] as IndexColumn[],
+        targetWhere: isNull(fieldMappings.deleted),
         set: {
           sourceField: data.sourceField,
           isPrimaryKey: data.isPrimaryKey,
