@@ -2,6 +2,7 @@ import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import type { DbClient } from "../db/repositories/base.repository.js";
 
 export interface ConnectorEntityCascadeCounts {
   entityRecords: number;
@@ -54,16 +55,20 @@ export class ConnectorEntityValidationService {
   }
 
   /**
-   * Execute a cascade soft-delete of a connector entity and all dependents
-   * inside a single transaction.
+   * Execute a cascade soft-delete of a connector entity and all dependents.
+   *
+   * When `client` is provided the operations run on that client directly
+   * (useful for joining an outer transaction). Otherwise a new transaction
+   * is created internally.
    */
   static async executeDelete(
     connectorEntityId: string,
     userId: string,
+    client?: DbClient,
   ): Promise<ConnectorEntityCascadeCounts> {
-    const entityIds = [connectorEntityId];
+    const run = async (tx: DbClient): Promise<ConnectorEntityCascadeCounts> => {
+      const entityIds = [connectorEntityId];
 
-    return DbService.transaction(async (tx) => {
       const [entityGroupMembers, entityTagAssignments, fieldMappings, entityRecords] =
         await Promise.all([
           DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(entityIds, userId, tx),
@@ -79,6 +84,9 @@ export class ConnectorEntityValidationService {
       );
 
       return { entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers };
-    });
+    };
+
+    if (client) return run(client);
+    return DbService.transaction(run);
   }
 }

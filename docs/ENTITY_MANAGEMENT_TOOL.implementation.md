@@ -308,37 +308,37 @@ Refactors existing DELETE handlers to use the shared validation services. No beh
 
 **File:** `apps/api/src/routes/connector-entity.router.ts`
 
-- [ ] Replace inline write capability check + external reference check + cascade logic with:
+- [x] Replace inline write capability check + external reference check + cascade logic with:
   - `ConnectorEntityValidationService.validateDelete(id)`
   - `ConnectorEntityValidationService.executeDelete(id, userId)`
-- [ ] Keep `try/catch` + `next(error)` pattern in router
-- [ ] Remove inlined logic (capability resolution, transaction block)
+- [x] Keep `try/catch` + `next(error)` pattern in router
+- [x] Remove inlined logic (capability resolution, transaction block)
 
 ### 6.2 Refactor field mapping DELETE handler
 
 **File:** `apps/api/src/routes/field-mapping.router.ts`
 
-- [ ] Replace inline record count check + cascade logic with:
+- [x] Replace inline record count check + cascade logic with:
   - `FieldMappingValidationService.validateDelete(id)`
   - `FieldMappingValidationService.executeDelete(id, userId)`
-- [ ] Keep router-level error handling
+- [x] Keep router-level error handling
 
 ### 6.3 Refactor column definition DELETE handler
 
 **File:** `apps/api/src/routes/column-definition.router.ts`
 
-- [ ] Replace inline dependency check with:
+- [x] Replace inline dependency check with:
   - `ColumnDefinitionValidationService.validateDelete(id)`
-- [ ] Keep existing `softDelete()` call in router (no cascade needed)
+- [x] Keep existing `softDelete()` call in router (no cascade needed)
 
 ### Phase 6 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run test -- --selectProjects api` — **zero** test regressions
-- [ ] Connector entity DELETE integration tests pass (same behavior, different code path)
-- [ ] Field mapping DELETE integration tests pass
-- [ ] Column definition DELETE integration tests pass
-- [ ] `npm run lint` passes
+- [x] `npm run type-check` passes
+- [x] `npm run test -- --selectProjects api` — **zero** test regressions (651 tests pass)
+- [x] Connector entity DELETE integration tests pass (same behavior, different code path)
+- [x] Field mapping DELETE integration tests pass
+- [x] Column definition DELETE integration tests pass
+- [x] `npm run lint` passes (0 errors)
 
 ---
 

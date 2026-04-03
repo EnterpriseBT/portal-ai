@@ -4,7 +4,7 @@ import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { fieldMappings } from "../db/schema/index.js";
-import { Repository } from "../db/repositories/base.repository.js";
+import { Repository, type DbClient } from "../db/repositories/base.repository.js";
 
 export interface FieldMappingCascadeResult {
   cascadedEntityGroupMembers: number;
@@ -47,10 +47,15 @@ export class FieldMappingValidationService {
   /**
    * Execute a cascade soft-delete of a field mapping, its dependent
    * entity group members, and clear bidirectional counterpart reference.
+   *
+   * When `client` is provided the operations run on that client directly
+   * (useful for joining an outer transaction). Otherwise a new transaction
+   * is created internally.
    */
   static async executeDelete(
     fieldMappingId: string,
     userId: string,
+    client?: DbClient,
   ): Promise<FieldMappingCascadeResult> {
     const mapping =
       await DbService.repository.fieldMappings.findById(fieldMappingId);
@@ -62,7 +67,7 @@ export class FieldMappingValidationService {
       );
     }
 
-    return Repository.transaction(async (tx) => {
+    const run = async (tx: DbClient): Promise<FieldMappingCascadeResult> => {
       await DbService.repository.fieldMappings.softDelete(
         fieldMappingId,
         userId,
@@ -90,6 +95,9 @@ export class FieldMappingValidationService {
       }
 
       return { cascadedEntityGroupMembers, bidirectionalCleared };
-    });
+    };
+
+    if (client) return run(client);
+    return Repository.transaction(run);
   }
 }

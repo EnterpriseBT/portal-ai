@@ -127,7 +127,7 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     });
   });
 
-  it("runs in a single transaction", async () => {
+  it("runs in a single transaction when no client provided", async () => {
     mockSoftDeleteGroupMembers.mockResolvedValue(0);
     mockSoftDeleteTagAssignments.mockResolvedValue(0);
     mockSoftDeleteFieldMappings.mockResolvedValue(0);
@@ -141,6 +141,24 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
       ["ce-1"],
       "user-1",
       "tx-mock",
+    );
+  });
+
+  it("uses provided client directly without creating a transaction", async () => {
+    mockSoftDeleteGroupMembers.mockResolvedValue(0);
+    mockSoftDeleteTagAssignments.mockResolvedValue(0);
+    mockSoftDeleteFieldMappings.mockResolvedValue(0);
+    mockSoftDeleteEntityRecords.mockResolvedValue(0);
+
+    const externalTx = "external-tx" as unknown;
+
+    await ConnectorEntityValidationService.executeDelete("ce-1", "user-1", externalTx as never);
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockSoftDeleteGroupMembers).toHaveBeenCalledWith(
+      ["ce-1"],
+      "user-1",
+      "external-tx",
     );
   });
 });

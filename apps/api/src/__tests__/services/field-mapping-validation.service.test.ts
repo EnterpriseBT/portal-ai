@@ -142,4 +142,24 @@ describe("FieldMappingValidationService.executeDelete", () => {
     expect(result.bidirectionalCleared).toBe(false);
     expect(mockUpdateWhere).not.toHaveBeenCalled();
   });
+
+  it("uses provided client directly without creating a transaction", async () => {
+    mockFindMappingById.mockResolvedValue({
+      id: "fm-1",
+      connectorEntityId: "ce-1",
+      refBidirectionalFieldMappingId: null,
+    });
+    mockSoftDeleteGroupMembers.mockResolvedValue(0);
+
+    const externalTx = "external-tx" as unknown;
+
+    await FieldMappingValidationService.executeDelete("fm-1", "user-1", externalTx as never);
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockSoftDeleteMapping).toHaveBeenCalledWith(
+      "fm-1",
+      "user-1",
+      "external-tx",
+    );
+  });
 });
