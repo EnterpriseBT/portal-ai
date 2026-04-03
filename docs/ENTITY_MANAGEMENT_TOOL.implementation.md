@@ -235,68 +235,68 @@ Extracts validation and cascade logic from routers into reusable service classes
 
 **File:** `apps/api/src/services/normalization.service.ts`
 
-- [ ] Create static class with `normalize(connectorEntityId, data)` method
-- [ ] Loads field mappings with `include: ["columnDefinition"]`
-- [ ] Builds `normalizedData` by projecting `data` through `sourceField → columnDefinitionKey`
-- [ ] Falls back to passthrough (`{ ...data }`) when no field mappings exist
-- [ ] Add unit tests:
+- [x] Create static class with `normalize(connectorEntityId, data)` method
+- [x] Loads field mappings with `include: ["columnDefinition"]`
+- [x] Builds `normalizedData` by projecting `data` through `sourceField → columnDefinitionKey`
+- [x] Falls back to passthrough (`{ ...data }`) when no field mappings exist
+- [x] Add unit tests:
 
 **File:** `apps/api/src/__tests__/services/normalization.service.test.ts`
 
-- [ ] Test: normalizes data through field mappings
-- [ ] Test: omits unmapped source fields
-- [ ] Test: passes through data when no field mappings exist
-- [ ] Test: handles missing source fields gracefully
+- [x] Test: normalizes data through field mappings
+- [x] Test: omits unmapped source fields
+- [x] Test: passes through data when no field mappings exist
+- [x] Test: handles missing source fields gracefully
 
 ### 5.2 `ConnectorEntityValidationService`
 
 **File:** `apps/api/src/services/connector-entity-validation.service.ts`
 
-- [ ] Create static class with `validateDelete(connectorEntityId)` — checks write capability and external references
-- [ ] Create `executeDelete(connectorEntityId, userId)` — cascade soft-delete in transaction
-- [ ] Add unit tests:
+- [x] Create static class with `validateDelete(connectorEntityId)` — checks write capability and external references
+- [x] Create `executeDelete(connectorEntityId, userId)` — cascade soft-delete in transaction
+- [x] Add unit tests:
 
 **File:** `apps/api/src/__tests__/services/connector-entity-validation.service.test.ts`
 
-- [ ] Test: `validateDelete` passes when no external references exist
-- [ ] Test: `validateDelete` throws `CONNECTOR_INSTANCE_WRITE_DISABLED` when write disabled
-- [ ] Test: `validateDelete` throws `ENTITY_HAS_EXTERNAL_REFERENCES` when references exist
-- [ ] Test: `executeDelete` cascade soft-deletes all dependent objects
-- [ ] Test: `executeDelete` runs in a single transaction
+- [x] Test: `validateDelete` passes when no external references exist
+- [x] Test: `validateDelete` throws `CONNECTOR_INSTANCE_WRITE_DISABLED` when write disabled
+- [x] Test: `validateDelete` throws `ENTITY_HAS_EXTERNAL_REFERENCES` when references exist
+- [x] Test: `executeDelete` cascade soft-deletes all dependent objects
+- [x] Test: `executeDelete` runs in a single transaction
 
 ### 5.3 `FieldMappingValidationService`
 
 **File:** `apps/api/src/services/field-mapping-validation.service.ts`
 
-- [ ] Create static class with `validateDelete(fieldMappingId)` — checks record count
-- [ ] Create `executeDelete(fieldMappingId, userId)` — cascade + bidirectional clear
-- [ ] Add unit tests:
+- [x] Create static class with `validateDelete(fieldMappingId)` — checks record count
+- [x] Create `executeDelete(fieldMappingId, userId)` — cascade + bidirectional clear
+- [x] Add unit tests:
 
 **File:** `apps/api/src/__tests__/services/field-mapping-validation.service.test.ts`
 
-- [ ] Test: `validateDelete` passes when entity has no records
-- [ ] Test: `validateDelete` throws `FIELD_MAPPING_DELETE_HAS_RECORDS` when records exist
-- [ ] Test: `executeDelete` cascade soft-deletes group members
-- [ ] Test: `executeDelete` clears bidirectional counterpart
-- [ ] Test: `executeDelete` returns `bidirectionalCleared: false` when no counterpart
+- [x] Test: `validateDelete` passes when entity has no records
+- [x] Test: `validateDelete` throws `FIELD_MAPPING_DELETE_HAS_RECORDS` when records exist
+- [x] Test: `executeDelete` cascade soft-deletes group members
+- [x] Test: `executeDelete` clears bidirectional counterpart
+- [x] Test: `executeDelete` returns `bidirectionalCleared: false` when no counterpart
 
 ### 5.4 `ColumnDefinitionValidationService`
 
 **File:** `apps/api/src/services/column-definition-validation.service.ts`
 
-- [ ] Create static class with `validateDelete(columnDefinitionId)` — checks field mapping dependencies
-- [ ] Add unit tests:
+- [x] Create static class with `validateDelete(columnDefinitionId)` — checks field mapping dependencies
+- [x] Add unit tests:
 
 **File:** `apps/api/src/__tests__/services/column-definition-validation.service.test.ts`
 
-- [ ] Test: `validateDelete` passes when no field mappings reference it
-- [ ] Test: `validateDelete` throws `COLUMN_DEFINITION_HAS_DEPENDENCIES` when referenced
+- [x] Test: `validateDelete` passes when no field mappings reference it
+- [x] Test: `validateDelete` throws `COLUMN_DEFINITION_HAS_DEPENDENCIES` when referenced
 
 ### Phase 5 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run test -- --selectProjects api` — all 4 service test files pass
-- [ ] No regressions in existing tests
+- [x] `npm run type-check` passes
+- [x] `npm run test -- --selectProjects api` — all 4 service test files pass (17 tests)
+- [x] No regressions in existing tests (420 unit tests pass)
 
 ---
 
