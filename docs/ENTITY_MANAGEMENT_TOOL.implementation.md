@@ -503,67 +503,67 @@ One test file per tool. Each file tests the common patterns plus tool-specific b
 
 **Common tests for every write tool** (10 files):
 
-- [ ] Returns error object when `assertWriteCapability` rejects (not thrown)
-- [ ] Returns error object when station scope check fails (not thrown)
-- [ ] Calls `onMutation()` after successful write
-- [ ] Does not call `onMutation()` on validation failure
-- [ ] Uses provided `userId` for `createdBy`/`updatedBy`/`deletedBy`
+- [x] Returns error object when `assertWriteCapability` rejects (not thrown)
+- [x] Returns error object when station scope check fails (not thrown)
+- [x] Calls `onMutation()` after successful write
+- [x] Does not call `onMutation()` on validation failure
+- [x] Uses provided `userId` for `createdBy`/`updatedBy`/`deletedBy`
 
 **File:** `apps/api/src/__tests__/tools/entity-record-create.tool.test.ts`
 
-- [ ] Test: creates record with auto-normalized data via `NormalizationService`
-- [ ] Test: sets `origin: "portal"` and `checksum: "manual"`
-- [ ] Test: auto-generates UUID `sourceId` when omitted
-- [ ] Test: uses provided `sourceId` when given
+- [x] Test: creates record with auto-normalized data via `NormalizationService`
+- [x] Test: sets `origin: "portal"` and `checksum: "manual"`
+- [x] Test: auto-generates UUID `sourceId` when omitted
+- [x] Test: uses provided `sourceId` when given
 
 **File:** `apps/api/src/__tests__/tools/entity-record-update.tool.test.ts`
 
-- [ ] Test: rejects if record does not belong to entity
-- [ ] Test: updates `data` and `normalizedData`
+- [x] Test: rejects if record does not belong to entity
+- [x] Test: updates `data` and `normalizedData`
 
 **File:** `apps/api/src/__tests__/tools/entity-record-delete.tool.test.ts`
 
-- [ ] Test: soft-deletes the record
-- [ ] Test: rejects if record does not belong to entity
+- [x] Test: soft-deletes the record
+- [x] Test: rejects if record does not belong to entity
 
 **File:** `apps/api/src/__tests__/tools/connector-entity-update.tool.test.ts`
 
-- [ ] Test: updates entity label
+- [x] Test: updates entity label
 
 **File:** `apps/api/src/__tests__/tools/connector-entity-delete.tool.test.ts`
 
-- [ ] Test: returns cascaded counts on success
-- [ ] Test: returns error when external references exist
+- [x] Test: returns cascaded counts on success
+- [x] Test: returns error when external references exist
 
 **File:** `apps/api/src/__tests__/tools/column-definition-create.tool.test.ts`
 
-- [ ] Test: upserts by key
-- [ ] Test: does not require station scope or write capability
+- [x] Test: upserts by key
+- [x] Test: does not require station scope or write capability
 
 **File:** `apps/api/src/__tests__/tools/column-definition-update.tool.test.ts`
 
-- [ ] Test: does not accept `key` or `type` changes (schema rejects)
-- [ ] Test: updates label and description
+- [x] Test: does not accept `key` or `type` changes (schema rejects)
+- [x] Test: updates label and description
 
 **File:** `apps/api/src/__tests__/tools/column-definition-delete.tool.test.ts`
 
-- [ ] Test: returns error when field mappings reference it
+- [x] Test: returns error when field mappings reference it
 
 **File:** `apps/api/src/__tests__/tools/field-mapping-create.tool.test.ts`
 
-- [ ] Test: upserts mapping by entity + column
-- [ ] Test: rejects if column definition does not exist
+- [x] Test: upserts mapping by entity + column
+- [x] Test: rejects if column definition does not exist
 
 **File:** `apps/api/src/__tests__/tools/field-mapping-delete.tool.test.ts`
 
-- [ ] Test: returns error when entity has records
-- [ ] Test: returns cascaded counts (entityGroupMembers, bidirectionalCleared)
+- [x] Test: returns error when entity has records
+- [x] Test: returns cascaded counts (entityGroupMembers, bidirectionalCleared)
 
 ### Phase 9 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run test -- --selectProjects api` — all 10 write tool test files pass
-- [ ] `npm run lint` passes
+- [x] `npm run type-check` passes
+- [x] `npm run test -- --selectProjects api` — all 12 tool test files pass (44 tests)
+- [x] `npm run lint` passes (0 errors)
 
 ---
 
