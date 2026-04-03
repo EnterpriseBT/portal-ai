@@ -2,7 +2,6 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
-import { DbService } from "../services/db.service.js";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorEntitiesRepo } from "../db/repositories/connector-entities.repository.js";
 

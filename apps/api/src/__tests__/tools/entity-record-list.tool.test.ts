@@ -1,3 +1,4 @@
+/* global AbortController */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 // ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ describe("EntityRecordListTool", () => {
     const tool = buildTool();
     const result = await tool.execute!(
       { connectorEntityId: "ce-1", limit: 1, offset: 2 },
-      { toolCallId: "tc-1", messages: [], abortSignal: undefined as any },
+      { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal },
     );
 
     expect(result).toEqual({
@@ -86,7 +87,7 @@ describe("EntityRecordListTool", () => {
     await expect(
       tool.execute!(
         { connectorEntityId: "ce-other", limit: 20, offset: 0 },
-        { toolCallId: "tc-1", messages: [], abortSignal: undefined as any },
+        { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal },
       ),
     ).rejects.toMatchObject({ code: "STATION_SCOPE_VIOLATION" });
 
@@ -103,7 +104,7 @@ describe("EntityRecordListTool", () => {
     const tool = buildTool();
     const result = await tool.execute!(
       { connectorEntityId: "ce-1", limit: 20, offset: 0 },
-      { toolCallId: "tc-1", messages: [], abortSignal: undefined as any },
+      { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal },
     );
 
     expect((result as any).total).toBe(50);

@@ -1,3 +1,4 @@
+/* global AbortController */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 // ---------------------------------------------------------------------------
@@ -59,7 +60,7 @@ describe("EntityListTool", () => {
     ]);
 
     const tool = buildTool();
-    const result = await tool.execute!({}, { toolCallId: "tc-1", messages: [], abortSignal: undefined as any });
+    const result = await tool.execute!({}, { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal });
 
     expect(result).toEqual({
       entities: [
@@ -85,7 +86,7 @@ describe("EntityListTool", () => {
     const tool = buildTool();
     const result = await tool.execute!(
       { connectorInstanceId: "ci-1" },
-      { toolCallId: "tc-1", messages: [], abortSignal: undefined as any },
+      { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal },
     );
 
     expect((result as any).entities).toHaveLength(1);
@@ -96,7 +97,7 @@ describe("EntityListTool", () => {
     mockFindByStationId.mockResolvedValue([]);
 
     const tool = buildTool();
-    const result = await tool.execute!({}, { toolCallId: "tc-1", messages: [], abortSignal: undefined as any });
+    const result = await tool.execute!({}, { toolCallId: "tc-1", messages: [], abortSignal: new AbortController().signal });
 
     expect(result).toEqual({ entities: [] });
   });
