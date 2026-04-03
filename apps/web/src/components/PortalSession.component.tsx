@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useRouter } from "@tanstack/react-router";
 import { Box, StatusMessage } from "@portalai/core/ui";
@@ -13,8 +13,54 @@ import type {
 } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
-import { ChatWindowUI } from "./ChatWindow.component";
+import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { PortalMessage } from "./PortalMessage.component";
+
+// ── Message List (memoized to avoid re-renders on input changes) ─────
+
+interface MessageListProps {
+  portalId: string;
+  messages: PortalMessageResponse[];
+  pinnedBlocks: Map<string, string>;
+  onPinChange: () => void;
+  streamingBlocks: PortalMessageBlock[] | null;
+  streamError: string | null;
+}
+
+const MessageList = React.memo<MessageListProps>(({
+  portalId,
+  messages,
+  pinnedBlocks,
+  onPinChange,
+  streamingBlocks,
+  streamError,
+}) => (
+  <>
+    {messages.map((msg) => (
+      <PortalMessage
+        key={msg.id}
+        message={msg}
+        portalId={portalId}
+        pinnedBlocks={pinnedBlocks}
+        onPinChange={onPinChange}
+      />
+    ))}
+
+    {streamingBlocks !== null && streamingBlocks.length > 0 && (
+      <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
+        {streamingBlocks.map((block, i) => (
+          <Box key={i} sx={{ overflow: "auto" }}>
+            <ContentBlockRenderer block={block} />
+          </Box>
+        ))}
+      </Box>
+    )}
+
+    {streamError && (
+      <StatusMessage variant="error" message={streamError} />
+    )}
+  </>
+));
 
 // ── UI ────────────────────────────────────────────────────────────────
 
@@ -25,9 +71,8 @@ export interface PortalSessionUIProps {
   onPinChange: () => void;
   streamingBlocks: PortalMessageBlock[] | null;
   streamError: string | null;
-  inputValue: string;
-  onInputChange: (value: string) => void;
-  onSubmit: () => void;
+  chatRef: React.Ref<ChatWindowHandle>;
+  onSubmit: (message: string) => void;
   onReset: () => void;
   onCancel: () => void;
   onExit: () => void;
@@ -41,8 +86,7 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
   onPinChange,
   streamingBlocks,
   streamError,
-  inputValue,
-  onInputChange,
+  chatRef,
   onSubmit,
   onReset,
   onCancel,
@@ -51,37 +95,21 @@ export const PortalSessionUI: React.FC<PortalSessionUIProps> = ({
 }) => (
   <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
     <ChatWindowUI
-      value={inputValue}
-      onChange={onInputChange}
+      ref={chatRef}
       onSubmit={onSubmit}
       onReset={onReset}
       onCancel={onCancel}
       onExit={onExit}
       disabled={isStreaming}
     >
-      {messages.map((msg) => (
-        <PortalMessage
-          key={msg.id}
-          message={msg}
-          portalId={portalId}
-          pinnedBlocks={pinnedBlocks}
-          onPinChange={onPinChange}
-        />
-      ))}
-
-      {streamingBlocks !== null && streamingBlocks.length > 0 && (
-        <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
-          {streamingBlocks.map((block, i) => (
-            <Box key={i} sx={{ overflow: "auto" }}>
-              <ContentBlockRenderer block={block} />
-            </Box>
-          ))}
-        </Box>
-      )}
-
-      {streamError && (
-        <StatusMessage variant="error" message={streamError} />
-      )}
+      <MessageList
+        portalId={portalId}
+        messages={messages}
+        pinnedBlocks={pinnedBlocks}
+        onPinChange={onPinChange}
+        streamingBlocks={streamingBlocks}
+        streamError={streamError}
+      />
     </ChatWindowUI>
   </Box>
 );
@@ -98,25 +126,31 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
   // Server messages come directly from the query (no local copy).
   const portalQuery = sdk.portals.get(portalId, { include: "pinnedResults" });
-  const serverMessages = portalQuery.data?.messages ?? [];
+  const serverMessages = useMemo(
+    () => portalQuery.data?.messages ?? [],
+    [portalQuery.data?.messages],
+  );
 
   // Build a lookup map from the server-side pinnedBlocks data:
   // "messageId:blockIndex" → portalResultId
-  const pinnedBlocks = new Map<string, string>();
-  for (const entry of portalQuery.data?.pinnedBlocks ?? []) {
-    pinnedBlocks.set(`${entry.messageId}:${entry.blockIndex}`, entry.portalResultId);
-  }
+  const pinnedBlockEntries = portalQuery.data?.pinnedBlocks;
+  const pinnedBlocks = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of pinnedBlockEntries ?? []) {
+      map.set(`${entry.messageId}:${entry.blockIndex}`, entry.portalResultId);
+    }
+    return map;
+  }, [pinnedBlockEntries]);
 
-  const handlePinChange = () => {
+  const handlePinChange = useCallback(() => {
     portalQuery.refetch();
-  };
+  }, [portalQuery]);
 
   // Local messages: optimistic user messages + finalized assistant messages
   // added during this session. Combined with serverMessages for display.
   const [localMessages, setLocalMessages] = useState<PortalMessageResponse[]>([]);
   const [streamingBlocks, setStreamingBlocks] =
     useState<PortalMessageBlock[] | null>(null);
-  const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -124,6 +158,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // read the current value without stale closure issues.
   const streamingBlocksRef = useRef<PortalMessageBlock[]>([]);
 
+  const chatRef = useRef<ChatWindowHandle>(null);
   const esRef = useRef<EventSource | null>(null);
   const sendMessage = sdk.portals.sendMessage(portalId);
   const resetMessages = sdk.portals.resetMessages(portalId);
@@ -131,11 +166,13 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // Deduplicate: prefer server messages over local optimistic copies so that
   // block arrays (which include tool-call/tool-result metadata blocks) have
   // correct indices for operations like pinning.
-  const serverIds = new Set(serverMessages.map((m) => m.id));
-  const allMessages = [
-    ...serverMessages,
-    ...localMessages.filter((m) => !serverIds.has(m.id)),
-  ];
+  const allMessages = useMemo(() => {
+    const serverIds = new Set(serverMessages.map((m) => m.id));
+    return [
+      ...serverMessages,
+      ...localMessages.filter((m) => !serverIds.has(m.id)),
+    ];
+  }, [serverMessages, localMessages]);
 
   const handleCancel = () => {
     esRef.current?.close();
@@ -148,7 +185,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   const handleReset = async () => {
     handleCancel();
     setLocalMessages([]);
-    setInputValue("");
+    chatRef.current?.clear();
     try {
       await resetMessages.mutateAsync();
       await portalQuery.refetch();
@@ -157,11 +194,11 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     }
   };
 
-  const handleSubmit = async () => {
-    const message = inputValue.trim();
+  const handleSubmit = async (rawMessage: string) => {
+    const message = rawMessage.trim();
     if (!message || isStreaming) return;
 
-    setInputValue("");
+    chatRef.current?.clear();
     setStreamError(null);
 
     // Add optimistic user message to local state (called from event handler, not effect).
@@ -322,8 +359,7 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       onPinChange={handlePinChange}
       streamingBlocks={streamingBlocks}
       streamError={streamError}
-      inputValue={inputValue}
-      onInputChange={setInputValue}
+      chatRef={chatRef}
       onSubmit={handleSubmit}
       onReset={handleReset}
       onCancel={handleCancel}

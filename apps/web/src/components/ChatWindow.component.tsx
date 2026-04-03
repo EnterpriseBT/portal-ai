@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useImperativeHandle, forwardRef } from "react";
 import {
   Box,
   Stack,
@@ -10,10 +10,12 @@ import {
 import { TextField, Tooltip } from "@mui/material";
 import { useLayout } from "../utils/layout.util";
 
+export interface ChatWindowHandle {
+  clear: () => void;
+}
+
 export interface ChatWindowUIProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (message: string) => void;
   onReset: () => void;
   onCancel: () => void;
   onExit: () => void;
@@ -21,23 +23,30 @@ export interface ChatWindowUIProps {
   children?: React.ReactNode;
 }
 
-export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
-  value,
-  onChange,
+export const ChatWindowUI = forwardRef<ChatWindowHandle, ChatWindowUIProps>(({
   onSubmit,
   onReset,
   onCancel,
   onExit,
   disabled,
   children,
-}) => {
+}, ref) => {
   const { isMobile } = useLayout();
+  const [value, setValue] = useState("");
+
+  useImperativeHandle(ref, () => ({
+    clear: () => setValue(""),
+  }), []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onSubmit();
+      handleSubmit();
     }
+  };
+
+  const handleSubmit = () => {
+    onSubmit(value);
   };
 
   return (
@@ -52,7 +61,7 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
           fullWidth
           placeholder="Type a message..."
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           sx={{ mb: 1 }}
@@ -87,7 +96,7 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
                   <IconButton
                     icon={IconName.Send}
                     color="primary"
-                    onClick={onSubmit}
+                    onClick={handleSubmit}
                     disabled={disabled || !value.trim()}
                     aria-label="Submit"
                   />
@@ -118,7 +127,7 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
               </Button>
               <Button
                 variant="contained"
-                onClick={onSubmit}
+                onClick={handleSubmit}
                 disabled={disabled || !value.trim()}
                 startIcon={<Icon name={IconName.Send} />}
               >
@@ -130,4 +139,4 @@ export const ChatWindowUI: React.FC<ChatWindowUIProps> = ({
       </Box>
     </Box>
   );
-};
+});
