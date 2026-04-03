@@ -86,29 +86,30 @@ Sets `origin` on all existing record creation paths so the field is populated co
 
 **File:** `apps/api/src/services/csv-import.service.ts`
 
-- [ ] In `importFromS3()`, add `origin: "sync"` to the `model.update()` call (alongside `data`, `normalizedData`, `sourceId`, etc.)
+- [x] In `importFromS3()`, add `origin: "sync"` to the `model.update()` call (alongside `data`, `normalizedData`, `sourceId`, etc.)
 
 ### 2.2 Set `origin: "manual"` in REST create endpoint
 
 **File:** `apps/api/src/routes/entity-record.router.ts`
 
-- [ ] In the `POST /` handler, add `origin: "manual"` to the `model.update()` call
+- [x] In the `POST /` handler, add `origin: "manual"` to the `model.update()` call
+- [x] Also set `origin: "sync"` in the `POST /import` bulk import handler
 
 ### 2.3 Update existing tests
 
 **File:** `apps/api/src/__tests__/services/csv-import.service.test.ts`
 
-- [ ] Verify upserted records include `origin: "sync"` in mock assertions
+- [x] Verify upserted records include `origin: "sync"` in mock assertions
 
 **File:** `apps/api/src/__tests__/__integration__/routes/entity-record.router.integration.test.ts`
 
-- [ ] Add assertion to existing POST test: `expect(record.origin).toBe("manual")`
+- [x] Add assertion to existing POST test: `expect(record.origin).toBe("manual")`
 
 ### Phase 2 Verification
 
-- [ ] `npm run test -- --selectProjects api` passes — no regressions
-- [ ] CSV import integration test (if exists) passes with `origin: "sync"`
-- [ ] Entity record POST integration test passes with `origin: "manual"`
+- [x] `npm run test -- --selectProjects api` passes — no regressions (651 tests)
+- [x] CSV import integration test (if exists) passes with `origin: "sync"`
+- [x] Entity record POST integration test passes with `origin: "manual"`
 
 ---
 

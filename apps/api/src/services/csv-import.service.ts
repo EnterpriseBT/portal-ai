@@ -206,6 +206,7 @@ export class CsvImportService {
         sourceId,
         checksum,
         syncedAt: now,
+        origin: "sync",
         updated: prev ? now : null,
         updatedBy: prev ? userId : null,
       });
