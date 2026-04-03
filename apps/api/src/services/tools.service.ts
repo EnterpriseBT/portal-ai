@@ -60,6 +60,7 @@ export const ALL_TOOL_PACKS = [
   "regression",
   "financial",
   "web_search",
+  "entity_management",
 ] as const;
 
 export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
@@ -93,6 +94,18 @@ export class ToolService {
     "max_drawdown",
     "rolling_returns",
     "web_search",
+    "entity_list",
+    "entity_record_list",
+    "entity_record_create",
+    "entity_record_update",
+    "entity_record_delete",
+    "connector_entity_update",
+    "connector_entity_delete",
+    "column_definition_create",
+    "column_definition_update",
+    "column_definition_delete",
+    "field_mapping_create",
+    "field_mapping_delete",
   ]);
 
   // -----------------------------------------------------------------------

@@ -5,11 +5,26 @@ import {
   jsonb,
   uniqueIndex,
   index,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { connectorEntities } from "./connector-entities.table.js";
+
+/**
+ * Origin of an entity record — how it was created.
+ * - `sync`: imported via connector sync (e.g. CSV import)
+ * - `manual`: created via REST API / UI
+ * - `portal`: created by an LLM tool during a portal session
+ */
+export const entityRecordOriginEnum = pgEnum("entity_record_origin", [
+  "sync",
+  "manual",
+  "portal",
+]);
+
+export type EntityRecordOrigin = (typeof entityRecordOriginEnum.enumValues)[number];
 
 /**
  * Entity records table.
@@ -33,6 +48,7 @@ export const entityRecords = pgTable(
     sourceId: text("source_id").notNull(),
     checksum: text("checksum").notNull(),
     syncedAt: bigint("synced_at", { mode: "number" }).notNull(),
+    origin: entityRecordOriginEnum("origin").notNull().default("manual"),
   },
   (table) => [
     uniqueIndex("entity_records_entity_source_unique")

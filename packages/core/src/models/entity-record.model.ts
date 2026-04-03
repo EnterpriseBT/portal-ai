@@ -12,6 +12,10 @@ import { CoreModel, CoreSchema, ModelFactory } from "./base.model.js";
  * runtime via drizzle-zod derived schemas in
  * `apps/api/src/db/schema/zod.ts`.
  */
+export const EntityRecordOriginSchema = z.enum(["sync", "manual", "portal"]);
+
+export type EntityRecordOrigin = z.infer<typeof EntityRecordOriginSchema>;
+
 export const EntityRecordSchema = CoreSchema.extend({
   organizationId: z.string(),
   connectorEntityId: z.string(),
@@ -20,6 +24,7 @@ export const EntityRecordSchema = CoreSchema.extend({
   sourceId: z.string(),
   checksum: z.string(),
   syncedAt: z.number(),
+  origin: EntityRecordOriginSchema.default("manual"),
 });
 
 export type EntityRecord = z.infer<typeof EntityRecordSchema>;

@@ -13,62 +13,66 @@ Adds the `origin` field to entity records and updates the `StationToolPackSchema
 
 **File:** `apps/api/src/db/schema/entity-records.table.ts`
 
-- [ ] Define `entityRecordOrigin` pgEnum: `["sync", "manual", "portal"]`
-- [ ] Add `origin` column to `entityRecords` table: `entityRecordOrigin("origin").notNull().default("manual")`
-- [ ] Export the `EntityRecordOrigin` type if needed by other schema files
+- [x] Define `entityRecordOrigin` pgEnum: `["sync", "manual", "portal"]`
+- [x] Add `origin` column to `entityRecords` table: `entityRecordOrigin("origin").notNull().default("manual")`
+- [x] Export the `EntityRecordOrigin` type if needed by other schema files
 
 ### 1.2 Add `origin` to Zod model
 
 **File:** `packages/core/src/models/entity-record.model.ts`
 
-- [ ] Add `origin: z.enum(["sync", "manual", "portal"]).default("manual")` to `EntityRecordSchema`
+- [x] Add `origin: z.enum(["sync", "manual", "portal"]).default("manual")` to `EntityRecordSchema`
 
 ### 1.3 Update drizzle-zod generated schemas
 
 **File:** `apps/api/src/db/schema/zod.ts`
 
-- [ ] Add `origin` to `createSelectSchema` and `createInsertSchema` for entity records
+- [x] Add `origin` to `createSelectSchema` and `createInsertSchema` for entity records
+
+> No manual changes needed — `createSelectSchema(entityRecords)` and `createInsertSchema(entityRecords)` automatically pick up the new column from the Drizzle table definition.
 
 ### 1.4 Add type checks
 
 **File:** `apps/api/src/db/schema/type-checks.ts`
 
-- [ ] Add bidirectional `IsAssignable` checks for the `origin` field between Zod model and Drizzle table
+- [x] Add bidirectional `IsAssignable` checks for the `origin` field between Zod model and Drizzle table
+
+> No manual changes needed — the existing bidirectional `IsAssignable` checks for `EntityRecord` ↔ `EntityRecordSelect` already cover all fields including the new `origin` column. Type-check passes.
 
 ### 1.5 Generate and apply migration
 
-- [ ] Run `npm run db:generate` from `apps/api/` (use descriptive name)
-- [ ] Verify generated SQL adds `origin` column with `DEFAULT 'manual'`
-- [ ] Run `npm run db:migrate` from `apps/api/`
+- [x] Run `npm run db:generate` from `apps/api/` (use descriptive name)
+- [x] Verify generated SQL adds `origin` column with `DEFAULT 'manual'`
+- [x] Run `npm run db:migrate` from `apps/api/`
 
 ### 1.6 Add `"entity_management"` to `StationToolPackSchema`
 
 **File:** `packages/core/src/models/station.model.ts`
 
-- [ ] Add `"entity_management"` to the `StationToolPackSchema` z.enum array
+- [x] Add `"entity_management"` to the `StationToolPackSchema` z.enum array
 
 ### 1.7 Update `ALL_TOOL_PACKS` and `PACK_TOOL_NAMES`
 
 **File:** `apps/api/src/services/tools.service.ts`
 
-- [ ] Add `"entity_management"` to `ALL_TOOL_PACKS` array
-- [ ] Add all 12 tool names to `PACK_TOOL_NAMES` set: `entity_list`, `entity_record_list`, `entity_record_create`, `entity_record_update`, `entity_record_delete`, `connector_entity_update`, `connector_entity_delete`, `column_definition_create`, `column_definition_update`, `column_definition_delete`, `field_mapping_create`, `field_mapping_delete`
+- [x] Add `"entity_management"` to `ALL_TOOL_PACKS` array
+- [x] Add all 12 tool names to `PACK_TOOL_NAMES` set: `entity_list`, `entity_record_list`, `entity_record_create`, `entity_record_update`, `entity_record_delete`, `connector_entity_update`, `connector_entity_delete`, `column_definition_create`, `column_definition_update`, `column_definition_delete`, `field_mapping_create`, `field_mapping_delete`
 
 ### 1.8 Contract tests for `origin` field
 
 **File:** `packages/core/src/__tests__/models/entity-record.model.test.ts`
 
-- [ ] Test: `EntityRecordSchema` accepts `origin: "sync"` — parse succeeds
-- [ ] Test: `EntityRecordSchema` accepts `origin: "manual"` — parse succeeds
-- [ ] Test: `EntityRecordSchema` accepts `origin: "portal"` — parse succeeds
-- [ ] Test: `EntityRecordSchema` rejects invalid origin value — parse fails
-- [ ] Test: `EntityRecordSchema` defaults origin to `"manual"` when omitted — parsed value is `"manual"`
+- [x] Test: `EntityRecordSchema` accepts `origin: "sync"` — parse succeeds
+- [x] Test: `EntityRecordSchema` accepts `origin: "manual"` — parse succeeds
+- [x] Test: `EntityRecordSchema` accepts `origin: "portal"` — parse succeeds
+- [x] Test: `EntityRecordSchema` rejects invalid origin value — parse fails
+- [x] Test: `EntityRecordSchema` defaults origin to `"manual"` when omitted — parsed value is `"manual"`
 
 ### Phase 1 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run build` passes
-- [ ] `npm run test -- --selectProjects core` — all model tests pass
+- [x] `npm run type-check` passes
+- [x] `npm run build` passes
+- [x] `npm run test -- --selectProjects core` — all model tests pass (1126 tests)
 - [ ] `npm run db:push` (dev only) succeeds with new schema
 - [ ] Drizzle Studio shows `origin` column on `entity_records` table
 
