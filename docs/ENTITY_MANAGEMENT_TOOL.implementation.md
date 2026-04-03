@@ -391,11 +391,11 @@ Implements the 2 read-only tools. These are simpler and validate the tool regist
 
 **File:** `apps/api/src/tools/entity-list.tool.ts`
 
-- [ ] Define `InputSchema` with optional `connectorInstanceId`
-- [ ] Extend `Tool<typeof InputSchema>`
-- [ ] `build(stationId)` returns tool that:
+- [x] Define `InputSchema` with optional `connectorInstanceId`
+- [x] Extend `Tool<typeof InputSchema>`
+- [x] `build(stationId)` returns tool that:
   - Loads station instances → attached instance IDs
-  - Calls `connectorEntities.findMany()` filtered to attached instances
+  - Calls `connectorEntities.findByConnectorInstanceId()` for each attached instance
   - Optionally filters by `connectorInstanceId` if provided
   - Returns `{ entities: [{ id, key, label, connectorInstanceId }] }`
 
@@ -403,9 +403,9 @@ Implements the 2 read-only tools. These are simpler and validate the tool regist
 
 **File:** `apps/api/src/tools/entity-record-list.tool.ts`
 
-- [ ] Define `InputSchema` with `connectorEntityId`, optional `limit` (default 20), optional `offset` (default 0)
-- [ ] Extend `Tool<typeof InputSchema>`
-- [ ] `build(stationId)` returns tool that:
+- [x] Define `InputSchema` with `connectorEntityId`, optional `limit` (default 20), optional `offset` (default 0)
+- [x] Extend `Tool<typeof InputSchema>`
+- [x] `build(stationId)` returns tool that:
   - Calls `assertStationScope(stationId, connectorEntityId)`
   - Calls `entityRecords.findMany()` with limit/offset
   - Returns `{ records: [{ id, sourceId, normalizedData }], total }`
@@ -414,21 +414,21 @@ Implements the 2 read-only tools. These are simpler and validate the tool regist
 
 **File:** `apps/api/src/__tests__/tools/entity-list.tool.test.ts`
 
-- [ ] Test: returns only entities attached to station
-- [ ] Test: filters by `connectorInstanceId` when provided
-- [ ] Test: returns empty array for station with no entities
+- [x] Test: returns only entities attached to station
+- [x] Test: filters by `connectorInstanceId` when provided
+- [x] Test: returns empty array for station with no entities
 
 **File:** `apps/api/src/__tests__/tools/entity-record-list.tool.test.ts`
 
-- [ ] Test: returns paginated records (respects limit and offset)
-- [ ] Test: validates station scope — rejects entity from another station
-- [ ] Test: returns total count alongside records
+- [x] Test: returns paginated records (respects limit and offset)
+- [x] Test: validates station scope — rejects entity from another station
+- [x] Test: returns total count alongside records
 
 ### Phase 8 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run test -- --selectProjects api` — read tool tests pass
-- [ ] Tools can be imported and `build()` returns a valid tool object
+- [x] `npm run type-check` passes
+- [x] `npm run test -- --selectProjects api` — read tool tests pass (6 tests)
+- [x] No regressions (428 unit tests pass)
 
 ---
 
