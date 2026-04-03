@@ -440,62 +440,62 @@ Implements all 10 write tools. Each tool follows the same pattern: validate inpu
 
 **File:** `apps/api/src/tools/entity-record-create.tool.ts`
 
-- [ ] Input: `{ connectorEntityId, sourceId?, data }`
-- [ ] Execute: scope check → write check → `NormalizationService.normalize()` → `entityRecords.create()` with `origin: "portal"`, `checksum: "manual"`, `createdBy: userId` → `onMutation()`
-- [ ] Returns `{ success: true, recordId }` or `{ error: "..." }`
+- [x] Input: `{ connectorEntityId, sourceId?, data }`
+- [x] Execute: scope check → write check → `NormalizationService.normalize()` → `entityRecords.create()` with `origin: "portal"`, `checksum: "manual"`, `createdBy: userId` → `onMutation()`
+- [x] Returns `{ success: true, recordId }` or `{ error: "..." }`
 
 **File:** `apps/api/src/tools/entity-record-update.tool.ts`
 
-- [ ] Input: `{ connectorEntityId, entityRecordId, data }`
-- [ ] Execute: scope check → write check → verify record belongs to entity → `NormalizationService.normalize()` → `entityRecords.update()` → `onMutation()`
+- [x] Input: `{ connectorEntityId, entityRecordId, data }`
+- [x] Execute: scope check → write check → verify record belongs to entity → `NormalizationService.normalize()` → `entityRecords.update()` → `onMutation()`
 
 **File:** `apps/api/src/tools/entity-record-delete.tool.ts`
 
-- [ ] Input: `{ connectorEntityId, entityRecordId }`
-- [ ] Execute: scope check → write check → verify record belongs to entity → `entityRecords.softDelete()` → `onMutation()`
+- [x] Input: `{ connectorEntityId, entityRecordId }`
+- [x] Execute: scope check → write check → verify record belongs to entity → `entityRecords.softDelete()` → `onMutation()`
 
 ### 9.2 Connector Entity Write Tools
 
 **File:** `apps/api/src/tools/connector-entity-update.tool.ts`
 
-- [ ] Input: `{ connectorEntityId, label }`
-- [ ] Execute: scope check → write check → `connectorEntities.update()` → `onMutation()`
+- [x] Input: `{ connectorEntityId, label }`
+- [x] Execute: scope check → write check → `connectorEntities.update()` → `onMutation()`
 
 **File:** `apps/api/src/tools/connector-entity-delete.tool.ts`
 
-- [ ] Input: `{ connectorEntityId }`
-- [ ] Execute: scope check → `ConnectorEntityValidationService.validateDelete()` → `.executeDelete()` → `onMutation()` → return cascaded counts
+- [x] Input: `{ connectorEntityId }`
+- [x] Execute: scope check → `ConnectorEntityValidationService.validateDelete()` → `.executeDelete()` → `onMutation()` → return cascaded counts
 
 ### 9.3 Column Definition Write Tools
 
 **File:** `apps/api/src/tools/column-definition-create.tool.ts`
 
-- [ ] Input: `{ key, label, type, required?, enumValues?, description? }`
-- [ ] Execute: `columnDefinitions.upsertByKey()` → `onMutation()`
-- [ ] No scope or write capability check (organization-level)
+- [x] Input: `{ key, label, type, required?, enumValues?, description? }`
+- [x] Execute: `columnDefinitions.upsertByKey()` → `onMutation()`
+- [x] No scope or write capability check (organization-level)
 
 **File:** `apps/api/src/tools/column-definition-update.tool.ts`
 
-- [ ] Input: `{ columnDefinitionId, label?, description?, enumValues? }`
-- [ ] Execute: verify exists → `columnDefinitions.update()` → `onMutation()`
-- [ ] `key` and `type` are immutable — not in input schema
+- [x] Input: `{ columnDefinitionId, label?, description?, enumValues? }`
+- [x] Execute: verify exists → `columnDefinitions.update()` → `onMutation()`
+- [x] `key` and `type` are immutable — not in input schema
 
 **File:** `apps/api/src/tools/column-definition-delete.tool.ts`
 
-- [ ] Input: `{ columnDefinitionId }`
-- [ ] Execute: `ColumnDefinitionValidationService.validateDelete()` → `columnDefinitions.softDelete()` → `onMutation()`
+- [x] Input: `{ columnDefinitionId }`
+- [x] Execute: `ColumnDefinitionValidationService.validateDelete()` → `columnDefinitions.softDelete()` → `onMutation()`
 
 ### 9.4 Field Mapping Write Tools
 
 **File:** `apps/api/src/tools/field-mapping-create.tool.ts`
 
-- [ ] Input: `{ connectorEntityId, columnDefinitionId, sourceField, isPrimaryKey? }`
-- [ ] Execute: scope check → write check → verify column definition exists → `fieldMappings.upsertByEntityAndColumn()` → `onMutation()`
+- [x] Input: `{ connectorEntityId, columnDefinitionId, sourceField, isPrimaryKey? }`
+- [x] Execute: scope check → write check → verify column definition exists → `fieldMappings.upsertByEntityAndColumn()` → `onMutation()`
 
 **File:** `apps/api/src/tools/field-mapping-delete.tool.ts`
 
-- [ ] Input: `{ fieldMappingId }`
-- [ ] Execute: load mapping → resolve entity → scope check → write check → `FieldMappingValidationService.validateDelete()` → `.executeDelete()` → `onMutation()` → return cascaded counts
+- [x] Input: `{ fieldMappingId }`
+- [x] Execute: load mapping → resolve entity → scope check → write check → `FieldMappingValidationService.validateDelete()` → `.executeDelete()` → `onMutation()` → return cascaded counts
 
 ### 9.5 Unit tests for write tools
 
