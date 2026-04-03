@@ -27,7 +27,11 @@ import type { Spec as VegaSpec, Data, ValuesData } from "vega";
 import { compile as vegaLiteCompile } from "vega-lite";
 import type { TopLevelSpec as VegaLiteSpec } from "vega-lite";
 
+import { inArray } from "drizzle-orm";
+
 import { DbService } from "./db.service.js";
+import { db } from "../db/client.js";
+import { connectorInstances as connectorInstancesTable } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
 import { VegaLiteSpecInput } from "../tools/visualize.tool.js";
 
@@ -240,11 +244,6 @@ export class AnalyticsService {
       )
     ).flat();
 
-    if (allEntities.length === 0) {
-      logger.warn({ stationId }, "Station has no entities");
-      return { entities: [], entityGroups: [], records: new Map() };
-    }
-
     // 3. For each entity: load field mappings → column definitions
     const entityIds = allEntities.map((e) => e.id);
     const fieldMappingsByEntity =
@@ -294,7 +293,46 @@ export class AnalyticsService {
       }
     }
 
-    // 5. Load org-level metadata tables (column definitions, field mappings)
+    // 5. Load station-scoped metadata tables into AlaSQL
+
+    // Connector instances attached to this station (query directly to avoid credential decryption)
+    const connectorInstanceRows = connectorInstanceIds.length > 0
+      ? await db
+          .select({
+            id: connectorInstancesTable.id,
+            name: connectorInstancesTable.name,
+            status: connectorInstancesTable.status,
+            connectorDefinitionId: connectorInstancesTable.connectorDefinitionId,
+          })
+          .from(connectorInstancesTable)
+          .where(inArray(connectorInstancesTable.id, connectorInstanceIds))
+      : [];
+    alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_connector_instances]");
+    if (connectorInstanceRows.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_connector_instances] SELECT * FROM ?`, [
+        connectorInstanceRows.map((ci) => ({
+          id: ci.id,
+          name: ci.name,
+          status: ci.status,
+          connector_definition_id: ci.connectorDefinitionId,
+        })),
+      ]);
+    }
+
+    // Connector entities for attached instances
+    alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_connector_entities]");
+    if (allEntities.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_connector_entities] SELECT * FROM ?`, [
+        allEntities.map((e: Record<string, unknown>) => ({
+          id: e.id,
+          key: e.key,
+          label: e.label,
+          connector_instance_id: e.connectorInstanceId,
+        })),
+      ]);
+    }
+
+    // Organization-level column definitions and field mappings
     const allColumnDefs = await repo.columnDefinitions.findByOrganizationId(organizationId);
     alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_column_definitions]");
     if (allColumnDefs.length > 0) {

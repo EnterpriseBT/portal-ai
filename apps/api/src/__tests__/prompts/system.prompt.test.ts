@@ -116,6 +116,8 @@ describe("buildSystemPrompt — entity management notes", () => {
 
     expect(prompt).toContain("## Entity Management Notes");
     expect(prompt).toContain("origin");
+    expect(prompt).toContain("_connector_instances");
+    expect(prompt).toContain("_connector_entities");
     expect(prompt).toContain("_column_definitions");
     expect(prompt).toContain("_field_mappings");
     expect(prompt).toContain("field_mapping_create");

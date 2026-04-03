@@ -15,6 +15,12 @@ const mockFindByConnectorEntityId_members = jest.fn<() => Promise<unknown[]>>();
 const mockFindByEntityGroupId = jest.fn<() => Promise<unknown[]>>();
 const mockFindById_group = jest.fn<() => Promise<unknown>>();
 
+// Mock direct db import for _connector_instances metadata query in loadStation
+const _mockSelectChain = { from: () => _mockSelectChain, where: () => Promise.resolve([]) };
+jest.unstable_mockModule("../../db/client.js", () => ({
+  db: { select: () => _mockSelectChain },
+}));
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {

@@ -84,11 +84,15 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     );
     lines.push("");
     lines.push(
-      "Metadata tables `_column_definitions` and `_field_mappings` are " +
-      "available via sql_query. Use them to look up existing column definition " +
-      "IDs before creating new ones. To add a new field mapping, either find " +
-      "an existing column definition ID from `_column_definitions` or create " +
-      "one with column_definition_create, then call field_mapping_create."
+      "Metadata tables are available via sql_query: " +
+      "`_connector_instances` (id, name, status, connector_definition_id), " +
+      "`_connector_entities` (id, key, label, connector_instance_id), " +
+      "`_column_definitions` (id, key, label, type, required, description), " +
+      "`_field_mappings` (id, connector_entity_id, column_definition_id, source_field, is_primary_key). " +
+      "Use these to look up IDs before calling write tools. " +
+      "To add a new field mapping, either find an existing column definition " +
+      "from `_column_definitions` or create one with column_definition_create, " +
+      "then call field_mapping_create."
     );
     lines.push("");
   }
