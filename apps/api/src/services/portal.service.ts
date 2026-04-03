@@ -26,6 +26,7 @@ import {
   buildSystemPrompt,
   type StationContext,
 } from "../prompts/system.prompt.js";
+import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -246,12 +247,17 @@ export class PortalService {
     );
     stationDataCache.set(portal.id, stationData);
 
+    const entityCapabilities = toolPacks.includes("entity_management")
+      ? await resolveEntityCapabilities(stationId)
+      : undefined;
+
     const stationContext: StationContext = {
       stationId: station.id,
       stationName: station.name,
       entities: stationData.entities,
       entityGroups: stationData.entityGroups,
       toolPacks,
+      entityCapabilities,
     };
 
     logger.info({ portalId: portal.id, stationId }, "Portal created");

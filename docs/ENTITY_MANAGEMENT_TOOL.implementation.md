@@ -185,45 +185,45 @@ Updates the system prompt to surface per-entity capability flags and sync behavi
 
 **File:** `apps/api/src/prompts/system.prompt.ts`
 
-- [ ] Add `entityCapabilities?: Record<string, ResolvedCapabilities>` to `StationContext`
-- [ ] Add import for `ResolvedCapabilities` type
+- [x] Add `entityCapabilities?: Record<string, ResolvedCapabilities>` to `StationContext`
+- [x] Add import for `ResolvedCapabilities` type
 
 ### 4.2 Update `buildSystemPrompt()` — capability flags
 
 **File:** `apps/api/src/prompts/system.prompt.ts`
 
-- [ ] Update entity rendering loop to append `[read, write]` or `[read]` flags based on `entityCapabilities`
-- [ ] Omit flags when `entityCapabilities` is undefined (backward compatible)
+- [x] Update entity rendering loop to append `[read, write]` or `[read]` flags based on `entityCapabilities`
+- [x] Omit flags when `entityCapabilities` is undefined (backward compatible)
 
 ### 4.3 Update `buildSystemPrompt()` — sync guidance
 
 **File:** `apps/api/src/prompts/system.prompt.ts`
 
-- [ ] When `entity_management` is in `toolPacks`, append "Entity Management Notes" section explaining sync behavior for tool-created vs. synced records
+- [x] When `entity_management` is in `toolPacks`, append "Entity Management Notes" section explaining sync behavior for tool-created vs. synced records
 
 ### 4.4 Wire entity capabilities in `PortalService.createPortal()`
 
 **File:** `apps/api/src/services/portal.service.ts`
 
-- [ ] When `toolPacks` includes `"entity_management"`, call `resolveEntityCapabilities(stationId)`
-- [ ] Pass result as `entityCapabilities` in the `StationContext`
-- [ ] Add import for `resolveEntityCapabilities`
+- [x] When `toolPacks` includes `"entity_management"`, call `resolveEntityCapabilities(stationId)`
+- [x] Pass result as `entityCapabilities` in the `StationContext`
+- [x] Add import for `resolveEntityCapabilities`
 
 ### 4.5 System prompt tests
 
 **File:** `apps/api/src/__tests__/prompts/system.prompt.test.ts`
 
-- [ ] Test: renders `[read, write]` when entity has both capabilities
-- [ ] Test: renders `[read]` for read-only entities
-- [ ] Test: omits flags when `entityCapabilities` is undefined
-- [ ] Test: includes "Entity Management Notes" section when `entity_management` in `toolPacks`
-- [ ] Test: omits "Entity Management Notes" when `entity_management` not in `toolPacks`
+- [x] Test: renders `[read, write]` when entity has both capabilities
+- [x] Test: renders `[read]` for read-only entities
+- [x] Test: omits flags when `entityCapabilities` is undefined
+- [x] Test: includes "Entity Management Notes" section when `entity_management` in `toolPacks`
+- [x] Test: omits "Entity Management Notes" when `entity_management` not in `toolPacks`
 
 ### Phase 4 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run test -- --selectProjects api` — all system prompt tests pass
-- [ ] Manually verify prompt output with a test station context (optional)
+- [x] `npm run type-check` passes
+- [x] `npm run test -- --selectProjects api` — all system prompt tests pass (5 tests)
+- [x] No regressions (403 unit tests pass)
 
 ---
 

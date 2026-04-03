@@ -2,6 +2,7 @@ import type {
   EntitySchema,
   EntityGroupContext,
 } from "../services/analytics.service.js";
+import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
 
 export interface StationContext {
   stationId: string;
@@ -9,6 +10,7 @@ export interface StationContext {
   entities: EntitySchema[];
   entityGroups: EntityGroupContext[];
   toolPacks: string[];
+  entityCapabilities?: Record<string, ResolvedCapabilities>;
 }
 
 /**
@@ -24,7 +26,15 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   ];
 
   for (const entity of stationContext.entities) {
-    lines.push(`### ${entity.label} (\`${entity.key}\`)`);
+    let heading = `### ${entity.label} (\`${entity.key}\`)`;
+    if (stationContext.entityCapabilities) {
+      const caps = stationContext.entityCapabilities[entity.id];
+      if (caps) {
+        const flags = caps.write ? "[read, write]" : "[read]";
+        heading += ` ${flags}`;
+      }
+    }
+    lines.push(heading);
     lines.push("Columns:");
     for (const col of entity.columns) {
       lines.push(`  - \`${col.key}\` (${col.type}): ${col.label}`);
@@ -52,6 +62,19 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       }
       lines.push("");
     }
+  }
+
+  if (stationContext.toolPacks.includes("entity_management")) {
+    lines.push("## Entity Management Notes");
+    lines.push("");
+    lines.push(
+      "Records you create with entity management tools are tagged with origin " +
+      '"portal" and will not be overwritten by connector syncs. ' +
+      "However, if you modify or delete a synced record (origin " +
+      '"sync"), the next sync may restore or overwrite your changes. ' +
+      "Prefer creating new records over modifying synced ones when possible."
+    );
+    lines.push("");
   }
 
   return lines.join("\n");
