@@ -113,6 +113,7 @@ portalEventsRouter.get(
         messages: coreMessages,
         stationContext,
         organizationId: portal.organizationId,
+        userId: portal.createdBy,
         sse,
       });
 

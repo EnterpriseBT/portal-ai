@@ -350,31 +350,36 @@ Updates the tool builder signature to accept `userId` and `onDataMutation`. This
 
 **File:** `apps/api/src/services/tools.service.ts`
 
-- [ ] Add `userId: string` parameter (3rd positional)
-- [ ] Add `onDataMutation?: () => void` parameter (4th positional)
+- [x] Add `userId: string` parameter (3rd positional)
+- [x] Add `onDataMutation?: () => void` parameter (4th positional)
 
 ### 7.2 Update all call sites
 
 **File:** `apps/api/src/services/portal.service.ts`
 
-- [ ] In `streamResponse()`, pass `portal.createdBy` as `userId`
-- [ ] Pass `() => stationDataCache.delete(portal.id)` as `onDataMutation`
+- [x] In `streamResponse()`, pass `userId` as 3rd arg (added `userId` to `streamResponse` params)
+- [x] Pass `() => stationDataCache.delete(portalId)` as `onDataMutation`
 
-**Other call sites (if any):**
+**File:** `apps/api/src/routes/portal-events.router.ts`
 
-- [ ] Search for other usages of `buildAnalyticsTools` and add default values: `userId = "system"`, `onDataMutation = undefined`
+- [x] Pass `portal.createdBy` as `userId` to `streamResponse()`
 
 ### 7.3 Update existing tool service tests
 
 **File:** `apps/api/src/__tests__/services/tools.service.test.ts`
 
-- [ ] Update test call signatures to include new parameters
+- [x] Update test call signatures to include new parameters
+
+**File:** `apps/api/src/__tests__/services/portal.service.test.ts`
+
+- [x] Update all `streamResponse()` test calls to include `userId`
+- [x] Update `buildAnalyticsTools` assertion to expect new args
 
 ### Phase 7 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run test -- --selectProjects api` — all tool service tests pass
-- [ ] No regressions
+- [x] `npm run type-check` passes
+- [x] `npm run test -- --selectProjects api` — all tool service tests pass (422 unit tests)
+- [x] No regressions
 
 ---
 

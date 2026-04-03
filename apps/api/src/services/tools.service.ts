@@ -155,6 +155,8 @@ export class ToolService {
   static async buildAnalyticsTools(
     organizationId: string,
     stationId: string,
+    _userId: string,
+    _onDataMutation?: () => void,
   ): Promise<Record<string, Tool>> {
     const repo = DbService.repository;
 

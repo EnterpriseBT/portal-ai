@@ -416,12 +416,14 @@ export class PortalService {
     messages,
     stationContext,
     organizationId,
+    userId,
     sse,
   }: {
     portalId: string;
     messages: ModelMessage[];
     stationContext: StationContext;
     organizationId: string;
+    userId: string;
     sse: SseUtil;
   }): Promise<void> {
     const systemPrompt = buildSystemPrompt(stationContext);
@@ -429,6 +431,8 @@ export class PortalService {
     const analyticsTools = await ToolService.buildAnalyticsTools(
       organizationId,
       stationContext.stationId,
+      userId,
+      () => stationDataCache.delete(portalId),
     );
 
     // streamText() is lazy in AI SDK v6 — it returns immediately and
