@@ -1,0 +1,697 @@
+# Entity Management Tool Pack — Implementation Plan
+
+> **Spec:** [ENTITY_MANAGEMENT_TOOL.spec.md](./ENTITY_MANAGEMENT_TOOL.spec.md)
+> **Discovery:** [ENTITY_MANAGEMENT_TOOL.discovery.md](./ENTITY_MANAGEMENT_TOOL.discovery.md)
+
+---
+
+## Phase 1: Schema & Model Foundation
+
+Adds the `origin` field to entity records and updates the `StationToolPackSchema`. Pure schema/model changes — no runtime behavior changes yet.
+
+### 1.1 Add `origin` pgEnum and column to entity records table
+
+**File:** `apps/api/src/db/schema/entity-records.table.ts`
+
+- [ ] Define `entityRecordOrigin` pgEnum: `["sync", "manual", "portal"]`
+- [ ] Add `origin` column to `entityRecords` table: `entityRecordOrigin("origin").notNull().default("manual")`
+- [ ] Export the `EntityRecordOrigin` type if needed by other schema files
+
+### 1.2 Add `origin` to Zod model
+
+**File:** `packages/core/src/models/entity-record.model.ts`
+
+- [ ] Add `origin: z.enum(["sync", "manual", "portal"]).default("manual")` to `EntityRecordSchema`
+
+### 1.3 Update drizzle-zod generated schemas
+
+**File:** `apps/api/src/db/schema/zod.ts`
+
+- [ ] Add `origin` to `createSelectSchema` and `createInsertSchema` for entity records
+
+### 1.4 Add type checks
+
+**File:** `apps/api/src/db/schema/type-checks.ts`
+
+- [ ] Add bidirectional `IsAssignable` checks for the `origin` field between Zod model and Drizzle table
+
+### 1.5 Generate and apply migration
+
+- [ ] Run `npm run db:generate` from `apps/api/` (use descriptive name)
+- [ ] Verify generated SQL adds `origin` column with `DEFAULT 'manual'`
+- [ ] Run `npm run db:migrate` from `apps/api/`
+
+### 1.6 Add `"entity_management"` to `StationToolPackSchema`
+
+**File:** `packages/core/src/models/station.model.ts`
+
+- [ ] Add `"entity_management"` to the `StationToolPackSchema` z.enum array
+
+### 1.7 Update `ALL_TOOL_PACKS` and `PACK_TOOL_NAMES`
+
+**File:** `apps/api/src/services/tools.service.ts`
+
+- [ ] Add `"entity_management"` to `ALL_TOOL_PACKS` array
+- [ ] Add all 12 tool names to `PACK_TOOL_NAMES` set: `entity_list`, `entity_record_list`, `entity_record_create`, `entity_record_update`, `entity_record_delete`, `connector_entity_update`, `connector_entity_delete`, `column_definition_create`, `column_definition_update`, `column_definition_delete`, `field_mapping_create`, `field_mapping_delete`
+
+### 1.8 Contract tests for `origin` field
+
+**File:** `packages/core/src/__tests__/models/entity-record.model.test.ts`
+
+- [ ] Test: `EntityRecordSchema` accepts `origin: "sync"` — parse succeeds
+- [ ] Test: `EntityRecordSchema` accepts `origin: "manual"` — parse succeeds
+- [ ] Test: `EntityRecordSchema` accepts `origin: "portal"` — parse succeeds
+- [ ] Test: `EntityRecordSchema` rejects invalid origin value — parse fails
+- [ ] Test: `EntityRecordSchema` defaults origin to `"manual"` when omitted — parsed value is `"manual"`
+
+### Phase 1 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run build` passes
+- [ ] `npm run test -- --selectProjects core` — all model tests pass
+- [ ] `npm run db:push` (dev only) succeeds with new schema
+- [ ] Drizzle Studio shows `origin` column on `entity_records` table
+
+---
+
+## Phase 2: Origin Backfill
+
+Sets `origin` on all existing record creation paths so the field is populated correctly going forward. No new features — just wiring the field into existing code.
+
+### 2.1 Set `origin: "sync"` in CSV import
+
+**File:** `apps/api/src/services/csv-import.service.ts`
+
+- [ ] In `importFromS3()`, add `origin: "sync"` to the `model.update()` call (alongside `data`, `normalizedData`, `sourceId`, etc.)
+
+### 2.2 Set `origin: "manual"` in REST create endpoint
+
+**File:** `apps/api/src/routes/entity-record.router.ts`
+
+- [ ] In the `POST /` handler, add `origin: "manual"` to the `model.update()` call
+
+### 2.3 Update existing tests
+
+**File:** `apps/api/src/__tests__/services/csv-import.service.test.ts`
+
+- [ ] Verify upserted records include `origin: "sync"` in mock assertions
+
+**File:** `apps/api/src/__tests__/__integration__/routes/entity-record.router.integration.test.ts`
+
+- [ ] Add assertion to existing POST test: `expect(record.origin).toBe("manual")`
+
+### Phase 2 Verification
+
+- [ ] `npm run test -- --selectProjects api` passes — no regressions
+- [ ] CSV import integration test (if exists) passes with `origin: "sync"`
+- [ ] Entity record POST integration test passes with `origin: "manual"`
+
+---
+
+## Phase 3: Capability Plumbing
+
+Adds the helper functions that resolve station-level capabilities and enforce station scope. These are prerequisites for tool registration and runtime permission checks.
+
+### 3.1 Add `STATION_SCOPE_VIOLATION` API code
+
+**File:** `apps/api/src/constants/api-codes.constants.ts`
+
+- [ ] Add `STATION_SCOPE_VIOLATION = "STATION_SCOPE_VIOLATION"` to `ApiCode` enum
+
+### 3.2 Add `StationInstanceCapability` interface and `resolveStationCapabilities()`
+
+**File:** `apps/api/src/utils/resolve-capabilities.util.ts`
+
+- [ ] Define `StationInstanceCapability` interface: `{ connectorInstanceId: string, capabilities: ResolvedCapabilities }`
+- [ ] Implement `resolveStationCapabilities(stationId)` — loads station instances, resolves capabilities for each via `resolveCapabilities()`
+- [ ] Add necessary imports: `stationInstancesRepo`
+
+### 3.3 Add `assertStationScope()`
+
+**File:** `apps/api/src/utils/resolve-capabilities.util.ts`
+
+- [ ] Implement `assertStationScope(stationId, connectorEntityId)` — verifies entity belongs to a station-attached instance
+- [ ] Throws 404 `CONNECTOR_ENTITY_NOT_FOUND` if entity doesn't exist
+- [ ] Throws 403 `STATION_SCOPE_VIOLATION` if entity's instance is not attached to station
+
+### 3.4 Add `resolveEntityCapabilities()`
+
+**File:** `apps/api/src/utils/resolve-capabilities.util.ts`
+
+- [ ] Implement `resolveEntityCapabilities(stationId)` — builds `Record<entityId, ResolvedCapabilities>` map
+- [ ] Add `connectorEntitiesRepo.findByConnectorInstanceIds()` if method doesn't exist
+
+### 3.5 Unit tests for capability plumbing
+
+**File:** `apps/api/src/__tests__/utils/resolve-capabilities.util.test.ts`
+
+#### `resolveStationCapabilities()`
+
+- [ ] Test: returns empty array for station with no instances
+- [ ] Test: returns capabilities for each attached instance
+- [ ] Test: respects instance-level override narrowing write to false
+- [ ] Test: inherits definition capabilities when override is null
+- [ ] Test: skips instances with missing definitions
+
+#### `assertStationScope()`
+
+- [ ] Test: passes for entity belonging to an attached instance
+- [ ] Test: throws `CONNECTOR_ENTITY_NOT_FOUND` for non-existent entity
+- [ ] Test: throws `STATION_SCOPE_VIOLATION` for cross-station entity
+
+#### `resolveEntityCapabilities()`
+
+- [ ] Test: returns capability map keyed by entity ID
+- [ ] Test: returns empty map for station with no instances
+
+### Phase 3 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run test -- --selectProjects api` — all resolve-capabilities tests pass
+- [ ] No regressions in existing capability tests
+
+---
+
+## Phase 4: System Prompt Enrichment
+
+Updates the system prompt to surface per-entity capability flags and sync behavior guidance.
+
+### 4.1 Extend `StationContext` interface
+
+**File:** `apps/api/src/prompts/system.prompt.ts`
+
+- [ ] Add `entityCapabilities?: Record<string, ResolvedCapabilities>` to `StationContext`
+- [ ] Add import for `ResolvedCapabilities` type
+
+### 4.2 Update `buildSystemPrompt()` — capability flags
+
+**File:** `apps/api/src/prompts/system.prompt.ts`
+
+- [ ] Update entity rendering loop to append `[read, write]` or `[read]` flags based on `entityCapabilities`
+- [ ] Omit flags when `entityCapabilities` is undefined (backward compatible)
+
+### 4.3 Update `buildSystemPrompt()` — sync guidance
+
+**File:** `apps/api/src/prompts/system.prompt.ts`
+
+- [ ] When `entity_management` is in `toolPacks`, append "Entity Management Notes" section explaining sync behavior for tool-created vs. synced records
+
+### 4.4 Wire entity capabilities in `PortalService.createPortal()`
+
+**File:** `apps/api/src/services/portal.service.ts`
+
+- [ ] When `toolPacks` includes `"entity_management"`, call `resolveEntityCapabilities(stationId)`
+- [ ] Pass result as `entityCapabilities` in the `StationContext`
+- [ ] Add import for `resolveEntityCapabilities`
+
+### 4.5 System prompt tests
+
+**File:** `apps/api/src/__tests__/prompts/system.prompt.test.ts`
+
+- [ ] Test: renders `[read, write]` when entity has both capabilities
+- [ ] Test: renders `[read]` for read-only entities
+- [ ] Test: omits flags when `entityCapabilities` is undefined
+- [ ] Test: includes "Entity Management Notes" section when `entity_management` in `toolPacks`
+- [ ] Test: omits "Entity Management Notes" when `entity_management` not in `toolPacks`
+
+### Phase 4 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run test -- --selectProjects api` — all system prompt tests pass
+- [ ] Manually verify prompt output with a test station context (optional)
+
+---
+
+## Phase 5: Shared Validation Services
+
+Extracts validation and cascade logic from routers into reusable service classes. Both tools and routers will call these services.
+
+### 5.1 `NormalizationService`
+
+**File:** `apps/api/src/services/normalization.service.ts`
+
+- [ ] Create static class with `normalize(connectorEntityId, data)` method
+- [ ] Loads field mappings with `include: ["columnDefinition"]`
+- [ ] Builds `normalizedData` by projecting `data` through `sourceField → columnDefinitionKey`
+- [ ] Falls back to passthrough (`{ ...data }`) when no field mappings exist
+- [ ] Add unit tests:
+
+**File:** `apps/api/src/__tests__/services/normalization.service.test.ts`
+
+- [ ] Test: normalizes data through field mappings
+- [ ] Test: omits unmapped source fields
+- [ ] Test: passes through data when no field mappings exist
+- [ ] Test: handles missing source fields gracefully
+
+### 5.2 `ConnectorEntityValidationService`
+
+**File:** `apps/api/src/services/connector-entity-validation.service.ts`
+
+- [ ] Create static class with `validateDelete(connectorEntityId)` — checks write capability and external references
+- [ ] Create `executeDelete(connectorEntityId, userId)` — cascade soft-delete in transaction
+- [ ] Add unit tests:
+
+**File:** `apps/api/src/__tests__/services/connector-entity-validation.service.test.ts`
+
+- [ ] Test: `validateDelete` passes when no external references exist
+- [ ] Test: `validateDelete` throws `CONNECTOR_INSTANCE_WRITE_DISABLED` when write disabled
+- [ ] Test: `validateDelete` throws `ENTITY_HAS_EXTERNAL_REFERENCES` when references exist
+- [ ] Test: `executeDelete` cascade soft-deletes all dependent objects
+- [ ] Test: `executeDelete` runs in a single transaction
+
+### 5.3 `FieldMappingValidationService`
+
+**File:** `apps/api/src/services/field-mapping-validation.service.ts`
+
+- [ ] Create static class with `validateDelete(fieldMappingId)` — checks record count
+- [ ] Create `executeDelete(fieldMappingId, userId)` — cascade + bidirectional clear
+- [ ] Add unit tests:
+
+**File:** `apps/api/src/__tests__/services/field-mapping-validation.service.test.ts`
+
+- [ ] Test: `validateDelete` passes when entity has no records
+- [ ] Test: `validateDelete` throws `FIELD_MAPPING_DELETE_HAS_RECORDS` when records exist
+- [ ] Test: `executeDelete` cascade soft-deletes group members
+- [ ] Test: `executeDelete` clears bidirectional counterpart
+- [ ] Test: `executeDelete` returns `bidirectionalCleared: false` when no counterpart
+
+### 5.4 `ColumnDefinitionValidationService`
+
+**File:** `apps/api/src/services/column-definition-validation.service.ts`
+
+- [ ] Create static class with `validateDelete(columnDefinitionId)` — checks field mapping dependencies
+- [ ] Add unit tests:
+
+**File:** `apps/api/src/__tests__/services/column-definition-validation.service.test.ts`
+
+- [ ] Test: `validateDelete` passes when no field mappings reference it
+- [ ] Test: `validateDelete` throws `COLUMN_DEFINITION_HAS_DEPENDENCIES` when referenced
+
+### Phase 5 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run test -- --selectProjects api` — all 4 service test files pass
+- [ ] No regressions in existing tests
+
+---
+
+## Phase 6: Router Refactoring
+
+Refactors existing DELETE handlers to use the shared validation services. No behavior change — existing integration tests must continue to pass.
+
+### 6.1 Refactor connector entity DELETE handler
+
+**File:** `apps/api/src/routes/connector-entity.router.ts`
+
+- [ ] Replace inline write capability check + external reference check + cascade logic with:
+  - `ConnectorEntityValidationService.validateDelete(id)`
+  - `ConnectorEntityValidationService.executeDelete(id, userId)`
+- [ ] Keep `try/catch` + `next(error)` pattern in router
+- [ ] Remove inlined logic (capability resolution, transaction block)
+
+### 6.2 Refactor field mapping DELETE handler
+
+**File:** `apps/api/src/routes/field-mapping.router.ts`
+
+- [ ] Replace inline record count check + cascade logic with:
+  - `FieldMappingValidationService.validateDelete(id)`
+  - `FieldMappingValidationService.executeDelete(id, userId)`
+- [ ] Keep router-level error handling
+
+### 6.3 Refactor column definition DELETE handler
+
+**File:** `apps/api/src/routes/column-definition.router.ts`
+
+- [ ] Replace inline dependency check with:
+  - `ColumnDefinitionValidationService.validateDelete(id)`
+- [ ] Keep existing `softDelete()` call in router (no cascade needed)
+
+### Phase 6 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run test -- --selectProjects api` — **zero** test regressions
+- [ ] Connector entity DELETE integration tests pass (same behavior, different code path)
+- [ ] Field mapping DELETE integration tests pass
+- [ ] Column definition DELETE integration tests pass
+- [ ] `npm run lint` passes
+
+---
+
+## Phase 7: `buildAnalyticsTools()` Signature Change
+
+Updates the tool builder signature to accept `userId` and `onDataMutation`. This phase makes no behavioral change yet — the new parameters are accepted but not consumed until tools are registered in Phase 9.
+
+### 7.1 Update `buildAnalyticsTools()` signature
+
+**File:** `apps/api/src/services/tools.service.ts`
+
+- [ ] Add `userId: string` parameter (3rd positional)
+- [ ] Add `onDataMutation?: () => void` parameter (4th positional)
+
+### 7.2 Update all call sites
+
+**File:** `apps/api/src/services/portal.service.ts`
+
+- [ ] In `streamResponse()`, pass `portal.createdBy` as `userId`
+- [ ] Pass `() => stationDataCache.delete(portal.id)` as `onDataMutation`
+
+**Other call sites (if any):**
+
+- [ ] Search for other usages of `buildAnalyticsTools` and add default values: `userId = "system"`, `onDataMutation = undefined`
+
+### 7.3 Update existing tool service tests
+
+**File:** `apps/api/src/__tests__/services/tools.service.test.ts`
+
+- [ ] Update test call signatures to include new parameters
+
+### Phase 7 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run test -- --selectProjects api` — all tool service tests pass
+- [ ] No regressions
+
+---
+
+## Phase 8: Read Tools
+
+Implements the 2 read-only tools. These are simpler and validate the tool registration pattern before tackling write tools.
+
+### 8.1 `EntityListTool`
+
+**File:** `apps/api/src/tools/entity-list.tool.ts`
+
+- [ ] Define `InputSchema` with optional `connectorInstanceId`
+- [ ] Extend `Tool<typeof InputSchema>`
+- [ ] `build(stationId)` returns tool that:
+  - Loads station instances → attached instance IDs
+  - Calls `connectorEntities.findMany()` filtered to attached instances
+  - Optionally filters by `connectorInstanceId` if provided
+  - Returns `{ entities: [{ id, key, label, connectorInstanceId }] }`
+
+### 8.2 `EntityRecordListTool`
+
+**File:** `apps/api/src/tools/entity-record-list.tool.ts`
+
+- [ ] Define `InputSchema` with `connectorEntityId`, optional `limit` (default 20), optional `offset` (default 0)
+- [ ] Extend `Tool<typeof InputSchema>`
+- [ ] `build(stationId)` returns tool that:
+  - Calls `assertStationScope(stationId, connectorEntityId)`
+  - Calls `entityRecords.findMany()` with limit/offset
+  - Returns `{ records: [{ id, sourceId, normalizedData }], total }`
+
+### 8.3 Unit tests for read tools
+
+**File:** `apps/api/src/__tests__/tools/entity-list.tool.test.ts`
+
+- [ ] Test: returns only entities attached to station
+- [ ] Test: filters by `connectorInstanceId` when provided
+- [ ] Test: returns empty array for station with no entities
+
+**File:** `apps/api/src/__tests__/tools/entity-record-list.tool.test.ts`
+
+- [ ] Test: returns paginated records (respects limit and offset)
+- [ ] Test: validates station scope — rejects entity from another station
+- [ ] Test: returns total count alongside records
+
+### Phase 8 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run test -- --selectProjects api` — read tool tests pass
+- [ ] Tools can be imported and `build()` returns a valid tool object
+
+---
+
+## Phase 9: Write Tools
+
+Implements all 10 write tools. Each tool follows the same pattern: validate input → check scope → check permissions → call service/repository → invalidate cache → return result.
+
+### 9.1 Entity Record Write Tools
+
+**File:** `apps/api/src/tools/entity-record-create.tool.ts`
+
+- [ ] Input: `{ connectorEntityId, sourceId?, data }`
+- [ ] Execute: scope check → write check → `NormalizationService.normalize()` → `entityRecords.create()` with `origin: "portal"`, `checksum: "manual"`, `createdBy: userId` → `onMutation()`
+- [ ] Returns `{ success: true, recordId }` or `{ error: "..." }`
+
+**File:** `apps/api/src/tools/entity-record-update.tool.ts`
+
+- [ ] Input: `{ connectorEntityId, entityRecordId, data }`
+- [ ] Execute: scope check → write check → verify record belongs to entity → `NormalizationService.normalize()` → `entityRecords.update()` → `onMutation()`
+
+**File:** `apps/api/src/tools/entity-record-delete.tool.ts`
+
+- [ ] Input: `{ connectorEntityId, entityRecordId }`
+- [ ] Execute: scope check → write check → verify record belongs to entity → `entityRecords.softDelete()` → `onMutation()`
+
+### 9.2 Connector Entity Write Tools
+
+**File:** `apps/api/src/tools/connector-entity-update.tool.ts`
+
+- [ ] Input: `{ connectorEntityId, label }`
+- [ ] Execute: scope check → write check → `connectorEntities.update()` → `onMutation()`
+
+**File:** `apps/api/src/tools/connector-entity-delete.tool.ts`
+
+- [ ] Input: `{ connectorEntityId }`
+- [ ] Execute: scope check → `ConnectorEntityValidationService.validateDelete()` → `.executeDelete()` → `onMutation()` → return cascaded counts
+
+### 9.3 Column Definition Write Tools
+
+**File:** `apps/api/src/tools/column-definition-create.tool.ts`
+
+- [ ] Input: `{ key, label, type, required?, enumValues?, description? }`
+- [ ] Execute: `columnDefinitions.upsertByKey()` → `onMutation()`
+- [ ] No scope or write capability check (organization-level)
+
+**File:** `apps/api/src/tools/column-definition-update.tool.ts`
+
+- [ ] Input: `{ columnDefinitionId, label?, description?, enumValues? }`
+- [ ] Execute: verify exists → `columnDefinitions.update()` → `onMutation()`
+- [ ] `key` and `type` are immutable — not in input schema
+
+**File:** `apps/api/src/tools/column-definition-delete.tool.ts`
+
+- [ ] Input: `{ columnDefinitionId }`
+- [ ] Execute: `ColumnDefinitionValidationService.validateDelete()` → `columnDefinitions.softDelete()` → `onMutation()`
+
+### 9.4 Field Mapping Write Tools
+
+**File:** `apps/api/src/tools/field-mapping-create.tool.ts`
+
+- [ ] Input: `{ connectorEntityId, columnDefinitionId, sourceField, isPrimaryKey? }`
+- [ ] Execute: scope check → write check → verify column definition exists → `fieldMappings.upsertByEntityAndColumn()` → `onMutation()`
+
+**File:** `apps/api/src/tools/field-mapping-delete.tool.ts`
+
+- [ ] Input: `{ fieldMappingId }`
+- [ ] Execute: load mapping → resolve entity → scope check → write check → `FieldMappingValidationService.validateDelete()` → `.executeDelete()` → `onMutation()` → return cascaded counts
+
+### 9.5 Unit tests for write tools
+
+One test file per tool. Each file tests the common patterns plus tool-specific behavior.
+
+**Common tests for every write tool** (10 files):
+
+- [ ] Returns error object when `assertWriteCapability` rejects (not thrown)
+- [ ] Returns error object when station scope check fails (not thrown)
+- [ ] Calls `onMutation()` after successful write
+- [ ] Does not call `onMutation()` on validation failure
+- [ ] Uses provided `userId` for `createdBy`/`updatedBy`/`deletedBy`
+
+**File:** `apps/api/src/__tests__/tools/entity-record-create.tool.test.ts`
+
+- [ ] Test: creates record with auto-normalized data via `NormalizationService`
+- [ ] Test: sets `origin: "portal"` and `checksum: "manual"`
+- [ ] Test: auto-generates UUID `sourceId` when omitted
+- [ ] Test: uses provided `sourceId` when given
+
+**File:** `apps/api/src/__tests__/tools/entity-record-update.tool.test.ts`
+
+- [ ] Test: rejects if record does not belong to entity
+- [ ] Test: updates `data` and `normalizedData`
+
+**File:** `apps/api/src/__tests__/tools/entity-record-delete.tool.test.ts`
+
+- [ ] Test: soft-deletes the record
+- [ ] Test: rejects if record does not belong to entity
+
+**File:** `apps/api/src/__tests__/tools/connector-entity-update.tool.test.ts`
+
+- [ ] Test: updates entity label
+
+**File:** `apps/api/src/__tests__/tools/connector-entity-delete.tool.test.ts`
+
+- [ ] Test: returns cascaded counts on success
+- [ ] Test: returns error when external references exist
+
+**File:** `apps/api/src/__tests__/tools/column-definition-create.tool.test.ts`
+
+- [ ] Test: upserts by key
+- [ ] Test: does not require station scope or write capability
+
+**File:** `apps/api/src/__tests__/tools/column-definition-update.tool.test.ts`
+
+- [ ] Test: does not accept `key` or `type` changes (schema rejects)
+- [ ] Test: updates label and description
+
+**File:** `apps/api/src/__tests__/tools/column-definition-delete.tool.test.ts`
+
+- [ ] Test: returns error when field mappings reference it
+
+**File:** `apps/api/src/__tests__/tools/field-mapping-create.tool.test.ts`
+
+- [ ] Test: upserts mapping by entity + column
+- [ ] Test: rejects if column definition does not exist
+
+**File:** `apps/api/src/__tests__/tools/field-mapping-delete.tool.test.ts`
+
+- [ ] Test: returns error when entity has records
+- [ ] Test: returns cascaded counts (entityGroupMembers, bidirectionalCleared)
+
+### Phase 9 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run test -- --selectProjects api` — all 10 write tool test files pass
+- [ ] `npm run lint` passes
+
+---
+
+## Phase 10: Tool Registration
+
+Wires all 12 tools into `ToolService.buildAnalyticsTools()` with conditional write-tool registration.
+
+### 10.1 Add tool imports
+
+**File:** `apps/api/src/services/tools.service.ts`
+
+- [ ] Import all 12 tool classes from `../tools/`
+- [ ] Import `resolveStationCapabilities` and `assertStationScope` from `../utils/resolve-capabilities.util.js`
+
+### 10.2 Add `entity_management` registration block
+
+**File:** `apps/api/src/services/tools.service.ts`
+
+- [ ] Add block inside `buildAnalyticsTools()` after existing packs:
+  ```
+  if (enabledPacks.has("entity_management")) {
+    // Resolve capabilities, build scope asserter + options
+    // Register read tools (always)
+    // Register write tools (if any instance has write)
+  }
+  ```
+- [ ] Read tools registered unconditionally: `entity_list`, `entity_record_list`
+- [ ] Write tools registered conditionally on `stationCaps.some(sc => sc.capabilities.write)`: all 10 write tools
+- [ ] Pass `stationId`, `organizationId`, `userId`, and `{ assertScope, onMutation }` to each tool's `build()`
+
+### 10.3 Tool registration tests
+
+**File:** `apps/api/src/__tests__/services/tools.service.test.ts`
+
+- [ ] Test: registers only read tools when no instances have write capability
+- [ ] Test: registers read + write tools (all 12) when any instance has write
+- [ ] Test: does not register entity_management tools when pack is not enabled
+- [ ] Test: passes `userId` and `onDataMutation` to write tools
+
+### Phase 10 Verification
+
+- [ ] `npm run type-check` passes
+- [ ] `npm run test -- --selectProjects api` — tool service tests pass
+- [ ] `npm run lint` passes
+- [ ] No regressions in existing tool packs
+
+---
+
+## Phase 11: Integration Tests
+
+End-to-end tests that create a real station with connector instances and execute tools against the database. Also tests sync-after-mutation scenarios.
+
+### 11.1 Tool execution integration tests
+
+**File:** `apps/api/src/__tests__/__integration__/tools/entity-management.integration.test.ts`
+
+#### Setup
+
+- [ ] Create organization, user
+- [ ] Create connector definition with `capabilityFlags: { write: true, query: true }`
+- [ ] Create connector instance with `enabledCapabilityFlags: { write: true }`
+- [ ] Create station, attach instance via `station_instances`
+- [ ] Create connector entity, column definitions, field mappings
+
+#### `entity_record_create`
+
+- [ ] Test: creates record in DB with `origin: "portal"` and auto-generated normalizedData
+- [ ] Test: rejects when write disabled on instance — error result, no record created
+- [ ] Test: rejects when entity not attached to station — error result
+
+#### `entity_record_update`
+
+- [ ] Test: updates record data and normalizedData in DB
+- [ ] Test: rejects update on record from different entity
+
+#### `entity_record_delete`
+
+- [ ] Test: soft-deletes record — `deleted` timestamp set, invisible to queries
+
+#### `connector_entity_delete`
+
+- [ ] Test: cascade deletes all dependents in transaction
+- [ ] Test: blocks when external references exist — nothing deleted
+
+#### `field_mapping_delete`
+
+- [ ] Test: blocks when entity has records — error with record count
+- [ ] Test: cascades to group members
+
+#### `column_definition_delete`
+
+- [ ] Test: blocks when field mappings reference it
+- [ ] Test: succeeds when unreferenced
+
+### 11.2 Sync-after-mutation integration tests
+
+**File:** `apps/api/src/__tests__/__integration__/tools/sync-interaction.integration.test.ts`
+
+- [ ] Test: sync does not overwrite tool-created records (UUID sourceId vs row-index sourceId)
+- [ ] Test: sync restores tool-deleted synced records (re-created with `origin: "sync"`)
+- [ ] Test: sync overwrites tool-modified synced records (reverted to source data)
+- [ ] Test: sync uses tool-created field mappings (new mapping applied to normalizedData)
+- [ ] Test: sync skips deleted entities (fails gracefully or skips)
+
+### Phase 11 Verification
+
+- [ ] `npm run test -- --selectProjects api` — all integration tests pass
+- [ ] Integration test database is clean after tests (teardown works)
+- [ ] No regressions in existing integration tests
+
+---
+
+## Phase 12: Final Verification
+
+Full-stack verification to ensure everything works together.
+
+### 12.1 Full test suite
+
+- [ ] `npm run test` from repo root — all packages pass
+- [ ] `npm run type-check` from repo root — no errors
+- [ ] `npm run build` from repo root — builds successfully
+- [ ] `npm run lint` from repo root — no new errors
+
+### 12.2 Manual smoke test (optional)
+
+- [ ] Create a station with `entity_management` tool pack enabled
+- [ ] Open a portal session
+- [ ] Verify system prompt includes `[read, write]` flags
+- [ ] Verify LLM can call `entity_list` and see attached entities
+- [ ] Verify LLM can call `entity_record_create` and record appears
+- [ ] Verify LLM can call `entity_record_update` and record is updated
+- [ ] Verify LLM can call `entity_record_delete` and record is soft-deleted
+- [ ] Verify `sql_query` reflects changes after cache invalidation
+- [ ] Verify write tools return error for read-only entities
+
+### 12.3 Confirm no regressions
+
+- [ ] Existing portal sessions without `entity_management` work as before
+- [ ] Existing REST API endpoints (entity CRUD, field mapping CRUD, etc.) work as before
+- [ ] CSV import still sets `origin: "sync"` correctly
+- [ ] Manual record creation via UI still sets `origin: "manual"` correctly
