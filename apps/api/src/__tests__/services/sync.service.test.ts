@@ -63,6 +63,7 @@ const stubInstance = {
   credentials: null,
   lastSyncAt: null,
   lastErrorMessage: null,
+  enabledCapabilityFlags: null,
 };
 
 const stubDefinition = {

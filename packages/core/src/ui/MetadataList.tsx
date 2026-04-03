@@ -120,7 +120,7 @@ const ResponsiveRow: React.FC<{
         display: "flex",
         flexDirection: { xs: "column", sm: "row" },
         gap: { xs: 0.5, sm: 2 },
-        alignItems: "flex-start",
+        alignItems: { xs: "flex-start", sm: "center" },
       }}
     >
       <MuiTypography

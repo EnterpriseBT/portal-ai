@@ -107,3 +107,26 @@ export const EntityGroupUpdateResponsePayloadSchema = z.object({
 export type EntityGroupUpdateResponsePayload = z.infer<
   typeof EntityGroupUpdateResponsePayloadSchema
 >;
+
+// ── Delete ───────────────────────────────────────────────────────────
+
+export const EntityGroupDeleteResponsePayloadSchema = z.object({
+  id: z.string(),
+  cascaded: z.object({
+    entityGroupMembers: z.number(),
+  }),
+});
+
+export type EntityGroupDeleteResponsePayload = z.infer<
+  typeof EntityGroupDeleteResponsePayloadSchema
+>;
+
+// ── Impact ───────────────────────────────────────────────────────────
+
+export const EntityGroupImpactResponsePayloadSchema = z.object({
+  entityGroupMembers: z.number(),
+});
+
+export type EntityGroupImpactResponsePayload = z.infer<
+  typeof EntityGroupImpactResponsePayloadSchema
+>;

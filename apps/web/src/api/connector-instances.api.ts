@@ -3,11 +3,14 @@ import { useMemo } from "react";
 import type {
   ApiSuccessResponse,
   ConnectorInstanceApi,
+  ConnectorInstanceCreateRequestBody,
+  ConnectorInstanceCreateResponsePayload,
   ConnectorInstanceGetResponsePayload,
   ConnectorInstanceImpact,
   ConnectorInstanceListRequestQuery,
   ConnectorInstanceListResponsePayload,
   ConnectorInstanceListWithDefinitionResponsePayload,
+  ConnectorInstancePatchRequestBody,
 } from "@portalai/core/contracts";
 import { useInfiniteFilterOptions, useAsyncFilterOptions } from "@portalai/core/ui";
 import type { InfiniteFilterOptionsConfig, AsyncFilterOptionsConfig } from "@portalai/core/ui";
@@ -27,7 +30,9 @@ const CONNECTOR_INSTANCE_FILTER_BASE = {
   sortBy: "name",
 } as const;
 
-export function useConnectorInstanceSearch() {
+export function useConnectorInstanceSearch(options?: {
+  defaultParams?: Record<string, string>;
+}) {
   const { fetchWithAuth } = useAuthFetch();
 
   const config = useMemo<
@@ -39,8 +44,9 @@ export function useConnectorInstanceSearch() {
     () => ({
       ...CONNECTOR_INSTANCE_FILTER_BASE,
       fetcher: fetchWithAuth,
+      ...(options?.defaultParams && { defaultParams: options.defaultParams }),
     }),
-    [fetchWithAuth]
+    [fetchWithAuth, options]
   );
 
   return useAsyncFilterOptions(config);
@@ -105,6 +111,12 @@ export const connectorInstances = {
       options
     ),
 
+  create: () =>
+    useAuthMutation<ConnectorInstanceCreateResponsePayload, ConnectorInstanceCreateRequestBody>({
+      url: `/api/connector-instances`,
+      method: "POST",
+    }),
+
   delete: (id: string) =>
     useAuthMutation<void, void>({
       url: `/api/connector-instances/${encodeURIComponent(id)}`,
@@ -113,6 +125,12 @@ export const connectorInstances = {
 
   rename: (id: string) =>
     useAuthMutation<ConnectorInstanceGetResponsePayload, { name: string }>({
+      url: `/api/connector-instances/${encodeURIComponent(id)}`,
+      method: "PATCH",
+    }),
+
+  update: (id: string) =>
+    useAuthMutation<ConnectorInstanceGetResponsePayload, ConnectorInstancePatchRequestBody>({
       url: `/api/connector-instances/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),

@@ -105,3 +105,34 @@ export class CSVConnectorDefinitionModelFactory extends ModelFactory<
     return csvConnectorDefinitionModel;
   }
 }
+
+// ── Sandbox Connector Definition ─────────────────────────────────────
+
+export const SandboxConnectorDefinitionSchema = ConnectorDefinitionSchema.extend({});
+
+export type SandboxConnectorDefinition = z.infer<typeof SandboxConnectorDefinitionSchema>;
+
+export class SandboxConnectorDefinitionModel extends CoreModel<SandboxConnectorDefinition> {
+  get schema() {
+    return SandboxConnectorDefinitionSchema;
+  }
+
+  parse(): SandboxConnectorDefinition {
+    return this.schema.parse(this._model);
+  }
+
+  validate(): z.ZodSafeParseResult<SandboxConnectorDefinition> {
+    return this.schema.safeParse(this._model);
+  }
+}
+
+export class SandboxConnectorDefinitionModelFactory extends ModelFactory<
+  SandboxConnectorDefinition,
+  SandboxConnectorDefinitionModel
+> {
+  create(createdBy: string): SandboxConnectorDefinitionModel {
+    const baseModel = this._coreModelFactory.create(createdBy);
+    const sandboxConnectorDefinitionModel = new SandboxConnectorDefinitionModel(baseModel.toJSON());
+    return sandboxConnectorDefinitionModel;
+  }
+}

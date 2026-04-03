@@ -10,6 +10,8 @@ import {
   type EntityGroupCreateResponsePayload,
   EntityGroupUpdateRequestBodySchema,
   type EntityGroupUpdateResponsePayload,
+  type EntityGroupDeleteResponsePayload,
+  type EntityGroupImpactResponsePayload,
 } from "@portalai/core/contracts";
 import {
   EntityGroupResolveRequestQuerySchema,
@@ -477,12 +479,81 @@ entityGroupRouter.patch(
 
 /**
  * @openapi
+ * /api/entity-groups/{id}/impact:
+ *   get:
+ *     tags:
+ *       - Entity Groups
+ *     summary: Get deletion impact for an entity group
+ *     description: Returns count of members that would be affected if this entity group were deleted.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Entity group ID
+ *     responses:
+ *       200:
+ *         description: Impact assessment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     entityGroupMembers:
+ *                       type: integer
+ *       404:
+ *         description: Entity group not found
+ *       500:
+ *         description: Internal server error
+ */
+entityGroupRouter.get(
+  "/:id/impact",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+
+      const existing = await DbService.repository.entityGroups.findById(id);
+      if (!existing) {
+        return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
+      }
+
+      const members = await DbService.repository.entityGroupMembers.findByEntityGroupId(id);
+
+      return HttpService.success<EntityGroupImpactResponsePayload>(res, {
+        entityGroupMembers: members.length,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to fetch entity group impact"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, ApiCode.ENTITY_GROUP_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch entity group impact")
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/entity-groups/{id}:
  *   delete:
  *     tags:
  *       - Entity Groups
  *     summary: Delete an entity group
- *     description: Soft-deletes an entity group and all its members.
+ *     description: Soft-deletes an entity group and cascades to all its members.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -508,6 +579,11 @@ entityGroupRouter.patch(
  *                   properties:
  *                     id:
  *                       type: string
+ *                     cascaded:
+ *                       type: object
+ *                       properties:
+ *                         entityGroupMembers:
+ *                           type: integer
  *       404:
  *         description: Entity group not found
  *         content:
@@ -535,21 +611,22 @@ entityGroupRouter.delete(
 
       const { userId } = req.application!.metadata;
 
-      await DbService.transaction(async (tx) => {
+      const cascaded = await DbService.transaction(async (tx) => {
         const members = await DbService.repository.entityGroupMembers.findByEntityGroupId(id, {}, tx);
         const memberIds = members.map((m) => m.id);
         if (memberIds.length > 0) {
           await DbService.repository.entityGroupMembers.softDeleteMany(memberIds, userId, tx);
         }
         await DbService.repository.entityGroups.softDelete(id, userId, tx);
+        return { entityGroupMembers: memberIds.length };
       }).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.ENTITY_GROUP_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity group");
       });
 
-      logger.info({ id }, "Entity group soft-deleted");
+      logger.info({ id, cascaded }, "Entity group soft-deleted");
 
-      return HttpService.success(res, { id });
+      return HttpService.success<EntityGroupDeleteResponsePayload>(res, { id, cascaded });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

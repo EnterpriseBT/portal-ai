@@ -10,6 +10,9 @@ export const ColumnDefinitionSummarySchema = z.object({
   key: z.string(),
   label: z.string(),
   type: ColumnDataTypeEnum,
+  required: z.boolean(),
+  enumValues: z.array(z.string()).nullable(),
+  defaultValue: z.string().nullable(),
 });
 
 export type ColumnDefinitionSummary = z.infer<typeof ColumnDefinitionSummarySchema>;
@@ -82,6 +85,44 @@ export const EntityRecordGetResponsePayloadSchema = z.object({
 });
 
 export type EntityRecordGetResponsePayload = z.infer<typeof EntityRecordGetResponsePayloadSchema>;
+
+// ── Delete single record ────────────────────────────────────────────
+
+export const EntityRecordDeleteOneResponsePayloadSchema = z.object({
+  id: z.string(),
+});
+
+export type EntityRecordDeleteOneResponsePayload = z.infer<typeof EntityRecordDeleteOneResponsePayloadSchema>;
+
+// ── Update single record ────────────────────────────────────────────
+
+export const EntityRecordPatchRequestBodySchema = z.object({
+  data: z.record(z.string(), z.unknown()).optional(),
+  normalizedData: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type EntityRecordPatchRequestBody = z.infer<typeof EntityRecordPatchRequestBodySchema>;
+
+export const EntityRecordPatchResponsePayloadSchema = z.object({
+  record: EntityRecordSchema,
+});
+
+export type EntityRecordPatchResponsePayload = z.infer<typeof EntityRecordPatchResponsePayloadSchema>;
+
+// ── Create single record ─────────────────────────────────────────────
+
+export const EntityRecordCreateRequestBodySchema = z.object({
+  normalizedData: z.record(z.string(), z.unknown()),
+  sourceId: z.string().optional(),
+});
+
+export type EntityRecordCreateRequestBody = z.infer<typeof EntityRecordCreateRequestBodySchema>;
+
+export const EntityRecordCreateResponsePayloadSchema = z.object({
+  record: EntityRecordSchema,
+});
+
+export type EntityRecordCreateResponsePayload = z.infer<typeof EntityRecordCreateResponsePayloadSchema>;
 
 // ── Delete (clear) ──────────────────────────────────────────────────
 

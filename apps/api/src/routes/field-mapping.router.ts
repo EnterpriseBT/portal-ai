@@ -11,12 +11,15 @@ import {
   type FieldMappingCreateResponsePayload,
   FieldMappingUpdateRequestBodySchema,
   type FieldMappingUpdateResponsePayload,
+  type FieldMappingDeleteResponsePayload,
+  type FieldMappingImpactResponsePayload,
   type FieldMappingBidirectionalValidationResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
+import { Repository } from "../db/repositories/base.repository.js";
 import { fieldMappings } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 
@@ -319,6 +322,19 @@ fieldMappingRouter.post(
         );
       }
 
+      // Check for duplicate mapping (same entity + column definition)
+      const duplicate = await DbService.repository.fieldMappings.findMany(
+        and(
+          eq(fieldMappings.connectorEntityId, parsed.data.connectorEntityId),
+          eq(fieldMappings.columnDefinitionId, parsed.data.columnDefinitionId),
+        )
+      );
+      if (duplicate.length > 0) {
+        return next(
+          new ApiError(409, ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN, "A field mapping already exists for this column definition on the same connector entity")
+        );
+      }
+
       const { userId, organizationId } = req.application!.metadata;
 
       const factory = new FieldMappingModelFactory();
@@ -389,6 +405,9 @@ fieldMappingRouter.post(
  *                 minLength: 1
  *               isPrimaryKey:
  *                 type: boolean
+ *               columnDefinitionId:
+ *                 type: string
+ *                 description: Reassign this field mapping to a different column definition
  *     responses:
  *       200:
  *         description: Field mapping updated
@@ -441,6 +460,29 @@ fieldMappingRouter.patch(
         );
       }
 
+      if (parsed.data.columnDefinitionId) {
+        const colDef = await DbService.repository.columnDefinitions.findById(parsed.data.columnDefinitionId);
+        if (!colDef) {
+          return next(
+            new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Target column definition not found")
+          );
+        }
+
+        if (parsed.data.columnDefinitionId !== existing.columnDefinitionId) {
+          const duplicate = await DbService.repository.fieldMappings.findMany(
+            and(
+              eq(fieldMappings.connectorEntityId, existing.connectorEntityId),
+              eq(fieldMappings.columnDefinitionId, parsed.data.columnDefinitionId),
+            )
+          );
+          if (duplicate.length > 0) {
+            return next(
+              new ApiError(409, ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN, "A field mapping already exists for this column definition on the same entity")
+            );
+          }
+        }
+      }
+
       const { userId } = req.application!.metadata;
 
       const fieldMapping = await DbService.repository.fieldMappings.update(id, {
@@ -469,12 +511,107 @@ fieldMappingRouter.patch(
 
 /**
  * @openapi
+ * /api/field-mappings/{id}/impact:
+ *   get:
+ *     tags:
+ *       - Field Mappings
+ *     summary: Assess deletion impact of a field mapping
+ *     description: Returns counts of dependent resources that would be affected by deleting this field mapping.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Field mapping ID
+ *     responses:
+ *       200:
+ *         description: Impact assessment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     entityGroupMembers:
+ *                       type: integer
+ *                       description: Number of entity group members using this field mapping as their link field
+ *       404:
+ *         description: Field mapping not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+fieldMappingRouter.get(
+  "/:id/impact",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      logger.info({ id }, "GET /api/field-mappings/:id/impact called");
+
+      const existing = await DbService.repository.fieldMappings.findById(id);
+      if (!existing) {
+        return next(
+          new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found")
+        );
+      }
+
+      const [dependentMembers, entityRecordCount] = await Promise.all([
+        DbService.repository.entityGroupMembers.findByLinkFieldMappingId(id),
+        DbService.repository.entityRecords.countByConnectorEntityId(existing.connectorEntityId),
+      ]);
+
+      let bidirectionalCounterpart: { id: string; sourceField: string } | null = null;
+      if (existing.refBidirectionalFieldMappingId) {
+        const counterpart = await DbService.repository.fieldMappings.findById(
+          existing.refBidirectionalFieldMappingId
+        );
+        if (counterpart) {
+          bidirectionalCounterpart = {
+            id: counterpart.id,
+            sourceField: counterpart.sourceField,
+          };
+        }
+      }
+
+      return HttpService.success<FieldMappingImpactResponsePayload>(res, {
+        entityGroupMembers: dependentMembers.length,
+        entityRecords: entityRecordCount,
+        bidirectionalCounterpart,
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to assess field mapping impact"
+      );
+      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_FETCH_FAILED, error instanceof Error ? error.message : "Failed to assess field mapping impact"));
+    }
+  }
+);
+
+/**
+ * @openapi
  * /api/field-mappings/{id}:
  *   delete:
  *     tags:
  *       - Field Mappings
  *     summary: Delete a field mapping
- *     description: Soft-deletes a field mapping by ID.
+ *     description: Soft-deletes a field mapping by ID and cascades to any entity group members that use it as their link field mapping.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -500,6 +637,12 @@ fieldMappingRouter.patch(
  *                   properties:
  *                     id:
  *                       type: string
+ *                     cascaded:
+ *                       type: object
+ *                       properties:
+ *                         entityGroupMembers:
+ *                           type: integer
+ *                           description: Number of entity group members that were cascade-deleted
  *       404:
  *         description: Field mapping not found
  *         content:
@@ -527,16 +670,56 @@ fieldMappingRouter.delete(
         );
       }
 
+      // Block delete if the connector entity has any entity records
+      const recordCount = await DbService.repository.entityRecords.countByConnectorEntityId(
+        existing.connectorEntityId
+      );
+      if (recordCount > 0) {
+        return next(
+          new ApiError(
+            409,
+            ApiCode.FIELD_MAPPING_DELETE_HAS_RECORDS,
+            `Cannot delete field mapping: the connector entity has ${recordCount} record${recordCount !== 1 ? "s" : ""}. Delete the records first.`
+          )
+        );
+      }
+
       const { userId } = req.application!.metadata;
 
-      await DbService.repository.fieldMappings.softDelete(id, userId).catch((error) => {
+      const result = await Repository.transaction(async (tx) => {
+        await DbService.repository.fieldMappings.softDelete(id, userId, tx);
+        const cascadedEntityGroupMembers = await DbService.repository.entityGroupMembers.softDeleteByLinkFieldMappingId(id, userId, tx);
+
+        // Clear bidirectional reference on the counterpart
+        let bidirectionalCleared = false;
+        if (existing.refBidirectionalFieldMappingId) {
+          await DbService.repository.fieldMappings.updateWhere(
+            eq(fieldMappings.id, existing.refBidirectionalFieldMappingId),
+            { refBidirectionalFieldMappingId: null, updated: Date.now(), updatedBy: userId } as never,
+            tx,
+          );
+          bidirectionalCleared = true;
+          logger.info(
+            { counterpartId: existing.refBidirectionalFieldMappingId },
+            "Cleared bidirectional reference on counterpart field mapping"
+          );
+        }
+
+        return { cascadedEntityGroupMembers, bidirectionalCleared };
+      }).catch((error) => {
         if (error instanceof ApiError) throw error;
         throw new ApiError(500, ApiCode.FIELD_MAPPING_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete field mapping");
       });
 
-      logger.info({ id }, "Field mapping soft-deleted");
+      logger.info({ id, ...result }, "Field mapping soft-deleted with cascade");
 
-      return HttpService.success(res, { id });
+      return HttpService.success<FieldMappingDeleteResponsePayload>(res, {
+        id,
+        cascaded: {
+          entityGroupMembers: result.cascadedEntityGroupMembers,
+          bidirectionalCleared: result.bidirectionalCleared,
+        },
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },

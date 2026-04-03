@@ -8,17 +8,17 @@ import type { SQL } from "drizzle-orm";
 // ── Helpers ─────────────────────────────────────────────────────────
 
 const columnDefs: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string" },
-  { key: "email", label: "Email", type: "string" },
-  { key: "age", label: "Age", type: "number" },
-  { key: "amount", label: "Amount", type: "currency" },
-  { key: "active", label: "Active", type: "boolean" },
-  { key: "created_at", label: "Created At", type: "date" },
-  { key: "updated_at", label: "Updated At", type: "datetime" },
-  { key: "status", label: "Status", type: "enum" },
-  { key: "tags", label: "Tags", type: "array" },
-  { key: "metadata", label: "Metadata", type: "json" },
-  { key: "ref_id", label: "Ref ID", type: "reference" },
+  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null },
+  { key: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null },
+  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
+  { key: "amount", label: "Amount", type: "currency", required: false, enumValues: null, defaultValue: null },
+  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
+  { key: "created_at", label: "Created At", type: "date", required: false, enumValues: null, defaultValue: null },
+  { key: "updated_at", label: "Updated At", type: "datetime", required: false, enumValues: null, defaultValue: null },
+  { key: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null },
+  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null },
+  { key: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null },
+  { key: "ref_id", label: "Ref ID", type: "reference", required: false, enumValues: null, defaultValue: null },
 ];
 
 function encode(expression: unknown): string {

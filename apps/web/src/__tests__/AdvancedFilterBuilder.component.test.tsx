@@ -11,11 +11,11 @@ import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/c
 // ── Test data ───────────────────────────────────────────────────────
 
 const columnDefs: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string" },
-  { key: "age", label: "Age", type: "number" },
-  { key: "active", label: "Active", type: "boolean" },
-  { key: "created_at", label: "Created At", type: "date" },
-  { key: "status", label: "Status", type: "enum" },
+  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null },
+  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
+  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
+  { key: "created_at", label: "Created At", type: "date", required: false, enumValues: null, defaultValue: null },
+  { key: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null },
 ];
 
 const emptyExpression: FilterExpression = {

@@ -47,6 +47,8 @@ const {
   connectorEntities,
   columnDefinitions,
   fieldMappings,
+  entityGroups,
+  entityGroupMembers,
   organizations,
 } = schema;
 
@@ -93,6 +95,7 @@ function createConnectorInstance(
     credentials: null,
     lastSyncAt: null,
     lastErrorMessage: null,
+    enabledCapabilityFlags: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -162,6 +165,49 @@ function createFieldMap(
     columnDefinitionId,
     sourceField: "source_field",
     isPrimaryKey: false,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createEntityGroup(
+  organizationId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    organizationId,
+    name: `group-${generateId().slice(0, 8)}`,
+    description: null,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+    ...overrides,
+  };
+}
+
+function createEntityGroupMember(
+  organizationId: string,
+  entityGroupId: string,
+  connectorEntityId: string,
+  linkFieldMappingId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
+  return {
+    id: generateId(),
+    organizationId,
+    entityGroupId,
+    connectorEntityId,
+    linkFieldMappingId,
+    isPrimary: false,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -473,6 +519,67 @@ describe("Field Mapping Router", () => {
       expect(created.columnDefinitionId).toBe(columnDefinitionId);
     });
 
+    it("should return 409 when a field mapping already exists for the same entity and column definition", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      // Seed an existing field mapping
+      const existing = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        sourceField: "existing_field",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(existing as never);
+
+      // Attempt to create a duplicate
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "duplicate_field",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN);
+    });
+
+    it("should allow creating a field mapping for the same column definition on a different entity", async () => {
+      const { connectorEntityId, columnDefinitionId, connectorInstanceId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      // Seed an existing field mapping on entity 1
+      const existing = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        sourceField: "entity1_field",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(existing as never);
+
+      // Create a second entity
+      const entity2 = createConnEntity(organizationId, connectorInstanceId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity2 as never);
+
+      // Create on entity 2 with the same column definition — should succeed
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: entity2.id,
+          columnDefinitionId,
+          sourceField: "entity2_field",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.fieldMapping.connectorEntityId).toBe(entity2.id);
+    });
+
     it("created field mapping should be retrievable via GET", async () => {
       const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
         db as ReturnType<typeof drizzle>
@@ -503,12 +610,12 @@ describe("Field Mapping Router", () => {
 
   describe("PATCH /api/field-mappings/:id", () => {
     it("should return 404 when field mapping does not exist", async () => {
-      await seedFullChain(db as ReturnType<typeof drizzle>);
+      const { columnDefinitionId } = await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const res = await request(app)
         .patch(`/api/field-mappings/${generateId()}`)
         .set("Authorization", "Bearer test-token")
-        .send({ sourceField: "updated" });
+        .send({ sourceField: "updated", columnDefinitionId });
 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
@@ -529,7 +636,7 @@ describe("Field Mapping Router", () => {
       const res = await request(app)
         .patch(`/api/field-mappings/${mapping.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ sourceField: "updated_field", isPrimaryKey: true });
+        .send({ sourceField: "updated_field", columnDefinitionId, isPrimaryKey: true });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -592,7 +699,7 @@ describe("Field Mapping Router", () => {
       const res = await request(app)
         .patch(`/api/field-mappings/${mappingA.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ refBidirectionalFieldMappingId: mappingB.id });
+        .send({ sourceField: "field_a", columnDefinitionId, refBidirectionalFieldMappingId: mappingB.id });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.fieldMapping.refBidirectionalFieldMappingId).toBe(mappingB.id);
@@ -620,13 +727,13 @@ describe("Field Mapping Router", () => {
       await request(app)
         .patch(`/api/field-mappings/${mappingA.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ refBidirectionalFieldMappingId: mappingB.id });
+        .send({ sourceField: "field_a", columnDefinitionId, refBidirectionalFieldMappingId: mappingB.id });
 
       // Clear it
       const res = await request(app)
         .patch(`/api/field-mappings/${mappingA.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ refBidirectionalFieldMappingId: null });
+        .send({ sourceField: "field_a", columnDefinitionId, refBidirectionalFieldMappingId: null });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.fieldMapping.refBidirectionalFieldMappingId).toBeNull();
@@ -647,7 +754,44 @@ describe("Field Mapping Router", () => {
       expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
     });
 
-    it("should soft-delete a field mapping", async () => {
+    it("should soft-delete a field mapping and cascade to entity group members", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      // Create a group with a member that uses this field mapping as linkFieldMappingId
+      const group = createEntityGroup(organizationId);
+      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+      const member = createEntityGroupMember(organizationId, group.id, connectorEntityId, mapping.id);
+      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values(member as never);
+
+      const deleteRes = await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.body.payload.id).toBe(mapping.id);
+      expect(deleteRes.body.payload.cascaded.entityGroupMembers).toBe(1);
+
+      // Field mapping should not be retrievable
+      const getRes = await request(app)
+        .get(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token");
+      expect(getRes.status).toBe(404);
+
+      // Entity group member should also be soft-deleted (not in list)
+      const membersRes = await request(app)
+        .get(`/api/entity-groups/${group.id}/members`)
+        .set("Authorization", "Bearer test-token");
+      expect(membersRes.body.payload.members).toHaveLength(0);
+    });
+
+    it("should return cascaded.entityGroupMembers: 0 when no dependent group members exist", async () => {
       const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
         db as ReturnType<typeof drizzle>
       );
@@ -663,13 +807,87 @@ describe("Field Mapping Router", () => {
 
       expect(deleteRes.status).toBe(200);
       expect(deleteRes.body.payload.id).toBe(mapping.id);
+      expect(deleteRes.body.payload.cascaded.entityGroupMembers).toBe(0);
+    });
 
-      // Should not be retrievable after deletion
-      const getRes = await request(app)
-        .get(`/api/field-mappings/${mapping.id}`)
+    it("deleted field mapping should no longer appear in GET /api/field-mappings list", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      // Verify it exists
+      const listBefore = await request(app)
+        .get(`/api/field-mappings?connectorEntityId=${connectorEntityId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(listBefore.body.payload.total).toBe(1);
+
+      // Delete
+      await request(app)
+        .delete(`/api/field-mappings/${mapping.id}`)
         .set("Authorization", "Bearer test-token");
 
-      expect(getRes.status).toBe(404);
+      // Verify it's gone
+      const listAfter = await request(app)
+        .get(`/api/field-mappings?connectorEntityId=${connectorEntityId}`)
+        .set("Authorization", "Bearer test-token");
+      expect(listAfter.body.payload.total).toBe(0);
+      expect(listAfter.body.payload.fieldMappings).toHaveLength(0);
+    });
+  });
+
+  // ── GET /api/field-mappings/:id/impact ──────────────────────────────
+
+  describe("GET /api/field-mappings/:id/impact", () => {
+    it("should return correct entityGroupMembers count", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId, connectorInstanceId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      // Create a group with two members using this field mapping
+      const group = createEntityGroup(organizationId);
+      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+
+      // Need a second entity for the second member
+      const entity2 = createConnEntity(organizationId, connectorInstanceId);
+      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity2 as never);
+
+      // Need a second field mapping for entity2 that maps to the same column def
+      const mapping2 = createFieldMap(organizationId, entity2.id, columnDefinitionId, { sourceField: "other_field" });
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping2 as never);
+
+      const member1 = createEntityGroupMember(organizationId, group.id, connectorEntityId, mapping.id);
+      const member2 = createEntityGroupMember(organizationId, group.id, entity2.id, mapping.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values([member1, member2] as never);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${mapping.id}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.entityGroupMembers).toBe(2);
+    });
+
+    it("should return 404 for non-existent field mapping", async () => {
+      await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      const res = await request(app)
+        .get(`/api/field-mappings/${generateId()}/impact`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_NOT_FOUND);
     });
   });
 

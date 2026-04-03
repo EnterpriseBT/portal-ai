@@ -9,6 +9,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { eq, and, sql, type SQL } from "drizzle-orm";
 
 import { EntityRecordModelFactory, SORTABLE_COLUMN_TYPES } from "@portalai/core/models";
+import { UUIDv4Factory } from "@portalai/core/utils";
 import {
   EntityRecordListRequestQuerySchema,
   type EntityRecordListResponsePayload,
@@ -17,6 +18,11 @@ import {
   EntityRecordImportRequestBodySchema,
   type EntityRecordImportResponsePayload,
   type EntityRecordSyncResponsePayload,
+  EntityRecordCreateRequestBodySchema,
+  type EntityRecordCreateResponsePayload,
+  EntityRecordPatchRequestBodySchema,
+  type EntityRecordPatchResponsePayload,
+  type EntityRecordDeleteOneResponsePayload,
   type EntityRecordDeleteResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
@@ -26,6 +32,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { SyncService } from "../services/sync.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
@@ -93,13 +100,19 @@ async function resolveColumns(
       .map((cd) => [cd.id, cd])
   );
 
-  return mappings
-    .map((m) => {
-      const cd = colDefMap.get(m.columnDefinitionId);
-      if (!cd) return null;
-      return { key: cd.key, label: cd.label, type: cd.type as ColumnDataType };
-    })
-    .filter((c): c is ColumnDefinitionSummary => c != null);
+  return mappings.reduce<ColumnDefinitionSummary[]>((acc, m) => {
+    const cd = colDefMap.get(m.columnDefinitionId);
+    if (!cd) return acc;
+    acc.push({
+      key: cd.key,
+      label: cd.label,
+      type: cd.type as ColumnDataType,
+      required: cd.required,
+      enumValues: cd.enumValues ?? null,
+      defaultValue: cd.defaultValue ?? null,
+    });
+    return acc;
+  }, []);
 }
 
 async function resolveEntityOrThrow(
@@ -338,6 +351,158 @@ entityRecordRouter.get(
   }
 );
 
+// ── POST / — Create single record ───────────────────────────────────
+
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records:
+ *   post:
+ *     tags:
+ *       - Entity Records
+ *     summary: Create a single entity record
+ *     description: >
+ *       Creates a new entity record with the provided normalizedData.
+ *       Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - normalizedData
+ *             properties:
+ *               normalizedData:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Record data mapped through field mappings
+ *               sourceId:
+ *                 type: string
+ *                 description: Optional source identifier (auto-generated UUID if omitted)
+ *     responses:
+ *       201:
+ *         description: Record created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     record:
+ *                       $ref: '#/components/schemas/EntityRecord'
+ *       400:
+ *         description: Invalid request body
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       404:
+ *         description: Connector entity not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+entityRecordRouter.post(
+  "/",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const connectorEntityId = req.params.connectorEntityId;
+      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      if (!entity) return;
+
+      await assertWriteCapability(connectorEntityId);
+
+      const parsed = EntityRecordCreateRequestBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_RECORD_INVALID_PAYLOAD,
+            "Invalid entity record payload"
+          )
+        );
+      }
+
+      const { userId, organizationId } = req.application!.metadata;
+      const factory = new EntityRecordModelFactory();
+      const idFactory = new UUIDv4Factory();
+      const model = factory.create(userId);
+      model.update({
+        organizationId,
+        connectorEntityId,
+        data: parsed.data.normalizedData,
+        normalizedData: parsed.data.normalizedData,
+        sourceId: parsed.data.sourceId ?? idFactory.generate(),
+        checksum: "manual",
+        syncedAt: Date.now(),
+      });
+
+      const record = await DbService.repository.entityRecords
+        .create(model.parse())
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_RECORD_CREATE_FAILED,
+            error instanceof Error ? error.message : "Failed to create record"
+          );
+        });
+
+      logger.info({ connectorEntityId, recordId: record.id }, "Entity record created");
+
+      return HttpService.success<EntityRecordCreateResponsePayload>(
+        res,
+        { record: record as unknown as EntityRecordCreateResponsePayload["record"] },
+        201
+      );
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to create entity record"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_RECORD_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create entity record"
+            )
+      );
+    }
+  }
+);
+
 // ── POST /import — Bulk import ──────────────────────────────────────
 
 entityRecordRouter.post(
@@ -492,8 +657,313 @@ entityRecordRouter.post(
   }
 );
 
+// ── PATCH /:recordId — Update single record ────────────────────────
+
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records/{recordId}:
+ *   patch:
+ *     tags:
+ *       - Entity Records
+ *     summary: Update a single entity record
+ *     description: >
+ *       Partially updates an entity record's data and/or normalizedData.
+ *       Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *       - in: path
+ *         name: recordId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Entity record ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               data:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Raw source data
+ *               normalizedData:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Normalized data mapped through field mappings
+ *     responses:
+ *       200:
+ *         description: Record updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     record:
+ *                       $ref: '#/components/schemas/EntityRecord'
+ *       404:
+ *         description: Entity record not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+entityRecordRouter.patch(
+  "/:recordId",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { connectorEntityId, recordId } = req.params;
+      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      if (!entity) return;
+
+      await assertWriteCapability(connectorEntityId);
+
+      const parsed = EntityRecordPatchRequestBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(
+          new ApiError(400, ApiCode.ENTITY_RECORD_INVALID_PAYLOAD, "Invalid entity record payload")
+        );
+      }
+
+      if (!parsed.data.data && !parsed.data.normalizedData) {
+        return next(
+          new ApiError(400, ApiCode.ENTITY_RECORD_INVALID_PAYLOAD, "At least one of data or normalizedData must be provided")
+        );
+      }
+
+      const record = await DbService.repository.entityRecords.findById(recordId);
+      if (!record || record.connectorEntityId !== connectorEntityId) {
+        return next(
+          new ApiError(404, ApiCode.ENTITY_RECORD_NOT_FOUND, "Entity record not found")
+        );
+      }
+
+      const { userId } = req.application!.metadata;
+
+      const updated = await DbService.repository.entityRecords
+        .update(recordId, {
+          ...(parsed.data.data && { data: parsed.data.data }),
+          ...(parsed.data.normalizedData && { normalizedData: parsed.data.normalizedData }),
+          updatedBy: userId,
+        })
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_RECORD_UPDATE_FAILED,
+            error instanceof Error ? error.message : "Failed to update record"
+          );
+        });
+
+      logger.info({ connectorEntityId, recordId }, "Entity record updated");
+
+      return HttpService.success<EntityRecordPatchResponsePayload>(res, {
+        record: updated as unknown as EntityRecordPatchResponsePayload["record"],
+      });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to update entity record"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_RECORD_UPDATE_FAILED,
+              error instanceof Error ? error.message : "Failed to update entity record"
+            )
+      );
+    }
+  }
+);
+
+// ── DELETE /:recordId — Delete single record ───────────────────────
+
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records/{recordId}:
+ *   delete:
+ *     tags:
+ *       - Entity Records
+ *     summary: Delete a single entity record
+ *     description: Soft-deletes a single entity record. Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *       - in: path
+ *         name: recordId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Entity record ID
+ *     responses:
+ *       200:
+ *         description: Record deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *       404:
+ *         description: Entity record not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
+entityRecordRouter.delete(
+  "/:recordId",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { connectorEntityId, recordId } = req.params;
+      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      if (!entity) return;
+
+      await assertWriteCapability(connectorEntityId);
+
+      const record = await DbService.repository.entityRecords.findById(recordId);
+      if (!record || record.connectorEntityId !== connectorEntityId) {
+        return next(
+          new ApiError(404, ApiCode.ENTITY_RECORD_NOT_FOUND, "Entity record not found")
+        );
+      }
+
+      const { userId } = req.application!.metadata;
+
+      await DbService.repository.entityRecords.softDelete(recordId, userId).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_RECORD_DELETE_FAILED,
+          error instanceof Error ? error.message : "Failed to delete record"
+        );
+      });
+
+      logger.info({ connectorEntityId, recordId }, "Entity record soft-deleted");
+
+      return HttpService.success<EntityRecordDeleteOneResponsePayload>(res, { id: recordId });
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to delete entity record"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_RECORD_DELETE_FAILED,
+              error instanceof Error ? error.message : "Failed to delete entity record"
+            )
+      );
+    }
+  }
+);
+
 // ── DELETE / — Clear all records ────────────────────────────────────
 
+/**
+ * @openapi
+ * /api/connector-entities/{connectorEntityId}/records:
+ *   delete:
+ *     tags:
+ *       - Entity Records
+ *     summary: Clear all entity records
+ *     description: Soft-deletes all records for a connector entity. Requires write capability on the connector instance.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: connectorEntityId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector entity ID
+ *     responses:
+ *       200:
+ *         description: Records deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 payload:
+ *                   type: object
+ *                   properties:
+ *                     deleted:
+ *                       type: integer
+ *                       description: Number of records that were soft-deleted
+ *       422:
+ *         description: Write capability disabled on the connector instance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiErrorResponse'
+ */
 entityRecordRouter.delete(
   "/",
   getApplicationMetadata,
@@ -502,6 +972,8 @@ entityRecordRouter.delete(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
+
+      await assertWriteCapability(connectorEntityId);
 
       const { userId } = req.application!.metadata;
       const deleted =

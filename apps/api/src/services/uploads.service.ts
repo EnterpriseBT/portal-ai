@@ -203,6 +203,12 @@ export class UploadsService {
       );
       connectorInstance = connectorInstance!;
     } else {
+      const definition = await DbService.repository.connectorDefinitions.findById(
+        metadata.connectorDefinitionId,
+        tx
+      );
+      const defFlags = definition?.capabilityFlags;
+
       connectorInstance = await DbService.repository.connectorInstances.create(
         {
           id: crypto.randomUUID(),
@@ -214,6 +220,9 @@ export class UploadsService {
           credentials: null,
           lastSyncAt: null,
           lastErrorMessage: null,
+          enabledCapabilityFlags: defFlags
+            ? { read: true, write: defFlags.write ?? false }
+            : { read: true, write: false },
           created: now,
           createdBy: userId,
           updated: null,

@@ -14,6 +14,7 @@ import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import type { FilterExpression } from "@portalai/core/contracts";
+import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
   seedUserAndOrg,
@@ -54,7 +55,7 @@ const {
 
 const now = Date.now();
 
-function createConnectorDefinition() {
+function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>) {
   return {
     id: generateId(),
     slug: `slug-${generateId()}`,
@@ -72,12 +73,14 @@ function createConnectorDefinition() {
     updatedBy: null,
     deleted: null,
     deletedBy: null,
+    ...overrides,
   };
 }
 
 function createConnectorInstance(
   connectorDefinitionId: string,
-  organizationId: string
+  organizationId: string,
+  overrides?: Partial<Record<string, unknown>>
 ) {
   return {
     id: generateId(),
@@ -89,12 +92,14 @@ function createConnectorInstance(
     credentials: null,
     lastSyncAt: null,
     lastErrorMessage: null,
+    enabledCapabilityFlags: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
     updatedBy: null,
     deleted: null,
     deletedBy: null,
+    ...overrides,
   };
 }
 
@@ -1470,5 +1475,505 @@ describe("Entity Record Router — GET /:recordId", () => {
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe("ENTITY_RECORD_NOT_FOUND");
+  });
+});
+
+// ── POST / — Create single record ───────────────────────────────────
+
+describe("Entity Record Router — POST /", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  /** Seed a chain with configurable capability flags. */
+  async function seedWithCapabilities(
+    db: ReturnType<typeof drizzle>,
+    opts: {
+      definitionWrite: boolean;
+      enabledCapabilityFlags?: { write?: boolean; read?: boolean } | null;
+    }
+  ) {
+    const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+
+    const def = createConnectorDefinition({
+      capabilityFlags: { sync: true, query: true, write: opts.definitionWrite },
+    });
+    await db.insert(connectorDefinitions).values(def as never);
+
+    const inst = createConnectorInstance(def.id, organizationId, {
+      enabledCapabilityFlags: opts.enabledCapabilityFlags ?? null,
+    });
+    await db.insert(connectorInstances).values(inst as never);
+
+    const entity = createConnEntity(organizationId, inst.id);
+    await db.insert(connectorEntities).values(entity as never);
+
+    const colDef = createColumnDef(organizationId, "name", "string", "Name");
+    await db.insert(columnDefinitions).values(colDef as never);
+
+    const mapping = createFieldMapping(organizationId, entity.id, colDef.id, "name");
+    await db.insert(fieldMappings).values(mapping as never);
+
+    return { userId, organizationId, connectorEntityId: entity.id };
+  }
+
+  const recordsUrl = (connectorEntityId: string) =>
+    `/api/connector-entities/${connectorEntityId}/records`;
+
+  // ── Success cases ──────────────────────────────────────────────────
+
+  it("should create a record with normalizedData and return 201", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Alice" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.payload.record.normalizedData).toEqual({ name: "Alice" });
+  });
+
+  it("should mirror normalizedData into data", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Bob" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.payload.record.data).toEqual(res.body.payload.record.normalizedData);
+  });
+
+  it("should auto-generate sourceId when omitted", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Charlie" } });
+
+    expect(res.status).toBe(201);
+    // UUID v4 format
+    expect(res.body.payload.record.sourceId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+  });
+
+  it("should use provided sourceId when present", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Dana" }, sourceId: "custom-123" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.payload.record.sourceId).toBe("custom-123");
+  });
+
+  it("should set checksum to 'manual'", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Eve" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.payload.record.checksum).toBe("manual");
+  });
+
+  it("should set syncedAt to approximately current timestamp", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const before = Date.now();
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Frank" } });
+    const after = Date.now();
+
+    expect(res.status).toBe(201);
+    expect(res.body.payload.record.syncedAt).toBeGreaterThanOrEqual(before);
+    expect(res.body.payload.record.syncedAt).toBeLessThanOrEqual(after);
+  });
+
+  it("should make new record appear in subsequent GET / list", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Grace" } });
+
+    const listRes = await request(app)
+      .get(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token");
+
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.payload.records).toHaveLength(1);
+    expect(listRes.body.payload.records[0].normalizedData).toEqual({ name: "Grace" });
+  });
+
+  // ── Error cases ────────────────────────────────────────────────────
+
+  it("should return 400 for missing normalizedData (empty body)", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_INVALID_PAYLOAD);
+  });
+
+  it("should return 400 for invalid body (normalizedData is not an object)", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: "not-an-object" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_INVALID_PAYLOAD);
+  });
+
+  it("should return 404 for non-existent connectorEntityId", async () => {
+    // Seed user/org so metadata middleware passes
+    await seedUserAndOrg(db, AUTH0_ID);
+
+    const res = await request(app)
+      .post(recordsUrl(generateId()))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Nobody" } });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(ApiCode.CONNECTOR_ENTITY_NOT_FOUND);
+  });
+
+  it("should return 422 when write capability is disabled", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: false },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Blocked" } });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+  });
+});
+
+// ── Phase 3: Write Capability Guarded Deletes ───────────────────────
+
+describe("Entity Record Router — Write Capability Deletes", () => {
+  let connection!: ReturnType<typeof postgres>;
+  let db!: ReturnType<typeof drizzle>;
+
+  beforeEach(async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL not set");
+    }
+    connection = postgres(process.env.DATABASE_URL, { max: 1 });
+    db = drizzle(connection, { schema });
+
+    await teardownOrg(db);
+  });
+
+  afterEach(async () => {
+    await connection.end();
+  });
+
+  /** Seed a chain with configurable capability flags. */
+  async function seedWithCapabilities(
+    db: ReturnType<typeof drizzle>,
+    opts: {
+      definitionWrite: boolean;
+      enabledCapabilityFlags?: { write?: boolean; read?: boolean } | null;
+    }
+  ) {
+    const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
+
+    const def = createConnectorDefinition({
+      capabilityFlags: { sync: true, query: true, write: opts.definitionWrite },
+    });
+    await db.insert(connectorDefinitions).values(def as never);
+
+    const inst = createConnectorInstance(def.id, organizationId, {
+      enabledCapabilityFlags: opts.enabledCapabilityFlags ?? null,
+    });
+    await db.insert(connectorInstances).values(inst as never);
+
+    const entity = createConnEntity(organizationId, inst.id);
+    await db.insert(connectorEntities).values(entity as never);
+
+    const colDef = createColumnDef(organizationId, "name", "string", "Name");
+    await db.insert(columnDefinitions).values(colDef as never);
+
+    const mapping = createFieldMapping(organizationId, entity.id, colDef.id, "name");
+    await db.insert(fieldMappings).values(mapping as never);
+
+    return { userId, organizationId, connectorEntityId: entity.id };
+  }
+
+  const recordsUrl = (connectorEntityId: string) =>
+    `/api/connector-entities/${connectorEntityId}/records`;
+
+  const singleRecordUrl = (connectorEntityId: string, recordId: string) =>
+    `/api/connector-entities/${connectorEntityId}/records/${recordId}`;
+
+  // ── DELETE /:recordId — Single record delete ──────────────────────
+
+  describe("DELETE /api/connector-entities/:id/records/:recordId", () => {
+    it("should return 422 when instance has write disabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: false },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should return 422 when definition does not support write even if instance tries to enable it", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: false,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Bob" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should soft-delete record when write capability is resolved to true", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Charlie" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.id).toBe(row.id);
+    });
+
+    it("should return 404 for non-existent record", async () => {
+      const { connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, generateId()))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_NOT_FOUND);
+    });
+
+    it("should succeed when enabledCapabilityFlags is null and definition has write: true", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: null,
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Dave" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.id).toBe(row.id);
+    });
+
+    it("deleted record should no longer appear in GET records list", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Eve" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      // Delete
+      await request(app)
+        .delete(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token");
+
+      // Verify not in list
+      const listRes = await request(app)
+        .get(recordsUrl(connectorEntityId))
+        .set("Authorization", "Bearer test-token");
+
+      expect(listRes.status).toBe(200);
+      expect(listRes.body.payload.records).toHaveLength(0);
+      expect(listRes.body.payload.total).toBe(0);
+    });
+  });
+
+  // ── PATCH /:recordId — Update single record ───────────────────────
+
+  describe("PATCH /api/connector-entities/:id/records/:recordId", () => {
+    it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when write is disabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: false },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .patch(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token")
+        .send({ data: { name: "Updated" } });
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should update record when write is enabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .patch(singleRecordUrl(connectorEntityId, row.id))
+        .set("Authorization", "Bearer test-token")
+        .send({ data: { name: "Updated" }, normalizedData: { name: "Updated" } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.record.id).toBe(row.id);
+      expect(res.body.payload.record.data).toEqual({ name: "Updated" });
+      expect(res.body.payload.record.normalizedData).toEqual({ name: "Updated" });
+    });
+
+    it("should return 404 for non-existent record", async () => {
+      const { connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const res = await request(app)
+        .patch(singleRecordUrl(connectorEntityId, generateId()))
+        .set("Authorization", "Bearer test-token")
+        .send({ data: { name: "Updated" } });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_NOT_FOUND);
+    });
+  });
+
+  // ── DELETE / — Bulk clear with write guard ────────────────────────
+
+  describe("DELETE /api/connector-entities/:id/records (bulk)", () => {
+    it("should return 422 when write is disabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: false },
+      });
+
+      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Frank" }, "src-1", userId);
+      await db.insert(entityRecords).values(row as never);
+
+      const res = await request(app)
+        .delete(recordsUrl(connectorEntityId))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+    });
+
+    it("should succeed when write capability is enabled", async () => {
+      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
+        definitionWrite: true,
+        enabledCapabilityFlags: { write: true },
+      });
+
+      const row1 = createEntityRecord(organizationId, connectorEntityId, { name: "Gina" }, "src-1", userId);
+      const row2 = createEntityRecord(organizationId, connectorEntityId, { name: "Hank" }, "src-2", userId);
+      await db.insert(entityRecords).values([row1, row2] as never);
+
+      const res = await request(app)
+        .delete(recordsUrl(connectorEntityId))
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.deleted).toBe(2);
+    });
   });
 });

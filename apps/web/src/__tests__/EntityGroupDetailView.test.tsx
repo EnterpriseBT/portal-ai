@@ -247,26 +247,22 @@ describe("EntityGroupDetailViewUI", () => {
     );
   });
 
-  it("edit dialog does not call onUpdateGroup when name is cleared", async () => {
+  it("edit dialog disables Save when name is cleared", async () => {
     const user = userEvent.setup();
     render(<EntityGroupDetailViewUI {...defaultProps} editOpen={true} />);
     await user.clear(screen.getByLabelText(/Name/));
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(defaultProps.onUpdateGroup).not.toHaveBeenCalled();
   });
 
-  it("edit dialog calls onClose when nothing changed", async () => {
-    const user = userEvent.setup();
-    const onCloseEdit = jest.fn();
+  it("edit dialog disables Save when nothing changed", () => {
     render(
       <EntityGroupDetailViewUI
         {...defaultProps}
         editOpen={true}
-        onCloseEdit={onCloseEdit}
       />
     );
-    await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(onCloseEdit).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(defaultProps.onUpdateGroup).not.toHaveBeenCalled();
   });
 

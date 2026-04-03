@@ -51,14 +51,19 @@ export type FieldMappingGetResponsePayload = z.infer<typeof FieldMappingGetRespo
 
 // ── Create ────────────────────────────────────────────────────────────
 
+const nullableString = z
+  .string()
+  .nullable()
+  .transform((v) => (v === "" ? null : v));
+
 export const FieldMappingCreateRequestBodySchema = z.object({
   connectorEntityId: z.string(),
   columnDefinitionId: z.string(),
   sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional().default(false),
-  refColumnDefinitionId: z.string().nullable().optional().default(null),
-  refEntityKey: z.string().nullable().optional().default(null),
-  refBidirectionalFieldMappingId: z.string().nullable().optional().default(null),
+  refColumnDefinitionId: nullableString.optional().default(null),
+  refEntityKey: nullableString.optional().default(null),
+  refBidirectionalFieldMappingId: nullableString.optional().default(null),
 });
 
 export type FieldMappingCreateRequestBody = z.infer<typeof FieldMappingCreateRequestBodySchema>;
@@ -72,9 +77,12 @@ export type FieldMappingCreateResponsePayload = z.infer<typeof FieldMappingCreat
 // ── Update ────────────────────────────────────────────────────────────
 
 export const FieldMappingUpdateRequestBodySchema = z.object({
-  sourceField: z.string().min(1).optional(),
+  sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional(),
-  refBidirectionalFieldMappingId: z.string().nullable().optional(),
+  columnDefinitionId: z.string(),
+  refColumnDefinitionId: nullableString.optional(),
+  refEntityKey: nullableString.optional(),
+  refBidirectionalFieldMappingId: nullableString.optional(),
 });
 
 export type FieldMappingUpdateRequestBody = z.infer<typeof FieldMappingUpdateRequestBodySchema>;
@@ -84,6 +92,33 @@ export const FieldMappingUpdateResponsePayloadSchema = z.object({
 });
 
 export type FieldMappingUpdateResponsePayload = z.infer<typeof FieldMappingUpdateResponsePayloadSchema>;
+
+// ── Delete ───────────────────────────────────────────────────────────
+
+export const FieldMappingDeleteResponsePayloadSchema = z.object({
+  id: z.string(),
+  cascaded: z.object({
+    entityGroupMembers: z.number(),
+    bidirectionalCleared: z.boolean(),
+  }),
+});
+
+export type FieldMappingDeleteResponsePayload = z.infer<typeof FieldMappingDeleteResponsePayloadSchema>;
+
+// ── Impact ───────────────────────────────────────────────────────────
+
+export const FieldMappingImpactResponsePayloadSchema = z.object({
+  entityGroupMembers: z.number(),
+  entityRecords: z.number(),
+  bidirectionalCounterpart: z
+    .object({
+      id: z.string(),
+      sourceField: z.string(),
+    })
+    .nullable(),
+});
+
+export type FieldMappingImpactResponsePayload = z.infer<typeof FieldMappingImpactResponsePayloadSchema>;
 
 // ── Bidirectional Validation ──────────────────────────────────────────
 

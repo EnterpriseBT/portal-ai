@@ -374,13 +374,13 @@ uploadsRouter.post(
       return HttpService.success<ConfirmResponsePayload>(res, result);
     } catch (error) {
       logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error: error instanceof Error ? error.message : "Unknown error", stack: error instanceof Error ? error.stack : undefined },
         "Failed to confirm upload"
       );
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.UPLOAD_S3_ERROR, "Failed to confirm upload")
+          : new ApiError(500, ApiCode.UPLOAD_S3_ERROR, error instanceof Error ? error.message : "Failed to confirm upload")
       );
     }
   }

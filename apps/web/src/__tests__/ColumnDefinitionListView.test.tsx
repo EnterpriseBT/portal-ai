@@ -11,12 +11,22 @@ type ListQuery = UseQueryResult<
 
 let currentListQuery: Partial<ListQuery> = {};
 
+const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
+const noopQuery = { data: undefined, isLoading: false, isError: false, isSuccess: false, error: null };
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     columnDefinitions: {
       list: () => currentListQuery,
+      create: () => noopMutation,
+      delete: () => noopMutation,
+      impact: () => noopQuery,
     },
   },
+  queryKeys: {
+    columnDefinitions: { root: ["columnDefinitions"] },
+  },
+  toServerError: () => null,
 }));
 
 const { render, screen, fireEvent } = await import("./test-utils");
@@ -159,5 +169,34 @@ describe("ColumnDefinitionListView", () => {
     expect(breadcrumbNav).toBeInTheDocument();
     // "Column Definitions" appears in both breadcrumb and heading
     expect(screen.getAllByText("Column Definitions")).toHaveLength(2);
+  });
+
+  it("should render 'Create Column Definition' button", () => {
+    currentListQuery = {
+      data: { columnDefinitions: [], total: 0, limit: 10, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    render(<ColumnDefinitionListView />);
+    expect(
+      screen.getByRole("button", { name: /Create Column Definition/ })
+    ).toBeInTheDocument();
+  });
+
+  it("should open create dialog when button is clicked", () => {
+    currentListQuery = {
+      data: { columnDefinitions: [], total: 0, limit: 10, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    render(<ColumnDefinitionListView />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /Create Column Definition/ })
+    );
+    expect(screen.getByText("New Column Definition")).toBeInTheDocument();
   });
 });

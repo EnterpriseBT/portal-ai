@@ -17,8 +17,10 @@ import {
   MetadataList,
   Stack,
 } from "@portalai/core/ui";
+import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -28,6 +30,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
 import { EmptyResults } from "../components/EmptyResults.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import {
@@ -64,28 +67,37 @@ const dates = new DateFactory("UTC");
 interface EntityGroupCardProps {
   group: EntityGroupListResponsePayload["entityGroups"][number];
   onClick: () => void;
+  onDelete: () => void;
 }
 
-const EntityGroupCard: React.FC<EntityGroupCardProps> = ({ group, onClick }) => (
-  <DetailCard title={group.name} onClick={onClick}>
-    <MetadataList
-      items={[
-        { label: "Description", value: group.description ?? "", hidden: !group.description },
-        { label: "Members", value: `${group.memberCount} ${group.memberCount === 1 ? "member" : "members"}` },
-        { label: "Created", value: dates.format(group.created, "MM/dd/yyyy") },
-      ]}
-    />
-  </DetailCard>
-);
+const EntityGroupCard: React.FC<EntityGroupCardProps> = ({ group, onClick, onDelete }) => {
+  const actions: ActionSuiteItem[] = [
+    { label: "Delete", icon: <DeleteIcon />, onClick: onDelete, color: "error" as const },
+  ];
+
+  return (
+    <DetailCard title={group.name} onClick={onClick} actions={actions}>
+      <MetadataList
+        items={[
+          { label: "Description", value: group.description ?? "", hidden: !group.description },
+          { label: "Members", value: `${group.memberCount} ${group.memberCount === 1 ? "member" : "members"}` },
+          { label: "Created", value: dates.format(group.created, "MM/dd/yyyy") },
+        ]}
+      />
+    </DetailCard>
+  );
+};
 
 // ── Entity Groups list view (pure UI) ──────────────────────────────
 
 export interface EntityGroupsViewUIProps {
   onCreateGroup: () => void;
+  onDeleteGroup: (group: EntityGroupListResponsePayload["entityGroups"][number]) => void;
 }
 
 export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
   onCreateGroup,
+  onDeleteGroup,
 }) => {
   const navigate = useNavigate();
 
@@ -173,6 +185,7 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                             key={group.id}
                             group={group}
                             onClick={() => handleRowClick(group.id)}
+                            onDelete={() => onDeleteGroup(group)}
                           />
                         ))}
                       </Stack>
@@ -301,8 +314,13 @@ export const EntityGroupsView: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [deletingGroup, setDeletingGroup] = useState<EntityGroupListResponsePayload["entityGroups"][number] | null>(null);
 
   const createMutation = sdk.entityGroups.create();
+  const deleteMutation = sdk.entityGroups.delete(deletingGroup?.id ?? "");
+  const impactQuery = sdk.entityGroups.impact(deletingGroup?.id ?? "", {
+    enabled: !!deletingGroup,
+  });
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
@@ -328,9 +346,32 @@ export const EntityGroupsView: React.FC = () => {
     [createMutation, handleCreateClose, invalidate]
   );
 
+  const handleDeleteGroup = useCallback(
+    (group: EntityGroupListResponsePayload["entityGroups"][number]) => {
+      setDeletingGroup(group);
+    },
+    []
+  );
+
+  const handleDeleteClose = useCallback(() => {
+    setDeletingGroup(null);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    deleteMutation.mutate(undefined as unknown as void, {
+      onSuccess: () => {
+        setDeletingGroup(null);
+        invalidate();
+      },
+    });
+  }, [deleteMutation, invalidate]);
+
   return (
     <>
-      <EntityGroupsViewUI onCreateGroup={handleOpenCreate} />
+      <EntityGroupsViewUI
+        onCreateGroup={handleOpenCreate}
+        onDeleteGroup={handleDeleteGroup}
+      />
 
       <CreateGroupDialog
         open={createOpen}
@@ -338,6 +379,17 @@ export const EntityGroupsView: React.FC = () => {
         onSubmit={handleCreateSubmit}
         isPending={createMutation.isPending}
         serverError={toServerError(createMutation.error)}
+      />
+
+      <DeleteEntityGroupDialog
+        open={!!deletingGroup}
+        onClose={handleDeleteClose}
+        entityGroupName={deletingGroup?.name ?? ""}
+        onConfirm={handleDeleteConfirm}
+        isPending={deleteMutation.isPending}
+        impact={impactQuery.data ?? null}
+        isLoadingImpact={impactQuery.isLoading && !!deletingGroup}
+        serverError={toServerError(deleteMutation.error)}
       />
     </>
   );

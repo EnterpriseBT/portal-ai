@@ -12,6 +12,8 @@ export interface AsyncFilterOptionsConfig<TResponse, TItem> {
   getItems: (response: TResponse) => TItem[];
   /** Map a single item to a select option. */
   mapItem: (item: TItem) => { value: string; label: string };
+  /** Extra query parameters appended to every search request (e.g. `{ capability: "write" }`). */
+  defaultParams?: Record<string, string>;
 }
 
 export interface AsyncFilterOptionsResult {
@@ -34,7 +36,7 @@ export function useAsyncFilterOptions<TResponse, TItem>(
 
   const onSearch = React.useCallback(
     async (query: string): Promise<SelectOption[]> => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { ...config.defaultParams };
       if (query) params.search = query;
 
       const data = await config.fetcher(appendQuery(config.url, params));

@@ -5,7 +5,7 @@
  * column-definition-scoped queries and composite-key upserts.
  */
 
-import { eq, and, asc, desc, getTableColumns, type SQL, or, inArray } from "drizzle-orm";
+import { eq, and, not, asc, desc, getTableColumns, type SQL, or, inArray, isNull } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { fieldMappings, connectorEntities, columnDefinitions } from "../schema/index.js";
@@ -84,6 +84,38 @@ export class FieldMappingsRepository extends Repository<
           this.notDeleted()
         )
       )) as FieldMappingSelect[];
+  }
+
+  /** Find all field mappings that reference a given column definition via refColumnDefinitionId. */
+  async findByRefColumnDefinitionId(
+    refColumnDefinitionId: string,
+    client: DbClient = db
+  ): Promise<FieldMappingSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(fieldMappings.refColumnDefinitionId, refColumnDefinitionId),
+          this.notDeleted()
+        )
+      )) as FieldMappingSelect[];
+  }
+
+  /** Count field mappings for a given column definition (soft-delete aware). */
+  async countByColumnDefinitionId(
+    columnDefinitionId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    return this.count(eq(fieldMappings.columnDefinitionId, columnDefinitionId), client);
+  }
+
+  /** Count field mappings referencing a given column definition via refColumnDefinitionId (soft-delete aware). */
+  async countByRefColumnDefinitionId(
+    refColumnDefinitionId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    return this.count(eq(fieldMappings.refColumnDefinitionId, refColumnDefinitionId), client);
   }
 
   /**
@@ -185,6 +217,7 @@ export class FieldMappingsRepository extends Repository<
           fieldMappings.connectorEntityId,
           fieldMappings.columnDefinitionId,
         ] as IndexColumn[],
+        targetWhere: isNull(fieldMappings.deleted),
         set: {
           sourceField: data.sourceField,
           isPrimaryKey: data.isPrimaryKey,
@@ -235,6 +268,39 @@ export class FieldMappingsRepository extends Repository<
       counterpart,
     };
   }
+  /** Find field mappings from *other* entities where `refEntityKey` matches a given entity key. */
+  async findByRefEntityKey(
+    refEntityKey: string,
+    excludeConnectorEntityId: string,
+    client: DbClient = db
+  ): Promise<FieldMappingSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(fieldMappings.refEntityKey, refEntityKey),
+          not(eq(fieldMappings.connectorEntityId, excludeConnectorEntityId)),
+          this.notDeleted()
+        )
+      )) as FieldMappingSelect[];
+  }
+
+  /** Count field mappings from *other* entities where `refEntityKey` matches a given entity key. */
+  async countByRefEntityKey(
+    refEntityKey: string,
+    excludeConnectorEntityId: string,
+    client: DbClient = db
+  ): Promise<number> {
+    return this.count(
+      and(
+        eq(fieldMappings.refEntityKey, refEntityKey),
+        not(eq(fieldMappings.connectorEntityId, excludeConnectorEntityId))
+      ),
+      client
+    );
+  }
+
   /**
    * Soft-delete all field mappings across multiple connector entities.
    * Returns the number of affected rows.

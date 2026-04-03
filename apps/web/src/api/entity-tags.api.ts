@@ -8,8 +8,10 @@ import type {
   EntityTagUpdateRequestBody,
   EntityTagUpdateResponsePayload,
 } from "@portalai/core/contracts";
-import { useInfiniteFilterOptions } from "@portalai/core/ui";
-import type { InfiniteFilterOptionsConfig } from "@portalai/core/ui";
+import { useMemo } from "react";
+
+import { useAsyncFilterOptions, useInfiniteFilterOptions } from "@portalai/core/ui";
+import type { AsyncFilterOptionsConfig, InfiniteFilterOptionsConfig } from "@portalai/core/ui";
 import { useAuthMutation, useAuthQuery, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
@@ -72,6 +74,25 @@ const ENTITY_TAG_FILTER_BASE = {
   }),
   sortBy: "name",
 } as const;
+
+export function useEntityTagSearch() {
+  const { fetchWithAuth } = useAuthFetch();
+
+  const config = useMemo<
+    AsyncFilterOptionsConfig<
+      ApiSuccessResponse<EntityTagListResponsePayload>,
+      EntityTag
+    >
+  >(
+    () => ({
+      ...ENTITY_TAG_FILTER_BASE,
+      fetcher: fetchWithAuth,
+    }),
+    [fetchWithAuth]
+  );
+
+  return useAsyncFilterOptions(config);
+}
 
 export function useEntityTagFilter() {
   const { fetchWithAuth } = useAuthFetch();

@@ -1,0 +1,1 @@
+ALTER TABLE "connector_instances" ADD COLUMN "enabled_capability_flags" jsonb;

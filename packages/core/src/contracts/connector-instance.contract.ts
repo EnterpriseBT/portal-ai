@@ -18,6 +18,7 @@ export const ConnectorInstanceListRequestQuerySchema = PaginationRequestQuerySch
   connectorDefinitionId: z.string().optional(),
   status: z.string().optional(),
   include: z.string().optional(),
+  capability: z.string().optional(),
 });
 
 export type ConnectorInstanceListRequestQuery = z.infer<typeof ConnectorInstanceListRequestQuerySchema>;
@@ -53,6 +54,12 @@ export const ConnectorInstanceCreateRequestBodySchema = z.object({
   connectorDefinitionId: z.string(),
   organizationId: z.string(),
   name: z.string().min(1),
+  status: z.enum(["active", "inactive", "error", "pending"]),
+  enabledCapabilityFlags: z.object({
+    read: z.boolean().optional(),
+    write: z.boolean().optional(),
+    sync: z.boolean().optional(),
+  }),
   config: z.record(z.string(), z.unknown()).nullable().optional(),
   credentials: z.record(z.string(), z.unknown()).nullable().optional(),
 });
@@ -66,6 +73,17 @@ export const ConnectorInstanceCreateResponseSchema = z.object({
 export type ConnectorInstanceCreateResponsePayload = z.infer<
   typeof ConnectorInstanceCreateResponseSchema
 >;
+
+export const ConnectorInstancePatchRequestBodySchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  enabledCapabilityFlags: z.object({
+    read: z.boolean().optional(),
+    write: z.boolean().optional(),
+    sync: z.boolean().optional(),
+  }).nullable().optional(),
+});
+
+export type ConnectorInstancePatchRequestBody = z.infer<typeof ConnectorInstancePatchRequestBodySchema>;
 
 export const ConnectorInstanceImpactResponseSchema = z.object({
   connectorEntities: z.number(),

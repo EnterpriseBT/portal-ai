@@ -79,3 +79,43 @@ export const ConnectorEntityCreateResponsePayloadSchema = z.object({
 });
 
 export type ConnectorEntityCreateResponsePayload = z.infer<typeof ConnectorEntityCreateResponsePayloadSchema>;
+
+// ── Update ───────────────────────────────────────────────────────────
+
+export const ConnectorEntityPatchRequestBodySchema = z.object({
+  label: z.string().min(1).optional(),
+});
+
+export type ConnectorEntityPatchRequestBody = z.infer<typeof ConnectorEntityPatchRequestBodySchema>;
+
+export const ConnectorEntityPatchResponsePayloadSchema = z.object({
+  connectorEntity: ConnectorEntitySchema,
+});
+
+export type ConnectorEntityPatchResponsePayload = z.infer<typeof ConnectorEntityPatchResponsePayloadSchema>;
+
+// ── Delete ───────────────────────────────────────────────────────────
+
+export const ConnectorEntityDeleteResponsePayloadSchema = z.object({
+  id: z.string(),
+  cascaded: z.object({
+    entityRecords: z.number(),
+    fieldMappings: z.number(),
+    entityTagAssignments: z.number(),
+    entityGroupMembers: z.number(),
+  }),
+});
+
+export type ConnectorEntityDeleteResponsePayload = z.infer<typeof ConnectorEntityDeleteResponsePayloadSchema>;
+
+// ── Impact ───────────────────────────────────────────────────────────
+
+export const ConnectorEntityImpactResponsePayloadSchema = z.object({
+  entityRecords: z.number(),
+  fieldMappings: z.number(),
+  entityTagAssignments: z.number(),
+  entityGroupMembers: z.number(),
+  refFieldMappings: z.number(),
+});
+
+export type ConnectorEntityImpactResponsePayload = z.infer<typeof ConnectorEntityImpactResponsePayloadSchema>;

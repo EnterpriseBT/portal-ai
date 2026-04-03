@@ -111,6 +111,7 @@ function createConnectorInstance(
     credentials: null,
     lastSyncAt: null,
     lastErrorMessage: null,
+    enabledCapabilityFlags: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -342,6 +343,115 @@ describe("Connector Instance Router", () => {
       expect(res.body.payload.connectorInstances[0].name).toBe(
         "Salesforce Prod"
       );
+    });
+
+    it("should filter by capability=write (only writable instances)", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def.id, orgId, {
+            name: "Writable",
+            enabledCapabilityFlags: { read: true, write: true },
+          }),
+          createConnectorInstance(def.id, orgId, {
+            name: "ReadOnly",
+            enabledCapabilityFlags: { read: true, write: false },
+          }),
+          createConnectorInstance(def.id, orgId, {
+            name: "NullFlags",
+            enabledCapabilityFlags: null,
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/connector-instances?capability=write")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(1);
+      expect(res.body.payload.connectorInstances[0].name).toBe("Writable");
+    });
+
+    it("should filter by multiple capabilities (AND logic)", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def.id, orgId, {
+            name: "ReadWrite",
+            enabledCapabilityFlags: { read: true, write: true, sync: false },
+          }),
+          createConnectorInstance(def.id, orgId, {
+            name: "WriteSync",
+            enabledCapabilityFlags: { read: false, write: true, sync: true },
+          }),
+          createConnectorInstance(def.id, orgId, {
+            name: "All",
+            enabledCapabilityFlags: { read: true, write: true, sync: true },
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/connector-instances?capability=write,sync")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(2);
+      const names = res.body.payload.connectorInstances.map(
+        (ci: { name: string }) => ci.name
+      );
+      expect(names).toContain("WriteSync");
+      expect(names).toContain("All");
+      expect(names).not.toContain("ReadWrite");
+    });
+
+    it("should ignore invalid capability values", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values([
+          createConnectorInstance(def.id, orgId, {
+            name: "Writable",
+            enabledCapabilityFlags: { read: true, write: true },
+          }),
+          createConnectorInstance(def.id, orgId, {
+            name: "ReadOnly",
+            enabledCapabilityFlags: { read: true, write: false },
+          }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/connector-instances?capability=write,bogus")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstances).toHaveLength(1);
+      expect(res.body.payload.connectorInstances[0].name).toBe("Writable");
     });
   });
 
@@ -865,6 +975,56 @@ describe("Connector Instance Router", () => {
       expect(res.body.payload.connectorInstance.id).toBe(instance.id);
       expect(res.body.payload.connectorInstance.updatedBy).toBeDefined();
     });
+
+    it("should update enabledCapabilityFlags", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const def = createConnectorDefinition({ capabilityFlags: { sync: true, query: true, write: true } });
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, orgId);
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "Test Instance", enabledCapabilityFlags: { read: true, write: true } });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstance.enabledCapabilityFlags).toEqual({ read: true, write: true });
+    });
+
+    it("should reject write: true when definition does not support writes", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const def = createConnectorDefinition({ capabilityFlags: { sync: true, query: true, write: false } });
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, orgId);
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "Test Instance", enabledCapabilityFlags: { read: true, write: true } });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_CAPABILITY_NOT_SUPPORTED);
+    });
+
+    it("should allow setting enabledCapabilityFlags to null", async () => {
+      const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const def = createConnectorDefinition();
+      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      const instance = createConnectorInstance(def.id, orgId, {
+        enabledCapabilityFlags: { read: true, write: false },
+      });
+      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
+
+      const res = await request(app)
+        .patch(`/api/connector-instances/${instance.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ name: "Test Instance", enabledCapabilityFlags: null });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstance.enabledCapabilityFlags).toBeNull();
+    });
   });
 
   // ── POST /api/connector-instances ───────────────────────────────
@@ -889,6 +1049,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: generateId(),
           organizationId: generateId(),
           name: "",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       expect(res.status).toBe(400);
@@ -908,6 +1070,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: generateId(),
           organizationId: generateId(),
           name: "New Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       expect(res.status).toBe(404);
@@ -927,6 +1091,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: def.id,
           organizationId: generateId(),
           name: "New Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       expect(res.status).toBe(404);
@@ -952,6 +1118,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: def.id,
           organizationId: orgId,
           name: "My New Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       expect(res.status).toBe(201);
@@ -960,7 +1128,7 @@ describe("Connector Instance Router", () => {
       expect(created.name).toBe("My New Instance");
       expect(created.connectorDefinitionId).toBe(def.id);
       expect(created.organizationId).toBe(orgId);
-      expect(created.status).toBe("pending");
+      expect(created.status).toBe("active");
       expect(created.config).toBeNull();
       expect(created.credentials).toBeNull();
     });
@@ -984,6 +1152,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: def.id,
           organizationId: orgId,
           name: "Configured Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: true, sync: false },
           config: { endpoint: "https://api.example.com" },
           credentials: { apiKey: "secret-key-123" },
         });
@@ -1014,6 +1184,8 @@ describe("Connector Instance Router", () => {
           connectorDefinitionId: def.id,
           organizationId: orgId,
           name: "Retrievable Instance",
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: false, sync: false },
         });
 
       const id = createRes.body.payload.connectorInstance.id;

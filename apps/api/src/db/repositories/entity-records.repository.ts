@@ -7,7 +7,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, isNull } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { entityRecords } from "../schema/index.js";
@@ -76,6 +76,7 @@ export class EntityRecordsRepository extends Repository<
           entityRecords.connectorEntityId,
           entityRecords.sourceId,
         ] as IndexColumn[],
+        targetWhere: isNull(entityRecords.deleted),
         set: {
           data: data.data,
           normalizedData: data.normalizedData,
@@ -107,6 +108,7 @@ export class EntityRecordsRepository extends Repository<
           entityRecords.connectorEntityId,
           entityRecords.sourceId,
         ] as IndexColumn[],
+        targetWhere: isNull(entityRecords.deleted),
         set: {
           data: sql.raw(`excluded."data"`),
           normalizedData: sql.raw(`excluded."normalized_data"`),

@@ -5,7 +5,7 @@
  * duplicate detection, and primary-member management.
  */
 
-import { and, eq, isNull, isNotNull, inArray } from "drizzle-orm";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 
 import {
   entityGroupMembers,
@@ -163,45 +163,6 @@ export class EntityGroupMembersRepository extends Repository<
     return row as EntityGroupMemberSelect | undefined;
   }
 
-  /**
-   * Return a soft-deleted member for a (entityGroupId, connectorEntityId) pair,
-   * or undefined if none exists. Used to restore previously deleted members.
-   */
-  async findSoftDeleted(
-    entityGroupId: string,
-    connectorEntityId: string,
-    client: DbClient = db
-  ): Promise<EntityGroupMemberSelect | undefined> {
-    const [row] = await (client as typeof db)
-      .select()
-      .from(this.table)
-      .where(
-        and(
-          eq(entityGroupMembers.entityGroupId, entityGroupId),
-          eq(entityGroupMembers.connectorEntityId, connectorEntityId),
-          isNotNull(entityGroupMembers.deleted)
-        )
-      )
-      .limit(1);
-    return row as EntityGroupMemberSelect | undefined;
-  }
-
-  /**
-   * Restore a soft-deleted member by clearing its deleted/deletedBy fields
-   * and updating its data. Bypasses the base `update` soft-delete filter.
-   */
-  async restore(
-    id: string,
-    data: Partial<EntityGroupMemberInsert>,
-    client: DbClient = db
-  ): Promise<EntityGroupMemberSelect | undefined> {
-    const [row] = await (client as typeof db)
-      .update(this.table)
-      .set({ ...data, deleted: null, deletedBy: null } as never)
-      .where(eq(entityGroupMembers.id, id))
-      .returning();
-    return row as EntityGroupMemberSelect | undefined;
-  }
 
   /** Return the primary member of a group, or undefined if none is set. */
   async findPrimary(
@@ -269,6 +230,48 @@ export class EntityGroupMembersRepository extends Repository<
     if (client) return exec(client);
     return Repository.transaction((tx) => exec(tx));
   }
+  /**
+   * Return all non-deleted entity group members whose `linkFieldMappingId` matches
+   * the given field mapping ID.
+   */
+  async findByLinkFieldMappingId(
+    fieldMappingId: string,
+    client: DbClient = db
+  ): Promise<EntityGroupMemberSelect[]> {
+    return (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(entityGroupMembers.linkFieldMappingId, fieldMappingId),
+          isNull(entityGroupMembers.deleted)
+        )
+      )) as EntityGroupMemberSelect[];
+  }
+
+  /**
+   * Soft-delete all group members whose `linkFieldMappingId` matches a given
+   * field mapping ID. Returns the number of affected rows.
+   */
+  async softDeleteByLinkFieldMappingId(
+    fieldMappingId: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    const now = Date.now();
+    const result = await (client as typeof db)
+      .update(this.table)
+      .set({ deleted: now, deletedBy } as any)
+      .where(
+        and(
+          eq(entityGroupMembers.linkFieldMappingId, fieldMappingId),
+          isNull(entityGroupMembers.deleted)
+        )
+      )
+      .returning();
+    return result.length;
+  }
+
   /**
    * Soft-delete all group members across multiple connector entities.
    * Returns the number of affected rows.

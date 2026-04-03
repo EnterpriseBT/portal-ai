@@ -1,29 +1,37 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 
 import type {
   ConnectorEntityGetResponsePayload,
+  ConnectorEntityPatchRequestBody,
   ColumnDefinitionSummary,
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
   FieldMappingListResponsePayload,
-  EntityTagListResponsePayload,
   AssignedEntityTag,
-  ApiSuccessResponse,
 } from "@portalai/core/contracts";
 import { Box, Icon, IconName, MetadataList, PageHeader, PageSection, Stack } from "@portalai/core/ui";
 import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch } from "../utils/api.util";
+import { useEntityTagSearch } from "../api/entity-tags.api";
+import { toServerError } from "../utils/api.util";
+import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
+import { DeleteConnectorEntityDialog } from "../components/DeleteConnectorEntityDialog.component";
+import { EditConnectorEntityDialog } from "../components/EditConnectorEntityDialog.component";
+import { CreateEntityRecordDialog } from "../components/CreateEntityRecordDialog.component";
+import type { EntityRecordCreateRequestBody } from "@portalai/core/contracts";
 import { BidirectionalConsistencyBanner } from "../components/BidirectionalConsistencyBanner.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { SyncColumns } from "../components/SyncColumns.component";
@@ -103,6 +111,37 @@ export interface EntityDetailViewUIProps {
   onUnassignTag?: (assignmentId: string) => void;
   /** Search callback for the tag assignment autocomplete. */
   onSearchTags?: (query: string) => Promise<SelectOption[]>;
+  /** Whether the connector instance has write capability. */
+  isWriteEnabled?: boolean;
+  /** Called when user confirms entity deletion. */
+  onDelete?: () => void;
+  /** Whether the delete mutation is in progress. */
+  isDeleting?: boolean;
+  /** Server error from the delete mutation. */
+  deleteServerError?: ServerError | null;
+  /** Impact data for deletion. */
+  deleteImpact?: { entityRecords: number; fieldMappings: number; entityTagAssignments: number; entityGroupMembers: number; refFieldMappings: number } | null;
+  /** Whether impact is loading. */
+  isLoadingDeleteImpact?: boolean;
+  /** Whether the delete dialog is open. */
+  deleteDialogOpen?: boolean;
+  /** Open/close the delete dialog. */
+  onOpenDeleteDialog?: () => void;
+  onCloseDeleteDialog?: () => void;
+  /** Called when user submits entity edit. */
+  onUpdate?: (body: ConnectorEntityPatchRequestBody) => void;
+  isUpdating?: boolean;
+  updateServerError?: ServerError | null;
+  editDialogOpen?: boolean;
+  onOpenEditDialog?: () => void;
+  onCloseEditDialog?: () => void;
+  /** Create record dialog state */
+  createRecordDialogOpen?: boolean;
+  onOpenCreateRecordDialog?: () => void;
+  onCloseCreateRecordDialog?: () => void;
+  onCreateRecord?: (body: EntityRecordCreateRequestBody) => void;
+  isCreatingRecord?: boolean;
+  createRecordServerError?: ServerError | null;
 }
 
 export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
@@ -119,6 +158,27 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   onAssignTag,
   onUnassignTag,
   onSearchTags,
+  isWriteEnabled,
+  onDelete,
+  isDeleting,
+  deleteServerError,
+  deleteImpact,
+  isLoadingDeleteImpact,
+  deleteDialogOpen,
+  onOpenDeleteDialog,
+  onCloseDeleteDialog,
+  onUpdate,
+  isUpdating,
+  updateServerError,
+  editDialogOpen,
+  onOpenEditDialog,
+  onCloseEditDialog,
+  createRecordDialogOpen,
+  onOpenCreateRecordDialog,
+  onCloseCreateRecordDialog,
+  onCreateRecord,
+  isCreatingRecord,
+  createRecordServerError,
 }) => {
   const navigate = useNavigate();
 
@@ -208,6 +268,14 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
               </Button>
             ) : undefined
           }
+          secondaryActions={[
+            ...(isWriteEnabled
+              ? [{ label: "Edit", icon: <EditIcon />, onClick: () => onOpenEditDialog?.(), disabled: isUpdating }]
+              : []),
+            ...(isWriteEnabled
+              ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onOpenDeleteDialog?.(), color: "error" as const, disabled: isDeleting }]
+              : []),
+          ]}
         >
           <MetadataList
             items={[
@@ -276,7 +344,17 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
         )}
 
         {/* Data table */}
-        <PageSection title="Records" icon={<Icon name={IconName.ViewColumn} />}>
+        <PageSection
+          title="Records"
+          icon={<Icon name={IconName.DataObject} />}
+          primaryAction={
+            isWriteEnabled && columnDefs.length > 0 && onOpenCreateRecordDialog ? (
+              <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={onOpenCreateRecordDialog}>
+                Create
+              </Button>
+            ) : undefined
+          }
+        >
           <PaginationToolbar {...pagination.toolbarProps} />
 
           <Box sx={{ mt: 2 }}>
@@ -342,6 +420,41 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
             </EntityRecordDataTable>
           </Box>
         </PageSection>
+
+        {editDialogOpen !== undefined && onCloseEditDialog && onUpdate && (
+          <EditConnectorEntityDialog
+            open={!!editDialogOpen}
+            onClose={onCloseEditDialog}
+            entity={entity}
+            onSubmit={onUpdate}
+            isPending={isUpdating}
+            serverError={updateServerError ?? null}
+          />
+        )}
+
+        {createRecordDialogOpen !== undefined && onCloseCreateRecordDialog && onCreateRecord && (
+          <CreateEntityRecordDialog
+            open={!!createRecordDialogOpen}
+            onClose={onCloseCreateRecordDialog}
+            columns={columnDefs}
+            onSubmit={onCreateRecord}
+            isPending={isCreatingRecord}
+            serverError={createRecordServerError ?? null}
+          />
+        )}
+
+        {deleteDialogOpen !== undefined && onCloseDeleteDialog && onDelete && (
+          <DeleteConnectorEntityDialog
+            open={!!deleteDialogOpen}
+            onClose={onCloseDeleteDialog}
+            connectorEntityLabel={entity.label}
+            onConfirm={onDelete}
+            isPending={isDeleting}
+            impact={deleteImpact ?? null}
+            isLoadingImpact={isLoadingDeleteImpact}
+            serverError={deleteServerError ?? null}
+          />
+        )}
       </Stack>
     </Box>
   );
@@ -357,11 +470,31 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   entityId,
 }) => {
   const queryClient = useQueryClient();
-  const { fetchWithAuth } = useAuthFetch();
+  const navigate = useNavigate();
+  const { onSearch: handleSearchTags } = useEntityTagSearch();
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [createRecordDialogOpen, setCreateRecordDialogOpen] = useState(false);
 
   const entityResult = sdk.connectorEntities.get(entityId);
+  const connectorInstanceId = entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
+  const instanceResult = sdk.connectorInstances.get(connectorInstanceId, {
+    enabled: !!connectorInstanceId,
+  });
+  const connectorDefinitionId = instanceResult.data?.connectorInstance?.connectorDefinitionId ?? "";
+  const definitionResult = sdk.connectorDefinitions.get(connectorDefinitionId, {
+    enabled: !!connectorDefinitionId,
+  });
+
   const countResult = sdk.entityRecords.count(entityId);
   const syncMutation = sdk.entityRecords.sync(entityId);
+  const createRecordMutation = sdk.entityRecords.create(entityId);
+  const updateMutation = sdk.connectorEntities.update(entityId);
+  const deleteMutation = sdk.connectorEntities.delete(entityId);
+  const impactQuery = sdk.connectorEntities.impact(entityId, {
+    enabled: deleteDialogOpen,
+  });
   const fieldMappingsResult = sdk.fieldMappings.list<FieldMappingListResponsePayload>({
     connectorEntityId: entityId,
     limit: 100,
@@ -400,19 +533,43 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
     [unassignMutation, invalidateTags]
   );
 
-  const handleSearchTags = useCallback(
-    async (query: string): Promise<SelectOption[]> => {
-      const res = await fetchWithAuth<
-        ApiSuccessResponse<EntityTagListResponsePayload>
-      >(
-        `/api/entity-tags?search=${encodeURIComponent(query)}&limit=20&offset=0&sortBy=name&sortOrder=asc`
-      );
-      return res.payload.entityTags.map((tag) => ({
-        value: tag.id,
-        label: tag.name,
-      }));
+  const handleUpdate = useCallback(
+    (body: ConnectorEntityPatchRequestBody) => {
+      updateMutation.mutate(body, {
+        onSuccess: () => {
+          setEditDialogOpen(false);
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.get(entityId) });
+        },
+      });
     },
-    [fetchWithAuth]
+    [updateMutation, queryClient, entityId]
+  );
+
+  const handleDelete = useCallback(() => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
+        navigate({ to: "/entities" });
+      },
+    });
+  }, [deleteMutation, queryClient, navigate]);
+
+  const handleCreateRecord = useCallback(
+    (body: EntityRecordCreateRequestBody) => {
+      createRecordMutation.mutate(body, {
+        onSuccess: () => {
+          setCreateRecordDialogOpen(false);
+          createRecordMutation.reset();
+          queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        },
+      });
+    },
+    [createRecordMutation, queryClient]
   );
 
   return (
@@ -433,10 +590,30 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
           .filter((fm) => fm.refBidirectionalFieldMappingId !== null)
           .map((fm) => ({ id: fm.id, sourceField: fm.sourceField }));
 
+        const instance = instanceResult.data?.connectorInstance;
+        const definition = definitionResult.data?.connectorDefinition;
+
+        const isWriteEnabled = !!(
+          definition?.capabilityFlags?.write &&
+          (instance?.enabledCapabilityFlags?.write ?? true)
+        );
+
         return (
           <EntityDetailViewUI
             entity={entity}
+            connectorInstanceName={instance?.name}
             recordCount={countData?.total}
+            accessMode={
+              definition?.capabilityFlags
+                ? definition.capabilityFlags.sync && definition.capabilityFlags.query
+                  ? "hybrid"
+                  : definition.capabilityFlags.sync
+                    ? "import"
+                    : definition.capabilityFlags.query
+                      ? "live"
+                      : undefined
+                : undefined
+            }
             onSync={() => syncMutation.mutate(undefined)}
             isSyncing={syncMutation.isPending}
             bidirectionalFieldMappings={
@@ -448,6 +625,27 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             onAssignTag={handleAssignTag}
             onUnassignTag={handleUnassignTag}
             onSearchTags={handleSearchTags}
+            isWriteEnabled={isWriteEnabled}
+            onDelete={handleDelete}
+            isDeleting={deleteMutation.isPending}
+            deleteServerError={toServerError(deleteMutation.error)}
+            deleteImpact={impactQuery.data ?? null}
+            isLoadingDeleteImpact={impactQuery.isLoading && deleteDialogOpen}
+            deleteDialogOpen={deleteDialogOpen}
+            onOpenDeleteDialog={() => setDeleteDialogOpen(true)}
+            onCloseDeleteDialog={() => setDeleteDialogOpen(false)}
+            onUpdate={handleUpdate}
+            isUpdating={updateMutation.isPending}
+            updateServerError={toServerError(updateMutation.error)}
+            editDialogOpen={editDialogOpen}
+            onOpenEditDialog={() => setEditDialogOpen(true)}
+            onCloseEditDialog={() => setEditDialogOpen(false)}
+            createRecordDialogOpen={createRecordDialogOpen}
+            onOpenCreateRecordDialog={() => setCreateRecordDialogOpen(true)}
+            onCloseCreateRecordDialog={() => setCreateRecordDialogOpen(false)}
+            onCreateRecord={handleCreateRecord}
+            isCreatingRecord={createRecordMutation.isPending}
+            createRecordServerError={toServerError(createRecordMutation.error)}
           />
         );
       }}

@@ -196,37 +196,20 @@ entityTagAssignmentRouter.post(
         return next(new ApiError(409, ApiCode.ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS, "This tag is already assigned to this entity"));
       }
 
-      // Restore a previously soft-deleted assignment if one exists
-      const softDeleted = await DbService.repository.entityTagAssignments.findSoftDeleted(
+      const factory = new EntityTagAssignmentModelFactory();
+      const model = factory.create(userId);
+      model.update({
+        organizationId,
         connectorEntityId,
-        parsed.data.entityTagId
-      );
+        entityTagId: parsed.data.entityTagId,
+      });
 
-      let entityTagAssignment;
-      if (softDeleted) {
-        entityTagAssignment = await DbService.repository.entityTagAssignments.restore(
-          softDeleted.id,
-          userId
-        ).catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED, error instanceof Error ? error.message : "Failed to restore entity tag assignment");
-        });
-      } else {
-        const factory = new EntityTagAssignmentModelFactory();
-        const model = factory.create(userId);
-        model.update({
-          organizationId,
-          connectorEntityId,
-          entityTagId: parsed.data.entityTagId,
-        });
-
-        entityTagAssignment = await DbService.repository.entityTagAssignments.create(
-          model.parse()
-        ).catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity tag assignment");
-        });
-      }
+      const entityTagAssignment = await DbService.repository.entityTagAssignments.create(
+        model.parse()
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity tag assignment");
+      });
 
       logger.info({ id: entityTagAssignment!.id, connectorEntityId, entityTagId: parsed.data.entityTagId }, "Entity tag assignment created");
 

@@ -44,14 +44,14 @@ const stubRecord: EntityRecord = {
 };
 
 const stubColumns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Full Name", type: "string" },
-  { key: "email", label: "Email", type: "string" },
-  { key: "age", label: "Age", type: "number" },
-  { key: "active", label: "Active", type: "boolean" },
-  { key: "joined", label: "Joined", type: "date" },
-  { key: "score", label: "Score", type: "currency" },
-  { key: "tags", label: "Tags", type: "array" },
-  { key: "meta", label: "Metadata", type: "json" },
+  { key: "name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null },
+  { key: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null },
+  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
+  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
+  { key: "joined", label: "Joined", type: "date", required: false, enumValues: null, defaultValue: null },
+  { key: "score", label: "Score", type: "currency", required: false, enumValues: null, defaultValue: null },
+  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null },
+  { key: "meta", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null },
 ];
 
 const meta = {

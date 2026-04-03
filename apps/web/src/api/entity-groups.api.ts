@@ -2,6 +2,7 @@ import type {
   EntityGroupCreateRequestBody,
   EntityGroupCreateResponsePayload,
   EntityGroupGetResponsePayload,
+  EntityGroupImpactResponsePayload,
   EntityGroupListRequestQuery,
   EntityGroupListResponsePayload,
   EntityGroupUpdateRequestBody,
@@ -49,6 +50,14 @@ export const entityGroups = {
     useAuthQuery<EntityGroupGetResponsePayload>(
       queryKeys.entityGroups.get(id),
       buildUrl(`${ENTITY_GROUPS_URL}/${encodeURIComponent(id)}`),
+      undefined,
+      options
+    ),
+
+  impact: (id: string, options?: QueryOptions<EntityGroupImpactResponsePayload>) =>
+    useAuthQuery<EntityGroupImpactResponsePayload>(
+      queryKeys.entityGroups.impact(id),
+      buildUrl(`${ENTITY_GROUPS_URL}/${encodeURIComponent(id)}/impact`),
       undefined,
       options
     ),

@@ -1,13 +1,10 @@
 import React, { useState, useCallback } from "react";
 
 import {
-  EntityGroupUpdateRequestBodySchema,
   type EntityGroupGetResponsePayload,
   type EntityGroupMemberOverlapResponsePayload,
   type EntityGroupMemberCreateRequestBody,
   type EntityGroupUpdateRequestBody,
-  type ConnectorEntityListResponsePayload,
-  type FieldMappingListWithColumnDefinitionResponsePayload,
 } from "@portalai/core/contracts";
 import {
   Box,
@@ -31,7 +28,6 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
-import TextField from "@mui/material/TextField";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -41,10 +37,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
+import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.component";
+import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
+import { useConnectorEntitySearch } from "../api/connector-entities.api";
+import { useFieldMappingWithColumnDefinitionSearch } from "../api/field-mappings.api";
 import { useAuthFetch, toServerError, type ServerError } from "../utils/api.util";
-import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
 
@@ -198,121 +197,6 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
   );
 };
 
-// ── Edit Entity Group Dialog ────────────────────────────────────────
-
-interface EditEntityGroupDialogProps {
-  open: boolean;
-  onClose: () => void;
-  group: { name: string; description: string | null };
-  onSubmit: (body: EntityGroupUpdateRequestBody) => void;
-  isPending: boolean;
-  serverError: ServerError | null;
-}
-
-const EditEntityGroupDialog: React.FC<EditEntityGroupDialogProps> = ({
-  open,
-  onClose,
-  group,
-  onSubmit,
-  isPending,
-  serverError,
-}) => {
-  const [name, setName] = useState(group.name);
-  const [description, setDescription] = useState(group.description ?? "");
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const nameRef = useDialogAutoFocus(open);
-
-  React.useEffect(() => {
-    if (open) {
-      setName(group.name);
-      setDescription(group.description ?? "");
-      setErrors({});
-      setTouched({});
-    }
-  }, [open, group.name, group.description]);
-
-  const validate = (data: { name: string }) => {
-    const result = validateWithSchema(EntityGroupUpdateRequestBodySchema, data);
-    return result.success ? {} : result.errors;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setTouched({ name: true });
-    const trimmedName = name.trim();
-    const trimmedDesc = description.trim();
-    const formErrors = validate({ name: trimmedName });
-    setErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) {
-      requestAnimationFrame(() => focusFirstInvalidField());
-      return;
-    }
-
-    const body: EntityGroupUpdateRequestBody = {};
-    if (trimmedName !== group.name) body.name = trimmedName;
-    if (trimmedDesc !== (group.description ?? "")) {
-      body.description = trimmedDesc || undefined;
-    }
-
-    if (Object.keys(body).length === 0) {
-      onClose();
-      return;
-    }
-
-    onSubmit(body);
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <form onSubmit={handleSubmit}>
-        <DialogTitle>Edit Entity Group</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              inputRef={nameRef}
-              label="Name"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (touched.name) {
-                  setErrors(validate({ name: e.target.value.trim() }));
-                }
-              }}
-              onBlur={() => {
-                setTouched((prev) => ({ ...prev, name: true }));
-                setErrors(validate({ name: name.trim() }));
-              }}
-              error={touched.name && !!errors.name}
-              helperText={touched.name && errors.name}
-              slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              fullWidth
-              multiline
-              rows={3}
-            />
-            <FormAlert serverError={serverError} />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="button" variant="contained" onClick={() => handleSubmit({ preventDefault: () => { } } as React.FormEvent)} disabled={isPending}>
-            {isPending ? "Saving..." : "Save"}
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
-  );
-};
-
 // ── Pure UI ──────────────────────────────────────────────────────────
 
 export interface EntityGroupDetailViewUIProps {
@@ -347,6 +231,9 @@ export interface EntityGroupDetailViewUIProps {
   isUpdatingGroup?: boolean;
   isDeletingGroup?: boolean;
   deleteServerError?: ServerError | null;
+  deleteImpact?: { entityGroupMembers: number } | null;
+  isLoadingDeleteImpact?: boolean;
+  onDeleteDialogOpenChange?: (open: boolean) => void;
 }
 
 export const EntityGroupDetailViewUI: React.FC<
@@ -381,6 +268,9 @@ export const EntityGroupDetailViewUI: React.FC<
   isUpdatingGroup,
   isDeletingGroup,
   deleteServerError,
+  deleteImpact,
+  isLoadingDeleteImpact,
+  onDeleteDialogOpenChange,
 }) => {
     const navigate = useNavigate();
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -388,8 +278,17 @@ export const EntityGroupDetailViewUI: React.FC<
       string | null
     >(null);
 
-    const handleConfirmDelete = () => {
+    const openDeleteDialog = () => {
+      setDeleteDialogOpen(true);
+      onDeleteDialogOpenChange?.(true);
+    };
+    const closeDeleteDialog = () => {
       setDeleteDialogOpen(false);
+      onDeleteDialogOpenChange?.(false);
+    };
+
+    const handleConfirmDelete = () => {
+      closeDeleteDialog();
       onDeleteGroup();
     };
 
@@ -469,7 +368,7 @@ export const EntityGroupDetailViewUI: React.FC<
               </Button>
             }
             secondaryActions={[
-              { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error", disabled: isDeletingGroup },
+              { label: "Delete", icon: <DeleteIcon />, onClick: openDeleteDialog, color: "error", disabled: isDeletingGroup },
             ]}
           >
             <MetadataList
@@ -534,31 +433,16 @@ export const EntityGroupDetailViewUI: React.FC<
         />
 
         {/* Delete group confirmation */}
-        <Dialog
+        <DeleteEntityGroupDialog
           open={deleteDialogOpen}
-          onClose={() => setDeleteDialogOpen(false)}
-        >
-          <DialogTitle>Delete Entity Group</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2}>
-              <Typography>
-                Are you sure you want to delete &ldquo;{group.name}&rdquo;? This
-                action cannot be undone.
-              </Typography>
-              <FormAlert serverError={deleteServerError ?? null} />
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-            <Button
-              color="error"
-              variant="contained"
-              onClick={handleConfirmDelete}
-            >
-              Delete
-            </Button>
-          </DialogActions>
-        </Dialog>
+          onClose={closeDeleteDialog}
+          entityGroupName={group.name}
+          onConfirm={handleConfirmDelete}
+          isPending={isDeletingGroup}
+          impact={deleteImpact ?? null}
+          isLoadingImpact={isLoadingDeleteImpact}
+          serverError={deleteServerError ?? null}
+        />
 
         {/* Remove member confirmation */}
         <Dialog
@@ -607,6 +491,12 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const deleteMutation = sdk.entityGroups.delete(entityGroupId);
   const addMemberMutation = sdk.entityGroups.addMember(entityGroupId);
 
+  // Delete impact - the dialog state is inside the UI, but we track it here for the query
+  const [deleteDialogOpenForImpact, setDeleteDialogOpenForImpact] = useState(false);
+  const impactQuery = sdk.entityGroups.impact(entityGroupId, {
+    enabled: deleteDialogOpenForImpact,
+  });
+
   // Edit group dialog state
   const [editOpen, setEditOpen] = useState(false);
 
@@ -623,7 +513,8 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
-  }, [queryClient]);
+    queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.get(entityGroupId) });
+  }, [queryClient, entityGroupId]);
 
   const fetchOverlap = useCallback(
     async (entityId: string, fieldMappingId: string) => {
@@ -666,33 +557,25 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     [selectedEntityId, fetchOverlap]
   );
 
-  const handleSearchEntities = useCallback(
-    async (query: string): Promise<SelectOption[]> => {
-      const res = await fetchWithAuth<
-        ApiSuccessResponse<ConnectorEntityListResponsePayload>
-      >(`/api/connector-entities?search=${encodeURIComponent(query)}&limit=20`);
-      return res.payload.connectorEntities.map((e) => ({
-        value: e.id,
-        label: e.label,
-      }));
-    },
-    [fetchWithAuth]
-  );
+  const { onSearch: handleSearchEntities } = useConnectorEntitySearch();
 
+  const fieldMappingDefaultParams = React.useMemo(
+    () =>
+      selectedEntityId
+        ? { connectorEntityId: selectedEntityId, limit: "100" }
+        : undefined,
+    [selectedEntityId]
+  );
+  const { onSearch: fieldMappingSearch } =
+    useFieldMappingWithColumnDefinitionSearch({
+      defaultParams: fieldMappingDefaultParams,
+    });
   const handleSearchFieldMappings = useCallback(
     async (query: string): Promise<SelectOption[]> => {
       if (!selectedEntityId) return [];
-      const res = await fetchWithAuth<
-        ApiSuccessResponse<FieldMappingListWithColumnDefinitionResponsePayload>
-      >(
-        `/api/field-mappings?connectorEntityId=${encodeURIComponent(selectedEntityId)}&search=${encodeURIComponent(query)}&limit=100&include=columnDefinition`
-      );
-      return res.payload.fieldMappings.map((fm) => ({
-        value: fm.id,
-        label: fm.columnDefinition?.label ?? fm.sourceField,
-      }));
+      return fieldMappingSearch(query);
     },
-    [fetchWithAuth, selectedEntityId]
+    [selectedEntityId, fieldMappingSearch]
   );
 
   const handleUpdateGroup = useCallback(
@@ -825,6 +708,9 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             isUpdatingGroup={updateMutation.isPending}
             isDeletingGroup={deleteMutation.isPending}
             deleteServerError={toServerError(deleteMutation.error)}
+            deleteImpact={impactQuery.data ?? null}
+            isLoadingDeleteImpact={impactQuery.isLoading && deleteDialogOpenForImpact}
+            onDeleteDialogOpenChange={setDeleteDialogOpenForImpact}
           />
         );
       }}

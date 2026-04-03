@@ -1,4 +1,5 @@
-import { pgTable, text, boolean, jsonb, pgEnum, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, jsonb, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 
@@ -39,9 +40,8 @@ export const columnDefinitions = pgTable(
 
   },
   (table) => [
-    unique("column_definitions_org_key_unique").on(
-      table.organizationId,
-      table.key,
-    ),
+    uniqueIndex("column_definitions_org_key_unique")
+      .on(table.organizationId, table.key)
+      .where(sql`deleted IS NULL`),
   ],
 );

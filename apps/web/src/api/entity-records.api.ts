@@ -2,11 +2,15 @@ import type {
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
+  EntityRecordCreateRequestBody,
+  EntityRecordCreateResponsePayload,
   EntityRecordImportRequestBody,
   EntityRecordImportResponsePayload,
   EntityRecordSyncResponsePayload,
   EntityRecordDeleteResponsePayload,
   EntityRecordGetResponsePayload,
+  EntityRecordPatchRequestBody,
+  EntityRecordPatchResponsePayload,
 } from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
@@ -42,6 +46,11 @@ export const entityRecords = {
       options
     ),
 
+  create: (connectorEntityId: string) =>
+    useAuthMutation<EntityRecordCreateResponsePayload, EntityRecordCreateRequestBody>({
+      url: recordsUrl(connectorEntityId),
+    }),
+
   import: (connectorEntityId: string) =>
     useAuthMutation<
       EntityRecordImportResponsePayload,
@@ -72,4 +81,16 @@ export const entityRecords = {
       undefined,
       options
     ),
+
+  update: (connectorEntityId: string, recordId: string) =>
+    useAuthMutation<EntityRecordPatchResponsePayload, EntityRecordPatchRequestBody>({
+      url: recordsUrl(connectorEntityId, `/${encodeURIComponent(recordId)}`),
+      method: "PATCH",
+    }),
+
+  delete: (connectorEntityId: string, recordId: string) =>
+    useAuthMutation<void, void>({
+      url: recordsUrl(connectorEntityId, `/${encodeURIComponent(recordId)}`),
+      method: "DELETE",
+    }),
 };

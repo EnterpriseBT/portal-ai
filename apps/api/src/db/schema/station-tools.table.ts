@@ -1,4 +1,5 @@
-import { pgTable, text, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { stations } from "./stations.table.js";
 import { organizationTools } from "./organization-tools.table.js";
@@ -19,9 +20,8 @@ export const stationTools = pgTable(
       .references(() => organizationTools.id),
   },
   (table) => [
-    unique("station_tools_station_tool_unique").on(
-      table.stationId,
-      table.organizationToolId,
-    ),
+    uniqueIndex("station_tools_station_tool_unique")
+      .on(table.stationId, table.organizationToolId)
+      .where(sql`deleted IS NULL`),
   ],
 );

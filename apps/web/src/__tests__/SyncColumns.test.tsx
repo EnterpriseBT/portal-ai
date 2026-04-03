@@ -5,8 +5,8 @@ import { SyncColumns } from "../components/SyncColumns.component";
 import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
 
 const columns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string" },
-  { key: "age", label: "Age", type: "number" },
+  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null },
+  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
 ];
 
 describe("SyncColumns", () => {
@@ -43,7 +43,7 @@ describe("SyncColumns", () => {
   it("should call setColumns again when columns change", () => {
     const setColumns = jest.fn();
     const newColumns: ColumnDefinitionSummary[] = [
-      { key: "email", label: "Email", type: "string" },
+      { key: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null },
     ];
 
     const { rerender } = render(

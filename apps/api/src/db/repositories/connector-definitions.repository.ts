@@ -4,7 +4,7 @@
  * Extends the generic {@link Repository} with connector-specific queries.
  */
 
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 import { connectorDefinitions } from "../schema/index.js";
 import { db } from "../client.js";
@@ -70,6 +70,7 @@ export class ConnectorDefinitionsRepository extends Repository<
       .values(data)
       .onConflictDoUpdate({
         target: connectorDefinitions.slug as IndexColumn,
+        targetWhere: isNull(connectorDefinitions.deleted),
         set: set,
       })
       .returning();

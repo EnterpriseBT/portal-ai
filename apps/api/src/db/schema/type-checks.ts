@@ -126,7 +126,12 @@ type _ConnInstDrizzleToModel = IsAssignable<ConnectorInstanceSelect, ConnectorIn
 const _connInstDrizzleToModel: _ConnInstDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _ConnInstModelToDrizzle = IsAssignable<ConnectorInstance, ConnectorInstanceSelect>;
+// Omit enabledCapabilityFlags because drizzle-zod widens jsonb to a JSON union
+// type that our specific object shape is not directly assignable to.
+type _ConnInstModelToDrizzle = IsAssignable<
+  Omit<ConnectorInstance, "enabledCapabilityFlags">,
+  Omit<ConnectorInstanceSelect, "enabledCapabilityFlags">
+>;
 const _connInstModelToDrizzle: _ConnInstModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
