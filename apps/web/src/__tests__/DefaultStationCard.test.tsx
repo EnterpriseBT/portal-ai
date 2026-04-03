@@ -42,8 +42,8 @@ describe("DefaultStationCardUI", () => {
 
   it("should render tool packs as chips", () => {
     render(<DefaultStationCardUI {...defaultProps} />);
-    expect(screen.getByText("data_query")).toBeInTheDocument();
-    expect(screen.getByText("statistics")).toBeInTheDocument();
+    expect(screen.getByText("Data Query")).toBeInTheDocument();
+    expect(screen.getByText("Statistics")).toBeInTheDocument();
   });
 
   it("should render 'Open Portal' button", () => {
