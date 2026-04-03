@@ -121,30 +121,30 @@ Adds the helper functions that resolve station-level capabilities and enforce st
 
 **File:** `apps/api/src/constants/api-codes.constants.ts`
 
-- [ ] Add `STATION_SCOPE_VIOLATION = "STATION_SCOPE_VIOLATION"` to `ApiCode` enum
+- [x] Add `STATION_SCOPE_VIOLATION = "STATION_SCOPE_VIOLATION"` to `ApiCode` enum
 
 ### 3.2 Add `StationInstanceCapability` interface and `resolveStationCapabilities()`
 
 **File:** `apps/api/src/utils/resolve-capabilities.util.ts`
 
-- [ ] Define `StationInstanceCapability` interface: `{ connectorInstanceId: string, capabilities: ResolvedCapabilities }`
-- [ ] Implement `resolveStationCapabilities(stationId)` — loads station instances, resolves capabilities for each via `resolveCapabilities()`
-- [ ] Add necessary imports: `stationInstancesRepo`
+- [x] Define `StationInstanceCapability` interface: `{ connectorInstanceId: string, capabilities: ResolvedCapabilities }`
+- [x] Implement `resolveStationCapabilities(stationId)` — loads station instances, resolves capabilities for each via `resolveCapabilities()`
+- [x] Add necessary imports: `stationInstancesRepo`
 
 ### 3.3 Add `assertStationScope()`
 
 **File:** `apps/api/src/utils/resolve-capabilities.util.ts`
 
-- [ ] Implement `assertStationScope(stationId, connectorEntityId)` — verifies entity belongs to a station-attached instance
-- [ ] Throws 404 `CONNECTOR_ENTITY_NOT_FOUND` if entity doesn't exist
-- [ ] Throws 403 `STATION_SCOPE_VIOLATION` if entity's instance is not attached to station
+- [x] Implement `assertStationScope(stationId, connectorEntityId)` — verifies entity belongs to a station-attached instance
+- [x] Throws 404 `CONNECTOR_ENTITY_NOT_FOUND` if entity doesn't exist
+- [x] Throws 403 `STATION_SCOPE_VIOLATION` if entity's instance is not attached to station
 
 ### 3.4 Add `resolveEntityCapabilities()`
 
 **File:** `apps/api/src/utils/resolve-capabilities.util.ts`
 
-- [ ] Implement `resolveEntityCapabilities(stationId)` — builds `Record<entityId, ResolvedCapabilities>` map
-- [ ] Add `connectorEntitiesRepo.findByConnectorInstanceIds()` if method doesn't exist
+- [x] Implement `resolveEntityCapabilities(stationId)` — builds `Record<entityId, ResolvedCapabilities>` map
+- [x] Uses existing `connectorEntitiesRepo.findByConnectorInstanceId()` (method already exists)
 
 ### 3.5 Unit tests for capability plumbing
 
@@ -152,28 +152,28 @@ Adds the helper functions that resolve station-level capabilities and enforce st
 
 #### `resolveStationCapabilities()`
 
-- [ ] Test: returns empty array for station with no instances
-- [ ] Test: returns capabilities for each attached instance
-- [ ] Test: respects instance-level override narrowing write to false
-- [ ] Test: inherits definition capabilities when override is null
-- [ ] Test: skips instances with missing definitions
+- [x] Test: returns empty array for station with no instances
+- [x] Test: returns capabilities for each attached instance
+- [x] Test: respects instance-level override narrowing write to false
+- [x] Test: inherits definition capabilities when override is null
+- [x] Test: skips instances with missing definitions
 
 #### `assertStationScope()`
 
-- [ ] Test: passes for entity belonging to an attached instance
-- [ ] Test: throws `CONNECTOR_ENTITY_NOT_FOUND` for non-existent entity
-- [ ] Test: throws `STATION_SCOPE_VIOLATION` for cross-station entity
+- [x] Test: passes for entity belonging to an attached instance
+- [x] Test: throws `CONNECTOR_ENTITY_NOT_FOUND` for non-existent entity
+- [x] Test: throws `STATION_SCOPE_VIOLATION` for cross-station entity
 
 #### `resolveEntityCapabilities()`
 
-- [ ] Test: returns capability map keyed by entity ID
-- [ ] Test: returns empty map for station with no instances
+- [x] Test: returns capability map keyed by entity ID
+- [x] Test: returns empty map for station with no instances
 
 ### Phase 3 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run test -- --selectProjects api` — all resolve-capabilities tests pass
-- [ ] No regressions in existing capability tests
+- [x] `npm run type-check` passes
+- [x] `npm run test -- --selectProjects api` — all resolve-capabilities tests pass (17 tests)
+- [x] No regressions in existing capability tests (398 unit tests pass)
 
 ---
 
