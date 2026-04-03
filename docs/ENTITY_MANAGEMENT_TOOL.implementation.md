@@ -673,10 +673,10 @@ Full-stack verification to ensure everything works together.
 
 ### 12.1 Full test suite
 
-- [ ] `npm run test` from repo root — all packages pass
-- [ ] `npm run type-check` from repo root — no errors
-- [ ] `npm run build` from repo root — builds successfully
-- [ ] `npm run lint` from repo root — no new errors
+- [x] `npm run test` from repo root — all packages pass (core: 1126, web: 1322, api: 469 unit + 667 integration)
+- [x] `npm run type-check` from repo root — no errors
+- [x] `npm run build` from repo root — builds successfully
+- [x] `npm run lint` from repo root — 0 errors (96 pre-existing warnings)
 
 ### 12.2 Manual smoke test (optional)
 
@@ -692,7 +692,7 @@ Full-stack verification to ensure everything works together.
 
 ### 12.3 Confirm no regressions
 
-- [ ] Existing portal sessions without `entity_management` work as before
-- [ ] Existing REST API endpoints (entity CRUD, field mapping CRUD, etc.) work as before
-- [ ] CSV import still sets `origin: "sync"` correctly
-- [ ] Manual record creation via UI still sets `origin: "manual"` correctly
+- [x] Existing portal sessions without `entity_management` work as before
+- [x] Existing REST API endpoints (entity CRUD, field mapping CRUD, etc.) work as before
+- [x] CSV import still sets `origin: "sync"` correctly
+- [x] Manual record creation via UI still sets `origin: "manual"` correctly
