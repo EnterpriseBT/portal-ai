@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { ConnectorEntityModelFactory } from "@portalai/core/models";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
 import { resolveCapabilities } from "../utils/resolve-capabilities.util.js";
@@ -50,15 +51,16 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
             return { error: "Cannot create entity — the connector instance does not have write capability enabled" };
           }
 
-          const result = await DbService.repository.connectorEntities.upsertByKey({
+          const factory = new ConnectorEntityModelFactory();
+          const model = factory.create(userId);
+          model.update({
             organizationId: instance.organizationId,
             connectorInstanceId,
             key,
             label,
-            createdBy: userId,
-            created: Date.now(),
-          } as never);
+          });
 
+          const result = await DbService.repository.connectorEntities.upsertByKey(model.parse());
           onMutation?.();
           return { success: true, connectorEntityId: result.id };
         } catch (err: unknown) {

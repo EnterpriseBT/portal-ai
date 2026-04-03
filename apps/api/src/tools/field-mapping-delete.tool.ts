@@ -17,7 +17,7 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -26,7 +26,7 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
           const { fieldMappingId } = this.validate(input);
 
           const mapping = await DbService.repository.fieldMappings.findById(fieldMappingId);
-          if (!mapping) {
+          if (!mapping || mapping.organizationId !== organizationId) {
             return { error: "Field mapping not found" };
           }
 

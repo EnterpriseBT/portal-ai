@@ -4,7 +4,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockAssertStationScope = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockFindById = jest.fn<() => Promise<unknown>>().mockResolvedValue({
-  id: "fm-1", connectorEntityId: "ce-1", sourceField: "Name",
+  id: "fm-1", connectorEntityId: "ce-1", organizationId: "org-1", sourceField: "Name",
 });
 const mockUpdate = jest.fn<() => Promise<unknown>>().mockResolvedValue({ id: "fm-1" });
 
@@ -22,7 +22,7 @@ beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { fieldMappingId: string; sourceField?: string; isPrimaryKey?: boolean }
 const exec = (input: Input, onMutation?: () => void) =>
-  new FieldMappingUpdateTool().build("station-1", "user-1", onMutation)
+  new FieldMappingUpdateTool().build("station-1", "org-1", "user-1", onMutation)
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("FieldMappingUpdateTool", () => {

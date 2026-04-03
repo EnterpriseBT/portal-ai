@@ -2,13 +2,14 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockValidateDelete = jest.fn<any>().mockResolvedValue(undefined);
+const mockFindById = jest.fn<any>().mockResolvedValue({ id: "cd-1", organizationId: "org-1" });
 const mockSoftDelete = jest.fn<any>().mockResolvedValue({ id: "cd-1" });
 
 jest.unstable_mockModule("../../services/column-definition-validation.service.js", () => ({
   ColumnDefinitionValidationService: { validateDelete: mockValidateDelete },
 }));
 jest.unstable_mockModule("../../services/db.service.js", () => ({
-  DbService: { repository: { columnDefinitions: { softDelete: mockSoftDelete } } },
+  DbService: { repository: { columnDefinitions: { findById: mockFindById, softDelete: mockSoftDelete } } },
 }));
 
 const { ColumnDefinitionDeleteTool } = await import("../../tools/column-definition-delete.tool.js");
@@ -17,7 +18,7 @@ beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { columnDefinitionId: string }
 const exec = (input: Input, onMutation?: () => void) =>
-  new ColumnDefinitionDeleteTool().build("user-1", onMutation)
+  new ColumnDefinitionDeleteTool().build("org-1", "user-1", onMutation)
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("ColumnDefinitionDeleteTool", () => {

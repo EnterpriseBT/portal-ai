@@ -16,13 +16,19 @@ export class ColumnDefinitionDeleteTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(userId: string, onMutation?: () => void) {
+  build(organizationId: string, userId: string, onMutation?: () => void) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
         try {
           const { columnDefinitionId } = this.validate(input);
+
+          const existing = await DbService.repository.columnDefinitions.findById(columnDefinitionId);
+          if (!existing || existing.organizationId !== organizationId) {
+            return { error: "Column definition not found" };
+          }
+
           await ColumnDefinitionValidationService.validateDelete(columnDefinitionId);
           await DbService.repository.columnDefinitions.softDelete(columnDefinitionId, userId);
           onMutation?.();

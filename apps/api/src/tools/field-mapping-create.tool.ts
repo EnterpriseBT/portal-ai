@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { FieldMappingModelFactory } from "@portalai/core/models";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 
 const InputSchema = z.object({
@@ -19,7 +20,7 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -30,26 +31,29 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
           await assertWriteCapability(connectorEntityId);
 
           const colDef = await DbService.repository.columnDefinitions.findById(columnDefinitionId);
-          if (!colDef) {
+          if (!colDef || colDef.organizationId !== organizationId) {
             return { error: "Column definition not found" };
           }
 
-          const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
-
-          const result = await DbService.repository.fieldMappings.upsertByEntityAndColumn({
+          const factory = new FieldMappingModelFactory();
+          const model = factory.create(userId);
+          model.update({
+            organizationId,
             connectorEntityId,
             columnDefinitionId,
             sourceField,
             isPrimaryKey: isPrimaryKey ?? false,
-            organizationId: entity!.organizationId,
-            createdBy: userId,
-            created: Date.now(),
-          } as any);
+            refColumnDefinitionId: null,
+            refEntityKey: null,
+            refBidirectionalFieldMappingId: null,
+          });
 
+          const result = await DbService.repository.fieldMappings.upsertByEntityAndColumn(model.parse());
           onMutation?.();
           return { success: true, fieldMappingId: result.id };
-        } catch (err: any) {
-          return { error: err.message ?? "Failed to create field mapping" };
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Failed to create field mapping";
+          return { error: message };
         }
       },
     });

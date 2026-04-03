@@ -18,7 +18,7 @@ export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(userId: string, onMutation?: () => void) {
+  build(organizationId: string, userId: string, onMutation?: () => void) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -27,7 +27,7 @@ export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
           const { columnDefinitionId, ...fields } = this.validate(input);
 
           const existing = await DbService.repository.columnDefinitions.findById(columnDefinitionId);
-          if (!existing) {
+          if (!existing || existing.organizationId !== organizationId) {
             return { error: "Column definition not found" };
           }
 

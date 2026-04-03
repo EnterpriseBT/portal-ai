@@ -116,6 +116,9 @@ describe("buildSystemPrompt — entity management notes", () => {
 
     expect(prompt).toContain("## Entity Management Notes");
     expect(prompt).toContain("origin");
+    expect(prompt).toContain("_column_definitions");
+    expect(prompt).toContain("_field_mappings");
+    expect(prompt).toContain("field_mapping_create");
   });
 
   it('omits "Entity Management Notes" when entity_management not in toolPacks', () => {

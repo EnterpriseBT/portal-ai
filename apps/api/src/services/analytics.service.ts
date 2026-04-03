@@ -294,7 +294,37 @@ export class AnalyticsService {
       }
     }
 
-    // 5. Entity Group discovery
+    // 5. Load org-level metadata tables (column definitions, field mappings)
+    const allColumnDefs = await repo.columnDefinitions.findByOrganizationId(organizationId);
+    alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_column_definitions]");
+    if (allColumnDefs.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_column_definitions] SELECT * FROM ?`, [
+        allColumnDefs.map((cd: Record<string, unknown>) => ({
+          id: cd.id,
+          key: cd.key,
+          label: cd.label,
+          type: cd.type,
+          required: cd.required,
+          description: cd.description,
+        })),
+      ]);
+    }
+
+    const allFieldMappings = [...fieldMappingsByEntity.values()].flat();
+    alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_field_mappings]");
+    if (allFieldMappings.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_field_mappings] SELECT * FROM ?`, [
+        allFieldMappings.map((fm: Record<string, unknown>) => ({
+          id: fm.id,
+          connector_entity_id: fm.connectorEntityId,
+          column_definition_id: fm.columnDefinitionId,
+          source_field: fm.sourceField,
+          is_primary_key: fm.isPrimaryKey,
+        })),
+      ]);
+    }
+
+    // 6. Entity Group discovery
     const entityGroups = await this.discoverEntityGroups(
       allEntities,
       fieldMappingsByEntity

@@ -3,12 +3,12 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { ColumnDefinitionModelFactory, ColumnDataTypeEnum } from "@portalai/core/models";
 
 const InputSchema = z.object({
-  organizationId: z.string().describe("The organization ID"),
   key: z.string().min(1).describe("Unique key for the column definition"),
   label: z.string().min(1).describe("Display label"),
-  type: z.string().min(1).describe("Column data type (e.g. text, number, boolean)"),
+  type: ColumnDataTypeEnum.describe("Column data type (string, number, boolean, date, datetime, enum, json, array, currency)"),
   required: z.boolean().optional().describe("Whether the column is required"),
   enumValues: z.array(z.string()).optional().describe("Allowed values for enum columns"),
   description: z.string().optional().describe("Column description"),
@@ -29,22 +29,26 @@ export class ColumnDefinitionCreateTool extends Tool<typeof InputSchema> {
         try {
           const validated = this.validate(input);
 
-          const result = await DbService.repository.columnDefinitions.upsertByKey({
+          const factory = new ColumnDefinitionModelFactory();
+          const model = factory.create(userId);
+          model.update({
             organizationId,
             key: validated.key,
             label: validated.label,
             type: validated.type,
             required: validated.required ?? false,
+            defaultValue: null,
+            format: null,
             enumValues: validated.enumValues ?? null,
             description: validated.description ?? null,
-            createdBy: userId,
-            created: Date.now(),
-          } as any);
+          });
 
+          const result = await DbService.repository.columnDefinitions.upsertByKey(model.parse());
           onMutation?.();
           return { success: true, columnDefinitionId: result.id };
-        } catch (err: any) {
-          return { error: err.message ?? "Failed to create column definition" };
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Failed to create column definition";
+          return { error: message };
         }
       },
     });

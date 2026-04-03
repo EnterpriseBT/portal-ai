@@ -3,8 +3,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockFindColDef = jest.fn<any>().mockResolvedValue({ id: "cd-1" });
-const mockFindEntity = jest.fn<any>().mockResolvedValue({ id: "ce-1", organizationId: "org-1" });
+const mockFindColDef = jest.fn<any>().mockResolvedValue({ id: "cd-1", organizationId: "org-1" });
 const mockUpsert = jest.fn<any>().mockResolvedValue({ id: "fm-1" });
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
@@ -15,7 +14,6 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       columnDefinitions: { findById: mockFindColDef },
-      connectorEntities: { findById: mockFindEntity },
       fieldMappings: { upsertByEntityAndColumn: mockUpsert },
     },
   },
@@ -27,7 +25,7 @@ beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { connectorEntityId: string; columnDefinitionId: string; sourceField: string; isPrimaryKey?: boolean }
 const exec = (input: Input, onMutation?: () => void) =>
-  new FieldMappingCreateTool().build("station-1", "user-1", onMutation)
+  new FieldMappingCreateTool().build("station-1", "org-1", "user-1", onMutation)
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("FieldMappingCreateTool", () => {

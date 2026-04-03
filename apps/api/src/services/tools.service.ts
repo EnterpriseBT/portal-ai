@@ -255,18 +255,18 @@ export class ToolService {
       const hasWrite = stationCaps.some((sc) => sc.capabilities.write);
 
       if (hasWrite) {
-        tools.entity_record_create = new EntityRecordCreateTool().build(stationId, userId, onDataMutation);
+        tools.entity_record_create = new EntityRecordCreateTool().build(stationId, organizationId, userId, onDataMutation);
         tools.entity_record_update = new EntityRecordUpdateTool().build(stationId, userId, onDataMutation);
         tools.entity_record_delete = new EntityRecordDeleteTool().build(stationId, userId, onDataMutation);
         tools.connector_entity_create = new ConnectorEntityCreateTool().build(stationId, userId, onDataMutation);
         tools.connector_entity_update = new ConnectorEntityUpdateTool().build(stationId, userId, onDataMutation);
         tools.connector_entity_delete = new ConnectorEntityDeleteTool().build(stationId, userId, onDataMutation);
         tools.column_definition_create = new ColumnDefinitionCreateTool().build(organizationId, userId, onDataMutation);
-        tools.column_definition_update = new ColumnDefinitionUpdateTool().build(userId, onDataMutation);
-        tools.column_definition_delete = new ColumnDefinitionDeleteTool().build(userId, onDataMutation);
-        tools.field_mapping_create = new FieldMappingCreateTool().build(stationId, userId, onDataMutation);
-        tools.field_mapping_update = new FieldMappingUpdateTool().build(stationId, userId, onDataMutation);
-        tools.field_mapping_delete = new FieldMappingDeleteTool().build(stationId, userId, onDataMutation);
+        tools.column_definition_update = new ColumnDefinitionUpdateTool().build(organizationId, userId, onDataMutation);
+        tools.column_definition_delete = new ColumnDefinitionDeleteTool().build(organizationId, userId, onDataMutation);
+        tools.field_mapping_create = new FieldMappingCreateTool().build(stationId, organizationId, userId, onDataMutation);
+        tools.field_mapping_update = new FieldMappingUpdateTool().build(stationId, organizationId, userId, onDataMutation);
+        tools.field_mapping_delete = new FieldMappingDeleteTool().build(stationId, organizationId, userId, onDataMutation);
       }
     }
 

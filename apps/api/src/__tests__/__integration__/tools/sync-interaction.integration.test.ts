@@ -161,7 +161,7 @@ describe("Sync-after-mutation interaction", () => {
     const s = await seedStation(db);
 
     // Create a portal record (UUID sourceId)
-    const tool = new EntityRecordCreateTool().build(s.stationId, s.userId);
+    const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
     const result = await tool.execute!(
       { connectorEntityId: s.connectorEntityId, data: { Name: "Portal User" } },
       toolOpts,

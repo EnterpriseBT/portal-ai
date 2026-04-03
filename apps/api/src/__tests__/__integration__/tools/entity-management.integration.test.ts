@@ -253,7 +253,7 @@ describe("Entity management tool integration", () => {
   describe("entity_record_create", () => {
     it("creates record in DB with origin portal and auto-generated normalizedData", async () => {
       const s = await seed(db);
-      const tool = new EntityRecordCreateTool().build(s.stationId, s.userId);
+      const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
 
       const result = await tool.execute!(
         { connectorEntityId: s.connectorEntityId, data: { Name: "Jane" } },
@@ -274,7 +274,7 @@ describe("Entity management tool integration", () => {
       const s = await seed(db, {
         definitionOverrides: { capabilityFlags: { sync: true, query: true, write: false } },
       });
-      const tool = new EntityRecordCreateTool().build(s.stationId, s.userId);
+      const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
 
       const result = await tool.execute!(
         { connectorEntityId: s.connectorEntityId, data: { Name: "X" } },
@@ -299,7 +299,7 @@ describe("Entity management tool integration", () => {
       const otherStation = createStation(s.organizationId);
       await db.insert(stations).values(otherStation as never);
 
-      const tool = new EntityRecordCreateTool().build(otherStation.id, s.userId);
+      const tool = new EntityRecordCreateTool().build(otherStation.id, s.organizationId, s.userId);
 
       const result = await tool.execute!(
         { connectorEntityId: s.connectorEntityId, data: { Name: "X" } },
@@ -316,7 +316,7 @@ describe("Entity management tool integration", () => {
     it("updates record data and normalizedData in DB", async () => {
       const s = await seed(db);
       // Create a record first
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.userId);
+      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       const created = await createTool.execute!(
         { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
         toolOpts,
@@ -339,7 +339,7 @@ describe("Entity management tool integration", () => {
 
     it("rejects update on record from different entity", async () => {
       const s = await seed(db);
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.userId);
+      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       const created = await createTool.execute!(
         { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
         toolOpts,
@@ -364,7 +364,7 @@ describe("Entity management tool integration", () => {
   describe("entity_record_delete", () => {
     it("soft-deletes record — deleted timestamp set, invisible to queries", async () => {
       const s = await seed(db);
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.userId);
+      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       const created = await createTool.execute!(
         { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
         toolOpts,
@@ -396,7 +396,7 @@ describe("Entity management tool integration", () => {
     it("cascade deletes all dependents in transaction", async () => {
       const s = await seed(db);
       // Create a record so cascades have something to delete
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.userId);
+      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       await createTool.execute!(
         { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
         toolOpts,
@@ -455,13 +455,13 @@ describe("Entity management tool integration", () => {
     it("blocks when entity has records — error with record count", async () => {
       const s = await seed(db);
       // Create a record so the entity has records
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.userId);
+      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       await createTool.execute!(
         { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
         toolOpts,
       );
 
-      const tool = new FieldMappingDeleteTool().build(s.stationId, s.userId);
+      const tool = new FieldMappingDeleteTool().build(s.stationId, s.organizationId, s.userId);
       const result = await tool.execute!(
         { fieldMappingId: s.fieldMappingId },
         toolOpts,
@@ -474,7 +474,7 @@ describe("Entity management tool integration", () => {
     it("succeeds and cascades when entity has no records", async () => {
       const s = await seed(db);
 
-      const tool = new FieldMappingDeleteTool().build(s.stationId, s.userId);
+      const tool = new FieldMappingDeleteTool().build(s.stationId, s.organizationId, s.userId);
       const result = await tool.execute!(
         { fieldMappingId: s.fieldMappingId },
         toolOpts,
@@ -490,7 +490,7 @@ describe("Entity management tool integration", () => {
     it("blocks when field mappings reference it", async () => {
       const s = await seed(db);
 
-      const tool = new ColumnDefinitionDeleteTool().build(s.userId);
+      const tool = new ColumnDefinitionDeleteTool().build(s.organizationId, s.userId);
       const result = await tool.execute!(
         { columnDefinitionId: s.columnDefinitionId },
         toolOpts,
@@ -505,7 +505,7 @@ describe("Entity management tool integration", () => {
       const orphanCol = createColumnDef(s.organizationId, "orphan_col", "string");
       await db.insert(columnDefinitions).values(orphanCol as never);
 
-      const tool = new ColumnDefinitionDeleteTool().build(s.userId);
+      const tool = new ColumnDefinitionDeleteTool().build(s.organizationId, s.userId);
       const result = await tool.execute!(
         { columnDefinitionId: orphanCol.id },
         toolOpts,

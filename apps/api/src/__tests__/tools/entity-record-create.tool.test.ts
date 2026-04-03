@@ -5,7 +5,6 @@ const mockAssertStationScope = jest.fn<(...a: unknown[]) => Promise<void>>().moc
 const mockAssertWriteCapability = jest.fn<(...a: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
 const mockNormalize = jest.fn<(...a: unknown[]) => Promise<Record<string, unknown>>>().mockResolvedValue({ name: "Jane" });
 const mockCreate = jest.fn<(...a: unknown[]) => Promise<unknown>>().mockResolvedValue({ id: "rec-1" });
-const mockFindEntityById = jest.fn<(...a: unknown[]) => Promise<unknown>>().mockResolvedValue({ organizationId: "org-1" });
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,
@@ -18,7 +17,6 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       entityRecords: { create: mockCreate },
-      connectorEntities: { findById: mockFindEntityById },
     },
   },
 }));
@@ -29,7 +27,7 @@ beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { connectorEntityId: string; sourceId?: string; data: Record<string, unknown> }
 const exec = (input: Input, onMutation?: () => void) =>
-  new EntityRecordCreateTool().build("station-1", "user-1", onMutation)
+  new EntityRecordCreateTool().build("station-1", "org-1", "user-1", onMutation)
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("EntityRecordCreateTool", () => {

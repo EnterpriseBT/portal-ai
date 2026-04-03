@@ -83,6 +83,14 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "Prefer creating new records over modifying synced ones when possible."
     );
     lines.push("");
+    lines.push(
+      "Metadata tables `_column_definitions` and `_field_mappings` are " +
+      "available via sql_query. Use them to look up existing column definition " +
+      "IDs before creating new ones. To add a new field mapping, either find " +
+      "an existing column definition ID from `_column_definitions` or create " +
+      "one with column_definition_create, then call field_mapping_create."
+    );
+    lines.push("");
   }
 
   return lines.join("\n");

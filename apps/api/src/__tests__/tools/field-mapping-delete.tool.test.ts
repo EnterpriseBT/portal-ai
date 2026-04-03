@@ -3,7 +3,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockFindById = jest.fn<any>().mockResolvedValue({ id: "fm-1", connectorEntityId: "ce-1" });
+const mockFindById = jest.fn<any>().mockResolvedValue({ id: "fm-1", connectorEntityId: "ce-1", organizationId: "org-1" });
 const mockValidateDelete = jest.fn<any>().mockResolvedValue(undefined);
 const mockExecuteDelete = jest.fn<any>().mockResolvedValue({ cascadedEntityGroupMembers: 2, bidirectionalCleared: true });
 
@@ -24,7 +24,7 @@ beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { fieldMappingId: string }
 const exec = (input: Input, onMutation?: () => void) =>
-  new FieldMappingDeleteTool().build("station-1", "user-1", onMutation)
+  new FieldMappingDeleteTool().build("station-1", "org-1", "user-1", onMutation)
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("FieldMappingDeleteTool", () => {

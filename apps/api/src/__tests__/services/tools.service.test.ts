@@ -32,6 +32,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         findByEntityGroupId: mockFindByEntityGroupId,
       },
       entityGroups: { findById: mockFindById_group },
+      columnDefinitions: { findByOrganizationId: jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]) },
       stationTools: { findByStationId: mockFindByStationId_tools },
     },
   },

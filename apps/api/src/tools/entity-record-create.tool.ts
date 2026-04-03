@@ -21,7 +21,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -36,7 +36,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
           const factory = new EntityRecordModelFactory();
           const model = factory.create(userId);
           model.update({
-            organizationId: (await DbService.repository.connectorEntities.findById(connectorEntityId))!.organizationId,
+            organizationId,
             connectorEntityId,
             data,
             normalizedData,

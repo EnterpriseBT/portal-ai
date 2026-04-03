@@ -1,7 +1,7 @@
 /* global AbortController */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
-const mockFindById = jest.fn<any>().mockResolvedValue({ id: "cd-1", key: "email", type: "text" });
+const mockFindById = jest.fn<any>().mockResolvedValue({ id: "cd-1", key: "email", type: "text", organizationId: "org-1" });
 const mockUpdate = jest.fn<any>().mockResolvedValue({ id: "cd-1" });
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -14,7 +14,7 @@ beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { columnDefinitionId: string; label?: string; description?: string | null; enumValues?: string[] | null }
 const exec = (input: Input, onMutation?: () => void) =>
-  new ColumnDefinitionUpdateTool().build("user-1", onMutation)
+  new ColumnDefinitionUpdateTool().build("org-1", "user-1", onMutation)
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("ColumnDefinitionUpdateTool", () => {
