@@ -41,6 +41,9 @@ export interface ColumnSchema {
   key: string;
   label: string;
   type: string;
+  columnDefinitionId: string;
+  fieldMappingId: string;
+  sourceField: string;
 }
 
 export interface EntitySchema {
@@ -260,6 +263,9 @@ export class AnalyticsService {
           key: m.columnDefinition.key,
           label: m.columnDefinition.label,
           type: m.columnDefinition.type,
+          columnDefinitionId: m.columnDefinitionId,
+          fieldMappingId: m.id,
+          sourceField: m.sourceField,
         }));
 
       entities.push({

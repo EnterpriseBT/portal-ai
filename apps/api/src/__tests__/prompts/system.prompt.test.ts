@@ -16,8 +16,8 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
         label: "Contacts",
         connectorInstanceId: "ci-1",
         columns: [
-          { key: "name", type: "text", label: "Name" },
-          { key: "email", type: "text", label: "Email" },
+          { key: "name", type: "text", label: "Name", columnDefinitionId: "cd-1", fieldMappingId: "fm-1", sourceField: "Full Name" },
+          { key: "email", type: "text", label: "Email", columnDefinitionId: "cd-2", fieldMappingId: "fm-2", sourceField: "Email Address" },
         ],
       },
       {
@@ -26,7 +26,7 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
         label: "Orders",
         connectorInstanceId: "ci-1",
         columns: [
-          { key: "total", type: "number", label: "Total" },
+          { key: "total", type: "number", label: "Total", columnDefinitionId: "cd-3", fieldMappingId: "fm-3", sourceField: "Order Total" },
         ],
       },
     ],
@@ -51,13 +51,15 @@ describe("buildSystemPrompt — entityCapabilities", () => {
       }),
     );
 
-    expect(prompt).toContain("### Contacts (`contacts`) [read, write]");
-    expect(prompt).toContain("### Orders (`orders`) [read, write]");
+    expect(prompt).toContain("[read, write]");
+    expect(prompt).toContain("Contacts (`contacts`)");
+    expect(prompt).toContain("Orders (`orders`)");
   });
 
   it("renders [read] for read-only entities", () => {
     const prompt = buildSystemPrompt(
       makeContext({
+        toolPacks: ["entity_management"],
         entityCapabilities: {
           "entity-1": { read: true, write: false },
           "entity-2": { read: true, write: true },
@@ -65,15 +67,44 @@ describe("buildSystemPrompt — entityCapabilities", () => {
       }),
     );
 
-    expect(prompt).toContain("### Contacts (`contacts`) [read]");
-    expect(prompt).toContain("### Orders (`orders`) [read, write]");
+    expect(prompt).toContain("Contacts (`contacts`) [connectorEntityId: entity-1] [read]");
+    expect(prompt).toContain("Orders (`orders`) [connectorEntityId: entity-2] [read, write]");
   });
 
-  it("omits flags when entityCapabilities is undefined", () => {
+  it("omits capability flags when entityCapabilities is undefined", () => {
     const prompt = buildSystemPrompt(makeContext());
 
     expect(prompt).toContain("### Contacts (`contacts`)");
     expect(prompt).not.toContain("[read");
+  });
+});
+
+describe("buildSystemPrompt — entity management IDs", () => {
+  it("renders connectorEntityId in heading when entity_management is in toolPacks", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["entity_management"] }),
+    );
+
+    expect(prompt).toContain("[connectorEntityId: entity-1]");
+    expect(prompt).toContain("[connectorEntityId: entity-2]");
+  });
+
+  it("renders columnDefinitionId, fieldMappingId, sourceField per column", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["entity_management"] }),
+    );
+
+    expect(prompt).toContain("[columnDefinitionId: cd-1, fieldMappingId: fm-1, sourceField: \"Full Name\"]");
+    expect(prompt).toContain("[columnDefinitionId: cd-3, fieldMappingId: fm-3, sourceField: \"Order Total\"]");
+  });
+
+  it("omits IDs when entity_management is not in toolPacks", () => {
+    const prompt = buildSystemPrompt(makeContext());
+
+    expect(prompt).not.toContain("connectorEntityId:");
+    expect(prompt).not.toContain("columnDefinitionId:");
+    expect(prompt).not.toContain("fieldMappingId:");
+    expect(prompt).not.toContain("sourceField:");
   });
 });
 

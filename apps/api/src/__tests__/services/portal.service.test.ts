@@ -115,8 +115,8 @@ const ENTITIES = [
     label: "Customers",
     connectorInstanceId: "ci-1",
     columns: [
-      { key: "id", label: "ID", type: "string" },
-      { key: "revenue", label: "Revenue", type: "number" },
+      { key: "id", label: "ID", type: "string", columnDefinitionId: "cd-1", fieldMappingId: "fm-1", sourceField: "ID" },
+      { key: "revenue", label: "Revenue", type: "number", columnDefinitionId: "cd-2", fieldMappingId: "fm-2", sourceField: "Revenue" },
     ],
   },
   {
@@ -124,7 +124,7 @@ const ENTITIES = [
     key: "orders",
     label: "Orders",
     connectorInstanceId: "ci-1",
-    columns: [{ key: "customer_id", label: "Customer ID", type: "string" }],
+    columns: [{ key: "customer_id", label: "Customer ID", type: "string", columnDefinitionId: "cd-3", fieldMappingId: "fm-3", sourceField: "Customer ID" }],
   },
 ];
 

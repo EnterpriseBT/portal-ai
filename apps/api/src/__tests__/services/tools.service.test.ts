@@ -112,7 +112,7 @@ const FIELD_MAPPINGS_MAP = new Map<string, unknown[]>([
   [
     "ent-1",
     [
-      { id: "fm-1", connectorEntityId: "ent-1", columnDefinitionId: "cd-1", columnDefinition: { key: "name", label: "Name", type: "string" } },
+      { id: "fm-1", connectorEntityId: "ent-1", columnDefinitionId: "cd-1", sourceField: "Name", columnDefinition: { key: "name", label: "Name", type: "string" } },
     ],
   ],
 ]);
@@ -443,7 +443,7 @@ describe("buildAnalyticsTools()", () => {
   // Pack: entity_management
   // -----------------------------------------------------------------------
 
-  it("should register only read tools when no instances have write capability", async () => {
+  it("should not register write tools when no instances have write capability", async () => {
     setupStationMocks(["entity_management"]);
     mockResolveStationCapabilities.mockResolvedValue([
       { connectorInstanceId: "ci-1", capabilities: { read: true, write: false } },
@@ -451,16 +451,15 @@ describe("buildAnalyticsTools()", () => {
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
-    expect(tools.entity_list).toBeDefined();
-    expect(tools.entity_record_list).toBeDefined();
-    // Write tools should NOT be registered
     expect(tools.entity_record_create).toBeUndefined();
+    expect(tools.connector_entity_create).toBeUndefined();
     expect(tools.connector_entity_update).toBeUndefined();
     expect(tools.column_definition_create).toBeUndefined();
     expect(tools.field_mapping_create).toBeUndefined();
+    expect(tools.field_mapping_update).toBeUndefined();
   });
 
-  it("should register read + write tools (all 12) when any instance has write", async () => {
+  it("should register all 12 write tools when any instance has write", async () => {
     setupStationMocks(["entity_management"]);
     mockResolveStationCapabilities.mockResolvedValue([
       { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
@@ -468,19 +467,17 @@ describe("buildAnalyticsTools()", () => {
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
-    // Read tools
-    expect(tools.entity_list).toBeDefined();
-    expect(tools.entity_record_list).toBeDefined();
-    // Write tools
     expect(tools.entity_record_create).toBeDefined();
     expect(tools.entity_record_update).toBeDefined();
     expect(tools.entity_record_delete).toBeDefined();
+    expect(tools.connector_entity_create).toBeDefined();
     expect(tools.connector_entity_update).toBeDefined();
     expect(tools.connector_entity_delete).toBeDefined();
     expect(tools.column_definition_create).toBeDefined();
     expect(tools.column_definition_update).toBeDefined();
     expect(tools.column_definition_delete).toBeDefined();
     expect(tools.field_mapping_create).toBeDefined();
+    expect(tools.field_mapping_update).toBeDefined();
     expect(tools.field_mapping_delete).toBeDefined();
   });
 
@@ -489,9 +486,8 @@ describe("buildAnalyticsTools()", () => {
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
-    expect(tools.entity_list).toBeUndefined();
-    expect(tools.entity_record_list).toBeUndefined();
     expect(tools.entity_record_create).toBeUndefined();
+    expect(tools.field_mapping_delete).toBeUndefined();
   });
 
   it("should throw when custom tool name shadows a pack tool name", async () => {

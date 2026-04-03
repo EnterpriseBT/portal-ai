@@ -27,6 +27,9 @@ export function buildSystemPrompt(stationContext: StationContext): string {
 
   for (const entity of stationContext.entities) {
     let heading = `### ${entity.label} (\`${entity.key}\`)`;
+    if (stationContext.toolPacks.includes("entity_management")) {
+      heading += ` [connectorEntityId: ${entity.id}]`;
+    }
     if (stationContext.entityCapabilities) {
       const caps = stationContext.entityCapabilities[entity.id];
       if (caps) {
@@ -36,8 +39,13 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     }
     lines.push(heading);
     lines.push("Columns:");
+    const hasEntityMgmt = stationContext.toolPacks.includes("entity_management");
     for (const col of entity.columns) {
-      lines.push(`  - \`${col.key}\` (${col.type}): ${col.label}`);
+      let line = `  - \`${col.key}\` (${col.type}): ${col.label}`;
+      if (hasEntityMgmt) {
+        line += ` [columnDefinitionId: ${col.columnDefinitionId}, fieldMappingId: ${col.fieldMappingId}, sourceField: "${col.sourceField}"]`;
+      }
+      lines.push(line);
     }
     lines.push("");
   }
