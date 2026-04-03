@@ -27,6 +27,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
       list: () => currentFieldMappingListQuery,
       create: () => noopMutation,
       update: () => noopMutation,
+      delete: () => noopMutation,
+      impact: () => ({ data: null, isLoading: false }),
     },
   },
   queryKeys: {

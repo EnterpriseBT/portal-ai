@@ -359,7 +359,7 @@ describe("EntityDetailViewUI — New Record button", () => {
     mockFieldMappingsValidate.mockReturnValue({ data: undefined });
   });
 
-  it("shows New Record button when isWriteEnabled and columns exist", () => {
+  it("shows New Record button when isWriteEnabled and columns exist", async () => {
     render(
       <EntityDetailViewUI
         entity={stubEntity}
@@ -370,7 +370,7 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    expect(screen.getByRole("button", { name: "New Record" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Create" })).toBeInTheDocument();
   });
 
   it("hides New Record button when isWriteEnabled is false", () => {
@@ -384,7 +384,7 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    expect(screen.queryByRole("button", { name: "New Record" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
   });
 
   it("hides New Record button when no columns defined", () => {
@@ -399,7 +399,7 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    expect(screen.queryByRole("button", { name: "New Record" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
   });
 
   it("opens CreateEntityRecordDialog on New Record click", async () => {
@@ -414,7 +414,7 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    await userEvent.click(screen.getByRole("button", { name: "New Record" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Create" }));
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
