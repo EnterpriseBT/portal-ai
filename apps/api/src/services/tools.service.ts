@@ -34,6 +34,19 @@ import { MaxDrawdownTool } from "../tools/max-drawdown.tool.js";
 import { RollingReturnsTool } from "../tools/rolling-returns.tool.js";
 import { WebSearchTool } from "../tools/web-search.tool.js";
 import { WebhookTool } from "../tools/webhook.tool.js";
+import { EntityListTool } from "../tools/entity-list.tool.js";
+import { EntityRecordListTool } from "../tools/entity-record-list.tool.js";
+import { EntityRecordCreateTool } from "../tools/entity-record-create.tool.js";
+import { EntityRecordUpdateTool } from "../tools/entity-record-update.tool.js";
+import { EntityRecordDeleteTool } from "../tools/entity-record-delete.tool.js";
+import { ConnectorEntityUpdateTool } from "../tools/connector-entity-update.tool.js";
+import { ConnectorEntityDeleteTool } from "../tools/connector-entity-delete.tool.js";
+import { ColumnDefinitionCreateTool } from "../tools/column-definition-create.tool.js";
+import { ColumnDefinitionUpdateTool } from "../tools/column-definition-update.tool.js";
+import { ColumnDefinitionDeleteTool } from "../tools/column-definition-delete.tool.js";
+import { FieldMappingCreateTool } from "../tools/field-mapping-create.tool.js";
+import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
+import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 
 const logger = createLogger({ module: "tools-service" });
 
@@ -155,8 +168,8 @@ export class ToolService {
   static async buildAnalyticsTools(
     organizationId: string,
     stationId: string,
-    _userId: string,
-    _onDataMutation?: () => void,
+    userId: string,
+    onDataMutation?: () => void,
   ): Promise<Record<string, Tool>> {
     const repo = DbService.repository;
 
@@ -231,6 +244,32 @@ export class ToolService {
     // -------------------------------------------------------------------
     if (enabledPacks.has("web_search")) {
       tools.web_search = new WebSearchTool().build();
+    }
+
+    // -------------------------------------------------------------------
+    // Pack: entity_management
+    // -------------------------------------------------------------------
+    if (enabledPacks.has("entity_management")) {
+      // Read tools — always registered
+      tools.entity_list = new EntityListTool().build(stationId);
+      tools.entity_record_list = new EntityRecordListTool().build(stationId);
+
+      // Write tools — only if any attached instance has write capability
+      const stationCaps = await resolveStationCapabilities(stationId);
+      const hasWrite = stationCaps.some((sc) => sc.capabilities.write);
+
+      if (hasWrite) {
+        tools.entity_record_create = new EntityRecordCreateTool().build(stationId, userId, onDataMutation);
+        tools.entity_record_update = new EntityRecordUpdateTool().build(stationId, userId, onDataMutation);
+        tools.entity_record_delete = new EntityRecordDeleteTool().build(stationId, userId, onDataMutation);
+        tools.connector_entity_update = new ConnectorEntityUpdateTool().build(stationId, userId, onDataMutation);
+        tools.connector_entity_delete = new ConnectorEntityDeleteTool().build(stationId, userId, onDataMutation);
+        tools.column_definition_create = new ColumnDefinitionCreateTool().build(organizationId, userId, onDataMutation);
+        tools.column_definition_update = new ColumnDefinitionUpdateTool().build(userId, onDataMutation);
+        tools.column_definition_delete = new ColumnDefinitionDeleteTool().build(userId, onDataMutation);
+        tools.field_mapping_create = new FieldMappingCreateTool().build(stationId, userId, onDataMutation);
+        tools.field_mapping_delete = new FieldMappingDeleteTool().build(stationId, userId, onDataMutation);
+      }
     }
 
     // -------------------------------------------------------------------

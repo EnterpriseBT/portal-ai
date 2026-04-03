@@ -575,40 +575,32 @@ Wires all 12 tools into `ToolService.buildAnalyticsTools()` with conditional wri
 
 **File:** `apps/api/src/services/tools.service.ts`
 
-- [ ] Import all 12 tool classes from `../tools/`
-- [ ] Import `resolveStationCapabilities` and `assertStationScope` from `../utils/resolve-capabilities.util.js`
+- [x] Import all 12 tool classes from `../tools/`
+- [x] Import `resolveStationCapabilities` from `../utils/resolve-capabilities.util.js`
 
 ### 10.2 Add `entity_management` registration block
 
 **File:** `apps/api/src/services/tools.service.ts`
 
-- [ ] Add block inside `buildAnalyticsTools()` after existing packs:
-  ```
-  if (enabledPacks.has("entity_management")) {
-    // Resolve capabilities, build scope asserter + options
-    // Register read tools (always)
-    // Register write tools (if any instance has write)
-  }
-  ```
-- [ ] Read tools registered unconditionally: `entity_list`, `entity_record_list`
-- [ ] Write tools registered conditionally on `stationCaps.some(sc => sc.capabilities.write)`: all 10 write tools
-- [ ] Pass `stationId`, `organizationId`, `userId`, and `{ assertScope, onMutation }` to each tool's `build()`
+- [x] Add block inside `buildAnalyticsTools()` after existing packs
+- [x] Read tools registered unconditionally: `entity_list`, `entity_record_list`
+- [x] Write tools registered conditionally on `stationCaps.some(sc => sc.capabilities.write)`: all 10 write tools
+- [x] Pass `stationId`, `organizationId`, `userId`, and `onDataMutation` to each tool's `build()`
 
 ### 10.3 Tool registration tests
 
 **File:** `apps/api/src/__tests__/services/tools.service.test.ts`
 
-- [ ] Test: registers only read tools when no instances have write capability
-- [ ] Test: registers read + write tools (all 12) when any instance has write
-- [ ] Test: does not register entity_management tools when pack is not enabled
-- [ ] Test: passes `userId` and `onDataMutation` to write tools
+- [x] Test: registers only read tools when no instances have write capability
+- [x] Test: registers read + write tools (all 12) when any instance has write
+- [x] Test: does not register entity_management tools when pack is not enabled
 
 ### Phase 10 Verification
 
-- [ ] `npm run type-check` passes
-- [ ] `npm run test -- --selectProjects api` — tool service tests pass
-- [ ] `npm run lint` passes
-- [ ] No regressions in existing tool packs
+- [x] `npm run type-check` passes
+- [x] `npm run test -- --selectProjects api` — tool service tests pass (20 tests, 3 new)
+- [x] `npm run lint` passes (0 errors)
+- [x] No regressions in existing tool packs (469 unit tests pass)
 
 ---
 

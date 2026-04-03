@@ -62,6 +62,15 @@ jest.unstable_mockModule("../../environment.js", () => ({
   },
 }));
 
+// Mock resolve-capabilities for entity_management pack
+const mockResolveStationCapabilities = jest.fn<() => Promise<unknown[]>>();
+jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
+  resolveStationCapabilities: mockResolveStationCapabilities,
+  assertStationScope: jest.fn(),
+  assertWriteCapability: jest.fn(),
+  resolveCapabilities: jest.fn(),
+}));
+
 // Mock fetch for webhook tests
 const mockFetch = jest.fn<(url: string, options?: Record<string, any>) => Promise<unknown>>();
 (globalThis as any).fetch = mockFetch;
@@ -428,6 +437,61 @@ describe("buildAnalyticsTools()", () => {
     const result = await (tools.tree_tool as any).execute({});
 
     expect(result).toEqual(vegaSpec);
+  });
+
+  // -----------------------------------------------------------------------
+  // Pack: entity_management
+  // -----------------------------------------------------------------------
+
+  it("should register only read tools when no instances have write capability", async () => {
+    setupStationMocks(["entity_management"]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: false } },
+    ]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.entity_list).toBeDefined();
+    expect(tools.entity_record_list).toBeDefined();
+    // Write tools should NOT be registered
+    expect(tools.entity_record_create).toBeUndefined();
+    expect(tools.connector_entity_update).toBeUndefined();
+    expect(tools.column_definition_create).toBeUndefined();
+    expect(tools.field_mapping_create).toBeUndefined();
+  });
+
+  it("should register read + write tools (all 12) when any instance has write", async () => {
+    setupStationMocks(["entity_management"]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+    ]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    // Read tools
+    expect(tools.entity_list).toBeDefined();
+    expect(tools.entity_record_list).toBeDefined();
+    // Write tools
+    expect(tools.entity_record_create).toBeDefined();
+    expect(tools.entity_record_update).toBeDefined();
+    expect(tools.entity_record_delete).toBeDefined();
+    expect(tools.connector_entity_update).toBeDefined();
+    expect(tools.connector_entity_delete).toBeDefined();
+    expect(tools.column_definition_create).toBeDefined();
+    expect(tools.column_definition_update).toBeDefined();
+    expect(tools.column_definition_delete).toBeDefined();
+    expect(tools.field_mapping_create).toBeDefined();
+    expect(tools.field_mapping_delete).toBeDefined();
+  });
+
+  it("should not register entity_management tools when pack is not enabled", async () => {
+    setupStationMocks(["data_query"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.entity_list).toBeUndefined();
+    expect(tools.entity_record_list).toBeUndefined();
+    expect(tools.entity_record_create).toBeUndefined();
   });
 
   it("should throw when custom tool name shadows a pack tool name", async () => {
