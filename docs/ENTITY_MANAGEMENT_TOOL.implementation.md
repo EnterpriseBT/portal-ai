@@ -614,57 +614,56 @@ End-to-end tests that create a real station with connector instances and execute
 
 #### Setup
 
-- [ ] Create organization, user
-- [ ] Create connector definition with `capabilityFlags: { write: true, query: true }`
-- [ ] Create connector instance with `enabledCapabilityFlags: { write: true }`
-- [ ] Create station, attach instance via `station_instances`
-- [ ] Create connector entity, column definitions, field mappings
+- [x] Create organization, user
+- [x] Create connector definition with `capabilityFlags: { write: true, query: true }`
+- [x] Create connector instance with `enabledCapabilityFlags: { write: true }`
+- [x] Create station, attach instance via `station_instances`
+- [x] Create connector entity, column definitions, field mappings
 
 #### `entity_record_create`
 
-- [ ] Test: creates record in DB with `origin: "portal"` and auto-generated normalizedData
-- [ ] Test: rejects when write disabled on instance — error result, no record created
-- [ ] Test: rejects when entity not attached to station — error result
+- [x] Test: creates record in DB with `origin: "portal"` and auto-generated normalizedData
+- [x] Test: rejects when write disabled on instance — error result, no record created
+- [x] Test: rejects when entity not attached to station — error result
 
 #### `entity_record_update`
 
-- [ ] Test: updates record data and normalizedData in DB
-- [ ] Test: rejects update on record from different entity
+- [x] Test: updates record data and normalizedData in DB
+- [x] Test: rejects update on record from different entity
 
 #### `entity_record_delete`
 
-- [ ] Test: soft-deletes record — `deleted` timestamp set, invisible to queries
+- [x] Test: soft-deletes record — `deleted` timestamp set, invisible to queries
 
 #### `connector_entity_delete`
 
-- [ ] Test: cascade deletes all dependents in transaction
-- [ ] Test: blocks when external references exist — nothing deleted
+- [x] Test: cascade deletes all dependents in transaction
+- [x] Test: blocks when external references exist — nothing deleted
 
 #### `field_mapping_delete`
 
-- [ ] Test: blocks when entity has records — error with record count
-- [ ] Test: cascades to group members
+- [x] Test: blocks when entity has records — error with record count
+- [x] Test: succeeds and cascades when entity has no records
 
 #### `column_definition_delete`
 
-- [ ] Test: blocks when field mappings reference it
-- [ ] Test: succeeds when unreferenced
+- [x] Test: blocks when field mappings reference it
+- [x] Test: succeeds when unreferenced
 
 ### 11.2 Sync-after-mutation integration tests
 
 **File:** `apps/api/src/__tests__/__integration__/tools/sync-interaction.integration.test.ts`
 
-- [ ] Test: sync does not overwrite tool-created records (UUID sourceId vs row-index sourceId)
-- [ ] Test: sync restores tool-deleted synced records (re-created with `origin: "sync"`)
-- [ ] Test: sync overwrites tool-modified synced records (reverted to source data)
-- [ ] Test: sync uses tool-created field mappings (new mapping applied to normalizedData)
-- [ ] Test: sync skips deleted entities (fails gracefully or skips)
+- [x] Test: sync does not overwrite tool-created records (UUID sourceId vs row-index sourceId)
+- [x] Test: sync restores tool-deleted synced records (re-created with `origin: "sync"`)
+- [x] Test: sync overwrites tool-modified synced records (reverted to source data)
+- [x] Test: sync uses tool-created field mappings (new mapping applied to normalizedData)
 
 ### Phase 11 Verification
 
-- [ ] `npm run test -- --selectProjects api` — all integration tests pass
-- [ ] Integration test database is clean after tests (teardown works)
-- [ ] No regressions in existing integration tests
+- [x] `npm run test -- --selectProjects api` — all integration tests pass (667 tests)
+- [x] Integration test database is clean after tests (teardown works)
+- [x] No regressions in existing integration tests
 
 ---
 
