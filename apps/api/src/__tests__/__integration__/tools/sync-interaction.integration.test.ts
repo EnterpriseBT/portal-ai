@@ -167,7 +167,7 @@ describe("Sync-after-mutation interaction", () => {
       toolOpts,
     ) as Record<string, unknown>;
     expect(result.success).toBe(true);
-    const portalRecordId = result.recordId as string;
+    const portalRecordId = result.entityId as string;
 
     // Simulate a sync by upserting records with row-index sourceIds
     const syncRecord = createSyncRecord(s.organizationId, s.connectorEntityId, "0", { Name: "Synced User" }, { name: "Synced User" });

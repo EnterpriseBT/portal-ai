@@ -261,7 +261,7 @@ describe("Entity management tool integration", () => {
       ) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
-      const recordId = result.recordId as string;
+      const recordId = result.entityId as string;
 
       // Verify in DB
       const rows = await db.select().from(entityRecords).where(eq(entityRecords.id, recordId));
@@ -321,7 +321,7 @@ describe("Entity management tool integration", () => {
         { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
         toolOpts,
       ) as Record<string, unknown>;
-      const recordId = created.recordId as string;
+      const recordId = created.entityId as string;
 
       // Now update
       const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
@@ -351,7 +351,7 @@ describe("Entity management tool integration", () => {
 
       const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
       const result = await updateTool.execute!(
-        { connectorEntityId: otherEntity.id, entityRecordId: created.recordId as string, data: { Name: "X" } },
+        { connectorEntityId: otherEntity.id, entityRecordId: created.entityId as string, data: { Name: "X" } },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -369,7 +369,7 @@ describe("Entity management tool integration", () => {
         { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
         toolOpts,
       ) as Record<string, unknown>;
-      const recordId = created.recordId as string;
+      const recordId = created.entityId as string;
 
       const deleteTool = new EntityRecordDeleteTool().build(s.stationId, s.userId);
       const result = await deleteTool.execute!(
@@ -409,7 +409,7 @@ describe("Entity management tool integration", () => {
       ) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
-      expect(result.cascaded).toBeDefined();
+      expect((result.summary as Record<string, unknown>)?.cascaded).toBeDefined();
     });
 
     it("blocks when external references exist — nothing deleted", async () => {
