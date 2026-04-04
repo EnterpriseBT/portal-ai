@@ -18,13 +18,17 @@ jest.unstable_mockModule("../../services/field-mapping-validation.service.js", (
   FieldMappingValidationService: { validateDelete: mockValidateDelete, executeDelete: mockExecuteDelete },
 }));
 
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyFieldMappingDelete: jest.fn() },
+}));
+
 const { FieldMappingDeleteTool } = await import("../../tools/field-mapping-delete.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { fieldMappingId: string }
-const exec = (input: Input, onMutation?: () => void) =>
-  new FieldMappingDeleteTool().build("station-1", "org-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new FieldMappingDeleteTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("FieldMappingDeleteTool", () => {
@@ -40,12 +44,6 @@ describe("FieldMappingDeleteTool", () => {
     const result: any = await exec({ fieldMappingId: "fm-1" });
     expect(result.error).toBeDefined();
     expect(mockExecuteDelete).not.toHaveBeenCalled();
-  });
-
-  it("calls onMutation after success", async () => {
-    const onMutation = jest.fn();
-    await exec({ fieldMappingId: "fm-1" }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
   });
 
   it("returns error when scope check fails", async () => {

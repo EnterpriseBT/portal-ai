@@ -877,7 +877,6 @@ describe("PortalService", () => {
         ORG_ID,
         STATION_ID,
         "user-001",
-        expect.any(Function),
       );
       expect(capturedTools).toBe(tools);
     });

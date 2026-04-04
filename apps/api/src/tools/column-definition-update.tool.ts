@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 
 const InputSchema = z.object({
   columnDefinitionId: z.string().describe("The column definition ID to update"),
@@ -18,7 +19,7 @@ export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -37,8 +38,13 @@ export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
           if (fields.enumValues !== undefined) updateData.enumValues = fields.enumValues;
 
           await DbService.repository.columnDefinitions.update(columnDefinitionId, updateData as any);
-          await onMutation?.();
-          return {
+          AnalyticsService.applyColumnDefinitionUpdate(stationId, {
+            id: columnDefinitionId, key: existing.key,
+            label: (fields.label ?? existing.label) as string,
+            type: existing.type as string,
+            required: existing.required as boolean,
+            description: (fields.description !== undefined ? fields.description : existing.description) as string | null,
+          });          return {
             success: true,
             operation: "updated",
             entity: "column definition",

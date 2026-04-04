@@ -24,13 +24,17 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyRecordInsert: jest.fn() },
+}));
+
 const { EntityRecordCreateTool } = await import("../../tools/entity-record-create.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { connectorEntityId: string; sourceId?: string; data: Record<string, unknown> }
-const exec = (input: Input, onMutation?: () => void) =>
-  new EntityRecordCreateTool().build("station-1", "org-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new EntityRecordCreateTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("EntityRecordCreateTool", () => {
@@ -73,16 +77,4 @@ describe("EntityRecordCreateTool", () => {
     expect(result.error).toBeDefined();
   });
 
-  it("calls onMutation after successful write", async () => {
-    const onMutation = jest.fn();
-    await exec({ connectorEntityId: "ce-1", data: {} }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not call onMutation on failure", async () => {
-    mockAssertStationScope.mockRejectedValueOnce(new Error("fail"));
-    const onMutation = jest.fn();
-    await exec({ connectorEntityId: "ce-1", data: {} }, onMutation);
-    expect(onMutation).not.toHaveBeenCalled();
-  });
 });

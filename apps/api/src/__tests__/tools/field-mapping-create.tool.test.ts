@@ -19,13 +19,17 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyFieldMappingInsert: jest.fn() },
+}));
+
 const { FieldMappingCreateTool } = await import("../../tools/field-mapping-create.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { connectorEntityId: string; columnDefinitionId: string; sourceField: string; isPrimaryKey?: boolean }
-const exec = (input: Input, onMutation?: () => void) =>
-  new FieldMappingCreateTool().build("station-1", "org-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new FieldMappingCreateTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("FieldMappingCreateTool", () => {
@@ -49,9 +53,4 @@ describe("FieldMappingCreateTool", () => {
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 
-  it("calls onMutation after success", async () => {
-    const onMutation = jest.fn();
-    await exec({ connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "X" }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
-  });
 });

@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 
 const InputSchema = z.object({
@@ -17,7 +18,7 @@ export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -35,7 +36,10 @@ export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
           const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
 
           await DbService.repository.entityRecords.softDelete(entityRecordId, userId);
-          await onMutation?.();
+
+          if (entity) {
+            AnalyticsService.applyRecordDelete(stationId, entity.key, entityRecordId);
+          }
           return {
             success: true,
             operation: "deleted",

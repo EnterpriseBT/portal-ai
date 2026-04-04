@@ -490,7 +490,7 @@ describe("Entity management tool integration", () => {
     it("blocks when field mappings reference it", async () => {
       const s = await seed(db);
 
-      const tool = new ColumnDefinitionDeleteTool().build(s.organizationId, s.userId);
+      const tool = new ColumnDefinitionDeleteTool().build(s.stationId, s.organizationId, s.userId);
       const result = await tool.execute!(
         { columnDefinitionId: s.columnDefinitionId },
         toolOpts,
@@ -505,7 +505,7 @@ describe("Entity management tool integration", () => {
       const orphanCol = createColumnDef(s.organizationId, "orphan_col", "string");
       await db.insert(columnDefinitions).values(orphanCol as never);
 
-      const tool = new ColumnDefinitionDeleteTool().build(s.organizationId, s.userId);
+      const tool = new ColumnDefinitionDeleteTool().build(s.stationId, s.organizationId, s.userId);
       const result = await tool.execute!(
         { columnDefinitionId: orphanCol.id },
         toolOpts,

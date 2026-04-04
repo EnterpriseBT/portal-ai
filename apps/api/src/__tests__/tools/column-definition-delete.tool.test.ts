@@ -11,14 +11,17 @@ jest.unstable_mockModule("../../services/column-definition-validation.service.js
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: { repository: { columnDefinitions: { findById: mockFindById, softDelete: mockSoftDelete } } },
 }));
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyColumnDefinitionDelete: jest.fn() },
+}));
 
 const { ColumnDefinitionDeleteTool } = await import("../../tools/column-definition-delete.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { columnDefinitionId: string }
-const exec = (input: Input, onMutation?: () => void) =>
-  new ColumnDefinitionDeleteTool().build("org-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new ColumnDefinitionDeleteTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("ColumnDefinitionDeleteTool", () => {
@@ -35,9 +38,4 @@ describe("ColumnDefinitionDeleteTool", () => {
     expect(mockSoftDelete).not.toHaveBeenCalled();
   });
 
-  it("calls onMutation after success", async () => {
-    const onMutation = jest.fn();
-    await exec({ columnDefinitionId: "cd-1" }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
-  });
 });

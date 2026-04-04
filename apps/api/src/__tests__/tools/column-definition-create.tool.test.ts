@@ -6,6 +6,9 @@ const mockUpsertByKey = jest.fn<any>().mockResolvedValue({ id: "cd-1" });
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: { repository: { columnDefinitions: { upsertByKey: mockUpsertByKey } } },
 }));
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyColumnDefinitionInsert: jest.fn() },
+}));
 
 const { ColumnDefinitionCreateTool } = await import("../../tools/column-definition-create.tool.js");
 
@@ -13,8 +16,8 @@ beforeEach(() => { jest.clearAllMocks(); });
 
 type ColumnDataType = "string" | "number" | "boolean" | "date" | "datetime" | "enum" | "json" | "array" | "reference" | "reference-array" | "currency";
 interface Input { key: string; label: string; type: ColumnDataType; required?: boolean; enumValues?: string[]; description?: string }
-const exec = (input: Input, onMutation?: () => void) =>
-  new ColumnDefinitionCreateTool().build("org-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new ColumnDefinitionCreateTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("ColumnDefinitionCreateTool", () => {
@@ -30,9 +33,4 @@ describe("ColumnDefinitionCreateTool", () => {
     expect(result.success).toBe(true);
   });
 
-  it("calls onMutation after success", async () => {
-    const onMutation = jest.fn();
-    await exec({ key: "k", label: "L", type: "string" }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
-  });
 });

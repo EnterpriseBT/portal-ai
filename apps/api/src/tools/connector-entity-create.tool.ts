@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { ConnectorEntityModelFactory } from "@portalai/core/models";
 import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
@@ -21,7 +22,7 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -61,8 +62,9 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
           });
 
           const result = await DbService.repository.connectorEntities.upsertByKey(model.parse());
-          await onMutation?.();
-          return {
+          AnalyticsService.applyEntityInsert(stationId, {
+            id: result.id, key, label, connectorInstanceId,
+          });          return {
             success: true,
             operation: "created",
             entity: "connector entity",

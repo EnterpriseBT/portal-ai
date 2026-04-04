@@ -7,14 +7,17 @@ const mockUpdate = jest.fn<any>().mockResolvedValue({ id: "cd-1" });
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: { repository: { columnDefinitions: { findById: mockFindById, update: mockUpdate } } },
 }));
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyColumnDefinitionUpdate: jest.fn() },
+}));
 
 const { ColumnDefinitionUpdateTool } = await import("../../tools/column-definition-update.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { columnDefinitionId: string; label?: string; description?: string | null; enumValues?: string[] | null }
-const exec = (input: Input, onMutation?: () => void) =>
-  new ColumnDefinitionUpdateTool().build("org-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new ColumnDefinitionUpdateTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("ColumnDefinitionUpdateTool", () => {
@@ -32,9 +35,4 @@ describe("ColumnDefinitionUpdateTool", () => {
     expect((schema.shape as any).type).toBeUndefined();
   });
 
-  it("calls onMutation after success", async () => {
-    const onMutation = jest.fn();
-    await exec({ columnDefinitionId: "cd-1", label: "X" }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
-  });
 });

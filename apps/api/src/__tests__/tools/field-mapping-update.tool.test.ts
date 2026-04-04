@@ -16,13 +16,17 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: { repository: { fieldMappings: { findById: mockFindById, update: mockUpdate } } },
 }));
 
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyFieldMappingUpdate: jest.fn() },
+}));
+
 const { FieldMappingUpdateTool } = await import("../../tools/field-mapping-update.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { fieldMappingId: string; sourceField?: string; isPrimaryKey?: boolean }
-const exec = (input: Input, onMutation?: () => void) =>
-  new FieldMappingUpdateTool().build("station-1", "org-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new FieldMappingUpdateTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("FieldMappingUpdateTool", () => {
@@ -51,9 +55,4 @@ describe("FieldMappingUpdateTool", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it("calls onMutation after success", async () => {
-    const onMutation = jest.fn();
-    await exec({ fieldMappingId: "fm-1", sourceField: "X" }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
-  });
 });

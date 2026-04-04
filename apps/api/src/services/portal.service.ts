@@ -16,7 +16,6 @@ import { eq, and } from "drizzle-orm";
 import { AiService } from "./ai.service.js";
 import {
   AnalyticsService,
-  type StationData,
 } from "./analytics.service.js";
 import { ToolService } from "./tools.service.js";
 import { DbService } from "./db.service.js";
@@ -212,8 +211,6 @@ function resolveDisplayBlock(
 // In-memory station data cache (keyed by portalId)
 // ---------------------------------------------------------------------------
 
-/** Cached station data for active portal sessions. */
-const stationDataCache = new Map<string, StationData>();
 
 // ---------------------------------------------------------------------------
 // Service
@@ -280,8 +277,6 @@ export class PortalService {
       stationId,
       organizationId
     );
-    stationDataCache.set(portal.id, stationData);
-
     const entityCapabilities = toolPacks.includes("entity_management")
       ? await resolveEntityCapabilities(stationId)
       : undefined;
@@ -467,13 +462,6 @@ export class PortalService {
       organizationId,
       stationContext.stationId,
       userId,
-      async () => {
-        stationDataCache.delete(portalId);
-        await AnalyticsService.refreshMetadataTables(
-          stationContext.stationId,
-          organizationId,
-        );
-      },
     );
 
     // streamText() is lazy in AI SDK v6 — it returns immediately and

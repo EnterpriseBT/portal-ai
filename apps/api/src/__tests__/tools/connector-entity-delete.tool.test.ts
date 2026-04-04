@@ -17,13 +17,17 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: { repository: { connectorEntities: { findById: mockFindEntityById } } },
 }));
 
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyEntityDelete: jest.fn() },
+}));
+
 const { ConnectorEntityDeleteTool } = await import("../../tools/connector-entity-delete.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { connectorEntityId: string }
-const exec = (input: Input, onMutation?: () => void) =>
-  new ConnectorEntityDeleteTool().build("station-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new ConnectorEntityDeleteTool().build("station-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("ConnectorEntityDeleteTool", () => {
@@ -41,9 +45,4 @@ describe("ConnectorEntityDeleteTool", () => {
     expect(mockExecuteDelete).not.toHaveBeenCalled();
   });
 
-  it("calls onMutation after successful delete", async () => {
-    const onMutation = jest.fn();
-    await exec({ connectorEntityId: "ce-1" }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
-  });
 });

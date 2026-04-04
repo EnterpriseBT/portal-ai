@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
 
 const InputSchema = z.object({
@@ -16,7 +17,7 @@ export class ColumnDefinitionDeleteTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -31,8 +32,7 @@ export class ColumnDefinitionDeleteTool extends Tool<typeof InputSchema> {
 
           await ColumnDefinitionValidationService.validateDelete(columnDefinitionId);
           await DbService.repository.columnDefinitions.softDelete(columnDefinitionId, userId);
-          await onMutation?.();
-          return {
+          AnalyticsService.applyColumnDefinitionDelete(stationId, columnDefinitionId);          return {
             success: true,
             operation: "deleted",
             entity: "column definition",

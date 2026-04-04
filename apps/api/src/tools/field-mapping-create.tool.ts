@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { FieldMappingModelFactory } from "@portalai/core/models";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 
@@ -20,7 +21,7 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -49,8 +50,11 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
           });
 
           const result = await DbService.repository.fieldMappings.upsertByEntityAndColumn(model.parse());
-          await onMutation?.();
-          return {
+          AnalyticsService.applyFieldMappingInsert(stationId, {
+            id: result.id, connector_entity_id: connectorEntityId,
+            column_definition_id: columnDefinitionId,
+            source_field: sourceField, is_primary_key: isPrimaryKey ?? false,
+          });          return {
             success: true,
             operation: "created",
             entity: "field mapping",

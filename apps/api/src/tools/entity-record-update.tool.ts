@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { NormalizationService } from "../services/normalization.service.js";
 
@@ -19,7 +20,7 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -45,7 +46,13 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             updatedBy: userId,
           } as any);
 
-          await onMutation?.();
+          if (entity) {
+            AnalyticsService.applyRecordUpdate(stationId, entity.key, entityRecordId, {
+              _record_id: entityRecordId,
+              _connector_entity_id: connectorEntityId,
+              ...normalizedData,
+            });
+          }
           return {
             success: true,
             operation: "updated",

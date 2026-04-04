@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { EntityRecordModelFactory } from "@portalai/core/models";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { NormalizationService } from "../services/normalization.service.js";
@@ -21,7 +22,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -48,7 +49,14 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
 
           const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
           const record = await DbService.repository.entityRecords.create(model.parse());
-          await onMutation?.();
+
+          if (entity) {
+            AnalyticsService.applyRecordInsert(stationId, entity.key, {
+              _record_id: record.id,
+              _connector_entity_id: connectorEntityId,
+              ...normalizedData,
+            });
+          }
           return {
             success: true,
             operation: "created",

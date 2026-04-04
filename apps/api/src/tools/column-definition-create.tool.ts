@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { ColumnDefinitionModelFactory, ColumnDataTypeEnum } from "@portalai/core/models";
 
 const InputSchema = z.object({
@@ -21,7 +22,7 @@ export class ColumnDefinitionCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -44,8 +45,11 @@ export class ColumnDefinitionCreateTool extends Tool<typeof InputSchema> {
           });
 
           const result = await DbService.repository.columnDefinitions.upsertByKey(model.parse());
-          await onMutation?.();
-          return {
+          AnalyticsService.applyColumnDefinitionInsert(stationId, {
+            id: result.id, key: validated.key, label: validated.label,
+            type: validated.type, required: validated.required ?? false,
+            description: validated.description ?? null,
+          });          return {
             success: true,
             operation: "created",
             entity: "column definition",

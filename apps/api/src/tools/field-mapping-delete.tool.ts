@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 
@@ -17,7 +18,7 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -35,8 +36,7 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
           await FieldMappingValidationService.validateDelete(fieldMappingId);
 
           const result = await FieldMappingValidationService.executeDelete(fieldMappingId, userId);
-          await onMutation?.();
-          return {
+          AnalyticsService.applyFieldMappingDelete(stationId, fieldMappingId);          return {
             success: true,
             operation: "deleted",
             entity: "field mapping",

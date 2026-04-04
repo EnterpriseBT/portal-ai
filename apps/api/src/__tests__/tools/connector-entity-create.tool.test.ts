@@ -27,13 +27,17 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyEntityInsert: jest.fn() },
+}));
+
 const { ConnectorEntityCreateTool } = await import("../../tools/connector-entity-create.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { connectorInstanceId: string; key: string; label: string }
-const exec = (input: Input, onMutation?: () => void) =>
-  new ConnectorEntityCreateTool().build("station-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new ConnectorEntityCreateTool().build("station-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("ConnectorEntityCreateTool", () => {
@@ -71,9 +75,4 @@ describe("ConnectorEntityCreateTool", () => {
     expect(mockUpsertByKey).not.toHaveBeenCalled();
   });
 
-  it("calls onMutation after success", async () => {
-    const onMutation = jest.fn();
-    await exec({ connectorInstanceId: "ci-1", key: "k", label: "L" }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
-  });
 });

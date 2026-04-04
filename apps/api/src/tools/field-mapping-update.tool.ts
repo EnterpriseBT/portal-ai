@@ -3,6 +3,7 @@ import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
+import { AnalyticsService } from "../services/analytics.service.js";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 
 const InputSchema = z.object({
@@ -18,7 +19,7 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
+  build(stationId: string, organizationId: string, userId: string) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -39,8 +40,13 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
           if (fields.isPrimaryKey !== undefined) updateData.isPrimaryKey = fields.isPrimaryKey;
 
           await DbService.repository.fieldMappings.update(fieldMappingId, updateData as never);
-          await onMutation?.();
-          return {
+          AnalyticsService.applyFieldMappingUpdate(stationId, {
+            id: fieldMappingId,
+            connector_entity_id: mapping.connectorEntityId,
+            column_definition_id: mapping.columnDefinitionId,
+            source_field: (fields.sourceField ?? mapping.sourceField) as string,
+            is_primary_key: (fields.isPrimaryKey ?? mapping.isPrimaryKey) as boolean,
+          });          return {
             success: true,
             operation: "updated",
             entity: "field mapping",

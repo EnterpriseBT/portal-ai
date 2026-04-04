@@ -20,13 +20,17 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: { repository: { entityRecords: { findById: mockFindById, update: mockUpdate }, connectorEntities: { findById: mockFindEntityById } } },
 }));
 
+jest.unstable_mockModule("../../services/analytics.service.js", () => ({
+  AnalyticsService: { applyRecordUpdate: jest.fn() },
+}));
+
 const { EntityRecordUpdateTool } = await import("../../tools/entity-record-update.tool.js");
 
 beforeEach(() => { jest.clearAllMocks(); });
 
 interface Input { connectorEntityId: string; entityRecordId: string; data: Record<string, unknown> }
-const exec = (input: Input, onMutation?: () => void) =>
-  new EntityRecordUpdateTool().build("station-1", "user-1", onMutation)
+const exec = (input: Input) =>
+  new EntityRecordUpdateTool().build("station-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("EntityRecordUpdateTool", () => {
@@ -40,12 +44,6 @@ describe("EntityRecordUpdateTool", () => {
     mockFindById.mockResolvedValueOnce({ id: "rec-1", connectorEntityId: "ce-other" });
     const result: any = await exec({ connectorEntityId: "ce-1", entityRecordId: "rec-1", data: {} });
     expect(result.error).toContain("does not belong");
-  });
-
-  it("calls onMutation after successful write", async () => {
-    const onMutation = jest.fn();
-    await exec({ connectorEntityId: "ce-1", entityRecordId: "rec-1", data: {} }, onMutation);
-    expect(onMutation).toHaveBeenCalledTimes(1);
   });
 
   it("returns error when scope check fails", async () => {
