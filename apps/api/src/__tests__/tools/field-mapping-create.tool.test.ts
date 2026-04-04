@@ -3,7 +3,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockFindColDef = jest.fn<any>().mockResolvedValue({ id: "cd-1", organizationId: "org-1" });
+const mockFindColDef = jest.fn<any>().mockResolvedValue({ id: "cd-1", organizationId: "org-1", label: "Column 1" });
 const mockUpsert = jest.fn<any>().mockResolvedValue({ id: "fm-1" });
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
@@ -34,7 +34,7 @@ describe("FieldMappingCreateTool", () => {
       connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "Name",
     });
     expect(result.success).toBe(true);
-    expect(result.fieldMappingId).toBe("fm-1");
+    expect(result.entityId).toBe("fm-1");
     expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({
       connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "Name",
     }));

@@ -10,8 +10,10 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,
   assertWriteCapability: mockAssertWriteCapability,
 }));
+const mockFindEntityById = jest.fn<any>().mockResolvedValue({ id: "ce-1", label: "My Entity" });
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
-  DbService: { repository: { entityRecords: { findById: mockFindById, softDelete: mockSoftDelete } } },
+  DbService: { repository: { entityRecords: { findById: mockFindById, softDelete: mockSoftDelete }, connectorEntities: { findById: mockFindEntityById } } },
 }));
 
 const { EntityRecordDeleteTool } = await import("../../tools/entity-record-delete.tool.js");

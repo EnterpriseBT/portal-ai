@@ -17,7 +17,7 @@ export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -32,9 +32,17 @@ export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
             return { error: "Record not found or does not belong to entity" };
           }
 
+          const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
+
           await DbService.repository.entityRecords.softDelete(entityRecordId, userId);
-          onMutation?.();
-          return { success: true, recordId: entityRecordId };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "deleted",
+            entity: "record",
+            entityId: entityRecordId,
+            summary: { entityLabel: entity?.label ?? connectorEntityId },
+          };
         } catch (err: any) {
           return { error: err.message ?? "Failed to delete record" };
         }

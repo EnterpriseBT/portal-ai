@@ -16,7 +16,7 @@ export class ColumnDefinitionDeleteTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(organizationId: string, userId: string, onMutation?: () => void) {
+  build(organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -31,8 +31,14 @@ export class ColumnDefinitionDeleteTool extends Tool<typeof InputSchema> {
 
           await ColumnDefinitionValidationService.validateDelete(columnDefinitionId);
           await DbService.repository.columnDefinitions.softDelete(columnDefinitionId, userId);
-          onMutation?.();
-          return { success: true, columnDefinitionId };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "deleted",
+            entity: "column definition",
+            entityId: columnDefinitionId,
+            summary: { key: existing.key, label: existing.label },
+          };
         } catch (err: any) {
           return { error: err.message ?? "Failed to delete column definition" };
         }

@@ -21,7 +21,7 @@ export class ColumnDefinitionCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(organizationId: string, userId: string, onMutation?: () => void) {
+  build(organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -44,8 +44,14 @@ export class ColumnDefinitionCreateTool extends Tool<typeof InputSchema> {
           });
 
           const result = await DbService.repository.columnDefinitions.upsertByKey(model.parse());
-          onMutation?.();
-          return { success: true, columnDefinitionId: result.id };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "created",
+            entity: "column definition",
+            entityId: result.id,
+            summary: { key: validated.key, label: validated.label, type: validated.type },
+          };
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Failed to create column definition";
           return { error: message };

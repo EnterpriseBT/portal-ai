@@ -20,7 +20,7 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -49,8 +49,14 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
           });
 
           const result = await DbService.repository.fieldMappings.upsertByEntityAndColumn(model.parse());
-          onMutation?.();
-          return { success: true, fieldMappingId: result.id };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "created",
+            entity: "field mapping",
+            entityId: result.id,
+            summary: { sourceField, columnLabel: colDef.label, isPrimaryKey: isPrimaryKey ?? false },
+          };
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Failed to create field mapping";
           return { error: message };

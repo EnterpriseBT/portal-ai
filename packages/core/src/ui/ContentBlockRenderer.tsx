@@ -2,8 +2,9 @@ import React, { Component, Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import type { PortalMessageBlock } from "../contracts/portal.contract.js";
+import type { PortalMessageBlock, MutationResultContentBlock } from "../contracts/portal.contract.js";
 import { DataTableBlock } from "./DataTableBlock.js";
+import { MutationResultBlock } from "./MutationResultBlock.js";
 
 const LazyVegaLite = React.lazy(() =>
   import("react-vega").then((mod) => ({ default: mod.VegaLite }))
@@ -248,6 +249,10 @@ export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
     const columns = raw.columns ?? [];
     const rows = raw.rows ?? [];
     return <DataTableBlock columns={columns} rows={rows} />;
+  }
+
+  if (block.type === "mutation-result") {
+    return <MutationResultBlock content={block.content as MutationResultContentBlock} />;
   }
 
   return null;

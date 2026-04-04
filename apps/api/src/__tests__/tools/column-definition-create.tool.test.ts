@@ -21,7 +21,7 @@ describe("ColumnDefinitionCreateTool", () => {
   it("upserts by key", async () => {
     const result: any = await exec({ key: "email", label: "Email", type: "string" });
     expect(result.success).toBe(true);
-    expect(result.columnDefinitionId).toBe("cd-1");
+    expect(result.entityId).toBe("cd-1");
     expect(mockUpsertByKey).toHaveBeenCalledWith(expect.objectContaining({ key: "email", label: "Email", organizationId: "org-1" }));
   });
 

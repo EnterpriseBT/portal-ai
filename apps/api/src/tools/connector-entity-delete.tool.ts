@@ -2,6 +2,7 @@ import { z } from "zod";
 import { tool } from "ai";
 
 import { Tool } from "../types/tools.js";
+import { DbService } from "../services/db.service.js";
 import { assertStationScope } from "../utils/resolve-capabilities.util.js";
 import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
 
@@ -16,7 +17,7 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -26,9 +27,16 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
           await assertStationScope(stationId, connectorEntityId);
           await ConnectorEntityValidationService.validateDelete(connectorEntityId);
 
+          const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
           const cascaded = await ConnectorEntityValidationService.executeDelete(connectorEntityId, userId);
-          onMutation?.();
-          return { success: true, connectorEntityId, cascaded };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "deleted",
+            entity: "connector entity",
+            entityId: connectorEntityId,
+            summary: { label: entity?.label ?? connectorEntityId, cascaded },
+          };
         } catch (err: any) {
           return { error: err.message ?? "Failed to delete entity" };
         }

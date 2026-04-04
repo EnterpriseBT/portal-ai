@@ -282,6 +282,8 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
         block = { type: "vega", content: result };
       } else if (result && typeof result === "object" && result["type"] === "data-table") {
         block = { type: "data-table", content: result };
+      } else if (result && typeof result === "object" && result["type"] === "mutation-result") {
+        block = { type: "mutation-result", content: result };
       }
 
       if (block) {

@@ -19,7 +19,7 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -36,6 +36,8 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
 
           const normalizedData = await NormalizationService.normalize(connectorEntityId, data);
 
+          const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
+
           await DbService.repository.entityRecords.update(entityRecordId, {
             data,
             normalizedData,
@@ -43,8 +45,14 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             updatedBy: userId,
           } as any);
 
-          onMutation?.();
-          return { success: true, recordId: entityRecordId };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "updated",
+            entity: "record",
+            entityId: entityRecordId,
+            summary: { entityLabel: entity?.label ?? connectorEntityId, fields: Object.keys(data) },
+          };
         } catch (err: any) {
           return { error: err.message ?? "Failed to update record" };
         }

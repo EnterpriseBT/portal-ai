@@ -18,7 +18,7 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -39,8 +39,14 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
           if (fields.isPrimaryKey !== undefined) updateData.isPrimaryKey = fields.isPrimaryKey;
 
           await DbService.repository.fieldMappings.update(fieldMappingId, updateData as never);
-          onMutation?.();
-          return { success: true, fieldMappingId };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "updated",
+            entity: "field mapping",
+            entityId: fieldMappingId,
+            summary: { sourceField: mapping.sourceField, fields: Object.keys(fields).filter((k) => (fields as Record<string, unknown>)[k] !== undefined) },
+          };
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Failed to update field mapping";
           return { error: message };

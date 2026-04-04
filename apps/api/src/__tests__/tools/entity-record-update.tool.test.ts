@@ -14,8 +14,10 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 jest.unstable_mockModule("../../services/normalization.service.js", () => ({
   NormalizationService: { normalize: mockNormalize },
 }));
+const mockFindEntityById = jest.fn<any>().mockResolvedValue({ id: "ce-1", label: "My Entity" });
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
-  DbService: { repository: { entityRecords: { findById: mockFindById, update: mockUpdate } } },
+  DbService: { repository: { entityRecords: { findById: mockFindById, update: mockUpdate }, connectorEntities: { findById: mockFindEntityById } } },
 }));
 
 const { EntityRecordUpdateTool } = await import("../../tools/entity-record-update.tool.js");

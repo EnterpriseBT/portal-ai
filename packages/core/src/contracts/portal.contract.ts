@@ -143,6 +143,7 @@ export const PortalBlockTypeSchema = z.enum([
   "vega-lite",
   "vega",
   "data-table",
+  "mutation-result",
   "tool-call",
   "tool-result",
 ]);
@@ -165,6 +166,16 @@ export const DataTableContentBlockSchema = z.object({
 });
 
 export type DataTableContentBlock = z.infer<typeof DataTableContentBlockSchema>;
+
+export const MutationResultContentBlockSchema = z.object({
+  type: z.literal("mutation-result"),
+  operation: z.enum(["created", "updated", "deleted"]),
+  entity: z.string(),
+  entityId: z.string(),
+  summary: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type MutationResultContentBlock = z.infer<typeof MutationResultContentBlockSchema>;
 
 // ── SSE Event Payloads ────────────────────────────────────────────────
 

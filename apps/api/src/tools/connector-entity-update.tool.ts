@@ -17,7 +17,7 @@ export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -33,8 +33,14 @@ export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
             updatedBy: userId,
           } as any);
 
-          onMutation?.();
-          return { success: true, connectorEntityId };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "updated",
+            entity: "connector entity",
+            entityId: connectorEntityId,
+            summary: { label },
+          };
         } catch (err: any) {
           return { error: err.message ?? "Failed to update entity" };
         }

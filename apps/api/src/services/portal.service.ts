@@ -62,6 +62,22 @@ export interface PortalWithMessages {
 /** Tools whose results contain row sets and should be surfaced as data-table blocks. */
 const ROW_SET_TOOLS = new Set(["sql_query", "detect_outliers", "cluster"]);
 
+/** Tools whose results represent mutations and should be surfaced as mutation-result blocks. */
+const MUTATION_TOOLS = new Set([
+  "entity_record_create",
+  "entity_record_update",
+  "entity_record_delete",
+  "connector_entity_create",
+  "connector_entity_update",
+  "connector_entity_delete",
+  "column_definition_create",
+  "column_definition_update",
+  "column_definition_delete",
+  "field_mapping_create",
+  "field_mapping_update",
+  "field_mapping_delete",
+]);
+
 // ---------------------------------------------------------------------------
 // Stream chunk handlers
 // ---------------------------------------------------------------------------
@@ -167,6 +183,25 @@ function resolveDisplayBlock(
     return {
       block: { type: "data-table" as const, content: dataTableContent },
       sseResult: dataTableContent,
+    };
+  }
+
+  if (
+    MUTATION_TOOLS.has(toolName) &&
+    toolResult != null &&
+    toolResult.success === true &&
+    typeof toolResult.operation === "string"
+  ) {
+    const mutationContent = {
+      type: "mutation-result" as const,
+      operation: toolResult.operation as string,
+      entity: toolResult.entity as string,
+      entityId: toolResult.entityId as string,
+      summary: (toolResult.summary as Record<string, unknown>) ?? {},
+    };
+    return {
+      block: { type: "mutation-result" as const, content: mutationContent },
+      sseResult: mutationContent,
     };
   }
 
@@ -432,7 +467,13 @@ export class PortalService {
       organizationId,
       stationContext.stationId,
       userId,
-      () => stationDataCache.delete(portalId),
+      async () => {
+        stationDataCache.delete(portalId);
+        await AnalyticsService.refreshMetadataTables(
+          stationContext.stationId,
+          organizationId,
+        );
+      },
     );
 
     // streamText() is lazy in AI SDK v6 — it returns immediately and

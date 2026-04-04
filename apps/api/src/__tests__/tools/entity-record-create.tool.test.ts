@@ -13,10 +13,13 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 jest.unstable_mockModule("../../services/normalization.service.js", () => ({
   NormalizationService: { normalize: mockNormalize },
 }));
+const mockFindEntityById = jest.fn<(...a: unknown[]) => Promise<unknown>>().mockResolvedValue({ id: "ce-1", label: "My Entity" });
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       entityRecords: { create: mockCreate },
+      connectorEntities: { findById: mockFindEntityById },
     },
   },
 }));

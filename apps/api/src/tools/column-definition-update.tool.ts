@@ -18,7 +18,7 @@ export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(organizationId: string, userId: string, onMutation?: () => void) {
+  build(organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -37,8 +37,14 @@ export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
           if (fields.enumValues !== undefined) updateData.enumValues = fields.enumValues;
 
           await DbService.repository.columnDefinitions.update(columnDefinitionId, updateData as any);
-          onMutation?.();
-          return { success: true, columnDefinitionId };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "updated",
+            entity: "column definition",
+            entityId: columnDefinitionId,
+            summary: { label: existing.label, fields: Object.keys(fields).filter((k) => (fields as Record<string, unknown>)[k] !== undefined) },
+          };
         } catch (err: any) {
           return { error: err.message ?? "Failed to update column definition" };
         }

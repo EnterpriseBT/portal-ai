@@ -2,7 +2,7 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockValidateDelete = jest.fn<any>().mockResolvedValue(undefined);
-const mockFindById = jest.fn<any>().mockResolvedValue({ id: "cd-1", organizationId: "org-1" });
+const mockFindById = jest.fn<any>().mockResolvedValue({ id: "cd-1", organizationId: "org-1", key: "email", label: "Email" });
 const mockSoftDelete = jest.fn<any>().mockResolvedValue({ id: "cd-1" });
 
 jest.unstable_mockModule("../../services/column-definition-validation.service.js", () => ({

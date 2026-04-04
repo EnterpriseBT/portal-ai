@@ -169,7 +169,7 @@ export class ToolService {
     organizationId: string,
     stationId: string,
     userId: string,
-    onDataMutation?: () => void,
+    onDataMutation?: () => void | Promise<void>,
   ): Promise<Record<string, Tool>> {
     const repo = DbService.repository;
 

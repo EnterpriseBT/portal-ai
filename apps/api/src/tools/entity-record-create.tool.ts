@@ -21,7 +21,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, organizationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -46,9 +46,16 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
             origin: "portal",
           });
 
+          const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
           const record = await DbService.repository.entityRecords.create(model.parse());
-          onMutation?.();
-          return { success: true, recordId: record.id };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "created",
+            entity: "record",
+            entityId: record.id,
+            summary: { entityLabel: entity?.label ?? connectorEntityId, sourceId: record.sourceId },
+          };
         } catch (err: any) {
           return { error: err.message ?? "Failed to create record" };
         }

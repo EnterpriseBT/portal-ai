@@ -21,7 +21,7 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
 
   get schema() { return InputSchema; }
 
-  build(stationId: string, userId: string, onMutation?: () => void) {
+  build(stationId: string, userId: string, onMutation?: () => void | Promise<void>) {
     return tool({
       description: this.description,
       inputSchema: this.schema,
@@ -61,8 +61,14 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
           });
 
           const result = await DbService.repository.connectorEntities.upsertByKey(model.parse());
-          onMutation?.();
-          return { success: true, connectorEntityId: result.id };
+          await onMutation?.();
+          return {
+            success: true,
+            operation: "created",
+            entity: "connector entity",
+            entityId: result.id,
+            summary: { key, label },
+          };
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : "Failed to create entity";
           return { error: message };

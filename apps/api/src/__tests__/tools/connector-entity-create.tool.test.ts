@@ -40,7 +40,7 @@ describe("ConnectorEntityCreateTool", () => {
   it("creates entity via upsertByKey", async () => {
     const result = await exec({ connectorInstanceId: "ci-1", key: "contacts", label: "Contacts" }) as Record<string, unknown>;
     expect(result.success).toBe(true);
-    expect(result.connectorEntityId).toBe("ce-new");
+    expect(result.entityId).toBe("ce-new");
     expect(mockUpsertByKey).toHaveBeenCalledWith(expect.objectContaining({ key: "contacts", label: "Contacts" }));
   });
 

@@ -381,6 +381,113 @@ export class AnalyticsService {
   }
 
   /**
+   * Refresh only the metadata tables (_connector_entities, _column_definitions,
+   * _field_mappings) in an already-loaded AlaSQL database. This is much cheaper
+   * than a full `loadStation()` because it skips entity record fetching and
+   * AlaSQL data-table rebuilds.
+   *
+   * Called after entity-management mutations so that subsequent `sql_query`
+   * calls within the same agentic turn see up-to-date metadata.
+   */
+  static async refreshMetadataTables(
+    stationId: string,
+    organizationId: string,
+  ): Promise<void> {
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return; // station not loaded — nothing to refresh
+
+    const { db: alasqlDb, dbName } = entry;
+    const repo = DbService.repository;
+
+    // Resolve connector instance IDs for this station
+    const stationInstances =
+      await repo.stationInstances.findByStationId(stationId);
+    const connectorInstanceIds = stationInstances.map(
+      (si) => si.connectorInstanceId,
+    );
+
+    // -- _connector_instances --
+    const connectorInstanceRows = connectorInstanceIds.length > 0
+      ? await db
+          .select({
+            id: connectorInstancesTable.id,
+            name: connectorInstancesTable.name,
+            status: connectorInstancesTable.status,
+            connectorDefinitionId: connectorInstancesTable.connectorDefinitionId,
+          })
+          .from(connectorInstancesTable)
+          .where(inArray(connectorInstancesTable.id, connectorInstanceIds))
+      : [];
+    alasqlDb.exec("DELETE FROM [_connector_instances]");
+    if (connectorInstanceRows.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_connector_instances] SELECT * FROM ?`, [
+        connectorInstanceRows.map((ci) => ({
+          id: ci.id,
+          name: ci.name,
+          status: ci.status,
+          connector_definition_id: ci.connectorDefinitionId,
+        })),
+      ]);
+    }
+
+    // -- _connector_entities --
+    const allEntities = (
+      await Promise.all(
+        connectorInstanceIds.map((ciId) =>
+          repo.connectorEntities.findByConnectorInstanceId(ciId),
+        ),
+      )
+    ).flat();
+    alasqlDb.exec("DELETE FROM [_connector_entities]");
+    if (allEntities.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_connector_entities] SELECT * FROM ?`, [
+        allEntities.map((e: Record<string, unknown>) => ({
+          id: e.id,
+          key: e.key,
+          label: e.label,
+          connector_instance_id: e.connectorInstanceId,
+        })),
+      ]);
+    }
+
+    // -- _column_definitions --
+    const allColumnDefs = await repo.columnDefinitions.findByOrganizationId(organizationId);
+    alasqlDb.exec("DELETE FROM [_column_definitions]");
+    if (allColumnDefs.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_column_definitions] SELECT * FROM ?`, [
+        allColumnDefs.map((cd: Record<string, unknown>) => ({
+          id: cd.id,
+          key: cd.key,
+          label: cd.label,
+          type: cd.type,
+          required: cd.required,
+          description: cd.description,
+        })),
+      ]);
+    }
+
+    // -- _field_mappings --
+    const entityIds = allEntities.map((e) => e.id);
+    const fieldMappingsByEntity =
+      await repo.connectorEntities.findFieldMappingsByEntityIds(entityIds);
+    const allFieldMappings = [...fieldMappingsByEntity.values()].flat();
+    alasqlDb.exec("DELETE FROM [_field_mappings]");
+    if (allFieldMappings.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_field_mappings] SELECT * FROM ?`, [
+        allFieldMappings.map((fm: Record<string, unknown>) => ({
+          id: fm.id,
+          connector_entity_id: fm.connectorEntityId,
+          column_definition_id: fm.columnDefinitionId,
+          source_field: fm.sourceField,
+          is_primary_key: fm.isPrimaryKey,
+        })),
+      ]);
+    }
+
+    logger.info({ stationId }, "Metadata tables refreshed");
+  }
+
+  /**
    * Discover entity groups that have ≥2 member entities loaded in this station.
    */
   private static async discoverEntityGroups(

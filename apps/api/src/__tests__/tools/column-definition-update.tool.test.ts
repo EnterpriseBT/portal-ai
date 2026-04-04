@@ -1,7 +1,7 @@
 /* global AbortController */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
-const mockFindById = jest.fn<any>().mockResolvedValue({ id: "cd-1", key: "email", type: "text", organizationId: "org-1" });
+const mockFindById = jest.fn<any>().mockResolvedValue({ id: "cd-1", key: "email", type: "text", organizationId: "org-1", label: "Email" });
 const mockUpdate = jest.fn<any>().mockResolvedValue({ id: "cd-1" });
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
