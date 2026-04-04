@@ -275,12 +275,19 @@ export class AnalyticsService {
         columns,
       });
 
-      // Fetch records and extract normalizedData
+      // Fetch records and extract normalizedData with record metadata
       const entityRecords = await repo.entityRecords.findByConnectorEntityId(
         entity.id
       );
       const rows = entityRecords
-        .map((r: any) => r.normalizedData)
+        .map((r: any) => {
+          if (!r.normalizedData) return null;
+          return {
+            _record_id: r.id,
+            _connector_entity_id: entity.id,
+            ...r.normalizedData,
+          };
+        })
         .filter(Boolean) as Record<string, unknown>[];
       records.set(entity.key, rows);
 

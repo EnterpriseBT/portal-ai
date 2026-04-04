@@ -84,6 +84,16 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     );
     lines.push("");
     lines.push(
+      "Every entity table includes two hidden columns: " +
+      "`_record_id` (the entity record's unique ID) and `_connector_entity_id`. " +
+      "Use `_record_id` as the `entityRecordId` parameter when calling " +
+      "entity_record_update or entity_record_delete. " +
+      "Use `_connector_entity_id` as the `connectorEntityId` parameter. " +
+      "Always query these columns first (e.g. `SELECT _record_id, _connector_entity_id, ... FROM [table] WHERE ...`) " +
+      "to identify the target record before performing updates or deletes."
+    );
+    lines.push("");
+    lines.push(
       "Metadata tables are available via sql_query: " +
       "`_connector_instances` (id, name, status, connector_definition_id), " +
       "`_connector_entities` (id, key, label, connector_instance_id), " +
