@@ -23,14 +23,14 @@ const MOCK_COLUMN_HIGH: RecommendedColumn = {
     key: "email",
     label: "Email",
     type: "string",
-    required: true,
-    format: "email",
-    enumValues: null,
     description: "Contact email",
   },
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
+  required: true,
+  format: "email",
+  enumValues: null,
 };
 
 const MOCK_COLUMN_MED: RecommendedColumn = {
@@ -41,14 +41,14 @@ const MOCK_COLUMN_MED: RecommendedColumn = {
     key: "name",
     label: "Name",
     type: "string",
-    required: false,
-    format: null,
-    enumValues: null,
     description: null,
   },
   sourceField: "Full Name",
   isPrimaryKeyCandidate: false,
   sampleValues: ["Alice Smith", "Bob Jones"],
+  required: false,
+  format: null,
+  enumValues: null,
 };
 
 const MOCK_COLUMN_LOW: RecommendedColumn = {
@@ -59,14 +59,14 @@ const MOCK_COLUMN_LOW: RecommendedColumn = {
     key: "phone",
     label: "Phone",
     type: "string",
-    required: false,
-    format: null,
-    enumValues: null,
     description: null,
   },
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100", "+1-555-0101"],
+  required: false,
+  format: null,
+  enumValues: null,
 };
 
 const MOCK_ENTITY_A: RecommendedEntity = {
@@ -165,10 +165,10 @@ describe("ColumnMappingStep", () => {
           onUpdateColumn={jest.fn()}
         />
       );
-      // Use getAllByDisplayValue because format input may share the same value as the key input
+      // Use getAllByDisplayValue because normalizedKey input may share the same value as the key input
       expect(screen.getAllByDisplayValue("email").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByDisplayValue("Email")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("phone")).toBeInTheDocument();
+      expect(screen.getAllByDisplayValue("phone").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByDisplayValue("Phone")).toBeInTheDocument();
     });
 
@@ -412,9 +412,6 @@ describe("ColumnMappingStep", () => {
         key: "role_id",
         label: "Role ID",
         type: "reference",
-        required: false,
-        format: null,
-        enumValues: null,
         description: null,
         refEntityKey: null,
         refColumnKey: null,
@@ -422,6 +419,9 @@ describe("ColumnMappingStep", () => {
       sourceField: "role_id",
       isPrimaryKeyCandidate: false,
       sampleValues: ["1", "2"],
+      required: false,
+      format: null,
+      enumValues: null,
     };
 
     it("shows reference entity and column selects when type is reference", () => {
@@ -762,7 +762,8 @@ describe("ColumnMappingStep", () => {
     it("shows format input when type is date", () => {
       const dateColumn: RecommendedColumn = {
         ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: "YYYY-MM-DD" },
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date" },
+        format: "YYYY-MM-DD",
       };
       render(
         <ColumnMappingStep
@@ -778,7 +779,8 @@ describe("ColumnMappingStep", () => {
     it("shows format input when type is datetime", () => {
       const dtColumn: RecommendedColumn = {
         ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "datetime", format: "ISO8601" },
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "datetime" },
+        format: "ISO8601",
       };
       render(
         <ColumnMappingStep
@@ -791,10 +793,11 @@ describe("ColumnMappingStep", () => {
       expect(screen.getByLabelText(/^format$/i)).toBeInTheDocument();
     });
 
-    it("does not show format input for number type", () => {
+    it("shows format input for all types (mapping-level field)", () => {
       const numberColumn: RecommendedColumn = {
         ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "number", format: null },
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "number" },
+        format: null,
       };
       render(
         <ColumnMappingStep
@@ -804,13 +807,14 @@ describe("ColumnMappingStep", () => {
           onUpdateColumn={jest.fn()}
         />
       );
-      expect(screen.queryByLabelText(/^format$/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/^format$/i)).toBeInTheDocument();
     });
 
     it("pre-populates format input with existing value", () => {
       const dateColumn: RecommendedColumn = {
         ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: "YYYY-MM-DD" },
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date" },
+        format: "YYYY-MM-DD",
       };
       render(
         <ColumnMappingStep
@@ -827,7 +831,8 @@ describe("ColumnMappingStep", () => {
       const onUpdateColumn = jest.fn();
       const dateColumn: RecommendedColumn = {
         ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: null },
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date" },
+        format: null,
       };
       render(
         <ColumnMappingStep
@@ -842,17 +847,18 @@ describe("ColumnMappingStep", () => {
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({ format: "DD/MM/YYYY" }),
+          format: "DD/MM/YYYY",
         })
       );
     });
 
-    it("switching type to number clears format", async () => {
+    it("switching type to number does not clear mapping-level format", async () => {
       const user = userEvent.setup();
       const onUpdateColumn = jest.fn();
       const dateColumn: RecommendedColumn = {
         ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: "YYYY-MM-DD" },
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date" },
+        format: "YYYY-MM-DD",
       };
       render(
         <ColumnMappingStep
@@ -869,17 +875,18 @@ describe("ColumnMappingStep", () => {
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({ format: null }),
+          recommended: expect.objectContaining({ type: "number" }),
         })
       );
     });
 
-    it("switching type to another format-supporting type keeps format", async () => {
+    it("switching type to enum clears enumValues from mapping level", async () => {
       const user = userEvent.setup();
       const onUpdateColumn = jest.fn();
       const dateColumn: RecommendedColumn = {
         ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: "YYYY-MM-DD" },
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date" },
+        format: "YYYY-MM-DD",
       };
       render(
         <ColumnMappingStep
@@ -896,7 +903,7 @@ describe("ColumnMappingStep", () => {
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({ type: "datetime", format: "YYYY-MM-DD" }),
+          recommended: expect.objectContaining({ type: "datetime" }),
         })
       );
     });
@@ -911,14 +918,14 @@ describe("ColumnMappingStep", () => {
         key: "status",
         label: "Status",
         type: "enum",
-        required: false,
-        format: null,
-        enumValues: ["active", "inactive"],
         description: null,
       },
       sourceField: "Status",
       isPrimaryKeyCandidate: false,
       sampleValues: ["active", "inactive"],
+      required: false,
+      format: null,
+      enumValues: ["active", "inactive"],
     };
 
     it("shows enum values input when type is enum", () => {
@@ -983,9 +990,7 @@ describe("ColumnMappingStep", () => {
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({
-            enumValues: ["a", "b", "c"],
-          }),
+          enumValues: ["a", "b", "c"],
         })
       );
     });

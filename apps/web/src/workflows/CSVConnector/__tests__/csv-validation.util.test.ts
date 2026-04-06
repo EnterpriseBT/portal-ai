@@ -8,7 +8,8 @@ import type { RecommendedEntity, RecommendedColumn } from "../utils/upload-workf
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeColumn(overrides: Partial<RecommendedColumn["recommended"]> = {}): RecommendedColumn {
+function makeColumn(overrides: Partial<RecommendedColumn["recommended"]> & { format?: string | null; enumValues?: string[] | null } = {}): RecommendedColumn {
+  const { format, enumValues, ...recommendedOverrides } = overrides;
   return {
     action: "create_new",
     confidence: 0.9,
@@ -17,14 +18,14 @@ function makeColumn(overrides: Partial<RecommendedColumn["recommended"]> = {}): 
       key: "col_key",
       label: "Col Label",
       type: "string",
-      format: null,
-      enumValues: null,
       description: null,
-      ...overrides,
+      ...recommendedOverrides,
     },
     sourceField: "source",
     isPrimaryKeyCandidate: false,
     sampleValues: [],
+    format: format ?? null,
+    enumValues: enumValues ?? null,
   };
 }
 

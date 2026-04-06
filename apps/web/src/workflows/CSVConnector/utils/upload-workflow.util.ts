@@ -23,14 +23,15 @@ export interface RecommendedColumn {
   action: "match_existing" | "create_new";
   confidence: number;
   existingColumnDefinitionId: string | null;
+  /** Column-definition-level recommendation. */
   recommended: {
     key: string;
     label: string;
     type: string;
-    required?: boolean;
-    format?: string | null;
-    enumValues?: string[] | null;
     description?: string | null;
+    validationPattern?: string | null;
+    validationMessage?: string | null;
+    canonicalFormat?: string | null;
     refEntityKey?: string | null;
     refColumnKey?: string | null;
     refColumnDefinitionId?: string | null;
@@ -38,6 +39,12 @@ export interface RecommendedColumn {
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
   sampleValues: string[];
+  /** Field-mapping-level fields (editable per entity-column). */
+  normalizedKey?: string;
+  required?: boolean;
+  defaultValue?: string | null;
+  format?: string | null;
+  enumValues?: string[] | null;
 }
 
 export interface RecommendedEntity {
@@ -117,13 +124,22 @@ interface BackendRecommendation {
       key: string;
       label: string;
       type: string;
-      format: string | null;
       isPrimaryKey: boolean;
-      required: boolean;
       action: "match_existing" | "create_new";
       existingColumnDefinitionId: string | null;
       confidence: number;
       sampleValues: string[];
+      // Column-definition-level
+      validationPattern?: string | null;
+      validationMessage?: string | null;
+      canonicalFormat?: string | null;
+      // Field-mapping-level
+      normalizedKey?: string;
+      required?: boolean;
+      defaultValue?: string | null;
+      format?: string | null;
+      enumValues?: string[] | null;
+      // Reference fields
       refEntityKey?: string | null;
       refColumnKey?: string | null;
       refColumnDefinitionId?: string | null;
@@ -149,8 +165,9 @@ function mapBackendRecommendations(backend: BackendRecommendation): Recommendati
           key: col.key,
           label: col.label,
           type: col.type,
-          required: col.required,
-          format: col.format,
+          validationPattern: col.validationPattern ?? null,
+          validationMessage: col.validationMessage ?? null,
+          canonicalFormat: col.canonicalFormat ?? null,
           refEntityKey: col.refEntityKey ?? null,
           refColumnKey: col.refColumnKey ?? null,
           refColumnDefinitionId: col.refColumnDefinitionId ?? null,
@@ -158,6 +175,11 @@ function mapBackendRecommendations(backend: BackendRecommendation): Recommendati
         sourceField: col.sourceField,
         isPrimaryKeyCandidate: col.isPrimaryKey,
         sampleValues: col.sampleValues,
+        normalizedKey: col.normalizedKey ?? col.key,
+        required: col.required ?? false,
+        defaultValue: col.defaultValue ?? null,
+        format: col.format ?? null,
+        enumValues: col.enumValues ?? null,
       })),
     })),
   };
@@ -340,11 +362,20 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
           key: col.recommended.key,
           label: col.recommended.label,
           type: col.recommended.type as ConfirmRequestBody["entities"][number]["columns"][number]["type"],
-          format: col.recommended.format ?? null,
           isPrimaryKey: col.isPrimaryKeyCandidate,
-          required: col.recommended.required ?? false,
           action: col.action,
           existingColumnDefinitionId: col.existingColumnDefinitionId,
+          // Field-mapping-level
+          normalizedKey: col.normalizedKey ?? col.recommended.key,
+          required: col.required ?? false,
+          defaultValue: col.defaultValue ?? null,
+          format: col.format ?? null,
+          enumValues: col.enumValues ?? null,
+          // Column-definition-level
+          validationPattern: col.recommended.validationPattern ?? null,
+          validationMessage: col.recommended.validationMessage ?? null,
+          canonicalFormat: col.recommended.canonicalFormat ?? null,
+          // Reference fields
           refEntityKey: col.recommended.refEntityKey ?? null,
           refColumnKey: col.recommended.refColumnKey ?? null,
           refColumnDefinitionId: col.recommended.refColumnDefinitionId ?? null,

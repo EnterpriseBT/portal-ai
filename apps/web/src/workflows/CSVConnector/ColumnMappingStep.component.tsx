@@ -26,8 +26,6 @@ import type { FormErrors } from "../../utils/form-validation.util";
 
 // --- Constants ---
 
-const TYPES_WITH_FORMAT = ["string", "date", "datetime"] as const;
-
 const COLUMN_TYPE_OPTIONS: SelectOption[] = [
   { value: "string", label: "String" },
   { value: "number", label: "Number" },
@@ -39,8 +37,19 @@ const COLUMN_TYPE_OPTIONS: SelectOption[] = [
   { value: "array", label: "Array" },
   { value: "reference", label: "Reference" },
   { value: "reference-array", label: "Reference Array (M:M)" },
-  { value: "currency", label: "Currency" },
 ];
+
+const VALIDATION_PRESETS = [
+  { label: "None", value: "", pattern: "", message: "" },
+  { label: "Email", value: "email", pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", message: "Must be a valid email address" },
+  { label: "URL", value: "url", pattern: "^https?://.*", message: "Must be a valid URL" },
+  { label: "Phone", value: "phone", pattern: "^\\+?[\\d\\s\\-().]+$", message: "Must be a valid phone number" },
+  { label: "UUID", value: "uuid", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", message: "Must be a valid UUID" },
+];
+
+function toSnakeCase(s: string): string {
+  return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
 
 // --- Types ---
 
@@ -317,7 +326,6 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newType = e.target.value;
       const isReference = newType === "reference" || newType === "reference-array";
-      const supportsFormat = (TYPES_WITH_FORMAT as readonly string[]).includes(newType);
       onUpdate(entityIndex, columnIndex, {
         recommended: {
           ...column.recommended,
@@ -327,23 +335,40 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             refColumnKey: null,
             refColumnDefinitionId: null,
           }),
-          ...(!supportsFormat && { format: null }),
         },
+        ...(newType !== "enum" && { enumValues: null }),
       });
     },
     [entityIndex, columnIndex, column.recommended, onUpdate]
   );
 
+  // Mapping-level handlers
+  const handleNormalizedKeyChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate(entityIndex, columnIndex, { normalizedKey: e.target.value });
+    },
+    [entityIndex, columnIndex, onUpdate]
+  );
+
+  const handleRequiredToggle = useCallback(
+    (checked: boolean) => {
+      onUpdate(entityIndex, columnIndex, { required: checked });
+    },
+    [entityIndex, columnIndex, onUpdate]
+  );
+
+  const handleDefaultValueChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate(entityIndex, columnIndex, { defaultValue: e.target.value || null });
+    },
+    [entityIndex, columnIndex, onUpdate]
+  );
+
   const handleFormatChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entityIndex, columnIndex, {
-        recommended: {
-          ...column.recommended,
-          format: e.target.value || null,
-        },
-      });
+      onUpdate(entityIndex, columnIndex, { format: e.target.value || null });
     },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
+    [entityIndex, columnIndex, onUpdate]
   );
 
   const handleEnumValuesChange = useCallback(
@@ -353,10 +378,51 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
         .map((v) => v.trim())
         .filter(Boolean);
       onUpdate(entityIndex, columnIndex, {
-        recommended: {
-          ...column.recommended,
-          enumValues: values.length > 0 ? values : null,
-        },
+        enumValues: values.length > 0 ? values : null,
+      });
+    },
+    [entityIndex, columnIndex, onUpdate]
+  );
+
+  // Column-definition-level handlers
+  const handleValidationPresetChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const preset = VALIDATION_PRESETS.find((p) => p.value === e.target.value);
+      if (preset) {
+        onUpdate(entityIndex, columnIndex, {
+          recommended: {
+            ...column.recommended,
+            validationPattern: preset.pattern || null,
+            validationMessage: preset.message || null,
+          },
+        });
+      }
+    },
+    [entityIndex, columnIndex, column.recommended, onUpdate]
+  );
+
+  const handleValidationPatternChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate(entityIndex, columnIndex, {
+        recommended: { ...column.recommended, validationPattern: e.target.value || null },
+      });
+    },
+    [entityIndex, columnIndex, column.recommended, onUpdate]
+  );
+
+  const handleValidationMessageChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate(entityIndex, columnIndex, {
+        recommended: { ...column.recommended, validationMessage: e.target.value || null },
+      });
+    },
+    [entityIndex, columnIndex, column.recommended, onUpdate]
+  );
+
+  const handleCanonicalFormatChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdate(entityIndex, columnIndex, {
+        recommended: { ...column.recommended, canonicalFormat: e.target.value || null },
       });
     },
     [entityIndex, columnIndex, column.recommended, onUpdate]
@@ -444,32 +510,97 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
           />
         )}
 
-        {(TYPES_WITH_FORMAT as readonly string[]).includes(column.recommended.type) && (
+        {/* Column-definition-level fields */}
+        <Divider />
+        <Typography variant="caption" color="text.secondary">Column Definition</Typography>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <Select
+            label="Validation Preset"
+            value=""
+            onChange={handleValidationPresetChange}
+            options={VALIDATION_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
+            size="small"
+            fullWidth
+          />
+          <TextInput
+            label="Validation Pattern"
+            value={column.recommended.validationPattern ?? ""}
+            onChange={handleValidationPatternChange}
+            size="small"
+            fullWidth
+          />
+        </Stack>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <TextInput
+            label="Validation Message"
+            value={column.recommended.validationMessage ?? ""}
+            onChange={handleValidationMessageChange}
+            size="small"
+            fullWidth
+          />
+          <TextInput
+            label="Canonical Format"
+            value={column.recommended.canonicalFormat ?? ""}
+            onChange={handleCanonicalFormatChange}
+            size="small"
+            fullWidth
+          />
+        </Stack>
+
+        {/* Field-mapping-level fields */}
+        <Divider />
+        <Typography variant="caption" color="text.secondary">Field Mapping</Typography>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <TextInput
+            label="Normalized Key"
+            value={column.normalizedKey ?? toSnakeCase(column.recommended.key)}
+            onChange={handleNormalizedKeyChange}
+            required
+            error={!!fieldErrors.normalizedKey}
+            helperText={fieldErrors.normalizedKey ?? "Key used in normalized data"}
+            size="small"
+            fullWidth
+          />
+          <TextInput
+            label="Default Value"
+            value={column.defaultValue ?? ""}
+            onChange={handleDefaultValueChange}
+            size="small"
+            fullWidth
+          />
+        </Stack>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
           <TextInput
             label="Format"
-            value={column.recommended.format ?? ""}
+            value={column.format ?? ""}
             onChange={handleFormatChange}
             size="small"
             fullWidth
-            placeholder="e.g. YYYY-MM-DD, email, ISO8601"
+            placeholder="e.g. YYYY-MM-DD, true/false"
           />
-        )}
+          {column.recommended.type === "enum" && (
+            <TextInput
+              label="Enum Values (comma-separated)"
+              value={column.enumValues?.join(", ") ?? ""}
+              onChange={handleEnumValuesChange}
+              size="small"
+              fullWidth
+            />
+          )}
+        </Stack>
 
-        {column.recommended.type === "enum" && (
-          <TextInput
-            label="Enum Values (comma-separated)"
-            value={column.recommended.enumValues?.join(", ") ?? ""}
-            onChange={handleEnumValuesChange}
-            size="small"
-            fullWidth
+        <Stack direction="row" spacing={2}>
+          <Checkbox
+            label="Primary Key"
+            checked={column.isPrimaryKeyCandidate}
+            onChange={handlePrimaryKeyToggle}
           />
-        )}
-
-        <Checkbox
-          label="Primary Key"
-          checked={column.isPrimaryKeyCandidate}
-          onChange={handlePrimaryKeyToggle}
-        />
+          <Checkbox
+            label="Required"
+            checked={column.required ?? false}
+            onChange={handleRequiredToggle}
+          />
+        </Stack>
 
         {column.sampleValues && column.sampleValues.length > 0 && (
           <Typography variant="caption" color="text.secondary">

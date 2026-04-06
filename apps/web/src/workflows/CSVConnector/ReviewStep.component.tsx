@@ -231,38 +231,50 @@ const ReviewForm: React.FC<{
               {entity.connectorEntity.label} ({entity.connectorEntity.key})
             </Typography>
             <Stack spacing={0.5} sx={{ pl: 2 }}>
-              {entity.columns.map((col, colIdx) => (
-                <Stack
-                  key={colIdx}
-                  direction="row"
-                  spacing={2}
-                  alignItems="center"
-                  sx={{ flexWrap: "wrap", rowGap: 0.5 }}
-                >
-                  <Typography
-                    variant="body2"
-                    sx={{ minWidth: 120, flexShrink: 0 }}
-                  >
-                    {col.sourceField}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    →
-                  </Typography>
-                  <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
-                    {col.recommended.key} ({formatColumnType(col.recommended)})
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color={
-                      col.action === "match_existing"
-                        ? "success.main"
-                        : "info.main"
-                    }
-                  >
-                    {col.action === "match_existing" ? "match" : "new"}
-                  </Typography>
-                </Stack>
-              ))}
+              {entity.columns.map((col, colIdx) => {
+                const nk = col.normalizedKey ?? col.recommended.key;
+                return (
+                  <Stack key={colIdx} spacing={0.25} sx={{ py: 0.5 }}>
+                    <Stack
+                      direction="row"
+                      spacing={2}
+                      alignItems="center"
+                      sx={{ flexWrap: "wrap", rowGap: 0.5 }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{ minWidth: 120, flexShrink: 0 }}
+                      >
+                        {col.sourceField}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        →
+                      </Typography>
+                      <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+                        {col.recommended.key} ({formatColumnType(col.recommended)})
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color={
+                          col.action === "match_existing"
+                            ? "success.main"
+                            : "info.main"
+                        }
+                      >
+                        {col.action === "match_existing" ? "match" : "new"}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary" sx={{ pl: 2 }}>
+                      normalizedKey: {nk}
+                      {col.required && " · required"}
+                      {col.format && ` · format: ${col.format}`}
+                      {col.defaultValue && ` · default: ${col.defaultValue}`}
+                      {col.recommended.validationPattern && ` · pattern: ${col.recommended.validationPattern}`}
+                      {col.recommended.canonicalFormat && ` · canonical: ${col.recommended.canonicalFormat}`}
+                    </Typography>
+                  </Stack>
+                );
+              })}
             </Stack>
           </Box>
         ))}

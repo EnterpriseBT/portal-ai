@@ -40,6 +40,10 @@ const BaseColumnSchema = z.object({
   type: z.string().min(1, "Column type is required"),
 });
 
+const NormalizedKeySchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/, "Normalized key must be lowercase snake_case");
+
 const ReferenceColumnSchema = BaseColumnSchema.extend({
   type: z.enum(["reference", "reference-array"]),
   refEntityKey: z.union([
@@ -62,11 +66,13 @@ export function validateColumnStep(entities: RecommendedEntity[]): ColumnStepErr
   const allErrors: ColumnStepErrors = {};
   for (let ei = 0; ei < entities.length; ei++) {
     const colErrors: Record<number, FormErrors> = {};
+
+    // Per-column schema validation
     for (let ci = 0; ci < entities[ei].columns.length; ci++) {
-      const col = entities[ei].columns[ci].recommended;
-      const isRef = col.type === "reference" || col.type === "reference-array";
+      const col = entities[ei].columns[ci];
+      const isRef = col.recommended.type === "reference" || col.recommended.type === "reference-array";
       const schema = isRef ? ReferenceColumnSchema : BaseColumnSchema;
-      const result = schema.safeParse(col);
+      const result = schema.safeParse(col.recommended);
       if (!result.success) {
         const fieldErrors: FormErrors = {};
         for (const issue of result.error.issues) {
@@ -75,7 +81,35 @@ export function validateColumnStep(entities: RecommendedEntity[]): ColumnStepErr
         }
         colErrors[ci] = fieldErrors;
       }
+
+      // Validate normalizedKey
+      const nk = col.normalizedKey ?? col.recommended.key;
+      const nkResult = NormalizedKeySchema.safeParse(nk);
+      if (!nkResult.success) {
+        colErrors[ci] = {
+          ...(colErrors[ci] ?? {}),
+          normalizedKey: nkResult.error.issues[0].message,
+        };
+      }
     }
+
+    // Uniqueness check for normalizedKey within the entity
+    const seen = new Map<string, number>();
+    for (let ci = 0; ci < entities[ei].columns.length; ci++) {
+      const col = entities[ei].columns[ci];
+      const nk = col.normalizedKey ?? col.recommended.key;
+      const nkResult = NormalizedKeySchema.safeParse(nk);
+      if (!nkResult.success) continue; // skip invalid keys for uniqueness check
+      const prev = seen.get(nk);
+      if (prev !== undefined) {
+        colErrors[ci] = {
+          ...(colErrors[ci] ?? {}),
+          normalizedKey: `Duplicate normalized key "${nk}"`,
+        };
+      }
+      seen.set(nk, ci);
+    }
+
     if (Object.keys(colErrors).length > 0) {
       allErrors[ei] = colErrors;
     }

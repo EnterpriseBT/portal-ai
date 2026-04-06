@@ -32,10 +32,10 @@ type RecommendedColumn = {
     key: string;
     label: string;
     type: string;
-    required?: boolean;
-    format?: string | null;
-    enumValues?: string[] | null;
     description?: string | null;
+    validationPattern?: string | null;
+    validationMessage?: string | null;
+    canonicalFormat?: string | null;
     refEntityKey?: string | null;
     refColumnKey?: string | null;
     refColumnDefinitionId?: string | null;
@@ -43,6 +43,10 @@ type RecommendedColumn = {
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
   sampleValues: string[];
+  required?: boolean;
+  defaultValue?: string | null;
+  format?: string | null;
+  enumValues?: string[] | null;
 };
 
 type RecommendedEntity = {
@@ -80,14 +84,14 @@ const MOCK_COLUMN_MATCH: RecommendedColumn = {
     key: "email",
     label: "Email",
     type: "string",
-    required: true,
-    format: "email",
-    enumValues: null,
     description: "Contact email",
   },
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org"],
+  required: true,
+  format: "email",
+  enumValues: null,
 };
 
 const MOCK_COLUMN_NEW: RecommendedColumn = {
@@ -98,14 +102,14 @@ const MOCK_COLUMN_NEW: RecommendedColumn = {
     key: "phone",
     label: "Phone",
     type: "string",
-    required: false,
-    format: null,
-    enumValues: null,
     description: null,
   },
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100"],
+  required: false,
+  format: null,
+  enumValues: null,
 };
 
 const MOCK_ENTITIES: RecommendedEntity[] = [

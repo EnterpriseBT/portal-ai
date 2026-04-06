@@ -25,14 +25,14 @@ const MOCK_COLUMN: RecommendedColumn = {
     key: "email",
     label: "Email",
     type: "string",
-    required: true,
-    format: "email",
-    enumValues: null,
     description: "Contact email",
   },
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
+  required: true,
+  format: "email",
+  enumValues: null,
 };
 
 const MOCK_COLUMN_NEW: RecommendedColumn = {
@@ -43,14 +43,14 @@ const MOCK_COLUMN_NEW: RecommendedColumn = {
     key: "phone",
     label: "Phone",
     type: "string",
-    required: false,
-    format: null,
-    enumValues: null,
     description: null,
   },
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100", "+1-555-0101"],
+  required: false,
+  format: null,
+  enumValues: null,
 };
 
 const MOCK_ENTITIES: RecommendedEntity[] = [
