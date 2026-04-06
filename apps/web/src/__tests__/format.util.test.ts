@@ -196,4 +196,61 @@ describe("Formatter", () => {
     });
   });
 
+  // ── canonicalFormat support ────────────────────────────────────
+
+  describe("format with canonicalFormat", () => {
+    it("applies canonicalFormat to date type (overrides default)", () => {
+      expect(
+        Formatter.format("2025-06-15", "date", { canonicalFormat: "dd/MM/yyyy" })
+      ).toBe("15/06/2025");
+    });
+
+    it("applies canonicalFormat to datetime type", () => {
+      expect(
+        Formatter.format("2025-06-15T10:30:00Z", "datetime", { canonicalFormat: "HH:mm" })
+      ).toBe("10:30");
+    });
+
+    it("applies canonicalFormat to number type with currency prefix", () => {
+      const result = Formatter.format(1234.5, "number", { canonicalFormat: "$#,##0.00" });
+      expect(result).toMatch(/^\$/);
+      expect(result).toContain("1");
+    });
+
+    it("applies canonicalFormat to number with fixed decimals", () => {
+      const result = Formatter.format(42, "number", { canonicalFormat: "#,##0.00" });
+      // Should have 2 decimal places
+      expect(result).toMatch(/42[.,]00/);
+    });
+
+    it("ignores canonicalFormat when null", () => {
+      expect(
+        Formatter.format("2025-06-15", "date", { canonicalFormat: null })
+      ).toBe("2025-06-15");
+    });
+
+    it("ignores canonicalFormat for string type", () => {
+      expect(
+        Formatter.format("hello", "string", { canonicalFormat: "UPPER" })
+      ).toBe("hello");
+    });
+  });
+
+  // ── numberWithFormat ──────────────────────────────────────────
+
+  describe("numberWithFormat", () => {
+    it("formats with currency prefix", () => {
+      const result = Formatter.numberWithFormat(1234.5, "$#,##0.00");
+      expect(result).toMatch(/^\$/);
+    });
+
+    it("formats with fixed decimal places", () => {
+      const result = Formatter.numberWithFormat(42, "#,##0.00");
+      expect(result).toMatch(/42[.,]00/);
+    });
+
+    it("returns string for NaN input", () => {
+      expect(Formatter.numberWithFormat("abc", "$#,##0.00")).toBe("abc");
+    });
+  });
 });

@@ -78,6 +78,8 @@ const EditForm: React.FC<{
   const [canonicalFormat, setCanonicalFormat] = useState(cd.canonicalFormat ?? "");
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [showRevalidationWarning, setShowRevalidationWarning] = useState(false);
+  const [pendingBody, setPendingBody] = useState<ColumnDefinitionUpdateRequestBody | null>(null);
   const labelRef = useDialogAutoFocus(true);
 
   const allowedTargetTypes = BLOCKED_TYPES.has(cd.type)
@@ -107,6 +109,9 @@ const EditForm: React.FC<{
     return body;
   };
 
+  const needsRevalidation = (body: ColumnDefinitionUpdateRequestBody): boolean =>
+    body.validationPattern !== undefined || body.canonicalFormat !== undefined;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setTouched({ label: true });
@@ -122,7 +127,22 @@ const EditForm: React.FC<{
       onClose();
       return;
     }
+
+    if (needsRevalidation(body)) {
+      setPendingBody(body);
+      setShowRevalidationWarning(true);
+      return;
+    }
+
     onSubmit(body);
+  };
+
+  const handleConfirmRevalidation = () => {
+    if (pendingBody) {
+      onSubmit(pendingBody);
+      setShowRevalidationWarning(false);
+      setPendingBody(null);
+    }
   };
 
   return (
@@ -250,6 +270,27 @@ const EditForm: React.FC<{
           size="small"
           helperText="Display format pattern (e.g. date format string)"
         />
+
+        {/* Revalidation confirmation */}
+        {showRevalidationWarning && (
+          <Alert
+            severity="info"
+            action={
+              <Button
+                type="button"
+                size="small"
+                variant="contained"
+                onClick={handleConfirmRevalidation}
+              >
+                Confirm &amp; Save
+              </Button>
+            }
+          >
+            <Typography variant="body2">
+              Changing validation pattern or canonical format will trigger re-validation of affected records. This may take a moment.
+            </Typography>
+          </Alert>
+        )}
 
         {/* Warnings */}
         {warnings && warnings.length > 0 && (

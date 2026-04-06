@@ -16,6 +16,16 @@ import {
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
+// ── Validation Presets ───────────────────────────────────────────────
+
+const VALIDATION_PRESETS = [
+  { label: "None", value: "", pattern: "", message: "" },
+  { label: "Email", value: "email", pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", message: "Must be a valid email address" },
+  { label: "URL", value: "url", pattern: "^https?://.*", message: "Must be a valid URL" },
+  { label: "Phone", value: "phone", pattern: "^\\+?[\\d\\s\\-().]+$", message: "Must be a valid phone number" },
+  { label: "UUID", value: "uuid", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", message: "Must be a valid UUID" },
+];
+
 // ── Types ────────────────────────────────────────────────────────────
 
 interface ColumnDefinitionFormState {
@@ -23,6 +33,7 @@ interface ColumnDefinitionFormState {
   label: string;
   type: string;
   description: string;
+  preset: string;
   validationPattern: string;
   validationMessage: string;
   canonicalFormat: string;
@@ -44,6 +55,7 @@ const INITIAL_FORM: ColumnDefinitionFormState = {
   label: "",
   type: "string",
   description: "",
+  preset: "",
   validationPattern: "",
   validationMessage: "",
   canonicalFormat: "",
@@ -89,7 +101,13 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
   }, [open]);
 
   const handleChange = (field: keyof ColumnDefinitionFormState, value: string | boolean) => {
-    const next = { ...form, [field]: value };
+    let next = { ...form, [field]: value };
+    if (field === "preset" && typeof value === "string") {
+      const preset = VALIDATION_PRESETS.find((p) => p.value === value);
+      if (preset) {
+        next = { ...next, validationPattern: preset.pattern, validationMessage: preset.message };
+      }
+    }
     setForm(next);
     if (touched[field]) {
       setErrors(validateForm(next));
@@ -204,6 +222,20 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
           multiline
           rows={2}
         />
+        <TextField
+          select
+          label="Validation Preset"
+          value={form.preset}
+          onChange={(e) => handleChange("preset", e.target.value)}
+          fullWidth
+          helperText="Auto-populate validation pattern and message"
+        >
+          {VALIDATION_PRESETS.map((p) => (
+            <MenuItem key={p.value} value={p.value}>
+              {p.label}
+            </MenuItem>
+          ))}
+        </TextField>
         <TextField
           label="Validation Pattern"
           value={form.validationPattern}

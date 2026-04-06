@@ -98,11 +98,10 @@ describe("CreateColumnDefinitionDialog", () => {
         key: "customer_name",
         label: "Customer Name",
         type: "string",
-        required: false,
-        defaultValue: null,
-        format: null,
         description: null,
-        enumValues: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
       });
     });
   });
@@ -114,38 +113,33 @@ describe("CreateColumnDefinitionDialog", () => {
       <CreateColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />
     );
     fireEvent.change(screen.getByLabelText(/^Key/), {
-      target: { value: "status" },
+      target: { value: "email" },
     });
     fireEvent.change(screen.getByLabelText(/^Label/), {
-      target: { value: "Status" },
+      target: { value: "Email Address" },
     });
-    // Change type to enum
-    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
-    fireEvent.click(screen.getByRole("option", { name: "enum" }));
     fireEvent.change(screen.getByLabelText(/^Description/), {
-      target: { value: "Current status" },
+      target: { value: "Primary email" },
     });
-    fireEvent.click(screen.getByLabelText(/^Required/));
-    fireEvent.change(screen.getByLabelText(/^Default Value/), {
-      target: { value: "active" },
+    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), {
+      target: { value: "^.+@.+$" },
     });
-    fireEvent.change(screen.getByLabelText(/^Format/), {
-      target: { value: "lowercase" },
+    fireEvent.change(screen.getByLabelText(/^Validation Message/), {
+      target: { value: "Must be a valid email" },
     });
-    fireEvent.change(screen.getByLabelText(/^Enum Values/), {
-      target: { value: "active, inactive, pending" },
+    fireEvent.change(screen.getByLabelText(/^Canonical Format/), {
+      target: { value: "RFC5322" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
-        key: "status",
-        label: "Status",
-        type: "enum",
-        required: true,
-        defaultValue: "active",
-        format: "lowercase",
-        description: "Current status",
-        enumValues: ["active", "inactive", "pending"],
+        key: "email",
+        label: "Email Address",
+        type: "string",
+        description: "Primary email",
+        validationPattern: "^.+@.+$",
+        validationMessage: "Must be a valid email",
+        canonicalFormat: "RFC5322",
       });
     });
   });
@@ -287,32 +281,99 @@ describe("CreateColumnDefinitionDialog", () => {
   });
 
   // #21
-  it("should show enum values field only when type is 'enum'", async () => {
+  it("should render new fields: Validation Pattern, Validation Message, Canonical Format", () => {
     render(<CreateColumnDefinitionDialog {...defaultProps} />);
-    expect(screen.queryByLabelText(/^Enum Values/)).not.toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
-    fireEvent.click(screen.getByRole("option", { name: "enum" }));
-    await waitFor(() => {
-      expect(screen.getByLabelText(/^Enum Values/)).toBeInTheDocument();
-    });
+    expect(screen.getByLabelText(/^Validation Pattern/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Validation Message/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Canonical Format/)).toBeInTheDocument();
   });
 
   // #22
-  it("should hide enum values field when type changes away from 'enum'", async () => {
+  it("should NOT render removed fields: Required, Default Value, Format, Enum Values", () => {
     render(<CreateColumnDefinitionDialog {...defaultProps} />);
-    // Select enum
+    expect(screen.queryByLabelText(/^Required/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Default Value/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Format$/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Enum Values/)).not.toBeInTheDocument();
+  });
+
+  // #23
+  it("should not include 'currency' in type select options", () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
     fireEvent.mouseDown(screen.getByLabelText(/^Type/));
-    fireEvent.click(screen.getByRole("option", { name: "enum" }));
+    expect(screen.queryByRole("option", { name: "currency" })).not.toBeInTheDocument();
+  });
+
+  // #24
+  it("should render Validation Preset dropdown", () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    expect(screen.getByLabelText(/^Validation Preset/)).toBeInTheDocument();
+  });
+
+  // #25
+  it("should auto-populate validation fields when Email preset is selected", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
+    fireEvent.click(screen.getByRole("option", { name: "Email" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Enum Values/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("Must be a valid email address");
     });
-    // Change back to number (avoids "string" matching the already-selected value)
-    fireEvent.mouseDown(screen.getAllByLabelText(/^Type/)[0]);
-    fireEvent.click(screen.getByRole("option", { name: "number" }));
+  });
+
+  // #26
+  it("should auto-populate validation fields when URL preset is selected", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
+    fireEvent.click(screen.getByRole("option", { name: "URL" }));
     await waitFor(() => {
-      expect(
-        screen.queryByLabelText(/^Enum Values/)
-      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^https?://.*");
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("Must be a valid URL");
+    });
+  });
+
+  // #27
+  it("should auto-populate validation fields when UUID preset is selected", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
+    fireEvent.click(screen.getByRole("option", { name: "UUID" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("Must be a valid UUID");
+    });
+  });
+
+  // #28
+  it("should allow manual editing of validation fields after preset selection", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    // Select a preset
+    fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
+    fireEvent.click(screen.getByRole("option", { name: "Email" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    });
+    // Manually override
+    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), {
+      target: { value: "^custom@.*$" },
+    });
+    expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^custom@.*$");
+  });
+
+  // #29
+  it("should clear validation fields when None preset is selected", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    // Select Email first
+    fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
+    fireEvent.click(screen.getByRole("option", { name: "Email" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    });
+    // Select None — use getAllByLabelText since MUI may render multiple matching nodes when listbox is open
+    fireEvent.mouseDown(screen.getAllByLabelText(/^Validation Preset/)[0]);
+    fireEvent.click(screen.getByRole("option", { name: "None" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("");
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("");
     });
   });
 });

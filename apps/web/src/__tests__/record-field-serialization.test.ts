@@ -274,3 +274,35 @@ describe("initializeRecordFields", () => {
     expect(values.name).toBe("Alice");
   });
 });
+
+// ── normalizedKey differs from key ──────────────────────────────────
+
+describe("normalizedKey used as data key (not col.key)", () => {
+  it("serializeRecordFields uses normalizedKey for input and output", () => {
+    const c = col("first_name", "string", { normalizedKey: "fname" });
+    const { data, errors } = serializeRecordFields([c], { fname: "Alice" });
+    expect(data.fname).toBe("Alice");
+    expect(data).not.toHaveProperty("first_name");
+    expect(errors).toEqual({});
+  });
+
+  it("validateRequiredFields uses normalizedKey for value lookup and error keys", () => {
+    const c = col("first_name", "string", { normalizedKey: "fname", required: true });
+    const errors = validateRequiredFields([c], { fname: "" });
+    expect(errors.fname).toBe("First_name is required");
+    expect(errors).not.toHaveProperty("first_name");
+  });
+
+  it("initializeRecordFields uses normalizedKey for output keys", () => {
+    const c = col("first_name", "string", { normalizedKey: "fname", defaultValue: "hello" });
+    const values = initializeRecordFields([c]);
+    expect(values.fname).toBe("hello");
+    expect(values).not.toHaveProperty("first_name");
+  });
+
+  it("initializeRecordFields reads existingData by normalizedKey", () => {
+    const c = col("first_name", "string", { normalizedKey: "fname" });
+    const values = initializeRecordFields([c], { fname: "Bob" });
+    expect(values.fname).toBe("Bob");
+  });
+});

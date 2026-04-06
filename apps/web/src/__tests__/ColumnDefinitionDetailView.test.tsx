@@ -176,6 +176,43 @@ describe("ColumnDefinitionDetailView", () => {
     expect(screen.getByText("Field Mappings")).toBeInTheDocument();
   });
 
+  it("should display new field mapping columns: normalizedKey, required, defaultValue, format, enumValues", () => {
+    const cd = makeColumnDefinition();
+    const fm1 = makeFieldMapping({
+      id: "fm-1",
+      sourceField: "raw_status",
+      normalizedKey: "status",
+      required: true,
+      defaultValue: "active",
+      format: "lowercase",
+      enumValues: ["active", "inactive"],
+      connectorEntityId: "ce-100",
+    });
+
+    currentGetQuery = {
+      data: { columnDefinition: cd },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+    currentFieldMappingListQuery = {
+      data: { fieldMappings: [fm1], total: 1, limit: 10, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+    // Column headers
+    expect(screen.getByText("Normalized Key")).toBeInTheDocument();
+    expect(screen.getByText("Default Value")).toBeInTheDocument();
+    // Cell values
+    expect(screen.getByText("status")).toBeInTheDocument();
+    expect(screen.getByText("active")).toBeInTheDocument();
+    expect(screen.getByText("lowercase")).toBeInTheDocument();
+    expect(screen.getByText("active, inactive")).toBeInTheDocument();
+  });
+
   it("should display empty state when no field mappings exist", () => {
     const cd = makeColumnDefinition();
     currentGetQuery = {

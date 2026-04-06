@@ -57,12 +57,12 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           return;
         }
         setLocalError(undefined);
-        onChange(column.key, JSON.stringify(parsed, null, 2));
+        onChange(column.normalizedKey, JSON.stringify(parsed, null, 2));
       } catch (e) {
         setLocalError(`Invalid JSON: ${(e as Error).message}`);
       }
     },
-    [column.key, column.type, onChange, onBlur]
+    [column.normalizedKey, column.type, onChange, onBlur]
   );
 
   const codeEditorSx = {
@@ -79,7 +79,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           control={
             <Checkbox
               checked={Boolean(value)}
-              onChange={(e) => onChange(column.key, e.target.checked)}
+              onChange={(e) => onChange(column.normalizedKey, e.target.checked)}
               disabled={disabled}
               slotProps={{ input: { ref: inputRef } }}
             />
@@ -94,7 +94,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           label={column.label}
           type="number"
           value={value ?? ""}
-          onChange={(e) => onChange(column.key, e.target.value)}
+          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
           onBlur={onBlur}
           fullWidth
           size="small"
@@ -118,7 +118,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           label={column.label}
           type="date"
           value={value ?? ""}
-          onChange={(e) => onChange(column.key, e.target.value)}
+          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
           onBlur={onBlur}
           fullWidth
           size="small"
@@ -140,7 +140,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           label={column.label}
           type="datetime-local"
           value={value ?? ""}
-          onChange={(e) => onChange(column.key, e.target.value)}
+          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
           onBlur={onBlur}
           fullWidth
           size="small"
@@ -165,7 +165,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           <TextField
             label={column.label}
             value={value ?? ""}
-            onChange={(e) => onChange(column.key, e.target.value)}
+            onChange={(e) => onChange(column.normalizedKey, e.target.value)}
             onBlur={onBlur}
             fullWidth
             size="small"
@@ -186,7 +186,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
           label={column.label}
           select
           value={value ?? ""}
-          onChange={(e) => onChange(column.key, e.target.value)}
+          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
           onBlur={onBlur}
           fullWidth
           size="small"
@@ -219,7 +219,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
         <TextField
           label={column.label}
           value={value ?? ""}
-          onChange={(e) => onChange(column.key, e.target.value)}
+          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
           onBlur={(e) => handleBlurCodeEditor(e.target.value)}
           fullWidth
           size="small"
@@ -243,7 +243,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
         <TextField
           label={column.label}
           value={value ?? ""}
-          onChange={(e) => onChange(column.key, e.target.value)}
+          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
           onBlur={onBlur}
           fullWidth
           size="small"
@@ -267,7 +267,7 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
         <TextField
           label={column.label}
           value={value ?? ""}
-          onChange={(e) => onChange(column.key, e.target.value)}
+          onChange={(e) => onChange(column.normalizedKey, e.target.value)}
           onBlur={onBlur}
           fullWidth
           size="small"

@@ -325,7 +325,12 @@ export const ColumnDefinitionDetailView: React.FC<
                       }
                       : {
                         sourceField: "",
+                        normalizedKey: "",
                         isPrimaryKey: false,
+                        required: false,
+                        defaultValue: null,
+                        format: null,
+                        enumValues: null,
                         columnDefinitionId: "",
                         columnDefinitionLabel: "",
                         connectorEntityLabel: "",
@@ -415,10 +420,23 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
         }
       },
     },
+    { key: "normalizedKey", label: "Normalized Key" },
     {
       key: "isPrimaryKey",
       label: "Primary Key",
       render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+    },
+    {
+      key: "required",
+      label: "Required",
+      render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+    },
+    { key: "defaultValue", label: "Default Value" },
+    { key: "format", label: "Format" },
+    {
+      key: "enumValues",
+      label: "Enum Values",
+      render: (value) => (Array.isArray(value) ? value.join(", ") : null),
     },
     ...((onEdit || onDelete)
       ? [

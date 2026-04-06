@@ -14,6 +14,8 @@ import {
   type DataTableColumn,
   type ColumnConfig,
 } from "@portalai/core/ui";
+import CancelIcon from "@mui/icons-material/Cancel";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import Chip from "@mui/material/Chip";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
@@ -41,17 +43,29 @@ export const EntityRecordDataTable = (props: EntityRecordDataTableProps) => {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
+const VALID_COLUMN: DataTableColumn = {
+  key: "isValid",
+  label: "Valid",
+  sortable: false,
+  render: (value: unknown) =>
+    value === false ? (
+      <CancelIcon fontSize="small" color="error" />
+    ) : (
+      <CheckCircleIcon fontSize="small" color="success" />
+    ),
+};
+
 function toDataTableColumns(
   columns: ResolvedColumn[]
 ): DataTableColumn[] {
-  return columns.map((col) => {
+  const cols: DataTableColumn[] = columns.map((col) => {
     if (
       col.type === "json" ||
       col.type === "array" ||
       col.type === "reference-array"
     ) {
       return {
-        key: col.key,
+        key: col.normalizedKey,
         label: col.label,
         caption: col.type,
         sortable: SORTABLE_COLUMN_TYPES.has(col.type),
@@ -64,13 +78,17 @@ function toDataTableColumns(
       };
     }
     return {
-      key: col.key,
+      key: col.normalizedKey,
       label: col.label,
       caption: col.type,
       sortable: SORTABLE_COLUMN_TYPES.has(col.type),
-      format: (value: unknown) => Formatter.format(value, col.type),
+      format: (value: unknown) =>
+        Formatter.format(value, col.type, { canonicalFormat: col.canonicalFormat }),
     };
   });
+
+  cols.push(VALID_COLUMN);
+  return cols;
 }
 
 // ── Pure UI component ───────────────────────────────────────────────

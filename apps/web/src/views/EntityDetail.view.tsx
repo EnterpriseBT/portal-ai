@@ -142,6 +142,9 @@ export interface EntityDetailViewUIProps {
   onCreateRecord?: (body: EntityRecordCreateRequestBody) => void;
   isCreatingRecord?: boolean;
   createRecordServerError?: ServerError | null;
+  /** Called when user clicks "Re-validate All". */
+  onRevalidate?: () => void;
+  isRevalidating?: boolean;
 }
 
 export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
@@ -179,6 +182,8 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   onCreateRecord,
   isCreatingRecord,
   createRecordServerError,
+  onRevalidate,
+  isRevalidating,
 }) => {
   const navigate = useNavigate();
 
@@ -348,11 +353,24 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           title="Records"
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
-            isWriteEnabled && columnDefs.length > 0 && onOpenCreateRecordDialog ? (
-              <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={onOpenCreateRecordDialog}>
-                Create
-              </Button>
-            ) : undefined
+            <Stack direction="row" spacing={1}>
+              {onRevalidate && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<RefreshIcon />}
+                  onClick={onRevalidate}
+                  disabled={isRevalidating}
+                >
+                  {isRevalidating ? "Re-validating..." : "Re-validate All"}
+                </Button>
+              )}
+              {isWriteEnabled && columnDefs.length > 0 && onOpenCreateRecordDialog && (
+                <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={onOpenCreateRecordDialog}>
+                  Create
+                </Button>
+              )}
+            </Stack>
           }
         >
           <PaginationToolbar {...pagination.toolbarProps} />
@@ -378,10 +396,10 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                         string
                       >();
                       const rows = records.records.map((r) => {
-                        const row = (r.normalizedData ?? {}) as Record<
-                          string,
-                          unknown
-                        >;
+                        const row = {
+                          ...(r.normalizedData ?? {}),
+                          isValid: r.isValid,
+                        } as Record<string, unknown>;
                         rowRecordId.set(row, r.id);
                         return row;
                       });
@@ -489,6 +507,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 
   const countResult = sdk.entityRecords.count(entityId);
   const syncMutation = sdk.entityRecords.sync(entityId);
+  const revalidateMutation = sdk.entityRecords.revalidate(entityId);
   const createRecordMutation = sdk.entityRecords.create(entityId);
   const updateMutation = sdk.connectorEntities.update(entityId);
   const deleteMutation = sdk.connectorEntities.delete(entityId);
@@ -558,6 +577,15 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
       },
     });
   }, [deleteMutation, queryClient, navigate]);
+
+  const handleRevalidate = useCallback(() => {
+    revalidateMutation.mutate(undefined, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.jobs.root });
+      },
+    });
+  }, [revalidateMutation, queryClient]);
 
   const handleCreateRecord = useCallback(
     (body: EntityRecordCreateRequestBody) => {
@@ -646,6 +674,8 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             onCreateRecord={handleCreateRecord}
             isCreatingRecord={createRecordMutation.isPending}
             createRecordServerError={toServerError(createRecordMutation.error)}
+            onRevalidate={handleRevalidate}
+            isRevalidating={revalidateMutation.isPending}
           />
         );
       }}

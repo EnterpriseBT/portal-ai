@@ -11,6 +11,7 @@ import type {
   EntityRecordGetResponsePayload,
   EntityRecordPatchRequestBody,
   EntityRecordPatchResponsePayload,
+  JobCreateResponsePayload,
 } from "@portalai/core/contracts";
 
 import { useAuthQuery, useAuthMutation } from "../utils/api.util";
@@ -92,5 +93,10 @@ export const entityRecords = {
     useAuthMutation<void, void>({
       url: recordsUrl(connectorEntityId, `/${encodeURIComponent(recordId)}`),
       method: "DELETE",
+    }),
+
+  revalidate: (connectorEntityId: string) =>
+    useAuthMutation<JobCreateResponsePayload, void>({
+      url: recordsUrl(connectorEntityId, "/revalidate"),
     }),
 };

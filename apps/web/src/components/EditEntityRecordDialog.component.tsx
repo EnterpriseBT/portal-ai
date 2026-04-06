@@ -61,7 +61,7 @@ const EditForm: React.FC<{
   const handleSubmit = () => {
     // Mark all fields as touched
     const allTouched: Record<string, boolean> = {};
-    for (const col of columns) allTouched[col.key] = true;
+    for (const col of columns) allTouched[col.normalizedKey] = true;
     setTouched(allTouched);
 
     // Validate required fields
@@ -82,8 +82,8 @@ const EditForm: React.FC<{
     let hasChanges = false;
     for (const col of columns) {
       if (
-        JSON.stringify(serializedData[col.key]) !==
-        JSON.stringify(normalizedData[col.key])
+        JSON.stringify(serializedData[col.normalizedKey]) !==
+        JSON.stringify(normalizedData[col.normalizedKey])
       ) {
         hasChanges = true;
         break;
@@ -131,13 +131,13 @@ const EditForm: React.FC<{
         </Typography>
         {columns.map((col, i) => (
           <DynamicRecordField
-            key={col.key}
+            key={col.normalizedKey}
             column={col}
-            value={values[col.key]}
+            value={values[col.normalizedKey]}
             onChange={handleChange}
-            onBlur={() => handleBlur(col.key)}
-            error={errors[col.key]}
-            touched={touched[col.key]}
+            onBlur={() => handleBlur(col.normalizedKey)}
+            error={errors[col.normalizedKey]}
+            touched={touched[col.normalizedKey]}
             inputRef={i === 0 ? firstRef : undefined}
             disabled={isPending}
           />

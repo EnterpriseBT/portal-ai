@@ -58,7 +58,7 @@ const CreateForm: React.FC<{
   const handleSubmit = () => {
     // Mark all fields as touched
     const allTouched: Record<string, boolean> = {};
-    for (const col of columns) allTouched[col.key] = true;
+    for (const col of columns) allTouched[col.normalizedKey] = true;
     setTouched(allTouched);
 
     // Validate required fields
@@ -108,13 +108,13 @@ const CreateForm: React.FC<{
       <Stack spacing={2} sx={{ pt: 1 }}>
         {columns.map((col, i) => (
           <DynamicRecordField
-            key={col.key}
+            key={col.normalizedKey}
             column={col}
-            value={values[col.key]}
+            value={values[col.normalizedKey]}
             onChange={handleChange}
-            onBlur={() => handleBlur(col.key)}
-            error={errors[col.key]}
-            touched={touched[col.key]}
+            onBlur={() => handleBlur(col.normalizedKey)}
+            error={errors[col.normalizedKey]}
+            touched={touched[col.normalizedKey]}
             inputRef={i === 0 ? firstRef : undefined}
             disabled={isPending}
           />
