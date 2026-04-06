@@ -4,9 +4,7 @@ import { z } from "zod";
 import type { ColumnDefinitionCreateRequestBody } from "@portalai/core/contracts";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
 import { Button, Modal, Stack } from "@portalai/core/ui";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
-import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 
 import { FormAlert } from "./FormAlert.component";
@@ -25,10 +23,9 @@ interface ColumnDefinitionFormState {
   label: string;
   type: string;
   description: string;
-  required: boolean;
-  defaultValue: string;
-  format: string;
-  enumValues: string;
+  validationPattern: string;
+  validationMessage: string;
+  canonicalFormat: string;
 }
 
 const CreateColumnDefinitionFormSchema = z.object({
@@ -47,10 +44,9 @@ const INITIAL_FORM: ColumnDefinitionFormState = {
   label: "",
   type: "string",
   description: "",
-  required: false,
-  defaultValue: "",
-  format: "",
-  enumValues: "",
+  validationPattern: "",
+  validationMessage: "",
+  canonicalFormat: "",
 };
 
 function validateForm(form: ColumnDefinitionFormState): FormErrors {
@@ -115,22 +111,18 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
     }
 
     const trimDesc = form.description.trim();
-    const trimDefault = form.defaultValue.trim();
-    const trimFormat = form.format.trim();
-    const parsedEnum = form.enumValues
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
+    const trimValidationPattern = form.validationPattern.trim();
+    const trimValidationMessage = form.validationMessage.trim();
+    const trimCanonicalFormat = form.canonicalFormat.trim();
 
     const body: ColumnDefinitionCreateRequestBody = {
       key: form.key,
       label: form.label.trim(),
       type: form.type as ColumnDefinitionCreateRequestBody["type"],
-      required: form.required,
-      defaultValue: trimDefault || null,
-      format: trimFormat || null,
       description: trimDesc || null,
-      enumValues: parsedEnum.length > 0 ? parsedEnum : null,
+      validationPattern: trimValidationPattern || null,
+      validationMessage: trimValidationMessage || null,
+      canonicalFormat: trimCanonicalFormat || null,
     };
     onSubmit(body);
   };
@@ -212,36 +204,27 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
           multiline
           rows={2}
         />
-        <FormControlLabel
-          control={
-            <Switch
-              checked={form.required}
-              onChange={(e) => handleChange("required", e.target.checked)}
-            />
-          }
-          label="Required"
+        <TextField
+          label="Validation Pattern"
+          value={form.validationPattern}
+          onChange={(e) => handleChange("validationPattern", e.target.value)}
+          fullWidth
+          helperText="Regular expression for field validation"
         />
         <TextField
-          label="Default Value"
-          value={form.defaultValue}
-          onChange={(e) => handleChange("defaultValue", e.target.value)}
+          label="Validation Message"
+          value={form.validationMessage}
+          onChange={(e) => handleChange("validationMessage", e.target.value)}
           fullWidth
+          helperText="Error message shown when validation fails"
         />
         <TextField
-          label="Format"
-          value={form.format}
-          onChange={(e) => handleChange("format", e.target.value)}
+          label="Canonical Format"
+          value={form.canonicalFormat}
+          onChange={(e) => handleChange("canonicalFormat", e.target.value)}
           fullWidth
+          helperText="Display format pattern (e.g. date format string)"
         />
-        {form.type === "enum" && (
-          <TextField
-            label="Enum Values"
-            value={form.enumValues}
-            onChange={(e) => handleChange("enumValues", e.target.value)}
-            fullWidth
-            helperText="Comma-separated values"
-          />
-        )}
         <FormAlert serverError={serverError} />
       </Stack>
     </Modal>

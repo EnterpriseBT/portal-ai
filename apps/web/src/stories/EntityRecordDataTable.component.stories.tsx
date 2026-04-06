@@ -12,11 +12,11 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const columns = [
-  { key: "name", label: "Name", type: "string" as const, required: false, enumValues: null, defaultValue: null },
-  { key: "active", label: "Active", type: "boolean" as const, required: false, enumValues: null, defaultValue: null },
-  { key: "score", label: "Score", type: "number" as const, required: false, enumValues: null, defaultValue: null },
-  { key: "meta", label: "Meta", type: "json" as const, required: false, enumValues: null, defaultValue: null },
-  { key: "tags", label: "Tags", type: "array" as const, required: false, enumValues: null, defaultValue: null },
+  { key: "name", label: "Name", type: "string" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "active", label: "Active", type: "boolean" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "score", label: "Score", type: "number" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "meta", label: "Meta", type: "json" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "tags", label: "Tags", type: "array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
 ];
 
 const rows = [

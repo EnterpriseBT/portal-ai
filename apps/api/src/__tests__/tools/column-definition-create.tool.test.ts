@@ -14,8 +14,8 @@ const { ColumnDefinitionCreateTool } = await import("../../tools/column-definiti
 
 beforeEach(() => { jest.clearAllMocks(); });
 
-type ColumnDataType = "string" | "number" | "boolean" | "date" | "datetime" | "enum" | "json" | "array" | "reference" | "reference-array" | "currency";
-interface Input { key: string; label: string; type: ColumnDataType; required?: boolean; enumValues?: string[]; description?: string }
+type ColumnDataType = "string" | "number" | "boolean" | "date" | "datetime" | "enum" | "json" | "array" | "reference" | "reference-array";
+interface Input { key: string; label: string; type: ColumnDataType; validationPattern?: string; validationMessage?: string; canonicalFormat?: string; description?: string }
 const exec = (input: Input) =>
   new ColumnDefinitionCreateTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });

@@ -191,7 +191,12 @@ type _FieldMapDrizzleToModel = IsAssignable<FieldMappingSelect, FieldMapping>;
 const _fieldMapDrizzleToModel: _FieldMapDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _FieldMapModelToDrizzle = IsAssignable<FieldMapping, FieldMappingSelect>;
+// Omit enumValues because drizzle-zod widens jsonb to a JSON union type
+// that string[] is not directly assignable to.
+type _FieldMapModelToDrizzle = IsAssignable<
+  Omit<FieldMapping, "enumValues">,
+  Omit<FieldMappingSelect, "enumValues">
+>;
 const _fieldMapModelToDrizzle: _FieldMapModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
@@ -206,7 +211,12 @@ type _EntRecDrizzleToModel = IsAssignable<EntityRecordSelect, EntityRecord>;
 const _entRecDrizzleToModel: _EntRecDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _EntRecModelToDrizzle = IsAssignable<EntityRecord, EntityRecordSelect>;
+// Omit validationErrors because drizzle-zod widens jsonb to a JSON union type
+// that the specific object array shape is not directly assignable to.
+type _EntRecModelToDrizzle = IsAssignable<
+  Omit<EntityRecord, "validationErrors">,
+  Omit<EntityRecordSelect, "validationErrors">
+>;
 const _entRecModelToDrizzle: _EntRecModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches

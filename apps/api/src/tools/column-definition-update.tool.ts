@@ -9,13 +9,15 @@ const InputSchema = z.object({
   columnDefinitionId: z.string().describe("The column definition ID to update"),
   label: z.string().min(1).optional().describe("New display label"),
   description: z.string().nullable().optional().describe("New description"),
-  enumValues: z.array(z.string()).nullable().optional().describe("New enum values"),
+  validationPattern: z.string().nullable().optional().describe("New regex validation pattern"),
+  validationMessage: z.string().nullable().optional().describe("New validation error message"),
+  canonicalFormat: z.string().nullable().optional().describe("New canonical display format"),
 });
 
 export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
   slug = "column_definition_update";
   name = "Column Definition Update Tool";
-  description = "Updates a column definition's label, description, or enum values. Key and type are immutable.";
+  description = "Updates a column definition's label, description, or validation fields. Key and type are immutable.";
 
   get schema() { return InputSchema; }
 
@@ -35,14 +37,15 @@ export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
           const updateData: Record<string, unknown> = { updated: Date.now(), updatedBy: userId };
           if (fields.label !== undefined) updateData.label = fields.label;
           if (fields.description !== undefined) updateData.description = fields.description;
-          if (fields.enumValues !== undefined) updateData.enumValues = fields.enumValues;
+          if (fields.validationPattern !== undefined) updateData.validationPattern = fields.validationPattern;
+          if (fields.validationMessage !== undefined) updateData.validationMessage = fields.validationMessage;
+          if (fields.canonicalFormat !== undefined) updateData.canonicalFormat = fields.canonicalFormat;
 
           await DbService.repository.columnDefinitions.update(columnDefinitionId, updateData as any);
           AnalyticsService.applyColumnDefinitionUpdate(stationId, {
             id: columnDefinitionId, key: existing.key,
             label: (fields.label ?? existing.label) as string,
             type: existing.type as string,
-            required: existing.required as boolean,
             description: (fields.description !== undefined ? fields.description : existing.description) as string | null,
           });          return {
             success: true,

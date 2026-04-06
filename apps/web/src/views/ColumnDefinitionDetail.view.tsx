@@ -54,7 +54,6 @@ const TYPE_COLOR: Record<
   array: "default",
   reference: "error",
   "reference-array": "error",
-  currency: "info",
 };
 
 interface ColumnDefinitionDetailViewProps {
@@ -214,12 +213,6 @@ export const ColumnDefinitionDetailView: React.FC<
                           ),
                           variant: "chip",
                         },
-                        {
-                          label: "Required",
-                          value: <Chip label="Required" size="small" color="error" />,
-                          variant: "chip",
-                          hidden: !cd.required,
-                        },
                       ]}
                     />
                   </PageHeader>
@@ -234,9 +227,9 @@ export const ColumnDefinitionDetailView: React.FC<
                           items={[
                             { label: "Key", value: cd.key, variant: "mono" },
                             { label: "Description", value: cd.description ?? "", hidden: !cd.description },
-                            { label: "Format", value: cd.format ?? "", hidden: !cd.format },
-                            { label: "Default Value", value: cd.defaultValue ?? "", hidden: !cd.defaultValue },
-                            { label: "Enum Values", value: cd.enumValues?.join(", ") ?? "", hidden: !cd.enumValues || cd.enumValues.length === 0 },
+                            { label: "Validation Pattern", value: cd.validationPattern ?? "", hidden: !cd.validationPattern, variant: "mono" },
+                            { label: "Validation Message", value: cd.validationMessage ?? "", hidden: !cd.validationMessage },
+                            { label: "Canonical Format", value: cd.canonicalFormat ?? "", hidden: !cd.canonicalFormat, variant: "mono" },
                             { label: "Created", value: new Date(cd.created).toLocaleString() },
                           ]}
                         />

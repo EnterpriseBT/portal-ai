@@ -50,11 +50,10 @@ const makeColumnDefinition = (
   key: "first_name",
   label: "First Name",
   type: "string",
-  required: true,
-  defaultValue: null,
-  format: null,
-  enumValues: null,
   description: null,
+  validationPattern: null,
+  validationMessage: null,
+  canonicalFormat: null,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,
@@ -72,6 +71,11 @@ const makeFieldMapping = (
   connectorEntityId: "ce-1",
   columnDefinitionId: "cd-1",
   sourceField: "email",
+  normalizedKey: "email",
+  required: false,
+  defaultValue: null,
+  format: null,
+  enumValues: null,
   isPrimaryKey: false,
   refColumnDefinitionId: null,
   refEntityKey: null,
@@ -109,11 +113,9 @@ describe("ColumnDefinitionDetailView", () => {
       label: "Email Address",
       key: "email_address",
       type: "string",
-      required: true,
       description: "Primary email",
-      format: "RFC5322",
-      defaultValue: "user@example.com",
-      enumValues: null,
+      validationPattern: "^.+@.+$",
+      canonicalFormat: "RFC5322",
     });
     currentGetQuery = {
       data: { columnDefinition: cd },
@@ -132,32 +134,9 @@ describe("ColumnDefinitionDetailView", () => {
     expect(screen.getByRole("heading", { name: "Email Address" })).toBeInTheDocument();
     expect(screen.getByText("email_address")).toBeInTheDocument();
     expect(screen.getByText("string")).toBeInTheDocument();
-    expect(screen.getAllByText("Required").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Primary email/)).toBeInTheDocument();
     expect(screen.getByText("RFC5322")).toBeInTheDocument();
-    expect(screen.getByText(/user@example\.com/)).toBeInTheDocument();
-  });
-
-  it("should display enum values when present", () => {
-    const cd = makeColumnDefinition({
-      type: "enum",
-      enumValues: ["active", "inactive", "pending"],
-    });
-    currentGetQuery = {
-      data: { columnDefinition: cd },
-      isLoading: false,
-      isError: false,
-      isSuccess: true,
-    } as Partial<GetQuery>;
-    currentFieldMappingListQuery = {
-      data: { fieldMappings: [], total: 0, limit: 10, offset: 0 },
-      isLoading: false,
-      isError: false,
-      isSuccess: true,
-    } as Partial<ListQuery>;
-
-    render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
-    expect(screen.getByText(/active, inactive, pending/)).toBeInTheDocument();
+    expect(screen.getByText("^.+@.+$")).toBeInTheDocument();
   });
 
   it("should display field mappings table with mock data", () => {

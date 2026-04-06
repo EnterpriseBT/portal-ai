@@ -44,11 +44,10 @@ const makeColumnDefinition = (
   key: "first_name",
   label: "First Name",
   type: "string",
-  required: true,
-  defaultValue: null,
-  format: null,
-  enumValues: null,
   description: null,
+  validationPattern: null,
+  validationMessage: null,
+  canonicalFormat: null,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,
@@ -113,22 +112,14 @@ describe("ColumnDefinitionDataItem", () => {
 });
 
 describe("ColumnDefinitionCardUI", () => {
-  it("should render label, type chip, and required badge", () => {
+  it("should render label and type chip", () => {
     const cd = makeColumnDefinition({
       label: "Email Address",
       type: "string",
-      required: true,
     });
     render(<ColumnDefinitionCardUI columnDefinition={cd} />);
     expect(screen.getByText("Email Address")).toBeInTheDocument();
     expect(screen.getByText("string")).toBeInTheDocument();
-    expect(screen.getByText("Required")).toBeInTheDocument();
-  });
-
-  it("should hide required badge when not required", () => {
-    const cd = makeColumnDefinition({ required: false });
-    render(<ColumnDefinitionCardUI columnDefinition={cd} />);
-    expect(screen.queryByText("Required")).not.toBeInTheDocument();
   });
 
   it("should render key in monospace and description", () => {
@@ -141,28 +132,23 @@ describe("ColumnDefinitionCardUI", () => {
     expect(screen.getByText("User email")).toBeInTheDocument();
   });
 
-  it("should render format, default value, and enum values", () => {
+  it("should render validationPattern and canonicalFormat when present", () => {
     const cd = makeColumnDefinition({
-      format: "yyyy-MM-dd",
-      defaultValue: "2024-01-01",
-      enumValues: ["active", "inactive"],
+      validationPattern: "^\\d{4}-\\d{2}-\\d{2}$",
+      canonicalFormat: "yyyy-MM-dd",
     });
     render(<ColumnDefinitionCardUI columnDefinition={cd} />);
+    expect(screen.getByText("^\\d{4}-\\d{2}-\\d{2}$")).toBeInTheDocument();
     expect(screen.getByText("yyyy-MM-dd")).toBeInTheDocument();
-    expect(screen.getByText("2024-01-01")).toBeInTheDocument();
-    expect(screen.getByText("active, inactive")).toBeInTheDocument();
   });
 
-  it("should not render metadata row when no format, default, or enum values", () => {
+  it("should not render metadata row when no validationPattern or canonicalFormat", () => {
     const cd = makeColumnDefinition({
-      format: null,
-      defaultValue: null,
-      enumValues: null,
+      validationPattern: null,
+      canonicalFormat: null,
     });
     render(<ColumnDefinitionCardUI columnDefinition={cd} />);
     expect(screen.queryByText("yyyy-MM-dd")).not.toBeInTheDocument();
-    expect(screen.queryByText("2024-01-01")).not.toBeInTheDocument();
-    expect(screen.queryByText("active, inactive")).not.toBeInTheDocument();
   });
 
   it("should call onClick with column definition when clicked", () => {

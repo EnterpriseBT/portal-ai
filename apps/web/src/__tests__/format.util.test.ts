@@ -36,11 +36,6 @@ describe("Formatter", () => {
         })
       ).toBe("10:30");
 
-      expect(
-        Formatter.format(42.5, "currency", {
-          currency: { currency: "USD", locale: "en-US" },
-        })
-      ).toBe("$42.50");
     });
   });
 
@@ -201,49 +196,4 @@ describe("Formatter", () => {
     });
   });
 
-  // ── currency ────────────────────────────────────────────────────
-
-  describe("currency", () => {
-    it("formats a number with two decimal places by default", () => {
-      const result = Formatter.currency(1234.5);
-      expect(result).toContain("1");
-      expect(result).toContain("234");
-      expect(result).toContain("50");
-    });
-
-    it("parses a numeric string", () => {
-      const result = Formatter.currency("99.9");
-      expect(result).toContain("99");
-      expect(result).toContain("90");
-    });
-
-    it("returns raw value for non-numeric input", () => {
-      expect(Formatter.currency("N/A")).toBe("N/A");
-    });
-
-    it("formats with USD currency code", () => {
-      const result = Formatter.currency(42.5, {
-        currency: "USD",
-        locale: "en-US",
-      });
-      expect(result).toBe("$42.50");
-    });
-
-    it("formats with EUR currency code", () => {
-      const result = Formatter.currency(42.5, {
-        currency: "EUR",
-        locale: "de-DE",
-      });
-      expect(result).toContain("42,50");
-      expect(result).toContain("€");
-    });
-
-    it("respects custom fraction digits", () => {
-      const result = Formatter.currency(42.1234, {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 4,
-      });
-      expect(result).toContain("1234");
-    });
-  });
 });

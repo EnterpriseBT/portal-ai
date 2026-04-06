@@ -356,7 +356,6 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
       );
 
     case "number":
-    case "currency":
       if (isBetween) {
         const arr = Array.isArray(condition.value) ? condition.value : ["", ""];
         return (

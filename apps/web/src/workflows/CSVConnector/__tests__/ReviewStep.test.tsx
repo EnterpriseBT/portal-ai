@@ -19,6 +19,7 @@ type ConfirmResponsePayload = {
       sourceField: string;
       columnDefinitionId: string;
       isPrimaryKey: boolean;
+      normalizedKey: string;
     }>;
   }>;
 };
@@ -133,8 +134,8 @@ const MOCK_CONFIRM_RESULT: ConfirmResponsePayload = {
         { id: "cd_002", key: "phone", label: "Phone" },
       ],
       fieldMappings: [
-        { id: "fm_001", sourceField: "Email Address", columnDefinitionId: "cd_001", isPrimaryKey: true },
-        { id: "fm_002", sourceField: "Phone Number", columnDefinitionId: "cd_002", isPrimaryKey: false },
+        { id: "fm_001", sourceField: "Email Address", columnDefinitionId: "cd_001", isPrimaryKey: true, normalizedKey: "email" },
+        { id: "fm_002", sourceField: "Phone Number", columnDefinitionId: "cd_002", isPrimaryKey: false, normalizedKey: "phone" },
       ],
     },
   ],

@@ -17,7 +17,6 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import CheckIcon from "@mui/icons-material/Check";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
@@ -80,7 +79,6 @@ export const FieldMappingTableUI: React.FC<FieldMappingTableUIProps> = ({
             <TableCell>Label</TableCell>
             <TableCell>Key</TableCell>
             <TableCell>Type</TableCell>
-            <TableCell>Required</TableCell>
             <TableCell>Primary Key</TableCell>
           </TableRow>
         </TableHead>
@@ -94,12 +92,7 @@ export const FieldMappingTableUI: React.FC<FieldMappingTableUIProps> = ({
                 {fm.columnDefinition?.type ?? "—"}
               </TableCell>
               <TableCell>
-                {fm.columnDefinition?.required && (
-                  <CheckIcon fontSize="small" />
-                )}
-              </TableCell>
-              <TableCell>
-                {fm.isPrimaryKey && <CheckIcon fontSize="small" />}
+                {fm.isPrimaryKey ? "Yes" : ""}
               </TableCell>
             </TableRow>
           ))}

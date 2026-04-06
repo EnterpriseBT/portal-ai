@@ -13,9 +13,7 @@ import {
 } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
-import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 
 import { FormAlert } from "./FormAlert.component";
@@ -36,8 +34,6 @@ const ALLOWED_TYPE_TRANSITIONS: Record<string, string[]> = {
   enum: ["string"],
   date: ["datetime"],
   datetime: ["date"],
-  number: ["currency"],
-  currency: ["number"],
 };
 
 const BLOCKED_TYPES = new Set(["reference", "reference-array"]);
@@ -53,7 +49,6 @@ const ALL_TYPES = [
   "array",
   "reference",
   "reference-array",
-  "currency",
 ] as const;
 
 export interface EditColumnDefinitionDialogProps {
@@ -78,10 +73,9 @@ const EditForm: React.FC<{
   const [label, setLabel] = useState(cd.label);
   const [type, setType] = useState<ColumnDataType>(cd.type);
   const [description, setDescription] = useState(cd.description ?? "");
-  const [required, setRequired] = useState(cd.required);
-  const [defaultValue, setDefaultValue] = useState(cd.defaultValue ?? "");
-  const [format, setFormat] = useState(cd.format ?? "");
-  const [enumValues, setEnumValues] = useState(cd.enumValues?.join(", ") ?? "");
+  const [validationPattern, setValidationPattern] = useState(cd.validationPattern ?? "");
+  const [validationMessage, setValidationMessage] = useState(cd.validationMessage ?? "");
+  const [canonicalFormat, setCanonicalFormat] = useState(cd.canonicalFormat ?? "");
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const labelRef = useDialogAutoFocus(true);
@@ -99,25 +93,16 @@ const EditForm: React.FC<{
     const body: ColumnDefinitionUpdateRequestBody = {};
     const trimLabel = label.trim();
     const trimDesc = description.trim();
-    const trimDefault = defaultValue.trim();
-    const trimFormat = format.trim();
-    const parsedEnum = enumValues
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
+    const trimValidationPattern = validationPattern.trim();
+    const trimValidationMessage = validationMessage.trim();
+    const trimCanonicalFormat = canonicalFormat.trim();
 
     if (trimLabel !== cd.label) body.label = trimLabel;
     if (type !== cd.type) body.type = type;
     if (trimDesc !== (cd.description ?? "")) body.description = trimDesc || null;
-    if (required !== cd.required) body.required = required;
-    if (trimDefault !== (cd.defaultValue ?? "")) body.defaultValue = trimDefault || null;
-    if (trimFormat !== (cd.format ?? "")) body.format = trimFormat || null;
-
-    const origEnum = cd.enumValues?.join(", ") ?? "";
-    const newEnum = parsedEnum.join(", ");
-    if (newEnum !== origEnum) {
-      body.enumValues = parsedEnum.length > 0 ? parsedEnum : null;
-    }
+    if (trimValidationPattern !== (cd.validationPattern ?? "")) body.validationPattern = trimValidationPattern || null;
+    if (trimValidationMessage !== (cd.validationMessage ?? "")) body.validationMessage = trimValidationMessage || null;
+    if (trimCanonicalFormat !== (cd.canonicalFormat ?? "")) body.canonicalFormat = trimCanonicalFormat || null;
 
     return body;
   };
@@ -236,40 +221,34 @@ const EditForm: React.FC<{
           rows={2}
         />
 
-        {/* Required */}
-        <FormControlLabel
-          control={
-            <Switch checked={required} onChange={(e) => setRequired(e.target.checked)} />
-          }
-          label="Required"
-        />
-
-        {/* Default Value */}
+        {/* Validation Pattern */}
         <TextField
-          label="Default Value"
-          value={defaultValue}
-          onChange={(e) => setDefaultValue(e.target.value)}
+          label="Validation Pattern"
+          value={validationPattern}
+          onChange={(e) => setValidationPattern(e.target.value)}
           fullWidth
           size="small"
+          helperText="Regular expression for field validation"
         />
 
-        {/* Format */}
+        {/* Validation Message */}
         <TextField
-          label="Format"
-          value={format}
-          onChange={(e) => setFormat(e.target.value)}
+          label="Validation Message"
+          value={validationMessage}
+          onChange={(e) => setValidationMessage(e.target.value)}
           fullWidth
           size="small"
+          helperText="Error message shown when validation fails"
         />
 
-        {/* Enum Values */}
+        {/* Canonical Format */}
         <TextField
-          label="Enum Values"
-          value={enumValues}
-          onChange={(e) => setEnumValues(e.target.value)}
+          label="Canonical Format"
+          value={canonicalFormat}
+          onChange={(e) => setCanonicalFormat(e.target.value)}
           fullWidth
           size="small"
-          helperText="Comma-separated values"
+          helperText="Display format pattern (e.g. date format string)"
         />
 
         {/* Warnings */}

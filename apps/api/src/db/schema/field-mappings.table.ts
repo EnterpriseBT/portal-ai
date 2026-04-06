@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, uniqueIndex, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, jsonb, uniqueIndex, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
@@ -28,6 +28,11 @@ export const fieldMappings = pgTable(
       .references(() => columnDefinitions.id),
     sourceField: text("source_field").notNull(),
     isPrimaryKey: boolean("is_primary_key").notNull(),
+    normalizedKey: text("normalized_key").notNull(),
+    required: boolean("required").notNull(),
+    defaultValue: text("default_value"),
+    format: text("format"),
+    enumValues: jsonb("enum_values").$type<string[]>(),
 
     // Reference fields (populated when the mapped column has type "reference" or "reference-array")
     refColumnDefinitionId: text("ref_column_definition_id").references(
@@ -44,5 +49,8 @@ export const fieldMappings = pgTable(
       columns: [table.refBidirectionalFieldMappingId],
       foreignColumns: [table.id],
     }),
+    uniqueIndex("field_mappings_entity_normalized_key_unique")
+      .on(table.connectorEntityId, table.normalizedKey)
+      .where(sql`deleted IS NULL`),
   ],
 );

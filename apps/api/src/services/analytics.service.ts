@@ -483,11 +483,11 @@ export class AnalyticsService {
 
   // -- _column_definitions -------------------------------------------------
 
-  static applyColumnDefinitionInsert(stationId: string, row: { id: string; key: string; label: string; type: string; required: boolean; description: string | null }): void {
+  static applyColumnDefinitionInsert(stationId: string, row: { id: string; key: string; label: string; type: string; description: string | null }): void {
     this.cacheInsert(stationId, "_column_definitions", row);
   }
 
-  static applyColumnDefinitionUpdate(stationId: string, row: { id: string; key: string; label: string; type: string; required: boolean; description: string | null }): void {
+  static applyColumnDefinitionUpdate(stationId: string, row: { id: string; key: string; label: string; type: string; description: string | null }): void {
     this.cacheUpsert(stationId, "_column_definitions", row.id, row);
   }
 

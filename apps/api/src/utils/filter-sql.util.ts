@@ -140,7 +140,6 @@ function buildConditionSQL(
   // Delegate to type-specific builders
   switch (dataType) {
     case "number":
-    case "currency":
       return buildNumericCondition(jsonbText, operator, value);
     case "boolean":
       return buildBooleanCondition(jsonbText, operator, value);

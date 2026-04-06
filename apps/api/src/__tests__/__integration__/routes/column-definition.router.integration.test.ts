@@ -64,11 +64,10 @@ function createColumnDefinition(
     key: `col_${generateId().replace(/-/g, "").slice(0, 8)}`,
     label: "Test Column",
     type: "string" as const,
-    required: false,
-    defaultValue: null,
-    format: null,
-    enumValues: null,
     description: null,
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -163,6 +162,11 @@ function createFieldMap(
     columnDefinitionId,
     sourceField: "source_field",
     isPrimaryKey: false,
+    normalizedKey: "source_field",
+    required: false,
+    defaultValue: null,
+    format: null,
+    enumValues: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -187,6 +191,8 @@ function createEntityRecord(
     sourceId: `src_${generateId().replace(/-/g, "").slice(0, 8)}`,
     checksum: "abc123",
     syncedAt: now,
+    validationErrors: null,
+    isValid: true,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -347,7 +353,7 @@ describe("Column Definition Router", () => {
       expect(labels).not.toContain("Number Col");
     });
 
-    it("should filter by required", async () => {
+    it("should filter by search", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -357,22 +363,20 @@ describe("Column Definition Router", () => {
         .insert(columnDefinitions)
         .values([
           createColumnDefinition(organizationId, {
-            label: "Optional",
-            required: false,
+            label: "Email Address",
           }),
           createColumnDefinition(organizationId, {
-            label: "Required",
-            required: true,
+            label: "Phone Number",
           }),
         ] as never);
 
       const res = await request(app)
-        .get("/api/column-definitions?required=true")
+        .get("/api/column-definitions?search=email")
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
       expect(res.body.payload.columnDefinitions).toHaveLength(1);
-      expect(res.body.payload.columnDefinitions[0].label).toBe("Required");
+      expect(res.body.payload.columnDefinitions[0].label).toBe("Email Address");
     });
 
     it("should scope results to the requested organization", async () => {
@@ -518,8 +522,6 @@ describe("Column Definition Router", () => {
           key: "email",
           label: "Email Address",
           type: "string",
-          required: true,
-          format: "email",
         });
 
       expect(res.status).toBe(201);
@@ -528,8 +530,6 @@ describe("Column Definition Router", () => {
       expect(created.key).toBe("email");
       expect(created.label).toBe("Email Address");
       expect(created.type).toBe("string");
-      expect(created.required).toBe(true);
-      expect(created.format).toBe("email");
       expect(created.organizationId).toBe(organizationId);
     });
 
@@ -588,12 +588,11 @@ describe("Column Definition Router", () => {
       const res = await request(app)
         .patch(`/api/column-definitions/${colDef.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ label: "Updated Label", required: true });
+        .send({ label: "Updated Label" });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.payload.columnDefinition.label).toBe("Updated Label");
-      expect(res.body.payload.columnDefinition.required).toBe(true);
     });
 
     // 1.T6: PATCH with `key` in body returns 422 COLUMN_DEFINITION_KEY_IMMUTABLE
@@ -632,7 +631,7 @@ describe("Column Definition Router", () => {
       const res = await request(app)
         .patch(`/api/column-definitions/${colDef.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ type: "enum", enumValues: ["a", "b", "c"] });
+        .send({ type: "enum" });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.columnDefinition.type).toBe("enum");
@@ -700,16 +699,15 @@ describe("Column Definition Router", () => {
       expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED);
     });
 
-    // 1.T10: PATCH removing enum values returns 200 with warnings array
-    it("should return warnings when enum values are removed (Rule 4)", async () => {
+    // 1.T10: PATCH updating description returns 200
+    it("should update description successfully", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
       );
 
       const colDef = createColumnDefinition(organizationId, {
-        type: "enum",
-        enumValues: ["a", "b", "c"],
+        type: "string",
       });
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
@@ -718,36 +716,10 @@ describe("Column Definition Router", () => {
       const res = await request(app)
         .patch(`/api/column-definitions/${colDef.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ enumValues: ["a", "c"] });
+        .send({ description: "Updated description" });
 
       expect(res.status).toBe(200);
-      expect(res.body.payload.warnings).toBeDefined();
-      expect(res.body.payload.warnings).toHaveLength(1);
-      expect(res.body.payload.warnings[0]).toContain("b");
-    });
-
-    // 1.T11: PATCH adding enum values returns 200 without warnings
-    it("should not return warnings when enum values are added", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-
-      const colDef = createColumnDefinition(organizationId, {
-        type: "enum",
-        enumValues: ["a", "b"],
-      });
-      await (db as ReturnType<typeof drizzle>)
-        .insert(columnDefinitions)
-        .values(colDef as never);
-
-      const res = await request(app)
-        .patch(`/api/column-definitions/${colDef.id}`)
-        .set("Authorization", "Bearer test-token")
-        .send({ enumValues: ["a", "b", "c"] });
-
-      expect(res.status).toBe(200);
-      expect(res.body.payload.warnings).toBeUndefined();
+      expect(res.body.payload.columnDefinition.description).toBe("Updated description");
     });
   });
 

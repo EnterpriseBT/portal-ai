@@ -19,8 +19,14 @@ describe("FieldMappingSchema", () => {
     columnDefinitionId: "cd-1",
     sourceField: "my_field",
     isPrimaryKey: false,
+    normalizedKey: "my_field",
+    required: false,
+    defaultValue: null,
+    format: null,
+    enumValues: null,
     refColumnDefinitionId: null,
     refEntityKey: null,
+    refBidirectionalFieldMappingId: null,
     created: Date.now(),
     createdBy: "user-1",
     updated: null,
@@ -46,6 +52,21 @@ describe("FieldMappingSchema", () => {
     const result = FieldMappingSchema.safeParse({ ...base, refBidirectionalFieldMappingId: 42 });
     expect(result.success).toBe(false);
   });
+
+  it("accepts a valid snake_case normalizedKey", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, normalizedKey: "account_name" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects normalizedKey with uppercase characters", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, normalizedKey: "Account_Name" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects normalizedKey with hyphens", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, normalizedKey: "account-name" });
+    expect(result.success).toBe(false);
+  });
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -56,6 +77,11 @@ const validMappingFields = {
   columnDefinitionId: "col-1",
   sourceField: "full_name",
   isPrimaryKey: false,
+  normalizedKey: "account_name",
+  required: false,
+  defaultValue: null,
+  format: null,
+  enumValues: null,
   refColumnDefinitionId: null,
   refEntityKey: null,
   refBidirectionalFieldMappingId: null,

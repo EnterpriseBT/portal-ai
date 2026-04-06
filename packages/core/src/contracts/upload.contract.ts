@@ -50,12 +50,14 @@ export const ConfirmColumnSchema = z.object({
   sourceField: z.string(),
   key: z.string(),
   label: z.string(),
-  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array", "currency"]),
+  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array"]),
   format: z.string().nullable(),
   isPrimaryKey: z.boolean(),
   required: z.boolean(),
   action: ColumnRecommendationActionEnum,
   existingColumnDefinitionId: z.string().nullable(),
+  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
+  canonicalFormat: z.string().nullable().optional(),
   // Reference fields (populated when type === "reference")
   refEntityKey: z.string().nullable().optional(),
   refColumnKey: z.string().nullable().optional(),
@@ -91,6 +93,7 @@ export const ConfirmResponseEntitySchema = z.object({
     sourceField: z.string(),
     columnDefinitionId: z.string(),
     isPrimaryKey: z.boolean(),
+    normalizedKey: z.string(),
   })),
   importResult: z.object({
     created: z.number(),

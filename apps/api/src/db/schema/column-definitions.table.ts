@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, jsonb, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
@@ -14,7 +14,6 @@ export const columnDataTypeEnum = pgEnum("column_data_type", [
   "array",
   "reference",
   "reference-array",
-  "currency",
 ]);
 
 /**
@@ -32,11 +31,10 @@ export const columnDefinitions = pgTable(
     key: text("key").notNull(),
     label: text("label").notNull(),
     type: columnDataTypeEnum("type").notNull(),
-    required: boolean("required").notNull(),
-    defaultValue: text("default_value"),
-    format: text("format"),
-    enumValues: jsonb("enum_values").$type<string[]>(),
     description: text("description"),
+    validationPattern: text("validation_pattern"),
+    validationMessage: text("validation_message"),
+    canonicalFormat: text("canonical_format"),
 
   },
   (table) => [

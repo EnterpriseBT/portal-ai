@@ -11,11 +11,11 @@ import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/c
 // ── Test data ───────────────────────────────────────────────────────
 
 const columnDefs: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
-  { key: "created_at", label: "Created At", type: "date", required: false, enumValues: null, defaultValue: null },
-  { key: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null },
+  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "created_at", label: "Created At", type: "date", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
 ];
 
 const emptyExpression: FilterExpression = {

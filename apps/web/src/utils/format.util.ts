@@ -22,22 +22,10 @@ export interface BooleanFormatOptions {
   falseLabel?: string;
 }
 
-export interface CurrencyFormatOptions {
-  /** ISO 4217 currency code (e.g. `"USD"`, `"EUR"`). When set, uses `Intl.NumberFormat` with currency style. */
-  currency?: string;
-  /** BCP 47 locale tag (default: `undefined` — uses host locale). */
-  locale?: string;
-  /** Minimum fraction digits (default: `2`). */
-  minimumFractionDigits?: number;
-  /** Maximum fraction digits (default: `2`). */
-  maximumFractionDigits?: number;
-}
-
 export interface FormatOptions {
   date?: DateFormatOptions;
   datetime?: DatetimeFormatOptions;
   boolean?: BooleanFormatOptions;
-  currency?: CurrencyFormatOptions;
 }
 
 // ── Formatter ───────────────────────────────────────────────────────
@@ -68,8 +56,6 @@ export class Formatter {
         return Formatter.datetime(value, options?.datetime);
       case "boolean":
         return Formatter.boolean(value, options?.boolean);
-      case "currency":
-        return Formatter.currency(value, options?.currency);
       default:
         return this.formatters[type](value);
     }
@@ -137,34 +123,6 @@ export class Formatter {
     return String(value);
   }
 
-  static currency(
-    value: unknown,
-    options?: CurrencyFormatOptions
-  ): string {
-    const minFrac = options?.minimumFractionDigits ?? 2;
-    const maxFrac = options?.maximumFractionDigits ?? 2;
-    const locale = options?.locale;
-
-    const intlOptions: Intl.NumberFormatOptions = options?.currency
-      ? {
-          style: "currency",
-          currency: options.currency,
-          minimumFractionDigits: minFrac,
-          maximumFractionDigits: maxFrac,
-        }
-      : {
-          minimumFractionDigits: minFrac,
-          maximumFractionDigits: maxFrac,
-        };
-
-    if (typeof value === "number") {
-      return value.toLocaleString(locale, intlOptions);
-    }
-    const n = Number(value);
-    if (isNaN(n)) return String(value);
-    return n.toLocaleString(locale, intlOptions);
-  }
-
   private static readonly formatters: Record<
     ColumnDataType,
     (value: unknown) => string
@@ -179,6 +137,5 @@ export class Formatter {
     array: Formatter.array,
     reference: Formatter.reference,
     "reference-array": Formatter.array,
-    currency: Formatter.currency,
   };
 }

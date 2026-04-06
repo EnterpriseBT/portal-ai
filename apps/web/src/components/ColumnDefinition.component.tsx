@@ -10,7 +10,6 @@ import type { ColumnDefinition } from "@portalai/core/models";
 import {
   DetailCard,
   MetadataList,
-  Stack,
 } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
@@ -62,7 +61,6 @@ const TYPE_COLOR: Record<string, "primary" | "secondary" | "success" | "warning"
   array: "default",
   reference: "error",
   "reference-array": "error",
-  currency: "info",
 };
 
 export interface ColumnDefinitionCardUIProps {
@@ -91,25 +89,20 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
           {
             label: "Type",
             value: (
-              <Stack direction="row" spacing={1}>
-                <Chip
-                  label={cd.type}
-                  size="small"
-                  color={TYPE_COLOR[cd.type] ?? "default"}
-                  variant="outlined"
-                />
-                {cd.required && (
-                  <Chip label="Required" size="small" color="error" />
-                )}
-              </Stack>
+              <Chip
+                label={cd.type}
+                size="small"
+                color={TYPE_COLOR[cd.type] ?? "default"}
+                variant="outlined"
+              />
             ),
             variant: "chip",
           },
           { label: "Key", value: cd.key, variant: "mono" },
           { label: "Description", value: cd.description ?? "", hidden: !cd.description },
-          { label: "Format", value: cd.format ?? "", hidden: !cd.format },
-          { label: "Default", value: cd.defaultValue ?? "", hidden: !cd.defaultValue },
-          { label: "Values", value: cd.enumValues?.join(", ") ?? "", hidden: !cd.enumValues || cd.enumValues.length === 0 },
+          { label: "Validation Pattern", value: cd.validationPattern ?? "", hidden: !cd.validationPattern, variant: "mono" },
+          { label: "Validation Message", value: cd.validationMessage ?? "", hidden: !cd.validationMessage },
+          { label: "Canonical Format", value: cd.canonicalFormat ?? "", hidden: !cd.canonicalFormat, variant: "mono" },
         ]}
       />
     </DetailCard>

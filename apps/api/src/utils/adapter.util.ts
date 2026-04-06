@@ -58,9 +58,11 @@ export async function resolveColumns(
       key: cd.key,
       label: cd.label,
       type: cd.type as ColumnDataType,
-      required: cd.required,
-      enumValues: cd.enumValues ?? null,
-      defaultValue: cd.defaultValue ?? null,
+      required: m.required,
+      enumValues: m.enumValues ?? null,
+      defaultValue: m.defaultValue ?? null,
+      validationPattern: cd.validationPattern ?? null,
+      canonicalFormat: cd.canonicalFormat ?? null,
     });
     return acc;
   }, []);

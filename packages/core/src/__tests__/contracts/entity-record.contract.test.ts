@@ -15,6 +15,8 @@ const validRecord = {
   sourceId: "src-1",
   checksum: "abc123",
   syncedAt: Date.now(),
+  validationErrors: null,
+  isValid: true,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,
@@ -34,6 +36,8 @@ describe("ColumnDefinitionSummarySchema", () => {
       required: true,
       enumValues: null,
       defaultValue: null,
+      validationPattern: null,
+      canonicalFormat: null,
     });
     expect(result.success).toBe(true);
   });
@@ -46,6 +50,8 @@ describe("ColumnDefinitionSummarySchema", () => {
       required: false,
       enumValues: ["active", "inactive"],
       defaultValue: "active",
+      validationPattern: null,
+      canonicalFormat: null,
     });
     expect(result.success).toBe(true);
   });
@@ -57,6 +63,8 @@ describe("ColumnDefinitionSummarySchema", () => {
       type: "string",
       enumValues: null,
       defaultValue: null,
+      validationPattern: null,
+      canonicalFormat: null,
     });
     expect(result.success).toBe(false);
   });

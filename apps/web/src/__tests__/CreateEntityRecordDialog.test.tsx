@@ -17,10 +17,10 @@ const { CreateEntityRecordDialog } = await import(
 // ── Fixtures ─────────────────────────────────────────────────────────
 
 const columns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string", required: true, enumValues: null, defaultValue: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
-  { key: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null },
+  { key: "name", label: "Name", type: "string", required: true, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
 ];
 
 const defaultProps = {
@@ -67,7 +67,7 @@ describe("CreateEntityRecordDialog — rendering", () => {
 
   it("pre-fills default values from columns", () => {
     const columnsWithDefault: ColumnDefinitionSummary[] = [
-      { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: "Default Name" },
+      { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: "Default Name", validationPattern: null, canonicalFormat: null },
     ];
     render(<CreateEntityRecordDialog {...defaultProps} columns={columnsWithDefault} />);
     expect(screen.getByLabelText("Name")).toHaveValue("Default Name");

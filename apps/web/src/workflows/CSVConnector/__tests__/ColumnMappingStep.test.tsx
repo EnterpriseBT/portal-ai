@@ -350,13 +350,13 @@ describe("ColumnMappingStep", () => {
       // Open the first type select (for MOCK_COLUMN_HIGH)
       const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
       await user.click(typeSelects[0]);
-      await user.click(screen.getByRole("option", { name: "Currency" }));
+      await user.click(screen.getByRole("option", { name: "Boolean" }));
 
       expect(onUpdateColumn).toHaveBeenCalledWith(
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({ type: "currency" }),
+          recommended: expect.objectContaining({ type: "boolean" }),
         })
       );
     });
@@ -670,6 +670,11 @@ describe("ColumnMappingStep", () => {
             sourceField: "id",
             columnDefinitionId: "cd_001",
             isPrimaryKey: true,
+            normalizedKey: "id",
+            required: false,
+            defaultValue: null,
+            format: null,
+            enumValues: null,
             refColumnDefinitionId: null,
             refEntityKey: null,
             refBidirectionalFieldMappingId: null,
@@ -685,13 +690,10 @@ describe("ColumnMappingStep", () => {
               key: "id",
               label: "ID",
               type: "string" as const,
-              format: null,
-              required: false,
-              refEntityKey: null,
-              refColumnDefinitionId: null,
-              enumValues: null,
-              defaultValue: null,
               description: null,
+              validationPattern: null,
+              validationMessage: null,
+              canonicalFormat: null,
               created: 0,
               updated: null,
               createdBy: "system",

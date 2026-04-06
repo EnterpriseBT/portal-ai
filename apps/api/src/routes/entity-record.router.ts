@@ -66,7 +66,6 @@ function buildJsonbSortExpression(
 
   switch (dataType) {
     case "number":
-    case "currency":
       // Guard with a regex so non-numeric text becomes NULL
       return sql`CASE WHEN ${raw} ~ '^-?[0-9]*\\.?[0-9]+([eE][+-]?[0-9]+)?$' THEN (${val})::numeric ELSE NULL END`;
     case "date":
@@ -107,9 +106,11 @@ async function resolveColumns(
       key: cd.key,
       label: cd.label,
       type: cd.type as ColumnDataType,
-      required: cd.required,
-      enumValues: cd.enumValues ?? null,
-      defaultValue: cd.defaultValue ?? null,
+      required: m.required,
+      enumValues: m.enumValues ?? null,
+      defaultValue: m.defaultValue ?? null,
+      validationPattern: cd.validationPattern ?? null,
+      canonicalFormat: cd.canonicalFormat ?? null,
     });
     return acc;
   }, []);

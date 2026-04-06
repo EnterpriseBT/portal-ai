@@ -29,6 +29,8 @@ function col(
     required: false,
     enumValues: null,
     defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
     ...overrides,
   };
 }
@@ -51,11 +53,6 @@ describe("DynamicRecordField — rendering by type", () => {
   it("renders type=number input for number type", () => {
     render(<DynamicRecordField column={col("age", "number")} value="" onChange={noop} />);
     expect(screen.getByLabelText("Age")).toHaveAttribute("type", "number");
-  });
-
-  it("renders type=number input for currency type", () => {
-    render(<DynamicRecordField column={col("price", "currency")} value="" onChange={noop} />);
-    expect(screen.getByLabelText("Price")).toHaveAttribute("type", "number");
   });
 
   it("renders checkbox for boolean type", () => {

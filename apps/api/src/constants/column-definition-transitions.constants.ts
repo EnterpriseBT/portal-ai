@@ -10,8 +10,6 @@ export const ALLOWED_TYPE_TRANSITIONS: Record<string, string[]> = {
   enum: ["string"],
   date: ["datetime"],
   datetime: ["date"],
-  number: ["currency"],
-  currency: ["number"],
 };
 
 /** Types that cannot be transitioned to or from under any circumstance. */

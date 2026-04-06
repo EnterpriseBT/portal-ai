@@ -62,13 +62,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: type
  *         schema:
  *           type: string
- *         description: Comma-separated list of column data types to filter by (string, number, boolean, date, datetime, enum, json, array, reference, currency)
- *       - in: query
- *         name: required
- *         schema:
- *           type: string
- *           enum: ["true", "false"]
- *         description: Filter by required flag
+ *         description: Comma-separated list of column data types to filter by (string, number, boolean, date, datetime, enum, json, array, reference, reference-array)
  *     responses:
  *       200:
  *         description: Paginated list of column definitions
@@ -94,7 +88,7 @@ columnDefinitionRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, type, required } =
+      const { limit, offset, sortBy, sortOrder, search, type } =
         ColumnDefinitionListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -116,10 +110,6 @@ columnDefinitionRouter.get(
           filters.push(inArray(columnDefinitions.type, types as never[]));
         }
       }
-      if (required !== undefined) {
-        filters.push(eq(columnDefinitions.required, required));
-      }
-
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
 
@@ -256,22 +246,17 @@ columnDefinitionRouter.get(
  *                 description: Human-readable label
  *               type:
  *                 type: string
- *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, currency]
- *               required:
- *                 type: boolean
- *                 default: false
- *               defaultValue:
- *                 type: string
- *                 nullable: true
- *               format:
- *                 type: string
- *                 nullable: true
- *               enumValues:
- *                 type: array
- *                 items:
- *                   type: string
- *                 nullable: true
+ *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, reference-array]
  *               description:
+ *                 type: string
+ *                 nullable: true
+ *               validationPattern:
+ *                 type: string
+ *                 nullable: true
+ *               validationMessage:
+ *                 type: string
+ *                 nullable: true
+ *               canonicalFormat:
  *                 type: string
  *                 nullable: true
  *     responses:
@@ -321,11 +306,10 @@ columnDefinitionRouter.post(
         key: parsed.data.key,
         label: parsed.data.label,
         type: parsed.data.type,
-        required: parsed.data.required,
-        defaultValue: parsed.data.defaultValue,
-        format: parsed.data.format,
-        enumValues: parsed.data.enumValues,
         description: parsed.data.description,
+        validationPattern: parsed.data.validationPattern,
+        validationMessage: parsed.data.validationMessage,
+        canonicalFormat: parsed.data.canonicalFormat,
       });
 
       const columnDefinition = await DbService.repository.columnDefinitions.create(
@@ -383,21 +367,17 @@ columnDefinitionRouter.post(
  *                 minLength: 1
  *               type:
  *                 type: string
- *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, currency]
- *               required:
- *                 type: boolean
- *               defaultValue:
- *                 type: string
- *                 nullable: true
- *               format:
- *                 type: string
- *                 nullable: true
- *               enumValues:
- *                 type: array
- *                 items:
- *                   type: string
- *                 nullable: true
+ *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, reference-array]
  *               description:
+ *                 type: string
+ *                 nullable: true
+ *               validationPattern:
+ *                 type: string
+ *                 nullable: true
+ *               validationMessage:
+ *                 type: string
+ *                 nullable: true
+ *               canonicalFormat:
  *                 type: string
  *                 nullable: true
  *     responses:
@@ -511,20 +491,8 @@ columnDefinitionRouter.patch(
 
       logger.info({ id }, "Column definition updated");
 
-      // Rule 4: warn on enum value removal
-      const warnings: string[] = [];
-      if (parsed.data.enumValues && existing.type === "enum" && existing.enumValues) {
-        const removed = (existing.enumValues as string[]).filter(
-          (v) => !(parsed.data.enumValues as string[]).includes(v)
-        );
-        if (removed.length > 0) {
-          warnings.push(`Removed enum values: ${removed.join(", ")}. Existing records with these values will not be automatically updated.`);
-        }
-      }
-
       return HttpService.success<ColumnDefinitionUpdateResponsePayload>(res, {
         columnDefinition: columnDefinition as unknown as ColumnDefinitionUpdateResponsePayload["columnDefinition"],
-        ...(warnings.length > 0 ? { warnings } : {}),
       });
     } catch (error) {
       logger.error(

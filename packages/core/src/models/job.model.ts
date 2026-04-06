@@ -105,7 +105,7 @@ export const FileUploadColumnRecommendationSchema = z.object({
   /** Human-readable label for the column. */
   label: z.string(),
   /** Inferred data type. */
-  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array", "currency"]),
+  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array"]),
   /** Optional format hint (e.g. "YYYY-MM-DD", "email", "url"). */
   format: z.string().nullable(),
   /** Whether this column is a candidate primary key. */

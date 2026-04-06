@@ -265,6 +265,7 @@ export class UploadsService {
         sourceField: string;
         columnDefinitionId: string;
         isPrimaryKey: boolean;
+        normalizedKey: string;
       }[] = [];
 
       for (const col of entity.columns) {
@@ -291,6 +292,11 @@ export class UploadsService {
             columnDefinitionId: colDef.id,
             sourceField: col.sourceField,
             isPrimaryKey: col.isPrimaryKey,
+            normalizedKey: col.normalizedKey ?? col.key,
+            required: col.required,
+            defaultValue: null,
+            format: col.format,
+            enumValues: null,
             refColumnDefinitionId: refColumnDefinitionId ?? null,
             refEntityKey: col.type === "reference" ? (col.refEntityKey ?? null) : null,
             created: now,
@@ -308,6 +314,7 @@ export class UploadsService {
           sourceField: fieldMapping.sourceField,
           columnDefinitionId: fieldMapping.columnDefinitionId,
           isPrimaryKey: fieldMapping.isPrimaryKey,
+          normalizedKey: fieldMapping.normalizedKey,
         });
       }
 
@@ -383,11 +390,10 @@ export class UploadsService {
           key: col.key,
           label: col.label,
           type: col.type,
-          required: col.required,
-          defaultValue: null,
-          format: col.format,
-          enumValues: null,
           description: null,
+          validationPattern: null,
+          validationMessage: null,
+          canonicalFormat: col.canonicalFormat ?? null,
           created: now,
           createdBy: userId,
           updated: null,

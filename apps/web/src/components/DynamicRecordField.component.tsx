@@ -89,7 +89,6 @@ export const DynamicRecordField: React.FC<DynamicRecordFieldProps> = ({
       );
 
     case "number":
-    case "currency":
       return (
         <TextField
           label={column.label}

@@ -20,6 +20,8 @@ function col(
     required: false,
     enumValues: null,
     defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
     ...overrides,
   };
 }
@@ -147,15 +149,6 @@ describe("serializeRecordFields", () => {
       { ids: "" }
     );
     expect(data.ids).toBeNull();
-    expect(errors).toEqual({});
-  });
-
-  it("serializes currency same as number", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("price", "currency")],
-      { price: "9.99" }
-    );
-    expect(data.price).toBe(9.99);
     expect(errors).toEqual({});
   });
 

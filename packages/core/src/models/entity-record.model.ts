@@ -25,6 +25,8 @@ export const EntityRecordSchema = CoreSchema.extend({
   checksum: z.string(),
   syncedAt: z.number(),
   origin: EntityRecordOriginSchema.default("manual"),
+  validationErrors: z.array(z.object({ field: z.string(), error: z.string() })).nullable(),
+  isValid: z.boolean(),
 });
 
 export type EntityRecord = z.infer<typeof EntityRecordSchema>;

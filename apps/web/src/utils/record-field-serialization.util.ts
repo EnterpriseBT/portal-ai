@@ -25,8 +25,7 @@ export function serializeRecordFields(
         break;
       }
 
-      case "number":
-      case "currency": {
+      case "number": {
         const str = String(raw ?? "");
         if (str === "") {
           data[col.key] = null;
@@ -155,7 +154,6 @@ export function initializeRecordFields(
           break;
 
         case "number":
-        case "currency":
           values[col.key] =
             val !== null && val !== undefined ? String(val) : "";
           break;

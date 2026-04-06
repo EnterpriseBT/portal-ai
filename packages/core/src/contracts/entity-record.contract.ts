@@ -13,6 +13,8 @@ export const ColumnDefinitionSummarySchema = z.object({
   required: z.boolean(),
   enumValues: z.array(z.string()).nullable(),
   defaultValue: z.string().nullable(),
+  validationPattern: z.string().nullable(),
+  canonicalFormat: z.string().nullable(),
 });
 
 export type ColumnDefinitionSummary = z.infer<typeof ColumnDefinitionSummarySchema>;

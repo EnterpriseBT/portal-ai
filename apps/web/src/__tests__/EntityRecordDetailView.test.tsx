@@ -55,6 +55,8 @@ const stubRecord: EntityRecord = {
   connectorEntityId: "ent-1",
   data: {},
   origin: "manual",
+  validationErrors: null,
+  isValid: true,
   normalizedData: {
     name: "Alice Johnson",
     age: 32,
@@ -75,11 +77,11 @@ const stubRecord: EntityRecord = {
 };
 
 const stubColumns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
-  { key: "meta", label: "Meta", type: "json", required: false, enumValues: null, defaultValue: null },
-  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null },
+  { key: "name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "meta", label: "Meta", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
 ];
 
 const stubGroup: EntityGroup = {
@@ -204,6 +206,8 @@ describe("EntityRecordDetailViewUI", () => {
       required: false,
       enumValues: null,
       defaultValue: null,
+      validationPattern: null,
+      canonicalFormat: null,
     };
     render(
       <EntityRecordDetailViewUI

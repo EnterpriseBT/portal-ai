@@ -6,7 +6,17 @@
       "Bash(timeout 30 npm run storybook:*)",
       "Bash(npm run build-storybook:*)",
       "Bash(grep:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx jest:*)",
+      "Bash(npx turbo:*)",
+      "Bash(npm run:*)",
+      "Bash(NODE_OPTIONS='--experimental-vm-modules' npx jest)",
+      "Bash(NODE_OPTIONS='--experimental-vm-modules' npx jest src/__tests__/adapters/csv/csv.adapter.test.ts)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('scripts',{}\\).get\\('test',''\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k,v\\) for k,v in d.get\\('scripts',{}\\).items\\(\\) if 'test' in k]\")",
+      "Bash(NODE_OPTIONS='--experimental-vm-modules' npx jest --testPathPattern=\"adapters/\\(csv|sandbox\\)\")",
+      "Bash(NODE_OPTIONS='--experimental-vm-modules' npx jest src/__tests__/services/uploads.service.test.ts)"
     ]
   }
 }

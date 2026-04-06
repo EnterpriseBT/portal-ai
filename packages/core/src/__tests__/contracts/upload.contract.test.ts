@@ -192,6 +192,47 @@ describe("ConfirmColumnSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("should accept optional normalizedKey", () => {
+    const result = ConfirmColumnSchema.safeParse({
+      ...validColumn,
+      normalizedKey: "role_id",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.normalizedKey).toBe("role_id");
+    }
+  });
+
+  it("should parse without normalizedKey", () => {
+    const result = ConfirmColumnSchema.safeParse(validColumn);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.normalizedKey).toBeUndefined();
+    }
+  });
+
+  it("should accept optional canonicalFormat", () => {
+    const result = ConfirmColumnSchema.safeParse({
+      ...validColumn,
+      canonicalFormat: "YYYY-MM-DD",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.canonicalFormat).toBe("YYYY-MM-DD");
+    }
+  });
+
+  it("should accept null canonicalFormat", () => {
+    const result = ConfirmColumnSchema.safeParse({
+      ...validColumn,
+      canonicalFormat: null,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.canonicalFormat).toBeNull();
+    }
+  });
 });
 
 // ── PresignUploadItemSchema ───────────────────────────────────────

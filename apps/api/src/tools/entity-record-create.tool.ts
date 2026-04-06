@@ -45,6 +45,8 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
             checksum: "manual",
             syncedAt: Date.now(),
             origin: "portal",
+            isValid: true,
+            validationErrors: null,
           });
 
           const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);

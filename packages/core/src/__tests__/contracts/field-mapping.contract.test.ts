@@ -19,6 +19,11 @@ const validFieldMapping = {
   columnDefinitionId: "cd-1",
   sourceField: "account_name",
   isPrimaryKey: false,
+  normalizedKey: "account_name",
+  required: false,
+  defaultValue: null,
+  format: null,
+  enumValues: null,
   refColumnDefinitionId: null,
   refEntityKey: null,
   refBidirectionalFieldMappingId: null,
@@ -135,8 +140,50 @@ describe("FieldMappingCreateRequestBodySchema", () => {
       connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
       sourceField: "account_name",
+      normalizedKey: "account_name",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("should require normalizedKey", () => {
+    const result = FieldMappingCreateRequestBodySchema.safeParse({
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "account_name",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject normalizedKey with invalid format", () => {
+    const result = FieldMappingCreateRequestBodySchema.safeParse({
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "account_name",
+      normalizedKey: "Account-Name",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("should default required to false", () => {
+    const result = FieldMappingCreateRequestBodySchema.parse({
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "account_name",
+      normalizedKey: "account_name",
+    });
+    expect(result.required).toBe(false);
+  });
+
+  it("should default defaultValue, format, enumValues to null", () => {
+    const result = FieldMappingCreateRequestBodySchema.parse({
+      connectorEntityId: "ce-1",
+      columnDefinitionId: "cd-1",
+      sourceField: "account_name",
+      normalizedKey: "account_name",
+    });
+    expect(result.defaultValue).toBeNull();
+    expect(result.format).toBeNull();
+    expect(result.enumValues).toBeNull();
   });
 
   it("should default refBidirectionalFieldMappingId to null when omitted", () => {
@@ -144,6 +191,7 @@ describe("FieldMappingCreateRequestBodySchema", () => {
       connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
       sourceField: "account_name",
+      normalizedKey: "account_name",
     });
     expect(result.refBidirectionalFieldMappingId).toBeNull();
   });
@@ -153,6 +201,7 @@ describe("FieldMappingCreateRequestBodySchema", () => {
       connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
       sourceField: "account_name",
+      normalizedKey: "account_name",
       refBidirectionalFieldMappingId: "fm-42",
     });
     expect(result.refBidirectionalFieldMappingId).toBe("fm-42");
@@ -163,6 +212,7 @@ describe("FieldMappingCreateRequestBodySchema", () => {
       connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
       sourceField: "account_name",
+      normalizedKey: "account_name",
     });
     expect(result.isPrimaryKey).toBe(false);
   });
@@ -172,6 +222,7 @@ describe("FieldMappingCreateRequestBodySchema", () => {
       connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
       sourceField: "user_id",
+      normalizedKey: "user_id",
       isPrimaryKey: true,
     });
     expect(result.isPrimaryKey).toBe(true);
@@ -181,6 +232,7 @@ describe("FieldMappingCreateRequestBodySchema", () => {
     const result = FieldMappingCreateRequestBodySchema.safeParse({
       columnDefinitionId: "cd-1",
       sourceField: "account_name",
+      normalizedKey: "account_name",
     });
     expect(result.success).toBe(false);
   });
@@ -189,6 +241,7 @@ describe("FieldMappingCreateRequestBodySchema", () => {
     const result = FieldMappingCreateRequestBodySchema.safeParse({
       connectorEntityId: "ce-1",
       sourceField: "account_name",
+      normalizedKey: "account_name",
     });
     expect(result.success).toBe(false);
   });
@@ -198,6 +251,7 @@ describe("FieldMappingCreateRequestBodySchema", () => {
       connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
       sourceField: "",
+      normalizedKey: "account_name",
     });
     expect(result.success).toBe(false);
   });

@@ -9,10 +9,11 @@ import { ColumnDefinitionModelFactory, ColumnDataTypeEnum } from "@portalai/core
 const InputSchema = z.object({
   key: z.string().min(1).describe("Unique key for the column definition"),
   label: z.string().min(1).describe("Display label"),
-  type: ColumnDataTypeEnum.describe("Column data type (string, number, boolean, date, datetime, enum, json, array, currency)"),
-  required: z.boolean().optional().describe("Whether the column is required"),
-  enumValues: z.array(z.string()).optional().describe("Allowed values for enum columns"),
+  type: ColumnDataTypeEnum.describe("Column data type (string, number, boolean, date, datetime, enum, json, array, reference, reference-array)"),
   description: z.string().optional().describe("Column description"),
+  validationPattern: z.string().optional().describe("Regex validation pattern for column values"),
+  validationMessage: z.string().optional().describe("Error message when validation fails"),
+  canonicalFormat: z.string().optional().describe("Canonical display format (e.g. $#,##0.00)"),
 });
 
 export class ColumnDefinitionCreateTool extends Tool<typeof InputSchema> {
@@ -37,17 +38,16 @@ export class ColumnDefinitionCreateTool extends Tool<typeof InputSchema> {
             key: validated.key,
             label: validated.label,
             type: validated.type,
-            required: validated.required ?? false,
-            defaultValue: null,
-            format: null,
-            enumValues: validated.enumValues ?? null,
             description: validated.description ?? null,
+            validationPattern: validated.validationPattern ?? null,
+            validationMessage: validated.validationMessage ?? null,
+            canonicalFormat: validated.canonicalFormat ?? null,
           });
 
           const result = await DbService.repository.columnDefinitions.upsertByKey(model.parse());
           AnalyticsService.applyColumnDefinitionInsert(stationId, {
             id: result.id, key: validated.key, label: validated.label,
-            type: validated.type, required: validated.required ?? false,
+            type: validated.type,
             description: validated.description ?? null,
           });          return {
             success: true,

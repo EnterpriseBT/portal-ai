@@ -17,11 +17,10 @@ const validColumnFields = {
   key: "email",
   label: "Email",
   type: "string" as const,
-  required: true,
-  defaultValue: null,
-  format: "email",
-  enumValues: null,
   description: "Primary email address",
+  validationPattern: null,
+  validationMessage: null,
+  canonicalFormat: null,
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -42,7 +41,6 @@ describe("ColumnDataTypeEnum", () => {
     "array",
     "reference",
     "reference-array",
-    "currency",
   ])("should accept '%s' as a valid type", (type) => {
     const result = ColumnDataTypeEnum.safeParse(type);
     expect(result.success).toBe(true);
@@ -169,11 +167,10 @@ describe("ColumnDefinitionModelFactory", () => {
       expect(shape).toHaveProperty("key");
       expect(shape).toHaveProperty("label");
       expect(shape).toHaveProperty("type");
-      expect(shape).toHaveProperty("required");
-      expect(shape).toHaveProperty("defaultValue");
-      expect(shape).toHaveProperty("format");
-      expect(shape).toHaveProperty("enumValues");
       expect(shape).toHaveProperty("description");
+      expect(shape).toHaveProperty("validationPattern");
+      expect(shape).toHaveProperty("validationMessage");
+      expect(shape).toHaveProperty("canonicalFormat");
     });
 
     it("should allow updating domain fields after creation", () => {
@@ -185,10 +182,10 @@ describe("ColumnDefinitionModelFactory", () => {
       expect(json.key).toBe("email");
       expect(json.label).toBe("Email");
       expect(json.type).toBe("string");
-      expect(json.required).toBe(true);
-      expect(json.format).toBe("email");
-      expect(json.enumValues).toBeNull();
       expect(json.description).toBe("Primary email address");
+      expect(json.validationPattern).toBeNull();
+      expect(json.validationMessage).toBeNull();
+      expect(json.canonicalFormat).toBeNull();
       // base fields preserved
       expect(json.id).toBe("test-id-1");
       expect(json.createdBy).toBe("user-1");
@@ -202,30 +199,14 @@ describe("ColumnDefinitionModelFactory", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should pass validation for an enum column with enumValues set", () => {
-      const model = factory.create("system");
-      model.update({
-        ...validColumnFields,
-        key: "status",
-        label: "Status",
-        type: "enum",
-        enumValues: ["active", "inactive", "archived"],
-      });
-
-      const result = model.validate();
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.enumValues).toEqual(["active", "inactive", "archived"]);
-      }
-    });
-
     it("should pass validation when nullable fields are null", () => {
       const model = factory.create("system");
       model.update({
         ...validColumnFields,
-        format: null,
-        enumValues: null,
         description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
       });
 
       const result = model.validate();
@@ -249,7 +230,6 @@ describe("ColumnDefinitionModelFactory", () => {
         expect(paths).toContain("key");
         expect(paths).toContain("label");
         expect(paths).toContain("type");
-        expect(paths).toContain("required");
       }
     });
 
