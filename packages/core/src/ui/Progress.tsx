@@ -12,6 +12,8 @@ export interface ProgressProps {
   color?: "primary" | "secondary" | "success" | "error" | "warning" | "info";
   /** Height of the progress bar in pixels. */
   height?: number;
+  /** Whether to show a pulsing glow animation to indicate active processing. */
+  animated?: boolean;
   className?: string;
   [key: `data-${string}`]: string;
 }
@@ -23,6 +25,7 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       showLabel = true,
       color = "primary",
       height = 8,
+      animated = false,
       className,
       ...rest
     },
@@ -44,7 +47,19 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
             variant="determinate"
             value={clampedValue}
             color={color}
-            sx={{ height, borderRadius: height / 2 }}
+            sx={{
+              height,
+              borderRadius: height / 2,
+              ...(animated && {
+                "& .MuiLinearProgress-bar": {
+                  "@keyframes pulseGlow": {
+                    "0%, 100%": { opacity: 1, filter: "brightness(1)" },
+                    "50%": { opacity: 0.85, filter: "brightness(1.35)" },
+                  },
+                  animation: "pulseGlow 1s ease-in-out infinite",
+                },
+              }),
+            }}
           />
         </Box>
         {showLabel && (

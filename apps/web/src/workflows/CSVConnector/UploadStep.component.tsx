@@ -169,7 +169,7 @@ export const UploadStep: React.FC<UploadStepProps> = ({
                     {formatBytes(progress?.loaded ?? 0)} / {formatBytes(file.size)}
                   </Typography>
                 </Stack>
-                <Progress value={progress?.percent ?? 0} height={6} />
+                <Progress value={progress?.percent ?? 0} height={6} animated />
               </Box>
             );
           })}
@@ -182,6 +182,7 @@ export const UploadStep: React.FC<UploadStepProps> = ({
           <Progress
             value={uploadPhase === "done" ? jobProgress : overallUploadPercent}
             height={8}
+            animated
           />
         </Box>
       )}

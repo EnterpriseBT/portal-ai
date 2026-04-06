@@ -90,7 +90,7 @@ export const JobCard = ({ job, status, progress }: JobCardProps) => {
         </Typography>
         <Box sx={{ width: { xs: "100%", sm: 200 } }}>
           {displayStatus === "active" ? (
-            <Progress value={displayProgress} height={6} />
+            <Progress value={displayProgress} height={6} animated />
           ) : (
             <StatusBadge status={displayStatus} />
           )}
