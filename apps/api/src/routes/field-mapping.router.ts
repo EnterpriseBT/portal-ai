@@ -23,6 +23,7 @@ import { Repository } from "../db/repositories/base.repository.js";
 import { fieldMappings } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
+import { RevalidationService } from "../services/revalidation.service.js";
 
 const logger = createLogger({ module: "field-mapping" });
 
@@ -323,6 +324,9 @@ fieldMappingRouter.post(
         );
       }
 
+      // Block if a revalidation job is active for the target entity
+      await RevalidationService.assertNoActiveJob(parsed.data.connectorEntityId);
+
       // Check for duplicate mapping (same entity + column definition)
       const duplicate = await DbService.repository.fieldMappings.findMany(
         and(
@@ -461,6 +465,9 @@ fieldMappingRouter.patch(
         );
       }
 
+      // Block if a revalidation job is active for this mapping's entity
+      await RevalidationService.assertNoActiveJob(existing.connectorEntityId);
+
       if (parsed.data.columnDefinitionId) {
         const colDef = await DbService.repository.columnDefinitions.findById(parsed.data.columnDefinitionId);
         if (!colDef) {
@@ -496,6 +503,19 @@ fieldMappingRouter.patch(
       });
 
       logger.info({ id }, "Field mapping updated");
+
+      // Trigger revalidation if normalization-affecting fields changed
+      const REVALIDATION_FIELDS = ["format", "required", "enumValues", "defaultValue", "normalizedKey"] as const;
+      const needsRevalidation = REVALIDATION_FIELDS.some((field) =>
+        field in parsed.data && (parsed.data as Record<string, unknown>)[field] !== (existing as Record<string, unknown>)[field]
+      );
+
+      if (needsRevalidation) {
+        const { organizationId } = req.application!.metadata;
+        await RevalidationService.enqueue(existing.connectorEntityId, organizationId, userId).catch((err) => {
+          logger.warn({ id, err }, "Failed to enqueue revalidation after field mapping update");
+        });
+      }
 
       return HttpService.success<FieldMappingUpdateResponsePayload>(res, {
         fieldMapping: fieldMapping as unknown as FieldMappingUpdateResponsePayload["fieldMapping"],
@@ -664,6 +684,12 @@ fieldMappingRouter.delete(
     try {
       const { id } = req.params;
       const { userId } = req.application!.metadata;
+
+      // Block if a revalidation job is active for this mapping's entity
+      const mappingToDelete = await DbService.repository.fieldMappings.findById(id);
+      if (mappingToDelete) {
+        await RevalidationService.assertNoActiveJob(mappingToDelete.connectorEntityId);
+      }
 
       await FieldMappingValidationService.validateDelete(id);
 

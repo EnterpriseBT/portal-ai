@@ -31,6 +31,7 @@ export const TERMINAL_JOB_STATUSES: JobStatus[] = ["completed", "failed", "cance
 export const JobTypeEnum = z.enum([
   "file_upload",
   "system_check",
+  "revalidation",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -151,6 +152,24 @@ export const FileUploadResultSchema = z.object({
 });
 export type FileUploadResult = z.infer<typeof FileUploadResultSchema>;
 
+/** revalidation — re-runs normalization pipeline on all records for an entity. */
+export const RevalidationMetadataSchema = z.object({
+  connectorEntityId: z.string(),
+  organizationId: z.string(),
+});
+export type RevalidationMetadata = z.infer<typeof RevalidationMetadataSchema>;
+
+export const RevalidationResultSchema = z.object({
+  total: z.number(),
+  valid: z.number(),
+  invalid: z.number(),
+  errors: z.array(z.object({
+    recordId: z.string(),
+    errors: z.array(z.object({ field: z.string(), error: z.string() })),
+  })),
+});
+export type RevalidationResult = z.infer<typeof RevalidationResultSchema>;
+
 // --- Type Map ---
 
 /**
@@ -164,6 +183,7 @@ export type FileUploadResult = z.infer<typeof FileUploadResultSchema>;
 export interface JobTypeMap {
   system_check: { metadata: SystemCheckMetadata; result: SystemCheckResult };
   file_upload: { metadata: FileUploadMetadata; result: FileUploadResult };
+  revalidation: { metadata: RevalidationMetadata; result: RevalidationResult };
 }
 
 /**
@@ -178,6 +198,7 @@ export const JOB_TYPE_SCHEMAS: {
 } = {
   system_check: { metadata: SystemCheckMetadataSchema, result: SystemCheckResultSchema },
   file_upload: { metadata: FileUploadMetadataSchema, result: FileUploadResultSchema },
+  revalidation: { metadata: RevalidationMetadataSchema, result: RevalidationResultSchema },
 };
 
 // --- Schema ---

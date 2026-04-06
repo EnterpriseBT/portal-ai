@@ -34,6 +34,7 @@ import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { SyncService } from "../services/sync.service.js";
+import { RevalidationService } from "../services/revalidation.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
 import type { ColumnDefinitionSummary } from "../adapters/adapter.interface.js";
@@ -146,7 +147,7 @@ entityRecordRouter.get(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      const { limit, offset, sortBy, sortOrder, columns, search, filters } =
+      const { limit, offset, sortBy, sortOrder, columns, search, filters, isValid } =
         EntityRecordListRequestQuerySchema.parse(req.query);
 
       // Resolve column definitions early — needed for JSONB sorting and filter validation
@@ -155,6 +156,10 @@ entityRecordRouter.get(
       const conditions: SQL[] = [
         eq(entityRecords.connectorEntityId, connectorEntityId),
       ];
+
+      if (isValid !== undefined) {
+        conditions.push(eq(entityRecords.isValid, isValid === "true"));
+      }
 
       if (search) {
         // Cast normalizedData JSONB values to text and search across all values
@@ -440,6 +445,7 @@ entityRecordRouter.post(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
+      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -465,6 +471,8 @@ entityRecordRouter.post(
         checksum: "manual",
         syncedAt: Date.now(),
         origin: "manual",
+        validationErrors: null,
+        isValid: true,
       });
 
       const record = await DbService.repository.entityRecords
@@ -515,6 +523,8 @@ entityRecordRouter.post(
       const connectorEntityId = req.params.connectorEntityId;
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
+
+      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordImportRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -633,6 +643,8 @@ entityRecordRouter.post(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
+      await RevalidationService.assertNoActiveJob(connectorEntityId);
+
       const { userId } = req.application!.metadata;
       const result = await SyncService.syncEntity(
         connectorEntityId,
@@ -654,6 +666,49 @@ entityRecordRouter.post(
               error instanceof Error
                 ? error.message
                 : "Failed to sync entity records"
+            )
+      );
+    }
+  }
+);
+
+// ── POST /revalidate — Trigger async re-validation ─────────────────
+
+entityRecordRouter.post(
+  "/revalidate",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const connectorEntityId = req.params.connectorEntityId;
+      const entity = await resolveEntityOrThrow(connectorEntityId, next);
+      if (!entity) return;
+
+      const { userId, organizationId } = req.application!.metadata;
+
+      // Prevent duplicate revalidation — returns existing job if one is active
+      const job = await RevalidationService.enqueue(
+        connectorEntityId,
+        organizationId,
+        userId,
+      );
+
+      logger.info({ connectorEntityId, jobId: job.id }, "Revalidation job enqueued");
+
+      return HttpService.success(res, { job }, 202);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to enqueue revalidation job"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_RECORD_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to enqueue revalidation job"
             )
       );
     }
@@ -747,6 +802,7 @@ entityRecordRouter.patch(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
+      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const parsed = EntityRecordPatchRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -878,6 +934,7 @@ entityRecordRouter.delete(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
+      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const record = await DbService.repository.entityRecords.findById(recordId);
       if (!record || record.connectorEntityId !== connectorEntityId) {
@@ -977,6 +1034,7 @@ entityRecordRouter.delete(
       if (!entity) return;
 
       await assertWriteCapability(connectorEntityId);
+      await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const { userId } = req.application!.metadata;
       const deleted =

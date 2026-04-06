@@ -19,6 +19,7 @@ import { DbService } from "../services/db.service.js";
 import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
+import { RevalidationService } from "../services/revalidation.service.js";
 
 const logger = createLogger({ module: "column-definition" });
 
@@ -456,6 +457,9 @@ columnDefinitionRouter.patch(
         );
       }
 
+      // Block if a revalidation job is active for any entity using this column definition
+      await RevalidationService.assertNoActiveJobForColumnDefinition(id);
+
       // Rule 3: validate type transitions
       if (parsed.data.type && parsed.data.type !== existing.type) {
         const oldType = existing.type;
@@ -490,6 +494,25 @@ columnDefinitionRouter.patch(
       });
 
       logger.info({ id }, "Column definition updated");
+
+      // Trigger revalidation if normalization-affecting fields changed
+      const REVALIDATION_FIELDS = ["validationPattern", "validationMessage", "canonicalFormat"] as const;
+      const needsRevalidation = REVALIDATION_FIELDS.some((field) =>
+        field in parsed.data && (parsed.data as Record<string, unknown>)[field] !== (existing as Record<string, unknown>)[field]
+      );
+
+      if (needsRevalidation) {
+        const { organizationId } = req.application!.metadata;
+        // Enqueue revalidation for all entities that have mappings pointing to this column definition
+        const affectedMappings = await DbService.repository.fieldMappings.findByColumnDefinitionId(id);
+        const affectedEntityIds = [...new Set(affectedMappings.map((m) => m.connectorEntityId))];
+
+        for (const entityId of affectedEntityIds) {
+          await RevalidationService.enqueue(entityId, organizationId, userId).catch((err) => {
+            logger.warn({ id, entityId, err }, "Failed to enqueue revalidation after column definition update");
+          });
+        }
+      }
 
       return HttpService.success<ColumnDefinitionUpdateResponsePayload>(res, {
         columnDefinition: columnDefinition as unknown as ColumnDefinitionUpdateResponsePayload["columnDefinition"],
@@ -667,6 +690,9 @@ columnDefinitionRouter.delete(
           new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
         );
       }
+
+      // Block if a revalidation job is active for any entity using this column definition
+      await RevalidationService.assertNoActiveJobForColumnDefinition(id);
 
       await ColumnDefinitionValidationService.validateDelete(id);
 

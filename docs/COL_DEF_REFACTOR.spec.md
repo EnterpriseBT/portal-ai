@@ -298,17 +298,22 @@ Write-time canonicalization for string types:
 
 ## Backend Phase 3 — Record Validation
 
-### 3.1 Add Re-validation Endpoint
+### 3.1 Add Re-validation Endpoint (Background Job)
 
 **New route:** `POST /api/connector-entities/:connectorEntityId/records/revalidate`
 
-Triggers async re-validation of all records for an entity:
-1. Fetch all field mappings for the entity (with column definitions)
-2. For each record: re-run the normalization pipeline from `data` using current mappings
-3. Update `normalizedData`, `validationErrors`, `isValid` on each record
-4. Return summary: `{ total, valid, invalid, errors: [...] }`
+Enqueues a background revalidation job (BullMQ, type `revalidation`) and returns `202` with the job record. The processor:
+1. Fetches all field mappings for the entity (with column definitions)
+2. For each record (in batches of 100): re-runs the normalization pipeline from `data` using current mappings
+3. Updates `normalizedData`, `validationErrors`, `isValid` on each record
+4. Reports progress via SSE and completes with summary: `{ total, valid, invalid, errors: [...] }`
 
-This endpoint is called after field mapping edits that change `format`, `required`, `enumValues`, `defaultValue`, or when a column definition's `validationPattern` / `canonicalFormat` changes.
+If a revalidation job is already active for the entity, the endpoint returns the existing job (idempotent).
+
+**Mutation guard:** While a revalidation job is active (`pending` or `active` status) for a connector entity, all write operations on affected objects are blocked with a `409 REVALIDATION_ACTIVE` error. Guarded endpoints:
+- **Entity records:** POST (create), POST /import, POST /sync, PATCH, DELETE (single), DELETE (all)
+- **Field mappings:** POST (create), PATCH, DELETE — for mappings belonging to the entity
+- **Column definitions:** PATCH, DELETE — for column defs used by any entity with an active revalidation job
 
 ### 3.2 Trigger Re-validation on Mapping Changes
 
@@ -330,6 +335,8 @@ This endpoint is called after field mapping edits that change `format`, `require
 - Test trigger on field mapping update
 - Test trigger on column definition update
 - Test that `normalizedKey` change re-keys `normalizedData`
+- Test mutation guard: verify 409 when revalidation job is active
+- Test idempotency: verify duplicate enqueue returns existing job
 
 ---
 

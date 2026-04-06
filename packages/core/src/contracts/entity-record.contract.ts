@@ -25,6 +25,8 @@ export const EntityRecordListRequestQuerySchema = PaginationRequestQuerySchema.e
   columns: z.string().optional(),
   /** Base64-encoded JSON string containing a FilterExpression. Decoded and validated at the API layer. */
   filters: z.string().optional(),
+  /** Filter by validation status. Query params are strings; parsed to boolean in the router. */
+  isValid: z.enum(["true", "false"]).optional(),
 });
 
 export type EntityRecordListRequestQuery = z.infer<typeof EntityRecordListRequestQuerySchema>;
