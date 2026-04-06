@@ -11,6 +11,7 @@ const stubRecord: EntityRecord = {
   sourceId: "SRC-001",
   checksum: "deadbeef1234",
   syncedAt: 1718438400000,
+  origin: "sync",
   created: 1700000000000,
   createdBy: "system",
   updated: 1710000000000,
@@ -38,6 +39,11 @@ describe("EntityRecordMetadata", () => {
   it("renders the connectorEntityId", () => {
     render(<EntityRecordMetadata record={stubRecord} />);
     expect(screen.getByText("ent-xyz-456")).toBeInTheDocument();
+  });
+
+  it("renders the origin", () => {
+    render(<EntityRecordMetadata record={stubRecord} />);
+    expect(screen.getByText("sync")).toBeInTheDocument();
   });
 
   it("renders syncedAt as formatted datetime", () => {

@@ -1,6 +1,7 @@
 import {
   EntityRecordModel,
   EntityRecordModelFactory,
+  EntityRecordSchema,
 } from "../../models/entity-record.model.js";
 import {
   UUID_REGEX,
@@ -172,5 +173,54 @@ describe("EntityRecordModelFactory", () => {
         expect(paths).toContain("sourceId");
       }
     });
+  });
+});
+
+// ── Origin field tests ──────────────────────────────────────────────
+
+describe("EntityRecordSchema — origin field", () => {
+  const baseRecord = {
+    id: "rec-1",
+    organizationId: "org-1",
+    connectorEntityId: "ce-1",
+    data: { name: "Jane" },
+    normalizedData: { name: "Jane" },
+    sourceId: "row-0",
+    checksum: "abc123",
+    syncedAt: Date.now(),
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+
+  it('should accept origin: "sync"', () => {
+    const result = EntityRecordSchema.safeParse({ ...baseRecord, origin: "sync" });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept origin: "manual"', () => {
+    const result = EntityRecordSchema.safeParse({ ...baseRecord, origin: "manual" });
+    expect(result.success).toBe(true);
+  });
+
+  it('should accept origin: "portal"', () => {
+    const result = EntityRecordSchema.safeParse({ ...baseRecord, origin: "portal" });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject an invalid origin value", () => {
+    const result = EntityRecordSchema.safeParse({ ...baseRecord, origin: "unknown" });
+    expect(result.success).toBe(false);
+  });
+
+  it('should default origin to "manual" when omitted', () => {
+    const result = EntityRecordSchema.safeParse(baseRecord);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.origin).toBe("manual");
+    }
   });
 });

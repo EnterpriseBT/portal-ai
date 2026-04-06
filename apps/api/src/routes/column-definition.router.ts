@@ -18,6 +18,7 @@ import { ALLOWED_TYPE_TRANSITIONS, BLOCKED_TYPES } from "../constants/column-def
 import { DbService } from "../services/db.service.js";
 import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
 
 const logger = createLogger({ module: "column-definition" });
 
@@ -699,20 +700,7 @@ columnDefinitionRouter.delete(
         );
       }
 
-      // Rule 1: block delete when field mappings reference this column definition
-      const [depsByColumn, depsByRef] = await Promise.all([
-        DbService.repository.fieldMappings.findByColumnDefinitionId(id),
-        DbService.repository.fieldMappings.findByRefColumnDefinitionId(id),
-      ]);
-
-      if (depsByColumn.length > 0 || depsByRef.length > 0) {
-        return next(
-          new ApiError(422, ApiCode.COLUMN_DEFINITION_HAS_DEPENDENCIES, "Column definition has dependent field mappings", {
-            fieldMappings: depsByColumn.map((fm) => fm.id),
-            refFieldMappings: depsByRef.map((fm) => fm.id),
-          })
-        );
-      }
+      await ColumnDefinitionValidationService.validateDelete(id);
 
       const { userId } = req.application!.metadata;
 

@@ -34,6 +34,19 @@ import { MaxDrawdownTool } from "../tools/max-drawdown.tool.js";
 import { RollingReturnsTool } from "../tools/rolling-returns.tool.js";
 import { WebSearchTool } from "../tools/web-search.tool.js";
 import { WebhookTool } from "../tools/webhook.tool.js";
+import { EntityRecordCreateTool } from "../tools/entity-record-create.tool.js";
+import { EntityRecordUpdateTool } from "../tools/entity-record-update.tool.js";
+import { EntityRecordDeleteTool } from "../tools/entity-record-delete.tool.js";
+import { ConnectorEntityCreateTool } from "../tools/connector-entity-create.tool.js";
+import { ConnectorEntityUpdateTool } from "../tools/connector-entity-update.tool.js";
+import { ConnectorEntityDeleteTool } from "../tools/connector-entity-delete.tool.js";
+import { ColumnDefinitionCreateTool } from "../tools/column-definition-create.tool.js";
+import { ColumnDefinitionUpdateTool } from "../tools/column-definition-update.tool.js";
+import { ColumnDefinitionDeleteTool } from "../tools/column-definition-delete.tool.js";
+import { FieldMappingCreateTool } from "../tools/field-mapping-create.tool.js";
+import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
+import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
+import { resolveStationCapabilities } from "../utils/resolve-capabilities.util.js";
 
 const logger = createLogger({ module: "tools-service" });
 
@@ -60,6 +73,7 @@ export const ALL_TOOL_PACKS = [
   "regression",
   "financial",
   "web_search",
+  "entity_management",
 ] as const;
 
 export type ToolPackName = (typeof ALL_TOOL_PACKS)[number];
@@ -93,6 +107,18 @@ export class ToolService {
     "max_drawdown",
     "rolling_returns",
     "web_search",
+    "entity_record_create",
+    "entity_record_update",
+    "entity_record_delete",
+    "connector_entity_create",
+    "connector_entity_update",
+    "connector_entity_delete",
+    "column_definition_create",
+    "column_definition_update",
+    "column_definition_delete",
+    "field_mapping_create",
+    "field_mapping_update",
+    "field_mapping_delete",
   ]);
 
   // -----------------------------------------------------------------------
@@ -142,6 +168,7 @@ export class ToolService {
   static async buildAnalyticsTools(
     organizationId: string,
     stationId: string,
+    userId: string,
   ): Promise<Record<string, Tool>> {
     const repo = DbService.repository;
 
@@ -216,6 +243,30 @@ export class ToolService {
     // -------------------------------------------------------------------
     if (enabledPacks.has("web_search")) {
       tools.web_search = new WebSearchTool().build();
+    }
+
+    // -------------------------------------------------------------------
+    // Pack: entity_management
+    // -------------------------------------------------------------------
+    if (enabledPacks.has("entity_management")) {
+      // Write tools — only if any attached instance has write capability
+      const stationCaps = await resolveStationCapabilities(stationId);
+      const hasWrite = stationCaps.some((sc) => sc.capabilities.write);
+
+      if (hasWrite) {
+        tools.entity_record_create = new EntityRecordCreateTool().build(stationId, organizationId, userId);
+        tools.entity_record_update = new EntityRecordUpdateTool().build(stationId, userId);
+        tools.entity_record_delete = new EntityRecordDeleteTool().build(stationId, userId);
+        tools.connector_entity_create = new ConnectorEntityCreateTool().build(stationId, userId);
+        tools.connector_entity_update = new ConnectorEntityUpdateTool().build(stationId, userId);
+        tools.connector_entity_delete = new ConnectorEntityDeleteTool().build(stationId, userId);
+        tools.column_definition_create = new ColumnDefinitionCreateTool().build(stationId, organizationId, userId);
+        tools.column_definition_update = new ColumnDefinitionUpdateTool().build(stationId, organizationId, userId);
+        tools.column_definition_delete = new ColumnDefinitionDeleteTool().build(stationId, organizationId, userId);
+        tools.field_mapping_create = new FieldMappingCreateTool().build(stationId, organizationId, userId);
+        tools.field_mapping_update = new FieldMappingUpdateTool().build(stationId, organizationId, userId);
+        tools.field_mapping_delete = new FieldMappingDeleteTool().build(stationId, organizationId, userId);
+      }
     }
 
     // -------------------------------------------------------------------

@@ -12,6 +12,7 @@ const mockFindByConnectorEntityId_members = jest.fn<() => Promise<unknown[]>>();
 const mockFindByEntityGroupId = jest.fn<() => Promise<unknown[]>>();
 const mockFindById_group = jest.fn<() => Promise<unknown>>();
 const mockFindMany_entities = jest.fn<() => Promise<unknown[]>>();
+const mockFindByOrganizationId_colDefs = jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]);
 
 // Mock vega/vega-lite so data-injection tests don't require valid specs.
 // Dedicated validation tests use the real modules.
@@ -29,6 +30,12 @@ jest.unstable_mockModule("vega", () => ({
 
 jest.unstable_mockModule("vega-lite", () => ({
   compile: jest.fn<() => unknown>().mockReturnValue({ spec: {} }),
+}));
+
+// Mock direct db import for _connector_instances metadata query in loadStation
+const _mockSelectChain = { from: () => _mockSelectChain, where: () => Promise.resolve([]) };
+jest.unstable_mockModule("../../db/client.js", () => ({
+  db: { select: () => _mockSelectChain },
 }));
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -51,6 +58,9 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
       entityGroups: {
         findById: mockFindById_group,
+      },
+      columnDefinitions: {
+        findByOrganizationId: mockFindByOrganizationId_colDefs,
       },
     },
   },

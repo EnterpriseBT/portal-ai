@@ -1,0 +1,2 @@
+CREATE TYPE "public"."entity_record_origin" AS ENUM('sync', 'manual', 'portal');--> statement-breakpoint
+ALTER TABLE "entity_records" ADD COLUMN "origin" "entity_record_origin" DEFAULT 'manual' NOT NULL;

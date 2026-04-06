@@ -13,6 +13,7 @@ import RocketLaunch from "@mui/icons-material/RocketLaunch";
 import DataResult from "./DataResult.component";
 import { OrgData } from "./StationList.component";
 import { sdk } from "../api/sdk";
+import { ToolPackUtil } from "../utils/tool-packs.util";
 
 // ── Station data fetch ──────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
               value: (
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                   {station.toolPacks.map((pack) => (
-                    <Chip key={pack} label={pack} size="small" variant="outlined" />
+                    <Chip key={pack} label={ToolPackUtil.getLabel(pack)} size="small" variant="outlined" />
                   ))}
                 </Stack>
               ),

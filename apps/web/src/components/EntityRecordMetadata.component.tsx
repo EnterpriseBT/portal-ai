@@ -31,6 +31,7 @@ export const EntityRecordMetadata: React.FC<EntityRecordMetadataProps> = ({
         { label: "Source ID", value: record.sourceId, variant: "mono" },
         { label: "Checksum", value: record.checksum, variant: "mono" },
         { label: "Connector entity ID", value: record.connectorEntityId, variant: "mono" },
+        { label: "Origin", value: record.origin, variant: "chip" },
         { label: "Synced at", value: syncedAt },
         { label: "Created", value: created },
         { label: "Updated", value: updated },

@@ -11,6 +11,7 @@ export const StationToolPackSchema = z.enum([
   "regression",
   "financial",
   "web_search",
+  "entity_management",
 ]);
 
 export type StationToolPack = z.infer<typeof StationToolPackSchema>;

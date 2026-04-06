@@ -22,6 +22,7 @@ const stubRecord: EntityRecord = {
   organizationId: "org-1",
   connectorEntityId: "ent-1",
   data: {},
+  origin: "manual",
   normalizedData: {
     name: "Alice Johnson",
     email: "alice@example.com",

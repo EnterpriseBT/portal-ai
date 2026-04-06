@@ -3,6 +3,7 @@ import type { CapabilityFlags } from "../db/schema/connector-definitions.table.j
 import { connectorInstancesRepo } from "../db/repositories/connector-instances.repository.js";
 import { connectorDefinitionsRepo } from "../db/repositories/connector-definitions.repository.js";
 import { connectorEntitiesRepo } from "../db/repositories/connector-entities.repository.js";
+import { stationInstancesRepo } from "../db/repositories/station-instances.repository.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 
@@ -82,4 +83,137 @@ export async function assertWriteCapability(
       "Cannot perform write operation — the connector instance does not have write capability enabled.",
     );
   }
+}
+
+// ── Station-level capability helpers ─────────────────────────────────
+
+export interface StationInstanceCapability {
+  connectorInstanceId: string;
+  capabilities: ResolvedCapabilities;
+}
+
+/**
+ * Resolve capabilities for every connector instance attached to a station.
+ * Returns one entry per station-instance link with the merged capability flags.
+ */
+export async function resolveStationCapabilities(
+  stationId: string,
+): Promise<StationInstanceCapability[]> {
+  const stationLinks = await stationInstancesRepo.findByStationId(
+    stationId,
+    { include: ["connectorInstance"] },
+  );
+
+  if (stationLinks.length === 0) return [];
+
+  const instanceIds = [
+    ...new Set(stationLinks.map((l) => l.connectorInstanceId)),
+  ];
+
+  // Load definitions for all instances
+  const instances = await Promise.all(
+    instanceIds.map((id) => connectorInstancesRepo.findById(id)),
+  );
+  const instanceMap = new Map(
+    instances.filter(Boolean).map((i) => [i!.id, i!]),
+  );
+
+  const definitionIds = [
+    ...new Set(
+      instances
+        .filter(Boolean)
+        .map((i) => i!.connectorDefinitionId),
+    ),
+  ];
+  const definitions = await Promise.all(
+    definitionIds.map((id) => connectorDefinitionsRepo.findById(id)),
+  );
+  const definitionMap = new Map(
+    definitions.filter(Boolean).map((d) => [d!.id, d!]),
+  );
+
+  const result: StationInstanceCapability[] = [];
+
+  for (const link of stationLinks) {
+    const instance = instanceMap.get(link.connectorInstanceId);
+    if (!instance) continue;
+
+    const definition = definitionMap.get(instance.connectorDefinitionId);
+    if (!definition) continue;
+
+    result.push({
+      connectorInstanceId: link.connectorInstanceId,
+      capabilities: resolveCapabilities(definition, instance),
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Assert that a connector entity belongs to a connector instance that is
+ * attached to the given station. Throws if the entity does not exist or
+ * its instance is not linked to the station.
+ */
+export async function assertStationScope(
+  stationId: string,
+  connectorEntityId: string,
+): Promise<void> {
+  const entity = await connectorEntitiesRepo.findById(connectorEntityId);
+  if (!entity) {
+    throw new ApiError(
+      404,
+      ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+      "Connector entity not found.",
+    );
+  }
+
+  const stationLinks = await stationInstancesRepo.findByStationId(stationId);
+  const attachedInstanceIds = new Set(
+    stationLinks.map((l) => l.connectorInstanceId),
+  );
+
+  if (!attachedInstanceIds.has(entity.connectorInstanceId)) {
+    throw new ApiError(
+      403,
+      ApiCode.STATION_SCOPE_VIOLATION,
+      "Connector entity does not belong to an instance attached to this station.",
+    );
+  }
+}
+
+/**
+ * Build a map of entity ID → resolved capabilities for all entities
+ * reachable from a station's attached connector instances.
+ */
+export async function resolveEntityCapabilities(
+  stationId: string,
+): Promise<Record<string, ResolvedCapabilities>> {
+  const stationCaps = await resolveStationCapabilities(stationId);
+  if (stationCaps.length === 0) return {};
+
+  const capsByInstance = new Map(
+    stationCaps.map((sc) => [sc.connectorInstanceId, sc.capabilities]),
+  );
+
+  // Load all entities for the attached instances
+  const entities = (
+    await Promise.all(
+      stationCaps.map((sc) =>
+        connectorEntitiesRepo.findByConnectorInstanceId(
+          sc.connectorInstanceId,
+        ),
+      ),
+    )
+  ).flat();
+
+  const result: Record<string, ResolvedCapabilities> = {};
+  for (const entity of entities) {
+    const caps = capsByInstance.get(entity.connectorInstanceId);
+    if (caps) {
+      result[entity.id] = caps;
+    }
+  }
+
+  return result;
 }

@@ -2,6 +2,7 @@ import type {
   EntitySchema,
   EntityGroupContext,
 } from "../services/analytics.service.js";
+import type { ResolvedCapabilities } from "../utils/resolve-capabilities.util.js";
 
 export interface StationContext {
   stationId: string;
@@ -9,6 +10,7 @@ export interface StationContext {
   entities: EntitySchema[];
   entityGroups: EntityGroupContext[];
   toolPacks: string[];
+  entityCapabilities?: Record<string, ResolvedCapabilities>;
 }
 
 /**
@@ -24,10 +26,26 @@ export function buildSystemPrompt(stationContext: StationContext): string {
   ];
 
   for (const entity of stationContext.entities) {
-    lines.push(`### ${entity.label} (\`${entity.key}\`)`);
+    let heading = `### ${entity.label} (\`${entity.key}\`)`;
+    if (stationContext.toolPacks.includes("entity_management")) {
+      heading += ` [connectorEntityId: ${entity.id}]`;
+    }
+    if (stationContext.entityCapabilities) {
+      const caps = stationContext.entityCapabilities[entity.id];
+      if (caps) {
+        const flags = caps.write ? "[read, write]" : "[read]";
+        heading += ` ${flags}`;
+      }
+    }
+    lines.push(heading);
     lines.push("Columns:");
+    const hasEntityMgmt = stationContext.toolPacks.includes("entity_management");
     for (const col of entity.columns) {
-      lines.push(`  - \`${col.key}\` (${col.type}): ${col.label}`);
+      let line = `  - \`${col.key}\` (${col.type}): ${col.label}`;
+      if (hasEntityMgmt) {
+        line += ` [columnDefinitionId: ${col.columnDefinitionId}, fieldMappingId: ${col.fieldMappingId}, sourceField: "${col.sourceField}"]`;
+      }
+      lines.push(line);
     }
     lines.push("");
   }
@@ -52,6 +70,41 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       }
       lines.push("");
     }
+  }
+
+  if (stationContext.toolPacks.includes("entity_management")) {
+    lines.push("## Entity Management Notes");
+    lines.push("");
+    lines.push(
+      "Records you create with entity management tools are tagged with origin " +
+      '"portal" and will not be overwritten by connector syncs. ' +
+      "However, if you modify or delete a synced record (origin " +
+      '"sync"), the next sync may restore or overwrite your changes. ' +
+      "Prefer creating new records over modifying synced ones when possible."
+    );
+    lines.push("");
+    lines.push(
+      "Every entity table includes two hidden columns: " +
+      "`_record_id` (the entity record's unique ID) and `_connector_entity_id`. " +
+      "Use `_record_id` as the `entityRecordId` parameter when calling " +
+      "entity_record_update or entity_record_delete. " +
+      "Use `_connector_entity_id` as the `connectorEntityId` parameter. " +
+      "Always query these columns first (e.g. `SELECT _record_id, _connector_entity_id, ... FROM [table] WHERE ...`) " +
+      "to identify the target record before performing updates or deletes."
+    );
+    lines.push("");
+    lines.push(
+      "Metadata tables are available via sql_query: " +
+      "`_connector_instances` (id, name, status, connector_definition_id), " +
+      "`_connector_entities` (id, key, label, connector_instance_id), " +
+      "`_column_definitions` (id, key, label, type, required, description), " +
+      "`_field_mappings` (id, connector_entity_id, column_definition_id, source_field, is_primary_key). " +
+      "Use these to look up IDs before calling write tools. " +
+      "To add a new field mapping, either find an existing column definition " +
+      "from `_column_definitions` or create one with column_definition_create, " +
+      "then call field_mapping_create."
+    );
+    lines.push("");
   }
 
   return lines.join("\n");

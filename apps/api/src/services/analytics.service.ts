@@ -27,7 +27,11 @@ import type { Spec as VegaSpec, Data, ValuesData } from "vega";
 import { compile as vegaLiteCompile } from "vega-lite";
 import type { TopLevelSpec as VegaLiteSpec } from "vega-lite";
 
+import { inArray } from "drizzle-orm";
+
 import { DbService } from "./db.service.js";
+import { db } from "../db/client.js";
+import { connectorInstances as connectorInstancesTable } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
 import { VegaLiteSpecInput } from "../tools/visualize.tool.js";
 
@@ -41,6 +45,9 @@ export interface ColumnSchema {
   key: string;
   label: string;
   type: string;
+  columnDefinitionId: string;
+  fieldMappingId: string;
+  sourceField: string;
 }
 
 export interface EntitySchema {
@@ -237,11 +244,6 @@ export class AnalyticsService {
       )
     ).flat();
 
-    if (allEntities.length === 0) {
-      logger.warn({ stationId }, "Station has no entities");
-      return { entities: [], entityGroups: [], records: new Map() };
-    }
-
     // 3. For each entity: load field mappings → column definitions
     const entityIds = allEntities.map((e) => e.id);
     const fieldMappingsByEntity =
@@ -260,6 +262,9 @@ export class AnalyticsService {
           key: m.columnDefinition.key,
           label: m.columnDefinition.label,
           type: m.columnDefinition.type,
+          columnDefinitionId: m.columnDefinitionId,
+          fieldMappingId: m.id,
+          sourceField: m.sourceField,
         }));
 
       entities.push({
@@ -270,12 +275,19 @@ export class AnalyticsService {
         columns,
       });
 
-      // Fetch records and extract normalizedData
+      // Fetch records and extract normalizedData with record metadata
       const entityRecords = await repo.entityRecords.findByConnectorEntityId(
         entity.id
       );
       const rows = entityRecords
-        .map((r: any) => r.normalizedData)
+        .map((r: any) => {
+          if (!r.normalizedData) return null;
+          return {
+            _record_id: r.id,
+            _connector_entity_id: entity.id,
+            ...r.normalizedData,
+          };
+        })
         .filter(Boolean) as Record<string, unknown>[];
       records.set(entity.key, rows);
 
@@ -288,7 +300,76 @@ export class AnalyticsService {
       }
     }
 
-    // 5. Entity Group discovery
+    // 5. Load station-scoped metadata tables into AlaSQL
+
+    // Connector instances attached to this station (query directly to avoid credential decryption)
+    const connectorInstanceRows = connectorInstanceIds.length > 0
+      ? await db
+          .select({
+            id: connectorInstancesTable.id,
+            name: connectorInstancesTable.name,
+            status: connectorInstancesTable.status,
+            connectorDefinitionId: connectorInstancesTable.connectorDefinitionId,
+          })
+          .from(connectorInstancesTable)
+          .where(inArray(connectorInstancesTable.id, connectorInstanceIds))
+      : [];
+    alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_connector_instances]");
+    if (connectorInstanceRows.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_connector_instances] SELECT * FROM ?`, [
+        connectorInstanceRows.map((ci) => ({
+          id: ci.id,
+          name: ci.name,
+          status: ci.status,
+          connector_definition_id: ci.connectorDefinitionId,
+        })),
+      ]);
+    }
+
+    // Connector entities for attached instances
+    alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_connector_entities]");
+    if (allEntities.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_connector_entities] SELECT * FROM ?`, [
+        allEntities.map((e: Record<string, unknown>) => ({
+          id: e.id,
+          key: e.key,
+          label: e.label,
+          connector_instance_id: e.connectorInstanceId,
+        })),
+      ]);
+    }
+
+    // Organization-level column definitions and field mappings
+    const allColumnDefs = await repo.columnDefinitions.findByOrganizationId(organizationId);
+    alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_column_definitions]");
+    if (allColumnDefs.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_column_definitions] SELECT * FROM ?`, [
+        allColumnDefs.map((cd: Record<string, unknown>) => ({
+          id: cd.id,
+          key: cd.key,
+          label: cd.label,
+          type: cd.type,
+          required: cd.required,
+          description: cd.description,
+        })),
+      ]);
+    }
+
+    const allFieldMappings = [...fieldMappingsByEntity.values()].flat();
+    alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_field_mappings]");
+    if (allFieldMappings.length > 0) {
+      alasql(`INSERT INTO [${dbName}].[_field_mappings] SELECT * FROM ?`, [
+        allFieldMappings.map((fm: Record<string, unknown>) => ({
+          id: fm.id,
+          connector_entity_id: fm.connectorEntityId,
+          column_definition_id: fm.columnDefinitionId,
+          source_field: fm.sourceField,
+          is_primary_key: fm.isPrimaryKey,
+        })),
+      ]);
+    }
+
+    // 6. Entity Group discovery
     const entityGroups = await this.discoverEntityGroups(
       allEntities,
       fieldMappingsByEntity
@@ -304,6 +385,128 @@ export class AnalyticsService {
     );
 
     return { entities, entityGroups, records };
+  }
+
+  // -------------------------------------------------------------------------
+  // Surgical AlaSQL cache mutations (called directly from tools)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Generic helpers: insert, upsert (by id), and delete a row in a named
+   * AlaSQL table.  All helpers silently no-op when the station is not loaded.
+   */
+  private static cacheInsert(stationId: string, table: string, row: Record<string, unknown>): void {
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    try {
+      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [[row]]);
+    } catch (err) {
+      logger.warn({ stationId, table, err }, "AlaSQL cache insert failed");
+    }
+  }
+
+  private static cacheUpsert(stationId: string, table: string, id: string, row: Record<string, unknown>): void {
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    try {
+      alasql(`DELETE FROM [${entry.dbName}].[${table}] WHERE id = ?`, [id]);
+      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [[row]]);
+    } catch (err) {
+      logger.warn({ stationId, table, id, err }, "AlaSQL cache upsert failed");
+    }
+  }
+
+  private static cacheDelete(stationId: string, table: string, idColumn: string, id: string): void {
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    try {
+      alasql(`DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] = ?`, [id]);
+    } catch (err) {
+      logger.warn({ stationId, table, id, err }, "AlaSQL cache delete failed");
+    }
+  }
+
+  // -- Entity record data tables -------------------------------------------
+
+  static applyRecordInsert(stationId: string, entityKey: string, row: Record<string, unknown>): void {
+    this.cacheInsert(stationId, entityKey, row);
+  }
+
+  static applyRecordUpdate(stationId: string, entityKey: string, recordId: string, row: Record<string, unknown>): void {
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    try {
+      alasql(`DELETE FROM [${entry.dbName}].[${entityKey}] WHERE _record_id = ?`, [recordId]);
+      alasql(`INSERT INTO [${entry.dbName}].[${entityKey}] SELECT * FROM ?`, [[row]]);
+    } catch (err) {
+      logger.warn({ stationId, entityKey, recordId, err }, "AlaSQL record update failed");
+    }
+  }
+
+  static applyRecordDelete(stationId: string, entityKey: string, recordId: string): void {
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    try {
+      alasql(`DELETE FROM [${entry.dbName}].[${entityKey}] WHERE _record_id = ?`, [recordId]);
+    } catch (err) {
+      logger.warn({ stationId, entityKey, recordId, err }, "AlaSQL record delete failed");
+    }
+  }
+
+  // -- _connector_entities -------------------------------------------------
+
+  static applyEntityInsert(stationId: string, row: { id: string; key: string; label: string; connectorInstanceId: string }): void {
+    this.cacheInsert(stationId, "_connector_entities", {
+      id: row.id, key: row.key, label: row.label, connector_instance_id: row.connectorInstanceId,
+    });
+    // Create the empty data table for the new entity
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    try { entry.db.exec(`CREATE TABLE IF NOT EXISTS [${row.key}]`); } catch { /* ignore */ }
+  }
+
+  static applyEntityUpdate(stationId: string, row: { id: string; key: string; label: string; connectorInstanceId: string }): void {
+    this.cacheUpsert(stationId, "_connector_entities", row.id, {
+      id: row.id, key: row.key, label: row.label, connector_instance_id: row.connectorInstanceId,
+    });
+  }
+
+  static applyEntityDelete(stationId: string, entityId: string, entityKey: string): void {
+    this.cacheDelete(stationId, "_connector_entities", "id", entityId);
+    // Drop the entity data table
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    try { entry.db.exec(`DROP TABLE IF EXISTS [${entityKey}]`); } catch { /* ignore */ }
+    // Remove field mappings that belonged to this entity
+    try { alasql(`DELETE FROM [${entry.dbName}].[_field_mappings] WHERE connector_entity_id = ?`, [entityId]); } catch { /* ignore */ }
+  }
+
+  // -- _column_definitions -------------------------------------------------
+
+  static applyColumnDefinitionInsert(stationId: string, row: { id: string; key: string; label: string; type: string; required: boolean; description: string | null }): void {
+    this.cacheInsert(stationId, "_column_definitions", row);
+  }
+
+  static applyColumnDefinitionUpdate(stationId: string, row: { id: string; key: string; label: string; type: string; required: boolean; description: string | null }): void {
+    this.cacheUpsert(stationId, "_column_definitions", row.id, row);
+  }
+
+  static applyColumnDefinitionDelete(stationId: string, columnDefinitionId: string): void {
+    this.cacheDelete(stationId, "_column_definitions", "id", columnDefinitionId);
+  }
+
+  // -- _field_mappings -----------------------------------------------------
+
+  static applyFieldMappingInsert(stationId: string, row: { id: string; connector_entity_id: string; column_definition_id: string; source_field: string; is_primary_key: boolean }): void {
+    this.cacheInsert(stationId, "_field_mappings", row);
+  }
+
+  static applyFieldMappingUpdate(stationId: string, row: { id: string; connector_entity_id: string; column_definition_id: string; source_field: string; is_primary_key: boolean }): void {
+    this.cacheUpsert(stationId, "_field_mappings", row.id, row);
+  }
+
+  static applyFieldMappingDelete(stationId: string, fieldMappingId: string): void {
+    this.cacheDelete(stationId, "_field_mappings", "id", fieldMappingId);
   }
 
   /**

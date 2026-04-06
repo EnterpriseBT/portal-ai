@@ -13,18 +13,11 @@ import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { ToolPackUtil } from "../utils/tool-packs.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
 const TOOL_PACK_OPTIONS = StationToolPackSchema.options;
-
-const TOOL_PACK_LABELS: Record<string, string> = {
-  data_query: "Data Query",
-  statistics: "Statistics",
-  regression: "Regression",
-  financial: "Financial",
-  web_search: "Web Search",
-};
 
 interface StationFormState {
   name: string;
@@ -171,7 +164,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
         <Autocomplete
           multiple
           options={[...TOOL_PACK_OPTIONS]}
-          getOptionLabel={(o) => TOOL_PACK_LABELS[o] ?? o}
+          getOptionLabel={(o) => ToolPackUtil.getLabel(o)}
           value={form.toolPacks}
           onChange={(_, newValue) => handleChange("toolPacks", newValue)}
           onBlur={() => handleBlur("toolPacks")}
@@ -181,7 +174,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
               return (
                 <Chip
                   key={key}
-                  label={TOOL_PACK_LABELS[option] ?? option}
+                  label={ToolPackUtil.getLabel(option)}
                   size="small"
                   {...tagProps}
                 />

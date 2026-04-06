@@ -13,17 +13,10 @@ import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-
-const TOOL_PACK_LABELS: Record<string, string> = {
-  data_query: "Data Query",
-  statistics: "Statistics",
-  regression: "Regression",
-  financial: "Financial",
-  web_search: "Web Search",
-};
+import { ToolPackUtil } from "../utils/tool-packs.util";
 
 const TOOL_PACK_OPTIONS: SelectOption[] = StationToolPackSchema.options.map(
-  (value) => ({ value, label: TOOL_PACK_LABELS[value] ?? value })
+  (value) => ({ value, label: ToolPackUtil.getLabel(value) })
 );
 
 

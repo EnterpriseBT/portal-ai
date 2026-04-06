@@ -92,6 +92,10 @@ describe("CsvImportService", () => {
         email: "john@example.com",
       });
 
+      // Verify origin is set to "sync"
+      expect(upsertedRecords[0].origin).toBe("sync");
+      expect(upsertedRecords[1].origin).toBe("sync");
+
       // Verify raw data uses original headers
       expect(upsertedRecords[0].data).toEqual({
         Name: "Jane Doe",

@@ -115,8 +115,8 @@ const ENTITIES = [
     label: "Customers",
     connectorInstanceId: "ci-1",
     columns: [
-      { key: "id", label: "ID", type: "string" },
-      { key: "revenue", label: "Revenue", type: "number" },
+      { key: "id", label: "ID", type: "string", columnDefinitionId: "cd-1", fieldMappingId: "fm-1", sourceField: "ID" },
+      { key: "revenue", label: "Revenue", type: "number", columnDefinitionId: "cd-2", fieldMappingId: "fm-2", sourceField: "Revenue" },
     ],
   },
   {
@@ -124,7 +124,7 @@ const ENTITIES = [
     key: "orders",
     label: "Orders",
     connectorInstanceId: "ci-1",
-    columns: [{ key: "customer_id", label: "Customer ID", type: "string" }],
+    columns: [{ key: "customer_id", label: "Customer ID", type: "string", columnDefinitionId: "cd-3", fieldMappingId: "fm-3", sourceField: "Customer ID" }],
   },
 ];
 
@@ -465,6 +465,7 @@ describe("PortalService", () => {
         messages: [{ role: "user", content: "hi" }],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -501,6 +502,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -529,6 +531,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -557,6 +560,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -585,6 +589,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -610,6 +615,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -641,6 +647,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -678,6 +685,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -706,6 +714,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -731,6 +740,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -765,6 +775,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext, // entityGroups: []
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -786,6 +797,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext: stationContextWithGroups,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -805,6 +817,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext: stationContextWithGroups,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -829,6 +842,7 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
@@ -855,12 +869,14 @@ describe("PortalService", () => {
         messages: [],
         stationContext,
         organizationId: ORG_ID,
+        userId: "user-001",
         sse: sse as any,
       });
 
       expect(mockBuildAnalyticsTools).toHaveBeenCalledWith(
         ORG_ID,
         STATION_ID,
+        "user-001",
       );
       expect(capturedTools).toBe(tools);
     });
@@ -878,6 +894,7 @@ describe("PortalService", () => {
           messages: [],
           stationContext,
           organizationId: ORG_ID,
+          userId: "user-001",
           sse: sse as any,
         })
       ).rejects.toMatchObject({ code: ApiCode.PORTAL_NOT_FOUND });

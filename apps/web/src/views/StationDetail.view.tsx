@@ -28,6 +28,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch, toServerError } from "../utils/api.util";
+import { ToolPackUtil } from "../utils/tool-packs.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -176,7 +177,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                   <Chip
                                     key={pack}
                                     icon={<HandymanOutlined fontSize="small" />}
-                                    label={pack}
+                                    label={ToolPackUtil.getLabel(pack)}
                                     size="small"
                                     variant="outlined"
                                   />

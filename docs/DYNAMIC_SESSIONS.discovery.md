@@ -14,84 +14,32 @@ Portal sessions are **read-only**. When a portal opens:
 2. `ToolService.buildAnalyticsTools()` registers tools based on the station's enabled tool packs (`data_query`, `statistics`, `regression`, `financial`, `web_search`)
 3. The LLM queries data via `sql_query`, `visualize`, etc. — no mutations occur
 
-Capability flags (`sync`, `query`, `write`) exist on `connector_definitions` but are not enforced at the instance level. Every instance of a given connector definition inherits the same flags with no override mechanism.
+Capability flags (`sync`, `query`, `write`) exist on `connector_definitions` as a ceiling. Each `connector_instance` has an `enabledCapabilityFlags` column that can further restrict the definition's flags (e.g., disable `write` for a specific instance). Resolution is handled by `resolveCapabilities()` in `utils/resolve-capabilities.util.ts`. However, portal sessions do not yet consult these resolved capabilities — tools are registered without checking whether attached instances support writes, and the system prompt does not surface per-entity permissions.
 
 ---
 
 ## Architecture
 
-### 1. Instance-Level Capability Overrides (`enabledCapabilityFlags`)
+### 1. Instance-Level Capability Overrides (`enabledCapabilityFlags`) — Implemented
 
-Add a nullable `enabledCapabilityFlags` column to `connector_instances` that **narrows** the definition's flags for a specific instance.
+The `enabledCapabilityFlags` nullable JSONB column already exists on `connector_instances`. The resolution utility `resolveCapabilities()` in `utils/resolve-capabilities.util.ts` merges the definition ceiling with instance overrides, and `assertWriteCapability()` enforces write permissions for a given connector entity. The `CONNECTOR_INSTANCE_WRITE_DISABLED` error code is defined in `api-codes.constants.ts`.
 
-**Schema delta:**
+**Key files:**
 
-```
-connector_instances  ← add enabledCapabilityFlags (nullable JSONB)
-```
+| File | What exists |
+|------|-------------|
+| `connector-instances.table.ts` | `enabledCapabilityFlags` column (`EnabledCapabilityFlags` interface) |
+| `connector-definitions.table.ts` | `capabilityFlags` column (`CapabilityFlags` interface) |
+| `utils/resolve-capabilities.util.ts` | `resolveCapabilities()`, `assertWriteCapability()` |
+| `constants/api-codes.constants.ts` | `CONNECTOR_INSTANCE_WRITE_DISABLED` |
 
-**Zod model (connector-instance.model.ts):**
-
-```typescript
-enabledCapabilityFlags: z.object({
-  read: z.boolean().optional(),
-  write: z.boolean().optional(),
-}).nullable()
-```
-
-**Drizzle table (connector-instances.table.ts):**
-
-```typescript
-enabledCapabilityFlags: jsonb("enabled_capability_flags").$type<EnabledCapabilityFlags>()
-```
-
-**Resolution logic:**
-
-The definition's `capabilityFlags` represent what the connector **can** do (ceiling). The instance's `enabledCapabilityFlags` represent what the instance **is allowed** to do (restriction). Resolution merges both:
-
-```typescript
-interface EnabledCapabilityFlags {
-  read?: boolean;
-  write?: boolean;
-}
-
-function resolveCapabilities(
-  definition: ConnectorDefinition,
-  instance: ConnectorInstance
-): EnabledCapabilityFlags {
-  const ceil = definition.capabilityFlags;
-  const override = instance.enabledCapabilityFlags;
-
-  return {
-    read:  (ceil.query ?? false) && (override?.read  ?? true),
-    write: (ceil.write ?? false) && (override?.write ?? true),
-  };
-}
-```
+**Resolution rules (unchanged):**
 
 - If the definition doesn't support `write`, the instance can never enable it
 - If the definition supports `write` but the instance sets `write: false`, writes are blocked for that instance
 - If `enabledCapabilityFlags` is `null`, the instance inherits all definition capabilities (backwards compatible)
 
-**Default values and UI behavior:**
-
-When creating a connector instance, `enabledCapabilityFlags` defaults to the values defined by the parent connector definition's `capabilityFlags`. The UI presents checkboxes for each permission:
-
-| Permission | Default | UI Behavior |
-|------------|---------|-------------|
-| `read` | Always `true` | Checked and **disabled** — cannot be unselected. Read access is a baseline requirement for any instance. |
-| `write` | Mirrors `definition.capabilityFlags.write` | Editable checkbox. Disabled (greyed out) if the definition doesn't support `write`. |
-| `sync` | Mirrors `definition.capabilityFlags.sync` | Editable checkbox. Disabled (greyed out) if the definition doesn't support `sync`. |
-
-The definition's flags constrain which checkboxes are interactive — if a definition sets `write: false`, the write checkbox appears unchecked and disabled with a tooltip explaining the connector type doesn't support writes.
-
-> **Note:** For now, only `read` and `write` are evaluated by the `entity_manager` tool pack. `sync` is included in the schema and UI for forward compatibility but is not referenced during tool registration or runtime permission checks.
-
-**Why instance-level instead of station-instance join-level:**
-
-- Simpler mental model — permissions are configured once per instance, not per station attachment
-- If different permissions are needed per station, create separate connector instances
-- Can migrate to station-instance level later if needed without breaking changes
+**Remaining work for portal sessions:** `ToolService.buildAnalyticsTools()` and `buildSystemPrompt()` do not yet consult resolved capabilities. Sections 2–4 below address this gap.
 
 ---
 
@@ -242,8 +190,9 @@ All write tools wrap existing repository methods — no new data access patterns
 
 ## Open Questions
 
-- **Normalization on write:** When `entity_record_create` is called, should the tool auto-generate `normalizedData` from `data` using existing field mappings? Or should the LLM provide both `data` and `normalizedData`? Auto-normalization is safer but requires field mappings to exist first.
-- **Cascading deletes:** If the LLM deletes a connector entity, should its records, field mappings, and group memberships be cascade soft-deleted? The existing repository methods support this (`softDeleteByConnectorInstanceId`), but should the tool expose it?
-- **Audit trail:** Write operations via portal sessions should be attributable to the user who opened the portal, not a system account. The `createdBy`/`updatedBy` fields should use the portal's `createdBy` user ID.
-- **Undo/rollback:** Should write operations within a portal session support undo? This could be implemented as soft-delete + restore, but adds complexity to the tool interface.
-- **Rate limiting:** Should there be a per-session or per-portal limit on write operations to prevent runaway tool loops?
+- **Normalization on write — resolved:** Write tools must auto-generate `normalizedData` from `data` using the entity's field mappings (sourceField → columnDefinitionKey). Writable connector instances may also receive data from external sources (syncs, imports), so `normalizedData` must stay consistent with field mappings. If no field mappings exist, `normalizedData` is set equal to `data` as a passthrough. See `CsvImportService.importFromS3()` for the reference pattern.
+- **Cascading deletes — resolved:** The same cascade and guard rules from the REST API apply to tool-initiated deletes. Entity delete cascades to records, field mappings, tag assignments, and group members in a transaction. Field mapping delete is blocked if the entity has records, and cascades to group members on success. Column definition delete is blocked if field mappings reference it. Tools return cascaded counts so the LLM can report impact. Shared service methods should be extracted so routers and tools call the same logic.
+- **Audit trail — resolved:** Write operations via portal sessions are attributed to the user who opened the portal. The portal's `createdBy` user ID is threaded from `PortalService` through `buildAnalyticsTools()` into each write tool's `build()` method and used for all `createdBy`/`updatedBy`/`deletedBy` fields.
+- **Undo/rollback — resolved:** Not supported. Soft-delete already provides a recovery path via the REST API. Tool-level undo adds complexity with limited initial value.
+- **Rate limiting — deferred:** No per-session write limits for now. Can be revisited if runaway tool loops become an issue in practice.
+- **Sync interactions — documented:** Tool-created records use UUID `sourceId` values and are safe from sync overwrite (syncs upsert on `(connectorEntityId, sourceId)` which won't collide). Tool edits to synced records are ephemeral for import-mode connectors — the next sync restores source data. Structural changes (field mappings, column definitions) persist across syncs. Two-way sync will require an `origin` field and conflict resolution strategy. Full analysis in [ENTITY_MANAGEMENT_TOOL.discovery.md](./ENTITY_MANAGEMENT_TOOL.discovery.md#sync-interactions).

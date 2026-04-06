@@ -16,7 +16,6 @@ import { eq, and } from "drizzle-orm";
 import { AiService } from "./ai.service.js";
 import {
   AnalyticsService,
-  type StationData,
 } from "./analytics.service.js";
 import { ToolService } from "./tools.service.js";
 import { DbService } from "./db.service.js";
@@ -26,6 +25,7 @@ import {
   buildSystemPrompt,
   type StationContext,
 } from "../prompts/system.prompt.js";
+import { resolveEntityCapabilities } from "../utils/resolve-capabilities.util.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
@@ -60,6 +60,22 @@ export interface PortalWithMessages {
 
 /** Tools whose results contain row sets and should be surfaced as data-table blocks. */
 const ROW_SET_TOOLS = new Set(["sql_query", "detect_outliers", "cluster"]);
+
+/** Tools whose results represent mutations and should be surfaced as mutation-result blocks. */
+const MUTATION_TOOLS = new Set([
+  "entity_record_create",
+  "entity_record_update",
+  "entity_record_delete",
+  "connector_entity_create",
+  "connector_entity_update",
+  "connector_entity_delete",
+  "column_definition_create",
+  "column_definition_update",
+  "column_definition_delete",
+  "field_mapping_create",
+  "field_mapping_update",
+  "field_mapping_delete",
+]);
 
 // ---------------------------------------------------------------------------
 // Stream chunk handlers
@@ -169,6 +185,25 @@ function resolveDisplayBlock(
     };
   }
 
+  if (
+    MUTATION_TOOLS.has(toolName) &&
+    toolResult != null &&
+    toolResult.success === true &&
+    typeof toolResult.operation === "string"
+  ) {
+    const mutationContent = {
+      type: "mutation-result" as const,
+      operation: toolResult.operation as string,
+      entity: toolResult.entity as string,
+      entityId: toolResult.entityId as string,
+      summary: (toolResult.summary as Record<string, unknown>) ?? {},
+    };
+    return {
+      block: { type: "mutation-result" as const, content: mutationContent },
+      sseResult: mutationContent,
+    };
+  }
+
   return null;
 }
 
@@ -176,8 +211,6 @@ function resolveDisplayBlock(
 // In-memory station data cache (keyed by portalId)
 // ---------------------------------------------------------------------------
 
-/** Cached station data for active portal sessions. */
-const stationDataCache = new Map<string, StationData>();
 
 // ---------------------------------------------------------------------------
 // Service
@@ -244,7 +277,9 @@ export class PortalService {
       stationId,
       organizationId
     );
-    stationDataCache.set(portal.id, stationData);
+    const entityCapabilities = toolPacks.includes("entity_management")
+      ? await resolveEntityCapabilities(stationId)
+      : undefined;
 
     const stationContext: StationContext = {
       stationId: station.id,
@@ -252,6 +287,7 @@ export class PortalService {
       entities: stationData.entities,
       entityGroups: stationData.entityGroups,
       toolPacks,
+      entityCapabilities,
     };
 
     logger.info({ portalId: portal.id, stationId }, "Portal created");
@@ -410,12 +446,14 @@ export class PortalService {
     messages,
     stationContext,
     organizationId,
+    userId,
     sse,
   }: {
     portalId: string;
     messages: ModelMessage[];
     stationContext: StationContext;
     organizationId: string;
+    userId: string;
     sse: SseUtil;
   }): Promise<void> {
     const systemPrompt = buildSystemPrompt(stationContext);
@@ -423,6 +461,7 @@ export class PortalService {
     const analyticsTools = await ToolService.buildAnalyticsTools(
       organizationId,
       stationContext.stationId,
+      userId,
     );
 
     // streamText() is lazy in AI SDK v6 — it returns immediately and

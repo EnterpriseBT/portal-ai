@@ -28,6 +28,7 @@ export * from "./DataTable.js";
 export * from "./ColorPicker.js";
 export * from "./ContentBlockRenderer.js";
 export * from "./DataTableBlock.js";
+export * from "./MutationResultBlock.js";
 export * from "./searchable-select/index.js";
 
 /** Material UI */

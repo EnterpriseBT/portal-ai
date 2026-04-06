@@ -109,8 +109,7 @@ describe("PortalSessionUI", () => {
     onPinChange: jest.fn(),
     streamingBlocks: null,
     streamError: null,
-    inputValue: "",
-    onInputChange: jest.fn(),
+    chatRef: { current: null },
     onSubmit: jest.fn(),
     onReset: jest.fn(),
     onCancel: jest.fn(),
@@ -181,17 +180,18 @@ describe("PortalSessionUI", () => {
     expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
   });
 
-  it("calls onSubmit when submit button clicked", () => {
+  it("calls onSubmit with message when submit button clicked", async () => {
     const onSubmit = jest.fn();
     render(
       <PortalSessionUI
         {...defaultProps}
-        inputValue="test message"
         onSubmit={onSubmit}
       />
     );
+    const textarea = screen.getByPlaceholderText("Type a message...");
+    fireEvent.change(textarea, { target: { value: "test message" } });
     fireEvent.click(screen.getByRole("button", { name: /submit/i }));
-    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit).toHaveBeenCalledWith("test message");
   });
 });
 

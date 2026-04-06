@@ -463,6 +463,7 @@ entityRecordRouter.post(
         sourceId: parsed.data.sourceId ?? idFactory.generate(),
         checksum: "manual",
         syncedAt: Date.now(),
+        origin: "manual",
       });
 
       const record = await DbService.repository.entityRecords
@@ -567,6 +568,7 @@ entityRecordRouter.post(
           sourceId: row.sourceId,
           checksum: row.checksum,
           syncedAt: now,
+          origin: "sync",
           updated: prev ? now : null,
           updatedBy: prev ? userId : null,
         });

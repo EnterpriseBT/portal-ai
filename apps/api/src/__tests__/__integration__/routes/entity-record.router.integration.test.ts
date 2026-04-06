@@ -1614,6 +1614,21 @@ describe("Entity Record Router — POST /", () => {
     expect(res.body.payload.record.checksum).toBe("manual");
   });
 
+  it("should set origin to 'manual'", async () => {
+    const { connectorEntityId } = await seedWithCapabilities(db, {
+      definitionWrite: true,
+      enabledCapabilityFlags: { write: true },
+    });
+
+    const res = await request(app)
+      .post(recordsUrl(connectorEntityId))
+      .set("Authorization", "Bearer test-token")
+      .send({ normalizedData: { name: "Grace" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.payload.record.origin).toBe("manual");
+  });
+
   it("should set syncedAt to approximately current timestamp", async () => {
     const { connectorEntityId } = await seedWithCapabilities(db, {
       definitionWrite: true,

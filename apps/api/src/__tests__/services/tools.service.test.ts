@@ -15,6 +15,12 @@ const mockFindByConnectorEntityId_members = jest.fn<() => Promise<unknown[]>>();
 const mockFindByEntityGroupId = jest.fn<() => Promise<unknown[]>>();
 const mockFindById_group = jest.fn<() => Promise<unknown>>();
 
+// Mock direct db import for _connector_instances metadata query in loadStation
+const _mockSelectChain = { from: () => _mockSelectChain, where: () => Promise.resolve([]) };
+jest.unstable_mockModule("../../db/client.js", () => ({
+  db: { select: () => _mockSelectChain },
+}));
+
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
@@ -32,6 +38,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         findByEntityGroupId: mockFindByEntityGroupId,
       },
       entityGroups: { findById: mockFindById_group },
+      columnDefinitions: { findByOrganizationId: jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]) },
       stationTools: { findByStationId: mockFindByStationId_tools },
     },
   },
@@ -60,6 +67,15 @@ jest.unstable_mockModule("../../environment.js", () => ({
     LOG_LEVEL: "silent",
     LOG_FORMAT: "json",
   },
+}));
+
+// Mock resolve-capabilities for entity_management pack
+const mockResolveStationCapabilities = jest.fn<() => Promise<unknown[]>>();
+jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
+  resolveStationCapabilities: mockResolveStationCapabilities,
+  assertStationScope: jest.fn(),
+  assertWriteCapability: jest.fn(),
+  resolveCapabilities: jest.fn(),
 }));
 
 // Mock fetch for webhook tests
@@ -103,7 +119,7 @@ const FIELD_MAPPINGS_MAP = new Map<string, unknown[]>([
   [
     "ent-1",
     [
-      { id: "fm-1", connectorEntityId: "ent-1", columnDefinitionId: "cd-1", columnDefinition: { key: "name", label: "Name", type: "string" } },
+      { id: "fm-1", connectorEntityId: "ent-1", columnDefinitionId: "cd-1", sourceField: "Name", columnDefinition: { key: "name", label: "Name", type: "string" } },
     ],
   ],
 ]);
@@ -141,7 +157,7 @@ describe("buildAnalyticsTools()", () => {
 
   it("should register data_query tools when data_query pack is selected", async () => {
     setupStationMocks(["data_query"]);
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(tools.sql_query).toBeDefined();
     expect(tools.visualize).toBeDefined();
@@ -156,14 +172,14 @@ describe("buildAnalyticsTools()", () => {
 
   it("should NOT register visualize_tree when data_query pack is not selected", async () => {
     setupStationMocks(["statistics"]);
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     expect(tools.visualize_tree).toBeUndefined();
   });
 
 
   it("should register statistics tools when statistics pack is selected", async () => {
     setupStationMocks(["statistics"]);
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(tools.describe_column).toBeDefined();
     expect(tools.correlate).toBeDefined();
@@ -175,7 +191,7 @@ describe("buildAnalyticsTools()", () => {
 
   it("should register regression tools when regression pack is selected", async () => {
     setupStationMocks(["regression"]);
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(tools.regression).toBeDefined();
     expect(tools.trend).toBeDefined();
@@ -186,7 +202,7 @@ describe("buildAnalyticsTools()", () => {
 
   it("should register financial tools when financial pack is selected", async () => {
     setupStationMocks(["financial"]);
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(tools.technical_indicator).toBeDefined();
     expect(tools.npv).toBeDefined();
@@ -202,7 +218,7 @@ describe("buildAnalyticsTools()", () => {
   it("should register web_search tool when web_search pack is selected", async () => {
     setupStationMocks(["web_search"]);
 
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(tools.web_search).toBeDefined();
   });
@@ -210,7 +226,7 @@ describe("buildAnalyticsTools()", () => {
   it("should register tools from all selected packs", async () => {
     setupStationMocks(["data_query", "statistics", "regression", "financial", "web_search"]);
 
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     // data_query
     expect(tools.sql_query).toBeDefined();
@@ -294,14 +310,14 @@ describe("buildAnalyticsTools()", () => {
       },
     ]);
 
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     expect(tools.resolve_identity).toBeDefined();
   });
 
   it("should NOT register resolve_identity when data_query pack is selected but no entity groups have ≥2 loaded members", async () => {
     setupStationMocks(["data_query"]);
     // Default mock: no entity group members
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     expect(tools.resolve_identity).toBeUndefined();
   });
 
@@ -311,7 +327,7 @@ describe("buildAnalyticsTools()", () => {
 
   it("should throw when station.toolPacks is empty", async () => {
     mockFindById_station.mockResolvedValue(makeStation([]));
-    await expect(buildAnalyticsTools(ORG_ID, STATION_ID)).rejects.toThrow(
+    await expect(buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")).rejects.toThrow(
       "Station must have at least one tool pack enabled"
     );
   });
@@ -351,7 +367,7 @@ describe("buildAnalyticsTools()", () => {
       json: async () => webhookResponse,
     });
 
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
     expect(tools.my_custom_tool).toBeDefined();
 
@@ -394,7 +410,7 @@ describe("buildAnalyticsTools()", () => {
       json: async () => ({ type: "vega-lite", spec: vegaSpec }),
     });
 
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     const result = await (tools.chart_tool as any).execute({});
 
     expect(result).toEqual({ type: "vega-lite", spec: vegaSpec });
@@ -424,10 +440,61 @@ describe("buildAnalyticsTools()", () => {
       json: async () => vegaSpec,
     });
 
-    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID);
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
     const result = await (tools.tree_tool as any).execute({});
 
     expect(result).toEqual(vegaSpec);
+  });
+
+  // -----------------------------------------------------------------------
+  // Pack: entity_management
+  // -----------------------------------------------------------------------
+
+  it("should not register write tools when no instances have write capability", async () => {
+    setupStationMocks(["entity_management"]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: false } },
+    ]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.entity_record_create).toBeUndefined();
+    expect(tools.connector_entity_create).toBeUndefined();
+    expect(tools.connector_entity_update).toBeUndefined();
+    expect(tools.column_definition_create).toBeUndefined();
+    expect(tools.field_mapping_create).toBeUndefined();
+    expect(tools.field_mapping_update).toBeUndefined();
+  });
+
+  it("should register all 12 write tools when any instance has write", async () => {
+    setupStationMocks(["entity_management"]);
+    mockResolveStationCapabilities.mockResolvedValue([
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+    ]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.entity_record_create).toBeDefined();
+    expect(tools.entity_record_update).toBeDefined();
+    expect(tools.entity_record_delete).toBeDefined();
+    expect(tools.connector_entity_create).toBeDefined();
+    expect(tools.connector_entity_update).toBeDefined();
+    expect(tools.connector_entity_delete).toBeDefined();
+    expect(tools.column_definition_create).toBeDefined();
+    expect(tools.column_definition_update).toBeDefined();
+    expect(tools.column_definition_delete).toBeDefined();
+    expect(tools.field_mapping_create).toBeDefined();
+    expect(tools.field_mapping_update).toBeDefined();
+    expect(tools.field_mapping_delete).toBeDefined();
+  });
+
+  it("should not register entity_management tools when pack is not enabled", async () => {
+    setupStationMocks(["data_query"]);
+
+    const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
+
+    expect(tools.entity_record_create).toBeUndefined();
+    expect(tools.field_mapping_delete).toBeUndefined();
   });
 
   it("should throw when custom tool name shadows a pack tool name", async () => {
@@ -448,7 +515,7 @@ describe("buildAnalyticsTools()", () => {
       },
     ]);
 
-    await expect(buildAnalyticsTools(ORG_ID, STATION_ID)).rejects.toThrow(
+    await expect(buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")).rejects.toThrow(
       'Custom tool "sql_query" conflicts with a built-in pack tool name'
     );
   });

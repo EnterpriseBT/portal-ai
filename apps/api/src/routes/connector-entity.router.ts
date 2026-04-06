@@ -24,6 +24,7 @@ import { DbService } from "../services/db.service.js";
 import { connectorEntities, entityTagAssignments } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import { ConnectorEntityValidationService } from "../services/connector-entity-validation.service.js";
 import { entityRecordRouter } from "./entity-record.router.js";
 import { entityTagAssignmentRouter } from "./entity-tag-assignment.router.js";
 
@@ -642,50 +643,15 @@ connectorEntityRouter.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-
-      const existing = await DbService.repository.connectorEntities.findById(id);
-      if (!existing) {
-        return next(
-          new ApiError(404, ApiCode.CONNECTOR_ENTITY_NOT_FOUND, "Connector entity not found")
-        );
-      }
-
-      // Check 1: write capability
-      await assertWriteCapability(id);
-
-      // Check 2: external references
-      const externalRefs = await DbService.repository.fieldMappings.findByRefEntityKey(existing.key, id);
-      if (externalRefs.length > 0) {
-        return next(
-          new ApiError(
-            422,
-            ApiCode.ENTITY_HAS_EXTERNAL_REFERENCES,
-            "Cannot delete entity — other entities have field mappings referencing it via refEntityKey",
-            { refFieldMappings: externalRefs.map((fm) => ({ id: fm.id, connectorEntityId: fm.connectorEntityId })) }
-          )
-        );
-      }
-
       const { userId } = req.application!.metadata;
-      const entityIds = [id];
 
-      // Cascade in transaction
-      const cascaded = await DbService.transaction(async (tx) => {
-        const [entityGroupMembers, entityTagAssignments, fieldMappings, entityRecords] =
-          await Promise.all([
-            DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-            DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-            DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-            DbService.repository.entityRecords.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-          ]);
+      await ConnectorEntityValidationService.validateDelete(id);
 
-        await DbService.repository.connectorEntities.softDelete(id, userId, tx);
-
-        return { entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers };
-      }).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete connector entity");
-      });
+      const cascaded = await ConnectorEntityValidationService.executeDelete(id, userId)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete connector entity");
+        });
 
       logger.info({ id, cascaded }, "Connector entity soft-deleted with cascade");
 
