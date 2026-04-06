@@ -1,41 +1,131 @@
+import { eq } from "drizzle-orm";
+
+import type { ColumnDataType } from "@portalai/core/models";
+
 import { DbService } from "./db.service.js";
+import { fieldMappings } from "../db/schema/index.js";
+import type { FieldMappingSelect, ColumnDefinitionSelect } from "../db/schema/zod.js";
+import { coerce } from "../utils/coercion.util.js";
+import { validateRequired, validatePattern, validateEnum } from "../utils/field-validation.util.js";
+import { canonicalizeString } from "../utils/canonicalize.util.js";
+
+export interface NormalizationResult {
+  normalizedData: Record<string, unknown>;
+  validationErrors: Array<{ field: string; error: string }> | null;
+  isValid: boolean;
+}
+
+type MappingWithColumnDef = FieldMappingSelect & {
+  columnDefinition: ColumnDefinitionSelect | null;
+};
 
 /**
  * Normalizes raw entity record data through field mappings.
  *
- * Projects `data` keys through the `sourceField → columnDefinition.key`
- * mapping for a given connector entity. When no field mappings exist,
- * falls back to a passthrough copy of the input data.
+ * Pipeline per field: extract → default → required → coerce → validate → canonicalize → store.
  */
 export class NormalizationService {
+  /**
+   * Normalize data for a connector entity. Fetches field mappings internally.
+   */
   static async normalize(
     connectorEntityId: string,
     data: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<NormalizationResult> {
     const mappings = await DbService.repository.fieldMappings.findMany(
-      undefined,
+      eq(fieldMappings.connectorEntityId, connectorEntityId),
       { include: ["columnDefinition"] },
-    );
+    ) as unknown as MappingWithColumnDef[];
 
-    // Filter to mappings belonging to this entity that have a column definition
-    const entityMappings = mappings.filter(
-      (m: any) =>
-        m.connectorEntityId === connectorEntityId && m.columnDefinition,
-    );
+    return NormalizationService.normalizeWithMappings(mappings, data);
+  }
+
+  /**
+   * Normalize data using pre-fetched field mappings. Use this for bulk
+   * operations (e.g. CSV import) to avoid repeated DB queries.
+   */
+  static normalizeWithMappings(
+    mappings: MappingWithColumnDef[],
+    data: Record<string, unknown>,
+  ): NormalizationResult {
+    const entityMappings = mappings.filter((m) => m.columnDefinition);
 
     if (entityMappings.length === 0) {
-      return { ...data };
+      return { normalizedData: { ...data }, validationErrors: null, isValid: true };
     }
 
     const normalizedData: Record<string, unknown> = {};
+    const errors: Array<{ field: string; error: string }> = [];
+
     for (const mapping of entityMappings) {
-      const sourceField = (mapping as any).sourceField as string;
-      const colKey = (mapping as any).columnDefinition.key as string;
-      if (sourceField in data) {
-        normalizedData[colKey] = data[sourceField];
+      const cd = mapping.columnDefinition!;
+      const key = mapping.normalizedKey;
+
+      // 1. Extract
+      let sourceValue: unknown = mapping.sourceField in data
+        ? data[mapping.sourceField]
+        : undefined;
+
+      // 2. Default handling
+      if (
+        (sourceValue === null || sourceValue === undefined || sourceValue === "") &&
+        mapping.defaultValue !== null
+      ) {
+        sourceValue = mapping.defaultValue;
       }
+
+      // 3. Required check
+      if (mapping.required) {
+        const reqError = validateRequired(sourceValue);
+        if (reqError) {
+          errors.push({ field: key, error: reqError });
+          normalizedData[key] = null;
+          continue;
+        }
+      } else if (sourceValue === null || sourceValue === undefined) {
+        normalizedData[key] = null;
+        continue;
+      }
+
+      // 4. Coerce
+      const coerced = coerce(cd.type as ColumnDataType, sourceValue, mapping.format);
+      if (coerced.error) {
+        errors.push({ field: key, error: coerced.error });
+        normalizedData[key] = null;
+        continue;
+      }
+
+      let finalValue = coerced.value;
+
+      // 5. Enum validation
+      if (mapping.enumValues != null) {
+        const enumError = validateEnum(finalValue, mapping.enumValues as string[]);
+        if (enumError) {
+          errors.push({ field: key, error: enumError });
+        }
+      }
+
+      // 6. Pattern validation
+      if (cd.validationPattern !== null) {
+        const patternError = validatePattern(finalValue, cd.validationPattern, cd.validationMessage ?? null);
+        if (patternError) {
+          errors.push({ field: key, error: patternError });
+        }
+      }
+
+      // 7. Canonicalize (string type only)
+      if (cd.type === "string" && cd.canonicalFormat !== null && finalValue !== null) {
+        finalValue = canonicalizeString(String(finalValue), cd.canonicalFormat);
+      }
+
+      // 8. Store
+      normalizedData[key] = finalValue;
     }
 
-    return normalizedData;
+    return {
+      normalizedData,
+      validationErrors: errors.length > 0 ? errors : null,
+      isValid: errors.length === 0,
+    };
   }
 }

@@ -3,7 +3,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockNormalize = jest.fn<any>().mockResolvedValue({ name: "Bob" });
+const mockNormalize = jest.fn<any>().mockResolvedValue({ normalizedData: { name: "Bob" }, validationErrors: null, isValid: true });
 const mockFindById = jest.fn<any>().mockResolvedValue({ id: "rec-1", connectorEntityId: "ce-1" });
 const mockUpdate = jest.fn<any>().mockResolvedValue({ id: "rec-1" });
 
@@ -38,6 +38,20 @@ describe("EntityRecordUpdateTool", () => {
     const result: any = await exec({ connectorEntityId: "ce-1", entityRecordId: "rec-1", data: { Name: "Bob" } });
     expect(result.success).toBe(true);
     expect(mockUpdate).toHaveBeenCalledWith("rec-1", expect.objectContaining({ data: { Name: "Bob" }, updatedBy: "user-1" }));
+  });
+
+  it("passes validationErrors and isValid from normalization to update payload", async () => {
+    mockNormalize.mockResolvedValueOnce({
+      normalizedData: { name: "Bob" },
+      validationErrors: [{ field: "age", error: "Expected a number" }],
+      isValid: false,
+    });
+    await exec({ connectorEntityId: "ce-1", entityRecordId: "rec-1", data: { Name: "Bob" } });
+    expect(mockUpdate).toHaveBeenCalledWith("rec-1", expect.objectContaining({
+      normalizedData: { name: "Bob" },
+      validationErrors: [{ field: "age", error: "Expected a number" }],
+      isValid: false,
+    }));
   });
 
   it("rejects if record does not belong to entity", async () => {

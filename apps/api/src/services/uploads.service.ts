@@ -123,24 +123,12 @@ export class UploadsService {
         continue;
       }
 
-      // Build field mapping info from the confirmed entity
-      const fieldMappingInfo = confirmedEntity.fieldMappings.map((fm) => {
-        const colDef = confirmedEntity.columnDefinitions.find(
-          (cd) => cd.id === fm.columnDefinitionId
-        );
-        return {
-          sourceField: fm.sourceField,
-          columnDefinitionKey: colDef?.key ?? fm.sourceField,
-        };
-      });
-
       try {
         const importResult = await CsvImportService.importFromS3({
           s3Key: s3File.s3Key,
           connectorEntityId: confirmedEntity.connectorEntityId,
           organizationId,
           userId,
-          fieldMappings: fieldMappingInfo,
         });
         (confirmedEntity as ConfirmResponseEntity).importResult = importResult;
       } catch (err) {
@@ -149,7 +137,7 @@ export class UploadsService {
           "Failed to import CSV records for entity"
         );
         // Set empty import result so the confirm still succeeds
-        (confirmedEntity as ConfirmResponseEntity).importResult = { created: 0, updated: 0, unchanged: 0 };
+        (confirmedEntity as ConfirmResponseEntity).importResult = { created: 0, updated: 0, unchanged: 0, invalid: 0 };
       }
     }
 

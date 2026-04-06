@@ -63,8 +63,8 @@ jest.unstable_mockModule("../../services/job-events.service.js", () => ({
   },
 }));
 
-const mockImportFromS3 = jest.fn<() => Promise<{ created: number; updated: number; unchanged: number }>>()
-  .mockResolvedValue({ created: 10, updated: 0, unchanged: 0 });
+const mockImportFromS3 = jest.fn<() => Promise<{ created: number; updated: number; unchanged: number; invalid: number }>>()
+  .mockResolvedValue({ created: 10, updated: 0, unchanged: 0, invalid: 0 });
 
 jest.unstable_mockModule("../../services/csv-import.service.js", () => ({
   CsvImportService: {
@@ -305,18 +305,18 @@ describe("UploadsService", () => {
           connectorEntityId: "ce-001",
           organizationId: ORG_ID,
           userId: USER_ID,
-          fieldMappings: expect.arrayContaining([
-            expect.objectContaining({ sourceField: "Name", columnDefinitionKey: "name" }),
-            expect.objectContaining({ sourceField: "Email", columnDefinitionKey: "email" }),
-          ]),
         })
       );
+      // fieldMappings should NOT be passed — normalization fetches its own
+      const callArgs = (mockImportFromS3.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      expect(callArgs).not.toHaveProperty("fieldMappings");
 
       // Import result should be on the confirmed entity
       expect(result.confirmedEntities[0].importResult).toEqual({
         created: 10,
         updated: 0,
         unchanged: 0,
+        invalid: 0,
       });
     });
 
@@ -331,6 +331,7 @@ describe("UploadsService", () => {
         created: 0,
         updated: 0,
         unchanged: 0,
+        invalid: 0,
       });
     });
 

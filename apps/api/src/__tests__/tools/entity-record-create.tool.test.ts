@@ -3,7 +3,7 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<(...a: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<(...a: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
-const mockNormalize = jest.fn<(...a: unknown[]) => Promise<Record<string, unknown>>>().mockResolvedValue({ name: "Jane" });
+const mockNormalize = jest.fn<(...a: unknown[]) => Promise<unknown>>().mockResolvedValue({ normalizedData: { name: "Jane" }, validationErrors: null, isValid: true });
 const mockCreate = jest.fn<(...a: unknown[]) => Promise<unknown>>().mockResolvedValue({ id: "rec-1" });
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
@@ -62,6 +62,19 @@ describe("EntityRecordCreateTool", () => {
     await exec({ connectorEntityId: "ce-1", data: {}, sourceId: "custom-id" });
     const createdData = mockCreate.mock.calls[0][0] as Record<string, unknown>;
     expect(createdData.sourceId).toBe("custom-id");
+  });
+
+  it("passes validationErrors and isValid from normalization to created record", async () => {
+    mockNormalize.mockResolvedValueOnce({
+      normalizedData: { name: "Jane" },
+      validationErrors: [{ field: "email", error: "Required field is missing" }],
+      isValid: false,
+    });
+    await exec({ connectorEntityId: "ce-1", data: { Name: "Jane" } });
+    const createdData = mockCreate.mock.calls[0][0] as Record<string, unknown>;
+    expect(createdData.isValid).toBe(false);
+    expect(createdData.validationErrors).toEqual([{ field: "email", error: "Required field is missing" }]);
+    expect(createdData.normalizedData).toEqual({ name: "Jane" });
   });
 
   it("returns error when scope check fails", async () => {

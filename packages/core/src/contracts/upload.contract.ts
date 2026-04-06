@@ -99,6 +99,7 @@ export const ConfirmResponseEntitySchema = z.object({
     created: z.number(),
     updated: z.number(),
     unchanged: z.number(),
+    invalid: z.number(),
   }).optional(),
 });
 export type ConfirmResponseEntity = z.infer<typeof ConfirmResponseEntitySchema>;
