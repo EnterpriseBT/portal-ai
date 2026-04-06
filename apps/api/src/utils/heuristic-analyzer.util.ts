@@ -30,37 +30,59 @@ const DATETIME_PATTERNS = [
 const NUMBER_PATTERN = /^-?[\d,]+\.?\d*$/;
 const BOOLEAN_PATTERN = /^(true|false|yes|no|0|1)$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_PATTERN = /^https?:\/\/[^\s]+$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-export function inferType(sampleValues: string[]): { type: string; format: string | null } {
+export function inferType(sampleValues: string[]): { type: string; format: string | null; canonicalFormat: string | null } {
   const nonEmpty = sampleValues.filter((v) => v.trim() !== "");
-  if (nonEmpty.length === 0) return { type: "string", format: null };
+  if (nonEmpty.length === 0) return { type: "string", format: null, canonicalFormat: null };
 
   // Check datetime before date (more specific first)
   if (nonEmpty.every((v) => DATETIME_PATTERNS.some((p) => p.test(v)))) {
-    return { type: "datetime", format: "ISO8601" };
+    return { type: "datetime", format: "ISO8601", canonicalFormat: "ISO8601" };
   }
 
   if (nonEmpty.every((v) => DATE_PATTERNS.some((p) => p.test(v)))) {
-    return { type: "date", format: "YYYY-MM-DD" };
+    return { type: "date", format: "YYYY-MM-DD", canonicalFormat: "YYYY-MM-DD" };
   }
 
   if (nonEmpty.every((v) => BOOLEAN_PATTERN.test(v))) {
-    return { type: "boolean", format: null };
+    return { type: "boolean", format: null, canonicalFormat: null };
   }
 
   if (nonEmpty.every((v) => NUMBER_PATTERN.test(v.replace(/,/g, "")))) {
-    return { type: "number", format: null };
+    return { type: "number", format: null, canonicalFormat: null };
   }
 
   if (nonEmpty.every((v) => EMAIL_PATTERN.test(v))) {
-    return { type: "string", format: "email" };
+    return { type: "string", format: "email", canonicalFormat: "lowercase" };
   }
 
-  return { type: "string", format: null };
+  return { type: "string", format: null, canonicalFormat: null };
+}
+
+/**
+ * Detect a validation pattern from sample values.
+ * Returns a regex string if a known pattern is detected, otherwise null.
+ */
+export function detectValidationPattern(sampleValues: string[]): string | null {
+  const nonEmpty = sampleValues.filter((v) => v.trim() !== "");
+  if (nonEmpty.length === 0) return null;
+
+  if (nonEmpty.every((v) => EMAIL_PATTERN.test(v))) {
+    return "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$";
+  }
+  if (nonEmpty.every((v) => URL_PATTERN.test(v))) {
+    return "^https?://[^\\s]+$";
+  }
+  if (nonEmpty.every((v) => UUID_PATTERN.test(v))) {
+    return "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+  }
+  return null;
 }
 
 export function toSnakeCase(str: string): string {
@@ -97,7 +119,8 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
 
   const columns = parseResult.columnStats.map((stat: ColumnStat) => {
     const key = toSnakeCase(stat.name);
-    const { type, format } = inferType(stat.sampleValues);
+    const { type, format, canonicalFormat } = inferType(stat.sampleValues);
+    const validationPattern = detectValidationPattern(stat.sampleValues);
 
     // Try exact match against existing column definitions
     const exactKeyMatch = existingByKey.get(key);
@@ -106,6 +129,14 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
 
     // Check if this column key was recommended in a prior file
     const matchesPrior = priorColumnKeys.has(key);
+
+    const baseFields = {
+      normalizedKey: key,
+      defaultValue: null,
+      enumValues: null,
+      validationPattern,
+      canonicalFormat,
+    };
 
     if (existingMatch) {
       return {
@@ -120,6 +151,8 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
         existingColumnDefinitionId: existingMatch.id,
         confidence: 1,
         sampleValues: stat.sampleValues,
+        ...baseFields,
+        normalizedKey: existingMatch.key,
       };
     }
 
@@ -136,6 +169,7 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
         existingColumnDefinitionId: null,
         confidence: 0.9,
         sampleValues: stat.sampleValues,
+        ...baseFields,
       };
     }
 
@@ -151,6 +185,7 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
       existingColumnDefinitionId: null,
       confidence: 0,
       sampleValues: stat.sampleValues,
+      ...baseFields,
     };
   });
 

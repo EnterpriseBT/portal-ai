@@ -298,6 +298,9 @@ columnDefinitionRouter.post(
         );
       }
 
+      // Validate regex pattern if provided
+      ColumnDefinitionValidationService.validatePattern(parsed.data.validationPattern);
+
       const { organizationId, userId } = req.application!.metadata;
 
       const factory = new ColumnDefinitionModelFactory();
@@ -450,6 +453,9 @@ columnDefinitionRouter.patch(
         );
       }
 
+      // Validate regex pattern if provided
+      ColumnDefinitionValidationService.validatePattern(parsed.data.validationPattern);
+
       const existing = await DbService.repository.columnDefinitions.findById(id);
       if (!existing) {
         return next(
@@ -496,7 +502,7 @@ columnDefinitionRouter.patch(
       logger.info({ id }, "Column definition updated");
 
       // Trigger revalidation if normalization-affecting fields changed
-      const REVALIDATION_FIELDS = ["validationPattern", "validationMessage", "canonicalFormat"] as const;
+      const REVALIDATION_FIELDS = ["validationPattern", "canonicalFormat"] as const;
       const needsRevalidation = REVALIDATION_FIELDS.some((field) =>
         field in parsed.data && (parsed.data as Record<string, unknown>)[field] !== (existing as Record<string, unknown>)[field]
       );

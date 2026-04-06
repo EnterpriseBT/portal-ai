@@ -1,14 +1,14 @@
 import React from "react";
 
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 /** Syncs column definitions from the API response into parent state. */
 export const SyncColumns: React.FC<{
-  columns: ColumnDefinitionSummary[];
-  setColumns: (cols: ColumnDefinitionSummary[]) => void;
+  columns: ResolvedColumn[];
+  setColumns: (cols: ResolvedColumn[]) => void;
   children: React.ReactNode;
 }> = ({ columns, setColumns, children }) => {
-  const prevRef = React.useRef<ColumnDefinitionSummary[]>([]);
+  const prevRef = React.useRef<ResolvedColumn[]>([]);
   React.useEffect(() => {
     if (columns.length > 0 && columns !== prevRef.current) {
       prevRef.current = columns;

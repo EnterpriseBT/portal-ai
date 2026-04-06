@@ -2,11 +2,11 @@ import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
 import { SyncColumns } from "../components/SyncColumns.component";
 
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
-const columns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+const columns: ResolvedColumn[] = [
+  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
 ];
 
 describe("SyncColumns", () => {
@@ -42,8 +42,8 @@ describe("SyncColumns", () => {
 
   it("should call setColumns again when columns change", () => {
     const setColumns = jest.fn();
-    const newColumns: ColumnDefinitionSummary[] = [
-      { key: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+    const newColumns: ResolvedColumn[] = [
+      { key: "email", normalizedKey: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
     ];
 
     const { rerender } = render(

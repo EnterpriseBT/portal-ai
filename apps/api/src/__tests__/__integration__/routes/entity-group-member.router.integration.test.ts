@@ -158,6 +158,7 @@ function createFieldMapping(
   columnDefinitionId: string,
   overrides?: Partial<Record<string, unknown>>
 ) {
+  const uniqueSuffix = generateId().replace(/-/g, "").slice(0, 8);
   return {
     id: generateId(),
     organizationId,
@@ -165,7 +166,7 @@ function createFieldMapping(
     columnDefinitionId,
     sourceField: "email",
     isPrimaryKey: false,
-    normalizedKey: "email",
+    normalizedKey: `nk_${uniqueSuffix}`,
     required: false,
     defaultValue: null,
     format: null,

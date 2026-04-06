@@ -33,7 +33,7 @@ const { EntityRecordDetailViewUI, RelatedRecordsSection } = await import(
 // ── Fixtures ─────────────────────────────────────────────────────────
 
 import type { ConnectorEntity, EntityRecord, EntityGroup } from "@portalai/core/models";
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 const stubEntity: ConnectorEntity = {
   id: "ent-1",
@@ -76,12 +76,12 @@ const stubRecord: EntityRecord = {
   deletedBy: null,
 };
 
-const stubColumns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "meta", label: "Meta", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+const stubColumns: ResolvedColumn[] = [
+  { key: "name", normalizedKey: "name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "meta", normalizedKey: "meta", label: "Meta", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "tags", normalizedKey: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
 ];
 
 const stubGroup: EntityGroup = {
@@ -199,8 +199,9 @@ describe("EntityRecordDetailViewUI", () => {
   });
 
   it("renders — for columns missing from normalizedData", () => {
-    const extraColumn: ColumnDefinitionSummary = {
+    const extraColumn: ResolvedColumn = {
       key: "missing_field",
+      normalizedKey: "missing_field",
       label: "Missing",
       type: "string",
       required: false,
@@ -208,6 +209,7 @@ describe("EntityRecordDetailViewUI", () => {
       defaultValue: null,
       validationPattern: null,
       canonicalFormat: null,
+      format: null,
     };
     render(
       <EntityRecordDetailViewUI

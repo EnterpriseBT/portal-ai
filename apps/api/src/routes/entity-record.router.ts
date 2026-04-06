@@ -37,7 +37,7 @@ import { SyncService } from "../services/sync.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
-import type { ColumnDefinitionSummary } from "../adapters/adapter.interface.js";
+import type { ResolvedColumn } from "../adapters/adapter.interface.js";
 import type { ColumnDataType } from "@portalai/core/models";
 import type { Column } from "drizzle-orm";
 
@@ -84,7 +84,7 @@ function buildJsonbSortExpression(
 
 async function resolveColumns(
   connectorEntityId: string
-): Promise<ColumnDefinitionSummary[]> {
+): Promise<ResolvedColumn[]> {
   const mappings =
     await fieldMappingsRepo.findByConnectorEntityId(connectorEntityId);
   if (mappings.length === 0) return [];
@@ -100,16 +100,18 @@ async function resolveColumns(
       .map((cd) => [cd.id, cd])
   );
 
-  return mappings.reduce<ColumnDefinitionSummary[]>((acc, m) => {
+  return mappings.reduce<ResolvedColumn[]>((acc, m) => {
     const cd = colDefMap.get(m.columnDefinitionId);
     if (!cd) return acc;
     acc.push({
       key: cd.key,
       label: cd.label,
       type: cd.type as ColumnDataType,
+      normalizedKey: m.normalizedKey,
       required: m.required,
       enumValues: m.enumValues ?? null,
       defaultValue: m.defaultValue ?? null,
+      format: m.format ?? null,
       validationPattern: cd.validationPattern ?? null,
       canonicalFormat: cd.canonicalFormat ?? null,
     });

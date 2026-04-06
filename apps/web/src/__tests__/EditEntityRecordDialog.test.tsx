@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 // Mock react-markdown and remark-gfm so jsdom doesn't choke on ESM
 jest.unstable_mockModule("react-markdown", () => ({
@@ -16,11 +16,11 @@ const { EditEntityRecordDialog } = await import(
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
-const columns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string", required: true, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+const columns: ResolvedColumn[] = [
+  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: true, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "metadata", normalizedKey: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
 ];
 
 const normalizedData = { name: "Alice", age: 25, active: true, metadata: { key: "val" } };

@@ -340,6 +340,13 @@ fieldMappingRouter.post(
         );
       }
 
+      // Validate new fields
+      FieldMappingValidationService.validateEnumValues(parsed.data.enumValues);
+      FieldMappingValidationService.validateFormat(parsed.data.format, columnDefinition.type);
+      await FieldMappingValidationService.validateNormalizedKeyUniqueness(
+        parsed.data.connectorEntityId, parsed.data.normalizedKey
+      );
+
       const { userId, organizationId } = req.application!.metadata;
 
       const factory = new FieldMappingModelFactory();
@@ -350,6 +357,11 @@ fieldMappingRouter.post(
         columnDefinitionId: parsed.data.columnDefinitionId,
         sourceField: parsed.data.sourceField,
         isPrimaryKey: parsed.data.isPrimaryKey,
+        normalizedKey: parsed.data.normalizedKey,
+        required: parsed.data.required,
+        defaultValue: parsed.data.defaultValue,
+        format: parsed.data.format,
+        enumValues: parsed.data.enumValues,
         refColumnDefinitionId: parsed.data.refColumnDefinitionId,
         refEntityKey: parsed.data.refEntityKey,
         refBidirectionalFieldMappingId: parsed.data.refBidirectionalFieldMappingId,
@@ -468,6 +480,16 @@ fieldMappingRouter.patch(
       // Block if a revalidation job is active for this mapping's entity
       await RevalidationService.assertNoActiveJob(existing.connectorEntityId);
 
+      // Validate normalizedKey uniqueness if changed
+      if (parsed.data.normalizedKey && parsed.data.normalizedKey !== existing.normalizedKey) {
+        await FieldMappingValidationService.validateNormalizedKeyUniqueness(
+          existing.connectorEntityId, parsed.data.normalizedKey, id
+        );
+      }
+
+      // Validate enumValues and format if provided
+      FieldMappingValidationService.validateEnumValues(parsed.data.enumValues);
+
       if (parsed.data.columnDefinitionId) {
         const colDef = await DbService.repository.columnDefinitions.findById(parsed.data.columnDefinitionId);
         if (!colDef) {
@@ -488,6 +510,15 @@ fieldMappingRouter.patch(
               new ApiError(409, ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN, "A field mapping already exists for this column definition on the same entity")
             );
           }
+        }
+      }
+
+      // Validate format compatibility with column type
+      if (parsed.data.format !== undefined) {
+        const resolvedColDefId = parsed.data.columnDefinitionId ?? existing.columnDefinitionId;
+        const resolvedColDef = await DbService.repository.columnDefinitions.findById(resolvedColDefId);
+        if (resolvedColDef) {
+          FieldMappingValidationService.validateFormat(parsed.data.format, resolvedColDef.type);
         }
       }
 

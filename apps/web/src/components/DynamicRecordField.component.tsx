@@ -6,12 +6,12 @@ import {
   FormControlLabel,
   MenuItem,
 } from "@mui/material";
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 // ── Props ────────────────────────────────────────────────────────────
 
 export interface DynamicRecordFieldProps {
-  column: ColumnDefinitionSummary;
+  column: ResolvedColumn;
   value: unknown;
   onChange: (key: string, value: unknown) => void;
   /** Field-level error message (from validation). */

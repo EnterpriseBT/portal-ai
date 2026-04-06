@@ -34,6 +34,54 @@ beforeEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 
+describe("ColumnDefinitionValidationService.validatePattern", () => {
+  it("accepts a valid regex pattern", () => {
+    expect(() =>
+      ColumnDefinitionValidationService.validatePattern("^[A-Z]+$")
+    ).not.toThrow();
+  });
+
+  it("accepts a complex valid regex", () => {
+    expect(() =>
+      ColumnDefinitionValidationService.validatePattern("^[^@]+@[^@]+\\.[^@]+$")
+    ).not.toThrow();
+  });
+
+  it("accepts null (no validation pattern)", () => {
+    expect(() =>
+      ColumnDefinitionValidationService.validatePattern(null)
+    ).not.toThrow();
+  });
+
+  it("accepts undefined (no validation pattern)", () => {
+    expect(() =>
+      ColumnDefinitionValidationService.validatePattern(undefined)
+    ).not.toThrow();
+  });
+
+  it("rejects an invalid regex pattern", () => {
+    expect(() =>
+      ColumnDefinitionValidationService.validatePattern("[invalid(")
+    ).toThrow(
+      expect.objectContaining({
+        status: 400,
+        code: "COLUMN_DEFINITION_INVALID_VALIDATION_PATTERN",
+      })
+    );
+  });
+
+  it("rejects another invalid regex (unbalanced group)", () => {
+    expect(() =>
+      ColumnDefinitionValidationService.validatePattern("(abc")
+    ).toThrow(
+      expect.objectContaining({
+        status: 400,
+        code: "COLUMN_DEFINITION_INVALID_VALIDATION_PATTERN",
+      })
+    );
+  });
+});
+
 describe("ColumnDefinitionValidationService.validateDelete", () => {
   it("passes when no field mappings reference it", async () => {
     mockFindByColumnDefId.mockResolvedValue([]);

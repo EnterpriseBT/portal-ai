@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 
 import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
 import type {
-  ColumnDefinitionSummary,
+  ResolvedColumn,
   ConnectorEntityGetResponsePayload,
   EntityRecordGetResponsePayload,
   EntityRecordPatchRequestBody,
@@ -198,7 +198,7 @@ export const RelatedRecordsSection: React.FC<RelatedRecordsSectionProps> = ({
 export interface EntityRecordDetailViewUIProps {
   entity: ConnectorEntity;
   record: EntityRecord;
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   groups?: EntityGroup[];
   isWriteEnabled?: boolean;
   onDelete?: () => void;

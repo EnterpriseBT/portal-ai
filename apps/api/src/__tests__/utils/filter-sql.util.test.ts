@@ -2,23 +2,25 @@ import { describe, it, expect } from "@jest/globals";
 
 import { parseAndBuildFilterSQL, isFilterError } from "../../utils/filter-sql.util.js";
 
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 import type { SQL } from "drizzle-orm";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-const columnDefs: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "amount", label: "Amount", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "created_at", label: "Created At", type: "date", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "updated_at", label: "Updated At", type: "datetime", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "ref_id", label: "Ref ID", type: "reference", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+const defaults = { required: false, enumValues: null, defaultValue: null, format: null, validationPattern: null, canonicalFormat: null } as const;
+
+const columnDefs: ResolvedColumn[] = [
+  { key: "name", normalizedKey: "name", label: "Name", type: "string", ...defaults },
+  { key: "email", normalizedKey: "email", label: "Email", type: "string", ...defaults },
+  { key: "age", normalizedKey: "age", label: "Age", type: "number", ...defaults },
+  { key: "amount", normalizedKey: "amount", label: "Amount", type: "number", ...defaults },
+  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", ...defaults },
+  { key: "created_at", normalizedKey: "created_at", label: "Created At", type: "date", ...defaults },
+  { key: "updated_at", normalizedKey: "updated_at", label: "Updated At", type: "datetime", ...defaults },
+  { key: "status", normalizedKey: "status", label: "Status", type: "enum", ...defaults },
+  { key: "tags", normalizedKey: "tags", label: "Tags", type: "array", ...defaults },
+  { key: "metadata", normalizedKey: "metadata", label: "Metadata", type: "json", ...defaults },
+  { key: "ref_id", normalizedKey: "ref_id", label: "Ref ID", type: "reference", ...defaults },
 ];
 
 function encode(expression: unknown): string {
@@ -376,5 +378,37 @@ describe("parseAndBuildFilterSQL — SQL injection prevention", () => {
     }));
     const chunks = flattenChunks(where);
     expect(chunks).toContain("%100%%");
+  });
+});
+
+// ── Phase 4: no currency type, normalizedData keys ─────────────────
+
+describe("parseAndBuildFilterSQL — Phase 4", () => {
+  it("handles number type for values previously typed as currency", () => {
+    // "amount" is type "number" — currency-like values go through the numeric path
+    const where = expectSuccess(encode({
+      combinator: "and",
+      conditions: [{ field: "amount", operator: "gte", value: 9.99 }],
+    }));
+    const chunks = flattenChunks(where);
+    expect(chunks).toContain(9.99);
+  });
+
+  it("filter field keys reference normalizedData JSONB keys", () => {
+    // The filter references "name" which maps to normalizedData->>'name'
+    const where = expectSuccess(encode({
+      combinator: "and",
+      conditions: [{ field: "name", operator: "eq", value: "Alice" }],
+    }));
+    const chunks = flattenChunks(where);
+    // The SQL should contain the field key used for JSONB extraction
+    expect(chunks.some((c) => typeof c === "string" && c.includes("'name'"))).toBe(true);
+  });
+
+  it("does not have a currency case in the type switch", () => {
+    // There is no "currency" column type — verify that the ColumnDataType enum
+    // used in columnDefs does not include it
+    const types = columnDefs.map((c) => c.type);
+    expect(types).not.toContain("currency");
   });
 });

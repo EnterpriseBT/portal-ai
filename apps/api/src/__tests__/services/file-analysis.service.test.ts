@@ -31,6 +31,9 @@ jest.unstable_mockModule("../../services/ai.service.js", () => ({
 const { FileAnalysisService } = await import(
   "../../services/file-analysis.service.js"
 );
+const { buildFileAnalysisPrompt } = await import(
+  "../../prompts/file-analysis.prompt.js"
+);
 type ExistingColumnDefinition = import("../../services/file-analysis.service.js").ExistingColumnDefinition;
 
 // ---------------------------------------------------------------------------
@@ -515,6 +518,201 @@ describe("FileAnalysisService", () => {
 
       expect(result.entityKey).toBe("user_profiles");
       expect(result.sourceFileName).toBe("User Profiles.csv");
+    });
+  });
+
+  // ── Phase 4: new recommendation fields ───────────────────────────
+
+  describe("Phase 4 — recommendation output includes new fields", () => {
+    it("includes normalizedKey per column (defaults to snake_case key)", () => {
+      const parseResult = makeParseResult({
+        headers: ["First Name", "email"],
+        columnStats: [
+          makeColumnStat({ name: "First Name", sampleValues: ["Alice", "Bob"] }),
+          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.com"] }),
+        ],
+      });
+
+      const result = FileAnalysisService.heuristicAnalyze({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(result.columns[0].normalizedKey).toBe("first_name");
+      expect(result.columns[1].normalizedKey).toBe("email");
+    });
+
+    it("places required, defaultValue, format, enumValues at column level for mapping use", () => {
+      const parseResult = makeParseResult({
+        headers: ["status"],
+        columnStats: [
+          makeColumnStat({ name: "status", sampleValues: ["active", "inactive"] }),
+        ],
+      });
+
+      const result = FileAnalysisService.heuristicAnalyze({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      const col = result.columns[0];
+      expect(col).toHaveProperty("required");
+      expect(col).toHaveProperty("defaultValue");
+      expect(col).toHaveProperty("enumValues");
+      expect(col).toHaveProperty("format");
+      expect(col.defaultValue).toBeNull();
+      expect(col.enumValues).toBeNull();
+    });
+
+    it("does NOT include currency as a type recommendation", () => {
+      const parseResult = makeParseResult({
+        headers: ["price"],
+        columnStats: [
+          makeColumnStat({ name: "price", sampleValues: ["$9.99", "14.50", "100.00"] }),
+        ],
+      });
+
+      const result = FileAnalysisService.heuristicAnalyze({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(result.columns[0].type).not.toBe("currency");
+    });
+
+    it("detects validationPattern for email-like sample values", () => {
+      const parseResult = makeParseResult({
+        headers: ["email"],
+        columnStats: [
+          makeColumnStat({ name: "email", sampleValues: ["alice@test.com", "bob@example.org", "carol@foo.net"] }),
+        ],
+      });
+
+      const result = FileAnalysisService.heuristicAnalyze({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(result.columns[0].validationPattern).toBe("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    });
+
+    it("detects validationPattern for URL-like sample values", () => {
+      const parseResult = makeParseResult({
+        headers: ["website"],
+        columnStats: [
+          makeColumnStat({ name: "website", sampleValues: ["https://example.com", "http://foo.org", "https://bar.net/page"] }),
+        ],
+      });
+
+      const result = FileAnalysisService.heuristicAnalyze({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(result.columns[0].validationPattern).toBe("^https?://[^\\s]+$");
+    });
+
+    it("detects validationPattern for UUID-like sample values", () => {
+      const parseResult = makeParseResult({
+        headers: ["id"],
+        columnStats: [
+          makeColumnStat({ name: "id", sampleValues: [
+            "550e8400-e29b-41d4-a716-446655440000",
+            "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+          ] }),
+        ],
+      });
+
+      const result = FileAnalysisService.heuristicAnalyze({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(result.columns[0].validationPattern).toBe("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+    });
+
+    it("returns null validationPattern when no known pattern detected", () => {
+      const parseResult = makeParseResult({
+        headers: ["name"],
+        columnStats: [
+          makeColumnStat({ name: "name", sampleValues: ["Alice", "Bob", "Carol"] }),
+        ],
+      });
+
+      const result = FileAnalysisService.heuristicAnalyze({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(result.columns[0].validationPattern).toBeNull();
+    });
+
+    it("recommendation output still validates against FileUploadRecommendationEntitySchema", () => {
+      const parseResult = makeParseResult();
+
+      const result = FileAnalysisService.heuristicAnalyze({
+        parseResult,
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      const validated = FileUploadRecommendationEntitySchema.safeParse(result);
+      expect(validated.success).toBe(true);
+    });
+  });
+
+  // ── Phase 4: prompt content verification ─────────────────────────
+
+  describe("Phase 4 — file analysis prompt", () => {
+    it("includes normalizedKey instruction", () => {
+      const prompt = buildFileAnalysisPrompt({
+        parseResult: makeParseResult(),
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(prompt).toContain("normalizedKey");
+    });
+
+    it("does NOT include currency as a type option", () => {
+      const prompt = buildFileAnalysisPrompt({
+        parseResult: makeParseResult(),
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(prompt).toContain("Do NOT use `currency`");
+      expect(prompt).toContain("canonicalFormat");
+    });
+
+    it("instructs required, format, enumValues as mapping-level attributes", () => {
+      const prompt = buildFileAnalysisPrompt({
+        parseResult: makeParseResult(),
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(prompt).toMatch(/required.*mapping-level/is);
+      expect(prompt).toMatch(/format.*mapping-level/is);
+      expect(prompt).toMatch(/enumValues.*mapping-level/is);
+    });
+
+    it("includes validationPattern and canonicalFormat instructions", () => {
+      const prompt = buildFileAnalysisPrompt({
+        parseResult: makeParseResult(),
+        existingColumns: [],
+        priorRecommendations: [],
+      });
+
+      expect(prompt).toContain("validationPattern");
+      expect(prompt).toContain("canonicalFormat");
     });
   });
 });

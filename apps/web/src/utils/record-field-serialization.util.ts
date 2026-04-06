@@ -1,11 +1,11 @@
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 /**
  * Serialize form values into normalizedData for API submission.
  * Returns { data, errors } — errors is non-empty if fields are invalid.
  */
 export function serializeRecordFields(
-  columns: ColumnDefinitionSummary[],
+  columns: ResolvedColumn[],
   values: Record<string, unknown>
 ): { data: Record<string, unknown>; errors: Record<string, string> } {
   const data: Record<string, unknown> = {};
@@ -107,7 +107,7 @@ export function serializeRecordFields(
  * Validate required fields. Returns errors for required columns with empty/null values.
  */
 export function validateRequiredFields(
-  columns: ColumnDefinitionSummary[],
+  columns: ResolvedColumn[],
   values: Record<string, unknown>
 ): Record<string, string> {
   const errors: Record<string, string> = {};
@@ -132,7 +132,7 @@ export function validateRequiredFields(
  * Used by EditEntityRecordDialog to deserialize existing normalizedData.
  */
 export function initializeRecordFields(
-  columns: ColumnDefinitionSummary[],
+  columns: ResolvedColumn[],
   existingData?: Record<string, unknown>
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {};

@@ -316,8 +316,8 @@ describe("csvAdapter", () => {
 
       expect(result.columns).toEqual(
         expect.arrayContaining([
-          { key: "first_name", label: "First Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-          { key: "email", label: "Email", type: "string", required: true, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+          { key: "first_name", normalizedKey: "first_name", label: "First Name", type: "string", required: false, enumValues: null, defaultValue: null, format: null, validationPattern: null, canonicalFormat: null },
+          { key: "email", normalizedKey: "email", label: "Email", type: "string", required: true, enumValues: null, defaultValue: null, format: "email", validationPattern: null, canonicalFormat: null },
         ])
       );
     });

@@ -50,10 +50,24 @@ If this file shares columns with prior files (e.g., both have "email"), use acti
 
   prompt += `
 ## Instructions
-1. Recommend an entity key (snake_case) and human-readable label for this file's data
-2. For each column, recommend: key (snake_case), label, data type, format (if applicable), whether it's a primary key candidate, whether it's required, and whether to match an existing column or create a new one
-3. Set confidence scores: 1.0 for exact matches, 0.8-0.99 for strong semantic matches, 0.5-0.79 for moderate matches, below 0.5 for weak guesses
-4. Identify primary key candidates (columns with 0% null rate and high uniqueness)
+1. Recommend an entity key (snake_case) and human-readable label for this file's data.
+2. For each column, recommend:
+   - **key** (snake_case): the column definition key
+   - **label**: human-readable column name
+   - **type**: one of \`string\`, \`number\`, \`boolean\`, \`date\`, \`datetime\`, \`enum\`, \`json\`, \`array\`, \`reference\`, \`reference-array\`. Do NOT use \`currency\` — use \`number\` instead and set \`canonicalFormat\` (e.g. "USD", "EUR") if the values represent money.
+   - **normalizedKey**: the key to use in \`normalizedData\` for this entity-column pair (snake_case, defaults to \`key\`)
+   - **format**: per-source parse instructions (e.g. "YYYY-MM-DD", "email"). This is a mapping-level attribute.
+   - **required**: whether this column is required for this source. This is a mapping-level attribute.
+   - **enumValues**: if the column has a small set of known values, list them here. This is a mapping-level attribute.
+   - **defaultValue**: default fill value when the source value is missing. This is a mapping-level attribute (usually null).
+   - **validationPattern**: a regex pattern to validate values when a recognizable pattern is detected (e.g. email: \`^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$\`, URL: \`^https?://[^\\s]+$\`, UUID: \`^[0-9a-f]{8}-...\`). Set to null when no pattern applies.
+   - **canonicalFormat**: display/storage format at the column definition level (e.g. "lowercase", "USD"). This is a column-definition-level attribute.
+   - **isPrimaryKey**: whether this is a primary key candidate
+   - **action**: "match_existing" or "create_new"
+   - **existingColumnDefinitionId**: ID of the matched column definition (when action is "match_existing")
+   - **confidence**: match confidence score
+3. Set confidence scores: 1.0 for exact matches, 0.8-0.99 for strong semantic matches, 0.5-0.79 for moderate matches, below 0.5 for weak guesses.
+4. Identify primary key candidates (columns with 0% null rate and high uniqueness).
 `;
 
   return prompt;

@@ -10,7 +10,7 @@ import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { ApiCode } from "../../../constants/api-codes.constants.js";
@@ -50,6 +50,7 @@ const {
   entityGroups,
   entityGroupMembers,
   organizations,
+  jobs,
 } = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -157,6 +158,7 @@ function createFieldMap(
   columnDefinitionId: string,
   overrides?: Partial<Record<string, unknown>>
 ) {
+  const uniqueSuffix = generateId().replace(/-/g, "").slice(0, 8);
   return {
     id: generateId(),
     organizationId,
@@ -164,7 +166,7 @@ function createFieldMap(
     columnDefinitionId,
     sourceField: "source_field",
     isPrimaryKey: false,
-    normalizedKey: "source_field",
+    normalizedKey: `nk_${uniqueSuffix}`,
     required: false,
     defaultValue: null,
     format: null,
@@ -475,6 +477,7 @@ describe("Field Mapping Router", () => {
           connectorEntityId: generateId(),
           columnDefinitionId,
           sourceField: "some_field",
+          normalizedKey: "some_field",
         });
 
       expect(res.status).toBe(404);
@@ -493,6 +496,7 @@ describe("Field Mapping Router", () => {
           connectorEntityId,
           columnDefinitionId: generateId(),
           sourceField: "some_field",
+          normalizedKey: "some_field",
         });
 
       expect(res.status).toBe(404);
@@ -511,6 +515,7 @@ describe("Field Mapping Router", () => {
           connectorEntityId,
           columnDefinitionId,
           sourceField: "account_name",
+          normalizedKey: "account_name",
           isPrimaryKey: false,
         });
 
@@ -518,6 +523,7 @@ describe("Field Mapping Router", () => {
       expect(res.body.success).toBe(true);
       const created = res.body.payload.fieldMapping;
       expect(created.sourceField).toBe("account_name");
+      expect(created.normalizedKey).toBe("account_name");
       expect(created.isPrimaryKey).toBe(false);
       expect(created.connectorEntityId).toBe(connectorEntityId);
       expect(created.columnDefinitionId).toBe(columnDefinitionId);
@@ -544,6 +550,7 @@ describe("Field Mapping Router", () => {
           connectorEntityId,
           columnDefinitionId,
           sourceField: "duplicate_field",
+          normalizedKey: "duplicate_field",
         });
 
       expect(res.status).toBe(409);
@@ -577,6 +584,7 @@ describe("Field Mapping Router", () => {
           connectorEntityId: entity2.id,
           columnDefinitionId,
           sourceField: "entity2_field",
+          normalizedKey: "entity2_field",
         });
 
       expect(res.status).toBe(201);
@@ -596,6 +604,7 @@ describe("Field Mapping Router", () => {
           connectorEntityId,
           columnDefinitionId,
           sourceField: "email_addr",
+          normalizedKey: "email_addr",
         });
 
       const id = createRes.body.payload.fieldMapping.id;
@@ -670,6 +679,7 @@ describe("Field Mapping Router", () => {
           connectorEntityId,
           columnDefinitionId: refArrayColDef.id,
           sourceField: "friend_ids",
+          normalizedKey: "friend_ids",
           refBidirectionalFieldMappingId: null,
         });
 
@@ -1042,6 +1052,306 @@ describe("Field Mapping Router", () => {
       expect(res.body.payload.isConsistent).toBe(false);
       expect(res.body.payload.inconsistentRecordIds).toContain(recAId);
       expect(res.body.payload.totalChecked).toBe(1);
+    });
+  });
+
+  // ── Phase 4: New field acceptance & normalizedKey uniqueness ─────
+
+  describe("Phase 4 — POST with new fields", () => {
+    it("should accept and persist normalizedKey, required, defaultValue, format, enumValues", async () => {
+      const { connectorEntityId, columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "status_code",
+          normalizedKey: "status_code",
+          required: true,
+          defaultValue: "active",
+          format: "uppercase",
+          enumValues: ["ACTIVE", "INACTIVE"],
+        });
+
+      expect(res.status).toBe(201);
+      const created = res.body.payload.fieldMapping;
+      expect(created.normalizedKey).toBe("status_code");
+      expect(created.required).toBe(true);
+      expect(created.defaultValue).toBe("active");
+      expect(created.format).toBe("uppercase");
+      expect(created.enumValues).toEqual(["ACTIVE", "INACTIVE"]);
+    });
+
+    it("should reject when normalizedKey is missing", async () => {
+      const { connectorEntityId, columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "no_nk",
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_INVALID_PAYLOAD);
+    });
+
+    it("should reject duplicate normalizedKey within the same connectorEntityId", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      // Seed existing mapping with normalizedKey "email"
+      const existing = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        normalizedKey: "email",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(existing as never);
+
+      // Create a second column definition
+      const colDef2 = createColDef(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef2 as never);
+
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId: colDef2.id,
+          sourceField: "email_addr",
+          normalizedKey: "email",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY);
+    });
+
+    it("should allow same normalizedKey across different entities", async () => {
+      const { connectorEntityId, columnDefinitionId, connectorInstanceId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
+
+      // Create mapping on entity 1
+      await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId,
+          columnDefinitionId,
+          sourceField: "email",
+          normalizedKey: "email",
+        });
+
+      // Create a second entity
+      const entity2 = createConnEntity(organizationId, connectorInstanceId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity2 as never);
+
+      // Same normalizedKey on different entity — should succeed
+      const res = await request(app)
+        .post("/api/field-mappings")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorEntityId: entity2.id,
+          columnDefinitionId,
+          sourceField: "email",
+          normalizedKey: "email",
+        });
+
+      expect(res.status).toBe(201);
+    });
+  });
+
+  describe("Phase 4 — PATCH with new fields", () => {
+    it("should accept and persist normalizedKey, required, defaultValue, format, enumValues", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: mapping.sourceField,
+          columnDefinitionId,
+          normalizedKey: "updated_key",
+          required: true,
+          defaultValue: "n/a",
+          format: "lowercase",
+          enumValues: ["a", "b", "c"],
+        });
+
+      expect(res.status).toBe(200);
+      const updated = res.body.payload.fieldMapping;
+      expect(updated.normalizedKey).toBe("updated_key");
+      expect(updated.required).toBe(true);
+      expect(updated.defaultValue).toBe("n/a");
+      expect(updated.format).toBe("lowercase");
+      expect(updated.enumValues).toEqual(["a", "b", "c"]);
+    });
+
+    it("should reject duplicate normalizedKey within the same entity on PATCH", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const colDef2 = createColDef(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef2 as never);
+
+      const mappingA = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        normalizedKey: "field_a",
+      });
+      const mappingB = createFieldMap(organizationId, connectorEntityId, colDef2.id, {
+        normalizedKey: "field_b",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values([mappingA, mappingB] as never);
+
+      // Try to change mappingB's normalizedKey to "field_a" — should conflict
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mappingB.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: mappingB.sourceField,
+          columnDefinitionId: colDef2.id,
+          normalizedKey: "field_a",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY);
+    });
+
+    it("should NOT trigger revalidation when only sourceField changes", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const res = await request(app)
+        .patch(`/api/field-mappings/${mapping.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({
+          sourceField: "new_source_field",
+          columnDefinitionId,
+        });
+
+      expect(res.status).toBe(200);
+
+      const jobRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, "revalidation"),
+            eq(jobs.organizationId, organizationId)
+          )
+        );
+
+      expect(jobRows).toHaveLength(0);
+    });
+  });
+
+  describe("Phase 4 — Revalidation triggers on field mapping PATCH", () => {
+    const revalidationFields = [
+      { field: "format", value: "YYYY-MM-DD" },
+      { field: "required", value: true },
+      { field: "enumValues", value: ["x", "y"] },
+      { field: "defaultValue", value: "fallback" },
+      { field: "normalizedKey", value: "changed_key" },
+    ] as const;
+
+    for (const { field, value } of revalidationFields) {
+      it(`should trigger revalidation when ${field} changes`, async () => {
+        const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+          db as ReturnType<typeof drizzle>
+        );
+
+        const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+        await (db as ReturnType<typeof drizzle>)
+          .insert(fieldMappings)
+          .values(mapping as never);
+
+        const res = await request(app)
+          .patch(`/api/field-mappings/${mapping.id}`)
+          .set("Authorization", "Bearer test-token")
+          .send({
+            sourceField: mapping.sourceField,
+            columnDefinitionId,
+            [field]: value,
+          });
+
+        expect(res.status).toBe(200);
+
+        const jobRows = await (db as ReturnType<typeof drizzle>)
+          .select()
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.type, "revalidation"),
+              eq(jobs.organizationId, organizationId)
+            )
+          );
+
+        expect(jobRows.length).toBeGreaterThanOrEqual(1);
+        const revalJob = jobRows.find(
+          (j) => (j.metadata as Record<string, unknown>).connectorEntityId === connectorEntityId
+        );
+        expect(revalJob).toBeDefined();
+      });
+    }
+  });
+
+  describe("Phase 4 — GET response includes new fields", () => {
+    it("should include normalizedKey, required, defaultValue, format, enumValues in response", async () => {
+      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+        normalizedKey: "test_key",
+        required: true,
+        defaultValue: "default_val",
+        format: "uppercase",
+        enumValues: ["A", "B"],
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
+
+      const res = await request(app)
+        .get(`/api/field-mappings?connectorEntityId=${connectorEntityId}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const returned = res.body.payload.fieldMappings[0];
+      expect(returned.normalizedKey).toBe("test_key");
+      expect(returned.required).toBe(true);
+      expect(returned.defaultValue).toBe("default_val");
+      expect(returned.format).toBe("uppercase");
+      expect(returned.enumValues).toEqual(["A", "B"]);
     });
   });
 });

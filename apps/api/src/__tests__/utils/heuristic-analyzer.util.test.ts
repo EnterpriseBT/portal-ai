@@ -9,6 +9,7 @@ import type { ExistingColumnDefinition } from "../../services/file-analysis.serv
 
 import {
   inferType,
+  detectValidationPattern,
   toSnakeCase,
   heuristicAnalyze,
 } from "../../utils/heuristic-analyzer.util.js";
@@ -58,71 +59,71 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
 
 describe("inferType", () => {
   it("returns string for empty sample values", () => {
-    expect(inferType([])).toEqual({ type: "string", format: null });
+    expect(inferType([])).toEqual({ type: "string", format: null, canonicalFormat: null });
   });
 
   it("returns string for whitespace-only values", () => {
-    expect(inferType(["  ", " "])).toEqual({ type: "string", format: null });
+    expect(inferType(["  ", " "])).toEqual({ type: "string", format: null, canonicalFormat: null });
   });
 
   it("detects date (YYYY-MM-DD)", () => {
-    expect(inferType(["2024-01-15", "2024-02-20"])).toEqual({ type: "date", format: "YYYY-MM-DD" });
+    expect(inferType(["2024-01-15", "2024-02-20"])).toEqual({ type: "date", format: "YYYY-MM-DD", canonicalFormat: "YYYY-MM-DD" });
   });
 
   it("detects date (DD/MM/YYYY)", () => {
-    expect(inferType(["15/01/2024", "20/02/2024"])).toEqual({ type: "date", format: "YYYY-MM-DD" });
+    expect(inferType(["15/01/2024", "20/02/2024"])).toEqual({ type: "date", format: "YYYY-MM-DD", canonicalFormat: "YYYY-MM-DD" });
   });
 
   it("detects date (DD-MM-YYYY)", () => {
-    expect(inferType(["15-01-2024", "20-02-2024"])).toEqual({ type: "date", format: "YYYY-MM-DD" });
+    expect(inferType(["15-01-2024", "20-02-2024"])).toEqual({ type: "date", format: "YYYY-MM-DD", canonicalFormat: "YYYY-MM-DD" });
   });
 
   it("detects datetime (ISO 8601 with T)", () => {
-    expect(inferType(["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"])).toEqual({ type: "datetime", format: "ISO8601" });
+    expect(inferType(["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"])).toEqual({ type: "datetime", format: "ISO8601", canonicalFormat: "ISO8601" });
   });
 
   it("detects datetime (space-separated)", () => {
-    expect(inferType(["2024-01-15 10:30:00", "2024-02-20 14:00:00"])).toEqual({ type: "datetime", format: "ISO8601" });
+    expect(inferType(["2024-01-15 10:30:00", "2024-02-20 14:00:00"])).toEqual({ type: "datetime", format: "ISO8601", canonicalFormat: "ISO8601" });
   });
 
   it("detects number (integers)", () => {
-    expect(inferType(["1", "42", "100"])).toEqual({ type: "number", format: null });
+    expect(inferType(["1", "42", "100"])).toEqual({ type: "number", format: null, canonicalFormat: null });
   });
 
   it("detects number (decimals)", () => {
-    expect(inferType(["9.99", "14.50", "100.00"])).toEqual({ type: "number", format: null });
+    expect(inferType(["9.99", "14.50", "100.00"])).toEqual({ type: "number", format: null, canonicalFormat: null });
   });
 
   it("detects number (negative)", () => {
-    expect(inferType(["-5", "-3.14", "0"])).toEqual({ type: "number", format: null });
+    expect(inferType(["-5", "-3.14", "0"])).toEqual({ type: "number", format: null, canonicalFormat: null });
   });
 
   it("detects number (comma-separated thousands)", () => {
-    expect(inferType(["1,000", "10,000", "100,000"])).toEqual({ type: "number", format: null });
+    expect(inferType(["1,000", "10,000", "100,000"])).toEqual({ type: "number", format: null, canonicalFormat: null });
   });
 
   it("detects boolean (true/false)", () => {
-    expect(inferType(["true", "false", "true"])).toEqual({ type: "boolean", format: null });
+    expect(inferType(["true", "false", "true"])).toEqual({ type: "boolean", format: null, canonicalFormat: null });
   });
 
   it("detects boolean (yes/no)", () => {
-    expect(inferType(["yes", "no", "YES"])).toEqual({ type: "boolean", format: null });
+    expect(inferType(["yes", "no", "YES"])).toEqual({ type: "boolean", format: null, canonicalFormat: null });
   });
 
   it("detects boolean (0/1)", () => {
-    expect(inferType(["0", "1", "1", "0"])).toEqual({ type: "boolean", format: null });
+    expect(inferType(["0", "1", "1", "0"])).toEqual({ type: "boolean", format: null, canonicalFormat: null });
   });
 
   it("detects email", () => {
-    expect(inferType(["alice@test.com", "bob@example.org"])).toEqual({ type: "string", format: "email" });
+    expect(inferType(["alice@test.com", "bob@example.org"])).toEqual({ type: "string", format: "email", canonicalFormat: "lowercase" });
   });
 
   it("returns string for mixed types", () => {
-    expect(inferType(["hello", "42", "true"])).toEqual({ type: "string", format: null });
+    expect(inferType(["hello", "42", "true"])).toEqual({ type: "string", format: null, canonicalFormat: null });
   });
 
   it("returns string for plain text", () => {
-    expect(inferType(["Alice", "Bob", "Carol"])).toEqual({ type: "string", format: null });
+    expect(inferType(["Alice", "Bob", "Carol"])).toEqual({ type: "string", format: null, canonicalFormat: null });
   });
 
   it("prefers datetime over date when timestamps present", () => {
@@ -385,5 +386,139 @@ describe("heuristicAnalyze", () => {
     // Should prefer existing (confidence 1) over prior (confidence 0.9)
     expect(result.columns[0].confidence).toBe(1);
     expect(result.columns[0].existingColumnDefinitionId).toBe("col-1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4: detectValidationPattern
+// ---------------------------------------------------------------------------
+
+describe("detectValidationPattern", () => {
+  it("detects email pattern", () => {
+    expect(detectValidationPattern(["a@b.com", "c@d.org"])).toBe("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+  });
+
+  it("detects URL pattern", () => {
+    expect(detectValidationPattern(["https://example.com", "http://foo.org"])).toBe("^https?://[^\\s]+$");
+  });
+
+  it("detects UUID pattern", () => {
+    expect(detectValidationPattern([
+      "550e8400-e29b-41d4-a716-446655440000",
+      "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    ])).toBe("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+  });
+
+  it("returns null for plain text", () => {
+    expect(detectValidationPattern(["Alice", "Bob"])).toBeNull();
+  });
+
+  it("returns null for empty values", () => {
+    expect(detectValidationPattern([])).toBeNull();
+  });
+
+  it("returns null for mixed patterns", () => {
+    expect(detectValidationPattern(["a@b.com", "not-an-email"])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4: heuristicAnalyze — new output fields
+// ---------------------------------------------------------------------------
+
+describe("heuristicAnalyze — Phase 4 fields", () => {
+  it("outputs normalizedKey per column (defaults to snake_case key)", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [
+          makeColumnStat({ name: "First Name", sampleValues: ["Alice"] }),
+          makeColumnStat({ name: "email", sampleValues: ["a@b.com"] }),
+        ],
+      }),
+      existingColumns: [],
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].normalizedKey).toBe("first_name");
+    expect(result.columns[1].normalizedKey).toBe("email");
+  });
+
+  it("outputs normalizedKey matching existing column key on match", () => {
+    const existing: ExistingColumnDefinition[] = [
+      { id: "col-1", key: "user_email", label: "Email", type: "string" },
+    ];
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "Email", sampleValues: ["a@b.com"] })],
+      }),
+      existingColumns: existing,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].normalizedKey).toBe("user_email");
+  });
+
+  it("outputs required, defaultValue, format, enumValues at mapping level", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "status", sampleValues: ["active"] })],
+      }),
+      existingColumns: [],
+      priorRecommendations: [],
+    });
+
+    const col = result.columns[0];
+    expect(col).toHaveProperty("required");
+    expect(col).toHaveProperty("defaultValue", null);
+    expect(col).toHaveProperty("enumValues", null);
+    expect(col).toHaveProperty("format");
+  });
+
+  it("does NOT return currency type — returns number instead", () => {
+    // Currency-like values (with $ prefix stripped by CSV parser) are just numbers
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "price", sampleValues: ["9.99", "14.50", "100.00"] })],
+      }),
+      existingColumns: [],
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].type).toBe("number");
+    expect(result.columns[0].type).not.toBe("currency");
+  });
+
+  it("outputs canonicalFormat suggestions based on detected type", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [
+          makeColumnStat({ name: "created", sampleValues: ["2024-01-15", "2024-02-20"] }),
+          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.org"] }),
+          makeColumnStat({ name: "name", sampleValues: ["Alice", "Bob"] }),
+        ],
+      }),
+      existingColumns: [],
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].canonicalFormat).toBe("YYYY-MM-DD");
+    expect(result.columns[1].canonicalFormat).toBe("lowercase");
+    expect(result.columns[2].canonicalFormat).toBeNull();
+  });
+
+  it("outputs validationPattern for detectable patterns", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [
+          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.org"] }),
+          makeColumnStat({ name: "name", sampleValues: ["Alice", "Bob"] }),
+        ],
+      }),
+      existingColumns: [],
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].validationPattern).toBe("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    expect(result.columns[1].validationPattern).toBeNull();
   });
 });

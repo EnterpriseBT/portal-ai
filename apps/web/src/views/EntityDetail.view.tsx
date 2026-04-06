@@ -3,7 +3,7 @@ import React, { useCallback, useState } from "react";
 import type {
   ConnectorEntityGetResponsePayload,
   ConnectorEntityPatchRequestBody,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
   EntityRecordCountResponsePayload,
@@ -186,7 +186,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
 
   // Column definitions captured from the first successful API response.
   // Used to populate the advanced filter builder and validate persisted filters.
-  const [columnDefs, setColumnDefs] = React.useState<ColumnDefinitionSummary[]>(
+  const [columnDefs, setColumnDefs] = React.useState<ResolvedColumn[]>(
     []
   );
 

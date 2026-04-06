@@ -36,7 +36,7 @@ import type {
   FilterCondition,
   FilterOperator,
   FilterCombinator,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import type { ColumnDataType } from "@portalai/core/models";
 
@@ -47,7 +47,7 @@ import { getOperatorLabel, createDefaultCondition, createEmptyGroup } from "../u
 export interface AdvancedFilterBuilderProps {
   expression: FilterExpression;
   onChange: (expression: FilterExpression) => void;
-  columnDefinitions: ColumnDefinitionSummary[];
+  columnDefinitions: ResolvedColumn[];
 }
 
 // ── Main component ──────────────────────────────────────────────────
@@ -95,7 +95,7 @@ interface FilterGroupEditorProps {
   group: FilterGroup;
   onChange: (group: FilterGroup) => void;
   onRemove?: () => void;
-  columnDefinitions: ColumnDefinitionSummary[];
+  columnDefinitions: ResolvedColumn[];
   depth: number;
   canAddCondition: boolean;
   canAddGroup: boolean;
@@ -241,7 +241,7 @@ interface FilterConditionEditorProps {
   condition: FilterCondition;
   onChange: (condition: FilterCondition) => void;
   onRemove: () => void;
-  columnDefinitions: ColumnDefinitionSummary[];
+  columnDefinitions: ResolvedColumn[];
 }
 
 const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({

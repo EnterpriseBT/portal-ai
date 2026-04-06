@@ -2,7 +2,7 @@ import React, { useState } from "react";
 
 import type {
   EntityRecordPatchRequestBody,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 
@@ -20,7 +20,7 @@ import {
 export interface EditEntityRecordDialogProps {
   open: boolean;
   onClose: () => void;
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   normalizedData: Record<string, unknown>;
   onSubmit: (body: EntityRecordPatchRequestBody) => void;
   isPending?: boolean;
@@ -28,7 +28,7 @@ export interface EditEntityRecordDialogProps {
 }
 
 const EditForm: React.FC<{
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   normalizedData: Record<string, unknown>;
   onSubmit: (body: EntityRecordPatchRequestBody) => void;
   onClose: () => void;

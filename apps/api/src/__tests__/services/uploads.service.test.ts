@@ -648,6 +648,217 @@ describe("UploadsService", () => {
     });
   });
 
+  describe("confirm() — Phase 4: new field ownership", () => {
+    it("should pass validationPattern and validationMessage to column definition upsert", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Email",
+                key: "email",
+                label: "Email",
+                type: "string",
+                format: "email",
+                isPrimaryKey: false,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                validationPattern: "^[^@]+@[^@]+\\.[^@]+$",
+                validationMessage: "Must be a valid email address",
+                canonicalFormat: "lowercase",
+              },
+            ],
+          },
+        ],
+      });
+
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: "email",
+          validationPattern: "^[^@]+@[^@]+\\.[^@]+$",
+          validationMessage: "Must be a valid email address",
+          canonicalFormat: "lowercase",
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("should default validationPattern and validationMessage to null when not provided", async () => {
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          validationPattern: null,
+          validationMessage: null,
+          canonicalFormat: null,
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("should NOT pass required, defaultValue, format, or enumValues to column definition upsert", async () => {
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      const colDefCall = mockColumnDefinitionsUpsertByKey.mock.calls[0]![0] as Record<string, unknown>;
+      expect(colDefCall).not.toHaveProperty("required");
+      expect(colDefCall).not.toHaveProperty("defaultValue");
+      expect(colDefCall).not.toHaveProperty("enumValues");
+      // 'format' should not be on column def — it belongs on field mapping
+      // (the column def schema doesn't have a 'format' field)
+    });
+
+    it("should set normalizedKey on field mapping, defaulting to column key", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Name",
+                key: "full_name",
+                label: "Full Name",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                // no normalizedKey — should default to key "full_name"
+              },
+            ],
+          },
+        ],
+      });
+
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          normalizedKey: "full_name",
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("should use explicit normalizedKey when provided", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Name",
+                key: "full_name",
+                label: "Full Name",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                normalizedKey: "contact_name",
+              },
+            ],
+          },
+        ],
+      });
+
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          normalizedKey: "contact_name",
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("should pass required, defaultValue, format, and enumValues to field mapping upsert", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Status",
+                key: "status",
+                label: "Status",
+                type: "enum",
+                format: null,
+                isPrimaryKey: false,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                normalizedKey: "status",
+                defaultValue: "active",
+                enumValues: ["active", "inactive", "pending"],
+              },
+            ],
+          },
+        ],
+      });
+
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          required: true,
+          defaultValue: "active",
+          format: null,
+          enumValues: ["active", "inactive", "pending"],
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("should default defaultValue and enumValues to null when not provided", async () => {
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      // First column in default body: Name (no defaultValue/enumValues)
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceField: "Name",
+          defaultValue: null,
+          enumValues: null,
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("should not accept currency type in column definitions", async () => {
+      // ConfirmColumnSchema type enum does not include "currency" —
+      // Zod parse will strip it. Verify the schema rejects it.
+      const { ConfirmColumnSchema } = await import("@portalai/core/contracts");
+      const result = ConfirmColumnSchema.safeParse({
+        sourceField: "Price",
+        key: "price",
+        label: "Price",
+        type: "currency",
+        format: null,
+        isPrimaryKey: false,
+        required: false,
+        action: "create_new",
+        existingColumnDefinitionId: null,
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe("confirm() — error paths", () => {
     it("should throw 404 when job not found", async () => {
       mockJobsFindById.mockResolvedValue(undefined);

@@ -57,6 +57,11 @@ export const ConfirmColumnSchema = z.object({
   action: ColumnRecommendationActionEnum,
   existingColumnDefinitionId: z.string().nullable(),
   normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
+  defaultValue: z.string().nullable().optional(),
+  enumValues: z.array(z.string()).nullable().optional(),
+  // Column-definition-level fields
+  validationPattern: z.string().nullable().optional(),
+  validationMessage: z.string().nullable().optional(),
   canonicalFormat: z.string().nullable().optional(),
   // Reference fields (populated when type === "reference")
   refEntityKey: z.string().nullable().optional(),

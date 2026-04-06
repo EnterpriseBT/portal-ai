@@ -2,7 +2,7 @@ import React, { useState } from "react";
 
 import type {
   EntityRecordCreateRequestBody,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 
@@ -20,14 +20,14 @@ import {
 export interface CreateEntityRecordDialogProps {
   open: boolean;
   onClose: () => void;
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   onSubmit: (body: EntityRecordCreateRequestBody) => void;
   isPending?: boolean;
   serverError?: ServerError | null;
 }
 
 const CreateForm: React.FC<{
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   onSubmit: (body: EntityRecordCreateRequestBody) => void;
   onClose: () => void;
   isPending?: boolean;

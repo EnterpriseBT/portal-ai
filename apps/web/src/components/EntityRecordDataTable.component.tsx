@@ -4,7 +4,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import type {
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import { SORTABLE_COLUMN_TYPES } from "@portalai/core/models";
 import { Stack } from "@portalai/core/ui";
@@ -42,7 +42,7 @@ export const EntityRecordDataTable = (props: EntityRecordDataTableProps) => {
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function toDataTableColumns(
-  columns: ColumnDefinitionSummary[]
+  columns: ResolvedColumn[]
 ): DataTableColumn[] {
   return columns.map((col) => {
     if (
@@ -78,7 +78,7 @@ function toDataTableColumns(
 export interface EntityRecordDataTableUIProps {
   connectorEntityId: string;
   rows: Record<string, unknown>[];
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   source: "cache" | "live";
   sortColumn?: string;
   sortDirection?: "asc" | "desc";

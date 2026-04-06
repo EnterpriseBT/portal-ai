@@ -155,6 +155,7 @@ describe("FieldMappingsRepository Integration Tests", () => {
     overrides?: Partial<FieldMappingInsert>
   ): FieldMappingInsert {
     const now = Date.now();
+    const uniqueSuffix = generateId().replace(/-/g, "").slice(0, 8);
     return {
       id: generateId(),
       organizationId: orgId,
@@ -162,7 +163,7 @@ describe("FieldMappingsRepository Integration Tests", () => {
       columnDefinitionId,
       sourceField: "source_name",
       isPrimaryKey: false,
-      normalizedKey: "source_name",
+      normalizedKey: `nk_${uniqueSuffix}`,
       required: false,
       defaultValue: null,
       format: null,

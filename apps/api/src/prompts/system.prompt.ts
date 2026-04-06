@@ -94,11 +94,25 @@ export function buildSystemPrompt(stationContext: StationContext): string {
     );
     lines.push("");
     lines.push(
+      "Each field mapping has a `normalizedKey` — this is the key used in the record's " +
+      "`normalizedData` JSONB object and may differ from the column definition's `key`. " +
+      "When reading or writing record data, use the `normalizedKey` from the field mapping."
+    );
+    lines.push("");
+    lines.push(
+      "Column definitions define the data type and optional validation: " +
+      "`validationPattern` (regex), `validationMessage`, and `canonicalFormat` (display/storage format). " +
+      "Field mappings define per-source attributes: `normalizedKey`, `required`, `defaultValue`, `format`, and `enumValues`. " +
+      "Available types: string, number, boolean, date, datetime, enum, json, array, reference, reference-array. " +
+      "There is no `currency` type — use `number` with `canonicalFormat` (e.g. \"USD\") instead."
+    );
+    lines.push("");
+    lines.push(
       "Metadata tables are available via sql_query: " +
       "`_connector_instances` (id, name, status, connector_definition_id), " +
       "`_connector_entities` (id, key, label, connector_instance_id), " +
-      "`_column_definitions` (id, key, label, type, required, description), " +
-      "`_field_mappings` (id, connector_entity_id, column_definition_id, source_field, is_primary_key). " +
+      "`_column_definitions` (id, key, label, type, description, validation_pattern, validation_message, canonical_format), " +
+      "`_field_mappings` (id, connector_entity_id, column_definition_id, source_field, is_primary_key, normalized_key, required, default_value, format, enum_values). " +
       "Use these to look up IDs before calling write tools. " +
       "To add a new field mapping, either find an existing column definition " +
       "from `_column_definitions` or create one with column_definition_create, " +

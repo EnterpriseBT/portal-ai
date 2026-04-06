@@ -5,21 +5,21 @@ import React from "react";
 
 import { AdvancedFilterBuilderUI } from "../components/AdvancedFilterBuilder.component";
 
-import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { FilterExpression, ResolvedColumn } from "@portalai/core/contracts";
 
 // ── Sample data ─────────────────────────────────────────────────────
 
-const sampleColumns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "signup_date", label: "Signup Date", type: "date", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "last_login", label: "Last Login", type: "datetime", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-  { key: "manager_id", label: "Manager", type: "reference", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+const sampleColumns: ResolvedColumn[] = [
+  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "email", normalizedKey: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "signup_date", normalizedKey: "signup_date", label: "Signup Date", type: "date", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "last_login", normalizedKey: "last_login", label: "Last Login", type: "datetime", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "status", normalizedKey: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "tags", normalizedKey: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "metadata", normalizedKey: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "manager_id", normalizedKey: "manager_id", label: "Manager", type: "reference", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
 ];
 
 const emptyExpression: FilterExpression = {

@@ -123,6 +123,46 @@ describe("buildSystemPrompt — entity management notes", () => {
     expect(prompt).toContain("field_mapping_create");
   });
 
+  it("documents normalizedKey concept", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["entity_management"] }),
+    );
+
+    expect(prompt).toContain("normalizedKey");
+    expect(prompt).toContain("normalizedData");
+  });
+
+  it("documents validationPattern and canonicalFormat on column definitions", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["entity_management"] }),
+    );
+
+    expect(prompt).toContain("validationPattern");
+    expect(prompt).toContain("canonicalFormat");
+    expect(prompt).toContain("validation_pattern");
+    expect(prompt).toContain("canonical_format");
+  });
+
+  it("documents field mapping attributes: required, defaultValue, format, enumValues", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["entity_management"] }),
+    );
+
+    expect(prompt).toContain("normalized_key");
+    expect(prompt).toContain("default_value");
+    expect(prompt).toContain("enum_values");
+    expect(prompt).toMatch(/field mappings define per-source attributes/i);
+  });
+
+  it("does not reference currency type", () => {
+    const prompt = buildSystemPrompt(
+      makeContext({ toolPacks: ["entity_management"] }),
+    );
+
+    expect(prompt).toContain("no `currency` type");
+    expect(prompt).not.toMatch(/\btype.*currency\b(?!.*no)/);
+  });
+
   it('omits "Entity Management Notes" when entity_management not in toolPacks', () => {
     const prompt = buildSystemPrompt(
       makeContext({ toolPacks: ["data_query"] }),

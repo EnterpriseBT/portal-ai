@@ -32,9 +32,9 @@ describe("EntityRecordDataTableUI", () => {
   const connectorEntityId = "test-entity-id";
 
   const columns = [
-    { key: "first_name", label: "First Name", type: "string" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-    { key: "email", label: "Email", type: "string" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
-    { key: "active", label: "Active", type: "boolean" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null },
+    { key: "first_name", normalizedKey: "first_name", label: "First Name", type: "string" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+    { key: "email", normalizedKey: "email", label: "Email", type: "string" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+    { key: "active", normalizedKey: "active", label: "Active", type: "boolean" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
   ];
 
   const rows = [
@@ -141,7 +141,7 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ data: { id: 1 } }]}
-        columns={[{ key: "data", label: "Data", type: "json" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null }]}
+        columns={[{ key: "data", normalizedKey: "data", label: "Data", type: "json" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
         source="cache"
       />
     );
@@ -154,7 +154,7 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ tags: ["a", "b"] }]}
-        columns={[{ key: "tags", label: "Tags", type: "array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null }]}
+        columns={[{ key: "tags", normalizedKey: "tags", label: "Tags", type: "array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
         source="cache"
       />
     );
@@ -167,7 +167,7 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ refs: ["id-1", "id-2"] }]}
-        columns={[{ key: "refs", label: "Refs", type: "reference-array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null }]}
+        columns={[{ key: "refs", normalizedKey: "refs", label: "Refs", type: "reference-array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
         source="cache"
       />
     );
@@ -211,7 +211,7 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ data: { id: 1 } }]}
-        columns={[{ key: "data", label: "Data", type: "json" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null }]}
+        columns={[{ key: "data", normalizedKey: "data", label: "Data", type: "json" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
         source="cache"
       />
     );
@@ -223,7 +223,7 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ refs: ["id-1"] }]}
-        columns={[{ key: "refs", label: "Refs", type: "reference-array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null }]}
+        columns={[{ key: "refs", normalizedKey: "refs", label: "Refs", type: "reference-array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
         source="cache"
       />
     );

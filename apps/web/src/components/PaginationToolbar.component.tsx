@@ -36,7 +36,7 @@ import {
 } from "@portalai/core/ui";
 import type { FetchPageParams, FetchPageResult, SelectOption } from "@portalai/core/ui";
 
-import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { FilterExpression, ResolvedColumn } from "@portalai/core/contracts";
 import {
   serializeFilterExpression,
   isFilterExpressionEmpty,
@@ -144,7 +144,7 @@ export interface UsePaginationConfig {
   /** Called whenever persisted state changes — use to save to storage. */
   onPersist?: (state: PaginationPersistedState) => void;
   /** Column definitions for the advanced filter builder. When provided, the builder UI is shown. */
-  columnDefinitions?: ColumnDefinitionSummary[];
+  columnDefinitions?: ResolvedColumn[];
 }
 
 export interface UsePaginationReturn {
@@ -456,7 +456,7 @@ export interface PaginationToolbarProps {
   /** Number of active advanced filter conditions. */
   advancedFilterConditionCount?: number;
   /** Column definitions for the advanced filter builder. */
-  columnDefinitions?: ColumnDefinitionSummary[];
+  columnDefinitions?: ResolvedColumn[];
 }
 
 export const PaginationToolbar = React.forwardRef<

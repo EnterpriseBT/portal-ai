@@ -107,11 +107,11 @@ export const FileUploadColumnRecommendationSchema = z.object({
   label: z.string(),
   /** Inferred data type. */
   type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array"]),
-  /** Optional format hint (e.g. "YYYY-MM-DD", "email", "url"). */
+  /** Optional format hint (e.g. "YYYY-MM-DD", "email", "url"). Mapping-level. */
   format: z.string().nullable(),
   /** Whether this column is a candidate primary key. */
   isPrimaryKey: z.boolean(),
-  /** Whether the column should be required. */
+  /** Whether the column should be required. Mapping-level. */
   required: z.boolean(),
   /** Match or create action. */
   action: ColumnRecommendationActionEnum,
@@ -121,6 +121,16 @@ export const FileUploadColumnRecommendationSchema = z.object({
   confidence: z.number().min(0).max(1),
   /** Sample values from the parsed data. */
   sampleValues: z.array(z.string()),
+  /** Key used in normalizedData — defaults to `key` if not provided. Mapping-level. */
+  normalizedKey: z.string().optional(),
+  /** Default fill value when source value is missing. Mapping-level. */
+  defaultValue: z.string().nullable().optional(),
+  /** Allowed values for enum-like columns. Mapping-level. */
+  enumValues: z.array(z.string()).nullable().optional(),
+  /** Regex validation pattern detected from sample values. Column-definition-level. */
+  validationPattern: z.string().nullable().optional(),
+  /** Display/storage format suggestion (e.g. "lowercase", "YYYY-MM-DD", "ISO8601"). Column-definition-level. */
+  canonicalFormat: z.string().nullable().optional(),
 });
 export type FileUploadColumnRecommendation = z.infer<typeof FileUploadColumnRecommendationSchema>;
 
