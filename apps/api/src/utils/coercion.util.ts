@@ -75,6 +75,19 @@ export function coerceBoolean(
   return { value: null, error: "Expected a boolean" };
 }
 
+/**
+ * Normalize a user/AI-supplied date format string to date-fns tokens.
+ * AI tools often emit moment.js conventions (YYYY, DD) which differ from
+ * date-fns unicode tokens (yyyy, dd).  Replacing them prevents date-fns
+ * from throwing RangeError on mixed week-year / calendar-date tokens.
+ */
+function normalizeDateFormat(fmt: string): string {
+  return fmt
+    .replace(/YYYY/g, "yyyy")
+    .replace(/YY/g, "yy")
+    .replace(/DD/g, "dd");
+}
+
 function parseDate(
   value: unknown,
   format?: string | null,
@@ -82,13 +95,14 @@ function parseDate(
   const str = String(value).trim();
   if (str === "") return null;
 
-  if (format) {
-    const parsed = utcDateFactory.fns.parse(str, format, new Date(0));
-    return utcDateFactory.fns.isValid(parsed) ? parsed : null;
-  }
-
-  // No format: try native parsing via DateFactory
   try {
+    if (format) {
+      const normalizedFormat = normalizeDateFormat(format);
+      const parsed = utcDateFactory.fns.parse(str, normalizedFormat, new Date(0));
+      return utcDateFactory.fns.isValid(parsed) ? parsed : null;
+    }
+
+    // No format: try native parsing via DateFactory
     const tzDate = utcDateFactory.toTZDate(str);
     return utcDateFactory.fns.isValid(tzDate) ? tzDate : null;
   } catch {

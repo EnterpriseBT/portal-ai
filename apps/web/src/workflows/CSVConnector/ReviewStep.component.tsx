@@ -76,11 +76,18 @@ const CompletionSummary: React.FC<{
                   {entity.fieldMappings.length} field mapping{entity.fieldMappings.length !== 1 ? "s" : ""} created
                 </Typography>
                 {entity.importResult && (
-                  <Typography variant="body2" color="text.secondary">
-                    {entity.importResult.created} record{entity.importResult.created !== 1 ? "s" : ""} imported
-                    {entity.importResult.updated > 0 && `, ${entity.importResult.updated} updated`}
-                    {entity.importResult.unchanged > 0 && `, ${entity.importResult.unchanged} unchanged`}
-                  </Typography>
+                  <>
+                    <Typography variant="body2" color="text.secondary">
+                      {entity.importResult.created} record{entity.importResult.created !== 1 ? "s" : ""} imported
+                      {entity.importResult.updated > 0 && `, ${entity.importResult.updated} updated`}
+                      {entity.importResult.unchanged > 0 && `, ${entity.importResult.unchanged} unchanged`}
+                    </Typography>
+                    {entity.importResult.invalid > 0 && (
+                      <Typography variant="body2" color="warning.main">
+                        {entity.importResult.invalid} row{entity.importResult.invalid !== 1 ? "s" : ""} skipped due to validation errors
+                      </Typography>
+                    )}
+                  </>
                 )}
               </Stack>
             </Box>

@@ -212,6 +212,27 @@ describe("coerceDate", () => {
       error: "Expected a valid date",
     });
   });
+
+  it("parses YYYY-MM-DD format (moment.js convention) without throwing", () => {
+    // AI tools emit moment.js tokens; YYYY must be normalised to yyyy before date-fns sees it
+    expect(coerceDate("2021-09-05", "YYYY-MM-DD")).toEqual({ value: "2021-09-05" });
+  });
+
+  it("parses DD/MM/YYYY format (moment.js convention) without throwing", () => {
+    expect(coerceDate("05/09/2021", "DD/MM/YYYY")).toEqual({ value: "2021-09-05" });
+  });
+
+  it("parses mixed-case format MM/DD/YYYY without throwing", () => {
+    expect(coerceDate("09/05/2021", "MM/DD/YYYY")).toEqual({ value: "2021-09-05" });
+  });
+
+  it("returns date error gracefully for a completely malformed format string", () => {
+    // Should not throw even if date-fns cannot interpret the format at all
+    expect(() => coerceDate("2021-09-05", "!!!invalid!!!")).not.toThrow();
+    const result = coerceDate("2021-09-05", "!!!invalid!!!");
+    expect(result.value).toBeNull();
+    expect(result.error).toBe("Expected a valid date");
+  });
 });
 
 // ── coerceDatetime ──────────────────────────────────────────────────
@@ -248,6 +269,19 @@ describe("coerceDatetime", () => {
       value: null,
       error: "Expected a valid datetime",
     });
+  });
+
+  it("parses YYYY-MM-DD HH:mm:ss format (moment.js convention) without throwing", () => {
+    const result = coerceDatetime("2021-09-05 14:30:00", "YYYY-MM-DD HH:mm:ss");
+    expect(result.error).toBeUndefined();
+    expect((result.value as string).startsWith("2021-09-05T")).toBe(true);
+  });
+
+  it("returns datetime error gracefully for a completely malformed format string", () => {
+    expect(() => coerceDatetime("2021-09-05", "!!!invalid!!!")).not.toThrow();
+    const result = coerceDatetime("2021-09-05", "!!!invalid!!!");
+    expect(result.value).toBeNull();
+    expect(result.error).toBe("Expected a valid datetime");
   });
 });
 

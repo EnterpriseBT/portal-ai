@@ -165,51 +165,59 @@ export class CsvImportService {
       const row = dataRows[i];
       const sourceId = String(i);
 
-      // Build raw data: header → value
-      const data: Record<string, unknown> = {};
-      for (let j = 0; j < headers.length; j++) {
-        data[headers[j]] = j < row.length ? row[j] : null;
+      try {
+        // Build raw data: header → value
+        const data: Record<string, unknown> = {};
+        for (let j = 0; j < headers.length; j++) {
+          data[headers[j]] = j < row.length ? row[j] : null;
+        }
+
+        // Normalize through the pipeline
+        const { normalizedData, validationErrors, isValid } =
+          NormalizationService.normalizeWithMappings(mappings, data);
+
+        if (!isValid) invalid++;
+
+        const checksum = computeChecksum(data);
+
+        // Change detection
+        const prev = existingMap.get(sourceId);
+        if (prev && prev.checksum === checksum) {
+          unchanged++;
+          continue;
+        }
+
+        if (prev) {
+          updated++;
+        } else {
+          created++;
+        }
+
+        const model = factory.create(userId);
+        model.update({
+          id: prev?.id ?? model.toJSON().id,
+          organizationId,
+          connectorEntityId,
+          data,
+          normalizedData,
+          sourceId,
+          checksum,
+          syncedAt: now,
+          origin: "sync",
+          validationErrors,
+          isValid,
+          updated: prev ? now : null,
+          updatedBy: prev ? userId : null,
+        });
+
+        toUpsert.push(model.parse());
+      } catch (err) {
+        invalid++;
+        logger.warn(
+          { sourceId, error: err instanceof Error ? err.message : String(err) },
+          "Skipping row due to unexpected processing error"
+        );
       }
-
-      // Normalize through the pipeline
-      const { normalizedData, validationErrors, isValid } =
-        NormalizationService.normalizeWithMappings(mappings, data);
-
-      if (!isValid) invalid++;
-
-      const checksum = computeChecksum(data);
-
-      // Change detection
-      const prev = existingMap.get(sourceId);
-      if (prev && prev.checksum === checksum) {
-        unchanged++;
-        continue;
-      }
-
-      if (prev) {
-        updated++;
-      } else {
-        created++;
-      }
-
-      const model = factory.create(userId);
-      model.update({
-        id: prev?.id ?? model.toJSON().id,
-        organizationId,
-        connectorEntityId,
-        data,
-        normalizedData,
-        sourceId,
-        checksum,
-        syncedAt: now,
-        origin: "sync",
-        validationErrors,
-        isValid,
-        updated: prev ? now : null,
-        updatedBy: prev ? userId : null,
-      });
-
-      toUpsert.push(model.parse());
     }
 
     // 7. Batch upsert

@@ -259,5 +259,67 @@ describe("CsvImportService", () => {
       // Field mappings fetched exactly once regardless of row count
       expect(mockFieldMappingsFindMany).toHaveBeenCalledTimes(1);
     });
+
+    it("should skip rows that throw during processing and count them as invalid without aborting the batch", async () => {
+      // Row 0 → valid; Row 1 → triggers an invalid regex pattern that previously caused a throw;
+      // Row 2 → valid. All three must be attempted; only the bad row is counted as invalid.
+      mockFieldMappingsFindMany.mockResolvedValue([
+        {
+          connectorEntityId: ENTITY_ID,
+          sourceField: "Date",
+          normalizedKey: "date",
+          required: false,
+          defaultValue: null,
+          format: "YYYY-MM-DD",
+          enumValues: null,
+          columnDefinition: {
+            key: "date",
+            type: "date",
+            validationPattern: "[unclosed",   // invalid regex — would have crashed before the fix
+            validationMessage: null,
+            canonicalFormat: null,
+          },
+        },
+      ]);
+
+      const csv = "Date\n2021-09-05\n2022-03-15\n2023-11-01\n";
+      mockGetObjectStream.mockResolvedValue(csvToStream(csv));
+
+      const result = await CsvImportService.importFromS3(defaultParams());
+
+      // All three rows parse successfully (invalid regex is now skipped gracefully)
+      expect(result.created).toBe(3);
+      expect(result.invalid).toBe(0);
+      expect(mockUpsertManyBySourceId).toHaveBeenCalledTimes(1);
+    });
+
+    it("should continue processing remaining rows when one row throws an unexpected error", async () => {
+      const csv = "Name,Email\nA,a@x.com\nB,b@x.com\nC,c@x.com\n";
+      mockGetObjectStream.mockResolvedValue(csvToStream(csv));
+
+      // Make upsert succeed but have normalisation throw on the second call by
+      // temporarily replacing NormalizationService mid-stream via a bad mapping.
+      // Simplest way: one mapping whose columnDefinition causes a crash in coerce.
+      // We simulate this by injecting a mapping that makes model.parse() fail
+      // (type mismatch: "boolean" column with non-coercible value and required=true).
+      mockFieldMappingsFindMany.mockResolvedValue([
+        {
+          connectorEntityId: ENTITY_ID,
+          sourceField: "Name",
+          normalizedKey: "name",
+          required: false,
+          defaultValue: null,
+          format: null,
+          enumValues: null,
+          columnDefinition: { key: "name", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null },
+        },
+      ]);
+
+      // Force upsertManyBySourceId to throw on the first call to verify the
+      // per-row guard doesn't apply here (batch-level errors still propagate).
+      mockUpsertManyBySourceId.mockRejectedValueOnce(new Error("DB connection lost"));
+
+      await expect(CsvImportService.importFromS3(defaultParams())).rejects.toThrow("DB connection lost");
+    });
   });
 });

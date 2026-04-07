@@ -62,6 +62,16 @@ describe("validatePattern", () => {
   it("returns null when custom message is null and value matches", () => {
     expect(validatePattern("123", "^\\d+$", null)).toBeNull();
   });
+
+  it("returns null for an invalid regex pattern without throwing", () => {
+    // AI-generated patterns can be syntactically invalid; should never crash the import
+    expect(() => validatePattern("value", "[unclosed", null)).not.toThrow();
+    expect(validatePattern("value", "[unclosed", null)).toBeNull();
+  });
+
+  it("returns null for another invalid regex pattern without throwing", () => {
+    expect(validatePattern("value", "(?P<bad>invalid)", null)).toBeNull();
+  });
 });
 
 // ── validateEnum ────────────────────────────────────────────────────

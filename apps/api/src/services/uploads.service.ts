@@ -267,8 +267,8 @@ export class UploadsService {
         // Priority: pre-resolved ID from client → cache (same batch) → DB lookup.
         const refColumnDefinitionId = col.type === "reference"
           ? await UploadsService.resolveRefColumnDefinitionId(
-              organizationId, col.refColumnKey, col.refColumnDefinitionId, columnDefCache, tx
-            )
+            organizationId, col.refColumnKey, col.refColumnDefinitionId, columnDefCache, tx
+          )
           : null;
 
         // Upsert field mapping (ref metadata stored here, not on the column def)

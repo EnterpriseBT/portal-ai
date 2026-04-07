@@ -98,7 +98,7 @@ export class NormalizationService {
       let finalValue = coerced.value;
 
       // 5. Enum validation
-      if (mapping.enumValues != null) {
+      if (mapping.enumValues != null && cd.type === 'enum') {
         const enumError = validateEnum(finalValue, mapping.enumValues as string[]);
         if (enumError) {
           errors.push({ field: key, error: enumError });
