@@ -10,7 +10,6 @@ import type {
 } from "@portalai/core/contracts";
 import type { EntityGroup } from "@portalai/core/models";
 import { Box, Icon, IconName, MetadataList, PageGrid, PageGridItem, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
-import Alert from "@mui/material/Alert";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";

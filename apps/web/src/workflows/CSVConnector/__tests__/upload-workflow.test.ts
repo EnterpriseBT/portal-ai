@@ -81,21 +81,16 @@ const MOCK_RECOMMENDATIONS = {
       sourceFileName: "contacts.csv",
       columns: [
         {
-          action: "match_existing" as const,
           confidence: 0.95,
           existingColumnDefinitionId: "col_001",
-          recommended: {
-            key: "email",
-            label: "Email",
-            type: "string",
-            description: "Contact email",
-          },
           sourceField: "Email Address",
           isPrimaryKeyCandidate: true,
           sampleValues: ["alice@example.com", "bob@test.org"],
+          normalizedKey: "email_address",
           required: true,
           format: "email",
           enumValues: null,
+          defaultValue: null,
         },
       ],
     },
@@ -390,7 +385,7 @@ describe("useUploadWorkflow", () => {
       expect(result.current.recommendations?.entities[0].connectorEntity.label).toBe("People");
     });
 
-    it("updateColumn overrides AI-recommended column", () => {
+    it("updateColumn overrides AI-recommended column via shallow merge", () => {
       mockStreamState = createMockStreamState({
         status: "awaiting_confirmation",
         result: { recommendations: MOCK_RECOMMENDATIONS },
@@ -400,13 +395,13 @@ describe("useUploadWorkflow", () => {
 
       act(() => {
         result.current.updateColumn(0, 0, {
-          action: "create_new",
-          confidence: 0,
+          existingColumnDefinitionId: "col_new",
+          confidence: 0.5,
         });
       });
 
-      expect(result.current.recommendations?.entities[0].columns[0].action).toBe("create_new");
-      expect(result.current.recommendations?.entities[0].columns[0].confidence).toBe(0);
+      expect(result.current.recommendations?.entities[0].columns[0].existingColumnDefinitionId).toBe("col_new");
+      expect(result.current.recommendations?.entities[0].columns[0].confidence).toBe(0.5);
       // Other fields should remain from original
       expect(result.current.recommendations?.entities[0].columns[0].sourceField).toBe("Email Address");
     });
@@ -581,8 +576,8 @@ describe("useUploadWorkflow", () => {
       expect(body.entities[0].entityLabel).toBe("Contacts");
       expect(body.entities[0].columns).toHaveLength(1);
       expect(body.entities[0].columns[0].sourceField).toBe("Email Address");
-      expect(body.entities[0].columns[0].key).toBe("email");
-      expect(body.entities[0].columns[0].action).toBe("match_existing");
+      expect(body.entities[0].columns[0].existingColumnDefinitionId).toBe("col_001");
+      expect(body.entities[0].columns[0].normalizedKey).toBe("email_address");
     });
 
     it("uses edited recommendations when user has made changes", async () => {
@@ -759,7 +754,7 @@ describe("useUploadWorkflow", () => {
   });
 
   describe("Reference column fields", () => {
-    it("updateColumn persists ref fields when type is changed to reference", () => {
+    it("updateColumn persists ref fields", () => {
       mockStreamState = createMockStreamState({
         status: "awaiting_confirmation",
         result: { recommendations: MOCK_RECOMMENDATIONS },
@@ -769,17 +764,12 @@ describe("useUploadWorkflow", () => {
 
       act(() => {
         result.current.updateColumn(0, 0, {
-          recommended: {
-            ...MOCK_RECOMMENDATIONS.entities[0].columns[0].recommended,
-            type: "reference",
-            refEntityKey: "roles",
-            refColumnKey: "id",
-          },
+          refEntityKey: "roles",
+          refColumnKey: "id",
         });
       });
 
-      const col = result.current.recommendations?.entities[0].columns[0].recommended;
-      expect(col?.type).toBe("reference");
+      const col = result.current.recommendations?.entities[0].columns[0];
       expect(col?.refEntityKey).toBe("roles");
       expect(col?.refColumnKey).toBe("id");
     });
@@ -794,16 +784,12 @@ describe("useUploadWorkflow", () => {
 
       act(() => {
         result.current.updateColumn(0, 0, {
-          recommended: {
-            ...MOCK_RECOMMENDATIONS.entities[0].columns[0].recommended,
-            type: "reference",
-            refEntityKey: "roles",
-            refColumnDefinitionId: "coldef_roles_id",
-          },
+          refEntityKey: "roles",
+          refColumnDefinitionId: "coldef_roles_id",
         });
       });
 
-      const col = result.current.recommendations?.entities[0].columns[0].recommended;
+      const col = result.current.recommendations?.entities[0].columns[0];
       expect(col?.refColumnDefinitionId).toBe("coldef_roles_id");
     });
 
@@ -824,12 +810,8 @@ describe("useUploadWorkflow", () => {
 
       act(() => {
         result.current.updateColumn(0, 0, {
-          recommended: {
-            ...MOCK_RECOMMENDATIONS.entities[0].columns[0].recommended,
-            type: "reference",
-            refEntityKey: "roles",
-            refColumnKey: "id",
-          },
+          refEntityKey: "roles",
+          refColumnKey: "id",
         });
       });
 
@@ -841,13 +823,12 @@ describe("useUploadWorkflow", () => {
         (mockFetchWithAuth.mock.calls[0] as [string, RequestInit])[1].body as string,
       );
       const col = body.entities[0].columns[0];
-      expect(col.type).toBe("reference");
       expect(col.refEntityKey).toBe("roles");
       expect(col.refColumnKey).toBe("id");
       expect(col.refColumnDefinitionId).toBeNull();
     });
 
-    it("confirm() sends null ref fields when column is not a reference", async () => {
+    it("confirm() sends null ref fields when column has no ref fields set", async () => {
       mockFileUploadState = createMockFileUploadState({
         phase: "done",
         jobId: "job_123",
@@ -873,51 +854,6 @@ describe("useUploadWorkflow", () => {
       expect(col.refEntityKey).toBeNull();
       expect(col.refColumnKey).toBeNull();
       expect(col.refColumnDefinitionId).toBeNull();
-    });
-
-    it("mapBackendRecommendations carries over ref fields provided by the AI", () => {
-      const backendRecs = {
-        connectorInstanceName: "AI Import",
-        entities: [
-          {
-            entityKey: "users",
-            entityLabel: "Users",
-            sourceFileName: "users.csv",
-            columns: [
-              {
-                sourceField: "role_id",
-                key: "role_id",
-                label: "Role ID",
-                type: "reference",
-                format: null,
-                isPrimaryKey: false,
-                required: true,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                confidence: 0.9,
-                sampleValues: ["1", "2"],
-                refEntityKey: "roles",
-                refColumnKey: "id",
-                refColumnDefinitionId: null,
-                enumValues: null,
-              },
-            ],
-          },
-        ],
-      };
-
-      mockStreamState = createMockStreamState({
-        status: "awaiting_confirmation",
-        result: { recommendations: backendRecs },
-      });
-
-      const { result } = renderHook(() => useUploadWorkflow());
-
-      const col = result.current.recommendations?.entities[0].columns[0].recommended;
-      expect(col?.type).toBe("reference");
-      expect(col?.refEntityKey).toBe("roles");
-      expect(col?.refColumnKey).toBe("id");
-      expect(col?.refColumnDefinitionId).toBeNull();
     });
   });
 

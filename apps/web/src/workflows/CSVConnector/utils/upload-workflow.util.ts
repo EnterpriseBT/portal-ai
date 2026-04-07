@@ -20,22 +20,8 @@ export const WORKFLOW_STEPS = [
 ] as const;
 
 export interface RecommendedColumn {
-  action: "match_existing" | "create_new";
   confidence: number;
-  existingColumnDefinitionId: string | null;
-  /** Column-definition-level recommendation. */
-  recommended: {
-    key: string;
-    label: string;
-    type: string;
-    description?: string | null;
-    validationPattern?: string | null;
-    validationMessage?: string | null;
-    canonicalFormat?: string | null;
-    refEntityKey?: string | null;
-    refColumnKey?: string | null;
-    refColumnDefinitionId?: string | null;
-  };
+  existingColumnDefinitionId: string;
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
   sampleValues: string[];
@@ -45,6 +31,10 @@ export interface RecommendedColumn {
   defaultValue?: string | null;
   format?: string | null;
   enumValues?: string[] | null;
+  /** Reference fields. */
+  refEntityKey?: string | null;
+  refColumnKey?: string | null;
+  refColumnDefinitionId?: string | null;
 }
 
 export interface RecommendedEntity {
@@ -93,10 +83,7 @@ export interface WorkflowState {
   isCancelling: boolean;
 }
 
-/** Column update where `recommended` can be a partial — fields are merged, not replaced. */
-export type RecommendedColumnUpdate = Omit<Partial<RecommendedColumn>, "recommended"> & {
-  recommended?: Partial<RecommendedColumn["recommended"]>;
-};
+export type RecommendedColumnUpdate = Partial<RecommendedColumn>;
 
 export interface UseUploadWorkflowReturn extends WorkflowState {
   addFiles: (newFiles: File[]) => void;
@@ -126,28 +113,16 @@ interface BackendRecommendation {
     sourceFileName: string;
     columns: Array<{
       sourceField: string;
-      key: string;
-      label: string;
-      type: string;
-      isPrimaryKey: boolean;
-      action: "match_existing" | "create_new";
-      existingColumnDefinitionId: string | null;
+      existingColumnDefinitionId: string;
       confidence: number;
       sampleValues: string[];
-      // Column-definition-level
-      validationPattern?: string | null;
-      validationMessage?: string | null;
-      canonicalFormat?: string | null;
+      isPrimaryKey: boolean;
       // Field-mapping-level
       normalizedKey?: string;
       required?: boolean;
       defaultValue?: string | null;
       format?: string | null;
       enumValues?: string[] | null;
-      // Reference fields
-      refEntityKey?: string | null;
-      refColumnKey?: string | null;
-      refColumnDefinitionId?: string | null;
     }>;
   }>;
 }
@@ -163,24 +138,12 @@ function mapBackendRecommendations(backend: BackendRecommendation): Recommendati
       connectorEntity: { key: entity.entityKey, label: entity.entityLabel },
       sourceFileName: entity.sourceFileName,
       columns: entity.columns.map((col) => ({
-        action: col.action,
         confidence: col.confidence,
         existingColumnDefinitionId: col.existingColumnDefinitionId,
-        recommended: {
-          key: col.key,
-          label: col.label,
-          type: col.type,
-          validationPattern: col.validationPattern ?? null,
-          validationMessage: col.validationMessage ?? null,
-          canonicalFormat: col.canonicalFormat ?? null,
-          refEntityKey: col.refEntityKey ?? null,
-          refColumnKey: col.refColumnKey ?? null,
-          refColumnDefinitionId: col.refColumnDefinitionId ?? null,
-        },
         sourceField: col.sourceField,
         isPrimaryKeyCandidate: col.isPrimaryKey,
         sampleValues: col.sampleValues,
-        normalizedKey: col.normalizedKey ?? col.key,
+        normalizedKey: col.normalizedKey ?? col.sourceField,
         required: col.required ?? false,
         defaultValue: col.defaultValue ?? null,
         format: col.format ?? null,
@@ -329,12 +292,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
         if (!base) return prev;
         const entities = [...base.entities];
         const columns = [...entities[entityIndex].columns];
-        const existing = columns[columnIndex];
-        // Merge `recommended` partially so callers don't need to spread the full object
-        const merged = updates.recommended
-          ? { ...existing, ...updates, recommended: { ...existing.recommended, ...updates.recommended } }
-          : { ...existing, ...updates };
-        columns[columnIndex] = merged as RecommendedColumn;
+        columns[columnIndex] = { ...columns[columnIndex], ...updates };
         entities[entityIndex] = { ...entities[entityIndex], columns };
         return { ...base, entities };
       });
@@ -369,26 +327,16 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
         sourceFileName: entity.sourceFileName,
         columns: entity.columns.map((col) => ({
           sourceField: col.sourceField,
-          key: col.recommended.key,
-          label: col.recommended.label,
-          type: col.recommended.type as ConfirmRequestBody["entities"][number]["columns"][number]["type"],
-          isPrimaryKey: col.isPrimaryKeyCandidate,
-          action: col.action,
           existingColumnDefinitionId: col.existingColumnDefinitionId,
-          // Field-mapping-level
-          normalizedKey: col.normalizedKey ?? col.recommended.key,
+          normalizedKey: col.normalizedKey ?? col.sourceField,
+          isPrimaryKey: col.isPrimaryKeyCandidate,
           required: col.required ?? false,
-          defaultValue: col.defaultValue ?? null,
           format: col.format ?? null,
+          defaultValue: col.defaultValue ?? null,
           enumValues: col.enumValues ?? null,
-          // Column-definition-level
-          validationPattern: col.recommended.validationPattern ?? null,
-          validationMessage: col.recommended.validationMessage ?? null,
-          canonicalFormat: col.recommended.canonicalFormat ?? null,
-          // Reference fields
-          refEntityKey: col.recommended.refEntityKey ?? null,
-          refColumnKey: col.recommended.refColumnKey ?? null,
-          refColumnDefinitionId: col.recommended.refColumnDefinitionId ?? null,
+          refEntityKey: col.refEntityKey ?? null,
+          refColumnKey: col.refColumnKey ?? null,
+          refColumnDefinitionId: col.refColumnDefinitionId ?? null,
         })),
       })),
     };

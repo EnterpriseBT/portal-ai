@@ -27,7 +27,8 @@
       "Bash(NODE_OPTIONS='--experimental-vm-modules --import tsx/esm --max-old-space-size=4096' jest --config jest.integration.config.js --runInBand --testPathPattern='revalidation' --testNamePattern='allows mutations when no revalidation')",
       "Bash(npx NODE_OPTIONS='--experimental-vm-modules --import tsx/esm' jest --config jest.integration.config.js --runInBand --testPathPattern='revalidation' --verbose)",
       "Bash(NODE_OPTIONS='--experimental-vm-modules --import tsx/esm --max-old-space-size=4096' npx jest --config jest.integration.config.js --runInBand --testPathPattern='revalidation' --testNamePattern='allows mutations when no')",
-      "Bash(NODE_OPTIONS='--experimental-vm-modules --import tsx/esm --max-old-space-size=4096' npx jest --config jest.integration.config.js --runInBand --testPathPattern='revalidation' --testNamePattern='allows mutations when no' --verbose)"
+      "Bash(NODE_OPTIONS='--experimental-vm-modules --import tsx/esm --max-old-space-size=4096' npx jest --config jest.integration.config.js --runInBand --testPathPattern='revalidation' --testNamePattern='allows mutations when no' --verbose)",
+      "Bash(node --experimental-vm-modules ../../node_modules/.bin/jest --testPathPattern 'uploads.service.test' --no-coverage)"
     ]
   }
 }

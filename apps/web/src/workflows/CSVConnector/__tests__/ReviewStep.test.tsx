@@ -25,28 +25,19 @@ type ConfirmResponsePayload = {
 };
 
 type RecommendedColumn = {
-  action: "match_existing" | "create_new";
   confidence: number;
-  existingColumnDefinitionId: string | null;
-  recommended: {
-    key: string;
-    label: string;
-    type: string;
-    description?: string | null;
-    validationPattern?: string | null;
-    validationMessage?: string | null;
-    canonicalFormat?: string | null;
-    refEntityKey?: string | null;
-    refColumnKey?: string | null;
-    refColumnDefinitionId?: string | null;
-  };
+  existingColumnDefinitionId: string;
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
   sampleValues: string[];
+  normalizedKey?: string;
   required?: boolean;
   defaultValue?: string | null;
   format?: string | null;
   enumValues?: string[] | null;
+  refEntityKey?: string | null;
+  refColumnKey?: string | null;
+  refColumnDefinitionId?: string | null;
 };
 
 type RecommendedEntity = {
@@ -77,39 +68,29 @@ type ReviewStepProps = {
 // ---------------------------------------------------------------------------
 
 const MOCK_COLUMN_MATCH: RecommendedColumn = {
-  action: "match_existing",
   confidence: 0.95,
   existingColumnDefinitionId: "col_001",
-  recommended: {
-    key: "email",
-    label: "Email",
-    type: "string",
-    description: "Contact email",
-  },
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org"],
+  normalizedKey: "email_address",
   required: true,
   format: "email",
   enumValues: null,
+  defaultValue: null,
 };
 
 const MOCK_COLUMN_NEW: RecommendedColumn = {
-  action: "create_new",
   confidence: 0.45,
-  existingColumnDefinitionId: null,
-  recommended: {
-    key: "phone",
-    label: "Phone",
-    type: "string",
-    description: null,
-  },
+  existingColumnDefinitionId: "col_002",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100"],
+  normalizedKey: "phone_number",
   required: false,
   format: null,
   enumValues: null,
+  defaultValue: null,
 };
 
 const MOCK_ENTITIES: RecommendedEntity[] = [
@@ -179,36 +160,25 @@ describe("ReviewStep", () => {
       render(<ReviewStep {...makeProps()} />);
       expect(screen.getByText("Contacts (contacts)")).toBeInTheDocument();
       expect(screen.getByText("Entities: 1")).toBeInTheDocument();
-      expect(
-        screen.getByText("Total columns: 2 (1 matched, 1 new)"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Total columns: 2")).toBeInTheDocument();
     });
 
-    it("displays per-entity column details with action indicators", () => {
+    it("displays per-entity column details", () => {
       render(<ReviewStep {...makeProps()} />);
       expect(screen.getByText("Email Address")).toBeInTheDocument();
-      expect(screen.getByText("email (string)")).toBeInTheDocument();
-      expect(screen.getByText("match")).toBeInTheDocument();
       expect(screen.getByText("Phone Number")).toBeInTheDocument();
-      expect(screen.getByText("phone (string)")).toBeInTheDocument();
-      expect(screen.getByText("new")).toBeInTheDocument();
     });
 
     it("shows reference target as 'entity.column' when refEntityKey and refColumnKey are set", () => {
       const refColumn: RecommendedColumn = {
-        action: "create_new",
         confidence: 0.9,
-        existingColumnDefinitionId: null,
-        recommended: {
-          key: "role_id",
-          label: "Role ID",
-          type: "reference",
-          refEntityKey: "roles",
-          refColumnKey: "id",
-        },
+        existingColumnDefinitionId: "col_ref",
         sourceField: "role_id",
         isPrimaryKeyCandidate: false,
         sampleValues: [],
+        normalizedKey: "role_id",
+        refEntityKey: "roles",
+        refColumnKey: "id",
       };
 
       render(
@@ -229,25 +199,20 @@ describe("ReviewStep", () => {
       );
 
       expect(
-        screen.getByText("role_id (reference → roles.id)")
+        screen.getByText("role_id → roles.id")
       ).toBeInTheDocument();
     });
 
-    it("shows 'reference → entity' when only refEntityKey is set", () => {
+    it("shows 'normalizedKey → entity' when only refEntityKey is set", () => {
       const refColumn: RecommendedColumn = {
-        action: "create_new",
         confidence: 0.9,
-        existingColumnDefinitionId: null,
-        recommended: {
-          key: "role_id",
-          label: "Role ID",
-          type: "reference",
-          refEntityKey: "roles",
-          refColumnKey: null,
-        },
+        existingColumnDefinitionId: "col_ref",
         sourceField: "role_id",
         isPrimaryKeyCandidate: false,
         sampleValues: [],
+        normalizedKey: "role_id",
+        refEntityKey: "roles",
+        refColumnKey: null,
       };
 
       render(
@@ -268,25 +233,18 @@ describe("ReviewStep", () => {
       );
 
       expect(
-        screen.getByText("role_id (reference → roles)")
+        screen.getByText("role_id → roles")
       ).toBeInTheDocument();
     });
 
-    it("shows plain 'reference' when no ref fields are set", () => {
+    it("shows just normalizedKey when no ref fields are set", () => {
       const refColumn: RecommendedColumn = {
-        action: "create_new",
         confidence: 0.9,
-        existingColumnDefinitionId: null,
-        recommended: {
-          key: "role_id",
-          label: "Role ID",
-          type: "reference",
-          refEntityKey: null,
-          refColumnKey: null,
-        },
+        existingColumnDefinitionId: "col_ref",
         sourceField: "role_id",
         isPrimaryKeyCandidate: false,
         sampleValues: [],
+        normalizedKey: "role_id",
       };
 
       render(
@@ -306,9 +264,8 @@ describe("ReviewStep", () => {
         />
       );
 
-      expect(
-        screen.getByText("role_id (reference)")
-      ).toBeInTheDocument();
+      // Both sourceField and normalizedKey show "role_id"
+      expect(screen.getAllByText("role_id").length).toBeGreaterThanOrEqual(1);
     });
 
     it("renders Confirm Import button", () => {

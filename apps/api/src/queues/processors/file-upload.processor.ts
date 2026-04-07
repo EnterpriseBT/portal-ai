@@ -384,6 +384,9 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
     key: cd.key,
     label: cd.label,
     type: cd.type,
+    description: cd.description ?? null,
+    validationPattern: cd.validationPattern ?? null,
+    canonicalFormat: cd.canonicalFormat ?? null,
   }));
 
   const entityRecommendations: FileUploadRecommendationEntity[] = [];

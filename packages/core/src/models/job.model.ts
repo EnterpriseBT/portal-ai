@@ -90,47 +90,28 @@ export const FileParseResultSchema = z.object({
 });
 export type FileParseResult = z.infer<typeof FileParseResultSchema>;
 
-/** Action the user should take for a column recommendation. */
-export const ColumnRecommendationActionEnum = z.enum([
-  "match_existing",
-  "create_new",
-]);
-export type ColumnRecommendationAction = z.infer<typeof ColumnRecommendationActionEnum>;
-
 /** Per-column recommendation produced by AI analysis or heuristic fallback. */
 export const FileUploadColumnRecommendationSchema = z.object({
   /** Source column name from the CSV header. */
   sourceField: z.string(),
-  /** Recommended column definition key (snake_case). */
-  key: z.string(),
-  /** Human-readable label for the column. */
-  label: z.string(),
-  /** Inferred data type. */
-  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array"]),
+  /** ID of the matched existing column definition. */
+  existingColumnDefinitionId: z.string(),
+  /** Confidence score for the recommendation (0-1). */
+  confidence: z.number().min(0).max(1),
+  /** Sample values from the parsed data. */
+  sampleValues: z.array(z.string()),
   /** Optional format hint (e.g. "YYYY-MM-DD", "email", "url"). Mapping-level. */
   format: z.string().nullable(),
   /** Whether this column is a candidate primary key. */
   isPrimaryKey: z.boolean(),
   /** Whether the column should be required. Mapping-level. */
   required: z.boolean(),
-  /** Match or create action. */
-  action: ColumnRecommendationActionEnum,
-  /** ID of an existing column definition when action is "match_existing". */
-  existingColumnDefinitionId: z.string().nullable(),
-  /** Confidence score for the recommendation (0-1). */
-  confidence: z.number().min(0).max(1),
-  /** Sample values from the parsed data. */
-  sampleValues: z.array(z.string()),
-  /** Key used in normalizedData — defaults to `key` if not provided. Mapping-level. */
+  /** Key used in normalizedData. Mapping-level. */
   normalizedKey: z.string().optional(),
   /** Default fill value when source value is missing. Mapping-level. */
   defaultValue: z.string().nullable().optional(),
   /** Allowed values for enum-like columns. Mapping-level. */
   enumValues: z.array(z.string()).nullable().optional(),
-  /** Regex validation pattern detected from sample values. Column-definition-level. */
-  validationPattern: z.string().nullable().optional(),
-  /** Display/storage format suggestion (e.g. "lowercase", "YYYY-MM-DD", "ISO8601"). Column-definition-level. */
-  canonicalFormat: z.string().nullable().optional(),
 });
 export type FileUploadColumnRecommendation = z.infer<typeof FileUploadColumnRecommendationSchema>;
 

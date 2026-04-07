@@ -16,39 +16,29 @@ import type { EntityStepErrors } from "../utils/csv-validation.util";
 // ---------------------------------------------------------------------------
 
 const MOCK_COLUMN: RecommendedColumn = {
-  action: "match_existing",
   confidence: 0.95,
   existingColumnDefinitionId: "col_001",
-  recommended: {
-    key: "email",
-    label: "Email",
-    type: "string",
-    description: "Contact email",
-  },
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org"],
+  normalizedKey: "email_address",
   required: true,
   format: "email",
   enumValues: null,
+  defaultValue: null,
 };
 
 const MOCK_COLUMN_NEW: RecommendedColumn = {
-  action: "create_new",
   confidence: 0.3,
-  existingColumnDefinitionId: null,
-  recommended: {
-    key: "phone",
-    label: "Phone",
-    type: "string",
-    description: null,
-  },
+  existingColumnDefinitionId: "col_002",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100"],
+  normalizedKey: "phone_number",
   required: false,
   format: null,
   enumValues: null,
+  defaultValue: null,
 };
 
 const MOCK_ENTITIES: RecommendedEntity[] = [

@@ -16,7 +16,7 @@ import type {
 import { FileUploadRecommendationEntitySchema } from "@portalai/core/models";
 
 import { AiService } from "./ai.service.js";
-import { heuristicAnalyze } from "../utils/heuristic-analyzer.util.js";
+import { heuristicAnalyze, inferType } from "../utils/heuristic-analyzer.util.js";
 import { buildFileAnalysisPrompt } from "../prompts/file-analysis.prompt.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -37,6 +37,9 @@ export interface ExistingColumnDefinition {
   key: string;
   label: string;
   type: string;
+  description: string | null;
+  validationPattern: string | null;
+  canonicalFormat: string | null;
 }
 
 export interface AnalyzeFileInput {
@@ -70,11 +73,30 @@ async function aiAnalyze(input: AnalyzeFileInput): Promise<FileUploadRecommendat
 // ---------------------------------------------------------------------------
 
 /**
+ * Maps inferred type to the seed column definition key to use as fallback.
+ */
+function typeFallbackKey(inferredType: string, sampleValues: string[]): string {
+  switch (inferredType) {
+    case "boolean": return "boolean";
+    case "date": return "date";
+    case "datetime": return "datetime";
+    case "number": {
+      const nonEmpty = sampleValues.filter((v) => v.trim() !== "");
+      const hasDecimals = nonEmpty.some((v) => v.includes("."));
+      return hasDecimals ? "decimal" : "integer";
+    }
+    case "string":
+    default:
+      return "text";
+  }
+}
+
+/**
  * Resolve existingColumnDefinitionId values from AI output.
  *
  * The LLM sometimes returns the column key or label instead of the UUID.
  * This function looks up the correct ID from the existing columns list,
- * and clears invalid references (setting action to "create_new").
+ * and falls back to type-based matching when the reference is unresolvable.
  */
 function resolveColumnDefinitionIds(
   recommendation: FileUploadRecommendationEntity,
@@ -87,10 +109,6 @@ function resolveColumnDefinitionIds(
   return {
     ...recommendation,
     columns: recommendation.columns.map((col) => {
-      if (col.action !== "match_existing" || !col.existingColumnDefinitionId) {
-        return col;
-      }
-
       const rawId = col.existingColumnDefinitionId;
 
       // Already a valid ID
@@ -110,9 +128,24 @@ function resolveColumnDefinitionIds(
         return { ...col, existingColumnDefinitionId: matchByLabel.id };
       }
 
-      // Unresolvable — demote to create_new
-      logger.warn({ sourceField: col.sourceField, rawId }, "Could not resolve existingColumnDefinitionId — demoting to create_new");
-      return { ...col, action: "create_new" as const, existingColumnDefinitionId: null };
+      // Unresolvable — attempt type-based fallback
+      logger.warn({ sourceField: col.sourceField, rawId }, "Could not resolve existingColumnDefinitionId — attempting type-based fallback");
+      const { type: inferredType } = inferType(col.sampleValues);
+      const fallbackKey = typeFallbackKey(inferredType, col.sampleValues);
+      const fallbackDef = byKey.get(fallbackKey);
+      if (fallbackDef) {
+        return { ...col, existingColumnDefinitionId: fallbackDef.id, confidence: 0.5 };
+      }
+
+      // Last resort — pick "text" if available
+      const textDef = byKey.get("text");
+      if (textDef) {
+        return { ...col, existingColumnDefinitionId: textDef.id, confidence: 0.5 };
+      }
+
+      // Absolute fallback: use the first existing column definition
+      const firstDef = existingColumns[0];
+      return { ...col, existingColumnDefinitionId: firstDef?.id ?? "", confidence: 0 };
     }),
   };
 }

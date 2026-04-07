@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { JobSchema, ColumnRecommendationActionEnum } from "../models/job.model.js";
+import { JobSchema } from "../models/job.model.js";
 
 // --- Request Schemas ---
 
@@ -48,21 +48,13 @@ export type ProcessResponsePayload = z.infer<typeof ProcessResponsePayloadSchema
 
 export const ConfirmColumnSchema = z.object({
   sourceField: z.string(),
-  key: z.string(),
-  label: z.string(),
-  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array"]),
+  existingColumnDefinitionId: z.string(),
+  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/),
   format: z.string().nullable(),
   isPrimaryKey: z.boolean(),
   required: z.boolean(),
-  action: ColumnRecommendationActionEnum,
-  existingColumnDefinitionId: z.string().nullable(),
-  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
   defaultValue: z.string().nullable().optional(),
   enumValues: z.array(z.string()).nullable().optional(),
-  // Column-definition-level fields
-  validationPattern: z.string().nullable().optional(),
-  validationMessage: z.string().nullable().optional(),
-  canonicalFormat: z.string().nullable().optional(),
   // Reference fields (populated when type === "reference")
   refEntityKey: z.string().nullable().optional(),
   refColumnKey: z.string().nullable().optional(),

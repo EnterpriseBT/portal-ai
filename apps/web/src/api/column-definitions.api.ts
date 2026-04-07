@@ -77,7 +77,7 @@ export function useColumnDefinitionKeySearch() {
 
       return defs.map((cd) => ({
         value: cd.key,
-        label: `${cd.label} (${cd.key}) — ${cd.type}`,
+        label: `${cd.label} (${cd.key}) — ${cd.type}${cd.description ? ` · ${cd.description}` : ""}`,
       }));
     },
     [fetchWithAuth],

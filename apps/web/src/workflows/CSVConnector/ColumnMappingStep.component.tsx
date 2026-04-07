@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 import {
   Box,
@@ -14,6 +14,7 @@ import {
   Select,
   AsyncSearchableSelect,
 } from "@portalai/core/ui";
+import Chip from "@mui/material/Chip";
 import type { SelectOption } from "@portalai/core/ui";
 import type { ColumnDefinition } from "@portalai/core/models";
 
@@ -26,117 +27,6 @@ import type {
 } from "./utils/upload-workflow.util";
 import type { ColumnStepErrors } from "./utils/csv-validation.util";
 import type { FormErrors } from "../../utils/form-validation.util";
-
-// --- Constants ---
-
-const COLUMN_TYPE_OPTIONS: SelectOption[] = [
-  { value: "string", label: "String" },
-  { value: "number", label: "Number" },
-  { value: "boolean", label: "Boolean" },
-  { value: "date", label: "Date" },
-  { value: "datetime", label: "Date & Time" },
-  { value: "enum", label: "Enum" },
-  { value: "json", label: "JSON" },
-  { value: "array", label: "Array" },
-  { value: "reference", label: "Reference" },
-  { value: "reference-array", label: "Reference Array (M:M)" },
-];
-
-const STRING_CANONICAL_FORMAT_OPTIONS: SelectOption[] = [
-  { value: "", label: "None" },
-  { value: "lowercase", label: "Lowercase — e.g. jane@example.com" },
-  { value: "uppercase", label: "Uppercase — e.g. US" },
-  { value: "trim", label: "Trim — removes leading/trailing whitespace" },
-  { value: "phone", label: "Phone — normalizes to +1XXXXXXXXXX" },
-];
-
-const NUMBER_CANONICAL_FORMAT_OPTIONS: SelectOption[] = [
-  { value: "", label: "None" },
-  { value: "$#,##0.00", label: "USD — $1,234.56" },
-  { value: "€#,##0.00", label: "EUR — €1,234.56" },
-  { value: "£#,##0.00", label: "GBP — £1,234.56" },
-  { value: "¥#,##0", label: "JPY — ¥1,234" },
-  { value: "#,##0.00", label: "2 decimals — 1,234.56" },
-  { value: "#,##0.000", label: "3 decimals — 1,234.567" },
-  { value: "#,##0", label: "Integer — 1,234" },
-];
-
-const VALIDATION_PRESETS = [
-  { label: "Custom", value: "Custom", pattern: "", message: "" },
-  { label: "Email", value: "email", pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", message: "Must be a valid email address" },
-  { label: "URL", value: "url", pattern: "^https?://.*", message: "Must be a valid URL" },
-  { label: "Phone", value: "phone", pattern: "^\\+?[\\d\\s\\-().]+$", message: "Must be a valid phone number" },
-  { label: "UUID", value: "uuid", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", message: "Must be a valid UUID" },
-];
-
-interface TypeFieldConfig {
-  format: { enabled: boolean; helperText: string };
-  validation: { enabled: boolean };
-  canonicalFormat: { enabled: boolean; options: SelectOption[] };
-}
-
-const TYPE_FIELD_CONFIG: Record<string, TypeFieldConfig> = {
-  string: {
-    format: { enabled: false, helperText: "Not used for string columns" },
-    validation: { enabled: true },
-    canonicalFormat: { enabled: true, options: STRING_CANONICAL_FORMAT_OPTIONS },
-  },
-  number: {
-    format: { enabled: true, helperText: "e.g. currency for 2 decimals, precision:N for N decimals, eu for European format (1.234,56)" },
-    validation: { enabled: true },
-    canonicalFormat: { enabled: true, options: NUMBER_CANONICAL_FORMAT_OPTIONS },
-  },
-  boolean: {
-    format: { enabled: true, helperText: "Custom true:false labels. e.g. active:inactive, yes:no, 1:0" },
-    validation: { enabled: false },
-    canonicalFormat: { enabled: false, options: [] },
-  },
-  date: {
-    format: { enabled: true, helperText: "Date format for parsing. e.g. yyyy-MM-dd, MM/dd/yyyy, dd.MM.yyyy" },
-    validation: { enabled: false },
-    canonicalFormat: { enabled: false, options: [] },
-  },
-  datetime: {
-    format: { enabled: true, helperText: "Datetime format for parsing. e.g. yyyy-MM-dd HH:mm:ss, MM/dd/yyyy hh:mm a" },
-    validation: { enabled: false },
-    canonicalFormat: { enabled: false, options: [] },
-  },
-  enum: {
-    format: { enabled: false, helperText: "Not used for enum columns" },
-    validation: { enabled: true },
-    canonicalFormat: { enabled: false, options: [] },
-  },
-  json: {
-    format: { enabled: false, helperText: "Not used for JSON columns" },
-    validation: { enabled: false },
-    canonicalFormat: { enabled: false, options: [] },
-  },
-  array: {
-    format: { enabled: true, helperText: "Delimiter character for splitting values. Default is comma (,). e.g. | for pipe-delimited" },
-    validation: { enabled: false },
-    canonicalFormat: { enabled: false, options: [] },
-  },
-  reference: {
-    format: { enabled: false, helperText: "Not used for reference columns" },
-    validation: { enabled: false },
-    canonicalFormat: { enabled: false, options: [] },
-  },
-  "reference-array": {
-    format: { enabled: true, helperText: "Delimiter character for splitting values. Default is comma (,). e.g. | for pipe-delimited" },
-    validation: { enabled: false },
-    canonicalFormat: { enabled: false, options: [] },
-  },
-};
-
-const DEFAULT_TYPE_CONFIG: TypeFieldConfig = {
-  format: { enabled: true, helperText: "How to parse raw source values" },
-  validation: { enabled: true },
-  canonicalFormat: { enabled: true, options: STRING_CANONICAL_FORMAT_OPTIONS },
-};
-
-function toSnakeCase(s: string): string {
-  return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-}
 
 // --- Types ---
 
@@ -201,11 +91,11 @@ interface ReferenceEditorProps {
 
 /** Derive which entity select value is active given current column state. */
 function deriveEntitySelectValue(
-  recommended: RecommendedColumn["recommended"],
+  column: RecommendedColumn,
   allEntities: RecommendedEntity[],
   dbEntities: ConnectorEntityWithMappings[]
 ): string {
-  const { refEntityKey, refColumnKey, refColumnDefinitionId } = recommended;
+  const { refEntityKey, refColumnKey, refColumnDefinitionId } = column;
   if (!refEntityKey) return "";
   if (refColumnDefinitionId) return `db:${refEntityKey}`;
   if (refColumnKey) return `batch:${refEntityKey}`;
@@ -241,7 +131,7 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
   const entityOptions: SelectOption[] = [...batchOptions, ...dbOptions];
 
   const currentEntityValue = deriveEntitySelectValue(
-    column.recommended,
+    column,
     allEntities,
     dbEntities
   );
@@ -256,8 +146,8 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
     );
     columnOptions = selectedEntity
       ? selectedEntity.columns.map((c) => ({
-        value: c.recommended.key,
-        label: `${c.recommended.label} (${c.recommended.key})`,
+        value: c.normalizedKey ?? c.sourceField,
+        label: `${c.normalizedKey ?? c.sourceField} (${c.sourceField})`,
       }))
       : [];
   } else if (currentEntityValue.startsWith("db:")) {
@@ -274,29 +164,25 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
   }
 
   const currentColumnValue = isDbMode
-    ? (column.recommended.refColumnDefinitionId ?? "")
-    : (column.recommended.refColumnKey ?? "");
+    ? (column.refColumnDefinitionId ?? "")
+    : (column.refColumnKey ?? "");
 
   const handleEntityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     if (!val) {
       onUpdate(entityIndex, columnIndex, {
-        recommended: {
-          refEntityKey: null,
-          refColumnKey: null,
-          refColumnDefinitionId: null,
-        },
+        refEntityKey: null,
+        refColumnKey: null,
+        refColumnDefinitionId: null,
       });
       return;
     }
     const colonIdx = val.indexOf(":");
     const entityKey = val.slice(colonIdx + 1);
     onUpdate(entityIndex, columnIndex, {
-      recommended: {
-        refEntityKey: entityKey,
-        refColumnKey: null,
-        refColumnDefinitionId: null,
-      },
+      refEntityKey: entityKey,
+      refColumnKey: null,
+      refColumnDefinitionId: null,
     });
   };
 
@@ -304,17 +190,13 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
     const val = e.target.value || null;
     if (isDbMode) {
       onUpdate(entityIndex, columnIndex, {
-        recommended: {
-          refColumnKey: null,
-          refColumnDefinitionId: val,
-        },
+        refColumnKey: null,
+        refColumnDefinitionId: val,
       });
     } else {
       onUpdate(entityIndex, columnIndex, {
-        recommended: {
-          refColumnKey: val,
-          refColumnDefinitionId: null,
-        },
+        refColumnKey: val,
+        refColumnDefinitionId: null,
       });
     }
   };
@@ -355,6 +237,7 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
 
 interface ColumnRowProps {
   column: RecommendedColumn;
+  columnDef: ColumnDefinition | null;
   entityIndex: number;
   columnIndex: number;
   allEntities: RecommendedEntity[];
@@ -367,11 +250,11 @@ interface ColumnRowProps {
   ) => void;
   fieldErrors: FormErrors;
   onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
-  columnDefsByKey: Record<string, ColumnDefinition>;
 }
 
 const ColumnRow: React.FC<ColumnRowProps> = ({
   column,
+  columnDef,
   entityIndex,
   columnIndex,
   allEntities,
@@ -380,63 +263,16 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
   onUpdate,
   fieldErrors,
   onColumnKeySearch,
-  columnDefsByKey,
 }) => {
-  const matchedColDef = columnDefsByKey[column.recommended.key] ?? null;
-
-  const handleKeyChange = (value: string | null) => {
-    const key = value ?? "";
-    const existing = columnDefsByKey[key];
-    if (existing) {
-      onUpdate(entityIndex, columnIndex, {
-        recommended: {
-          key: existing.key,
-          label: existing.label,
-          type: existing.type,
-          validationPattern: existing.validationPattern,
-          validationMessage: existing.validationMessage,
-          canonicalFormat: existing.canonicalFormat,
-        },
-        existingColumnDefinitionId: existing.id,
-        action: "match_existing",
-      });
-    } else {
-      onUpdate(entityIndex, columnIndex, {
-        recommended: { key },
-        existingColumnDefinitionId: null,
-        action: "create_new",
-      });
+  const handleDefinitionSelect = (value: string | null) => {
+    if (!value) {
+      onUpdate(entityIndex, columnIndex, { existingColumnDefinitionId: "" });
+      return;
     }
-  };
-
-  const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdate(entityIndex, columnIndex, {
-      recommended: { label: e.target.value },
-    });
-  };
-
-  const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newType = e.target.value;
-    const isReference = newType === "reference" || newType === "reference-array";
-    const newConfig = TYPE_FIELD_CONFIG[newType] ?? DEFAULT_TYPE_CONFIG;
-    const prevConfig = TYPE_FIELD_CONFIG[column.recommended.type] ?? DEFAULT_TYPE_CONFIG;
-    const canonicalChanged = prevConfig.canonicalFormat.enabled !== newConfig.canonicalFormat.enabled
-      || prevConfig.canonicalFormat.options !== newConfig.canonicalFormat.options;
-    const validationLost = prevConfig.validation.enabled && !newConfig.validation.enabled;
-    onUpdate(entityIndex, columnIndex, {
-      recommended: {
-        type: newType,
-        ...(!isReference && {
-          refEntityKey: null,
-          refColumnKey: null,
-          refColumnDefinitionId: null,
-        }),
-        ...(canonicalChanged && { canonicalFormat: null }),
-        ...(validationLost && { validationPattern: null, validationMessage: null }),
-      },
-      ...(newType !== "enum" && { enumValues: null }),
-      ...(!newConfig.format.enabled && { format: null }),
-    });
+    // value is the column definition key from search results — but we need
+    // to handle both key-based and id-based lookups. The AsyncSearchableSelect
+    // returns the option value which is the column def key.
+    onUpdate(entityIndex, columnIndex, { existingColumnDefinitionId: value });
   };
 
   const handleNormalizedKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -465,43 +301,11 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
     });
   };
 
-  const handleValidationPresetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const preset = VALIDATION_PRESETS.find((p) => p.value === e.target.value);
-    if (preset) {
-      onUpdate(entityIndex, columnIndex, {
-        recommended: {
-          validationPattern: preset.pattern || null,
-          validationMessage: preset.message || null,
-        },
-      });
-    }
-  };
-
-  const handleValidationPatternChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdate(entityIndex, columnIndex, {
-      recommended: { validationPattern: e.target.value || null },
-    });
-  };
-
-  const handleValidationMessageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdate(entityIndex, columnIndex, {
-      recommended: { validationMessage: e.target.value || null },
-    });
-  };
-
-  const handleCanonicalFormatChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdate(entityIndex, columnIndex, {
-      recommended: { canonicalFormat: e.target.value || null },
-    });
-  };
-
   const handlePrimaryKeyToggle = (checked: boolean) => {
     onUpdate(entityIndex, columnIndex, {
       isPrimaryKeyCandidate: checked,
     });
   };
-
-  const typeConfig = TYPE_FIELD_CONFIG[column.recommended.type] ?? DEFAULT_TYPE_CONFIG;
 
   return (
     <Box
@@ -521,53 +325,56 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
           <Typography variant="body2" fontWeight="medium">
             {column.sourceField}
           </Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <ConfidenceChip confidence={column.confidence} />
+        </Stack>
+
+        {/* Column Definition Selection */}
+        <AsyncSearchableSelect
+          label="Column Definition"
+          value={columnDef?.key ?? ""}
+          onChange={handleDefinitionSelect}
+          onSearch={onColumnKeySearch}
+          freeSolo={false}
+          required
+          fullWidth
+          error={!!fieldErrors.existingColumnDefinitionId}
+          helperText={fieldErrors.existingColumnDefinitionId}
+          size="small"
+        />
+
+        {/* Column Definition Read-Only Metadata */}
+        {columnDef ? (
+          <Stack spacing={1}>
             <Typography variant="caption" color="text.secondary">
-              {column.action === "match_existing" ? "Match" : "New"}
+              Column Definition (read-only)
             </Typography>
-            <ConfidenceChip confidence={column.confidence} />
+            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+              <Chip label={columnDef.type} size="small" variant="outlined" />
+              {columnDef.description && (
+                <Typography variant="caption" color="text.secondary">
+                  {columnDef.description}
+                </Typography>
+              )}
+              {columnDef.validationPattern && (
+                <Typography variant="caption" color="text.secondary">
+                  Validation: {columnDef.validationPattern}
+                </Typography>
+              )}
+              {columnDef.canonicalFormat && (
+                <Typography variant="caption" color="text.secondary">
+                  Format: {columnDef.canonicalFormat}
+                </Typography>
+              )}
+            </Stack>
           </Stack>
-        </Stack>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            Select a column definition
+          </Typography>
+        )}
 
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <AsyncSearchableSelect
-            label="Key"
-            value={column.recommended.key}
-            onChange={handleKeyChange}
-            onSearch={onColumnKeySearch}
-            freeSolo
-            required
-            fullWidth
-            error={!!fieldErrors.key}
-            helperText={fieldErrors.key}
-            size="small"
-          />
-          <DeferredTextInput
-            label="Label"
-            value={column.recommended.label}
-            onChange={handleLabelChange}
-            required
-            error={!!fieldErrors.label}
-            helperText={fieldErrors.label}
-            size="small"
-            fullWidth
-            disabled={!!matchedColDef}
-          />
-          <Select
-            label="Type"
-            value={column.recommended.type}
-            onChange={handleTypeChange}
-            options={COLUMN_TYPE_OPTIONS}
-            required
-            error={!!fieldErrors.type}
-            helperText={fieldErrors.type}
-            size="small"
-            fullWidth
-            disabled={!!matchedColDef}
-          />
-        </Stack>
-
-        {(column.recommended.type === "reference" || column.recommended.type === "reference-array") && (
+        {/* Reference Editor */}
+        {columnDef && (columnDef.type === "reference" || columnDef.type === "reference-array") && (
           <ReferenceEditor
             column={column}
             entityIndex={entityIndex}
@@ -580,75 +387,13 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
           />
         )}
 
-        {/* Column-definition-level fields */}
-        <Divider />
-        <Typography variant="caption" color="text.secondary">
-          Column Definition{matchedColDef ? " (matched existing)" : ""}
-        </Typography>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <Select
-            label="Validation Preset"
-            value={VALIDATION_PRESETS.find((p) => p.pattern === (column.recommended.validationPattern ?? ""))?.value ?? ""}
-            onChange={handleValidationPresetChange}
-            options={VALIDATION_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
-            size="small"
-            fullWidth
-            disabled={!!matchedColDef || !typeConfig.validation.enabled}
-            helperText={!typeConfig.validation.enabled ? "Not applicable for this column type" : undefined}
-          />
-          <DeferredTextInput
-            label="Validation Pattern"
-            value={column.recommended.validationPattern ?? ""}
-            onChange={handleValidationPatternChange}
-            size="small"
-            fullWidth
-            disabled={!!matchedColDef || !typeConfig.validation.enabled}
-            error={!!fieldErrors.validationPattern}
-            helperText={
-              !typeConfig.validation.enabled
-                ? "Not applicable for this column type"
-                : fieldErrors.validationPattern ?? "Regex that values must match after coercion"
-            }
-            slotProps={{ htmlInput: { "aria-invalid": !!fieldErrors.validationPattern } }}
-          />
-        </Stack>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <DeferredTextInput
-            label="Validation Message"
-            value={column.recommended.validationMessage ?? ""}
-            onChange={handleValidationMessageChange}
-            size="small"
-            fullWidth
-            disabled={!!matchedColDef || !typeConfig.validation.enabled}
-            helperText={
-              !typeConfig.validation.enabled
-                ? "Not applicable for this column type"
-                : "Shown when the pattern doesn't match"
-            }
-          />
-          <Select
-            label="Canonical Format"
-            value={typeConfig.canonicalFormat.enabled ? (column.recommended.canonicalFormat ?? "") : ""}
-            onChange={handleCanonicalFormatChange}
-            options={typeConfig.canonicalFormat.options}
-            size="small"
-            fullWidth
-            disabled={!!matchedColDef || !typeConfig.canonicalFormat.enabled}
-            helperText={
-              !typeConfig.canonicalFormat.enabled
-                ? "Not applicable for this column type"
-                : "Normalizes the stored value before saving"
-            }
-          />
-        </Stack>
-
         {/* Field-mapping-level fields */}
         <Divider />
         <Typography variant="caption" color="text.secondary">Field Mapping</Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
           <DeferredTextInput
             label="Normalized Key"
-            value={column.normalizedKey ?? toSnakeCase(column.recommended.key)}
+            value={column.normalizedKey ?? ""}
             onChange={handleNormalizedKeyChange}
             required
             error={!!fieldErrors.normalizedKey}
@@ -671,10 +416,9 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             onChange={handleFormatChange}
             size="small"
             fullWidth
-            disabled={!typeConfig.format.enabled}
-            helperText={typeConfig.format.helperText}
+            helperText="How to parse raw source values"
           />
-          {column.recommended.type === "enum" && (
+          {columnDef?.type === "enum" && (
             <DeferredTextInput
               label="Enum Values (comma-separated)"
               value={column.enumValues?.join(", ") ?? ""}
@@ -701,7 +445,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
         {column.sampleValues && column.sampleValues.length > 0 && (
           <Typography variant="caption" color="text.secondary">
             Sample: {column.sampleValues.slice(0, 3).join(", ")}
-            {column.sampleValues.length > 3 && "…"}
+            {column.sampleValues.length > 3 && "..."}
           </Typography>
         )}
       </Stack>
@@ -724,6 +468,15 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
 }) => {
   const { value: activeTab, tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const activeEntity = entities[activeTab];
+
+  // Build a lookup from column definition ID to ColumnDefinition
+  const columnDefsById = useMemo(() => {
+    const map: Record<string, ColumnDefinition> = {};
+    for (const def of Object.values(columnDefsByKey)) {
+      map[def.id] = def;
+    }
+    return map;
+  }, [columnDefsByKey]);
 
   if (entities.length === 0) {
     return (
@@ -760,6 +513,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
               <ColumnRow
                 key={`${activeTab}-${columnIndex}`}
                 column={column}
+                columnDef={columnDefsById[column.existingColumnDefinitionId] ?? null}
                 entityIndex={activeTab}
                 columnIndex={columnIndex}
                 allEntities={entities}
@@ -768,7 +522,6 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                 onUpdate={onUpdateColumn}
                 fieldErrors={errors[activeTab]?.[columnIndex] ?? {}}
                 onColumnKeySearch={onColumnKeySearch}
-                columnDefsByKey={columnDefsByKey}
               />
             ))}
           </Stack>

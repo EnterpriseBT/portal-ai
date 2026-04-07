@@ -22,18 +22,8 @@ const MOCK_FILES = [
 ];
 
 const MOCK_COLUMN_CONTACT: RecommendedColumn = {
-  action: "match_existing",
   confidence: 0.95,
   existingColumnDefinitionId: "col_001",
-  recommended: {
-    key: "email",
-    label: "Email",
-    type: "string",
-    description: "Contact email address",
-    validationPattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
-    validationMessage: "Must be a valid email address",
-    canonicalFormat: null,
-  },
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
@@ -45,18 +35,8 @@ const MOCK_COLUMN_CONTACT: RecommendedColumn = {
 };
 
 const MOCK_COLUMN_NAME: RecommendedColumn = {
-  action: "create_new",
   confidence: 0.72,
-  existingColumnDefinitionId: null,
-  recommended: {
-    key: "full_name",
-    label: "Full Name",
-    type: "string",
-    description: null,
-    validationPattern: null,
-    validationMessage: null,
-    canonicalFormat: null,
-  },
+  existingColumnDefinitionId: "col_002",
   sourceField: "Full Name",
   isPrimaryKeyCandidate: false,
   sampleValues: ["Alice Johnson", "Bob Smith", "Carol Williams"],
@@ -68,18 +48,8 @@ const MOCK_COLUMN_NAME: RecommendedColumn = {
 };
 
 const MOCK_COLUMN_PHONE: RecommendedColumn = {
-  action: "create_new",
   confidence: 0.45,
-  existingColumnDefinitionId: null,
-  recommended: {
-    key: "phone",
-    label: "Phone",
-    type: "string",
-    description: null,
-    validationPattern: "^\\+?[\\d\\s\\-().]+$",
-    validationMessage: "Must be a valid phone number",
-    canonicalFormat: null,
-  },
+  existingColumnDefinitionId: "col_003",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100", "+1-555-0101"],
@@ -91,18 +61,8 @@ const MOCK_COLUMN_PHONE: RecommendedColumn = {
 };
 
 const MOCK_COLUMN_PRODUCT: RecommendedColumn = {
-  action: "match_existing",
   confidence: 0.88,
   existingColumnDefinitionId: "col_010",
-  recommended: {
-    key: "sku",
-    label: "SKU",
-    type: "string",
-    description: "Product SKU identifier",
-    validationPattern: null,
-    validationMessage: null,
-    canonicalFormat: null,
-  },
   sourceField: "Product SKU",
   isPrimaryKeyCandidate: true,
   sampleValues: ["SKU-001", "SKU-002", "SKU-003"],
@@ -114,18 +74,8 @@ const MOCK_COLUMN_PRODUCT: RecommendedColumn = {
 };
 
 const MOCK_COLUMN_PRICE: RecommendedColumn = {
-  action: "create_new",
   confidence: 0.91,
-  existingColumnDefinitionId: null,
-  recommended: {
-    key: "price",
-    label: "Price",
-    type: "number",
-    description: null,
-    validationPattern: null,
-    validationMessage: null,
-    canonicalFormat: "$#,##0.00",
-  },
+  existingColumnDefinitionId: "col_011",
   sourceField: "Unit Price",
   isPrimaryKeyCandidate: false,
   sampleValues: ["19.99", "24.50", "99.00"],

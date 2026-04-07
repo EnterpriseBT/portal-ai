@@ -17,7 +17,6 @@ const mockConnectorEntitiesUpsertByKey = jest.fn<(data: unknown, tx?: unknown) =
 
 const mockColumnDefinitionsFindById = jest.fn<(id: string, tx?: unknown) => Promise<unknown>>();
 const mockColumnDefinitionsFindByKey = jest.fn<(orgId: string, key: string, tx?: unknown) => Promise<unknown>>();
-const mockColumnDefinitionsUpsertByKey = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
 
 const mockFieldMappingsUpsertByEntityAndColumn = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
 
@@ -45,7 +44,6 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       columnDefinitions: {
         findById: mockColumnDefinitionsFindById,
         findByKey: mockColumnDefinitionsFindByKey,
-        upsertByKey: mockColumnDefinitionsUpsertByKey,
       },
       fieldMappings: {
         upsertByEntityAndColumn: mockFieldMappingsUpsertByEntityAndColumn,
@@ -81,6 +79,11 @@ const { UploadsService } = await import("../../services/uploads.service.js");
 const JOB_ID = "job-001";
 const ORG_ID = "org-001";
 const USER_ID = "user-001";
+
+const COLDEF_NAME = { id: "cd-name", organizationId: ORG_ID, key: "name", label: "Name", type: "string" };
+const COLDEF_EMAIL = { id: "cd-email", organizationId: ORG_ID, key: "email", label: "Email", type: "string" };
+const COLDEF_INTEGER = { id: "cd-integer", organizationId: ORG_ID, key: "integer", label: "Integer", type: "number" };
+const COLDEF_REFERENCE = { id: "cd-reference", organizationId: ORG_ID, key: "reference", label: "Reference", type: "reference" };
 
 function createAwaitingJob(overrides?: Partial<Record<string, unknown>>) {
   return {
@@ -119,25 +122,19 @@ function createConfirmBody(overrides?: Partial<ConfirmRequestBody>): ConfirmRequ
         columns: [
           {
             sourceField: "Name",
-            key: "name",
-            label: "Name",
-            type: "string",
+            existingColumnDefinitionId: "cd-name",
+            normalizedKey: "name",
             format: null,
             isPrimaryKey: false,
             required: true,
-            action: "create_new",
-            existingColumnDefinitionId: null,
           },
           {
             sourceField: "Email",
-            key: "email",
-            label: "Email",
-            type: "string",
+            existingColumnDefinitionId: "cd-email",
+            normalizedKey: "email",
             format: "email",
             isPrimaryKey: true,
             required: true,
-            action: "create_new",
-            existingColumnDefinitionId: null,
           },
         ],
       },
@@ -171,12 +168,16 @@ describe("UploadsService", () => {
       label: (data as Record<string, unknown>).label,
     }));
 
-    mockColumnDefinitionsUpsertByKey.mockImplementation(async (data: unknown) => ({
-      ...(data as Record<string, unknown>),
-      id: `cd-${(data as Record<string, unknown>).key}`,
-      key: (data as Record<string, unknown>).key,
-      label: (data as Record<string, unknown>).label,
-    }));
+    // findById resolves the correct column definition based on id
+    mockColumnDefinitionsFindById.mockImplementation(async (id: string) => {
+      const defs: Record<string, unknown> = {
+        "cd-name": COLDEF_NAME,
+        "cd-email": COLDEF_EMAIL,
+        "cd-integer": COLDEF_INTEGER,
+        "cd-reference": COLDEF_REFERENCE,
+      };
+      return defs[id] ?? undefined;
+    });
 
     mockFieldMappingsUpsertByEntityAndColumn.mockImplementation(async (data: unknown) => ({
       ...(data as Record<string, unknown>),
@@ -184,13 +185,14 @@ describe("UploadsService", () => {
       sourceField: (data as Record<string, unknown>).sourceField,
       columnDefinitionId: (data as Record<string, unknown>).columnDefinitionId,
       isPrimaryKey: (data as Record<string, unknown>).isPrimaryKey,
+      normalizedKey: (data as Record<string, unknown>).normalizedKey,
     }));
 
     mockColumnDefinitionsFindByKey.mockResolvedValue(undefined);
   });
 
   describe("confirm()", () => {
-    it("should upsert connector instance, entities, column definitions, and field mappings", async () => {
+    it("should confirm with valid existingColumnDefinitionId for every column", async () => {
       const body = createConfirmBody();
       const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
@@ -203,12 +205,37 @@ describe("UploadsService", () => {
       expect(entity.entityLabel).toBe("Contacts");
       expect(entity.columnDefinitions).toHaveLength(2);
       expect(entity.fieldMappings).toHaveLength(2);
+    });
 
-      // Verify connector instance was created (not found existing)
-      expect(mockConnectorInstancesFindByOrgDefinitionAndName).toHaveBeenCalledWith(
-        ORG_ID, "cdef_csv01", "My CSV Import", "mock-tx"
+    it("should create field mappings linked to the existing column definition IDs", async () => {
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceField: "Name",
+          columnDefinitionId: "cd-name",
+          normalizedKey: "name",
+        }),
+        "mock-tx"
       );
-      expect(mockConnectorInstancesCreate).toHaveBeenCalledTimes(1);
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceField: "Email",
+          columnDefinitionId: "cd-email",
+          normalizedKey: "email",
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("should not call columnDefinitions.upsertByKey (no column def creation)", async () => {
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      // upsertByKey is not even in the mock — verify findById was used instead
+      expect(mockColumnDefinitionsFindById).toHaveBeenCalledWith("cd-name", "mock-tx");
+      expect(mockColumnDefinitionsFindById).toHaveBeenCalledWith("cd-email", "mock-tx");
     });
 
     it("should reuse existing connector instance if found", async () => {
@@ -235,66 +262,6 @@ describe("UploadsService", () => {
       );
     });
 
-    it("should create shared column definitions once (not duplicated across entities)", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Name",
-                key: "full_name",
-                label: "Full Name",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: true,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-          {
-            entityKey: "leads",
-            entityLabel: "Leads",
-            sourceFileName: "leads.csv",
-            columns: [
-              {
-                sourceField: "Lead Name",
-                key: "full_name",
-                label: "Full Name",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: true,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-        ],
-      });
-
-      // Make entity upsert return unique IDs
-      let entityCounter = 0;
-      mockConnectorEntitiesUpsertByKey.mockImplementation(async (data: unknown) => {
-        entityCounter++;
-        return {
-          ...(data as Record<string, unknown>),
-          id: `ce-${entityCounter}`,
-          key: (data as Record<string, unknown>).key,
-          label: (data as Record<string, unknown>).label,
-        };
-      });
-
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      // Column definition upsertByKey should only be called once for "full_name"
-      expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledTimes(1);
-    });
-
     it("should import CSV records from S3 after confirmation", async () => {
       const body = createConfirmBody();
       const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
@@ -307,11 +274,7 @@ describe("UploadsService", () => {
           userId: USER_ID,
         })
       );
-      // fieldMappings should NOT be passed — normalization fetches its own
-      const callArgs = (mockImportFromS3.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
-      expect(callArgs).not.toHaveProperty("fieldMappings");
 
-      // Import result should be on the confirmed entity
       expect(result.confirmedEntities[0].importResult).toEqual({
         created: 10,
         updated: 0,
@@ -326,7 +289,6 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      // Confirm should still succeed with empty import result
       expect(result.confirmedEntities[0].importResult).toEqual({
         created: 0,
         updated: 0,
@@ -364,61 +326,20 @@ describe("UploadsService", () => {
       );
     });
 
-    it("should be idempotent — re-calling with same payload returns same result", async () => {
+    it("should use normalizedKey directly from the column (now required)", async () => {
       const body = createConfirmBody();
-      const result1 = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      // Reset job status mock for second call
-      mockJobsFindById.mockResolvedValue(createAwaitingJob());
-      jest.clearAllMocks();
-
-      // Re-setup mocks for second call
-      mockJobsFindById.mockResolvedValue(createAwaitingJob());
-      mockConnectorInstancesFindByOrgDefinitionAndName.mockResolvedValue({
-        id: "ci-001",
-        name: "My CSV Import",
-      });
-      mockConnectorInstancesUpdate.mockResolvedValue({
-        id: "ci-001",
-        name: "My CSV Import",
-      });
-      mockConnectorEntitiesUpsertByKey.mockImplementation(async (data: unknown) => ({
-        ...(data as Record<string, unknown>),
-        id: "ce-001",
-        key: (data as Record<string, unknown>).key,
-        label: (data as Record<string, unknown>).label,
-      }));
-      mockColumnDefinitionsUpsertByKey.mockImplementation(async (data: unknown) => ({
-        ...(data as Record<string, unknown>),
-        id: `cd-${(data as Record<string, unknown>).key}`,
-        key: (data as Record<string, unknown>).key,
-        label: (data as Record<string, unknown>).label,
-      }));
-      mockFieldMappingsUpsertByEntityAndColumn.mockImplementation(async (data: unknown) => ({
-        ...(data as Record<string, unknown>),
-        id: `fm-${(data as Record<string, unknown>).sourceField}`,
-        sourceField: (data as Record<string, unknown>).sourceField,
-        columnDefinitionId: (data as Record<string, unknown>).columnDefinitionId,
-        isPrimaryKey: (data as Record<string, unknown>).isPrimaryKey,
-      }));
-
-      const result2 = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      // Same structure returned — upserts prevent duplicates
-      expect(result1.connectorInstanceId).toBe(result2.connectorInstanceId);
-      expect(result1.confirmedEntities[0].entityKey).toBe(result2.confirmedEntities[0].entityKey);
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceField: "Name",
+          normalizedKey: "name",
+        }),
+        "mock-tx"
+      );
     });
 
-    it("should use match_existing column definitions without creating new ones", async () => {
-      const existingColDef = {
-        id: "cd-existing-123",
-        organizationId: ORG_ID,
-        key: "existing_name",
-        label: "Existing Name",
-        type: "string",
-      };
-      mockColumnDefinitionsFindById.mockResolvedValue(existingColDef);
-
+    it("should pass required, defaultValue, format, and enumValues to field mapping upsert", async () => {
       const body = createConfirmBody({
         entities: [
           {
@@ -427,31 +348,56 @@ describe("UploadsService", () => {
             sourceFileName: "contacts.csv",
             columns: [
               {
-                sourceField: "Name",
-                key: "existing_name",
-                label: "Existing Name",
-                type: "string",
+                sourceField: "Status",
+                existingColumnDefinitionId: "cd-name",
+                normalizedKey: "status",
                 format: null,
                 isPrimaryKey: false,
                 required: true,
-                action: "match_existing",
-                existingColumnDefinitionId: "cd-existing-123",
+                defaultValue: "active",
+                enumValues: ["active", "inactive", "pending"],
               },
             ],
           },
         ],
       });
 
-      const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      // Should NOT call upsertByKey for match_existing columns
-      expect(mockColumnDefinitionsUpsertByKey).not.toHaveBeenCalled();
-      expect(result.confirmedEntities[0].columnDefinitions[0].id).toBe("cd-existing-123");
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          required: true,
+          defaultValue: "active",
+          format: null,
+          enumValues: ["active", "inactive", "pending"],
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("should default defaultValue and enumValues to null when not provided", async () => {
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceField: "Name",
+          defaultValue: null,
+          enumValues: null,
+        }),
+        "mock-tx"
+      );
     });
   });
 
   describe("confirm() — reference columns", () => {
-    it("passes refEntityKey and refColumnDefinitionId to field mapping upsert when ID is pre-resolved", async () => {
+    it("resolves refColumnDefinitionId correctly for reference-type columns", async () => {
+      mockColumnDefinitionsFindById.mockImplementation(async (id: string) => {
+        if (id === "cd-reference") return COLDEF_REFERENCE;
+        if (id === "cd-roles-id") return { id: "cd-roles-id", organizationId: ORG_ID, key: "id", label: "ID", type: "string" };
+        return undefined;
+      });
+
       const body = createConfirmBody({
         entities: [
           {
@@ -461,16 +407,13 @@ describe("UploadsService", () => {
             columns: [
               {
                 sourceField: "role_id",
-                key: "role_id",
-                label: "Role ID",
-                type: "reference",
+                existingColumnDefinitionId: "cd-reference",
+                normalizedKey: "role_id",
                 format: null,
                 isPrimaryKey: false,
                 required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
                 refEntityKey: "roles",
-                refColumnDefinitionId: "cd-existing-roles-id",
+                refColumnDefinitionId: "cd-roles-id",
               },
             ],
           },
@@ -479,95 +422,16 @@ describe("UploadsService", () => {
 
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      // Column def upsert should NOT include ref fields
-      expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledWith(
-        expect.objectContaining({ key: "role_id", type: "reference" }),
-        "mock-tx"
-      );
-      expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledWith(
-        expect.not.objectContaining({ refEntityKey: expect.anything() }),
-        "mock-tx"
-      );
-
-      // Field mapping upsert SHOULD carry the ref metadata
       expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
         expect.objectContaining({
-          refColumnDefinitionId: "cd-existing-roles-id",
+          refColumnDefinitionId: "cd-roles-id",
           refEntityKey: "roles",
         }),
         "mock-tx"
       );
     });
 
-    it("resolves within-batch refColumnKey to refColumnDefinitionId via cache and stores on field mapping", async () => {
-      let entityCounter = 0;
-      mockConnectorEntitiesUpsertByKey.mockImplementation(async (data: unknown) => {
-        entityCounter++;
-        return {
-          ...(data as Record<string, unknown>),
-          id: `ce-${entityCounter}`,
-          key: (data as Record<string, unknown>).key,
-          label: (data as Record<string, unknown>).label,
-        };
-      });
-
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "roles",
-            entityLabel: "Roles",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "id",
-                key: "id",
-                label: "ID",
-                type: "string",
-                format: null,
-                isPrimaryKey: true,
-                required: true,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-          {
-            entityKey: "users",
-            entityLabel: "Users",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "role_id",
-                key: "role_id",
-                label: "Role ID",
-                type: "reference",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                refEntityKey: "roles",
-                refColumnKey: "id",
-              },
-            ],
-          },
-        ],
-      });
-
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      // The field mapping for role_id should have resolved "id" → "cd-id" from the cache
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sourceField: "role_id",
-          refColumnDefinitionId: "cd-id",
-          refEntityKey: "roles",
-        }),
-        "mock-tx"
-      );
-    });
-
-    it("falls back to DB lookup when refColumnKey is from a previous batch", async () => {
+    it("falls back to DB lookup when refColumnKey is provided without refColumnDefinitionId", async () => {
       mockColumnDefinitionsFindByKey.mockResolvedValue({
         id: "cd-from-db",
         key: "role_key",
@@ -583,14 +447,11 @@ describe("UploadsService", () => {
             columns: [
               {
                 sourceField: "role_id",
-                key: "role_id",
-                label: "Role ID",
-                type: "reference",
+                existingColumnDefinitionId: "cd-reference",
+                normalizedKey: "role_id",
                 format: null,
                 isPrimaryKey: false,
                 required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
                 refEntityKey: "roles",
                 refColumnKey: "role_key",
               },
@@ -621,14 +482,11 @@ describe("UploadsService", () => {
             columns: [
               {
                 sourceField: "role_id",
-                key: "role_id",
-                label: "Role ID",
-                type: "reference",
+                existingColumnDefinitionId: "cd-reference",
+                normalizedKey: "role_id",
                 format: null,
                 isPrimaryKey: false,
                 required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
                 refEntityKey: "roles",
                 refColumnKey: "nonexistent_key",
               },
@@ -645,217 +503,6 @@ describe("UploadsService", () => {
         expect.objectContaining({ refColumnDefinitionId: null }),
         "mock-tx"
       );
-    });
-  });
-
-  describe("confirm() — Phase 4: new field ownership", () => {
-    it("should pass validationPattern and validationMessage to column definition upsert", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Email",
-                key: "email",
-                label: "Email",
-                type: "string",
-                format: "email",
-                isPrimaryKey: false,
-                required: true,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                validationPattern: "^[^@]+@[^@]+\\.[^@]+$",
-                validationMessage: "Must be a valid email address",
-                canonicalFormat: "lowercase",
-              },
-            ],
-          },
-        ],
-      });
-
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledWith(
-        expect.objectContaining({
-          key: "email",
-          validationPattern: "^[^@]+@[^@]+\\.[^@]+$",
-          validationMessage: "Must be a valid email address",
-          canonicalFormat: "lowercase",
-        }),
-        "mock-tx"
-      );
-    });
-
-    it("should default validationPattern and validationMessage to null when not provided", async () => {
-      const body = createConfirmBody();
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      expect(mockColumnDefinitionsUpsertByKey).toHaveBeenCalledWith(
-        expect.objectContaining({
-          validationPattern: null,
-          validationMessage: null,
-          canonicalFormat: null,
-        }),
-        "mock-tx"
-      );
-    });
-
-    it("should NOT pass required, defaultValue, format, or enumValues to column definition upsert", async () => {
-      const body = createConfirmBody();
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      const colDefCall = mockColumnDefinitionsUpsertByKey.mock.calls[0]![0] as Record<string, unknown>;
-      expect(colDefCall).not.toHaveProperty("required");
-      expect(colDefCall).not.toHaveProperty("defaultValue");
-      expect(colDefCall).not.toHaveProperty("enumValues");
-      // 'format' should not be on column def — it belongs on field mapping
-      // (the column def schema doesn't have a 'format' field)
-    });
-
-    it("should set normalizedKey on field mapping, defaulting to column key", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Name",
-                key: "full_name",
-                label: "Full Name",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                // no normalizedKey — should default to key "full_name"
-              },
-            ],
-          },
-        ],
-      });
-
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          normalizedKey: "full_name",
-        }),
-        "mock-tx"
-      );
-    });
-
-    it("should use explicit normalizedKey when provided", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Name",
-                key: "full_name",
-                label: "Full Name",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                normalizedKey: "contact_name",
-              },
-            ],
-          },
-        ],
-      });
-
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          normalizedKey: "contact_name",
-        }),
-        "mock-tx"
-      );
-    });
-
-    it("should pass required, defaultValue, format, and enumValues to field mapping upsert", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Status",
-                key: "status",
-                label: "Status",
-                type: "enum",
-                format: null,
-                isPrimaryKey: false,
-                required: true,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                normalizedKey: "status",
-                defaultValue: "active",
-                enumValues: ["active", "inactive", "pending"],
-              },
-            ],
-          },
-        ],
-      });
-
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          required: true,
-          defaultValue: "active",
-          format: null,
-          enumValues: ["active", "inactive", "pending"],
-        }),
-        "mock-tx"
-      );
-    });
-
-    it("should default defaultValue and enumValues to null when not provided", async () => {
-      const body = createConfirmBody();
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      // First column in default body: Name (no defaultValue/enumValues)
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sourceField: "Name",
-          defaultValue: null,
-          enumValues: null,
-        }),
-        "mock-tx"
-      );
-    });
-
-    it("should not accept currency type in column definitions", async () => {
-      // ConfirmColumnSchema type enum does not include "currency" —
-      // Zod parse will strip it. Verify the schema rejects it.
-      const { ConfirmColumnSchema } = await import("@portalai/core/contracts");
-      const result = ConfirmColumnSchema.safeParse({
-        sourceField: "Price",
-        key: "price",
-        label: "Price",
-        type: "currency",
-        format: null,
-        isPrimaryKey: false,
-        required: false,
-        action: "create_new",
-        existingColumnDefinitionId: null,
-      });
-      expect(result.success).toBe(false);
     });
   });
 
@@ -897,7 +544,7 @@ describe("UploadsService", () => {
       });
     });
 
-    it("should throw 400 for invalid column definition references", async () => {
+    it("should throw 400 for invalid existingColumnDefinitionId", async () => {
       mockColumnDefinitionsFindById.mockResolvedValue(undefined);
 
       const body = createConfirmBody({
@@ -909,14 +556,11 @@ describe("UploadsService", () => {
             columns: [
               {
                 sourceField: "Name",
-                key: "name",
-                label: "Name",
-                type: "string",
+                existingColumnDefinitionId: "nonexistent-id",
+                normalizedKey: "name",
                 format: null,
                 isPrimaryKey: false,
                 required: true,
-                action: "match_existing",
-                existingColumnDefinitionId: "nonexistent-id",
               },
             ],
           },
@@ -948,14 +592,11 @@ describe("UploadsService", () => {
             columns: [
               {
                 sourceField: "Name",
-                key: "name",
-                label: "Name",
-                type: "string",
+                existingColumnDefinitionId: "cd-other",
+                normalizedKey: "name",
                 format: null,
                 isPrimaryKey: false,
                 required: true,
-                action: "match_existing",
-                existingColumnDefinitionId: "cd-other",
               },
             ],
           },
@@ -968,324 +609,6 @@ describe("UploadsService", () => {
         status: 400,
         code: "UPLOAD_INVALID_REFERENCE",
       });
-    });
-
-    it("should throw 400 when cross-entity columns share a key but have conflicting type", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Phone",
-                key: "phone",
-                label: "Phone",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-          {
-            entityKey: "leads",
-            entityLabel: "Leads",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Phone Number",
-                key: "phone",
-                label: "Phone",
-                type: "number",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-        ],
-      });
-
-      await expect(
-        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
-      ).rejects.toMatchObject({
-        status: 400,
-        code: "UPLOAD_CONFLICTING_COLUMN_DEFINITIONS",
-      });
-    });
-
-    it("should throw 400 when cross-entity columns share a key but have conflicting validationPattern", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Email",
-                key: "email",
-                label: "Email",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                validationPattern: "^[^@]+@[^@]+$",
-              },
-            ],
-          },
-          {
-            entityKey: "leads",
-            entityLabel: "Leads",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Lead Email",
-                key: "email",
-                label: "Email",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                validationPattern: "^.+@.+\\..+$",
-              },
-            ],
-          },
-        ],
-      });
-
-      await expect(
-        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
-      ).rejects.toMatchObject({
-        status: 400,
-        code: "UPLOAD_CONFLICTING_COLUMN_DEFINITIONS",
-      });
-    });
-
-    it("should throw 400 when cross-entity columns share a key but have conflicting label", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Name",
-                key: "full_name",
-                label: "Full Name",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-          {
-            entityKey: "leads",
-            entityLabel: "Leads",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Lead Name",
-                key: "full_name",
-                label: "Complete Name",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-        ],
-      });
-
-      await expect(
-        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
-      ).rejects.toMatchObject({
-        status: 400,
-        code: "UPLOAD_CONFLICTING_COLUMN_DEFINITIONS",
-      });
-    });
-
-    it("should allow cross-entity columns with same key when definitions are identical", async () => {
-      let entityCounter = 0;
-      mockConnectorEntitiesUpsertByKey.mockImplementation(async (data: unknown) => {
-        entityCounter++;
-        return {
-          ...(data as Record<string, unknown>),
-          id: `ce-${entityCounter}`,
-          key: (data as Record<string, unknown>).key,
-          label: (data as Record<string, unknown>).label,
-        };
-      });
-
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Email",
-                key: "email",
-                label: "Email",
-                type: "string",
-                format: "email",
-                isPrimaryKey: false,
-                required: true,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                validationPattern: "^[^@]+@[^@]+$",
-                canonicalFormat: "lowercase",
-              },
-            ],
-          },
-          {
-            entityKey: "leads",
-            entityLabel: "Leads",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Lead Email",
-                key: "email",
-                label: "Email",
-                type: "string",
-                format: null,
-                isPrimaryKey: true,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                validationPattern: "^[^@]+@[^@]+$",
-                canonicalFormat: "lowercase",
-              },
-            ],
-          },
-        ],
-      });
-
-      await expect(
-        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
-      ).resolves.toBeDefined();
-    });
-
-    it("should skip match_existing columns when checking for cross-entity conflicts", async () => {
-      mockColumnDefinitionsFindById.mockResolvedValue({
-        id: "cd-existing",
-        organizationId: ORG_ID,
-        key: "phone",
-        label: "Phone",
-        type: "string",
-      });
-
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Phone",
-                key: "phone",
-                label: "Phone",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-          {
-            entityKey: "leads",
-            entityLabel: "Leads",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Phone Number",
-                key: "phone",
-                label: "Phone",
-                type: "number",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "match_existing",
-                existingColumnDefinitionId: "cd-existing",
-              },
-            ],
-          },
-        ],
-      });
-
-      await expect(
-        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
-      ).resolves.toBeDefined();
-    });
-
-    it("should include conflicting field names in the error message", async () => {
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "contacts",
-            entityLabel: "Contacts",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Phone",
-                key: "phone",
-                label: "Phone",
-                type: "string",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                canonicalFormat: "e164",
-              },
-            ],
-          },
-          {
-            entityKey: "leads",
-            entityLabel: "Leads",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "Phone Number",
-                key: "phone",
-                label: "Phone Number",
-                type: "number",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                canonicalFormat: null,
-              },
-            ],
-          },
-        ],
-      });
-
-      await expect(
-        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
-      ).rejects.toThrow(/type, label, canonicalFormat/);
     });
 
     it("should roll back transaction on DB error — job stays awaiting_confirmation", async () => {

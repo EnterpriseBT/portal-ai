@@ -1,8 +1,9 @@
 /**
  * Uploads Service — handles confirmation of file upload recommendations.
  *
- * Orchestrates the creation of connector instances, entities, column
- * definitions, and field mappings in a single database transaction.
+ * Orchestrates the creation of connector instances, entities, and field
+ * mappings in a single database transaction. Column definitions are
+ * referenced by ID — they must already exist (seeded or user-created).
  */
 
 import crypto from "crypto";
@@ -11,7 +12,6 @@ import type {
   ConfirmRequestBody,
   ConfirmResponsePayload,
   ConfirmResponseEntity,
-  ConfirmColumn,
 } from "@portalai/core/contracts";
 import type { FileUploadMetadata } from "@portalai/core/models";
 
@@ -34,7 +34,7 @@ export class UploadsService {
    * Runs inside a single database transaction:
    * 1. Upsert connector instance
    * 2. For each entity: upsert connector entity
-   * 3. For each column: upsert column definition
+   * 3. For each column: validate existing column definition
    * 4. For each mapping: upsert field mapping
    * 5. Transition job to completed
    * 6. Emit job:complete SSE event
@@ -63,29 +63,21 @@ export class UploadsService {
       );
     }
 
-    // Validate existing column definition references
+    // Validate all column definition references up front
     for (const entity of body.entities) {
       for (const col of entity.columns) {
-        if (col.action === "match_existing" && col.existingColumnDefinitionId) {
-          const existing = await DbService.repository.columnDefinitions.findById(
-            col.existingColumnDefinitionId
+        const existing = await DbService.repository.columnDefinitions.findById(
+          col.existingColumnDefinitionId
+        );
+        if (!existing || existing.organizationId !== organizationId) {
+          throw new ApiError(
+            400,
+            ApiCode.UPLOAD_INVALID_REFERENCE,
+            `Column definition "${col.existingColumnDefinitionId}" not found or does not belong to this organization`
           );
-          if (!existing || existing.organizationId !== organizationId) {
-            throw new ApiError(
-              400,
-              ApiCode.UPLOAD_INVALID_REFERENCE,
-              `Column definition "${col.existingColumnDefinitionId}" not found or does not belong to this organization`
-            );
-          }
         }
       }
     }
-
-    // Validate that create_new columns sharing the same key have consistent
-    // column-definition-level fields (type, label, validationPattern, etc.).
-    // Without this check the first entity's config silently wins and later
-    // entities get a column definition they didn't ask for.
-    UploadsService.validateCrossEntityColumnConsistency(body);
 
     const metadata = job.metadata as unknown as FileUploadMetadata;
     const now = Date.now();
@@ -231,9 +223,6 @@ export class UploadsService {
     // 2. Process each entity
     const confirmedEntities: ConfirmResponseEntity[] = [];
 
-    // Track column definitions by key to avoid duplicates across entities
-    const columnDefCache = new Map<string, { id: string; key: string; label: string }>();
-
     for (const entity of body.entities) {
       // Upsert connector entity
       const connectorEntity = await DbService.repository.connectorEntities.upsertByKey(
@@ -263,36 +252,35 @@ export class UploadsService {
       }[] = [];
 
       for (const col of entity.columns) {
-        // Resolve or create column definition
-        const colDef = await UploadsService.resolveColumnDefinition(
-          tx, organizationId, userId, col, columnDefCache, now
+        // Look up the existing column definition (already validated above)
+        const colDef = await DbService.repository.columnDefinitions.findById(
+          col.existingColumnDefinitionId, tx
         );
-        entityColumnDefs.push(colDef);
+        entityColumnDefs.push({ id: colDef!.id, key: colDef!.key, label: colDef!.label });
 
         // For reference columns, resolve the target column definition ID.
-        // Priority: pre-resolved ID from client → cache (same batch) → DB lookup.
-        const refColumnDefinitionId = col.type === "reference"
+        const refColumnDefinitionId = colDef!.type === "reference" || colDef!.type === "reference-array"
           ? await UploadsService.resolveRefColumnDefinitionId(
-            organizationId, col.refColumnKey, col.refColumnDefinitionId, columnDefCache, tx
+            organizationId, col.refColumnKey, col.refColumnDefinitionId, tx
           )
           : null;
 
-        // Upsert field mapping (ref metadata stored here, not on the column def)
+        // Upsert field mapping
         const fieldMapping = await DbService.repository.fieldMappings.upsertByEntityAndColumn(
           {
             id: crypto.randomUUID(),
             organizationId,
             connectorEntityId: connectorEntity.id,
-            columnDefinitionId: colDef.id,
+            columnDefinitionId: colDef!.id,
             sourceField: col.sourceField,
             isPrimaryKey: col.isPrimaryKey,
-            normalizedKey: col.normalizedKey ?? col.key,
+            normalizedKey: col.normalizedKey,
             required: col.required,
             defaultValue: col.defaultValue ?? null,
             format: col.format,
             enumValues: col.enumValues ?? null,
             refColumnDefinitionId: refColumnDefinitionId ?? null,
-            refEntityKey: col.type === "reference" ? (col.refEntityKey ?? null) : null,
+            refEntityKey: (colDef!.type === "reference" || colDef!.type === "reference-array") ? (col.refEntityKey ?? null) : null,
             created: now,
             createdBy: userId,
             updated: null,
@@ -329,120 +317,19 @@ export class UploadsService {
   }
 
   /**
-   * Validate that all `create_new` columns sharing the same key across entities
-   * agree on column-definition-level fields. Throws 400 if any key has
-   * conflicting type, label, validationPattern, validationMessage, or
-   * canonicalFormat.
-   */
-  private static validateCrossEntityColumnConsistency(body: ConfirmRequestBody): void {
-    const COL_DEF_FIELDS = ["type", "label", "validationPattern", "validationMessage", "canonicalFormat"] as const;
-
-    const seen = new Map<string, { entityKey: string; col: ConfirmColumn }>();
-
-    for (const entity of body.entities) {
-      for (const col of entity.columns) {
-        if (col.action !== "create_new") continue;
-
-        const existing = seen.get(col.key);
-        if (!existing) {
-          seen.set(col.key, { entityKey: entity.entityKey, col });
-          continue;
-        }
-
-        const conflicts: string[] = [];
-        for (const field of COL_DEF_FIELDS) {
-          const a = existing.col[field] ?? null;
-          const b = col[field] ?? null;
-          if (a !== b) {
-            conflicts.push(field);
-          }
-        }
-
-        if (conflicts.length > 0) {
-          throw new ApiError(
-            400,
-            ApiCode.UPLOAD_CONFLICTING_COLUMN_DEFINITIONS,
-            `Column key "${col.key}" has conflicting definitions across entities ` +
-            `"${existing.entityKey}" and "${entity.entityKey}": ${conflicts.join(", ")}`
-          );
-        }
-      }
-    }
-  }
-
-  /**
    * Resolve the column definition ID that a reference column points to.
-   * Checks in order: pre-resolved ID from client, in-batch cache, then DB.
+   * Checks in order: pre-resolved ID from client, then DB lookup by key.
    */
   private static async resolveRefColumnDefinitionId(
     organizationId: string,
     refColumnKey: string | null | undefined,
     refColumnDefinitionId: string | null | undefined,
-    columnDefCache: Map<string, { id: string; key: string; label: string }>,
     tx: DbTransaction
   ): Promise<string | null> {
     if (refColumnDefinitionId) return refColumnDefinitionId;
     if (!refColumnKey) return null;
 
-    const cached = columnDefCache.get(`${organizationId}:${refColumnKey}`);
-    if (cached) return cached.id;
-
     const existing = await DbService.repository.columnDefinitions.findByKey(organizationId, refColumnKey, tx);
     return existing?.id ?? null;
-  }
-
-  /**
-   * Resolve a column definition: either use an existing one (match_existing)
-   * or upsert a new one (create_new). Uses a cache to avoid duplicates
-   * across entities within the same confirmation.
-   */
-  private static async resolveColumnDefinition(
-    tx: DbTransaction,
-    organizationId: string,
-    userId: string,
-    col: ConfirmColumn,
-    cache: Map<string, { id: string; key: string; label: string }>,
-    now: number
-  ): Promise<{ id: string; key: string; label: string }> {
-    // Check cache first (handles shared columns across entities)
-    const cacheKey = `${organizationId}:${col.key}`;
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
-
-    let colDef;
-    if (col.action === "match_existing" && col.existingColumnDefinitionId) {
-      // Use existing column definition — already validated above
-      const existing = await DbService.repository.columnDefinitions.findById(
-        col.existingColumnDefinitionId,
-        tx
-      );
-      colDef = { id: existing!.id, key: existing!.key, label: existing!.label };
-    } else {
-      // Upsert column definition by (organizationId, key)
-      const upserted = await DbService.repository.columnDefinitions.upsertByKey(
-        {
-          id: crypto.randomUUID(),
-          organizationId,
-          key: col.key,
-          label: col.label,
-          type: col.type,
-          description: null,
-          validationPattern: col.validationPattern ?? null,
-          validationMessage: col.validationMessage ?? null,
-          canonicalFormat: col.canonicalFormat ?? null,
-          created: now,
-          createdBy: userId,
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        },
-        tx
-      );
-      colDef = { id: upserted.id, key: upserted.key, label: upserted.label };
-    }
-
-    cache.set(cacheKey, colDef);
-    return colDef;
   }
 }

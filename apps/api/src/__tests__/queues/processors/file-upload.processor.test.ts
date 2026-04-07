@@ -127,16 +127,15 @@ describe("fileUploadProcessor", () => {
         sourceFileName: input.parseResult.fileName,
         columns: input.parseResult.columnStats.map((s: { name: string; sampleValues: string[] }) => ({
           sourceField: s.name,
-          key: s.name.toLowerCase(),
-          label: s.name,
-          type: "string",
+          existingColumnDefinitionId: "cd-text",
+          confidence: 0.5,
+          sampleValues: s.sampleValues,
           format: null,
           isPrimaryKey: false,
           required: false,
-          action: "create_new",
-          existingColumnDefinitionId: null,
-          confidence: 0,
-          sampleValues: s.sampleValues,
+          normalizedKey: s.name.toLowerCase(),
+          defaultValue: null,
+          enumValues: null,
         })),
       };
     });

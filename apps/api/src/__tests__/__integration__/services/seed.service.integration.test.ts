@@ -175,12 +175,12 @@ describe("SeedService Integration Tests", () => {
       organizationId = seed.organizationId;
     });
 
-    it("should insert 8 system column definitions for the organization", async () => {
+    it("should insert 26 system column definitions for the organization", async () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
 
       const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
 
-      expect(rows).toHaveLength(8);
+      expect(rows).toHaveLength(26);
     });
 
     it("should create column definitions with correct keys", async () => {
@@ -190,13 +190,31 @@ describe("SeedService Integration Tests", () => {
       const keys = rows.map((r) => r.key).sort();
 
       expect(keys).toEqual([
+        "address",
+        "array",
+        "boolean",
+        "code",
         "currency",
         "date",
         "datetime",
+        "decimal",
         "description",
         "email",
+        "enum",
+        "integer",
+        "json_data",
         "name",
+        "number_id",
+        "percentage",
         "phone",
+        "quantity",
+        "reference",
+        "reference_array",
+        "status",
+        "string_id",
+        "tag",
+        "text",
+        "url",
         "uuid",
       ]);
     });
@@ -244,7 +262,7 @@ describe("SeedService Integration Tests", () => {
 
       const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
 
-      expect(rows).toHaveLength(8);
+      expect(rows).toHaveLength(26);
     });
 
     it("should use deterministic IDs — running twice produces the same IDs", async () => {
@@ -266,8 +284,8 @@ describe("SeedService Integration Tests", () => {
       const rowsA = await columnDefsRepo.findByOrganizationId(organizationId, db);
       const rowsB = await columnDefsRepo.findByOrganizationId(seedB.organizationId, db);
 
-      expect(rowsA).toHaveLength(8);
-      expect(rowsB).toHaveLength(8);
+      expect(rowsA).toHaveLength(26);
+      expect(rowsB).toHaveLength(26);
 
       // IDs should differ between organizations
       const uuidA = rowsA.find((r) => r.key === "uuid");

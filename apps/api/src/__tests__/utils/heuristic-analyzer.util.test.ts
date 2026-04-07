@@ -53,6 +53,38 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
   };
 }
 
+/** Standard seed column definitions covering all types. */
+function makeSeedColumns(): ExistingColumnDefinition[] {
+  return [
+    { id: "cd-uuid", key: "uuid", label: "UUID", type: "string", description: "Universally unique identifier", validationPattern: null, canonicalFormat: "lowercase" },
+    { id: "cd-string_id", key: "string_id", label: "String ID", type: "string", description: "String identifier", validationPattern: null, canonicalFormat: null },
+    { id: "cd-number_id", key: "number_id", label: "Number ID", type: "number", description: "Numeric identifier", validationPattern: null, canonicalFormat: null },
+    { id: "cd-email", key: "email", label: "Email", type: "string", description: "Email address", validationPattern: null, canonicalFormat: "lowercase" },
+    { id: "cd-phone", key: "phone", label: "Phone", type: "string", description: "Phone number", validationPattern: null, canonicalFormat: "phone" },
+    { id: "cd-url", key: "url", label: "Website", type: "string", description: "Website URL", validationPattern: null, canonicalFormat: "lowercase" },
+    { id: "cd-name", key: "name", label: "Name", type: "string", description: "Person or entity name", validationPattern: null, canonicalFormat: "trim" },
+    { id: "cd-description", key: "description", label: "Description", type: "string", description: "Description text", validationPattern: null, canonicalFormat: "trim" },
+    { id: "cd-text", key: "text", label: "Text", type: "string", description: "General-purpose text content", validationPattern: null, canonicalFormat: "trim" },
+    { id: "cd-code", key: "code", label: "Code", type: "string", description: "Code value", validationPattern: null, canonicalFormat: null },
+    { id: "cd-address", key: "address", label: "Address", type: "string", description: "Physical address", validationPattern: null, canonicalFormat: "trim" },
+    { id: "cd-status", key: "status", label: "Status", type: "string", description: "Status value", validationPattern: null, canonicalFormat: null },
+    { id: "cd-tag", key: "tag", label: "Tag", type: "string", description: "Tag label", validationPattern: null, canonicalFormat: null },
+    { id: "cd-integer", key: "integer", label: "Integer", type: "number", description: "Whole number", validationPattern: null, canonicalFormat: "#,##0" },
+    { id: "cd-decimal", key: "decimal", label: "Decimal", type: "number", description: "Decimal number", validationPattern: null, canonicalFormat: "#,##0.00" },
+    { id: "cd-percentage", key: "percentage", label: "Percentage", type: "number", description: "Percentage value", validationPattern: null, canonicalFormat: null },
+    { id: "cd-currency", key: "currency", label: "Currency", type: "number", description: "Currency amount", validationPattern: null, canonicalFormat: null },
+    { id: "cd-quantity", key: "quantity", label: "Quantity", type: "number", description: "Quantity count", validationPattern: null, canonicalFormat: null },
+    { id: "cd-boolean", key: "boolean", label: "Boolean", type: "boolean", description: "True or false", validationPattern: null, canonicalFormat: null },
+    { id: "cd-date", key: "date", label: "Date", type: "date", description: "Calendar date", validationPattern: null, canonicalFormat: null },
+    { id: "cd-datetime", key: "datetime", label: "Date & Time", type: "datetime", description: "Date and time", validationPattern: null, canonicalFormat: null },
+    { id: "cd-enum", key: "enum", label: "Enum", type: "enum", description: "Enumerated value", validationPattern: null, canonicalFormat: null },
+    { id: "cd-json_data", key: "json_data", label: "JSON Data", type: "json", description: "JSON data", validationPattern: null, canonicalFormat: null },
+    { id: "cd-array", key: "array", label: "Array", type: "array", description: "Array value", validationPattern: null, canonicalFormat: null },
+    { id: "cd-reference", key: "reference", label: "Reference", type: "reference", description: "Reference link", validationPattern: null, canonicalFormat: null },
+    { id: "cd-reference_array", key: "reference_array", label: "Reference Array", type: "reference-array", description: "Reference array", validationPattern: null, canonicalFormat: null },
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // inferType
 // ---------------------------------------------------------------------------
@@ -127,7 +159,6 @@ describe("inferType", () => {
   });
 
   it("prefers datetime over date when timestamps present", () => {
-    // All values match datetime — should not fall through to date
     expect(inferType(["2024-01-15T10:30:00Z"]).type).toBe("datetime");
   });
 });
@@ -183,214 +214,7 @@ describe("toSnakeCase", () => {
 });
 
 // ---------------------------------------------------------------------------
-// heuristicAnalyze
-// ---------------------------------------------------------------------------
-
-describe("heuristicAnalyze", () => {
-  it("returns valid FileUploadRecommendationEntitySchema output", () => {
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult(),
-      existingColumns: [],
-      priorRecommendations: [],
-    });
-
-    const validated = FileUploadRecommendationEntitySchema.safeParse(result);
-    expect(validated.success).toBe(true);
-  });
-
-  it("produces one column per columnStat", () => {
-    const parseResult = makeParseResult();
-    const result = heuristicAnalyze({
-      parseResult,
-      existingColumns: [],
-      priorRecommendations: [],
-    });
-
-    expect(result.columns).toHaveLength(parseResult.columnStats.length);
-  });
-
-  it("derives entity key from file name", () => {
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult({ fileName: "User Profiles.csv" }),
-      existingColumns: [],
-      priorRecommendations: [],
-    });
-
-    expect(result.entityKey).toBe("user_profiles");
-    expect(result.entityLabel).toBe("User Profiles");
-    expect(result.sourceFileName).toBe("User Profiles.csv");
-  });
-
-  it("infers types from sample values", () => {
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult({
-        columnStats: [
-          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.com"] }),
-          makeColumnStat({ name: "age", sampleValues: ["30", "25"] }),
-          makeColumnStat({ name: "active", sampleValues: ["true", "false"] }),
-          makeColumnStat({ name: "created", sampleValues: ["2024-01-15", "2024-02-20"] }),
-        ],
-      }),
-      existingColumns: [],
-      priorRecommendations: [],
-    });
-
-    expect(result.columns[0].format).toBe("email");
-    expect(result.columns[1].type).toBe("number");
-    expect(result.columns[2].type).toBe("boolean");
-    expect(result.columns[3].type).toBe("date");
-  });
-
-  it("sets required=true when nullRate is 0", () => {
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult({
-        columnStats: [
-          makeColumnStat({ name: "id", nullRate: 0 }),
-          makeColumnStat({ name: "notes", nullRate: 0.5, nullCount: 5 }),
-        ],
-      }),
-      existingColumns: [],
-      priorRecommendations: [],
-    });
-
-    expect(result.columns[0].required).toBe(true);
-    expect(result.columns[1].required).toBe(false);
-  });
-
-  // ── Existing column matching ────────────────────────────────────────
-
-  it("exact key match produces match_existing with confidence 1", () => {
-    const existing: ExistingColumnDefinition[] = [
-      { id: "col-1", key: "email", label: "Email Address", type: "string" },
-    ];
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "email", sampleValues: ["a@b.com"] })],
-      }),
-      existingColumns: existing,
-      priorRecommendations: [],
-    });
-
-    expect(result.columns[0].action).toBe("match_existing");
-    expect(result.columns[0].existingColumnDefinitionId).toBe("col-1");
-    expect(result.columns[0].confidence).toBe(1);
-    expect(result.columns[0].key).toBe("email");
-    expect(result.columns[0].label).toBe("Email Address");
-  });
-
-  it("exact label match (case-insensitive) produces match_existing", () => {
-    const existing: ExistingColumnDefinition[] = [
-      { id: "col-2", key: "user_email", label: "Email", type: "string" },
-    ];
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "Email", sampleValues: ["a@b.com"] })],
-      }),
-      existingColumns: existing,
-      priorRecommendations: [],
-    });
-
-    expect(result.columns[0].action).toBe("match_existing");
-    expect(result.columns[0].existingColumnDefinitionId).toBe("col-2");
-    expect(result.columns[0].confidence).toBe(1);
-  });
-
-  it("non-matching columns are create_new with confidence 0", () => {
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "zzz_unknown" })],
-      }),
-      existingColumns: [],
-      priorRecommendations: [],
-    });
-
-    expect(result.columns[0].action).toBe("create_new");
-    expect(result.columns[0].existingColumnDefinitionId).toBeNull();
-    expect(result.columns[0].confidence).toBe(0);
-  });
-
-  // ── Prior recommendation matching ───────────────────────────────────
-
-  it("matches columns from prior recommendations with confidence 0.9", () => {
-    const prior = {
-      entityKey: "contacts",
-      entityLabel: "contacts",
-      sourceFileName: "contacts.csv",
-      columns: [{
-        sourceField: "email",
-        key: "email",
-        label: "email",
-        type: "string" as const,
-        format: "email",
-        isPrimaryKey: false,
-        required: true,
-        action: "create_new" as const,
-        existingColumnDefinitionId: null,
-        confidence: 0,
-        sampleValues: ["alice@test.com"],
-      }],
-    };
-
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult({
-        fileName: "orders.csv",
-        columnStats: [
-          makeColumnStat({ name: "email", sampleValues: ["alice@test.com"] }),
-          makeColumnStat({ name: "amount", sampleValues: ["100.00"] }),
-        ],
-      }),
-      existingColumns: [],
-      priorRecommendations: [prior],
-    });
-
-    const emailCol = result.columns.find((c) => c.sourceField === "email")!;
-    expect(emailCol.action).toBe("match_existing");
-    expect(emailCol.confidence).toBe(0.9);
-
-    const amountCol = result.columns.find((c) => c.sourceField === "amount")!;
-    expect(amountCol.action).toBe("create_new");
-    expect(amountCol.confidence).toBe(0);
-  });
-
-  it("existing column match takes priority over prior recommendation match", () => {
-    const existing: ExistingColumnDefinition[] = [
-      { id: "col-1", key: "email", label: "Email", type: "string" },
-    ];
-    const prior = {
-      entityKey: "contacts",
-      entityLabel: "contacts",
-      sourceFileName: "contacts.csv",
-      columns: [{
-        sourceField: "email",
-        key: "email",
-        label: "email",
-        type: "string" as const,
-        format: null,
-        isPrimaryKey: false,
-        required: true,
-        action: "create_new" as const,
-        existingColumnDefinitionId: null,
-        confidence: 0,
-        sampleValues: [],
-      }],
-    };
-
-    const result = heuristicAnalyze({
-      parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "email", sampleValues: ["a@b.com"] })],
-      }),
-      existingColumns: existing,
-      priorRecommendations: [prior],
-    });
-
-    // Should prefer existing (confidence 1) over prior (confidence 0.9)
-    expect(result.columns[0].confidence).toBe(1);
-    expect(result.columns[0].existingColumnDefinitionId).toBe("col-1");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Phase 4: detectValidationPattern
+// detectValidationPattern
 // ---------------------------------------------------------------------------
 
 describe("detectValidationPattern", () => {
@@ -423,29 +247,117 @@ describe("detectValidationPattern", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 4: heuristicAnalyze — new output fields
+// heuristicAnalyze — core behavior
 // ---------------------------------------------------------------------------
 
-describe("heuristicAnalyze — Phase 4 fields", () => {
-  it("outputs normalizedKey per column (defaults to snake_case key)", () => {
+describe("heuristicAnalyze", () => {
+  const seedColumns = makeSeedColumns();
+
+  it("returns valid FileUploadRecommendationEntitySchema output", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult(),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    const validated = FileUploadRecommendationEntitySchema.safeParse(result);
+    expect(validated.success).toBe(true);
+  });
+
+  it("produces one column per columnStat", () => {
+    const parseResult = makeParseResult();
+    const result = heuristicAnalyze({
+      parseResult,
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns).toHaveLength(parseResult.columnStats.length);
+  });
+
+  it("derives entity key from file name", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({ fileName: "User Profiles.csv" }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.entityKey).toBe("user_profiles");
+    expect(result.entityLabel).toBe("User Profiles");
+    expect(result.sourceFileName).toBe("User Profiles.csv");
+  });
+
+  it("every column has an existingColumnDefinitionId (required string)", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [
+          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.org"] }),
+          makeColumnStat({ name: "age", sampleValues: ["30", "25"] }),
+          makeColumnStat({ name: "active", sampleValues: ["true", "false"] }),
+          makeColumnStat({ name: "created", sampleValues: ["2024-01-15", "2024-02-20"] }),
+          makeColumnStat({ name: "zzz_unknown", sampleValues: ["foo", "bar"] }),
+        ],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    for (const col of result.columns) {
+      expect(typeof col.existingColumnDefinitionId).toBe("string");
+      expect(col.existingColumnDefinitionId.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("no recommendation returns action field (field removed)", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "zzz" })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0]).not.toHaveProperty("action");
+  });
+
+  it("normalizedKey is derived from source field via toSnakeCase", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
         columnStats: [
           makeColumnStat({ name: "First Name", sampleValues: ["Alice"] }),
-          makeColumnStat({ name: "email", sampleValues: ["a@b.com"] }),
         ],
       }),
-      existingColumns: [],
+      existingColumns: seedColumns,
       priorRecommendations: [],
     });
 
     expect(result.columns[0].normalizedKey).toBe("first_name");
-    expect(result.columns[1].normalizedKey).toBe("email");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// heuristicAnalyze — exact matching
+// ---------------------------------------------------------------------------
+
+describe("heuristicAnalyze — exact matching", () => {
+  const seedColumns = makeSeedColumns();
+
+  it("exact key match has confidence 1.0", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "email", sampleValues: ["a@b.com"] })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-email");
+    expect(result.columns[0].confidence).toBe(1);
   });
 
-  it("outputs normalizedKey matching existing column key on match", () => {
+  it("exact label match (case-insensitive) has confidence 1.0", () => {
     const existing: ExistingColumnDefinition[] = [
-      { id: "col-1", key: "user_email", label: "Email", type: "string" },
+      { id: "col-2", key: "user_email", label: "Email", type: "string", description: "User email", validationPattern: null, canonicalFormat: "lowercase" },
     ];
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
@@ -455,70 +367,184 @@ describe("heuristicAnalyze — Phase 4 fields", () => {
       priorRecommendations: [],
     });
 
-    expect(result.columns[0].normalizedKey).toBe("user_email");
+    expect(result.columns[0].existingColumnDefinitionId).toBe("col-2");
+    expect(result.columns[0].confidence).toBe(1);
   });
+});
 
-  it("outputs required, defaultValue, format, enumValues at mapping level", () => {
+// ---------------------------------------------------------------------------
+// heuristicAnalyze — pattern-based matching
+// ---------------------------------------------------------------------------
+
+describe("heuristicAnalyze — pattern-based matching", () => {
+  const seedColumns = makeSeedColumns();
+
+  it("email-pattern samples match the email column definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "status", sampleValues: ["active"] })],
+        columnStats: [makeColumnStat({ name: "contact_email", sampleValues: ["a@b.com", "c@d.org"] })],
       }),
-      existingColumns: [],
+      existingColumns: seedColumns,
       priorRecommendations: [],
     });
 
-    const col = result.columns[0];
-    expect(col).toHaveProperty("required");
-    expect(col).toHaveProperty("defaultValue", null);
-    expect(col).toHaveProperty("enumValues", null);
-    expect(col).toHaveProperty("format");
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-email");
+    expect(result.columns[0].confidence).toBe(0.9);
   });
 
-  it("does NOT return currency type — returns number instead", () => {
-    // Currency-like values (with $ prefix stripped by CSV parser) are just numbers
+  it("UUID-pattern samples match the uuid column definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "price", sampleValues: ["9.99", "14.50", "100.00"] })],
+        columnStats: [makeColumnStat({
+          name: "record_id",
+          sampleValues: ["550e8400-e29b-41d4-a716-446655440000", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"],
+        })],
       }),
-      existingColumns: [],
+      existingColumns: seedColumns,
       priorRecommendations: [],
     });
 
-    expect(result.columns[0].type).toBe("number");
-    expect(result.columns[0].type).not.toBe("currency");
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-uuid");
+    expect(result.columns[0].confidence).toBe(0.9);
   });
 
-  it("outputs canonicalFormat suggestions based on detected type", () => {
+  it("URL-pattern samples match the url column definition", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({
+          name: "homepage_link",
+          sampleValues: ["https://example.com", "http://foo.org"],
+        })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-url");
+    expect(result.columns[0].confidence).toBe(0.9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// heuristicAnalyze — type-based fallback matching
+// ---------------------------------------------------------------------------
+
+describe("heuristicAnalyze — type-based fallback matching", () => {
+  const seedColumns = makeSeedColumns();
+
+  it("numeric samples with decimals match decimal definition", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "price", sampleValues: ["9.99", "14.50"] })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-decimal");
+    expect(result.columns[0].confidence).toBe(0.5);
+  });
+
+  it("numeric samples without decimals match integer definition", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "count", sampleValues: ["1", "42", "100"] })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-integer");
+    expect(result.columns[0].confidence).toBe(0.5);
+  });
+
+  it("date samples match date definition", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "created_at", sampleValues: ["2024-01-15", "2024-02-20"] })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-date");
+    expect(result.columns[0].confidence).toBe(0.5);
+  });
+
+  it("datetime samples match datetime definition", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "updated_at", sampleValues: ["2024-01-15T10:30:00Z"] })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-datetime");
+    expect(result.columns[0].confidence).toBe(0.5);
+  });
+
+  it("boolean samples match boolean definition", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "is_active", sampleValues: ["true", "false"] })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-boolean");
+    expect(result.columns[0].confidence).toBe(0.5);
+  });
+
+  it("generic string samples fall back to text definition", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({
+        columnStats: [makeColumnStat({ name: "notes", sampleValues: ["foo bar", "baz qux"] })],
+      }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-text");
+    expect(result.columns[0].confidence).toBe(0.5);
+  });
+
+  it("sets required=true when nullRate is 0", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
         columnStats: [
-          makeColumnStat({ name: "created", sampleValues: ["2024-01-15", "2024-02-20"] }),
-          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.org"] }),
-          makeColumnStat({ name: "name", sampleValues: ["Alice", "Bob"] }),
+          makeColumnStat({ name: "id", nullRate: 0 }),
+          makeColumnStat({ name: "notes", nullRate: 0.5, nullCount: 5 }),
         ],
       }),
-      existingColumns: [],
+      existingColumns: seedColumns,
       priorRecommendations: [],
     });
 
-    expect(result.columns[0].canonicalFormat).toBe("YYYY-MM-DD");
-    expect(result.columns[1].canonicalFormat).toBe("lowercase");
-    expect(result.columns[2].canonicalFormat).toBeNull();
+    expect(result.columns[0].required).toBe(true);
+    expect(result.columns[1].required).toBe(false);
   });
+});
 
-  it("outputs validationPattern for detectable patterns", () => {
+// ---------------------------------------------------------------------------
+// heuristicAnalyze — confidence priority
+// ---------------------------------------------------------------------------
+
+describe("heuristicAnalyze — confidence priority", () => {
+  const seedColumns = makeSeedColumns();
+
+  it("exact match (1.0) takes priority over pattern match (0.9)", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [
-          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.org"] }),
-          makeColumnStat({ name: "name", sampleValues: ["Alice", "Bob"] }),
-        ],
+        // "email" is both an exact key match AND an email-pattern match
+        columnStats: [makeColumnStat({ name: "email", sampleValues: ["a@b.com"] })],
       }),
-      existingColumns: [],
+      existingColumns: seedColumns,
       priorRecommendations: [],
     });
 
-    expect(result.columns[0].validationPattern).toBe("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
-    expect(result.columns[1].validationPattern).toBeNull();
+    expect(result.columns[0].confidence).toBe(1);
+    expect(result.columns[0].existingColumnDefinitionId).toBe("cd-email");
   });
 });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { FormErrors } from "../../../utils/form-validation.util";
-import type { RecommendedColumn, RecommendedEntity } from "./upload-workflow.util";
+import type { RecommendedEntity } from "./upload-workflow.util";
 
 // ── Entity Step (Step 2) ────────────────────────────────────────────
 
@@ -34,30 +34,9 @@ export function hasEntityStepErrors(errors: EntityStepErrors): boolean {
 
 // ── Column Mapping Step (Step 3) ────────────────────────────────────
 
-const BaseColumnSchema = z.object({
-  key: z.string().trim().min(1, "Column key is required"),
-  label: z.string().trim().min(1, "Column label is required"),
-  type: z.string().min(1, "Column type is required"),
-});
-
 const NormalizedKeySchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]*$/, "Normalized key must be lowercase snake_case");
-
-const ReferenceColumnSchema = BaseColumnSchema.extend({
-  type: z.enum(["reference", "reference-array"]),
-  refEntityKey: z.union([
-    z.string().min(1, "Reference entity is required"),
-    z.null(),
-  ]).refine((v) => v !== null && v.length > 0, {
-    message: "Reference entity is required",
-  }),
-  refColumnKey: z.string().min(1).nullable(),
-  refColumnDefinitionId: z.string().min(1).nullable(),
-}).refine(
-  (data) => !!data.refColumnKey || !!data.refColumnDefinitionId,
-  { message: "Reference column is required", path: ["refColumnKey"] }
-);
 
 /** Per-entity → per-column error map. Key format: `entityIndex.columnIndex.fieldName` */
 export type ColumnStepErrors = Record<number, Record<number, FormErrors>>;
@@ -67,42 +46,29 @@ export function validateColumnStep(entities: RecommendedEntity[]): ColumnStepErr
   for (let ei = 0; ei < entities.length; ei++) {
     const colErrors: Record<number, FormErrors> = {};
 
-    // Per-column schema validation
+    // Per-column validation
     for (let ci = 0; ci < entities[ei].columns.length; ci++) {
       const col = entities[ei].columns[ci];
-      const isRef = col.recommended.type === "reference" || col.recommended.type === "reference-array";
-      const schema = isRef ? ReferenceColumnSchema : BaseColumnSchema;
-      const result = schema.safeParse(col.recommended);
-      if (!result.success) {
-        const fieldErrors: FormErrors = {};
-        for (const issue of result.error.issues) {
-          const key = issue.path.join(".");
-          if (!fieldErrors[key]) fieldErrors[key] = issue.message;
-        }
-        colErrors[ci] = fieldErrors;
-      }
+      const fieldErrors: FormErrors = {};
 
-      // Validate validationPattern is a valid regex
-      const vp = col.recommended.validationPattern;
-      if (vp) {
-        try {
-          new RegExp(vp);
-        } catch {
-          colErrors[ci] = {
-            ...(colErrors[ci] ?? {}),
-            validationPattern: "Invalid regular expression",
-          };
-        }
+      // Validate existingColumnDefinitionId is present
+      if (!col.existingColumnDefinitionId) {
+        fieldErrors.existingColumnDefinitionId = "Column definition must be selected";
       }
 
       // Validate normalizedKey
-      const nk = col.normalizedKey ?? col.recommended.key;
-      const nkResult = NormalizedKeySchema.safeParse(nk);
-      if (!nkResult.success) {
-        colErrors[ci] = {
-          ...(colErrors[ci] ?? {}),
-          normalizedKey: nkResult.error.issues[0].message,
-        };
+      const nk = col.normalizedKey;
+      if (!nk) {
+        fieldErrors.normalizedKey = "Normalized key is required";
+      } else {
+        const nkResult = NormalizedKeySchema.safeParse(nk);
+        if (!nkResult.success) {
+          fieldErrors.normalizedKey = nkResult.error.issues[0].message;
+        }
+      }
+
+      if (Object.keys(fieldErrors).length > 0) {
+        colErrors[ci] = fieldErrors;
       }
     }
 
@@ -110,7 +76,8 @@ export function validateColumnStep(entities: RecommendedEntity[]): ColumnStepErr
     const seen = new Map<string, number>();
     for (let ci = 0; ci < entities[ei].columns.length; ci++) {
       const col = entities[ei].columns[ci];
-      const nk = col.normalizedKey ?? col.recommended.key;
+      const nk = col.normalizedKey;
+      if (!nk) continue;
       const nkResult = NormalizedKeySchema.safeParse(nk);
       if (!nkResult.success) continue; // skip invalid keys for uniqueness check
       const prev = seen.get(nk);
@@ -125,42 +92,6 @@ export function validateColumnStep(entities: RecommendedEntity[]): ColumnStepErr
 
     if (Object.keys(colErrors).length > 0) {
       allErrors[ei] = colErrors;
-    }
-  }
-  // Cross-entity consistency check: create_new columns sharing the same key
-  // must agree on column-definition-level fields (type, label, validation, etc.)
-  const COL_DEF_FIELDS = ["type", "label", "validationPattern", "validationMessage", "canonicalFormat"] as const;
-  const seen = new Map<string, { entityIndex: number; columnIndex: number; rec: RecommendedColumn["recommended"] }>();
-
-  for (let ei = 0; ei < entities.length; ei++) {
-    for (let ci = 0; ci < entities[ei].columns.length; ci++) {
-      const col = entities[ei].columns[ci];
-      if (col.action !== "create_new") continue;
-
-      const key = col.recommended.key;
-      if (!key) continue;
-
-      const existing = seen.get(key);
-      if (!existing) {
-        seen.set(key, { entityIndex: ei, columnIndex: ci, rec: col.recommended });
-        continue;
-      }
-
-      const conflicts: string[] = [];
-      for (const field of COL_DEF_FIELDS) {
-        const a = existing.rec[field] ?? null;
-        const b = col.recommended[field] ?? null;
-        if (a !== b) conflicts.push(field);
-      }
-
-      if (conflicts.length > 0) {
-        const msg = `Conflicts with "${key}" in entity "${entities[existing.entityIndex].connectorEntity.label}": ${conflicts.join(", ")}`;
-        if (!allErrors[ei]) allErrors[ei] = {};
-        allErrors[ei][ci] = {
-          ...(allErrors[ei][ci] ?? {}),
-          key: msg,
-        };
-      }
     }
   }
 
