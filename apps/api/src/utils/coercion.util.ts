@@ -23,9 +23,8 @@ export function coerceNumber(
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
   if (typeof value === "number") {
-    return Number.isNaN(value)
-      ? { value: null, error: "Expected a number" }
-      : { value };
+    if (Number.isNaN(value)) return { value: null, error: "Expected a number" };
+    return applyNumberFormat(value, format);
   }
 
   let str = String(value).trim();
@@ -42,6 +41,18 @@ export function coerceNumber(
   const num = parseFloat(str);
   if (Number.isNaN(num)) {
     return { value: null, error: "Expected a number" };
+  }
+  return applyNumberFormat(num, format);
+}
+
+function applyNumberFormat(num: number, format?: string | null): CoercionResult {
+  if (!format) return { value: num };
+  if (format === "currency") return { value: parseFloat(num.toFixed(2)) };
+  if (format.startsWith("precision:")) {
+    const digits = parseInt(format.slice("precision:".length), 10);
+    if (!Number.isNaN(digits) && digits >= 0) {
+      return { value: parseFloat(num.toFixed(digits)) };
+    }
   }
   return { value: num };
 }

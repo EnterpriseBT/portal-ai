@@ -272,6 +272,7 @@ describe("ColumnMappingStep", () => {
       const keyInput = screen.getAllByDisplayValue("email")[0];
       await user.clear(keyInput);
       await user.type(keyInput, "x");
+      await user.tab(); // DeferredTextInput fires onChange on blur
 
       expect(onUpdateColumn).toHaveBeenCalledWith(
         0, // entityIndex
@@ -298,6 +299,7 @@ describe("ColumnMappingStep", () => {
       const labelInput = screen.getByDisplayValue("Email");
       await user.clear(labelInput);
       await user.type(labelInput, "x");
+      await user.tab(); // DeferredTextInput fires onChange on blur
 
       expect(onUpdateColumn).toHaveBeenCalledWith(
         0, // entityIndex
@@ -842,7 +844,9 @@ describe("ColumnMappingStep", () => {
           onUpdateColumn={onUpdateColumn}
         />
       );
-      fireEvent.change(screen.getByLabelText(/^format$/i), { target: { value: "DD/MM/YYYY" } });
+      const formatInput = screen.getByLabelText(/^format$/i);
+      fireEvent.change(formatInput, { target: { value: "DD/MM/YYYY" } });
+      fireEvent.blur(formatInput);
       expect(onUpdateColumn).toHaveBeenCalledWith(
         0,
         0,
@@ -985,6 +989,7 @@ describe("ColumnMappingStep", () => {
 
       const enumInput = screen.getByLabelText(/enum values/i);
       fireEvent.change(enumInput, { target: { value: "a, b, c" } });
+      fireEvent.blur(enumInput);
 
       expect(onUpdateColumn).toHaveBeenLastCalledWith(
         0,
@@ -1125,6 +1130,193 @@ describe("ColumnMappingStep", () => {
       const labelInput = screen.getByDisplayValue("Email");
       expect(keyInput).toBeRequired();
       expect(labelInput).toBeRequired();
+    });
+
+    it("displays validationPattern error on a column row", () => {
+      const errors: ColumnStepErrors = {
+        0: { 0: { validationPattern: "Invalid regular expression" } },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          errors={errors}
+        />
+      );
+      expect(screen.getByText("Invalid regular expression")).toBeInTheDocument();
+    });
+  });
+
+  describe("Canonical format select", () => {
+    it("shows string canonical format options for string columns", async () => {
+      const user = userEvent.setup();
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      const canonicalSelects = screen.getAllByRole("combobox", { name: /canonical format/i });
+      await user.click(canonicalSelects[0]);
+
+      expect(screen.getByRole("option", { name: /Lowercase/i })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: /Uppercase/i })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /USD/i })).not.toBeInTheDocument();
+    });
+
+    it("shows number canonical format options for number columns", async () => {
+      const user = userEvent.setup();
+      const numberColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "number" },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [numberColumn] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+
+      const canonicalSelects = screen.getAllByRole("combobox", { name: /canonical format/i });
+      await user.click(canonicalSelects[0]);
+
+      expect(screen.getByRole("option", { name: /USD/i })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: /EUR/i })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /Lowercase/i })).not.toBeInTheDocument();
+    });
+
+    it("switching type from string to number clears canonicalFormat", async () => {
+      const user = userEvent.setup();
+      const onUpdateColumn = jest.fn();
+      const columnWithCanonical: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: {
+          ...MOCK_COLUMN_HIGH.recommended,
+          type: "string",
+          canonicalFormat: "lowercase",
+        },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [columnWithCanonical] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={onUpdateColumn}
+        />
+      );
+
+      const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
+      await user.click(typeSelects[0]);
+      await user.click(screen.getByRole("option", { name: "Number" }));
+
+      expect(onUpdateColumn).toHaveBeenCalledWith(
+        0,
+        0,
+        expect.objectContaining({
+          recommended: expect.objectContaining({
+            type: "number",
+            canonicalFormat: null,
+          }),
+        })
+      );
+    });
+  });
+
+  describe("Helper text", () => {
+    it("shows helper text for validation pattern field", () => {
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+      expect(screen.getAllByText(/Regex that values must match/i)[0]).toBeInTheDocument();
+    });
+
+    it("shows type-specific helper text for format field on number columns", () => {
+      const numberColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "number" },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [numberColumn] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/currency for 2 decimals/i)).toBeInTheDocument();
+    });
+
+    it("disables format field for string columns", () => {
+      render(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+      const formatInputs = screen.getAllByLabelText(/^format$/i);
+      expect(formatInputs[0]).toBeDisabled();
+    });
+
+    it("disables validation fields for json columns", () => {
+      const jsonColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "json" },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [jsonColumn] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+      expect(screen.getAllByText(/Not applicable for this column type/i).length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("shows date-specific helper text for format field on date columns", () => {
+      const dateColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date" },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [dateColumn] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/Date format for parsing/i)).toBeInTheDocument();
+    });
+
+    it("shows boolean-specific helper text for format field on boolean columns", () => {
+      const boolColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "boolean" },
+      };
+      render(
+        <ColumnMappingStep
+          entities={[{ ...MOCK_ENTITY_A, columns: [boolColumn] }]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/Custom true:false labels/i)).toBeInTheDocument();
     });
   });
 });

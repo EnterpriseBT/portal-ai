@@ -8,8 +8,8 @@ import type { RecommendedEntity, RecommendedColumn } from "../utils/upload-workf
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeColumn(overrides: Partial<RecommendedColumn["recommended"]> & { format?: string | null; enumValues?: string[] | null } = {}): RecommendedColumn {
-  const { format, enumValues, ...recommendedOverrides } = overrides;
+function makeColumn(overrides: Partial<RecommendedColumn["recommended"]> & { format?: string | null; enumValues?: string[] | null; normalizedKey?: string } = {}): RecommendedColumn {
+  const { format, enumValues, normalizedKey, ...recommendedOverrides } = overrides;
   return {
     action: "create_new",
     confidence: 0.9,
@@ -238,5 +238,33 @@ describe("validateColumnStep", () => {
     ]);
     expect(errors[0][0]).toBeUndefined();
     expect(errors[0][1].label).toBe("Column label is required");
+  });
+
+  it("returns error when validationPattern is an invalid regex", () => {
+    const errors = validateColumnStep([
+      makeEntity("e", "E", [
+        makeColumn({ validationPattern: "[invalid(" }),
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(true);
+    expect(errors[0][0].validationPattern).toBe("Invalid regular expression");
+  });
+
+  it("passes when validationPattern is a valid regex", () => {
+    const errors = validateColumnStep([
+      makeEntity("e", "E", [
+        makeColumn({ validationPattern: "^\\d+(\\.\\d{1,2})?$" }),
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(false);
+  });
+
+  it("passes when validationPattern is null", () => {
+    const errors = validateColumnStep([
+      makeEntity("e", "E", [
+        makeColumn({ validationPattern: null }),
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(false);
   });
 });

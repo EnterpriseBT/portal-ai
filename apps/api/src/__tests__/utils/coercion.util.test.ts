@@ -98,6 +98,24 @@ describe("coerceNumber", () => {
   it("handles whitespace-padded numbers", () => {
     expect(coerceNumber("  42  ")).toEqual({ value: 42 });
   });
+
+  it("rounds to 2 decimal places with currency format", () => {
+    expect(coerceNumber("$19.999", "currency")).toEqual({ value: 20 });
+    expect(coerceNumber("$1,234.567", "currency")).toEqual({ value: 1234.57 });
+    expect(coerceNumber(9.999, "currency")).toEqual({ value: 10 });
+  });
+
+  it("rounds to N decimal places with precision:N format", () => {
+    expect(coerceNumber("3.14159", "precision:2")).toEqual({ value: 3.14 });
+    expect(coerceNumber("3.14159", "precision:4")).toEqual({ value: 3.1416 });
+    expect(coerceNumber("3.14159", "precision:0")).toEqual({ value: 3 });
+    expect(coerceNumber(2.5, "precision:0")).toEqual({ value: 3 });
+  });
+
+  it("ignores invalid precision format", () => {
+    expect(coerceNumber("3.14", "precision:abc")).toEqual({ value: 3.14 });
+    expect(coerceNumber("3.14", "precision:")).toEqual({ value: 3.14 });
+  });
 });
 
 // ── coerceBoolean ───────────────────────────────────────────────────

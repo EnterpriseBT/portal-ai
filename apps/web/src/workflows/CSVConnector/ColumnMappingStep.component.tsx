@@ -4,7 +4,7 @@ import {
   Box,
   Stack,
   Typography,
-  TextInput,
+  DeferredTextInput,
   Tabs,
   Tab,
   TabPanel,
@@ -39,13 +39,99 @@ const COLUMN_TYPE_OPTIONS: SelectOption[] = [
   { value: "reference-array", label: "Reference Array (M:M)" },
 ];
 
+const STRING_CANONICAL_FORMAT_OPTIONS: SelectOption[] = [
+  { value: "", label: "None" },
+  { value: "lowercase", label: "Lowercase — e.g. jane@example.com" },
+  { value: "uppercase", label: "Uppercase — e.g. US" },
+  { value: "trim", label: "Trim — removes leading/trailing whitespace" },
+  { value: "phone", label: "Phone — normalizes to +1XXXXXXXXXX" },
+];
+
+const NUMBER_CANONICAL_FORMAT_OPTIONS: SelectOption[] = [
+  { value: "", label: "None" },
+  { value: "$#,##0.00", label: "USD — $1,234.56" },
+  { value: "€#,##0.00", label: "EUR — €1,234.56" },
+  { value: "£#,##0.00", label: "GBP — £1,234.56" },
+  { value: "¥#,##0", label: "JPY — ¥1,234" },
+  { value: "#,##0.00", label: "2 decimals — 1,234.56" },
+  { value: "#,##0.000", label: "3 decimals — 1,234.567" },
+  { value: "#,##0", label: "Integer — 1,234" },
+];
+
 const VALIDATION_PRESETS = [
-  { label: "None", value: "", pattern: "", message: "" },
+  { label: "Custom", value: "Custom", pattern: "", message: "" },
   { label: "Email", value: "email", pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", message: "Must be a valid email address" },
   { label: "URL", value: "url", pattern: "^https?://.*", message: "Must be a valid URL" },
   { label: "Phone", value: "phone", pattern: "^\\+?[\\d\\s\\-().]+$", message: "Must be a valid phone number" },
   { label: "UUID", value: "uuid", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", message: "Must be a valid UUID" },
 ];
+
+interface TypeFieldConfig {
+  format: { enabled: boolean; helperText: string };
+  validation: { enabled: boolean };
+  canonicalFormat: { enabled: boolean; options: SelectOption[] };
+}
+
+const TYPE_FIELD_CONFIG: Record<string, TypeFieldConfig> = {
+  string: {
+    format: { enabled: false, helperText: "Not used for string columns" },
+    validation: { enabled: true },
+    canonicalFormat: { enabled: true, options: STRING_CANONICAL_FORMAT_OPTIONS },
+  },
+  number: {
+    format: { enabled: true, helperText: "e.g. currency for 2 decimals, precision:N for N decimals, eu for European format (1.234,56)" },
+    validation: { enabled: true },
+    canonicalFormat: { enabled: true, options: NUMBER_CANONICAL_FORMAT_OPTIONS },
+  },
+  boolean: {
+    format: { enabled: true, helperText: "Custom true:false labels. e.g. active:inactive, yes:no, 1:0" },
+    validation: { enabled: false },
+    canonicalFormat: { enabled: false, options: [] },
+  },
+  date: {
+    format: { enabled: true, helperText: "Date format for parsing. e.g. yyyy-MM-dd, MM/dd/yyyy, dd.MM.yyyy" },
+    validation: { enabled: false },
+    canonicalFormat: { enabled: false, options: [] },
+  },
+  datetime: {
+    format: { enabled: true, helperText: "Datetime format for parsing. e.g. yyyy-MM-dd HH:mm:ss, MM/dd/yyyy hh:mm a" },
+    validation: { enabled: false },
+    canonicalFormat: { enabled: false, options: [] },
+  },
+  enum: {
+    format: { enabled: false, helperText: "Not used for enum columns" },
+    validation: { enabled: true },
+    canonicalFormat: { enabled: false, options: [] },
+  },
+  json: {
+    format: { enabled: false, helperText: "Not used for JSON columns" },
+    validation: { enabled: false },
+    canonicalFormat: { enabled: false, options: [] },
+  },
+  array: {
+    format: { enabled: true, helperText: "Delimiter character for splitting values. Default is comma (,). e.g. | for pipe-delimited" },
+    validation: { enabled: false },
+    canonicalFormat: { enabled: false, options: [] },
+  },
+  reference: {
+    format: { enabled: false, helperText: "Not used for reference columns" },
+    validation: { enabled: false },
+    canonicalFormat: { enabled: false, options: [] },
+  },
+  "reference-array": {
+    format: { enabled: true, helperText: "Delimiter character for splitting values. Default is comma (,). e.g. | for pipe-delimited" },
+    validation: { enabled: false },
+    canonicalFormat: { enabled: false, options: [] },
+  },
+};
+
+const DEFAULT_TYPE_CONFIG: TypeFieldConfig = {
+  format: { enabled: true, helperText: "How to parse raw source values" },
+  validation: { enabled: true },
+  canonicalFormat: { enabled: true, options: STRING_CANONICAL_FORMAT_OPTIONS },
+};
+
+const EMPTY_ERRORS: FormErrors = {};
 
 function toSnakeCase(s: string): string {
   return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -132,7 +218,7 @@ function deriveEntitySelectValue(
   return `batch:${refEntityKey}`;
 }
 
-const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
+const ReferenceEditor: React.FC<ReferenceEditorProps> = React.memo(({
   column,
   entityIndex,
   columnIndex,
@@ -140,7 +226,7 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
   dbEntities,
   isLoadingDbEntities,
   onUpdate,
-  fieldErrors = {},
+  fieldErrors = EMPTY_ERRORS,
 }) => {
   const batchOptions: SelectOption[] = allEntities.map((e) => ({
     value: `batch:${e.connectorEntity.key}`,
@@ -171,20 +257,20 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
     );
     columnOptions = selectedEntity
       ? selectedEntity.columns.map((c) => ({
-          value: c.recommended.key,
-          label: `${c.recommended.label} (${c.recommended.key})`,
-        }))
+        value: c.recommended.key,
+        label: `${c.recommended.label} (${c.recommended.key})`,
+      }))
       : [];
   } else if (currentEntityValue.startsWith("db:")) {
     const entityKey = currentEntityValue.slice("db:".length);
     const selectedDbEntity = dbEntities.find((e) => e.key === entityKey);
     columnOptions = selectedDbEntity
       ? selectedDbEntity.fieldMappings
-          .filter((fm) => fm.columnDefinition !== null)
-          .map((fm) => ({
-            value: fm.columnDefinition!.id,
-            label: `${fm.columnDefinition!.label} (${fm.columnDefinition!.key})`,
-          }))
+        .filter((fm) => fm.columnDefinition !== null)
+        .map((fm) => ({
+          value: fm.columnDefinition!.id,
+          label: `${fm.columnDefinition!.label} (${fm.columnDefinition!.key})`,
+        }))
       : [];
   }
 
@@ -275,7 +361,7 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
       />
     </Stack>
   );
-};
+});
 
 // --- Column Row ---
 
@@ -294,7 +380,7 @@ interface ColumnRowProps {
   fieldErrors?: FormErrors;
 }
 
-const ColumnRow: React.FC<ColumnRowProps> = ({
+const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
   column,
   entityIndex,
   columnIndex,
@@ -302,7 +388,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
   dbEntities,
   isLoadingDbEntities,
   onUpdate,
-  fieldErrors = {},
+  fieldErrors = EMPTY_ERRORS,
 }) => {
   const handleKeyChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -326,6 +412,11 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newType = e.target.value;
       const isReference = newType === "reference" || newType === "reference-array";
+      const newConfig = TYPE_FIELD_CONFIG[newType] ?? DEFAULT_TYPE_CONFIG;
+      const prevConfig = TYPE_FIELD_CONFIG[column.recommended.type] ?? DEFAULT_TYPE_CONFIG;
+      const canonicalChanged = prevConfig.canonicalFormat.enabled !== newConfig.canonicalFormat.enabled
+        || prevConfig.canonicalFormat.options !== newConfig.canonicalFormat.options;
+      const validationLost = prevConfig.validation.enabled && !newConfig.validation.enabled;
       onUpdate(entityIndex, columnIndex, {
         recommended: {
           ...column.recommended,
@@ -335,8 +426,11 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             refColumnKey: null,
             refColumnDefinitionId: null,
           }),
+          ...(canonicalChanged && { canonicalFormat: null }),
+          ...(validationLost && { validationPattern: null, validationMessage: null }),
         },
         ...(newType !== "enum" && { enumValues: null }),
+        ...(!newConfig.format.enabled && { format: null }),
       });
     },
     [entityIndex, columnIndex, column.recommended, onUpdate]
@@ -428,6 +522,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
     [entityIndex, columnIndex, column.recommended, onUpdate]
   );
 
+
   const handlePrimaryKeyToggle = useCallback(
     (checked: boolean) => {
       onUpdate(entityIndex, columnIndex, {
@@ -436,6 +531,8 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
     },
     [entityIndex, columnIndex, onUpdate]
   );
+
+  const typeConfig = TYPE_FIELD_CONFIG[column.recommended.type] ?? DEFAULT_TYPE_CONFIG;
 
   return (
     <Box
@@ -464,7 +561,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
         </Stack>
 
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <TextInput
+          <DeferredTextInput
             label="Key"
             value={column.recommended.key}
             onChange={handleKeyChange}
@@ -474,7 +571,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             size="small"
             fullWidth
           />
-          <TextInput
+          <DeferredTextInput
             label="Label"
             value={column.recommended.label}
             onChange={handleLabelChange}
@@ -516,34 +613,57 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
           <Select
             label="Validation Preset"
-            value=""
+            value={VALIDATION_PRESETS.find((p) => p.pattern === (column.recommended.validationPattern ?? ""))?.value ?? ""}
             onChange={handleValidationPresetChange}
             options={VALIDATION_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
             size="small"
             fullWidth
+            disabled={!typeConfig.validation.enabled}
+            helperText={!typeConfig.validation.enabled ? "Not applicable for this column type" : undefined}
           />
-          <TextInput
+          <DeferredTextInput
             label="Validation Pattern"
             value={column.recommended.validationPattern ?? ""}
             onChange={handleValidationPatternChange}
             size="small"
             fullWidth
+            disabled={!typeConfig.validation.enabled}
+            error={!!fieldErrors.validationPattern}
+            helperText={
+              !typeConfig.validation.enabled
+                ? "Not applicable for this column type"
+                : fieldErrors.validationPattern ?? "Regex that values must match after coercion"
+            }
+            slotProps={{ htmlInput: { "aria-invalid": !!fieldErrors.validationPattern } }}
           />
         </Stack>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <TextInput
+          <DeferredTextInput
             label="Validation Message"
             value={column.recommended.validationMessage ?? ""}
             onChange={handleValidationMessageChange}
             size="small"
             fullWidth
+            disabled={!typeConfig.validation.enabled}
+            helperText={
+              !typeConfig.validation.enabled
+                ? "Not applicable for this column type"
+                : "Shown when the pattern doesn't match"
+            }
           />
-          <TextInput
+          <Select
             label="Canonical Format"
             value={column.recommended.canonicalFormat ?? ""}
             onChange={handleCanonicalFormatChange}
+            options={typeConfig.canonicalFormat.options}
             size="small"
             fullWidth
+            disabled={!typeConfig.canonicalFormat.enabled}
+            helperText={
+              !typeConfig.canonicalFormat.enabled
+                ? "Not applicable for this column type"
+                : "Normalizes the stored value before saving"
+            }
           />
         </Stack>
 
@@ -551,7 +671,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
         <Divider />
         <Typography variant="caption" color="text.secondary">Field Mapping</Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <TextInput
+          <DeferredTextInput
             label="Normalized Key"
             value={column.normalizedKey ?? toSnakeCase(column.recommended.key)}
             onChange={handleNormalizedKeyChange}
@@ -561,7 +681,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
             size="small"
             fullWidth
           />
-          <TextInput
+          <DeferredTextInput
             label="Default Value"
             value={column.defaultValue ?? ""}
             onChange={handleDefaultValueChange}
@@ -570,16 +690,17 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
           />
         </Stack>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <TextInput
+          <DeferredTextInput
             label="Format"
             value={column.format ?? ""}
             onChange={handleFormatChange}
             size="small"
             fullWidth
-            placeholder="e.g. YYYY-MM-DD, true/false"
+            disabled={!typeConfig.format.enabled}
+            helperText={typeConfig.format.helperText}
           />
           {column.recommended.type === "enum" && (
-            <TextInput
+            <DeferredTextInput
               label="Enum Values (comma-separated)"
               value={column.enumValues?.join(", ") ?? ""}
               onChange={handleEnumValuesChange}
@@ -611,7 +732,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
       </Stack>
     </Box>
   );
-};
+});
 
 // --- Component ---
 

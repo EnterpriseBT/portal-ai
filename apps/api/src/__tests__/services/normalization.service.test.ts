@@ -258,7 +258,7 @@ describe("NormalizationService.normalize", () => {
 
   it("stores coerced value even when validation fails (enum/pattern)", async () => {
     mockFindMany.mockResolvedValue([
-      mapping({ sourceField: "Code", normalizedKey: "code", enumValues: ["A", "B"], columnDefinition: { key: "code", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null } }),
+      mapping({ sourceField: "Code", normalizedKey: "code", enumValues: ["A", "B"], columnDefinition: { key: "code", type: "enum", validationPattern: null, validationMessage: null, canonicalFormat: null } }),
     ]);
 
     const result = await NormalizationService.normalize("ce-1", { Code: "C" });

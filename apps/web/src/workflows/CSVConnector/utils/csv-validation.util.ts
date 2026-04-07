@@ -82,6 +82,19 @@ export function validateColumnStep(entities: RecommendedEntity[]): ColumnStepErr
         colErrors[ci] = fieldErrors;
       }
 
+      // Validate validationPattern is a valid regex
+      const vp = col.recommended.validationPattern;
+      if (vp) {
+        try {
+          new RegExp(vp);
+        } catch {
+          colErrors[ci] = {
+            ...(colErrors[ci] ?? {}),
+            validationPattern: "Invalid regular expression",
+          };
+        }
+      }
+
       // Validate normalizedKey
       const nk = col.normalizedKey ?? col.recommended.key;
       const nkResult = NormalizedKeySchema.safeParse(nk);
