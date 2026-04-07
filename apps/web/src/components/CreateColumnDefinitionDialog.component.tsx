@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { z } from "zod";
 import type { ColumnDefinitionCreateRequestBody } from "@portalai/core/contracts";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
-import { Button, Modal, Stack } from "@portalai/core/ui";
+import { Button, Modal, Stack, Select } from "@portalai/core/ui";
 import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 
@@ -15,16 +15,12 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-
-// ── Validation Presets ───────────────────────────────────────────────
-
-const VALIDATION_PRESETS = [
-  { label: "None", value: "", pattern: "", message: "" },
-  { label: "Email", value: "email", pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", message: "Must be a valid email address" },
-  { label: "URL", value: "url", pattern: "^https?://.*", message: "Must be a valid URL" },
-  { label: "Phone", value: "phone", pattern: "^\\+?[\\d\\s\\-().]+$", message: "Must be a valid phone number" },
-  { label: "UUID", value: "uuid", pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", message: "Must be a valid UUID" },
-];
+import {
+  VALIDATION_PRESETS,
+  VALIDATION_PRESET_VALUES,
+  getTypeConfig,
+  validateRegex,
+} from "../utils/column-definition-form.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -67,7 +63,12 @@ function validateForm(form: ColumnDefinitionFormState): FormErrors {
     label: form.label,
     type: form.type,
   });
-  return result.success ? {} : result.errors;
+  const errors = result.success ? {} : { ...result.errors };
+
+  const regexError = validateRegex(form.validationPattern);
+  if (regexError) errors.validationPattern = regexError;
+
+  return errors;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -100,14 +101,29 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
     }
   }, [open]);
 
+  const typeConfig = getTypeConfig(form.type);
+
   const handleChange = (field: keyof ColumnDefinitionFormState, value: string | boolean) => {
     let next = { ...form, [field]: value };
-    if (field === "preset" && typeof value === "string") {
-      const preset = VALIDATION_PRESETS.find((p) => p.value === value);
-      if (preset) {
-        next = { ...next, validationPattern: preset.pattern, validationMessage: preset.message };
+
+    if (field === "type" && typeof value === "string") {
+      const newConfig = getTypeConfig(value);
+      const prevConfig = getTypeConfig(form.type);
+      if (!newConfig.validation.enabled) {
+        next = { ...next, validationPattern: "", validationMessage: "", preset: "" };
+      }
+      if (!newConfig.canonicalFormat.enabled || newConfig.canonicalFormat.options !== prevConfig.canonicalFormat.options) {
+        next = { ...next, canonicalFormat: "" };
       }
     }
+
+    if (field === "preset" && typeof value === "string") {
+      const presetValues = VALIDATION_PRESET_VALUES[value];
+      if (presetValues) {
+        next = { ...next, validationPattern: presetValues.pattern, validationMessage: presetValues.message };
+      }
+    }
+
     setForm(next);
     if (touched[field]) {
       setErrors(validateForm(next));
@@ -120,7 +136,7 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
   };
 
   const handleSubmit = () => {
-    setTouched({ key: true, label: true, type: true });
+    setTouched({ key: true, label: true, type: true, validationPattern: true });
     const formErrors = validateForm(form);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
@@ -222,40 +238,58 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
           multiline
           rows={2}
         />
-        <TextField
-          select
+        <Select
           label="Validation Preset"
           value={form.preset}
           onChange={(e) => handleChange("preset", e.target.value)}
+          options={VALIDATION_PRESETS}
           fullWidth
-          helperText="Auto-populate validation pattern and message"
-        >
-          {VALIDATION_PRESETS.map((p) => (
-            <MenuItem key={p.value} value={p.value}>
-              {p.label}
-            </MenuItem>
-          ))}
-        </TextField>
+          disabled={!typeConfig.validation.enabled}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : "Auto-populate validation pattern and message"
+          }
+        />
         <TextField
           label="Validation Pattern"
           value={form.validationPattern}
           onChange={(e) => handleChange("validationPattern", e.target.value)}
+          onBlur={() => handleBlur("validationPattern")}
           fullWidth
-          helperText="Regular expression for field validation"
+          disabled={!typeConfig.validation.enabled}
+          error={touched.validationPattern && !!errors.validationPattern}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : (touched.validationPattern && errors.validationPattern) || "Regex that values must match after coercion"
+          }
+          slotProps={{ htmlInput: { "aria-invalid": touched.validationPattern && !!errors.validationPattern } }}
         />
         <TextField
           label="Validation Message"
           value={form.validationMessage}
           onChange={(e) => handleChange("validationMessage", e.target.value)}
           fullWidth
-          helperText="Error message shown when validation fails"
+          disabled={!typeConfig.validation.enabled}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : "Shown when the pattern doesn't match"
+          }
         />
-        <TextField
+        <Select
           label="Canonical Format"
           value={form.canonicalFormat}
           onChange={(e) => handleChange("canonicalFormat", e.target.value)}
+          options={typeConfig.canonicalFormat.options}
           fullWidth
-          helperText="Display format pattern (e.g. date format string)"
+          disabled={!typeConfig.canonicalFormat.enabled}
+          helperText={
+            !typeConfig.canonicalFormat.enabled
+              ? "Not applicable for this column type"
+              : "Normalizes the stored value before saving"
+          }
         />
         <FormAlert serverError={serverError} />
       </Stack>

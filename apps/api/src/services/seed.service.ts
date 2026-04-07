@@ -159,7 +159,7 @@ export class SeedService {
     const definitions: ColumnDefinition[] = SYSTEM_COLUMN_DEFINITIONS.map((spec) => {
       return factory.create(SystemUtilities.id.system)
         .update({
-          id: SystemUtilities.id.v5.generate(`column-definition:${organizationId}:${spec.key}`),
+          id: SystemUtilities.id.v4.generate(),
           organizationId,
           ...spec,
         })

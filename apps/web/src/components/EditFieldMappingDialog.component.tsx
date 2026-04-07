@@ -17,6 +17,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { getTypeConfig } from "../utils/column-definition-form.util";
 
 // ── Validation ──────────────────────────────────────────────────────
 
@@ -128,6 +129,8 @@ const EditForm: React.FC<{
     const [showRevalidationWarning, setShowRevalidationWarning] = useState(false);
     const [pendingBody, setPendingBody] = useState<FieldMappingUpdateRequestBody | null>(null);
     const sourceRef = useDialogAutoFocus(true);
+
+    const typeConfig = getTypeConfig(columnDefinitionType);
 
     const handleChange = <K extends keyof EditFieldMappingFormState>(
       field: K,
@@ -303,7 +306,8 @@ const EditForm: React.FC<{
             value={form.format}
             onChange={(e) => handleChange("format", e.target.value)}
             fullWidth
-            helperText="Parse format hint (e.g. date format, boolean labels)"
+            disabled={!typeConfig.format.enabled}
+            helperText={typeConfig.format.helperText}
           />
           {columnDefinitionType === "enum" && (
             <TextField

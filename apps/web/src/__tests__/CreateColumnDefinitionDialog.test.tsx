@@ -127,9 +127,9 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.change(screen.getByLabelText(/^Validation Message/), {
       target: { value: "Must be a valid email" },
     });
-    fireEvent.change(screen.getByLabelText(/^Canonical Format/), {
-      target: { value: "RFC5322" },
-    });
+    // Canonical Format is now a Select dropdown
+    fireEvent.mouseDown(screen.getByLabelText(/^Canonical Format/));
+    fireEvent.click(screen.getByRole("option", { name: /Lowercase/ }));
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
@@ -139,7 +139,7 @@ describe("CreateColumnDefinitionDialog", () => {
         description: "Primary email",
         validationPattern: "^.+@.+$",
         validationMessage: "Must be a valid email",
-        canonicalFormat: "RFC5322",
+        canonicalFormat: "lowercase",
       });
     });
   });
@@ -359,7 +359,72 @@ describe("CreateColumnDefinitionDialog", () => {
     expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^custom@.*$");
   });
 
-  // #29
+  // #29 — type-aware field disabling
+  it("should disable validation fields when type does not support validation", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    // Change type to boolean (validation not supported)
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+    fireEvent.click(screen.getByRole("option", { name: "boolean" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Validation Preset/)).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toBeDisabled();
+      expect(screen.getByLabelText(/^Validation Message/)).toBeDisabled();
+    });
+  });
+
+  // #30 — type-aware canonical format disabling
+  it("should disable canonical format when type does not support it", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    // Change type to boolean (no canonical format)
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+    fireEvent.click(screen.getByRole("option", { name: "boolean" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Canonical Format/)).toHaveAttribute("aria-disabled", "true");
+    });
+  });
+
+  // #31 — contextual helper text
+  it("should show 'Not applicable' helper text for disabled validation fields", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+    fireEvent.click(screen.getByRole("option", { name: "boolean" }));
+    await waitFor(() => {
+      expect(screen.getAllByText(/Not applicable for this column type/).length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // #32 — regex validation
+  it("should show error for invalid regex in validation pattern", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText(/^Key/), { target: { value: "test_key" } });
+    fireEvent.change(screen.getByLabelText(/^Label/), { target: { value: "Test" } });
+    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), { target: { value: "[invalid(" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => {
+      expect(screen.getByText("Invalid regular expression")).toBeInTheDocument();
+    });
+    expect(defaultProps.onSubmit).not.toHaveBeenCalled();
+  });
+
+  // #33 — type change clears incompatible fields
+  it("should clear validation fields when switching to a type that does not support validation", async () => {
+    render(<CreateColumnDefinitionDialog {...defaultProps} />);
+    // Set validation fields first (type=string supports validation)
+    fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
+    fireEvent.click(screen.getByRole("option", { name: "Email" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    });
+    // Switch to boolean — should clear validation fields
+    fireEvent.mouseDown(screen.getByLabelText(/^Type/));
+    fireEvent.click(screen.getByRole("option", { name: "boolean" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("");
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("");
+    });
+  });
+
+  // #34
   it("should clear validation fields when None preset is selected", async () => {
     render(<CreateColumnDefinitionDialog {...defaultProps} />);
     // Select Email first

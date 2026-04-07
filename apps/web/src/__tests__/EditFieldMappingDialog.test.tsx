@@ -290,4 +290,24 @@ describe("EditFieldMappingDialog", () => {
     expect(screen.getByLabelText(/Source Field/)).toBeRequired();
     expect(screen.getByLabelText(/Normalized Key/)).toBeRequired();
   });
+
+  // ── Type-aware Format field ──────────────────────────────────────────
+
+  it("should disable Format field when column type does not support it", () => {
+    render(<EditFieldMappingDialog {...defaultProps} columnDefinitionType="string" />);
+    expect(screen.getByLabelText(/^Format/)).toBeDisabled();
+    expect(screen.getByText("Not used for string columns")).toBeInTheDocument();
+  });
+
+  it("should enable Format field with type-specific helper text for date type", () => {
+    render(<EditFieldMappingDialog {...defaultProps} columnDefinitionType="date" />);
+    expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
+    expect(screen.getByText(/Date format for parsing/)).toBeInTheDocument();
+  });
+
+  it("should enable Format field with type-specific helper text for number type", () => {
+    render(<EditFieldMappingDialog {...defaultProps} columnDefinitionType="number" />);
+    expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
+    expect(screen.getByText(/currency for 2 decimals/)).toBeInTheDocument();
+  });
 });

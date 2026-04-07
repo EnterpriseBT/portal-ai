@@ -16,6 +16,7 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { getTypeConfig } from "../utils/column-definition-form.util";
 
 // ── Validation ──────────────────────────────────────────────────────
 
@@ -116,6 +117,8 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const connectorEntityRef = useDialogAutoFocus(open);
+
+  const typeConfig = getTypeConfig(columnDefinitionType);
 
   React.useEffect(() => {
     if (open) {
@@ -276,7 +279,8 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
           value={form.format}
           onChange={(e) => handleChange("format", e.target.value)}
           fullWidth
-          helperText="Parse format hint (e.g. date format, boolean labels)"
+          disabled={!typeConfig.format.enabled}
+          helperText={typeConfig.format.helperText}
         />
         {columnDefinitionType === "enum" && (
           <TextField

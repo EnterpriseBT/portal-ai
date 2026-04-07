@@ -10,6 +10,7 @@ import {
   Modal,
   Stack,
   Typography,
+  Select,
 } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
@@ -24,6 +25,13 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import {
+  VALIDATION_PRESETS,
+  VALIDATION_PRESET_VALUES,
+  getTypeConfig,
+  findPresetByPattern,
+  validateRegex,
+} from "../utils/column-definition-form.util";
 
 /**
  * Allowlist of permitted column definition type transitions.
@@ -73,6 +81,7 @@ const EditForm: React.FC<{
   const [label, setLabel] = useState(cd.label);
   const [type, setType] = useState<ColumnDataType>(cd.type);
   const [description, setDescription] = useState(cd.description ?? "");
+  const [preset, setPreset] = useState(() => findPresetByPattern(cd.validationPattern));
   const [validationPattern, setValidationPattern] = useState(cd.validationPattern ?? "");
   const [validationMessage, setValidationMessage] = useState(cd.validationMessage ?? "");
   const [canonicalFormat, setCanonicalFormat] = useState(cd.canonicalFormat ?? "");
@@ -86,9 +95,37 @@ const EditForm: React.FC<{
     ? []
     : ALLOWED_TYPE_TRANSITIONS[cd.type] ?? [];
 
-  const validate = (data: Record<string, unknown>): FormErrors => {
+  const typeConfig = getTypeConfig(type);
+
+  const validate = (data: Record<string, unknown>, vp?: string): FormErrors => {
     const result = validateWithSchema(ColumnDefinitionUpdateRequestBodySchema, data);
-    return result.success ? {} : result.errors;
+    const errs = result.success ? {} : { ...result.errors };
+    const regexError = validateRegex(vp ?? validationPattern);
+    if (regexError) errs.validationPattern = regexError;
+    return errs;
+  };
+
+  const handleTypeChange = (newType: ColumnDataType) => {
+    const newConfig = getTypeConfig(newType);
+    const prevConfig = getTypeConfig(type);
+    setType(newType);
+    if (!newConfig.validation.enabled) {
+      setValidationPattern("");
+      setValidationMessage("");
+      setPreset("");
+    }
+    if (!newConfig.canonicalFormat.enabled || newConfig.canonicalFormat.options !== prevConfig.canonicalFormat.options) {
+      setCanonicalFormat("");
+    }
+  };
+
+  const handlePresetChange = (value: string) => {
+    setPreset(value);
+    const presetValues = VALIDATION_PRESET_VALUES[value];
+    if (presetValues) {
+      setValidationPattern(presetValues.pattern);
+      setValidationMessage(presetValues.message);
+    }
   };
 
   const buildBody = (): ColumnDefinitionUpdateRequestBody => {
@@ -114,7 +151,7 @@ const EditForm: React.FC<{
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setTouched({ label: true });
+    setTouched({ label: true, validationPattern: true });
     const formErrors = validate({ label: label.trim() });
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
@@ -211,7 +248,7 @@ const EditForm: React.FC<{
           select
           label="Type"
           value={type}
-          onChange={(e) => setType(e.target.value as ColumnDataType)}
+          onChange={(e) => handleTypeChange(e.target.value as ColumnDataType)}
           fullWidth
           size="small"
           disabled={BLOCKED_TYPES.has(cd.type) && allowedTargetTypes.length === 0}
@@ -241,14 +278,44 @@ const EditForm: React.FC<{
           rows={2}
         />
 
+        {/* Validation Preset */}
+        <Select
+          label="Validation Preset"
+          value={preset}
+          onChange={(e) => handlePresetChange(e.target.value)}
+          options={VALIDATION_PRESETS}
+          fullWidth
+          size="small"
+          disabled={!typeConfig.validation.enabled}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : "Auto-populate validation pattern and message"
+          }
+        />
+
         {/* Validation Pattern */}
         <TextField
           label="Validation Pattern"
           value={validationPattern}
-          onChange={(e) => setValidationPattern(e.target.value)}
+          onChange={(e) => {
+            setValidationPattern(e.target.value);
+            if (touched.validationPattern) setErrors(validate({ label: label.trim() }, e.target.value));
+          }}
+          onBlur={() => {
+            setTouched((p) => ({ ...p, validationPattern: true }));
+            setErrors(validate({ label: label.trim() }));
+          }}
           fullWidth
           size="small"
-          helperText="Regular expression for field validation"
+          disabled={!typeConfig.validation.enabled}
+          error={touched.validationPattern && !!errors.validationPattern}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : (touched.validationPattern && errors.validationPattern) || "Regex that values must match after coercion"
+          }
+          slotProps={{ htmlInput: { "aria-invalid": touched.validationPattern && !!errors.validationPattern } }}
         />
 
         {/* Validation Message */}
@@ -258,17 +325,28 @@ const EditForm: React.FC<{
           onChange={(e) => setValidationMessage(e.target.value)}
           fullWidth
           size="small"
-          helperText="Error message shown when validation fails"
+          disabled={!typeConfig.validation.enabled}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : "Shown when the pattern doesn't match"
+          }
         />
 
         {/* Canonical Format */}
-        <TextField
+        <Select
           label="Canonical Format"
           value={canonicalFormat}
           onChange={(e) => setCanonicalFormat(e.target.value)}
+          options={typeConfig.canonicalFormat.options}
           fullWidth
           size="small"
-          helperText="Display format pattern (e.g. date format string)"
+          disabled={!typeConfig.canonicalFormat.enabled}
+          helperText={
+            !typeConfig.canonicalFormat.enabled
+              ? "Not applicable for this column type"
+              : "Normalizes the stored value before saving"
+          }
         />
 
         {/* Revalidation confirmation */}

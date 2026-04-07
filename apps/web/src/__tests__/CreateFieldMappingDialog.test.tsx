@@ -352,6 +352,26 @@ describe("CreateFieldMappingDialog", () => {
     });
   });
 
+  // ── Type-aware Format field ──────────────────────────────────────────
+
+  it("should disable Format field when column type does not support it", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="string" />);
+    expect(screen.getByLabelText(/^Format/)).toBeDisabled();
+    expect(screen.getByText("Not used for string columns")).toBeInTheDocument();
+  });
+
+  it("should enable Format field with type-specific helper text for date type", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="date" />);
+    expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
+    expect(screen.getByText(/Date format for parsing/)).toBeInTheDocument();
+  });
+
+  it("should enable Format field with type-specific helper text for boolean type", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="boolean" />);
+    expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
+    expect(screen.getByText(/Custom true:false labels/)).toBeInTheDocument();
+  });
+
   it("should show validation error for empty normalizedKey on submit", async () => {
     render(<CreateFieldMappingDialog {...defaultProps} />);
     // Fill source field but clear normalizedKey
