@@ -10,6 +10,7 @@ import { eq, desc, and, isNull } from "drizzle-orm";
 import { organizationUsers } from "../db/schema/organization-users.table.js";
 import { db } from "../db/client.js";
 import { DbService } from "./db.service.js";
+import { SeedService } from "./seed.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -78,6 +79,9 @@ export class ApplicationService {
           orgUserModel.parse(),
           tx
         );
+
+      // ── System column definitions ────────────────────────────────────
+      await new SeedService().seedSystemColumnDefinitions(createdOrg.id, tx);
 
       // ── Sandbox auto-provisioning ──────────────────────────────────
       const sandboxDef =

@@ -1,7 +1,93 @@
-import { ConnectorDefinition, CSVConnectorDefinitionModelFactory, SandboxConnectorDefinitionModelFactory } from "@portalai/core/models";
+import { ConnectorDefinition, ColumnDefinition, ColumnDefinitionModelFactory, CSVConnectorDefinitionModelFactory, SandboxConnectorDefinitionModelFactory } from "@portalai/core/models";
+import type { ColumnDataType } from "@portalai/core/models";
 import { DbClient } from "../db/index.js";
 import { DbService } from "./db.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
+
+interface SystemColumnDefinitionSpec {
+  key: string;
+  label: string;
+  type: ColumnDataType;
+  description: string;
+  validationPattern: string | null;
+  validationMessage: string | null;
+  canonicalFormat: string | null;
+}
+
+const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
+  {
+    key: "uuid",
+    label: "UUID",
+    type: "string",
+    description: "Universally unique identifier",
+    validationPattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    validationMessage: "Must be a valid UUID",
+    canonicalFormat: "lowercase",
+  },
+  {
+    key: "email",
+    label: "Email",
+    type: "string",
+    description: "Email address",
+    validationPattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+    validationMessage: "Must be a valid email address",
+    canonicalFormat: "lowercase",
+  },
+  {
+    key: "phone",
+    label: "Phone",
+    type: "string",
+    description: "Phone number",
+    validationPattern: "^\\+?[\\d\\s\\-().]+$",
+    validationMessage: "Must be a valid phone number",
+    canonicalFormat: "phone",
+  },
+  {
+    key: "date",
+    label: "Date",
+    type: "date",
+    description: "Calendar date",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
+  },
+  {
+    key: "datetime",
+    label: "Date & Time",
+    type: "datetime",
+    description: "Date and time with timezone",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
+  },
+  {
+    key: "name",
+    label: "Name",
+    type: "string",
+    description: "Person or entity name",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: "trim",
+  },
+  {
+    key: "description",
+    label: "Description",
+    type: "string",
+    description: "Free-text description",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: "trim",
+  },
+  {
+    key: "currency",
+    label: "Currency",
+    type: "number",
+    description: "Monetary amount with 2 decimal places",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: "$#,##0.00",
+  },
+];
 
 export class SeedService {
 
@@ -61,5 +147,27 @@ export class SeedService {
         console.error("Error upserting connector definitions:", error);
         throw error; // Rethrow to trigger rollback
       });
+  }
+
+  /**
+   * Seeds a core set of system column definitions for an organization.
+   * Uses deterministic v5 UUIDs and upsertByKey so calls are idempotent.
+   */
+  async seedSystemColumnDefinitions(organizationId: string, db: DbClient) {
+    const factory = new ColumnDefinitionModelFactory();
+
+    const definitions: ColumnDefinition[] = SYSTEM_COLUMN_DEFINITIONS.map((spec) => {
+      return factory.create(SystemUtilities.id.system)
+        .update({
+          id: SystemUtilities.id.v5.generate(`column-definition:${organizationId}:${spec.key}`),
+          organizationId,
+          ...spec,
+        })
+        .parse();
+    });
+
+    for (const def of definitions) {
+      await DbService.repository.columnDefinitions.upsertByKey(def, db);
+    }
   }
 }
