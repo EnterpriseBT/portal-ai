@@ -282,12 +282,13 @@ describe("CsvImportService", () => {
         },
       ]);
 
-      const csv = "Date\n2021-09-05\n2022-03-15\n2023-11-01\n";
+      // Two columns so header detection fires (firstRow.length > 1)
+      const csv = "Date,Label\n2021-09-05,A\n2022-03-15,B\n2023-11-01,C\n";
       mockGetObjectStream.mockResolvedValue(csvToStream(csv));
 
       const result = await CsvImportService.importFromS3(defaultParams());
 
-      // All three rows parse successfully (invalid regex is now skipped gracefully)
+      // All three data rows parse successfully (invalid regex is now skipped gracefully)
       expect(result.created).toBe(3);
       expect(result.invalid).toBe(0);
       expect(mockUpsertManyBySourceId).toHaveBeenCalledTimes(1);
