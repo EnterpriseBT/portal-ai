@@ -87,6 +87,15 @@ const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationMessage: null,
     canonicalFormat: "$#,##0.00",
   },
+  {
+    key: "url",
+    label: "Website",
+    type: "string",
+    description: "Website URL",
+    validationPattern: "^https?://[^\\s]+$",
+    validationMessage: "Must be a valid URL starting with http:// or https://",
+    canonicalFormat: "lowercase",
+  },
 ];
 
 export class SeedService {
