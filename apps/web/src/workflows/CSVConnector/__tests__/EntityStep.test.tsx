@@ -18,6 +18,7 @@ import type { EntityStepErrors } from "../utils/csv-validation.util";
 const MOCK_COLUMN: RecommendedColumn = {
   confidence: 0.95,
   existingColumnDefinitionId: "col_001",
+  existingColumnDefinitionKey: "email",
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org"],
@@ -31,6 +32,7 @@ const MOCK_COLUMN: RecommendedColumn = {
 const MOCK_COLUMN_NEW: RecommendedColumn = {
   confidence: 0.3,
   existingColumnDefinitionId: "col_002",
+  existingColumnDefinitionKey: "phone",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100"],

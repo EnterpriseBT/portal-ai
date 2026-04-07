@@ -128,6 +128,7 @@ describe("fileUploadProcessor", () => {
         columns: input.parseResult.columnStats.map((s: { name: string; sampleValues: string[] }) => ({
           sourceField: s.name,
           existingColumnDefinitionId: "cd-text",
+          existingColumnDefinitionKey: "text",
           confidence: 0.5,
           sampleValues: s.sampleValues,
           format: null,

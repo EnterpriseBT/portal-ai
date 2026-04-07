@@ -12,6 +12,8 @@ export interface AsyncSearchableSelectProps extends SelectBaseProps {
   debounceMs?: number;
   /** When true, allows arbitrary text input that is not in the dropdown options. */
   freeSolo?: boolean;
+  /** Display label to show in the input when value is set but options haven't loaded yet. */
+  displayValue?: string;
 }
 
 export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
@@ -29,21 +31,32 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   fullWidth,
   inputRef,
   freeSolo = false,
+  displayValue,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
-  const [inputValue, setInputValue] = useState(value ? String(value) : "");
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync inputValue when value changes externally (e.g. parent state update
-  // after a dropdown selection or programmatic change).
+  // Resolve displayed text: prefer option label, then displayValue prop, then raw value.
+  const resolveLabel = (val: string | null): string => {
+    if (!val) return "";
+    const match = options.find((o) => o.value === val);
+    if (match) return match.label;
+    return displayValue ?? val;
+  };
+
+  const [inputValue, setInputValue] = useState(() => resolveLabel(value));
+
+  // Sync inputValue when value or displayValue changes externally.
   const prevValueRef = useRef(value);
+  const prevDisplayRef = useRef(displayValue);
   useEffect(() => {
-    if (value !== prevValueRef.current) {
+    if (value !== prevValueRef.current || displayValue !== prevDisplayRef.current) {
       prevValueRef.current = value;
-      setInputValue(value ? String(value) : "");
+      prevDisplayRef.current = displayValue;
+      setInputValue(resolveLabel(value));
     }
-  }, [value]);
+  }, [value, displayValue, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

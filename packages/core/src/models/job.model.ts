@@ -96,6 +96,8 @@ export const FileUploadColumnRecommendationSchema = z.object({
   sourceField: z.string(),
   /** ID of the matched existing column definition. */
   existingColumnDefinitionId: z.string(),
+  /** Key of the matched existing column definition. */
+  existingColumnDefinitionKey: z.string(),
   /** Confidence score for the recommendation (0-1). */
   confidence: z.number().min(0).max(1),
   /** Sample values from the parsed data. */

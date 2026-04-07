@@ -24,6 +24,7 @@ const MOCK_FILES = [
 const MOCK_COLUMN_CONTACT: RecommendedColumn = {
   confidence: 0.95,
   existingColumnDefinitionId: "col_001",
+  existingColumnDefinitionKey: "email",
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
@@ -37,6 +38,7 @@ const MOCK_COLUMN_CONTACT: RecommendedColumn = {
 const MOCK_COLUMN_NAME: RecommendedColumn = {
   confidence: 0.72,
   existingColumnDefinitionId: "col_002",
+  existingColumnDefinitionKey: "name",
   sourceField: "Full Name",
   isPrimaryKeyCandidate: false,
   sampleValues: ["Alice Johnson", "Bob Smith", "Carol Williams"],
@@ -50,6 +52,7 @@ const MOCK_COLUMN_NAME: RecommendedColumn = {
 const MOCK_COLUMN_PHONE: RecommendedColumn = {
   confidence: 0.45,
   existingColumnDefinitionId: "col_003",
+  existingColumnDefinitionKey: "phone",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100", "+1-555-0101"],
@@ -63,6 +66,7 @@ const MOCK_COLUMN_PHONE: RecommendedColumn = {
 const MOCK_COLUMN_PRODUCT: RecommendedColumn = {
   confidence: 0.88,
   existingColumnDefinitionId: "col_010",
+  existingColumnDefinitionKey: "sku",
   sourceField: "Product SKU",
   isPrimaryKeyCandidate: true,
   sampleValues: ["SKU-001", "SKU-002", "SKU-003"],
@@ -76,6 +80,7 @@ const MOCK_COLUMN_PRODUCT: RecommendedColumn = {
 const MOCK_COLUMN_PRICE: RecommendedColumn = {
   confidence: 0.91,
   existingColumnDefinitionId: "col_011",
+  existingColumnDefinitionKey: "price",
   sourceField: "Unit Price",
   isPrimaryKeyCandidate: false,
   sampleValues: ["19.99", "24.50", "99.00"],
@@ -157,7 +162,7 @@ const baseArgs: CSVConnectorWorkflowUIProps = {
   isLoadingDbEntities: false,
   onUpdateColumn: fn(),
   onColumnKeySearch: fn().mockResolvedValue([]),
-  columnDefsByKey: {},
+
   onConnectorNameChange: fn(),
   onConfirm: fn(),
   isConfirming: false,

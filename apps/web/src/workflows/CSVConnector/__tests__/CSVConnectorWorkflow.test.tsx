@@ -20,6 +20,7 @@ import type { EntityStepErrors, ColumnStepErrors } from "../utils/csv-validation
 const MOCK_COLUMN: RecommendedColumn = {
   confidence: 0.95,
   existingColumnDefinitionId: "col_001",
+  existingColumnDefinitionKey: "email",
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
@@ -33,6 +34,7 @@ const MOCK_COLUMN: RecommendedColumn = {
 const MOCK_COLUMN_NEW: RecommendedColumn = {
   confidence: 0.45,
   existingColumnDefinitionId: "col_002",
+  existingColumnDefinitionKey: "phone",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100", "+1-555-0101"],
@@ -98,7 +100,7 @@ function makeProps(
     isLoadingDbEntities: false,
     onUpdateColumn: jest.fn(),
     onColumnKeySearch: jest.fn<() => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
-    columnDefsByKey: {},
+
     onConnectorNameChange: jest.fn(),
     onConfirm: jest.fn(),
     isConfirming: false,

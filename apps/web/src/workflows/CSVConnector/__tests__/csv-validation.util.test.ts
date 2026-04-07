@@ -12,6 +12,7 @@ function makeColumn(overrides: Partial<RecommendedColumn> = {}): RecommendedColu
   return {
     confidence: 0.9,
     existingColumnDefinitionId: "cd-text",
+    existingColumnDefinitionKey: "text",
     sourceField: "source",
     isPrimaryKeyCandidate: false,
     sampleValues: [],

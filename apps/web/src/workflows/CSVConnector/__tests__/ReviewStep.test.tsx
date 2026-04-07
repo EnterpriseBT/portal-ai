@@ -27,6 +27,7 @@ type ConfirmResponsePayload = {
 type RecommendedColumn = {
   confidence: number;
   existingColumnDefinitionId: string;
+  existingColumnDefinitionKey: string;
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
   sampleValues: string[];
@@ -70,6 +71,7 @@ type ReviewStepProps = {
 const MOCK_COLUMN_MATCH: RecommendedColumn = {
   confidence: 0.95,
   existingColumnDefinitionId: "col_001",
+  existingColumnDefinitionKey: "email",
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org"],
@@ -83,6 +85,7 @@ const MOCK_COLUMN_MATCH: RecommendedColumn = {
 const MOCK_COLUMN_NEW: RecommendedColumn = {
   confidence: 0.45,
   existingColumnDefinitionId: "col_002",
+  existingColumnDefinitionKey: "phone",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100"],
@@ -173,6 +176,7 @@ describe("ReviewStep", () => {
       const refColumn: RecommendedColumn = {
         confidence: 0.9,
         existingColumnDefinitionId: "col_ref",
+        existingColumnDefinitionKey: "role_id",
         sourceField: "role_id",
         isPrimaryKeyCandidate: false,
         sampleValues: [],
@@ -207,6 +211,7 @@ describe("ReviewStep", () => {
       const refColumn: RecommendedColumn = {
         confidence: 0.9,
         existingColumnDefinitionId: "col_ref",
+        existingColumnDefinitionKey: "role_id",
         sourceField: "role_id",
         isPrimaryKeyCandidate: false,
         sampleValues: [],
@@ -241,6 +246,7 @@ describe("ReviewStep", () => {
       const refColumn: RecommendedColumn = {
         confidence: 0.9,
         existingColumnDefinitionId: "col_ref",
+        existingColumnDefinitionKey: "role_id",
         sourceField: "role_id",
         isPrimaryKeyCandidate: false,
         sampleValues: [],

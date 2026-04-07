@@ -97,6 +97,7 @@ function makeAiRecommendation(parseResult: FileParseResult) {
     columns: parseResult.columnStats.map((s) => ({
       sourceField: s.name,
       existingColumnDefinitionId: "cd-text",
+      existingColumnDefinitionKey: "text",
       confidence: 0.85,
       sampleValues: s.sampleValues,
       format: null,
@@ -139,7 +140,7 @@ describe("FileAnalysisService — Integration", () => {
         columns: [
           {
             sourceField: "customer_id",
-            existingColumnDefinitionId: "cd-text",
+            existingColumnDefinitionId: "cd-text", existingColumnDefinitionKey: "text",
             confidence: 0.9,
             sampleValues: ["CUS001", "CUS002", "CUS003"],
             format: null, isPrimaryKey: true, required: true,
@@ -147,7 +148,7 @@ describe("FileAnalysisService — Integration", () => {
           },
           {
             sourceField: "email",
-            existingColumnDefinitionId: "cd-email",
+            existingColumnDefinitionId: "cd-email", existingColumnDefinitionKey: "email",
             confidence: 0.95,
             sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
             format: "email", isPrimaryKey: false, required: true,
@@ -155,7 +156,7 @@ describe("FileAnalysisService — Integration", () => {
           },
           {
             sourceField: "created_at",
-            existingColumnDefinitionId: "cd-date",
+            existingColumnDefinitionId: "cd-date", existingColumnDefinitionKey: "date",
             confidence: 0.88,
             sampleValues: ["2024-01-15", "2024-02-20", "2024-03-10"],
             format: null, isPrimaryKey: false, required: false,
@@ -163,7 +164,7 @@ describe("FileAnalysisService — Integration", () => {
           },
           {
             sourceField: "is_active",
-            existingColumnDefinitionId: "cd-boolean",
+            existingColumnDefinitionId: "cd-boolean", existingColumnDefinitionKey: "boolean",
             confidence: 0.92,
             sampleValues: ["true", "false", "true"],
             format: null, isPrimaryKey: false, required: false,
@@ -171,7 +172,7 @@ describe("FileAnalysisService — Integration", () => {
           },
           {
             sourceField: "total_spent",
-            existingColumnDefinitionId: "cd-decimal",
+            existingColumnDefinitionId: "cd-decimal", existingColumnDefinitionKey: "decimal",
             confidence: 0.87,
             sampleValues: ["150.00", "299.99", "45.50"],
             format: null, isPrimaryKey: false, required: false,
@@ -217,7 +218,7 @@ describe("FileAnalysisService — Integration", () => {
         columns: [
           {
             sourceField: "email",
-            existingColumnDefinitionId: "col_email",
+            existingColumnDefinitionId: "col_email", existingColumnDefinitionKey: "email",
             confidence: 0.98,
             sampleValues: ["alice@test.com"],
             format: "email", isPrimaryKey: false, required: true,
@@ -225,7 +226,7 @@ describe("FileAnalysisService — Integration", () => {
           },
           {
             sourceField: "name",
-            existingColumnDefinitionId: "col_name",
+            existingColumnDefinitionId: "col_name", existingColumnDefinitionKey: "name",
             confidence: 0.95,
             sampleValues: ["Alice"],
             format: null, isPrimaryKey: false, required: true,
@@ -233,7 +234,7 @@ describe("FileAnalysisService — Integration", () => {
           },
           {
             sourceField: "phone",
-            existingColumnDefinitionId: "cd-phone",
+            existingColumnDefinitionId: "cd-phone", existingColumnDefinitionKey: "phone",
             confidence: 0.7,
             sampleValues: ["+1-555-0100"],
             format: null, isPrimaryKey: false, required: false,
@@ -397,6 +398,7 @@ describe("FileAnalysisService — Integration", () => {
           {
             sourceField: "email",
             existingColumnDefinitionId: "cd-text",
+            existingColumnDefinitionKey: "text",
             confidence: 0.85,
             sampleValues: ["alice@test.com"],
             format: "email",

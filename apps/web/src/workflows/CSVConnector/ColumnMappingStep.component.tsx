@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import {
   Box,
@@ -41,7 +41,6 @@ interface ColumnMappingStepProps {
   ) => void;
   errors?: ColumnStepErrors;
   onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
-  columnDefsByKey: Record<string, ColumnDefinition>;
 }
 
 // --- Confidence Chip ---
@@ -331,10 +330,10 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
         {/* Column Definition Selection */}
         <AsyncSearchableSelect
           label="Column Definition"
-          value={columnDef?.key ?? ""}
+          value={column.existingColumnDefinitionId || ""}
+          displayValue={columnDef ? `${columnDef.label} (${columnDef.key}) — ${columnDef.type}` : column.existingColumnDefinitionKey || ""}
           onChange={handleDefinitionSelect}
           onSearch={onColumnKeySearch}
-          freeSolo={false}
           required
           fullWidth
           error={!!fieldErrors.existingColumnDefinitionId}
@@ -464,19 +463,51 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
   onUpdateColumn,
   errors = EMPTY_ERRORS,
   onColumnKeySearch,
-  columnDefsByKey,
 }) => {
   const { value: activeTab, tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const activeEntity = entities[activeTab];
 
-  // Build a lookup from column definition ID to ColumnDefinition
-  const columnDefsById = useMemo(() => {
-    const map: Record<string, ColumnDefinition> = {};
-    for (const def of Object.values(columnDefsByKey)) {
-      map[def.id] = def;
+  // Accumulate column definitions from search results by ID
+  const [columnDefsById, setColumnDefsById] = useState<Record<string, ColumnDefinition>>({});
+
+  const accumulateDefs = useCallback((results: SelectOption[]) => {
+    setColumnDefsById((prev) => {
+      const next = { ...prev };
+      for (const opt of results) {
+        const cd = (opt as { columnDefinition?: ColumnDefinition }).columnDefinition;
+        if (cd) next[cd.id] = cd;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleColumnKeySearch = useCallback(
+    async (query: string) => {
+      const results = await onColumnKeySearch(query);
+      accumulateDefs(results);
+      return results;
+    },
+    [onColumnKeySearch, accumulateDefs],
+  );
+
+  // Fetch definitions for pre-matched columns using their keys
+  useEffect(() => {
+    let cancelled = false;
+    const keys = new Set<string>();
+    for (const entity of entities) {
+      for (const col of entity.columns) {
+        if (col.existingColumnDefinitionKey) {
+          keys.add(col.existingColumnDefinitionKey);
+        }
+      }
     }
-    return map;
-  }, [columnDefsByKey]);
+    for (const key of keys) {
+      onColumnKeySearch(key).then((results) => {
+        if (!cancelled) accumulateDefs(results);
+      });
+    }
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (entities.length === 0) {
     return (
@@ -521,7 +552,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                 isLoadingDbEntities={isLoadingDbEntities}
                 onUpdate={onUpdateColumn}
                 fieldErrors={errors[activeTab]?.[columnIndex] ?? {}}
-                onColumnKeySearch={onColumnKeySearch}
+                onColumnKeySearch={handleColumnKeySearch}
               />
             ))}
           </Stack>

@@ -22,6 +22,7 @@ export const WORKFLOW_STEPS = [
 export interface RecommendedColumn {
   confidence: number;
   existingColumnDefinitionId: string;
+  existingColumnDefinitionKey: string;
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
   sampleValues: string[];
@@ -114,6 +115,7 @@ interface BackendRecommendation {
     columns: Array<{
       sourceField: string;
       existingColumnDefinitionId: string;
+      existingColumnDefinitionKey: string;
       confidence: number;
       sampleValues: string[];
       isPrimaryKey: boolean;
@@ -140,6 +142,7 @@ function mapBackendRecommendations(backend: BackendRecommendation): Recommendati
       columns: entity.columns.map((col) => ({
         confidence: col.confidence,
         existingColumnDefinitionId: col.existingColumnDefinitionId,
+        existingColumnDefinitionKey: col.existingColumnDefinitionKey,
         sourceField: col.sourceField,
         isPrimaryKeyCandidate: col.isPrimaryKey,
         sampleValues: col.sampleValues,

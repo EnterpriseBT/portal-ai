@@ -194,6 +194,7 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
       return {
         ...baseResult,
         existingColumnDefinitionId: exactMatch.id,
+        existingColumnDefinitionKey: exactMatch.key,
         confidence: 1,
         normalizedKey: exactMatch.key,
       };
@@ -205,6 +206,7 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
       return {
         ...baseResult,
         existingColumnDefinitionId: patternMatch.id,
+        existingColumnDefinitionKey: patternMatch.key,
         confidence: 0.9,
       };
     }
@@ -216,6 +218,7 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
       return {
         ...baseResult,
         existingColumnDefinitionId: fallbackDef.id,
+        existingColumnDefinitionKey: fallbackDef.key,
         confidence: 0.5,
       };
     }
@@ -226,6 +229,7 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
       return {
         ...baseResult,
         existingColumnDefinitionId: textDef.id,
+        existingColumnDefinitionKey: textDef.key,
         confidence: 0.5,
       };
     }
@@ -235,6 +239,7 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
     return {
       ...baseResult,
       existingColumnDefinitionId: firstDef?.id ?? "",
+      existingColumnDefinitionKey: firstDef?.key ?? "",
       confidence: 0,
     };
   });

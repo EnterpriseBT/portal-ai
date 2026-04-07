@@ -83,6 +83,7 @@ const MOCK_RECOMMENDATIONS = {
         {
           confidence: 0.95,
           existingColumnDefinitionId: "col_001",
+          existingColumnDefinitionKey: "email",
           sourceField: "Email Address",
           isPrimaryKeyCandidate: true,
           sampleValues: ["alice@example.com", "bob@test.org"],

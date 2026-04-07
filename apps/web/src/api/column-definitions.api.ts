@@ -52,12 +52,11 @@ export function useColumnDefinitionSearch(options?: {
 }
 
 /**
- * Search hook that returns options keyed by `key` (not `id`) and exposes a
- * lookup map of full column definitions so callers can pre-fill fields.
+ * Search hook for column definitions. Returns search results with the full
+ * ColumnDefinition attached to each option for downstream use.
  */
 export function useColumnDefinitionKeySearch() {
   const { fetchWithAuth } = useAuthFetch();
-  const [defsByKey, setDefsByKey] = React.useState<Record<string, ColumnDefinition>>({});
 
   const onSearch = React.useCallback(
     async (query: string) => {
@@ -67,23 +66,16 @@ export function useColumnDefinitionKeySearch() {
       const data = (await fetchWithAuth(url)) as ApiSuccessResponse<ColumnDefinitionListResponsePayload>;
       const defs = data.payload.columnDefinitions;
 
-      setDefsByKey((prev) => {
-        const next = { ...prev };
-        for (const cd of defs) {
-          next[cd.key] = cd;
-        }
-        return next;
-      });
-
       return defs.map((cd) => ({
-        value: cd.key,
+        value: cd.id,
         label: `${cd.label} (${cd.key}) — ${cd.type}${cd.description ? ` · ${cd.description}` : ""}`,
+        columnDefinition: cd,
       }));
     },
     [fetchWithAuth],
   );
 
-  return { onSearch, defsByKey };
+  return { onSearch };
 }
 
 export const columnDefinitions = {

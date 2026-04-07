@@ -112,20 +112,23 @@ function resolveColumnDefinitionIds(
       const rawId = col.existingColumnDefinitionId;
 
       // Already a valid ID
-      if (byId.has(rawId)) return col;
+      const existing = byId.get(rawId);
+      if (existing) {
+        return { ...col, existingColumnDefinitionKey: existing.key };
+      }
 
       // LLM returned a key instead of UUID — resolve it
       const matchByKey = byKey.get(rawId);
       if (matchByKey) {
         logger.debug({ sourceField: col.sourceField, rawId, resolvedId: matchByKey.id }, "Resolved column definition ID from key");
-        return { ...col, existingColumnDefinitionId: matchByKey.id };
+        return { ...col, existingColumnDefinitionId: matchByKey.id, existingColumnDefinitionKey: matchByKey.key };
       }
 
       // LLM returned a label instead of UUID — resolve it
       const matchByLabel = byLabel.get(rawId.toLowerCase());
       if (matchByLabel) {
         logger.debug({ sourceField: col.sourceField, rawId, resolvedId: matchByLabel.id }, "Resolved column definition ID from label");
-        return { ...col, existingColumnDefinitionId: matchByLabel.id };
+        return { ...col, existingColumnDefinitionId: matchByLabel.id, existingColumnDefinitionKey: matchByLabel.key };
       }
 
       // Unresolvable — attempt type-based fallback
@@ -134,18 +137,18 @@ function resolveColumnDefinitionIds(
       const fallbackKey = typeFallbackKey(inferredType, col.sampleValues);
       const fallbackDef = byKey.get(fallbackKey);
       if (fallbackDef) {
-        return { ...col, existingColumnDefinitionId: fallbackDef.id, confidence: 0.5 };
+        return { ...col, existingColumnDefinitionId: fallbackDef.id, existingColumnDefinitionKey: fallbackDef.key, confidence: 0.5 };
       }
 
       // Last resort — pick "text" if available
       const textDef = byKey.get("text");
       if (textDef) {
-        return { ...col, existingColumnDefinitionId: textDef.id, confidence: 0.5 };
+        return { ...col, existingColumnDefinitionId: textDef.id, existingColumnDefinitionKey: textDef.key, confidence: 0.5 };
       }
 
       // Absolute fallback: use the first existing column definition
       const firstDef = existingColumns[0];
-      return { ...col, existingColumnDefinitionId: firstDef?.id ?? "", confidence: 0 };
+      return { ...col, existingColumnDefinitionId: firstDef?.id ?? "", existingColumnDefinitionKey: firstDef?.key ?? "", confidence: 0 };
     }),
   };
 }

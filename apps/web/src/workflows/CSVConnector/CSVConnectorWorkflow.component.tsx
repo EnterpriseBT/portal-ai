@@ -14,7 +14,7 @@ import {
   StepPanel,
 } from "@portalai/core/ui";
 import type { StepConfig, SelectOption } from "@portalai/core/ui";
-import type { ColumnDefinition, JobStatus } from "@portalai/core/models";
+import type { JobStatus } from "@portalai/core/models";
 
 import { UploadStep } from "./UploadStep.component";
 import { EntityStep } from "./EntityStep.component";
@@ -87,7 +87,6 @@ export interface CSVConnectorWorkflowUIProps {
     updates: RecommendedColumnUpdate
   ) => void;
   onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
-  columnDefsByKey: Record<string, ColumnDefinition>;
 
   // Review step
   onConnectorNameChange: (name: string) => void;
@@ -136,7 +135,6 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
   columnStepErrors,
   onUpdateColumn,
   onColumnKeySearch,
-  columnDefsByKey,
   onConnectorNameChange,
   onConfirm,
   isConfirming,
@@ -207,7 +205,6 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
                 onUpdateColumn={onUpdateColumn}
                 errors={columnStepErrors}
                 onColumnKeySearch={onColumnKeySearch}
-                columnDefsByKey={columnDefsByKey}
               />
             ) : (
               <Typography color="text.secondary">
@@ -340,7 +337,7 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
   const workflow = useUploadWorkflow();
   const [entityStepErrors, setEntityStepErrors] = useState<EntityStepErrors>({});
   const [columnStepErrors, setColumnStepErrors] = useState<ColumnStepErrors>({});
-  const { onSearch: onColumnKeySearch, defsByKey: columnDefsByKey } = useColumnDefinitionKeySearch();
+  const { onSearch: onColumnKeySearch } = useColumnDefinitionKeySearch();
 
   const { data: dbEntitiesData, isLoading: isLoadingDbEntities } =
     sdk.connectorEntities.list(
@@ -435,7 +432,6 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
       columnStepErrors={columnStepErrors}
       onUpdateColumn={workflow.updateColumn}
       onColumnKeySearch={onColumnKeySearch}
-      columnDefsByKey={columnDefsByKey}
       onConnectorNameChange={workflow.updateConnectorName}
       onConfirm={handleConfirm}
       isConfirming={workflow.isConfirming}

@@ -100,6 +100,7 @@ function makeAiRecommendation(parseResult: FileParseResult) {
     columns: parseResult.columnStats.map((s) => ({
       sourceField: s.name,
       existingColumnDefinitionId: "cd-text",
+      existingColumnDefinitionKey: "text",
       confidence: 0.9,
       sampleValues: s.sampleValues,
       format: null,
@@ -216,6 +217,7 @@ describe("FileAnalysisService", () => {
           {
             sourceField: "is_active",
             existingColumnDefinitionId: "is_active", // Key instead of UUID!
+            existingColumnDefinitionKey: "is_active",
             confidence: 1,
             sampleValues: ["true", "false"],
             format: null,
@@ -228,6 +230,7 @@ describe("FileAnalysisService", () => {
           {
             sourceField: "email",
             existingColumnDefinitionId: "uuid-456", // Correct UUID
+            existingColumnDefinitionKey: "email",
             confidence: 1,
             sampleValues: ["a@b.com"],
             format: "email",
@@ -269,6 +272,7 @@ describe("FileAnalysisService", () => {
           {
             sourceField: "mystery",
             existingColumnDefinitionId: "nonexistent_key",
+            existingColumnDefinitionKey: "nonexistent",
             confidence: 0.8,
             sampleValues: ["x"],
             format: null,
@@ -556,15 +560,16 @@ describe("FileAnalysisService", () => {
       expect(prompt).toContain("normalizedKey");
     });
 
-    it("does NOT include currency as a type option", () => {
+    it("includes semantic matching guidance for column definition selection", () => {
       const prompt = buildFileAnalysisPrompt({
         parseResult: makeParseResult(),
         existingColumns: makeSeedColumns(),
         priorRecommendations: [],
       });
 
-      expect(prompt).toContain("Do NOT use `currency`");
-      expect(prompt).toContain("canonicalFormat");
+      expect(prompt).toContain("string_id");
+      expect(prompt).toContain("currency");
+      expect(prompt).toContain("Matching strategy");
     });
 
     it("instructs required, format, enumValues as mapping-level attributes", () => {
@@ -579,15 +584,22 @@ describe("FileAnalysisService", () => {
       expect(prompt).toMatch(/enumValues.*mapping-level/is);
     });
 
-    it("includes validationPattern and canonicalFormat instructions", () => {
+    it("includes existing column definition metadata in prompt", () => {
+      const columns = makeSeedColumns();
+      // Add a column with validationPattern to verify it's rendered
+      columns.push({
+        id: "cd-custom", key: "custom_email", label: "Custom Email", type: "string",
+        description: "Custom email", validationPattern: "^[^@]+@[^@]+$", canonicalFormat: "lowercase",
+      });
       const prompt = buildFileAnalysisPrompt({
         parseResult: makeParseResult(),
-        existingColumns: makeSeedColumns(),
+        existingColumns: columns,
         priorRecommendations: [],
       });
 
       expect(prompt).toContain("validationPattern");
       expect(prompt).toContain("canonicalFormat");
+      expect(prompt).toContain("cd-custom");
     });
   });
 });
