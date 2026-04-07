@@ -196,7 +196,6 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
         existingColumnDefinitionId: exactMatch.id,
         existingColumnDefinitionKey: exactMatch.key,
         confidence: 1,
-        normalizedKey: exactMatch.key,
       };
     }
 

@@ -59,6 +59,13 @@ function toDataTableColumns(
   columns: ResolvedColumn[]
 ): DataTableColumn[] {
   const cols: DataTableColumn[] = columns.map((col) => {
+    // Use normalizedKey as the header label since it's the field-mapping-level
+    // identifier; show the column definition label as a caption alongside type.
+    const headerLabel = col.normalizedKey;
+    const caption = col.normalizedKey !== col.key
+      ? `${col.label} · ${col.type}`
+      : col.type;
+
     if (
       col.type === "json" ||
       col.type === "array" ||
@@ -66,8 +73,8 @@ function toDataTableColumns(
     ) {
       return {
         key: col.normalizedKey,
-        label: col.label,
-        caption: col.type,
+        label: headerLabel,
+        caption,
         sortable: SORTABLE_COLUMN_TYPES.has(col.type),
         render: (value: unknown) => (
           <EntityRecordCellCode
@@ -79,8 +86,8 @@ function toDataTableColumns(
     }
     return {
       key: col.normalizedKey,
-      label: col.label,
-      caption: col.type,
+      label: headerLabel,
+      caption,
       sortable: SORTABLE_COLUMN_TYPES.has(col.type),
       format: (value: unknown) =>
         Formatter.format(value, col.type, { canonicalFormat: col.canonicalFormat }),
