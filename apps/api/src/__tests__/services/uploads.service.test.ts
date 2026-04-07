@@ -970,6 +970,324 @@ describe("UploadsService", () => {
       });
     });
 
+    it("should throw 400 when cross-entity columns share a key but have conflicting type", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Phone",
+                key: "phone",
+                label: "Phone",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+          {
+            entityKey: "leads",
+            entityLabel: "Leads",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Phone Number",
+                key: "phone",
+                label: "Phone",
+                type: "number",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
+      ).rejects.toMatchObject({
+        status: 400,
+        code: "UPLOAD_CONFLICTING_COLUMN_DEFINITIONS",
+      });
+    });
+
+    it("should throw 400 when cross-entity columns share a key but have conflicting validationPattern", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Email",
+                key: "email",
+                label: "Email",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                validationPattern: "^[^@]+@[^@]+$",
+              },
+            ],
+          },
+          {
+            entityKey: "leads",
+            entityLabel: "Leads",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Lead Email",
+                key: "email",
+                label: "Email",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                validationPattern: "^.+@.+\\..+$",
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
+      ).rejects.toMatchObject({
+        status: 400,
+        code: "UPLOAD_CONFLICTING_COLUMN_DEFINITIONS",
+      });
+    });
+
+    it("should throw 400 when cross-entity columns share a key but have conflicting label", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Name",
+                key: "full_name",
+                label: "Full Name",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+          {
+            entityKey: "leads",
+            entityLabel: "Leads",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Lead Name",
+                key: "full_name",
+                label: "Complete Name",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
+      ).rejects.toMatchObject({
+        status: 400,
+        code: "UPLOAD_CONFLICTING_COLUMN_DEFINITIONS",
+      });
+    });
+
+    it("should allow cross-entity columns with same key when definitions are identical", async () => {
+      let entityCounter = 0;
+      mockConnectorEntitiesUpsertByKey.mockImplementation(async (data: unknown) => {
+        entityCounter++;
+        return {
+          ...(data as Record<string, unknown>),
+          id: `ce-${entityCounter}`,
+          key: (data as Record<string, unknown>).key,
+          label: (data as Record<string, unknown>).label,
+        };
+      });
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Email",
+                key: "email",
+                label: "Email",
+                type: "string",
+                format: "email",
+                isPrimaryKey: false,
+                required: true,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                validationPattern: "^[^@]+@[^@]+$",
+                canonicalFormat: "lowercase",
+              },
+            ],
+          },
+          {
+            entityKey: "leads",
+            entityLabel: "Leads",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Lead Email",
+                key: "email",
+                label: "Email",
+                type: "string",
+                format: null,
+                isPrimaryKey: true,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                validationPattern: "^[^@]+@[^@]+$",
+                canonicalFormat: "lowercase",
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
+      ).resolves.toBeDefined();
+    });
+
+    it("should skip match_existing columns when checking for cross-entity conflicts", async () => {
+      mockColumnDefinitionsFindById.mockResolvedValue({
+        id: "cd-existing",
+        organizationId: ORG_ID,
+        key: "phone",
+        label: "Phone",
+        type: "string",
+      });
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Phone",
+                key: "phone",
+                label: "Phone",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+              },
+            ],
+          },
+          {
+            entityKey: "leads",
+            entityLabel: "Leads",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Phone Number",
+                key: "phone",
+                label: "Phone",
+                type: "number",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "match_existing",
+                existingColumnDefinitionId: "cd-existing",
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
+      ).resolves.toBeDefined();
+    });
+
+    it("should include conflicting field names in the error message", async () => {
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Phone",
+                key: "phone",
+                label: "Phone",
+                type: "string",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                canonicalFormat: "e164",
+              },
+            ],
+          },
+          {
+            entityKey: "leads",
+            entityLabel: "Leads",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "Phone Number",
+                key: "phone",
+                label: "Phone Number",
+                type: "number",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                action: "create_new",
+                existingColumnDefinitionId: null,
+                canonicalFormat: null,
+              },
+            ],
+          },
+        ],
+      });
+
+      await expect(
+        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
+      ).rejects.toThrow(/type, label, canonicalFormat/);
+    });
+
     it("should roll back transaction on DB error — job stays awaiting_confirmation", async () => {
       const { DbService } = await import("../../services/db.service.js");
       (DbService.transaction as jest.Mock<() => Promise<unknown>>).mockRejectedValueOnce(new Error("DB connection lost"));

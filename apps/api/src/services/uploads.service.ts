@@ -81,6 +81,12 @@ export class UploadsService {
       }
     }
 
+    // Validate that create_new columns sharing the same key have consistent
+    // column-definition-level fields (type, label, validationPattern, etc.).
+    // Without this check the first entity's config silently wins and later
+    // entities get a column definition they didn't ask for.
+    UploadsService.validateCrossEntityColumnConsistency(body);
+
     const metadata = job.metadata as unknown as FileUploadMetadata;
     const now = Date.now();
 
@@ -320,6 +326,48 @@ export class UploadsService {
       connectorInstanceName: connectorInstance.name,
       confirmedEntities,
     };
+  }
+
+  /**
+   * Validate that all `create_new` columns sharing the same key across entities
+   * agree on column-definition-level fields. Throws 400 if any key has
+   * conflicting type, label, validationPattern, validationMessage, or
+   * canonicalFormat.
+   */
+  private static validateCrossEntityColumnConsistency(body: ConfirmRequestBody): void {
+    const COL_DEF_FIELDS = ["type", "label", "validationPattern", "validationMessage", "canonicalFormat"] as const;
+
+    const seen = new Map<string, { entityKey: string; col: ConfirmColumn }>();
+
+    for (const entity of body.entities) {
+      for (const col of entity.columns) {
+        if (col.action !== "create_new") continue;
+
+        const existing = seen.get(col.key);
+        if (!existing) {
+          seen.set(col.key, { entityKey: entity.entityKey, col });
+          continue;
+        }
+
+        const conflicts: string[] = [];
+        for (const field of COL_DEF_FIELDS) {
+          const a = existing.col[field] ?? null;
+          const b = col[field] ?? null;
+          if (a !== b) {
+            conflicts.push(field);
+          }
+        }
+
+        if (conflicts.length > 0) {
+          throw new ApiError(
+            400,
+            ApiCode.UPLOAD_CONFLICTING_COLUMN_DEFINITIONS,
+            `Column key "${col.key}" has conflicting definitions across entities ` +
+            `"${existing.entityKey}" and "${entity.entityKey}": ${conflicts.join(", ")}`
+          );
+        }
+      }
+    }
   }
 
   /**

@@ -24,6 +24,7 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
   disabled,
   required,
   size = "small",
+  fullWidth,
   inputRef,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
@@ -90,6 +91,7 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
       loading={loading}
       disabled={disabled}
       size={size}
+      fullWidth={fullWidth}
       renderInput={(params) => (
         <TextField
           {...params}

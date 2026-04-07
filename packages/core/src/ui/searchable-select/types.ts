@@ -14,6 +14,7 @@ export interface SelectBaseProps {
   disabled?: boolean;
   required?: boolean;
   size?: "small" | "medium";
+  fullWidth?: boolean;
   inputRef?: React.Ref<HTMLInputElement>;
 }
 

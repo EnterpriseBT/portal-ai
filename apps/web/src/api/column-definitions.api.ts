@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 
 import type {
   ApiSuccessResponse,
@@ -49,6 +49,41 @@ export function useColumnDefinitionSearch(options?: {
   );
 
   return useAsyncFilterOptions(config);
+}
+
+/**
+ * Search hook that returns options keyed by `key` (not `id`) and exposes a
+ * lookup map of full column definitions so callers can pre-fill fields.
+ */
+export function useColumnDefinitionKeySearch() {
+  const { fetchWithAuth } = useAuthFetch();
+  const [defsByKey, setDefsByKey] = React.useState<Record<string, ColumnDefinition>>({});
+
+  const onSearch = React.useCallback(
+    async (query: string) => {
+      const params: Record<string, string> = {};
+      if (query) params.search = query;
+      const url = `/api/column-definitions?${new URLSearchParams(params).toString()}`;
+      const data = (await fetchWithAuth(url)) as ApiSuccessResponse<ColumnDefinitionListResponsePayload>;
+      const defs = data.payload.columnDefinitions;
+
+      setDefsByKey((prev) => {
+        const next = { ...prev };
+        for (const cd of defs) {
+          next[cd.key] = cd;
+        }
+        return next;
+      });
+
+      return defs.map((cd) => ({
+        value: cd.key,
+        label: `${cd.label} (${cd.key}) — ${cd.type}`,
+      }));
+    },
+    [fetchWithAuth],
+  );
+
+  return { onSearch, defsByKey };
 }
 
 export const columnDefinitions = {

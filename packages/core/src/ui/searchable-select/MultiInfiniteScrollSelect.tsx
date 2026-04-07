@@ -31,6 +31,7 @@ export const MultiInfiniteScrollSelect: React.FC<MultiInfiniteScrollSelectProps>
   disabled,
   required,
   size = "small",
+  fullWidth,
   inputRef,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
@@ -160,6 +161,7 @@ export const MultiInfiniteScrollSelect: React.FC<MultiInfiniteScrollSelectProps>
             filterOptions={(x) => x}
             disabled={disabled}
             size={size}
+            fullWidth={fullWidth}
             ListboxComponent={InfiniteListboxComponent}
             renderInput={(params) => (
               <TextField

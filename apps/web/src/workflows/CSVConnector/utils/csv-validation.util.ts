@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { FormErrors } from "../../../utils/form-validation.util";
-import type { RecommendedEntity } from "./upload-workflow.util";
+import type { RecommendedColumn, RecommendedEntity } from "./upload-workflow.util";
 
 // ── Entity Step (Step 2) ────────────────────────────────────────────
 
@@ -127,6 +127,43 @@ export function validateColumnStep(entities: RecommendedEntity[]): ColumnStepErr
       allErrors[ei] = colErrors;
     }
   }
+  // Cross-entity consistency check: create_new columns sharing the same key
+  // must agree on column-definition-level fields (type, label, validation, etc.)
+  const COL_DEF_FIELDS = ["type", "label", "validationPattern", "validationMessage", "canonicalFormat"] as const;
+  const seen = new Map<string, { entityIndex: number; columnIndex: number; rec: RecommendedColumn["recommended"] }>();
+
+  for (let ei = 0; ei < entities.length; ei++) {
+    for (let ci = 0; ci < entities[ei].columns.length; ci++) {
+      const col = entities[ei].columns[ci];
+      if (col.action !== "create_new") continue;
+
+      const key = col.recommended.key;
+      if (!key) continue;
+
+      const existing = seen.get(key);
+      if (!existing) {
+        seen.set(key, { entityIndex: ei, columnIndex: ci, rec: col.recommended });
+        continue;
+      }
+
+      const conflicts: string[] = [];
+      for (const field of COL_DEF_FIELDS) {
+        const a = existing.rec[field] ?? null;
+        const b = col.recommended[field] ?? null;
+        if (a !== b) conflicts.push(field);
+      }
+
+      if (conflicts.length > 0) {
+        const msg = `Conflicts with "${key}" in entity "${entities[existing.entityIndex].connectorEntity.label}": ${conflicts.join(", ")}`;
+        if (!allErrors[ei]) allErrors[ei] = {};
+        allErrors[ei][ci] = {
+          ...(allErrors[ei][ci] ?? {}),
+          key: msg,
+        };
+      }
+    }
+  }
+
   return allErrors;
 }
 

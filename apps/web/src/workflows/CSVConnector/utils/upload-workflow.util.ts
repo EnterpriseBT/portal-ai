@@ -93,6 +93,11 @@ export interface WorkflowState {
   isCancelling: boolean;
 }
 
+/** Column update where `recommended` can be a partial — fields are merged, not replaced. */
+export type RecommendedColumnUpdate = Omit<Partial<RecommendedColumn>, "recommended"> & {
+  recommended?: Partial<RecommendedColumn["recommended"]>;
+};
+
 export interface UseUploadWorkflowReturn extends WorkflowState {
   addFiles: (newFiles: File[]) => void;
   removeFile: (index: number) => void;
@@ -101,7 +106,7 @@ export interface UseUploadWorkflowReturn extends WorkflowState {
   goNext: () => void;
   goBack: () => void;
   updateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
-  updateColumn: (entityIndex: number, columnIndex: number, updates: Partial<RecommendedColumn>) => void;
+  updateColumn: (entityIndex: number, columnIndex: number, updates: RecommendedColumnUpdate) => void;
   updateConnectorName: (name: string) => void;
   confirm: () => Promise<void>;
   cancel: () => Promise<void>;
@@ -318,13 +323,18 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
   );
 
   const updateColumn = useCallback(
-    (entityIndex: number, columnIndex: number, updates: Partial<RecommendedColumn>) => {
+    (entityIndex: number, columnIndex: number, updates: RecommendedColumnUpdate) => {
       setEditedRecommendations((prev) => {
         const base = prev ?? sseRecommendations;
         if (!base) return prev;
         const entities = [...base.entities];
         const columns = [...entities[entityIndex].columns];
-        columns[columnIndex] = { ...columns[columnIndex], ...updates };
+        const existing = columns[columnIndex];
+        // Merge `recommended` partially so callers don't need to spread the full object
+        const merged = updates.recommended
+          ? { ...existing, ...updates, recommended: { ...existing.recommended, ...updates.recommended } }
+          : { ...existing, ...updates };
+        columns[columnIndex] = merged as RecommendedColumn;
         entities[entityIndex] = { ...entities[entityIndex], columns };
         return { ...base, entities };
       });

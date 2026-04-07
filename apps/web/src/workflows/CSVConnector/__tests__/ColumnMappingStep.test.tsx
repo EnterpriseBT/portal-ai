@@ -82,13 +82,20 @@ const MOCK_ENTITY_B: RecommendedEntity = {
 };
 
 // ---------------------------------------------------------------------------
+// Default search props (no-op for most tests)
+// ---------------------------------------------------------------------------
+
+const mockOnColumnKeySearch = jest.fn<() => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]);
+const mockColumnDefsByKey = {};
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("ColumnMappingStep", () => {
   describe("Empty state", () => {
     it("shows no-entities message when entities array is empty", () => {
-      render(<ColumnMappingStep entities={[]} dbEntities={[]} isLoadingDbEntities={false} onUpdateColumn={jest.fn()} />);
+      render(<ColumnMappingStep entities={[]} dbEntities={[]} isLoadingDbEntities={false} onUpdateColumn={jest.fn()} onColumnKeySearch={mockOnColumnKeySearch} columnDefsByKey={mockColumnDefsByKey} />);
       expect(
         screen.getByText(
           "No entities available. Please go back and review entities."
@@ -105,6 +112,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByRole("tab", { name: "Contacts" })).toBeInTheDocument();
@@ -118,6 +127,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       // First entity columns visible
@@ -133,6 +144,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -150,6 +163,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText("Email Address")).toBeInTheDocument();
@@ -163,6 +178,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       // Use getAllByDisplayValue because normalizedKey input may share the same value as the key input
@@ -179,6 +196,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       // MUI Select renders a hidden input holding the value
@@ -195,6 +214,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText("2 columns")).toBeInTheDocument();
@@ -207,6 +228,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText(/alice@example\.com/)).toBeInTheDocument();
@@ -221,6 +244,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText("95%")).toBeInTheDocument();
@@ -236,6 +261,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText("Match")).toBeInTheDocument();
@@ -248,6 +275,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText("New")).toBeInTheDocument();
@@ -265,6 +294,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -293,6 +324,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -320,6 +353,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -346,6 +381,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -383,6 +420,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -433,6 +472,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -455,6 +496,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -473,6 +516,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -492,6 +537,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -521,6 +568,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -550,6 +599,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -578,6 +629,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -603,6 +656,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={true}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -635,6 +690,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[mockDbEntity]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -725,6 +782,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[mockDbEntity]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -755,6 +814,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       // MOCK_COLUMN_HIGH has type "string"
@@ -773,6 +834,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByLabelText(/^format$/i)).toBeInTheDocument();
@@ -790,6 +853,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByLabelText(/^format$/i)).toBeInTheDocument();
@@ -807,6 +872,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByLabelText(/^format$/i)).toBeInTheDocument();
@@ -824,6 +891,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByDisplayValue("YYYY-MM-DD")).toBeInTheDocument();
@@ -842,6 +911,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       const formatInput = screen.getByLabelText(/^format$/i);
@@ -870,6 +941,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
@@ -898,6 +971,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
@@ -939,6 +1014,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -954,6 +1031,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -967,6 +1046,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -984,6 +1065,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -1012,6 +1095,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
           errors={errors}
         />
       );
@@ -1028,6 +1113,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
           errors={errors}
         />
       );
@@ -1044,6 +1131,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
           errors={errors}
         />
       );
@@ -1069,6 +1158,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
           errors={errors}
         />
       );
@@ -1095,6 +1186,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
           errors={errors}
         />
       );
@@ -1108,6 +1201,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
           errors={{}}
         />
       );
@@ -1123,6 +1218,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       // Each column row has key, label, type — check first column's inputs
@@ -1142,6 +1239,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
           errors={errors}
         />
       );
@@ -1158,6 +1257,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -1181,6 +1282,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -1209,6 +1312,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
 
@@ -1237,6 +1342,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getAllByText(/Regex that values must match/i)[0]).toBeInTheDocument();
@@ -1253,6 +1360,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText(/currency for 2 decimals/i)).toBeInTheDocument();
@@ -1265,6 +1374,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       const formatInputs = screen.getAllByLabelText(/^format$/i);
@@ -1282,6 +1393,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getAllByText(/Not applicable for this column type/i).length).toBeGreaterThanOrEqual(1);
@@ -1298,6 +1411,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText(/Date format for parsing/i)).toBeInTheDocument();
@@ -1314,6 +1429,8 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          columnDefsByKey={mockColumnDefsByKey}
         />
       );
       expect(screen.getByText(/Custom true:false labels/i)).toBeInTheDocument();

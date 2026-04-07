@@ -267,4 +267,107 @@ describe("validateColumnStep", () => {
     ]);
     expect(hasColumnStepErrors(errors)).toBe(false);
   });
+
+  // ── Cross-entity column definition consistency ──────────────────────
+
+  it("returns error when cross-entity columns share a key but have conflicting type", () => {
+    const errors = validateColumnStep([
+      makeEntity("contacts", "Contacts", [
+        makeColumn({ key: "phone", label: "Phone", type: "string" }),
+      ]),
+      makeEntity("leads", "Leads", [
+        makeColumn({ key: "phone", label: "Phone", type: "number" }),
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(true);
+    // Error should be on the second entity's column
+    expect(errors[1][0].key).toMatch(/type/);
+  });
+
+  it("returns error when cross-entity columns share a key but have conflicting validationPattern", () => {
+    const errors = validateColumnStep([
+      makeEntity("contacts", "Contacts", [
+        makeColumn({ key: "email", label: "Email", type: "string", validationPattern: "^[^@]+@[^@]+$" }),
+      ]),
+      makeEntity("leads", "Leads", [
+        makeColumn({ key: "email", label: "Email", type: "string", validationPattern: "^.+@.+\\..+$" }),
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(true);
+    expect(errors[1][0].key).toMatch(/validationPattern/);
+  });
+
+  it("returns error when cross-entity columns share a key but have conflicting label", () => {
+    const errors = validateColumnStep([
+      makeEntity("contacts", "Contacts", [
+        makeColumn({ key: "full_name", label: "Full Name", type: "string" }),
+      ]),
+      makeEntity("leads", "Leads", [
+        makeColumn({ key: "full_name", label: "Complete Name", type: "string" }),
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(true);
+    expect(errors[1][0].key).toMatch(/label/);
+  });
+
+  it("allows cross-entity columns with same key when definitions are identical", () => {
+    const errors = validateColumnStep([
+      makeEntity("contacts", "Contacts", [
+        makeColumn({ key: "email", label: "Email", type: "string", validationPattern: "^[^@]+@[^@]+$", canonicalFormat: "lowercase" }),
+      ]),
+      makeEntity("leads", "Leads", [
+        makeColumn({ key: "email", label: "Email", type: "string", validationPattern: "^[^@]+@[^@]+$", canonicalFormat: "lowercase" }),
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(false);
+  });
+
+  it("skips match_existing columns in cross-entity consistency check", () => {
+    const errors = validateColumnStep([
+      makeEntity("contacts", "Contacts", [
+        makeColumn({ key: "phone", label: "Phone", type: "string" }),
+      ]),
+      makeEntity("leads", "Leads", [
+        {
+          ...makeColumn({ key: "phone", label: "Phone", type: "number" }),
+          action: "match_existing",
+          existingColumnDefinitionId: "cd-existing",
+        },
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(false);
+  });
+
+  it("includes the conflicting entity label and field names in the error message", () => {
+    const errors = validateColumnStep([
+      makeEntity("contacts", "Contacts", [
+        makeColumn({ key: "phone", label: "Phone", type: "string", canonicalFormat: "e164" }),
+      ]),
+      makeEntity("leads", "Leads", [
+        makeColumn({ key: "phone", label: "Phone Number", type: "number", canonicalFormat: null }),
+      ]),
+    ]);
+    expect(errors[1][0].key).toMatch(/Contacts/);
+    expect(errors[1][0].key).toMatch(/type/);
+    expect(errors[1][0].key).toMatch(/label/);
+    expect(errors[1][0].key).toMatch(/canonicalFormat/);
+  });
+
+  it("detects conflicts across three entities (error on second and third)", () => {
+    const errors = validateColumnStep([
+      makeEntity("a", "Entity A", [
+        makeColumn({ key: "status", label: "Status", type: "string" }),
+      ]),
+      makeEntity("b", "Entity B", [
+        makeColumn({ key: "status", label: "Status", type: "enum" }),
+      ]),
+      makeEntity("c", "Entity C", [
+        makeColumn({ key: "status", label: "Status", type: "number" }),
+      ]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(true);
+    // First entity seen is the baseline — errors on entity B and C
+    expect(errors[1][0].key).toMatch(/type/);
+    expect(errors[2][0].key).toMatch(/type/);
+  });
 });

@@ -268,19 +268,6 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
           ]}
         />
 
-        {!record.isValid && record.validationErrors && record.validationErrors.length > 0 && (
-          <Alert severity="error">
-            <Typography variant="body2" sx={{ fontWeight: "bold", mb: 0.5 }}>
-              Validation Errors
-            </Typography>
-            {record.validationErrors.map((err, i) => (
-              <Typography key={i} variant="body2">
-                {err.field}: {err.error}
-              </Typography>
-            ))}
-          </Alert>
-        )}
-
         <PageGrid columns={{ xs: 1, md: 2 }}>
           {/* Metadata */}
           <PageGridItem>

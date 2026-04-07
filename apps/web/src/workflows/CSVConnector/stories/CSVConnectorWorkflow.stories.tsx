@@ -206,6 +206,8 @@ const baseArgs: CSVConnectorWorkflowUIProps = {
   dbEntities: [],
   isLoadingDbEntities: false,
   onUpdateColumn: fn(),
+  onColumnKeySearch: fn().mockResolvedValue([]),
+  columnDefsByKey: {},
   onConnectorNameChange: fn(),
   onConfirm: fn(),
   isConfirming: false,

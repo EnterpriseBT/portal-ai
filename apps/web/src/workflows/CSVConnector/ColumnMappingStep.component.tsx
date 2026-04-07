@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React from "react";
 
 import {
   Box,
@@ -12,13 +12,16 @@ import {
   Divider,
   Checkbox,
   Select,
+  AsyncSearchableSelect,
 } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
+import type { ColumnDefinition } from "@portalai/core/models";
 
 import type { ConnectorEntityWithMappings } from "@portalai/core/contracts";
 
 import type {
   RecommendedColumn,
+  RecommendedColumnUpdate,
   RecommendedEntity,
 } from "./utils/upload-workflow.util";
 import type { ColumnStepErrors } from "./utils/csv-validation.util";
@@ -131,8 +134,6 @@ const DEFAULT_TYPE_CONFIG: TypeFieldConfig = {
   canonicalFormat: { enabled: true, options: STRING_CANONICAL_FORMAT_OPTIONS },
 };
 
-const EMPTY_ERRORS: FormErrors = {};
-
 function toSnakeCase(s: string): string {
   return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
@@ -146,9 +147,11 @@ interface ColumnMappingStepProps {
   onUpdateColumn: (
     entityIndex: number,
     columnIndex: number,
-    updates: Partial<RecommendedColumn>
+    updates: RecommendedColumnUpdate
   ) => void;
   errors?: ColumnStepErrors;
+  onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
+  columnDefsByKey: Record<string, ColumnDefinition>;
 }
 
 // --- Confidence Chip ---
@@ -191,9 +194,9 @@ interface ReferenceEditorProps {
   onUpdate: (
     entityIndex: number,
     columnIndex: number,
-    updates: Partial<RecommendedColumn>
+    updates: RecommendedColumnUpdate
   ) => void;
-  fieldErrors?: FormErrors;
+  fieldErrors: FormErrors;
 }
 
 /** Derive which entity select value is active given current column state. */
@@ -204,11 +207,8 @@ function deriveEntitySelectValue(
 ): string {
   const { refEntityKey, refColumnKey, refColumnDefinitionId } = recommended;
   if (!refEntityKey) return "";
-  // refColumnDefinitionId means user chose from existing DB entities
   if (refColumnDefinitionId) return `db:${refEntityKey}`;
-  // refColumnKey means user chose from batch entities
   if (refColumnKey) return `batch:${refEntityKey}`;
-  // Only refEntityKey set — heuristic: prefer batch, fall back to db
   const inBatch = allEntities.some(
     (e) => e.connectorEntity.key === refEntityKey
   );
@@ -218,7 +218,7 @@ function deriveEntitySelectValue(
   return `batch:${refEntityKey}`;
 }
 
-const ReferenceEditor: React.FC<ReferenceEditorProps> = React.memo(({
+const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
   column,
   entityIndex,
   columnIndex,
@@ -226,7 +226,7 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = React.memo(({
   dbEntities,
   isLoadingDbEntities,
   onUpdate,
-  fieldErrors = EMPTY_ERRORS,
+  fieldErrors,
 }) => {
   const batchOptions: SelectOption[] = allEntities.map((e) => ({
     value: `batch:${e.connectorEntity.key}`,
@@ -248,7 +248,6 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = React.memo(({
 
   const isDbMode = currentEntityValue.startsWith("db:");
 
-  // Build column options based on whether selected entity is batch or DB
   let columnOptions: SelectOption[] = [];
   if (currentEntityValue.startsWith("batch:")) {
     const entityKey = currentEntityValue.slice("batch:".length);
@@ -274,62 +273,51 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = React.memo(({
       : [];
   }
 
-  // Column select value: DB mode uses refColumnDefinitionId, batch uses refColumnKey
   const currentColumnValue = isDbMode
     ? (column.recommended.refColumnDefinitionId ?? "")
     : (column.recommended.refColumnKey ?? "");
 
-  const handleEntityChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value;
-      if (!val) {
-        onUpdate(entityIndex, columnIndex, {
-          recommended: {
-            ...column.recommended,
-            refEntityKey: null,
-            refColumnKey: null,
-            refColumnDefinitionId: null,
-          },
-        });
-        return;
-      }
-      const colonIdx = val.indexOf(":");
-      const entityKey = val.slice(colonIdx + 1);
+  const handleEntityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (!val) {
       onUpdate(entityIndex, columnIndex, {
         recommended: {
-          ...column.recommended,
-          refEntityKey: entityKey,
+          refEntityKey: null,
           refColumnKey: null,
           refColumnDefinitionId: null,
         },
       });
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
-  );
+      return;
+    }
+    const colonIdx = val.indexOf(":");
+    const entityKey = val.slice(colonIdx + 1);
+    onUpdate(entityIndex, columnIndex, {
+      recommended: {
+        refEntityKey: entityKey,
+        refColumnKey: null,
+        refColumnDefinitionId: null,
+      },
+    });
+  };
 
-  const handleColumnChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value || null;
-      if (isDbMode) {
-        onUpdate(entityIndex, columnIndex, {
-          recommended: {
-            ...column.recommended,
-            refColumnKey: null,
-            refColumnDefinitionId: val,
-          },
-        });
-      } else {
-        onUpdate(entityIndex, columnIndex, {
-          recommended: {
-            ...column.recommended,
-            refColumnKey: val,
-            refColumnDefinitionId: null,
-          },
-        });
-      }
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate, isDbMode]
-  );
+  const handleColumnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value || null;
+    if (isDbMode) {
+      onUpdate(entityIndex, columnIndex, {
+        recommended: {
+          refColumnKey: null,
+          refColumnDefinitionId: val,
+        },
+      });
+    } else {
+      onUpdate(entityIndex, columnIndex, {
+        recommended: {
+          refColumnKey: val,
+          refColumnDefinitionId: null,
+        },
+      });
+    }
+  };
 
   return (
     <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -361,7 +349,7 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = React.memo(({
       />
     </Stack>
   );
-});
+};
 
 // --- Column Row ---
 
@@ -375,12 +363,14 @@ interface ColumnRowProps {
   onUpdate: (
     entityIndex: number,
     columnIndex: number,
-    updates: Partial<RecommendedColumn>
+    updates: RecommendedColumnUpdate
   ) => void;
-  fieldErrors?: FormErrors;
+  fieldErrors: FormErrors;
+  onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
+  columnDefsByKey: Record<string, ColumnDefinition>;
 }
 
-const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
+const ColumnRow: React.FC<ColumnRowProps> = ({
   column,
   entityIndex,
   columnIndex,
@@ -388,149 +378,128 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
   dbEntities,
   isLoadingDbEntities,
   onUpdate,
-  fieldErrors = EMPTY_ERRORS,
+  fieldErrors,
+  onColumnKeySearch,
+  columnDefsByKey,
 }) => {
-  const handleKeyChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entityIndex, columnIndex, {
-        recommended: { ...column.recommended, key: e.target.value },
-      });
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
-  );
+  const matchedColDef = columnDefsByKey[column.recommended.key] ?? null;
 
-  const handleLabelChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entityIndex, columnIndex, {
-        recommended: { ...column.recommended, label: e.target.value },
-      });
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
-  );
-
-  const handleTypeChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const newType = e.target.value;
-      const isReference = newType === "reference" || newType === "reference-array";
-      const newConfig = TYPE_FIELD_CONFIG[newType] ?? DEFAULT_TYPE_CONFIG;
-      const prevConfig = TYPE_FIELD_CONFIG[column.recommended.type] ?? DEFAULT_TYPE_CONFIG;
-      const canonicalChanged = prevConfig.canonicalFormat.enabled !== newConfig.canonicalFormat.enabled
-        || prevConfig.canonicalFormat.options !== newConfig.canonicalFormat.options;
-      const validationLost = prevConfig.validation.enabled && !newConfig.validation.enabled;
+  const handleKeyChange = (value: string | null) => {
+    const key = value ?? "";
+    const existing = columnDefsByKey[key];
+    if (existing) {
       onUpdate(entityIndex, columnIndex, {
         recommended: {
-          ...column.recommended,
-          type: newType,
-          ...(!isReference && {
-            refEntityKey: null,
-            refColumnKey: null,
-            refColumnDefinitionId: null,
-          }),
-          ...(canonicalChanged && { canonicalFormat: null }),
-          ...(validationLost && { validationPattern: null, validationMessage: null }),
+          key: existing.key,
+          label: existing.label,
+          type: existing.type,
+          validationPattern: existing.validationPattern,
+          validationMessage: existing.validationMessage,
+          canonicalFormat: existing.canonicalFormat,
         },
-        ...(newType !== "enum" && { enumValues: null }),
-        ...(!newConfig.format.enabled && { format: null }),
+        existingColumnDefinitionId: existing.id,
+        action: "match_existing",
       });
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
-  );
-
-  // Mapping-level handlers
-  const handleNormalizedKeyChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entityIndex, columnIndex, { normalizedKey: e.target.value });
-    },
-    [entityIndex, columnIndex, onUpdate]
-  );
-
-  const handleRequiredToggle = useCallback(
-    (checked: boolean) => {
-      onUpdate(entityIndex, columnIndex, { required: checked });
-    },
-    [entityIndex, columnIndex, onUpdate]
-  );
-
-  const handleDefaultValueChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entityIndex, columnIndex, { defaultValue: e.target.value || null });
-    },
-    [entityIndex, columnIndex, onUpdate]
-  );
-
-  const handleFormatChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entityIndex, columnIndex, { format: e.target.value || null });
-    },
-    [entityIndex, columnIndex, onUpdate]
-  );
-
-  const handleEnumValuesChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const values = e.target.value
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean);
+    } else {
       onUpdate(entityIndex, columnIndex, {
-        enumValues: values.length > 0 ? values : null,
+        recommended: { key },
+        existingColumnDefinitionId: null,
+        action: "create_new",
       });
-    },
-    [entityIndex, columnIndex, onUpdate]
-  );
+    }
+  };
 
-  // Column-definition-level handlers
-  const handleValidationPresetChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const preset = VALIDATION_PRESETS.find((p) => p.value === e.target.value);
-      if (preset) {
-        onUpdate(entityIndex, columnIndex, {
-          recommended: {
-            ...column.recommended,
-            validationPattern: preset.pattern || null,
-            validationMessage: preset.message || null,
-          },
-        });
-      }
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
-  );
+  const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate(entityIndex, columnIndex, {
+      recommended: { label: e.target.value },
+    });
+  };
 
-  const handleValidationPatternChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newType = e.target.value;
+    const isReference = newType === "reference" || newType === "reference-array";
+    const newConfig = TYPE_FIELD_CONFIG[newType] ?? DEFAULT_TYPE_CONFIG;
+    const prevConfig = TYPE_FIELD_CONFIG[column.recommended.type] ?? DEFAULT_TYPE_CONFIG;
+    const canonicalChanged = prevConfig.canonicalFormat.enabled !== newConfig.canonicalFormat.enabled
+      || prevConfig.canonicalFormat.options !== newConfig.canonicalFormat.options;
+    const validationLost = prevConfig.validation.enabled && !newConfig.validation.enabled;
+    onUpdate(entityIndex, columnIndex, {
+      recommended: {
+        type: newType,
+        ...(!isReference && {
+          refEntityKey: null,
+          refColumnKey: null,
+          refColumnDefinitionId: null,
+        }),
+        ...(canonicalChanged && { canonicalFormat: null }),
+        ...(validationLost && { validationPattern: null, validationMessage: null }),
+      },
+      ...(newType !== "enum" && { enumValues: null }),
+      ...(!newConfig.format.enabled && { format: null }),
+    });
+  };
+
+  const handleNormalizedKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate(entityIndex, columnIndex, { normalizedKey: e.target.value });
+  };
+
+  const handleRequiredToggle = (checked: boolean) => {
+    onUpdate(entityIndex, columnIndex, { required: checked });
+  };
+
+  const handleDefaultValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate(entityIndex, columnIndex, { defaultValue: e.target.value || null });
+  };
+
+  const handleFormatChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate(entityIndex, columnIndex, { format: e.target.value || null });
+  };
+
+  const handleEnumValuesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const values = e.target.value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    onUpdate(entityIndex, columnIndex, {
+      enumValues: values.length > 0 ? values : null,
+    });
+  };
+
+  const handleValidationPresetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const preset = VALIDATION_PRESETS.find((p) => p.value === e.target.value);
+    if (preset) {
       onUpdate(entityIndex, columnIndex, {
-        recommended: { ...column.recommended, validationPattern: e.target.value || null },
+        recommended: {
+          validationPattern: preset.pattern || null,
+          validationMessage: preset.message || null,
+        },
       });
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
-  );
+    }
+  };
 
-  const handleValidationMessageChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entityIndex, columnIndex, {
-        recommended: { ...column.recommended, validationMessage: e.target.value || null },
-      });
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
-  );
+  const handleValidationPatternChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate(entityIndex, columnIndex, {
+      recommended: { validationPattern: e.target.value || null },
+    });
+  };
 
-  const handleCanonicalFormatChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdate(entityIndex, columnIndex, {
-        recommended: { ...column.recommended, canonicalFormat: e.target.value || null },
-      });
-    },
-    [entityIndex, columnIndex, column.recommended, onUpdate]
-  );
+  const handleValidationMessageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate(entityIndex, columnIndex, {
+      recommended: { validationMessage: e.target.value || null },
+    });
+  };
 
+  const handleCanonicalFormatChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate(entityIndex, columnIndex, {
+      recommended: { canonicalFormat: e.target.value || null },
+    });
+  };
 
-  const handlePrimaryKeyToggle = useCallback(
-    (checked: boolean) => {
-      onUpdate(entityIndex, columnIndex, {
-        isPrimaryKeyCandidate: checked,
-      });
-    },
-    [entityIndex, columnIndex, onUpdate]
-  );
+  const handlePrimaryKeyToggle = (checked: boolean) => {
+    onUpdate(entityIndex, columnIndex, {
+      isPrimaryKeyCandidate: checked,
+    });
+  };
 
   const typeConfig = TYPE_FIELD_CONFIG[column.recommended.type] ?? DEFAULT_TYPE_CONFIG;
 
@@ -561,15 +530,17 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
         </Stack>
 
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <DeferredTextInput
+          <AsyncSearchableSelect
             label="Key"
             value={column.recommended.key}
             onChange={handleKeyChange}
+            onSearch={onColumnKeySearch}
+            freeSolo
             required
+            fullWidth
             error={!!fieldErrors.key}
             helperText={fieldErrors.key}
             size="small"
-            fullWidth
           />
           <DeferredTextInput
             label="Label"
@@ -580,6 +551,7 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
             helperText={fieldErrors.label}
             size="small"
             fullWidth
+            disabled={!!matchedColDef}
           />
           <Select
             label="Type"
@@ -591,6 +563,7 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
             helperText={fieldErrors.type}
             size="small"
             fullWidth
+            disabled={!!matchedColDef}
           />
         </Stack>
 
@@ -609,7 +582,9 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
 
         {/* Column-definition-level fields */}
         <Divider />
-        <Typography variant="caption" color="text.secondary">Column Definition</Typography>
+        <Typography variant="caption" color="text.secondary">
+          Column Definition{matchedColDef ? " (matched existing)" : ""}
+        </Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
           <Select
             label="Validation Preset"
@@ -618,7 +593,7 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
             options={VALIDATION_PRESETS.map((p) => ({ value: p.value, label: p.label }))}
             size="small"
             fullWidth
-            disabled={!typeConfig.validation.enabled}
+            disabled={!!matchedColDef || !typeConfig.validation.enabled}
             helperText={!typeConfig.validation.enabled ? "Not applicable for this column type" : undefined}
           />
           <DeferredTextInput
@@ -627,7 +602,7 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
             onChange={handleValidationPatternChange}
             size="small"
             fullWidth
-            disabled={!typeConfig.validation.enabled}
+            disabled={!!matchedColDef || !typeConfig.validation.enabled}
             error={!!fieldErrors.validationPattern}
             helperText={
               !typeConfig.validation.enabled
@@ -644,7 +619,7 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
             onChange={handleValidationMessageChange}
             size="small"
             fullWidth
-            disabled={!typeConfig.validation.enabled}
+            disabled={!!matchedColDef || !typeConfig.validation.enabled}
             helperText={
               !typeConfig.validation.enabled
                 ? "Not applicable for this column type"
@@ -653,12 +628,12 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
           />
           <Select
             label="Canonical Format"
-            value={column.recommended.canonicalFormat ?? ""}
+            value={typeConfig.canonicalFormat.enabled ? (column.recommended.canonicalFormat ?? "") : ""}
             onChange={handleCanonicalFormatChange}
             options={typeConfig.canonicalFormat.options}
             size="small"
             fullWidth
-            disabled={!typeConfig.canonicalFormat.enabled}
+            disabled={!!matchedColDef || !typeConfig.canonicalFormat.enabled}
             helperText={
               !typeConfig.canonicalFormat.enabled
                 ? "Not applicable for this column type"
@@ -732,18 +707,23 @@ const ColumnRow: React.FC<ColumnRowProps> = React.memo(({
       </Stack>
     </Box>
   );
-});
+};
 
 // --- Component ---
+
+const EMPTY_ERRORS: ColumnStepErrors = {};
 
 export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
   entities,
   dbEntities,
   isLoadingDbEntities,
   onUpdateColumn,
-  errors = {},
+  errors = EMPTY_ERRORS,
+  onColumnKeySearch,
+  columnDefsByKey,
 }) => {
-  const { tabsProps, getTabProps, getTabPanelProps } = useTabs();
+  const { value: activeTab, tabsProps, getTabProps, getTabPanelProps } = useTabs();
+  const activeEntity = entities[activeTab];
 
   if (entities.length === 0) {
     return (
@@ -769,29 +749,31 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
         ))}
       </Tabs>
 
-      {entities.map((entity, entityIndex) => (
-        <TabPanel key={entityIndex} {...getTabPanelProps(entityIndex)}>
+      {activeEntity && (
+        <TabPanel {...getTabPanelProps(activeTab)}>
           <Stack spacing={1}>
             <Typography variant="subtitle2" color="text.secondary">
-              {entity.columns.length} columns
+              {activeEntity.columns.length} columns
             </Typography>
             <Divider />
-            {entity.columns.map((column, columnIndex) => (
+            {activeEntity.columns.map((column, columnIndex) => (
               <ColumnRow
-                key={columnIndex}
+                key={`${activeTab}-${columnIndex}`}
                 column={column}
-                entityIndex={entityIndex}
+                entityIndex={activeTab}
                 columnIndex={columnIndex}
                 allEntities={entities}
                 dbEntities={dbEntities}
                 isLoadingDbEntities={isLoadingDbEntities}
                 onUpdate={onUpdateColumn}
-                fieldErrors={errors[entityIndex]?.[columnIndex]}
+                fieldErrors={errors[activeTab]?.[columnIndex] ?? {}}
+                onColumnKeySearch={onColumnKeySearch}
+                columnDefsByKey={columnDefsByKey}
               />
             ))}
           </Stack>
         </TabPanel>
-      ))}
+      )}
     </Stack>
   );
 };

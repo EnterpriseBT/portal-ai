@@ -107,6 +107,8 @@ function makeProps(
     dbEntities: [],
     isLoadingDbEntities: false,
     onUpdateColumn: jest.fn(),
+    onColumnKeySearch: jest.fn<() => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
+    columnDefsByKey: {},
     onConnectorNameChange: jest.fn(),
     onConfirm: jest.fn(),
     isConfirming: false,
