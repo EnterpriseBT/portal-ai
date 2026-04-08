@@ -47,19 +47,28 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
             variant="determinate"
             value={clampedValue}
             color={color}
-            sx={{
+            sx={(theme) => ({
               height,
               borderRadius: height / 2,
               ...(animated && {
+                "@keyframes barShadowPulse": {
+                  "0%, 100%": {
+                    boxShadow: `0 0 ${height / 2}px 0px ${theme.palette[color].main}66`,
+                  },
+                  "50%": {
+                    boxShadow: `0 0 ${height}px 2px ${theme.palette[color].main}99`,
+                  },
+                },
+                animation: "barShadowPulse 1.5s ease-in-out infinite",
                 "& .MuiLinearProgress-bar": {
                   "@keyframes pulseGlow": {
                     "0%, 100%": { opacity: 1, filter: "brightness(1)" },
                     "50%": { opacity: 0.85, filter: "brightness(1.35)" },
                   },
-                  animation: "pulseGlow 1s ease-in-out infinite",
+                  animation: "pulseGlow 1.5s ease-in-out infinite",
                 },
               }),
-            }}
+            })}
           />
         </Box>
         {showLabel && (
