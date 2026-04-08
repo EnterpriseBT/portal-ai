@@ -477,6 +477,8 @@ describe("Uploads Router", () => {
 
   describe("POST /api/uploads/:jobId/confirm", () => {
     const CONNECTOR_DEF_ID = "cdef_csv01";
+    const NAME_COL_DEF_ID = "coldef_name";
+    const EMAIL_COL_DEF_ID = "coldef_email";
 
     function createConfirmBody(overrides?: Partial<Record<string, unknown>>) {
       return {
@@ -489,27 +491,19 @@ describe("Uploads Router", () => {
             columns: [
               {
                 sourceField: "Name",
-                key: "name",
-                label: "Name",
-                type: "string",
+                existingColumnDefinitionId: NAME_COL_DEF_ID,
                 format: null,
                 isPrimaryKey: false,
                 required: true,
                 normalizedKey: "name",
-                action: "create_new",
-                existingColumnDefinitionId: null,
               },
               {
                 sourceField: "Email",
-                key: "email",
-                label: "Email",
-                type: "string",
+                existingColumnDefinitionId: EMAIL_COL_DEF_ID,
                 format: "email",
                 isPrimaryKey: true,
                 required: true,
                 normalizedKey: "email",
-                action: "create_new",
-                existingColumnDefinitionId: null,
               },
             ],
           },
@@ -539,6 +533,26 @@ describe("Uploads Router", () => {
       } as never);
     }
 
+    async function seedColumnDefs(db: ReturnType<typeof drizzle>, organizationId: string) {
+      const base = {
+        organizationId,
+        description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      };
+      await db.insert(columnDefinitions).values([
+        { ...base, id: NAME_COL_DEF_ID, key: "name", label: "Name", type: "string" } as never,
+        { ...base, id: EMAIL_COL_DEF_ID, key: "email", label: "Email", type: "string" } as never,
+      ]);
+    }
+
     function createAwaitingJob(
       organizationId: string,
       overrides?: Partial<Record<string, unknown>>
@@ -562,6 +576,7 @@ describe("Uploads Router", () => {
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
       );
+      await seedColumnDefs(db as ReturnType<typeof drizzle>, organizationId);
 
       const job = createJob(organizationId, { status: "completed" });
       await (db as ReturnType<typeof drizzle>)
@@ -617,15 +632,11 @@ describe("Uploads Router", () => {
             columns: [
               {
                 sourceField: "Name",
-                key: "name",
-                label: "Name",
-                type: "string",
+                existingColumnDefinitionId: "nonexistent-col-def",
                 format: null,
                 isPrimaryKey: false,
                 required: true,
                 normalizedKey: "name",
-                action: "match_existing",
-                existingColumnDefinitionId: "nonexistent-col-def",
               },
             ],
           },
@@ -647,6 +658,7 @@ describe("Uploads Router", () => {
         AUTH0_ID
       );
       await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+      await seedColumnDefs(db as ReturnType<typeof drizzle>, organizationId);
 
       const job = createAwaitingJob(organizationId);
       await (db as ReturnType<typeof drizzle>)
@@ -704,6 +716,7 @@ describe("Uploads Router", () => {
         AUTH0_ID
       );
       await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+      await seedColumnDefs(db as ReturnType<typeof drizzle>, organizationId);
 
       const job = createAwaitingJob(organizationId);
       await (db as ReturnType<typeof drizzle>)
@@ -780,6 +793,7 @@ describe("Uploads Router", () => {
         AUTH0_ID
       );
       await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+      await seedColumnDefs(db as ReturnType<typeof drizzle>, organizationId);
 
       const job = createAwaitingJob(organizationId);
       await (db as ReturnType<typeof drizzle>)
@@ -842,15 +856,185 @@ describe("Uploads Router", () => {
       );
       await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
 
-      // Pre-create the referenced column definition
+      // Pre-create the referenced column definition (target of the ref)
       const refColDefId = generateId();
+      // Pre-create the reference column definition itself
+      const roleIdColDefId = generateId();
+      const base = {
+        organizationId,
+        description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      };
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values([
+          { ...base, id: refColDefId, key: "role_tag", label: "Role Tag", type: "string" } as never,
+          { ...base, id: roleIdColDefId, key: "role_id", label: "Role ID", type: "reference" } as never,
+        ]);
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "users",
+            entityLabel: "Users",
+            sourceFileName: "test.csv",
+            columns: [
+              {
+                sourceField: "role_id",
+                existingColumnDefinitionId: roleIdColDefId,
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                normalizedKey: "role_id",
+                refEntityKey: "roles",
+                refColumnDefinitionId: refColDefId,
+              },
+            ],
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(body);
+
+      expect(res.status).toBe(200);
+
+      const { eq } = await import("drizzle-orm");
+
+      // The field mapping should carry the ref metadata
+      const [fmRow] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.columnDefinitionId, roleIdColDefId));
+
+      expect(fmRow).toBeDefined();
+      expect(fmRow.refEntityKey).toBe("roles");
+      expect(fmRow.refColumnDefinitionId).toBe(refColDefId);
+    });
+
+    it("should resolve within-batch refColumnKey and store ref metadata on field mapping", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+
+      // Pre-seed column definitions for both entities
+      const rolePkColDefId = generateId();
+      const userRoleIdColDefId = generateId();
+      const base = {
+        organizationId,
+        description: null,
+        validationPattern: null,
+        validationMessage: null,
+        canonicalFormat: null,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      };
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values([
+          { ...base, id: rolePkColDefId, key: "role_pk", label: "Role PK", type: "string" } as never,
+          { ...base, id: userRoleIdColDefId, key: "user_role_id", label: "User Role ID", type: "reference" } as never,
+        ]);
+
+      const job = createAwaitingJob(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(jobs)
+        .values(job as never);
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "roles",
+            entityLabel: "Roles",
+            sourceFileName: "test.csv",
+            columns: [
+              {
+                sourceField: "id",
+                existingColumnDefinitionId: rolePkColDefId,
+                format: null,
+                isPrimaryKey: true,
+                required: true,
+                normalizedKey: "role_pk",
+              },
+            ],
+          },
+          {
+            entityKey: "users",
+            entityLabel: "Users",
+            sourceFileName: "test.csv",
+            columns: [
+              {
+                sourceField: "role_id",
+                existingColumnDefinitionId: userRoleIdColDefId,
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                normalizedKey: "user_role_id",
+                refEntityKey: "roles",
+                refColumnKey: "role_pk",
+              },
+            ],
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .post(`/api/uploads/${job.id}/confirm`)
+        .set("Authorization", "Bearer test-token")
+        .send(body);
+
+      expect(res.status).toBe(200);
+
+      const { eq } = await import("drizzle-orm");
+
+      // The field mapping for user_role_id should carry the resolved ref
+      const [fmRow] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.columnDefinitionId, userRoleIdColDefId));
+
+      expect(fmRow).toBeDefined();
+      expect(fmRow.refEntityKey).toBe("roles");
+      expect(fmRow.refColumnDefinitionId).toBe(rolePkColDefId);
+    });
+
+    it("should handle shared columns across entities without duplicates", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
+
+      // Pre-seed one column definition shared by both entities
+      const fullNameColDefId = generateId();
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values({
-          id: refColDefId,
+          id: fullNameColDefId,
           organizationId,
-          key: "role_tag",
-          label: "Role Tag",
+          key: "full_name",
+          label: "Full Name",
           type: "string",
           description: null,
           validationPattern: null,
@@ -872,184 +1056,17 @@ describe("Uploads Router", () => {
       const body = createConfirmBody({
         entities: [
           {
-            entityKey: "users",
-            entityLabel: "Users",
-            sourceFileName: "test.csv",
-            columns: [
-              {
-                sourceField: "role_id",
-                key: "role_id",
-                label: "Role ID",
-                type: "reference",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                normalizedKey: "role_id",
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                refEntityKey: "roles",
-                refColumnDefinitionId: refColDefId,
-              },
-            ],
-          },
-        ],
-      });
-
-      const res = await request(app)
-        .post(`/api/uploads/${job.id}/confirm`)
-        .set("Authorization", "Bearer test-token")
-        .send(body);
-
-      expect(res.status).toBe(200);
-
-      const { eq } = await import("drizzle-orm");
-
-      // Column definition itself should NOT carry ref metadata
-      const [cdRow] = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(columnDefinitions)
-        .where(eq(columnDefinitions.key, "role_id"));
-
-      expect(cdRow).toBeDefined();
-      expect(cdRow.type).toBe("reference");
-
-      // The field mapping should carry the ref metadata
-      const [fmRow] = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(fieldMappings)
-        .where(eq(fieldMappings.columnDefinitionId, cdRow.id));
-
-      expect(fmRow).toBeDefined();
-      expect(fmRow.refEntityKey).toBe("roles");
-      expect(fmRow.refColumnDefinitionId).toBe(refColDefId);
-    });
-
-    it("should resolve within-batch refColumnKey and store ref metadata on field mapping", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
-
-      const job = createAwaitingJob(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(jobs)
-        .values(job as never);
-
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "roles",
-            entityLabel: "Roles",
-            sourceFileName: "test.csv",
-            columns: [
-              {
-                sourceField: "id",
-                key: "role_pk",
-                label: "Role PK",
-                type: "string",
-                format: null,
-                isPrimaryKey: true,
-                required: true,
-                normalizedKey: "role_pk",
-                action: "create_new",
-                existingColumnDefinitionId: null,
-              },
-            ],
-          },
-          {
-            entityKey: "users",
-            entityLabel: "Users",
-            sourceFileName: "test.csv",
-            columns: [
-              {
-                sourceField: "role_id",
-                key: "user_role_id",
-                label: "User Role ID",
-                type: "reference",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                normalizedKey: "user_role_id",
-                action: "create_new",
-                existingColumnDefinitionId: null,
-                refEntityKey: "roles",
-                refColumnKey: "role_pk",
-              },
-            ],
-          },
-        ],
-      });
-
-      const res = await request(app)
-        .post(`/api/uploads/${job.id}/confirm`)
-        .set("Authorization", "Bearer test-token")
-        .send(body);
-
-      expect(res.status).toBe(200);
-
-      const { eq } = await import("drizzle-orm");
-
-      // Find both column definitions
-      const [rolePkCd] = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(columnDefinitions)
-        .where(eq(columnDefinitions.key, "role_pk"));
-
-      const [userRoleIdCd] = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(columnDefinitions)
-        .where(eq(columnDefinitions.key, "user_role_id"));
-
-      expect(rolePkCd).toBeDefined();
-      expect(userRoleIdCd).toBeDefined();
-      expect(userRoleIdCd.type).toBe("reference");
-
-      // Column definition itself should NOT carry ref metadata
-      expect((userRoleIdCd as Record<string, unknown>).refEntityKey).toBeUndefined();
-      expect((userRoleIdCd as Record<string, unknown>).refColumnDefinitionId).toBeUndefined();
-
-      // The field mapping for user_role_id should carry the resolved ref
-      const [fmRow] = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(fieldMappings)
-        .where(eq(fieldMappings.columnDefinitionId, userRoleIdCd.id));
-
-      expect(fmRow).toBeDefined();
-      expect(fmRow.refEntityKey).toBe("roles");
-      expect(fmRow.refColumnDefinitionId).toBe(rolePkCd.id);
-    });
-
-    it("should handle shared columns across entities without duplicates", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-      await seedConnectorDefinition(db as ReturnType<typeof drizzle>);
-
-      const job = createAwaitingJob(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(jobs)
-        .values(job as never);
-
-      const body = createConfirmBody({
-        entities: [
-          {
             entityKey: "contacts",
             entityLabel: "Contacts",
             sourceFileName: "contacts.csv",
             columns: [
               {
                 sourceField: "Name",
-                key: "full_name",
-                label: "Full Name",
-                type: "string",
+                existingColumnDefinitionId: fullNameColDefId,
                 format: null,
                 isPrimaryKey: false,
                 required: true,
                 normalizedKey: "full_name",
-                action: "create_new",
-                existingColumnDefinitionId: null,
               },
             ],
           },
@@ -1060,15 +1077,11 @@ describe("Uploads Router", () => {
             columns: [
               {
                 sourceField: "Lead Name",
-                key: "full_name",
-                label: "Full Name",
-                type: "string",
+                existingColumnDefinitionId: fullNameColDefId,
                 format: null,
                 isPrimaryKey: false,
                 required: true,
                 normalizedKey: "full_name",
-                action: "create_new",
-                existingColumnDefinitionId: null,
               },
             ],
           },
@@ -1083,23 +1096,11 @@ describe("Uploads Router", () => {
       expect(res.status).toBe(200);
       expect(res.body.payload.confirmedEntities).toHaveLength(2);
 
-      // Verify only 1 column definition for "full_name"
-      const cdRows = await (db as ReturnType<typeof drizzle>)
-        .select()
-        .from(columnDefinitions)
-        .where(
-          (await import("drizzle-orm")).eq(
-            columnDefinitions.organizationId,
-            organizationId
-          )
-        );
-      expect(cdRows).toHaveLength(1);
-      expect(cdRows[0].key).toBe("full_name");
-
       // Both entities should reference the same column definition
       const entity1ColDefId = res.body.payload.confirmedEntities[0].columnDefinitions[0].id;
       const entity2ColDefId = res.body.payload.confirmedEntities[1].columnDefinitions[0].id;
       expect(entity1ColDefId).toBe(entity2ColDefId);
+      expect(entity1ColDefId).toBe(fullNameColDefId);
     });
   });
 });
