@@ -53,19 +53,19 @@ export const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
               ...(animated && {
                 "@keyframes barShadowPulse": {
                   "0%, 100%": {
-                    boxShadow: `0 0 ${height / 2}px 0px ${theme.palette[color].main}66`,
+                    boxShadow: `0 0 ${height / 4}px 0px ${theme.palette[color].main}33`,
                   },
                   "50%": {
-                    boxShadow: `0 0 ${height}px 2px ${theme.palette[color].main}99`,
+                    boxShadow: `0 0 ${height / 2}px 1px ${theme.palette[color].main}55`,
                   },
                 },
-                animation: "barShadowPulse 1.5s ease-in-out infinite",
+                animation: "barShadowPulse 2s ease-in-out infinite",
                 "& .MuiLinearProgress-bar": {
                   "@keyframes pulseGlow": {
                     "0%, 100%": { opacity: 1, filter: "brightness(1)" },
-                    "50%": { opacity: 0.85, filter: "brightness(1.35)" },
+                    "50%": { opacity: 0.92, filter: "brightness(1.15)" },
                   },
-                  animation: "pulseGlow 1.5s ease-in-out infinite",
+                  animation: "pulseGlow 2s ease-in-out infinite",
                 },
               }),
             })}
