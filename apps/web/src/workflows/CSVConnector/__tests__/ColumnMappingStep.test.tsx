@@ -153,7 +153,18 @@ const mockSearchResults = Object.values(mockColumnDefsByKey).map((cd) => ({
 }));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockOnColumnKeySearch = jest.fn<any>().mockResolvedValue(mockSearchResults);
-const mockOnColumnKeyGetById = jest.fn<() => Promise<null>>().mockResolvedValue(null);
+
+const mockColumnDefsById = Object.fromEntries(
+  Object.values(mockColumnDefsByKey).map((cd) => [cd.id, cd])
+);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockOnColumnKeyGetById = jest.fn<any>().mockImplementation(
+  async (id: string) => {
+    const cd = mockColumnDefsById[id];
+    if (!cd) return null;
+    return { value: cd.id, label: `${cd.label} (${cd.key}) — ${cd.type}`, columnDefinition: cd };
+  }
+);
 
 // ---------------------------------------------------------------------------
 // Helpers

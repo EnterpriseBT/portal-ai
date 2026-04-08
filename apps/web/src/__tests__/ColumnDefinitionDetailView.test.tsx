@@ -15,7 +15,7 @@ let currentFieldMappingListQuery: Partial<ListQuery> = {};
 
 const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
 
-const noopSearch = () => ({ onSearch: jest.fn(() => Promise.resolve([])), getById: undefined, labelMap: {} });
+const noopSearch = () => ({ onSearch: jest.fn(() => Promise.resolve([])), onSearchPending: false, onSearchError: null, getById: jest.fn(() => Promise.resolve(null)), getByIdPending: false, getByIdError: null, labelMap: {} });
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {

@@ -274,9 +274,9 @@ describe("AsyncSearchableSelect", () => {
   });
 
   it("displays selected value as a Chip above the input when value is set", async () => {
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "banana", label: "Banana" },
-    ]);
+    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+      .mockResolvedValue({ value: "banana", label: "Banana" });
+    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
 
     await act(async () => {
       render(
@@ -285,6 +285,7 @@ describe("AsyncSearchableSelect", () => {
           value="banana"
           onChange={() => {}}
           onSearch={onSearch}
+          loadSelectedOption={loadSelectedOption}
         />
       );
     });
@@ -295,31 +296,12 @@ describe("AsyncSearchableSelect", () => {
     expect(screen.getByRole("combobox")).toHaveValue("");
   });
 
-  it("renders displayLabel in Chip when option is not in loaded options", async () => {
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
-
-    await act(async () => {
-      render(
-        <AsyncSearchableSelect
-          label="Fruit"
-          value="unknown-id"
-          displayLabel="Custom Fruit"
-          onChange={() => {}}
-          onSearch={onSearch}
-        />
-      );
-    });
-
-    // Chip should show the displayLabel fallback
-    expect(screen.getByText("Custom Fruit")).toBeInTheDocument();
-  });
-
   it("clears selection when Chip delete icon is clicked", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const onChange = jest.fn();
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "banana", label: "Banana" },
-    ]);
+    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+      .mockResolvedValue({ value: "banana", label: "Banana" });
+    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
 
     await act(async () => {
       render(
@@ -328,6 +310,7 @@ describe("AsyncSearchableSelect", () => {
           value="banana"
           onChange={onChange}
           onSearch={onSearch}
+          loadSelectedOption={loadSelectedOption}
         />
       );
     });
@@ -360,6 +343,81 @@ describe("AsyncSearchableSelect", () => {
     expect(loadSelectedOption).toHaveBeenCalledWith("id-123");
     // Chip should show the loaded label
     expect(screen.getByText("Loaded by ID")).toBeInTheDocument();
+  });
+
+  it("retains loaded option label after debounce fires on mount", async () => {
+    let resolveLoad!: (opt: SelectOption) => void;
+    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+      .mockImplementation(() => new Promise((resolve) => { resolveLoad = resolve; }));
+    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
+      { value: "common-1", label: "Common One" },
+    ]);
+
+    await act(async () => {
+      render(
+        <AsyncSearchableSelect
+          label="Column"
+          value="slow-id"
+          onChange={() => {}}
+          onSearch={onSearch}
+          loadSelectedOption={loadSelectedOption}
+          debounceMs={200}
+        />
+      );
+    });
+
+    // loadSelectedOption is in-flight; advance past debounce delay
+    act(() => { jest.advanceTimersByTime(200); });
+
+    // Now resolve loadSelectedOption after the debounce window
+    await act(async () => {
+      resolveLoad({ value: "slow-id", label: "Slow Column" });
+    });
+
+    // Chip should show the resolved label, not the raw ID
+    await waitFor(() => {
+      expect(screen.getByText("Slow Column")).toBeInTheDocument();
+    });
+  });
+
+  it("preserves selected option label after a subsequent search replaces options", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+      .mockResolvedValue({ value: "rare-id", label: "Rare Array Column" });
+    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
+      { value: "common-1", label: "Common One" },
+      { value: "common-2", label: "Common Two" },
+    ]);
+
+    await act(async () => {
+      render(
+        <AsyncSearchableSelect
+          label="Column"
+          value="rare-id"
+          onChange={() => {}}
+          onSearch={onSearch}
+          loadSelectedOption={loadSelectedOption}
+          debounceMs={300}
+        />
+      );
+    });
+
+    // Selected option label should be visible in chip after mount
+    const chipLabel = () => {
+      const labels = document.querySelectorAll(".MuiChip-label");
+      return Array.from(labels).find((el) => el.textContent === "Rare Array Column");
+    };
+    expect(chipLabel()).toBeTruthy();
+
+    // Type a search that returns results NOT including the selected option
+    const input = screen.getByRole("combobox");
+    await user.type(input, "common");
+    act(() => { jest.advanceTimersByTime(300); });
+
+    await waitFor(() => expect(onSearch).toHaveBeenCalledWith("common"));
+
+    // The chip should still show the resolved label, not the raw ID
+    await waitFor(() => expect(chipLabel()).toBeTruthy());
   });
 
   it("does not call loadSelectedOption when value is null", async () => {

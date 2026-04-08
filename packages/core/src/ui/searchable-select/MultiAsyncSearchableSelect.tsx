@@ -44,10 +44,7 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
   }, [value]);
 
   // Initial load on mount
-  const initialLoadDone = useRef(false);
   useEffect(() => {
-    if (initialLoadDone.current) return;
-    initialLoadDone.current = true;
     let cancelled = false;
     setLoading(true);
     onSearch("").then((results) => {
@@ -60,7 +57,6 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
 
   // Debounced search on input change
   useEffect(() => {
-    if (!initialLoadDone.current) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {

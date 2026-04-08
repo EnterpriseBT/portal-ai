@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import MuiAutocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -12,11 +12,6 @@ export interface AsyncSearchableSelectProps extends SelectBaseProps {
   onChange: (value: string | null) => void;
   onSearch: (query: string) => Promise<SelectOption[]>;
   debounceMs?: number;
-  /**
-   * Fallback label to display for the selected value before options have
-   * loaded (e.g. when the initial search hasn't returned yet).
-   */
-  displayLabel?: string;
   /**
    * Load the option that matches the current value (e.g. fetch by ID).
    * Called on mount when `value` is set. When provided, this overrides the
@@ -40,25 +35,15 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   size = "small",
   fullWidth,
   inputRef,
-  displayLabel,
   loadSelectedOption,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
+  const [selectedOption, setSelectedOption] = useState<SelectOption | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
 
   useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  // --- Initial load on mount ---
-  const initialLoadDone = useRef(false);
-  useEffect(() => {
-    if (initialLoadDone.current) return;
-    initialLoadDone.current = true;
 
     let cancelled = false;
 
@@ -67,21 +52,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
       setLoading(true);
       loadSelectedOption(value).then((opt) => {
         if (cancelled) return;
-        if (opt) {
-          setOptions((prev) => {
-            // Merge without duplicating
-            if (prev.some((o) => o.value === opt.value)) return prev;
-            return [opt, ...prev];
-          });
-        }
-        // Also do a default search to populate the dropdown
-        return onSearch("");
-      }).then((results) => {
-        if (cancelled || !results) return;
-        setOptions((prev) => {
-          const existing = new Set(prev.map((o) => o.value));
-          return [...prev, ...results.filter((r) => !existing.has(r.value))];
-        });
+        setSelectedOption(opt);
       }).finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -100,18 +71,16 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
 
   // --- Debounced search on query change ---
   useEffect(() => {
-    // Skip on mount — initial load handles it
-    if (!initialLoadDone.current) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
-      setLoading(true);
       try {
+        setLoading(true);
         const results = await onSearch(searchQuery);
-        if (mountedRef.current) setOptions(results);
+        setOptions(results);
       } finally {
-        if (mountedRef.current) setLoading(false);
+        setLoading(false);
       }
     }, debounceMs);
 
@@ -120,34 +89,26 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
     };
   }, [searchQuery, onSearch, debounceMs]);
 
-  // --- Resolve the label for the selected value ---
-  const resolveSelectedLabel = useCallback((): string | null => {
-    if (!value) return null;
-    const match = options.find((o) => String(o.value) === value);
-    if (match) return match.label;
-    return displayLabel ?? null;
-  }, [value, options, displayLabel]);
-
-  const selectedLabel = resolveSelectedLabel();
-
   // --- Handlers ---
   const handleSelect = (_event: React.SyntheticEvent, option: SelectOption | null) => {
     if (option) {
       onChange(String(option.value));
+      setSelectedOption(option);
       setSearchQuery("");
     }
   };
 
   const handleClear = () => {
     onChange(null);
+    setSelectedOption(null);
   };
 
   return (
     <Stack spacing={0.5} sx={{ width: fullWidth ? "100%" : undefined }}>
       {/* Selected value display */}
-      {value && (
+      {selectedOption && (
         <Chip
-          label={selectedLabel ?? value}
+          label={selectedOption?.label ?? value}
           onDelete={disabled ? undefined : handleClear}
           size={size}
           color="primary"

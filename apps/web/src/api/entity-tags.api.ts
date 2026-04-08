@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useState } from "react";
 
+import { useMutation } from "@tanstack/react-query";
 import type {
   ApiSuccessResponse,
   EntityTagCreateRequestBody,
@@ -11,12 +12,12 @@ import type {
   EntityTagUpdateResponsePayload,
 } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
-import { useAsyncFilterOptions, useInfiniteFilterOptions } from "@portalai/core/ui";
+import { useInfiniteFilterOptions } from "@portalai/core/ui";
 import type { InfiniteFilterOptionsConfig, SelectOption } from "@portalai/core/ui";
-import { useAuthMutation, useAuthQuery, useAuthFetch } from "../utils/api.util";
+import { useAuthMutation, useAuthQuery, useAuthFetch, type ApiError } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
-import type { QueryOptions, SearchHookOptions } from "./types";
+import type { QueryOptions, SearchHookOptions, SearchResult } from "./types";
 
 const ENTITY_TAGS_URL = "/api/entity-tags";
 
@@ -73,34 +74,48 @@ export const entityTags = {
 
   search: <TOption extends SelectOption = SelectOption>(
     options?: SearchHookOptions<EntityTag, TOption>
-  ) => {
+  ): SearchResult<TOption> => {
     const { fetchWithAuth } = useAuthFetch();
     const mapFn = (options?.mapItem ?? defaultMapItem) as (item: EntityTag) => TOption;
+    const [labelMap, setLabelMap] = useState<Record<string, string>>({});
 
-    const config = useMemo(
-      () => ({
-        url: ENTITY_TAGS_URL,
-        fetcher: fetchWithAuth,
-        getItems: (res: ApiSuccessResponse<EntityTagListResponsePayload>) =>
-          res.payload.entityTags,
-        mapItem: mapFn,
-        defaultParams: options?.defaultParams,
-        loadSelectedOption: async (id: string): Promise<TOption | null> => {
-          const res = (await fetchWithAuth(
-            `${ENTITY_TAGS_URL}/${encodeURIComponent(id)}`
-          )) as ApiSuccessResponse<EntityTagGetResponsePayload>;
-          return mapFn(res.payload.entityTag);
-        },
-      }),
-      [fetchWithAuth, mapFn, options?.defaultParams]
-    );
+    const searchMutation = useMutation<TOption[], ApiError, string>({
+      mutationFn: async (query: string) => {
+        const params: Record<string, string> = { ...options?.defaultParams };
+        if (query) params.search = query;
+        const res = await fetchWithAuth<ApiSuccessResponse<EntityTagListResponsePayload>>(
+          buildUrl(ENTITY_TAGS_URL, params)
+        );
+        const mapped = res.payload.entityTags.map(mapFn);
+        setLabelMap((prev) => {
+          const next = { ...prev };
+          for (const opt of mapped) next[String(opt.value)] = opt.label;
+          return next;
+        });
+        return mapped;
+      },
+    });
 
-    const { loadSelectedOption, ...rest } = useAsyncFilterOptions<
-      ApiSuccessResponse<EntityTagListResponsePayload>,
-      EntityTag,
-      TOption
-    >(config);
-    return { ...rest, getById: loadSelectedOption };
+    const getByIdMutation = useMutation<TOption | null, ApiError, string>({
+      mutationFn: async (id: string) => {
+        const res = await fetchWithAuth<ApiSuccessResponse<EntityTagGetResponsePayload>>(
+          `${ENTITY_TAGS_URL}/${encodeURIComponent(id)}`
+        );
+        const option = mapFn(res.payload.entityTag);
+        setLabelMap((prev) => ({ ...prev, [String(option.value)]: option.label }));
+        return option;
+      },
+    });
+
+    return {
+      onSearch: searchMutation.mutateAsync,
+      onSearchPending: searchMutation.isPending,
+      onSearchError: searchMutation.error,
+      getById: getByIdMutation.mutateAsync,
+      getByIdPending: getByIdMutation.isPending,
+      getByIdError: getByIdMutation.error,
+      labelMap,
+    };
   },
 
   filter: () => {

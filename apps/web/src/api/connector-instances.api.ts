@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useState } from "react";
 
+import { useMutation } from "@tanstack/react-query";
 import type {
   ApiSuccessResponse,
   ConnectorInstanceApi,
@@ -12,12 +13,12 @@ import type {
   ConnectorInstanceListWithDefinitionResponsePayload,
   ConnectorInstancePatchRequestBody,
 } from "@portalai/core/contracts";
-import { useInfiniteFilterOptions, useAsyncFilterOptions } from "@portalai/core/ui";
+import { useInfiniteFilterOptions } from "@portalai/core/ui";
 import type { InfiniteFilterOptionsConfig, SelectOption } from "@portalai/core/ui";
-import { useAuthQuery, useAuthMutation, useAuthFetch } from "../utils/api.util";
+import { useAuthQuery, useAuthMutation, useAuthFetch, type ApiError } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
-import type { QueryOptions, SearchHookOptions } from "./types";
+import type { QueryOptions, SearchHookOptions, SearchResult } from "./types";
 
 const CONNECTOR_INSTANCES_URL = "/api/connector-instances";
 
@@ -105,34 +106,48 @@ export const connectorInstances = {
 
   search: <TOption extends SelectOption = SelectOption>(
     options?: SearchHookOptions<ConnectorInstanceApi, TOption>
-  ) => {
+  ): SearchResult<TOption> => {
     const { fetchWithAuth } = useAuthFetch();
     const mapFn = (options?.mapItem ?? defaultMapItem) as (item: ConnectorInstanceApi) => TOption;
+    const [labelMap, setLabelMap] = useState<Record<string, string>>({});
 
-    const config = useMemo(
-      () => ({
-        url: CONNECTOR_INSTANCES_URL,
-        fetcher: fetchWithAuth,
-        getItems: (res: ApiSuccessResponse<ConnectorInstanceListResponsePayload>) =>
-          res.payload.connectorInstances,
-        mapItem: mapFn,
-        defaultParams: options?.defaultParams,
-        loadSelectedOption: async (id: string): Promise<TOption | null> => {
-          const res = (await fetchWithAuth(
-            `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}`
-          )) as ApiSuccessResponse<ConnectorInstanceGetResponsePayload>;
-          return mapFn(res.payload.connectorInstance as unknown as ConnectorInstanceApi);
-        },
-      }),
-      [fetchWithAuth, mapFn, options?.defaultParams]
-    );
+    const searchMutation = useMutation<TOption[], ApiError, string>({
+      mutationFn: async (query: string) => {
+        const params: Record<string, string> = { ...options?.defaultParams };
+        if (query) params.search = query;
+        const res = await fetchWithAuth<ApiSuccessResponse<ConnectorInstanceListResponsePayload>>(
+          buildUrl(CONNECTOR_INSTANCES_URL, params)
+        );
+        const mapped = res.payload.connectorInstances.map(mapFn);
+        setLabelMap((prev) => {
+          const next = { ...prev };
+          for (const opt of mapped) next[String(opt.value)] = opt.label;
+          return next;
+        });
+        return mapped;
+      },
+    });
 
-    const { loadSelectedOption, ...rest } = useAsyncFilterOptions<
-      ApiSuccessResponse<ConnectorInstanceListResponsePayload>,
-      ConnectorInstanceApi,
-      TOption
-    >(config);
-    return { ...rest, getById: loadSelectedOption };
+    const getByIdMutation = useMutation<TOption | null, ApiError, string>({
+      mutationFn: async (id: string) => {
+        const res = await fetchWithAuth<ApiSuccessResponse<ConnectorInstanceGetResponsePayload>>(
+          `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}`
+        );
+        const option = mapFn(res.payload.connectorInstance as unknown as ConnectorInstanceApi);
+        setLabelMap((prev) => ({ ...prev, [String(option.value)]: option.label }));
+        return option;
+      },
+    });
+
+    return {
+      onSearch: searchMutation.mutateAsync,
+      onSearchPending: searchMutation.isPending,
+      onSearchError: searchMutation.error,
+      getById: getByIdMutation.mutateAsync,
+      getByIdPending: getByIdMutation.isPending,
+      getByIdError: getByIdMutation.error,
+      labelMap,
+    };
   },
 
   filter: () => {
