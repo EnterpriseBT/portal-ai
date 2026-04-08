@@ -59,7 +59,7 @@ export const TYPE_FIELD_CONFIG: Record<string, TypeFieldConfig> = {
     canonicalFormat: { enabled: true, options: NUMBER_CANONICAL_FORMAT_OPTIONS },
   },
   boolean: {
-    format: { enabled: true, helperText: "Custom true:false labels. e.g. active:inactive, yes:no, 1:0" },
+    format: { enabled: true, helperText: "Custom true/false labels. e.g. active/inactive, yes/no, 1/0" },
     validation: { enabled: false },
     canonicalFormat: { enabled: false, options: [] },
   },

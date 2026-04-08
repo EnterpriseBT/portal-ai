@@ -75,7 +75,14 @@ If this file shares columns with prior files (e.g., both have "email"), reuse th
 2. For each column, recommend:
    - **existingColumnDefinitionId** (required): the ID of the best-matching existing column definition from the list above. Use the matching strategy described earlier — match by semantic meaning first (name + description), then by data type. Always prefer a specific definition (e.g. \`string_id\`, \`email\`, \`currency\`) over a generic one (e.g. \`text\`, \`decimal\`).
    - **normalizedKey**: the key to use in \`normalizedData\` for this entity-column pair (snake_case). This is source-specific and often differs from the column definition key — e.g. a CSV header "Customer Email" might use normalizedKey "customer_email" while matching an existing column definition with key "email".
-   - **format**: per-source parse instructions (e.g. "YYYY-MM-DD", "email"). This is a mapping-level attribute.
+   - **format**: per-source parse instructions that tell the system how to interpret raw values. Set based on the matched column definition type:
+     - **boolean**: "trueLabel/falseLabel" describing how the source represents true/false (e.g. "yes/no", "1/0", "active/inactive", "true/false"). Infer from sample values.
+     - **date**: the date format pattern (e.g. "YYYY-MM-DD", "MM/DD/YYYY", "DD.MM.YYYY"). Infer from sample values.
+     - **datetime**: the datetime format pattern (e.g. "YYYY-MM-DD HH:mm:ss", "MM/DD/YYYY hh:mm a"). Infer from sample values.
+     - **number**: parsing hint (e.g. "currency" for 2 decimals, "precision:N" for N decimals, "eu" for European format like 1.234,56).
+     - **array** / **reference-array**: the delimiter character used to separate values (e.g. "|" for pipe-delimited, ";" for semicolons). Defaults to comma if omitted.
+     - **string**, **enum**, **json**, **reference**: format is not used — set to null.
+     This is a mapping-level attribute.
    - **required**: whether this column is required for this source. This is a mapping-level attribute.
    - **enumValues**: if the column has a small set of known values, list them here. This is a mapping-level attribute.
    - **defaultValue**: default fill value when the source value is missing. This is a mapping-level attribute (usually null).

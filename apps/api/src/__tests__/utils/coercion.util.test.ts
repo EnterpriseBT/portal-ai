@@ -163,21 +163,21 @@ describe("coerceBoolean", () => {
   });
 
   it("uses custom format labels — true label", () => {
-    expect(coerceBoolean("active", "active:inactive")).toEqual({ value: true });
+    expect(coerceBoolean("active", "active/inactive")).toEqual({ value: true });
   });
 
   it("uses custom format labels — false label", () => {
-    expect(coerceBoolean("inactive", "active:inactive")).toEqual({
+    expect(coerceBoolean("inactive", "active/inactive")).toEqual({
       value: false,
     });
   });
 
   it("uses custom format labels — case insensitive", () => {
-    expect(coerceBoolean("ACTIVE", "active:inactive")).toEqual({ value: true });
+    expect(coerceBoolean("ACTIVE", "active/inactive")).toEqual({ value: true });
   });
 
   it("returns error for unrecognized custom label", () => {
-    const result = coerceBoolean("unknown", "active:inactive");
+    const result = coerceBoolean("unknown", "active/inactive");
     expect(result.value).toBeNull();
     expect(result.error).toContain("active");
     expect(result.error).toContain("inactive");

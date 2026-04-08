@@ -67,9 +67,9 @@ export function coerceBoolean(
   const str = String(value).trim().toLowerCase();
   if (str === "") return { value: null };
 
-  // Custom label pair: "active:inactive"
-  if (format && format.includes(":")) {
-    const [trueLabel, falseLabel] = format.split(":");
+  // Custom label pair: "active/inactive"
+  if (format && format.includes("/")) {
+    const [trueLabel, falseLabel] = format.split("/");
     if (str === trueLabel.trim().toLowerCase()) return { value: true };
     if (str === falseLabel.trim().toLowerCase()) return { value: false };
     return {

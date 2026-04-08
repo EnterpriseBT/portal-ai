@@ -369,7 +369,7 @@ describe("CreateFieldMappingDialog", () => {
   it("should enable Format field with type-specific helper text for boolean type", () => {
     render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="boolean" />);
     expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
-    expect(screen.getByText(/Custom true:false labels/)).toBeInTheDocument();
+    expect(screen.getByText(/Custom true\/false labels/)).toBeInTheDocument();
   });
 
   it("should show validation error for empty normalizedKey on submit", async () => {

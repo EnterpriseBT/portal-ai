@@ -192,7 +192,7 @@ describe("NormalizationService.normalize", () => {
 
   it("coerces boolean with custom format labels", async () => {
     mockFindMany.mockResolvedValue([
-      mapping({ sourceField: "Active", normalizedKey: "active", format: "active:inactive", columnDefinition: { key: "active", type: "boolean", validationPattern: null, validationMessage: null, canonicalFormat: null } }),
+      mapping({ sourceField: "Active", normalizedKey: "active", format: "active/inactive", columnDefinition: { key: "active", type: "boolean", validationPattern: null, validationMessage: null, canonicalFormat: null } }),
     ]);
 
     const result = await NormalizationService.normalize("ce-1", { Active: "inactive" });
