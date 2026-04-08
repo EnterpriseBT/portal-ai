@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import MuiAutocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
+import Chip from "@mui/material/Chip";
+import Stack from "@mui/material/Stack";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
 
@@ -10,10 +12,18 @@ export interface AsyncSearchableSelectProps extends SelectBaseProps {
   onChange: (value: string | null) => void;
   onSearch: (query: string) => Promise<SelectOption[]>;
   debounceMs?: number;
-  /** When true, allows arbitrary text input that is not in the dropdown options. */
-  freeSolo?: boolean;
-  /** Display label to show in the input when value is set but options haven't loaded yet. */
-  displayValue?: string;
+  /**
+   * Fallback label to display for the selected value before options have
+   * loaded (e.g. when the initial search hasn't returned yet).
+   */
+  displayLabel?: string;
+  /**
+   * Load the option that matches the current value (e.g. fetch by ID).
+   * Called on mount when `value` is set. When provided, this overrides the
+   * default `onSearch('')` initial load so the selected option's label can
+   * be resolved even if a generic search wouldn't include it.
+   */
+  loadSelectedOption?: (value: string) => Promise<SelectOption | null>;
 }
 
 export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
@@ -30,90 +40,133 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   size = "small",
   fullWidth,
   inputRef,
-  freeSolo = false,
-  displayValue,
+  displayLabel,
+  loadSelectedOption,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
 
-  // Resolve displayed text: prefer option label, then displayValue prop, then raw value.
-  const resolveLabel = (val: string | null): string => {
-    if (!val) return "";
-    const match = options.find((o) => o.value === val);
-    if (match) return match.label;
-    return displayValue ?? val;
-  };
-
-  const [inputValue, setInputValue] = useState(() => resolveLabel(value));
-
-  // Sync inputValue when value or displayValue changes externally.
-  const prevValueRef = useRef(value);
-  const prevDisplayRef = useRef(displayValue);
   useEffect(() => {
-    if (value !== prevValueRef.current || displayValue !== prevDisplayRef.current) {
-      prevValueRef.current = value;
-      prevDisplayRef.current = displayValue;
-      setInputValue(resolveLabel(value));
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // --- Initial load on mount ---
+  const initialLoadDone = useRef(false);
+  useEffect(() => {
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+
+    let cancelled = false;
+
+    if (value && loadSelectedOption) {
+      // Load the specific selected option by value (e.g. by ID)
+      setLoading(true);
+      loadSelectedOption(value).then((opt) => {
+        if (cancelled) return;
+        if (opt) {
+          setOptions((prev) => {
+            // Merge without duplicating
+            if (prev.some((o) => o.value === opt.value)) return prev;
+            return [opt, ...prev];
+          });
+        }
+        // Also do a default search to populate the dropdown
+        return onSearch("");
+      }).then((results) => {
+        if (cancelled || !results) return;
+        setOptions((prev) => {
+          const existing = new Set(prev.map((o) => o.value));
+          return [...prev, ...results.filter((r) => !existing.has(r.value))];
+        });
+      }).finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    } else {
+      // Default: load initial options with empty search
+      setLoading(true);
+      onSearch("").then((results) => {
+        if (!cancelled) setOptions(results);
+      }).finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     }
-  }, [value, displayValue, options]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Debounced search on query change ---
   useEffect(() => {
+    // Skip on mount — initial load handles it
+    if (!initialLoadDone.current) return;
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const results = await onSearch(inputValue);
-        setOptions(results);
+        const results = await onSearch(searchQuery);
+        if (mountedRef.current) setOptions(results);
       } finally {
-        setLoading(false);
+        if (mountedRef.current) setLoading(false);
       }
     }, debounceMs);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [inputValue, onSearch, debounceMs]);
+  }, [searchQuery, onSearch, debounceMs]);
 
-  const selectedOption = options.find((o) => o.value === value) ?? null;
+  // --- Resolve the label for the selected value ---
+  const resolveSelectedLabel = useCallback((): string | null => {
+    if (!value) return null;
+    const match = options.find((o) => String(o.value) === value);
+    if (match) return match.label;
+    return displayLabel ?? null;
+  }, [value, options, displayLabel]);
 
-  // In freeSolo mode, debounce the free-text onChange so the parent doesn't
-  // flicker between states on every keystroke.  Explicit dropdown selection
-  // still fires immediately (bypasses the debounce).
-  const freeSoloCommitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const freeSoloCommitMs = debounceMs;
+  const selectedLabel = resolveSelectedLabel();
 
-  if (freeSolo) {
-    return (
-      <MuiAutocomplete<SelectOption, false, false, true>
-        freeSolo
+  // --- Handlers ---
+  const handleSelect = (_event: React.SyntheticEvent, option: SelectOption | null) => {
+    if (option) {
+      onChange(String(option.value));
+      setSearchQuery("");
+    }
+  };
+
+  const handleClear = () => {
+    onChange(null);
+  };
+
+  return (
+    <Stack spacing={0.5} sx={{ width: fullWidth ? "100%" : undefined }}>
+      {/* Selected value display */}
+      {value && (
+        <Chip
+          label={selectedLabel ?? value}
+          onDelete={disabled ? undefined : handleClear}
+          size={size}
+          color="primary"
+          variant="outlined"
+          sx={{ alignSelf: "flex-start", maxWidth: "100%" }}
+        />
+      )}
+
+      {/* Search input */}
+      <MuiAutocomplete<SelectOption>
         options={options}
-        value={selectedOption ?? inputValue}
-        inputValue={inputValue}
-        onInputChange={(_event, newInputValue, reason) => {
-          if (reason !== "reset") setInputValue(newInputValue);
-          if (reason === "input") {
-            // Debounce free-text commits
-            if (freeSoloCommitRef.current) clearTimeout(freeSoloCommitRef.current);
-            freeSoloCommitRef.current = setTimeout(() => {
-              onChange(newInputValue || null);
-            }, freeSoloCommitMs);
-          }
+        value={null}
+        inputValue={searchQuery}
+        onInputChange={(_event, newValue, reason) => {
+          if (reason === "input") setSearchQuery(newValue);
         }}
-        onChange={(_event, option) => {
-          // Explicit dropdown selection — commit immediately, cancel pending debounce
-          if (freeSoloCommitRef.current) clearTimeout(freeSoloCommitRef.current);
-          if (typeof option === "string") {
-            onChange(option || null);
-          } else {
-            onChange(option ? String(option.value) : null);
-          }
-        }}
+        onChange={handleSelect}
         isOptionEqualToValue={(option, val) => option.value === val.value}
-        getOptionLabel={(option) =>
-          typeof option === "string" ? option : option.label
-        }
+        getOptionLabel={(option) => option.label}
         filterOptions={(x) => x}
         loading={loading}
         disabled={disabled}
@@ -142,46 +195,6 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
           />
         )}
       />
-    );
-  }
-
-  return (
-    <MuiAutocomplete<SelectOption>
-      options={options}
-      value={selectedOption}
-      inputValue={inputValue}
-      onInputChange={(_event, newInputValue, reason) => {
-        if (reason !== "reset") setInputValue(newInputValue);
-      }}
-      onChange={(_event, option) => onChange(option ? String(option.value) : null)}
-      isOptionEqualToValue={(option, val) => option.value === val.value}
-      getOptionLabel={(option) => option.label}
-      filterOptions={(x) => x}
-      loading={loading}
-      disabled={disabled}
-      size={size}
-      renderInput={(params) => (
-        <TextField
-          {...params}
-          inputRef={inputRef}
-          label={label}
-          placeholder={placeholder}
-          helperText={helperText}
-          error={error}
-          required={required}
-          slotProps={{
-            input: {
-              ...params.InputProps,
-              endAdornment: (
-                <>
-                  {loading ? <CircularProgress color="inherit" size={16} /> : null}
-                  {params.InputProps.endAdornment}
-                </>
-              ),
-            },
-          }}
-        />
-      )}
-    />
+    </Stack>
   );
 };

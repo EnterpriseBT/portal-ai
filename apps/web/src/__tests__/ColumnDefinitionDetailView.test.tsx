@@ -15,6 +15,8 @@ let currentFieldMappingListQuery: Partial<ListQuery> = {};
 
 const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
 
+const noopSearch = () => ({ onSearch: jest.fn(() => Promise.resolve([])), getById: undefined, labelMap: {} });
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     columnDefinitions: {
@@ -22,6 +24,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
       update: () => noopMutation,
       delete: () => noopMutation,
       impact: () => ({ data: null, isLoading: false }),
+      search: noopSearch,
+    },
+    connectorEntities: {
+      search: noopSearch,
     },
     fieldMappings: {
       list: () => currentFieldMappingListQuery,
@@ -29,6 +35,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
       update: () => noopMutation,
       delete: () => noopMutation,
       impact: () => ({ data: null, isLoading: false }),
+      searchWithEntity: noopSearch,
     },
   },
   queryKeys: {

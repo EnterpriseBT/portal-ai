@@ -24,7 +24,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useEntityTagSearch } from "../api/entity-tags.api";
 import { toServerError } from "../utils/api.util";
 import type { ServerError } from "../utils/api.util";
 import DataResult from "../components/DataResult.component";
@@ -489,7 +488,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { onSearch: handleSearchTags } = useEntityTagSearch();
+  const { onSearch: handleSearchTags } = sdk.entityTags.search();
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);

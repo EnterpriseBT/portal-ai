@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import {
   Box,
@@ -41,6 +41,7 @@ interface ColumnMappingStepProps {
   ) => void;
   errors?: ColumnStepErrors;
   onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
+  onColumnKeyGetById: ((id: string) => Promise<SelectOption | null>) | undefined;
 }
 
 // --- Confidence Chip ---
@@ -249,6 +250,7 @@ interface ColumnRowProps {
   ) => void;
   fieldErrors: FormErrors;
   onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
+  loadSelectedOption?: (value: string) => Promise<SelectOption | null>;
 }
 
 const ColumnRow: React.FC<ColumnRowProps> = ({
@@ -262,6 +264,7 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
   onUpdate,
   fieldErrors,
   onColumnKeySearch,
+  loadSelectedOption,
 }) => {
   const handleDefinitionSelect = (value: string | null) => {
     if (!value) {
@@ -330,10 +333,10 @@ const ColumnRow: React.FC<ColumnRowProps> = ({
         {/* Column Definition Selection */}
         <AsyncSearchableSelect
           label="Column Definition"
-          value={column.existingColumnDefinitionId || ""}
-          displayValue={columnDef ? `${columnDef.label} (${columnDef.key}) — ${columnDef.type}` : column.existingColumnDefinitionKey || ""}
+          value={column.existingColumnDefinitionId || null}
           onChange={handleDefinitionSelect}
           onSearch={onColumnKeySearch}
+          loadSelectedOption={loadSelectedOption}
           required
           fullWidth
           error={!!fieldErrors.existingColumnDefinitionId}
@@ -463,6 +466,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
   onUpdateColumn,
   errors = EMPTY_ERRORS,
   onColumnKeySearch,
+  onColumnKeyGetById,
 }) => {
   const { value: activeTab, tabsProps, getTabProps, getTabPanelProps } = useTabs();
   const activeEntity = entities[activeTab];
@@ -470,44 +474,38 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
   // Accumulate column definitions from search results by ID
   const [columnDefsById, setColumnDefsById] = useState<Record<string, ColumnDefinition>>({});
 
-  const accumulateDefs = useCallback((results: SelectOption[]) => {
-    setColumnDefsById((prev) => {
-      const next = { ...prev };
-      for (const opt of results) {
-        const cd = (opt as { columnDefinition?: ColumnDefinition }).columnDefinition;
-        if (cd) next[cd.id] = cd;
-      }
-      return next;
-    });
-  }, []);
-
   const handleColumnKeySearch = useCallback(
     async (query: string) => {
       const results = await onColumnKeySearch(query);
-      accumulateDefs(results);
+      setColumnDefsById((prev) => {
+        const next = { ...prev };
+        for (const opt of results) {
+          const cd = (opt as { columnDefinition?: ColumnDefinition }).columnDefinition;
+          if (cd) next[cd.id] = cd;
+        }
+        return next;
+      });
       return results;
     },
-    [onColumnKeySearch, accumulateDefs],
+    [onColumnKeySearch],
   );
 
-  // Fetch definitions for pre-matched columns using their keys
-  useEffect(() => {
-    let cancelled = false;
-    const keys = new Set<string>();
-    for (const entity of entities) {
-      for (const col of entity.columns) {
-        if (col.existingColumnDefinitionKey) {
-          keys.add(col.existingColumnDefinitionKey);
-        }
+  // Load the selected option by ID — used when the initial generic search
+  // may not include the pre-selected column definition.
+  const loadSelectedOption = useMemo(() => {
+    if (!onColumnKeyGetById) return undefined;
+    const getById = onColumnKeyGetById;
+    return async (id: string): Promise<{ value: string | number; label: string } | null> => {
+      const result = await getById(id);
+      if (!result) return null;
+      // Cache the column definition for metadata display
+      const cd = (result as { columnDefinition?: ColumnDefinition }).columnDefinition;
+      if (cd) {
+        setColumnDefsById((prev) => ({ ...prev, [cd.id]: cd }));
       }
-    }
-    for (const key of keys) {
-      onColumnKeySearch(key).then((results) => {
-        if (!cancelled) accumulateDefs(results);
-      });
-    }
-    return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      return result;
+    };
+  }, [onColumnKeyGetById]);
 
   if (entities.length === 0) {
     return (
@@ -553,6 +551,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                 onUpdate={onUpdateColumn}
                 fieldErrors={errors[activeTab]?.[columnIndex] ?? {}}
                 onColumnKeySearch={handleColumnKeySearch}
+                loadSelectedOption={loadSelectedOption}
               />
             ))}
           </Stack>

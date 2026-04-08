@@ -14,45 +14,18 @@ import type {
 } from "@portalai/core/contracts";
 import type { ConnectorEntity } from "@portalai/core/models";
 import { useAsyncFilterOptions } from "@portalai/core/ui";
-import type { AsyncFilterOptionsConfig } from "@portalai/core/ui";
+import type { SelectOption } from "@portalai/core/ui";
 import { useAuthQuery, useAuthMutation, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
-import type { QueryOptions } from "./types";
+import type { QueryOptions, SearchHookOptions } from "./types";
 
-const CONNECTOR_ENTITY_SEARCH_BASE = {
-  url: "/api/connector-entities",
-  getItems: (res: ApiSuccessResponse<ConnectorEntityListResponsePayload>) =>
-    res.payload.connectorEntities,
-  mapItem: (entity: ConnectorEntity) => ({
-    value: entity.id,
-    label: entity.label,
-  }),
-} as const;
+const CONNECTOR_ENTITIES_URL = "/api/connector-entities";
 
-export function useConnectorEntitySearch(options?: {
-  mapItem?: (entity: ConnectorEntity) => { value: string; label: string };
-  defaultParams?: Record<string, string>;
-}) {
-  const { fetchWithAuth } = useAuthFetch();
-
-  const config = useMemo<
-    AsyncFilterOptionsConfig<
-      ApiSuccessResponse<ConnectorEntityListResponsePayload>,
-      ConnectorEntity
-    >
-  >(
-    () => ({
-      ...CONNECTOR_ENTITY_SEARCH_BASE,
-      fetcher: fetchWithAuth,
-      ...(options?.mapItem && { mapItem: options.mapItem }),
-      ...(options?.defaultParams && { defaultParams: options.defaultParams }),
-    }),
-    [fetchWithAuth, options]
-  );
-
-  return useAsyncFilterOptions(config);
-}
+const defaultMapItem = (entity: ConnectorEntity): SelectOption => ({
+  value: entity.id,
+  label: entity.label,
+});
 
 export const connectorEntities = {
   list: (
@@ -61,7 +34,7 @@ export const connectorEntities = {
   ) =>
     useAuthQuery<ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload>(
       queryKeys.connectorEntities.list(params),
-      buildUrl("/api/connector-entities", params),
+      buildUrl(CONNECTOR_ENTITIES_URL, params),
       undefined,
       options
     ),
@@ -72,7 +45,7 @@ export const connectorEntities = {
   ) =>
     useAuthQuery<ConnectorEntityGetResponsePayload>(
       queryKeys.connectorEntities.get(id),
-      buildUrl(`/api/connector-entities/${encodeURIComponent(id)}`),
+      buildUrl(`${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`),
       undefined,
       options
     ),
@@ -83,26 +56,58 @@ export const connectorEntities = {
   ) =>
     useAuthQuery<ConnectorEntityImpactResponsePayload>(
       queryKeys.connectorEntities.impact(id),
-      buildUrl(`/api/connector-entities/${encodeURIComponent(id)}/impact`),
+      buildUrl(`${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}/impact`),
       undefined,
       options
     ),
 
   update: (id: string) =>
     useAuthMutation<ConnectorEntityPatchResponsePayload, ConnectorEntityPatchRequestBody>({
-      url: `/api/connector-entities/${encodeURIComponent(id)}`,
+      url: `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),
 
   create: () =>
     useAuthMutation<ConnectorEntityCreateResponsePayload, ConnectorEntityCreateRequestBody>({
-      url: "/api/connector-entities",
+      url: CONNECTOR_ENTITIES_URL,
       method: "POST",
     }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
-      url: `/api/connector-entities/${encodeURIComponent(id)}`,
+      url: `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
     }),
+
+  search: <TOption extends SelectOption = SelectOption>(
+    options?: SearchHookOptions<ConnectorEntity, TOption>
+  ) => {
+    const { fetchWithAuth } = useAuthFetch();
+    const mapFn = (options?.mapItem ?? defaultMapItem) as (item: ConnectorEntity) => TOption;
+
+    const config = useMemo(
+      () => ({
+        url: CONNECTOR_ENTITIES_URL,
+        fetcher: fetchWithAuth,
+        getItems: (res: ApiSuccessResponse<ConnectorEntityListResponsePayload>) =>
+          res.payload.connectorEntities,
+        mapItem: mapFn,
+        defaultParams: options?.defaultParams,
+        loadSelectedOption: async (id: string): Promise<TOption | null> => {
+          const res = (await fetchWithAuth(
+            `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`
+          )) as ApiSuccessResponse<ConnectorEntityGetResponsePayload>;
+          return mapFn(res.payload.connectorEntity);
+        },
+      }),
+      [fetchWithAuth, mapFn, options?.defaultParams]
+    );
+
+    const { loadSelectedOption, ...rest } = useAsyncFilterOptions<
+      ApiSuccessResponse<ConnectorEntityListResponsePayload>,
+      ConnectorEntity,
+      TOption
+    >(config);
+    return { ...rest, getById: loadSelectedOption };
+  },
 };

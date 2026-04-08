@@ -5,7 +5,7 @@ import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts"
 import { AsyncSearchableSelect, Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 
-import { useConnectorInstanceSearch } from "../api/connector-instances.api";
+import { sdk } from "../api/sdk";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
@@ -64,7 +64,7 @@ export const CreateConnectorEntityDialog: React.FC<CreateConnectorEntityDialogPr
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const labelRef = useDialogAutoFocus(open);
-  const { onSearch: handleSearchConnectorInstances } = useConnectorInstanceSearch({
+  const { onSearch: handleSearchConnectorInstances } = sdk.connectorInstances.search({
     defaultParams: { capability: "write" },
   });
 

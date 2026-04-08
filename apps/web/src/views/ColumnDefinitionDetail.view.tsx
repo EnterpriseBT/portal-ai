@@ -22,9 +22,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useColumnDefinitionSearch } from "../api/column-definitions.api";
-import { useConnectorEntitySearch } from "../api/connector-entities.api";
-import { useFieldMappingWithEntitySearch } from "../api/field-mappings.api";
 import { toServerError } from "../utils/api.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
 import { CreateFieldMappingDialog } from "../components/CreateFieldMappingDialog.component";
@@ -111,12 +108,12 @@ export const ColumnDefinitionDetailView: React.FC<
     [updateMutation, queryClient, columnDefinitionId]
   );
 
-  const { onSearch: handleSearchColumnDefinitions } = useColumnDefinitionSearch();
-  const { onSearch: handleSearchConnectorEntities } = useConnectorEntitySearch();
-  const { onSearch: handleSearchConnectorEntitiesForRefKey } = useConnectorEntitySearch({
+  const { onSearch: handleSearchColumnDefinitions } = sdk.columnDefinitions.search();
+  const { onSearch: handleSearchConnectorEntities } = sdk.connectorEntities.search();
+  const { onSearch: handleSearchConnectorEntitiesForRefKey } = sdk.connectorEntities.search({
     mapItem: (ce) => ({ value: ce.key, label: `${ce.label} (${ce.key})` }),
   });
-  const { onSearch: handleSearchFieldMappings } = useFieldMappingWithEntitySearch();
+  const { onSearch: handleSearchFieldMappings } = sdk.fieldMappings.searchWithEntity();
 
   const handleFieldMappingCreate = useCallback(
     (body: FieldMappingCreateRequestBody) => {

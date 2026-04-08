@@ -43,13 +43,25 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
     });
   }, [value]);
 
+  // Initial load on mount
+  const initialLoadDone = useRef(false);
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+    let cancelled = false;
+    setLoading(true);
+    onSearch("").then((results) => {
+      if (!cancelled) setOptions(results);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    if (!inputValue) {
-      setOptions([]);
-      return;
-    }
+  // Debounced search on input change
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
       setLoading(true);

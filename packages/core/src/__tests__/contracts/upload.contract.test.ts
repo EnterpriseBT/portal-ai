@@ -125,6 +125,7 @@ describe("FileUploadColumnRecommendationSchema", () => {
   const validRecommendation = {
     sourceField: "email_address",
     existingColumnDefinitionId: "coldef_email",
+    existingColumnDefinitionKey: "email",
     confidence: 0.95,
     sampleValues: ["a@b.com", "c@d.com"],
     format: null,

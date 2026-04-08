@@ -31,7 +31,7 @@ describe("Tabs Components", () => {
       expect(screen.getByText("Panel One Content")).toBeInTheDocument();
       expect(
         screen.queryByText("Panel Two Content"),
-      ).not.toBeInTheDocument();
+      ).not.toBeVisible();
     });
   });
 
@@ -58,11 +58,11 @@ describe("Tabs Components", () => {
       render(<TabsExample />);
 
       expect(screen.getByText("First Content")).toBeInTheDocument();
-      expect(screen.queryByText("Second Content")).not.toBeInTheDocument();
+      expect(screen.queryByText("Second Content")).not.toBeVisible();
 
       fireEvent.click(screen.getByText("Second"));
 
-      expect(screen.queryByText("First Content")).not.toBeInTheDocument();
+      expect(screen.queryByText("First Content")).not.toBeVisible();
       expect(screen.getByText("Second Content")).toBeInTheDocument();
     });
   });
@@ -83,9 +83,9 @@ describe("Tabs Components", () => {
         </>,
       );
 
-      expect(screen.queryByText("Hidden")).not.toBeInTheDocument();
+      expect(screen.queryByText("Hidden")).not.toBeVisible();
       expect(screen.getByText("Visible")).toBeInTheDocument();
-      expect(screen.queryByText("Also Hidden")).not.toBeInTheDocument();
+      expect(screen.queryByText("Also Hidden")).not.toBeVisible();
     });
 
     it("should have correct aria attributes", () => {
@@ -166,13 +166,13 @@ describe("Tabs Components", () => {
       render(<UseTabsExample />);
 
       expect(screen.getByText("Alpha Content")).toBeInTheDocument();
-      expect(screen.queryByText("Beta Content")).not.toBeInTheDocument();
+      expect(screen.queryByText("Beta Content")).not.toBeVisible();
     });
 
     it("should initialize with a custom value", () => {
       render(<UseTabsExample initialValue={1} />);
 
-      expect(screen.queryByText("Alpha Content")).not.toBeInTheDocument();
+      expect(screen.queryByText("Alpha Content")).not.toBeVisible();
       expect(screen.getByText("Beta Content")).toBeInTheDocument();
     });
 
@@ -181,7 +181,7 @@ describe("Tabs Components", () => {
 
       fireEvent.click(screen.getByText("Beta"));
 
-      expect(screen.queryByText("Alpha Content")).not.toBeInTheDocument();
+      expect(screen.queryByText("Alpha Content")).not.toBeVisible();
       expect(screen.getByText("Beta Content")).toBeInTheDocument();
     });
 

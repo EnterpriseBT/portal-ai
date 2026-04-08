@@ -100,6 +100,7 @@ function makeProps(
     isLoadingDbEntities: false,
     onUpdateColumn: jest.fn(),
     onColumnKeySearch: jest.fn<() => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
+    onColumnKeyGetById: jest.fn<() => Promise<null>>().mockResolvedValue(null),
 
     onConnectorNameChange: jest.fn(),
     onConfirm: jest.fn(),

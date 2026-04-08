@@ -7,6 +7,7 @@ import type {
   FieldMappingListWithConnectorEntityResponsePayload,
   FieldMappingListWithColumnDefinitionResponsePayload,
   FieldMappingBidirectionalValidationResponsePayload,
+  FieldMappingGetResponsePayload,
   FieldMappingImpactResponsePayload,
   FieldMappingCreateRequestBody,
   FieldMappingCreateResponsePayload,
@@ -16,72 +17,13 @@ import type {
   FieldMappingWithColumnDefinition,
 } from "@portalai/core/contracts";
 import { useAsyncFilterOptions } from "@portalai/core/ui";
-import type { AsyncFilterOptionsConfig } from "@portalai/core/ui";
+import type { SelectOption } from "@portalai/core/ui";
 import { useAuthQuery, useAuthMutation, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
-import type { QueryOptions } from "./types";
+import type { QueryOptions, SearchHookOptions } from "./types";
 
-/** Search field mappings with `include=connectorEntity` — label shows `sourceField (entityLabel)`. */
-export function useFieldMappingWithEntitySearch(options?: {
-  defaultParams?: Record<string, string>;
-}) {
-  const { fetchWithAuth } = useAuthFetch();
-
-  const config = useMemo<
-    AsyncFilterOptionsConfig<
-      ApiSuccessResponse<FieldMappingListWithConnectorEntityResponsePayload>,
-      FieldMappingWithConnectorEntity
-    >
-  >(
-    () => ({
-      url: "/api/field-mappings",
-      fetcher: fetchWithAuth,
-      getItems: (res) => res.payload.fieldMappings,
-      mapItem: (fm) => ({
-        value: fm.id,
-        label: fm.connectorEntity
-          ? `${fm.sourceField} (${fm.connectorEntity.label})`
-          : fm.sourceField,
-      }),
-      defaultParams: { include: "connectorEntity", ...options?.defaultParams },
-    }),
-    [fetchWithAuth, options]
-  );
-
-  return useAsyncFilterOptions(config);
-}
-
-/** Search field mappings with `include=columnDefinition` — label shows columnDefinition label or sourceField. */
-export function useFieldMappingWithColumnDefinitionSearch(options?: {
-  defaultParams?: Record<string, string>;
-}) {
-  const { fetchWithAuth } = useAuthFetch();
-
-  const config = useMemo<
-    AsyncFilterOptionsConfig<
-      ApiSuccessResponse<FieldMappingListWithColumnDefinitionResponsePayload>,
-      FieldMappingWithColumnDefinition
-    >
-  >(
-    () => ({
-      url: "/api/field-mappings",
-      fetcher: fetchWithAuth,
-      getItems: (res) => res.payload.fieldMappings,
-      mapItem: (fm) => ({
-        value: fm.id,
-        label: fm.columnDefinition?.label ?? fm.sourceField,
-      }),
-      defaultParams: {
-        include: "columnDefinition",
-        ...options?.defaultParams,
-      },
-    }),
-    [fetchWithAuth, options]
-  );
-
-  return useAsyncFilterOptions(config);
-}
+const FIELD_MAPPINGS_URL = "/api/field-mappings";
 
 export const fieldMappings = {
   list: <
@@ -95,7 +37,7 @@ export const fieldMappings = {
   ) =>
     useAuthQuery<T>(
       queryKeys.fieldMappings.list(params),
-      buildUrl("/api/field-mappings", params),
+      buildUrl(FIELD_MAPPINGS_URL, params),
       undefined,
       options
     ),
@@ -106,7 +48,7 @@ export const fieldMappings = {
   ) =>
     useAuthQuery<FieldMappingBidirectionalValidationResponsePayload>(
       queryKeys.fieldMappings.validateBidirectional(id),
-      buildUrl(`/api/field-mappings/${encodeURIComponent(id)}/validate-bidirectional`),
+      buildUrl(`${FIELD_MAPPINGS_URL}/${encodeURIComponent(id)}/validate-bidirectional`),
       undefined,
       options
     ),
@@ -117,26 +59,102 @@ export const fieldMappings = {
   ) =>
     useAuthQuery<FieldMappingImpactResponsePayload>(
       queryKeys.fieldMappings.impact(id),
-      buildUrl(`/api/field-mappings/${encodeURIComponent(id)}/impact`),
+      buildUrl(`${FIELD_MAPPINGS_URL}/${encodeURIComponent(id)}/impact`),
       undefined,
       options
     ),
 
   create: () =>
     useAuthMutation<FieldMappingCreateResponsePayload, FieldMappingCreateRequestBody>({
-      url: "/api/field-mappings",
+      url: FIELD_MAPPINGS_URL,
       method: "POST",
     }),
 
   update: (id: string) =>
     useAuthMutation<FieldMappingUpdateResponsePayload, FieldMappingUpdateRequestBody>({
-      url: `/api/field-mappings/${encodeURIComponent(id)}`,
+      url: `${FIELD_MAPPINGS_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
-      url: `/api/field-mappings/${encodeURIComponent(id)}`,
+      url: `${FIELD_MAPPINGS_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
     }),
+
+  /** Search field mappings with `include=connectorEntity` — label shows `sourceField (entityLabel)`. */
+  searchWithEntity: <TOption extends SelectOption = SelectOption>(
+    options?: SearchHookOptions<FieldMappingWithConnectorEntity, TOption>
+  ) => {
+    const { fetchWithAuth } = useAuthFetch();
+    const defaultMap = (fm: FieldMappingWithConnectorEntity): SelectOption => ({
+      value: fm.id,
+      label: fm.connectorEntity
+        ? `${fm.sourceField} (${fm.connectorEntity.label})`
+        : fm.sourceField,
+    });
+    const mapFn = (options?.mapItem ?? defaultMap) as (item: FieldMappingWithConnectorEntity) => TOption;
+
+    const config = useMemo(
+      () => ({
+        url: FIELD_MAPPINGS_URL,
+        fetcher: fetchWithAuth,
+        getItems: (res: ApiSuccessResponse<FieldMappingListWithConnectorEntityResponsePayload>) =>
+          res.payload.fieldMappings,
+        mapItem: mapFn,
+        defaultParams: { include: "connectorEntity", ...options?.defaultParams },
+        loadSelectedOption: async (id: string): Promise<TOption | null> => {
+          const res = (await fetchWithAuth(
+            `${FIELD_MAPPINGS_URL}/${encodeURIComponent(id)}?include=connectorEntity`
+          )) as ApiSuccessResponse<FieldMappingGetResponsePayload>;
+          return mapFn(res.payload.fieldMapping as unknown as FieldMappingWithConnectorEntity);
+        },
+      }),
+      [fetchWithAuth, mapFn, options?.defaultParams]
+    );
+
+    const { loadSelectedOption, ...rest } = useAsyncFilterOptions<
+      ApiSuccessResponse<FieldMappingListWithConnectorEntityResponsePayload>,
+      FieldMappingWithConnectorEntity,
+      TOption
+    >(config);
+    return { ...rest, getById: loadSelectedOption };
+  },
+
+  /** Search field mappings with `include=columnDefinition` — label shows columnDefinition label or sourceField. */
+  searchWithColumnDefinition: <TOption extends SelectOption = SelectOption>(
+    options?: SearchHookOptions<FieldMappingWithColumnDefinition, TOption>
+  ) => {
+    const { fetchWithAuth } = useAuthFetch();
+    const defaultMap = (fm: FieldMappingWithColumnDefinition): SelectOption => ({
+      value: fm.id,
+      label: fm.columnDefinition?.label ?? fm.sourceField,
+    });
+    const mapFn = (options?.mapItem ?? defaultMap) as (item: FieldMappingWithColumnDefinition) => TOption;
+
+    const config = useMemo(
+      () => ({
+        url: FIELD_MAPPINGS_URL,
+        fetcher: fetchWithAuth,
+        getItems: (res: ApiSuccessResponse<FieldMappingListWithColumnDefinitionResponsePayload>) =>
+          res.payload.fieldMappings,
+        mapItem: mapFn,
+        defaultParams: { include: "columnDefinition", ...options?.defaultParams },
+        loadSelectedOption: async (id: string): Promise<TOption | null> => {
+          const res = (await fetchWithAuth(
+            `${FIELD_MAPPINGS_URL}/${encodeURIComponent(id)}?include=columnDefinition`
+          )) as ApiSuccessResponse<FieldMappingGetResponsePayload>;
+          return mapFn(res.payload.fieldMapping as unknown as FieldMappingWithColumnDefinition);
+        },
+      }),
+      [fetchWithAuth, mapFn, options?.defaultParams]
+    );
+
+    const { loadSelectedOption, ...rest } = useAsyncFilterOptions<
+      ApiSuccessResponse<FieldMappingListWithColumnDefinitionResponsePayload>,
+      FieldMappingWithColumnDefinition,
+      TOption
+    >(config);
+    return { ...rest, getById: loadSelectedOption };
+  },
 };

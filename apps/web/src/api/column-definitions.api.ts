@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 
 import type {
   ApiSuccessResponse,
@@ -13,70 +13,18 @@ import type {
 } from "@portalai/core/contracts";
 import type { ColumnDefinition } from "@portalai/core/models";
 import { useAsyncFilterOptions } from "@portalai/core/ui";
-import type { AsyncFilterOptionsConfig } from "@portalai/core/ui";
+import type { SelectOption } from "@portalai/core/ui";
 import { useAuthQuery, useAuthMutation, useAuthFetch } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
-import type { QueryOptions } from "./types";
+import type { QueryOptions, SearchHookOptions } from "./types";
 
-const COLUMN_DEFINITION_SEARCH_BASE = {
-  url: "/api/column-definitions",
-  getItems: (res: ApiSuccessResponse<ColumnDefinitionListResponsePayload>) =>
-    res.payload.columnDefinitions,
-  mapItem: (cd: ColumnDefinition) => ({
-    value: cd.id,
-    label: cd.label,
-  }),
-} as const;
+const COLUMN_DEFINITIONS_URL = "/api/column-definitions";
 
-export function useColumnDefinitionSearch(options?: {
-  defaultParams?: Record<string, string>;
-}) {
-  const { fetchWithAuth } = useAuthFetch();
-
-  const config = useMemo<
-    AsyncFilterOptionsConfig<
-      ApiSuccessResponse<ColumnDefinitionListResponsePayload>,
-      ColumnDefinition
-    >
-  >(
-    () => ({
-      ...COLUMN_DEFINITION_SEARCH_BASE,
-      fetcher: fetchWithAuth,
-      ...(options?.defaultParams && { defaultParams: options.defaultParams }),
-    }),
-    [fetchWithAuth, options]
-  );
-
-  return useAsyncFilterOptions(config);
-}
-
-/**
- * Search hook for column definitions. Returns search results with the full
- * ColumnDefinition attached to each option for downstream use.
- */
-export function useColumnDefinitionKeySearch() {
-  const { fetchWithAuth } = useAuthFetch();
-
-  const onSearch = React.useCallback(
-    async (query: string) => {
-      const params: Record<string, string> = {};
-      if (query) params.search = query;
-      const url = `/api/column-definitions?${new URLSearchParams(params).toString()}`;
-      const data = (await fetchWithAuth(url)) as ApiSuccessResponse<ColumnDefinitionListResponsePayload>;
-      const defs = data.payload.columnDefinitions;
-
-      return defs.map((cd) => ({
-        value: cd.id,
-        label: `${cd.label} (${cd.key}) — ${cd.type}${cd.description ? ` · ${cd.description}` : ""}`,
-        columnDefinition: cd,
-      }));
-    },
-    [fetchWithAuth],
-  );
-
-  return { onSearch };
-}
+const defaultMapItem = (cd: ColumnDefinition): SelectOption => ({
+  value: cd.id,
+  label: cd.label,
+});
 
 export const columnDefinitions = {
   list: (
@@ -85,7 +33,7 @@ export const columnDefinitions = {
   ) =>
     useAuthQuery<ColumnDefinitionListResponsePayload>(
       queryKeys.columnDefinitions.list(params),
-      buildUrl("/api/column-definitions", params),
+      buildUrl(COLUMN_DEFINITIONS_URL, params),
       undefined,
       options
     ),
@@ -96,7 +44,7 @@ export const columnDefinitions = {
   ) =>
     useAuthQuery<ColumnDefinitionGetResponsePayload>(
       queryKeys.columnDefinitions.get(id),
-      buildUrl(`/api/column-definitions/${encodeURIComponent(id)}`),
+      buildUrl(`${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`),
       undefined,
       options
     ),
@@ -107,26 +55,58 @@ export const columnDefinitions = {
   ) =>
     useAuthQuery<ColumnDefinitionImpactResponsePayload>(
       queryKeys.columnDefinitions.impact(id),
-      buildUrl(`/api/column-definitions/${encodeURIComponent(id)}/impact`),
+      buildUrl(`${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}/impact`),
       undefined,
       options
     ),
 
   create: () =>
     useAuthMutation<ColumnDefinitionCreateResponsePayload, ColumnDefinitionCreateRequestBody>({
-      url: "/api/column-definitions",
+      url: COLUMN_DEFINITIONS_URL,
       method: "POST",
     }),
 
   update: (id: string) =>
     useAuthMutation<ColumnDefinitionUpdateResponsePayload, ColumnDefinitionUpdateRequestBody>({
-      url: `/api/column-definitions/${encodeURIComponent(id)}`,
+      url: `${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
-      url: `/api/column-definitions/${encodeURIComponent(id)}`,
+      url: `${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
     }),
+
+  search: <TOption extends SelectOption = SelectOption>(
+    options?: SearchHookOptions<ColumnDefinition, TOption>
+  ) => {
+    const { fetchWithAuth } = useAuthFetch();
+    const mapFn = (options?.mapItem ?? defaultMapItem) as (item: ColumnDefinition) => TOption;
+
+    const config = useMemo(
+      () => ({
+        url: COLUMN_DEFINITIONS_URL,
+        fetcher: fetchWithAuth,
+        getItems: (res: ApiSuccessResponse<ColumnDefinitionListResponsePayload>) =>
+          res.payload.columnDefinitions,
+        mapItem: mapFn,
+        defaultParams: options?.defaultParams,
+        loadSelectedOption: async (id: string): Promise<TOption | null> => {
+          const res = (await fetchWithAuth(
+            `${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`
+          )) as ApiSuccessResponse<ColumnDefinitionGetResponsePayload>;
+          return mapFn(res.payload.columnDefinition);
+        },
+      }),
+      [fetchWithAuth, mapFn, options?.defaultParams]
+    );
+
+    const { loadSelectedOption, ...rest } = useAsyncFilterOptions<
+      ApiSuccessResponse<ColumnDefinitionListResponsePayload>,
+      ColumnDefinition,
+      TOption
+    >(config);
+    return { ...rest, getById: loadSelectedOption };
+  },
 };

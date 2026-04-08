@@ -51,9 +51,10 @@ describe("EntityRecordDataTableUI", () => {
         source="cache"
       />
     );
-    expect(screen.getByText("First Name")).toBeInTheDocument();
-    expect(screen.getByText("Email")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    // Headers show normalizedKey (field-mapping-level identifier)
+    expect(screen.getByText("first_name")).toBeInTheDocument();
+    expect(screen.getByText("email")).toBeInTheDocument();
+    expect(screen.getByText("active")).toBeInTheDocument();
   });
 
   it("renders correct number of rows", () => {
@@ -132,7 +133,7 @@ describe("EntityRecordDataTableUI", () => {
       />
     );
     const { fireEvent } = await import("@testing-library/react");
-    fireEvent.click(screen.getByText("First Name"));
+    fireEvent.click(screen.getByText("first_name"));
     expect(onSort).toHaveBeenCalledWith("first_name");
   });
 

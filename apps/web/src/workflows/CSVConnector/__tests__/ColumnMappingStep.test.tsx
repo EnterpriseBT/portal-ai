@@ -153,6 +153,7 @@ const mockSearchResults = Object.values(mockColumnDefsByKey).map((cd) => ({
 }));
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockOnColumnKeySearch = jest.fn<any>().mockResolvedValue(mockSearchResults);
+const mockOnColumnKeyGetById = jest.fn<() => Promise<null>>().mockResolvedValue(null);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -183,6 +184,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -203,6 +205,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -218,6 +221,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -235,6 +239,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -254,6 +259,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -269,6 +275,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -283,6 +290,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -297,6 +305,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -313,6 +322,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -329,6 +339,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -345,6 +356,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -360,6 +372,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -379,6 +392,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -402,6 +416,7 @@ describe("ColumnMappingStep", () => {
           onUpdateColumn={jest.fn()}
           errors={errors}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -422,6 +437,7 @@ describe("ColumnMappingStep", () => {
           onUpdateColumn={jest.fn()}
           errors={errors}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -446,7 +462,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
           onColumnKeySearch={mockSearch}
-
+          onColumnKeyGetById={mockOnColumnKeyGetById}
         />
       );
 
@@ -479,6 +495,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -505,6 +522,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -529,6 +547,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -571,6 +590,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -591,6 +611,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -612,6 +633,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -643,6 +665,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -672,6 +695,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -690,6 +714,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={true}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -724,6 +749,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -812,6 +838,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -849,6 +876,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -863,6 +891,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -879,6 +908,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
@@ -893,6 +923,7 @@ describe("ColumnMappingStep", () => {
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
           onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
         />
       );
