@@ -42,20 +42,32 @@ function createMockStreamState(overrides: Partial<JobStreamState> = {}): JobStre
   };
 }
 
-const mockFetchWithAuth = jest.fn<(url: string, options?: RequestInit) => Promise<unknown>>();
+const mockConfirmMutateAsync = jest.fn<(body: unknown) => Promise<unknown>>();
+const mockConfirmReset = jest.fn();
+let mockConfirmIsPending = false;
+
+const mockCancelMutateAsync = jest.fn<(body?: unknown) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../../utils/file-upload.util", () => ({
   useFileUpload: () => mockFileUploadState,
-}));
-
-jest.unstable_mockModule("../../../utils/api.util", () => ({
-  useAuthFetch: () => ({ fetchWithAuth: mockFetchWithAuth }),
 }));
 
 jest.unstable_mockModule("../../../api/sdk", () => ({
   sdk: {
     jobs: {
       stream: () => mockStreamState,
+      cancel: () => ({
+        mutateAsync: mockCancelMutateAsync,
+        isPending: false,
+        reset: jest.fn(),
+      }),
+    },
+    uploads: {
+      confirm: () => ({
+        mutateAsync: mockConfirmMutateAsync,
+        isPending: mockConfirmIsPending,
+        reset: mockConfirmReset,
+      }),
     },
   },
 }));
@@ -107,7 +119,10 @@ describe("useUploadWorkflow", () => {
     jest.clearAllMocks();
     mockFileUploadState = createMockFileUploadState();
     mockStreamState = createMockStreamState();
-    mockFetchWithAuth.mockReset();
+    mockConfirmMutateAsync.mockReset();
+    mockConfirmReset.mockReset();
+    mockConfirmIsPending = false;
+    mockCancelMutateAsync.mockReset();
   });
 
   describe("WORKFLOW_STEPS", () => {
@@ -551,12 +566,10 @@ describe("useUploadWorkflow", () => {
         status: "awaiting_confirmation",
         result: { recommendations: MOCK_RECOMMENDATIONS },
       });
-      mockFetchWithAuth.mockResolvedValue({
-        payload: {
-          connectorInstanceId: "ci_001",
-          connectorInstanceName: "My CSV Import",
-          confirmedEntities: [],
-        },
+      mockConfirmMutateAsync.mockResolvedValue({
+        connectorInstanceId: "ci_001",
+        connectorInstanceName: "My CSV Import",
+        confirmedEntities: [],
       });
 
       const { result } = renderHook(() => useUploadWorkflow());
@@ -565,20 +578,18 @@ describe("useUploadWorkflow", () => {
         await result.current.confirm();
       });
 
-      expect(mockFetchWithAuth).toHaveBeenCalledTimes(1);
-      const [url, options] = mockFetchWithAuth.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe("/api/uploads/job_123/confirm");
-      expect(options.method).toBe("POST");
-
-      const body = JSON.parse(options.body as string);
+      expect(mockConfirmMutateAsync).toHaveBeenCalledTimes(1);
+      const body = mockConfirmMutateAsync.mock.calls[0][0] as Record<string, unknown>;
       expect(body.connectorInstanceName).toBe("My CSV Import");
-      expect(body.entities).toHaveLength(1);
-      expect(body.entities[0].entityKey).toBe("contacts");
-      expect(body.entities[0].entityLabel).toBe("Contacts");
-      expect(body.entities[0].columns).toHaveLength(1);
-      expect(body.entities[0].columns[0].sourceField).toBe("Email Address");
-      expect(body.entities[0].columns[0].existingColumnDefinitionId).toBe("col_001");
-      expect(body.entities[0].columns[0].normalizedKey).toBe("email_address");
+      const entities = body.entities as Record<string, unknown>[];
+      expect(entities).toHaveLength(1);
+      expect(entities[0].entityKey).toBe("contacts");
+      expect(entities[0].entityLabel).toBe("Contacts");
+      const columns = (entities[0] as Record<string, unknown>).columns as Record<string, unknown>[];
+      expect(columns).toHaveLength(1);
+      expect(columns[0].sourceField).toBe("Email Address");
+      expect(columns[0].existingColumnDefinitionId).toBe("col_001");
+      expect(columns[0].normalizedKey).toBe("email_address");
     });
 
     it("uses edited recommendations when user has made changes", async () => {
@@ -590,12 +601,10 @@ describe("useUploadWorkflow", () => {
         status: "awaiting_confirmation",
         result: { recommendations: MOCK_RECOMMENDATIONS },
       });
-      mockFetchWithAuth.mockResolvedValue({
-        payload: {
-          connectorInstanceId: "ci_001",
-          connectorInstanceName: "Renamed",
-          confirmedEntities: [],
-        },
+      mockConfirmMutateAsync.mockResolvedValue({
+        connectorInstanceId: "ci_001",
+        connectorInstanceName: "Renamed",
+        confirmedEntities: [],
       });
 
       const { result } = renderHook(() => useUploadWorkflow());
@@ -608,9 +617,7 @@ describe("useUploadWorkflow", () => {
         await result.current.confirm();
       });
 
-      const body = JSON.parse(
-        (mockFetchWithAuth.mock.calls[0] as [string, RequestInit])[1].body as string,
-      );
+      const body = mockConfirmMutateAsync.mock.calls[0][0] as Record<string, unknown>;
       expect(body.connectorInstanceName).toBe("Renamed");
     });
 
@@ -639,7 +646,7 @@ describe("useUploadWorkflow", () => {
           },
         ],
       };
-      mockFetchWithAuth.mockResolvedValue({ payload: mockPayload });
+      mockConfirmMutateAsync.mockResolvedValue(mockPayload);
 
       const { result } = renderHook(() => useUploadWorkflow());
 
@@ -661,7 +668,7 @@ describe("useUploadWorkflow", () => {
         status: "awaiting_confirmation",
         result: { recommendations: MOCK_RECOMMENDATIONS },
       });
-      mockFetchWithAuth.mockRejectedValue(new Error("Transaction timed out"));
+      mockConfirmMutateAsync.mockRejectedValue(new Error("Transaction timed out"));
 
       const { result } = renderHook(() => useUploadWorkflow());
 
@@ -687,7 +694,7 @@ describe("useUploadWorkflow", () => {
         await result.current.confirm();
       });
 
-      expect(mockFetchWithAuth).not.toHaveBeenCalled();
+      expect(mockConfirmMutateAsync).not.toHaveBeenCalled();
     });
 
     it("does nothing when no jobId exists", async () => {
@@ -702,17 +709,17 @@ describe("useUploadWorkflow", () => {
         await result.current.confirm();
       });
 
-      expect(mockFetchWithAuth).not.toHaveBeenCalled();
+      expect(mockConfirmMutateAsync).not.toHaveBeenCalled();
     });
   });
 
   describe("cancel", () => {
-    it("calls cancel endpoint when jobId exists", async () => {
+    it("calls cancel mutation when jobId exists", async () => {
       mockFileUploadState = createMockFileUploadState({
         phase: "done",
         jobId: "job_456",
       });
-      mockFetchWithAuth.mockResolvedValue({});
+      mockCancelMutateAsync.mockResolvedValue({});
 
       const { result } = renderHook(() => useUploadWorkflow());
 
@@ -720,10 +727,7 @@ describe("useUploadWorkflow", () => {
         await result.current.cancel();
       });
 
-      expect(mockFetchWithAuth).toHaveBeenCalledTimes(1);
-      const [url, options] = mockFetchWithAuth.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe("/api/jobs/job_456/cancel");
-      expect(options.method).toBe("POST");
+      expect(mockCancelMutateAsync).toHaveBeenCalledTimes(1);
     });
 
     it("does nothing when no jobId exists", async () => {
@@ -733,7 +737,7 @@ describe("useUploadWorkflow", () => {
         await result.current.cancel();
       });
 
-      expect(mockFetchWithAuth).not.toHaveBeenCalled();
+      expect(mockCancelMutateAsync).not.toHaveBeenCalled();
     });
 
     it("swallows errors silently (best-effort cancellation)", async () => {
@@ -741,7 +745,7 @@ describe("useUploadWorkflow", () => {
         phase: "done",
         jobId: "job_456",
       });
-      mockFetchWithAuth.mockRejectedValue(new Error("Network error"));
+      mockCancelMutateAsync.mockRejectedValue(new Error("Network error"));
 
       const { result } = renderHook(() => useUploadWorkflow());
 
@@ -803,8 +807,8 @@ describe("useUploadWorkflow", () => {
         status: "awaiting_confirmation",
         result: { recommendations: MOCK_RECOMMENDATIONS },
       });
-      mockFetchWithAuth.mockResolvedValue({
-        payload: { connectorInstanceId: "ci_001", connectorInstanceName: "My CSV Import", confirmedEntities: [] },
+      mockConfirmMutateAsync.mockResolvedValue({
+        connectorInstanceId: "ci_001", connectorInstanceName: "My CSV Import", confirmedEntities: [],
       });
 
       const { result } = renderHook(() => useUploadWorkflow());
@@ -820,13 +824,11 @@ describe("useUploadWorkflow", () => {
         await result.current.confirm();
       });
 
-      const body = JSON.parse(
-        (mockFetchWithAuth.mock.calls[0] as [string, RequestInit])[1].body as string,
-      );
-      const col = body.entities[0].columns[0];
-      expect(col.refEntityKey).toBe("roles");
-      expect(col.refColumnKey).toBe("id");
-      expect(col.refColumnDefinitionId).toBeNull();
+      const body = mockConfirmMutateAsync.mock.calls[0][0] as Record<string, unknown>;
+      const col = (body.entities as Record<string, unknown>[])[0].columns as Record<string, unknown>[];
+      expect(col[0].refEntityKey).toBe("roles");
+      expect(col[0].refColumnKey).toBe("id");
+      expect(col[0].refColumnDefinitionId).toBeNull();
     });
 
     it("confirm() sends null ref fields when column has no ref fields set", async () => {
@@ -838,8 +840,8 @@ describe("useUploadWorkflow", () => {
         status: "awaiting_confirmation",
         result: { recommendations: MOCK_RECOMMENDATIONS },
       });
-      mockFetchWithAuth.mockResolvedValue({
-        payload: { connectorInstanceId: "ci_001", connectorInstanceName: "My CSV Import", confirmedEntities: [] },
+      mockConfirmMutateAsync.mockResolvedValue({
+        connectorInstanceId: "ci_001", connectorInstanceName: "My CSV Import", confirmedEntities: [],
       });
 
       const { result } = renderHook(() => useUploadWorkflow());
@@ -848,13 +850,11 @@ describe("useUploadWorkflow", () => {
         await result.current.confirm();
       });
 
-      const body = JSON.parse(
-        (mockFetchWithAuth.mock.calls[0] as [string, RequestInit])[1].body as string,
-      );
-      const col = body.entities[0].columns[0];
-      expect(col.refEntityKey).toBeNull();
-      expect(col.refColumnKey).toBeNull();
-      expect(col.refColumnDefinitionId).toBeNull();
+      const body = mockConfirmMutateAsync.mock.calls[0][0] as Record<string, unknown>;
+      const col = (body.entities as Record<string, unknown>[])[0].columns as Record<string, unknown>[];
+      expect(col[0].refEntityKey).toBeNull();
+      expect(col[0].refColumnKey).toBeNull();
+      expect(col[0].refColumnDefinitionId).toBeNull();
     });
   });
 

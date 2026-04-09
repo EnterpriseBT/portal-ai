@@ -6,8 +6,6 @@
  * referenced by ID — they must already exist (seeded or user-created).
  */
 
-import crypto from "crypto";
-
 import type {
   ConfirmRequestBody,
   ConfirmResponsePayload,
@@ -22,6 +20,7 @@ import { DbService } from "./db.service.js";
 import { JobEventsService } from "./job-events.service.js";
 import { CsvImportService } from "./csv-import.service.js";
 import type { DbTransaction } from "../db/repositories/base.repository.js";
+import { SystemUtilities } from "../utils/system.util.js";
 
 const logger = createLogger({ module: "uploads-service" });
 
@@ -80,7 +79,7 @@ export class UploadsService {
     }
 
     const metadata = job.metadata as unknown as FileUploadMetadata;
-    const now = Date.now();
+    const now = SystemUtilities.utc.now().getTime();
 
     // Run entire confirmation in a transaction with timeout
     const result = await Promise.race([
@@ -197,7 +196,7 @@ export class UploadsService {
 
       connectorInstance = await DbService.repository.connectorInstances.create(
         {
-          id: crypto.randomUUID(),
+          id: SystemUtilities.id.v4.generate(),
           connectorDefinitionId: metadata.connectorDefinitionId,
           organizationId,
           name: body.connectorInstanceName,
@@ -227,7 +226,7 @@ export class UploadsService {
       // Upsert connector entity
       const connectorEntity = await DbService.repository.connectorEntities.upsertByKey(
         {
-          id: crypto.randomUUID(),
+          id: SystemUtilities.id.v4.generate(),
           organizationId,
           connectorInstanceId: connectorInstance.id,
           key: entity.entityKey,
@@ -251,6 +250,20 @@ export class UploadsService {
         normalizedKey: string;
       }[] = [];
 
+      // Soft-delete existing field mappings for this entity whose column
+      // definition is not in the incoming set.  This prevents unique-constraint
+      // violations on (connector_entity_id, normalized_key) when a re-confirm
+      // reassigns a normalized key to a different column definition.
+      const incomingColDefIds = entity.columns.map((c) => c.existingColumnDefinitionId);
+      const existingMappings = await DbService.repository.fieldMappings
+        .findByConnectorEntityId(connectorEntity.id, tx);
+      const staleIds = existingMappings
+        .filter((fm) => !incomingColDefIds.includes(fm.columnDefinitionId))
+        .map((fm) => fm.id);
+      if (staleIds.length > 0) {
+        await DbService.repository.fieldMappings.softDeleteMany(staleIds, userId, tx);
+      }
+
       for (const col of entity.columns) {
         // Look up the existing column definition (already validated above)
         const colDef = await DbService.repository.columnDefinitions.findById(
@@ -258,8 +271,13 @@ export class UploadsService {
         );
         entityColumnDefs.push({ id: colDef!.id, key: colDef!.key, label: colDef!.label });
 
-        // For reference columns, resolve the target column definition ID.
-        const refColumnDefinitionId = colDef!.type === "reference" || colDef!.type === "reference-array"
+        // Reference resolution is field-mapping-level: the incoming column
+        // carries refEntityKey / refColumnKey / refColumnDefinitionId when the
+        // mapping points to another entity's normalized key, regardless of the
+        // column definition type.
+        const hasRefFields = !!(col.refColumnKey || col.refColumnDefinitionId)
+          || colDef!.type === "reference" || colDef!.type === "reference-array";
+        const refColumnDefinitionId = hasRefFields
           ? await UploadsService.resolveRefColumnDefinitionId(
             organizationId, col.refColumnKey, col.refColumnDefinitionId, tx
           )
@@ -268,7 +286,7 @@ export class UploadsService {
         // Upsert field mapping
         const fieldMapping = await DbService.repository.fieldMappings.upsertByEntityAndColumn(
           {
-            id: crypto.randomUUID(),
+            id: SystemUtilities.id.v4.generate(),
             organizationId,
             connectorEntityId: connectorEntity.id,
             columnDefinitionId: colDef!.id,
@@ -280,7 +298,7 @@ export class UploadsService {
             format: col.format,
             enumValues: col.enumValues ?? null,
             refColumnDefinitionId: refColumnDefinitionId ?? null,
-            refEntityKey: (colDef!.type === "reference" || colDef!.type === "reference-array") ? (col.refEntityKey ?? null) : null,
+            refEntityKey: hasRefFields ? (col.refEntityKey ?? null) : null,
             created: now,
             createdBy: userId,
             updated: null,

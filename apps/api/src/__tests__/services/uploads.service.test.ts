@@ -19,6 +19,8 @@ const mockColumnDefinitionsFindById = jest.fn<(id: string, tx?: unknown) => Prom
 const mockColumnDefinitionsFindByKey = jest.fn<(orgId: string, key: string, tx?: unknown) => Promise<unknown>>();
 
 const mockFieldMappingsUpsertByEntityAndColumn = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
+const mockFieldMappingsFindByConnectorEntityId = jest.fn<(id: string, tx?: unknown) => Promise<unknown[]>>();
+const mockFieldMappingsSoftDeleteMany = jest.fn<(ids: string[], deletedBy: string, tx?: unknown) => Promise<number>>();
 
 const mockTransition = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockPublishCustomEvent = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -47,6 +49,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
       fieldMappings: {
         upsertByEntityAndColumn: mockFieldMappingsUpsertByEntityAndColumn,
+        findByConnectorEntityId: mockFieldMappingsFindByConnectorEntityId,
+        softDeleteMany: mockFieldMappingsSoftDeleteMany,
       },
     },
     transaction: jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
@@ -189,6 +193,9 @@ describe("UploadsService", () => {
     }));
 
     mockColumnDefinitionsFindByKey.mockResolvedValue(undefined);
+
+    mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([]);
+    mockFieldMappingsSoftDeleteMany.mockResolvedValue(0);
   });
 
   describe("confirm()", () => {
@@ -390,6 +397,46 @@ describe("UploadsService", () => {
     });
   });
 
+  describe("confirm() — stale mapping cleanup", () => {
+    it("should soft-delete stale field mappings whose column definition is not in the incoming set", async () => {
+      mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([
+        { id: "fm-old", columnDefinitionId: "cd-integer", normalizedKey: "age" },
+        { id: "fm-name", columnDefinitionId: "cd-name", normalizedKey: "name" },
+      ]);
+
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      // cd-integer is not in the incoming columns (cd-name, cd-email), so fm-old should be deleted
+      expect(mockFieldMappingsSoftDeleteMany).toHaveBeenCalledWith(
+        ["fm-old"],
+        USER_ID,
+        "mock-tx"
+      );
+    });
+
+    it("should not soft-delete any mappings when all existing column definitions are in the incoming set", async () => {
+      mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([
+        { id: "fm-name", columnDefinitionId: "cd-name", normalizedKey: "name" },
+        { id: "fm-email", columnDefinitionId: "cd-email", normalizedKey: "email" },
+      ]);
+
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsSoftDeleteMany).not.toHaveBeenCalled();
+    });
+
+    it("should not call softDeleteMany when there are no existing mappings", async () => {
+      mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([]);
+
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsSoftDeleteMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe("confirm() — reference columns", () => {
     it("resolves refColumnDefinitionId correctly for reference-type columns", async () => {
       mockColumnDefinitionsFindById.mockImplementation(async (id: string) => {
@@ -467,6 +514,49 @@ describe("UploadsService", () => {
         expect.objectContaining({
           refColumnDefinitionId: "cd-from-db",
           refEntityKey: "roles",
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("resolves ref fields from field mapping even when column definition type is not 'reference'", async () => {
+      // Scenario: Account entity has a "text" column definition but the field
+      // mapping carries refEntityKey / refColumnDefinitionId pointing to User.
+      const COLDEF_TEXT = { id: "cd-text", organizationId: ORG_ID, key: "owner", label: "Owner", type: "text" };
+
+      mockColumnDefinitionsFindById.mockImplementation(async (id: string) => {
+        if (id === "cd-text") return COLDEF_TEXT;
+        return undefined;
+      });
+
+      const body = createConfirmBody({
+        entities: [
+          {
+            entityKey: "accounts",
+            entityLabel: "Accounts",
+            sourceFileName: "contacts.csv",
+            columns: [
+              {
+                sourceField: "owner_id",
+                existingColumnDefinitionId: "cd-text",
+                normalizedKey: "owner_id",
+                format: null,
+                isPrimaryKey: false,
+                required: false,
+                refEntityKey: "users",
+                refColumnDefinitionId: "cd-user-id",
+              },
+            ],
+          },
+        ],
+      });
+
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          refColumnDefinitionId: "cd-user-id",
+          refEntityKey: "users",
         }),
         "mock-tx"
       );

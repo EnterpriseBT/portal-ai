@@ -4,7 +4,6 @@ import type { JobStatus } from "@portalai/core/models";
 import type { ConfirmRequestBody, ConfirmResponsePayload } from "@portalai/core/contracts";
 
 import { sdk } from "../../../api/sdk";
-import { useAuthFetch } from "../../../utils/api.util";
 import { useFileUpload } from "../../../utils/file-upload.util";
 import type { FileUploadProgress, UploadPhase } from "../../../utils/file-upload.util";
 
@@ -192,13 +191,13 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
   const [files, setFiles] = useState<File[]>([]);
   // User edits override the initial recommendations from SSE.
   const [editedRecommendations, setEditedRecommendations] = useState<Recommendations | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmResult, setConfirmResult] = useState<ConfirmResponsePayload | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  const { fetchWithAuth } = useAuthFetch();
   const fileUpload = useFileUpload();
+  const confirmMutation = sdk.uploads.confirm(fileUpload.jobId ?? "");
+  const cancelMutation = sdk.jobs.cancel(fileUpload.jobId ?? "");
 
   // SSE subscription — activates once we have a jobId and upload is done
   const shouldStream = fileUpload.phase === "done" || fileUpload.phase === "processing";
@@ -319,8 +318,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
 
   const confirm = useCallback(async () => {
     const activeRecs = editedRecommendations ?? sseRecommendations;
-    const jobId = fileUpload.jobId;
-    if (!activeRecs || !jobId) return;
+    if (!activeRecs || !fileUpload.jobId) return;
 
     const body: ConfirmRequestBody = {
       connectorInstanceName: activeRecs.connectorInstance.name,
@@ -344,49 +342,39 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
       })),
     };
 
-    setIsConfirming(true);
     setConfirmError(null);
     try {
-      const response = await fetchWithAuth<{ payload: ConfirmResponsePayload }>(
-        `/api/uploads/${encodeURIComponent(jobId)}/confirm`,
-        { method: "POST", body: JSON.stringify(body) },
-      );
-      setConfirmResult(response.payload);
+      const result = await confirmMutation.mutateAsync(body);
+      setConfirmResult(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Confirmation failed";
       setConfirmError(message);
-    } finally {
-      setIsConfirming(false);
     }
-  }, [editedRecommendations, sseRecommendations, fileUpload.jobId, fetchWithAuth]);
+  }, [editedRecommendations, sseRecommendations, fileUpload.jobId, confirmMutation]);
 
   const cancel = useCallback(async () => {
-    const jobId = fileUpload.jobId;
-    if (!jobId) return;
+    if (!fileUpload.jobId) return;
 
     setIsCancelling(true);
     try {
-      await fetchWithAuth(
-        `/api/jobs/${encodeURIComponent(jobId)}/cancel`,
-        { method: "POST" },
-      );
+      await cancelMutation.mutateAsync(undefined as void);
     } catch {
       // Best-effort cancellation
     } finally {
       setIsCancelling(false);
     }
-  }, [fileUpload.jobId, fetchWithAuth]);
+  }, [fileUpload.jobId, cancelMutation]);
 
   const reset = useCallback(() => {
     setUserStep(null);
     setFiles([]);
     setEditedRecommendations(null);
-    setIsConfirming(false);
+    confirmMutation.reset();
     setConfirmError(null);
     setConfirmResult(null);
     setIsCancelling(false);
     fileUpload.reset();
-  }, [fileUpload]);
+  }, [fileUpload, confirmMutation]);
 
   // --- Derived state ---
 
@@ -420,7 +408,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
     parseResults,
     uploadError: fileUpload.error,
     isProcessing,
-    isConfirming,
+    isConfirming: confirmMutation.isPending,
     confirmError,
     confirmResult,
     isCancelling,
