@@ -481,7 +481,6 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
   const [columnConfig, setColumnConfig] = useColumnConfig(dataColumns, {
     initialValue: storedConfig.length > 0 ? storedConfig : undefined,
     onPersist: persistConfig,
-    defaultVisibleCount: 5,
   });
 
   const allColumns = useMemo(
