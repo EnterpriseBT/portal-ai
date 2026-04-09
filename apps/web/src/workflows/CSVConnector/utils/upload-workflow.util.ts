@@ -33,8 +33,7 @@ export interface RecommendedColumn {
   enumValues?: string[] | null;
   /** Reference fields. */
   refEntityKey?: string | null;
-  refColumnKey?: string | null;
-  refColumnDefinitionId?: string | null;
+  refNormalizedKey?: string | null;
 }
 
 export interface RecommendedEntity {
@@ -336,8 +335,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
           defaultValue: col.defaultValue ?? null,
           enumValues: col.enumValues ?? null,
           refEntityKey: col.refEntityKey ?? null,
-          refColumnKey: col.refColumnKey ?? null,
-          refColumnDefinitionId: col.refColumnDefinitionId ?? null,
+          refNormalizedKey: col.refNormalizedKey ?? null,
         })),
       })),
     };

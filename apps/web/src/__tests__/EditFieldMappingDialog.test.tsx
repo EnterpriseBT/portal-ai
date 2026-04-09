@@ -16,9 +16,8 @@ const defaultFieldMapping = {
   columnDefinitionId: "cd-1",
   columnDefinitionLabel: "Email Address",
   connectorEntityLabel: "Contacts",
-  refColumnDefinitionId: null,
+  refNormalizedKey: null,
   refEntityKey: null,
-  refBidirectionalFieldMappingId: null,
 };
 
 const defaultProps = {
@@ -26,9 +25,7 @@ const defaultProps = {
   onClose: jest.fn(),
   onSubmit: jest.fn(),
   fieldMapping: defaultFieldMapping,
-  onSearchColumnDefinitions: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
   onSearchConnectorEntitiesForRefKey: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
-  onSearchFieldMappings: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
   isPending: false,
   serverError: null,
   columnDefinitionType: "string",

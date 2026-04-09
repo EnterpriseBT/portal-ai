@@ -14,7 +14,7 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       columnDefinitions: { findById: mockFindColDef },
-      fieldMappings: { upsertByEntityAndColumn: mockUpsert },
+      fieldMappings: { upsertByEntityAndNormalizedKey: mockUpsert },
     },
   },
 }));

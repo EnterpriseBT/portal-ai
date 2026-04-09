@@ -589,8 +589,7 @@ describe("ColumnMappingStep", () => {
       enumValues: null,
       defaultValue: null,
       refEntityKey: null,
-      refColumnKey: null,
-      refColumnDefinitionId: null,
+      refNormalizedKey: null,
     };
 
     it("shows reference entity and column selects when definition type is reference", async () => {
@@ -692,8 +691,7 @@ describe("ColumnMappingStep", () => {
         0,
         expect.objectContaining({
           refEntityKey: "products",
-          refColumnKey: null,
-          refColumnDefinitionId: null,
+          refNormalizedKey: null,
         })
       );
     });
@@ -775,7 +773,7 @@ describe("ColumnMappingStep", () => {
       ).toBeInTheDocument();
     });
 
-    it("selecting a DB entity column sets refColumnDefinitionId and clears refColumnKey", async () => {
+    it("selecting a DB entity column sets refNormalizedKey", async () => {
       const user = userEvent.setup();
       const onUpdateColumn = jest.fn();
 
@@ -799,14 +797,13 @@ describe("ColumnMappingStep", () => {
             sourceField: "id",
             columnDefinitionId: "cd_001",
             isPrimaryKey: true,
-            normalizedKey: "id",
+            normalizedKey: "role_id",
             required: false,
             defaultValue: null,
             format: null,
             enumValues: null,
-            refColumnDefinitionId: null,
+            refNormalizedKey: null,
             refEntityKey: null,
-            refBidirectionalFieldMappingId: null,
             created: 0,
             updated: null,
             createdBy: "system",
@@ -838,8 +835,7 @@ describe("ColumnMappingStep", () => {
       const refColumnInDbMode: RecommendedColumn = {
         ...refColumn,
         refEntityKey: "roles",
-        refColumnKey: null,
-        refColumnDefinitionId: null,
+        refNormalizedKey: null,
       };
 
       await renderAndWait(
@@ -858,14 +854,14 @@ describe("ColumnMappingStep", () => {
         name: /reference column/i,
       });
       await user.click(columnSelect);
-      await user.click(screen.getByRole("option", { name: /ID/i }));
+      // DB mode now shows normalizedKey (sourceField) — "role_id (id)"
+      await user.click(screen.getByRole("option", { name: /role_id/i }));
 
       expect(onUpdateColumn).toHaveBeenCalledWith(
         0,
         0,
         expect.objectContaining({
-          refColumnDefinitionId: "cd_001",
-          refColumnKey: null,
+          refNormalizedKey: "role_id",
         })
       );
     });

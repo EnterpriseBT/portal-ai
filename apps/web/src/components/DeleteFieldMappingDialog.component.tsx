@@ -46,7 +46,7 @@ const ImpactSummary: React.FC<{
 
   const hasRecords = impact.entityRecords > 0;
   const hasEntityGroupMembers = impact.entityGroupMembers > 0;
-  const hasBidirectional = !!impact.bidirectionalCounterpart;
+  const hasBidirectional = !!impact.counterpart;
 
   if (!hasRecords && !hasEntityGroupMembers && !hasBidirectional) {
     return (
@@ -77,7 +77,7 @@ const ImpactSummary: React.FC<{
       {hasBidirectional && (
         <ListItem disableGutters sx={{ py: 0 }}>
           <ListItemText
-            primary={`Bidirectional link to "${impact.bidirectionalCounterpart!.sourceField}" will be cleared`}
+            primary={`Bidirectional link to "${impact.counterpart!.sourceField}" will be cleared`}
             slotProps={{ primary: { variant: "body2" } }}
           />
         </ListItem>
@@ -101,7 +101,7 @@ export const DeleteFieldMappingDialog: React.FC<
   const hasRecords = impact ? impact.entityRecords > 0 : false;
   const deleteBlocked = hasRecords;
   const deleteDisabled = isPending || isLoadingImpact || deleteBlocked;
-  const hasCascade = impact && (impact.entityGroupMembers > 0 || !!impact.bidirectionalCounterpart);
+  const hasCascade = impact && (impact.entityGroupMembers > 0 || !!impact.counterpart);
 
   return (
     <Modal

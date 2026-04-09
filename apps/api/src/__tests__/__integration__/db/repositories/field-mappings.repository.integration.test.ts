@@ -168,7 +168,7 @@ describe("FieldMappingsRepository Integration Tests", () => {
       defaultValue: null,
       format: null,
       enumValues: null,
-      refColumnDefinitionId: null,
+      refNormalizedKey: null,
       refEntityKey: null,
       created: now,
       createdBy: "test-system",
@@ -278,12 +278,12 @@ describe("FieldMappingsRepository Integration Tests", () => {
     });
   });
 
-  // ── upsertByEntityAndColumn ────────────────────────────────────
+  // ── upsertByEntityAndNormalizedKey ──────────────────────────────
 
-  describe("upsertByEntityAndColumn", () => {
+  describe("upsertByEntityAndNormalizedKey", () => {
     it("should insert on first call", async () => {
-      const data = makeMapping({ sourceField: "full_name" });
-      const result = await repo.upsertByEntityAndColumn(data, db);
+      const data = makeMapping({ sourceField: "full_name", normalizedKey: "full_name" });
+      const result = await repo.upsertByEntityAndNormalizedKey(data, db);
 
       expect(result.sourceField).toBe("full_name");
 
@@ -291,33 +291,45 @@ describe("FieldMappingsRepository Integration Tests", () => {
       expect(count).toBe(1);
     });
 
-    it("should update on second call with same entity + column", async () => {
-      const data = makeMapping({ sourceField: "full_name" });
-      await repo.upsertByEntityAndColumn(data, db);
+    it("should update on second call with same entity + normalizedKey", async () => {
+      const data = makeMapping({ sourceField: "full_name", normalizedKey: "full_name" });
+      await repo.upsertByEntityAndNormalizedKey(data, db);
 
-      const updated = await repo.upsertByEntityAndColumn(
+      const updated = await repo.upsertByEntityAndNormalizedKey(
         {
           ...data,
           id: generateId(),
           sourceField: "display_name",
+          columnDefinitionId: columnDefinitionId2,
           isPrimaryKey: true,
         },
         db
       );
 
       expect(updated.sourceField).toBe("display_name");
+      expect(updated.columnDefinitionId).toBe(columnDefinitionId2);
       expect(updated.isPrimaryKey).toBe(true);
 
       const count = await repo.count(undefined, db);
       expect(count).toBe(1);
+    });
+
+    it("should allow two mappings with same columnDefinitionId but different normalizedKey", async () => {
+      const a = makeMapping({ normalizedKey: "name_a", columnDefinitionId });
+      const b = makeMapping({ normalizedKey: "name_b", columnDefinitionId });
+      await repo.upsertByEntityAndNormalizedKey(a, db);
+      await repo.upsertByEntityAndNormalizedKey(b, db);
+
+      const count = await repo.count(undefined, db);
+      expect(count).toBe(2);
     });
   });
 
   // ── findBidirectionalPair ──────────────────────────────────────────
 
   describe("findBidirectionalPair", () => {
-    it("returns { mapping, counterpart: null } when refBidirectionalFieldMappingId is null", async () => {
-      const data = makeMapping({ refBidirectionalFieldMappingId: null });
+    it("returns { mapping, counterpart: null } when ref fields are null", async () => {
+      const data = makeMapping({ refEntityKey: null, refNormalizedKey: null });
       await repo.create(data, db);
 
       const result = await repo.findBidirectionalPair(data.id, db);
@@ -325,21 +337,46 @@ describe("FieldMappingsRepository Integration Tests", () => {
       expect(result.counterpart).toBeNull();
     });
 
-    it("returns both mappings when the link is set", async () => {
-      // Create mapping A with no back-ref first (FK requires target exists)
-      const dataA = makeMapping({ columnDefinitionId, sourceField: "tags_a" });
+    it("returns both mappings when bidirectional pair exists via ref fields", async () => {
+      // Create a second entity for the counterpart
+      const dbTyped = db as any;
+      const entity2Id = generateId();
+      const [firstEntity] = await dbTyped.select().from(schema.connectorEntities);
+      await dbTyped.insert(schema.connectorEntities).values({
+        id: entity2Id,
+        organizationId: orgId,
+        connectorInstanceId: firstEntity.connectorInstanceId,
+        key: "tags",
+        label: "Tags",
+        created: Date.now(),
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
+
+      // Mapping A: entity "contacts", normalizedKey "tag_id", points to entity "tags" / "contact_id"
+      const dataA = makeMapping({
+        connectorEntityId,
+        columnDefinitionId,
+        sourceField: "tag_id",
+        normalizedKey: "tag_id",
+        refEntityKey: "tags",
+        refNormalizedKey: "contact_id",
+      });
       await repo.create(dataA, db);
 
-      // Create mapping B pointing at A
+      // Mapping B: entity "tags", normalizedKey "contact_id", points back to entity "contacts" / "tag_id"
       const dataB = makeMapping({
+        connectorEntityId: entity2Id,
         columnDefinitionId: columnDefinitionId2,
-        sourceField: "tags_b",
-        refBidirectionalFieldMappingId: dataA.id,
+        sourceField: "contact_id",
+        normalizedKey: "contact_id",
+        refEntityKey: "contacts",
+        refNormalizedKey: "tag_id",
       });
       await repo.create(dataB, db);
-
-      // Update A to point back at B
-      await repo.update(dataA.id, { refBidirectionalFieldMappingId: dataB.id }, db);
 
       const result = await repo.findBidirectionalPair(dataA.id, db);
       expect(result.mapping.id).toBe(dataA.id);
@@ -347,48 +384,93 @@ describe("FieldMappingsRepository Integration Tests", () => {
     });
   });
 
-  // ── upsertByEntityAndColumn refBidirectionalFieldMappingId ─────────
+  // ── findCounterpart ───────────────────────────────────────────────
 
-  describe("upsertByEntityAndColumn refBidirectionalFieldMappingId round-trip", () => {
-    it("round-trips refBidirectionalFieldMappingId through upsert", async () => {
-      // Insert a target mapping to satisfy the self-FK
-      const target = makeMapping({ columnDefinitionId: columnDefinitionId2, sourceField: "target" });
-      await repo.create(target, db);
+  describe("findCounterpart", () => {
+    let entity2Id: string;
 
-      const data = makeMapping({
-        sourceField: "owner",
-        refBidirectionalFieldMappingId: target.id,
-      });
-      const result = await repo.upsertByEntityAndColumn(data, db);
-      expect(result.refBidirectionalFieldMappingId).toBe(target.id);
+    beforeEach(async () => {
+      const dbTyped = db as any;
+      const [firstEntity] = await dbTyped.select().from(schema.connectorEntities);
+      entity2Id = generateId();
+      await dbTyped.insert(schema.connectorEntities).values({
+        id: entity2Id,
+        organizationId: orgId,
+        connectorInstanceId: firstEntity.connectorInstanceId,
+        key: "tags",
+        label: "Tags",
+        created: Date.now(),
+        createdBy: "test-system",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
     });
 
-    it("upsert can clear refBidirectionalFieldMappingId back to null", async () => {
-      const target = makeMapping({ columnDefinitionId: columnDefinitionId2, sourceField: "target" });
-      await repo.create(target, db);
-
-      const data = makeMapping({
-        sourceField: "owner",
-        refBidirectionalFieldMappingId: target.id,
+    it("returns counterpart when bidirectional pair exists", async () => {
+      // Mapping in "tags" entity pointing back to "contacts"
+      const counterpart = makeMapping({
+        connectorEntityId: entity2Id,
+        columnDefinitionId: columnDefinitionId2,
+        sourceField: "contact_id",
+        normalizedKey: "contact_id",
+        refEntityKey: "contacts",
+        refNormalizedKey: "tag_id",
       });
-      await repo.upsertByEntityAndColumn(data, db);
+      await repo.create(counterpart, db);
 
-      // Upsert again with null to clear
-      const cleared = await repo.upsertByEntityAndColumn(
-        { ...data, id: generateId(), refBidirectionalFieldMappingId: null },
-        db
-      );
-      expect(cleared.refBidirectionalFieldMappingId).toBeNull();
+      const result = await repo.findCounterpart(orgId, "contacts", "tags", "contact_id", db);
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(counterpart.id);
+    });
+
+    it("returns null when no counterpart exists", async () => {
+      const result = await repo.findCounterpart(orgId, "contacts", "tags", "contact_id", db);
+      expect(result).toBeNull();
+    });
+
+    it("returns null when target mapping exists but doesn't point back", async () => {
+      // Mapping in "tags" entity but refEntityKey points elsewhere
+      const notCounterpart = makeMapping({
+        connectorEntityId: entity2Id,
+        columnDefinitionId: columnDefinitionId2,
+        sourceField: "contact_id",
+        normalizedKey: "contact_id",
+        refEntityKey: "other_entity",
+        refNormalizedKey: "tag_id",
+      });
+      await repo.create(notCounterpart, db);
+
+      const result = await repo.findCounterpart(orgId, "contacts", "tags", "contact_id", db);
+      expect(result).toBeNull();
+    });
+
+    it("skips soft-deleted mappings", async () => {
+      const counterpart = makeMapping({
+        connectorEntityId: entity2Id,
+        columnDefinitionId: columnDefinitionId2,
+        sourceField: "contact_id",
+        normalizedKey: "contact_id",
+        refEntityKey: "contacts",
+        refNormalizedKey: "tag_id",
+      });
+      await repo.create(counterpart, db);
+      await repo.softDelete(counterpart.id, "test-system", db);
+
+      const result = await repo.findCounterpart(orgId, "contacts", "tags", "contact_id", db);
+      expect(result).toBeNull();
     });
   });
 
   // ── Unique constraint ──────────────────────────────────────────
 
   describe("unique constraint", () => {
-    it("should reject duplicate entity + column via create", async () => {
-      await repo.create(makeMapping(), db);
+    it("should reject duplicate entity + normalizedKey via create", async () => {
+      const nk = `nk_${generateId().replace(/-/g, "").slice(0, 8)}`;
+      await repo.create(makeMapping({ normalizedKey: nk }), db);
 
-      const duplicate = makeMapping();
+      const duplicate = makeMapping({ normalizedKey: nk, columnDefinitionId: columnDefinitionId2 });
       await expect(repo.create(duplicate, db)).rejects.toThrow();
     });
   });
@@ -434,36 +516,32 @@ describe("FieldMappingsRepository Integration Tests", () => {
   // ── Reference metadata ─────────────────────────────────────────
 
   describe("reference metadata", () => {
-    it("should store and retrieve refColumnDefinitionId and refEntityKey", async () => {
+    it("should store and retrieve refNormalizedKey and refEntityKey", async () => {
       const data = makeMapping({
-        refColumnDefinitionId: columnDefinitionId2,
+        refNormalizedKey: "user_id",
         refEntityKey: "contacts",
       });
       const created = await repo.create(data, db);
-      expect(created.refColumnDefinitionId).toBe(columnDefinitionId2);
+      expect(created.refNormalizedKey).toBe("user_id");
       expect(created.refEntityKey).toBe("contacts");
     });
 
     it("should update ref fields via upsert", async () => {
-      const data = makeMapping({ sourceField: "owner_id" });
-      await repo.upsertByEntityAndColumn(data, db);
+      const nk = `nk_${generateId().replace(/-/g, "").slice(0, 8)}`;
+      const data = makeMapping({ sourceField: "owner_id", normalizedKey: nk });
+      await repo.upsertByEntityAndNormalizedKey(data, db);
 
-      const updated = await repo.upsertByEntityAndColumn(
+      const updated = await repo.upsertByEntityAndNormalizedKey(
         {
           ...data,
           id: generateId(),
-          refColumnDefinitionId: columnDefinitionId2,
+          refNormalizedKey: "owner_key",
           refEntityKey: "owners",
         },
         db
       );
-      expect(updated.refColumnDefinitionId).toBe(columnDefinitionId2);
+      expect(updated.refNormalizedKey).toBe("owner_key");
       expect(updated.refEntityKey).toBe("owners");
-    });
-
-    it("should reject invalid refColumnDefinitionId", async () => {
-      const data = makeMapping({ refColumnDefinitionId: "non-existent-id" });
-      await expect(repo.create(data, db)).rejects.toThrow();
     });
   });
 });

@@ -16,9 +16,8 @@ const mockConnectorInstancesUpdate = jest.fn<(id: string, data: unknown, tx?: un
 const mockConnectorEntitiesUpsertByKey = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
 
 const mockColumnDefinitionsFindById = jest.fn<(id: string, tx?: unknown) => Promise<unknown>>();
-const mockColumnDefinitionsFindByKey = jest.fn<(orgId: string, key: string, tx?: unknown) => Promise<unknown>>();
 
-const mockFieldMappingsUpsertByEntityAndColumn = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
+const mockFieldMappingsUpsertByEntityAndNormalizedKey = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
 const mockFieldMappingsFindByConnectorEntityId = jest.fn<(id: string, tx?: unknown) => Promise<unknown[]>>();
 const mockFieldMappingsSoftDeleteMany = jest.fn<(ids: string[], deletedBy: string, tx?: unknown) => Promise<number>>();
 
@@ -45,10 +44,9 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
       },
       columnDefinitions: {
         findById: mockColumnDefinitionsFindById,
-        findByKey: mockColumnDefinitionsFindByKey,
       },
       fieldMappings: {
-        upsertByEntityAndColumn: mockFieldMappingsUpsertByEntityAndColumn,
+        upsertByEntityAndNormalizedKey: mockFieldMappingsUpsertByEntityAndNormalizedKey,
         findByConnectorEntityId: mockFieldMappingsFindByConnectorEntityId,
         softDeleteMany: mockFieldMappingsSoftDeleteMany,
       },
@@ -183,7 +181,7 @@ describe("UploadsService", () => {
       return defs[id] ?? undefined;
     });
 
-    mockFieldMappingsUpsertByEntityAndColumn.mockImplementation(async (data: unknown) => ({
+    mockFieldMappingsUpsertByEntityAndNormalizedKey.mockImplementation(async (data: unknown) => ({
       ...(data as Record<string, unknown>),
       id: `fm-${(data as Record<string, unknown>).sourceField}`,
       sourceField: (data as Record<string, unknown>).sourceField,
@@ -191,8 +189,6 @@ describe("UploadsService", () => {
       isPrimaryKey: (data as Record<string, unknown>).isPrimaryKey,
       normalizedKey: (data as Record<string, unknown>).normalizedKey,
     }));
-
-    mockColumnDefinitionsFindByKey.mockResolvedValue(undefined);
 
     mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([]);
     mockFieldMappingsSoftDeleteMany.mockResolvedValue(0);
@@ -218,7 +214,7 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Name",
           columnDefinitionId: "cd-name",
@@ -226,7 +222,7 @@ describe("UploadsService", () => {
         }),
         "mock-tx"
       );
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Email",
           columnDefinitionId: "cd-email",
@@ -337,7 +333,7 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Name",
           normalizedKey: "name",
@@ -371,7 +367,7 @@ describe("UploadsService", () => {
 
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
         expect.objectContaining({
           required: true,
           defaultValue: "active",
@@ -386,7 +382,7 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Name",
           defaultValue: null,
@@ -398,7 +394,7 @@ describe("UploadsService", () => {
   });
 
   describe("confirm() — stale mapping cleanup", () => {
-    it("should soft-delete stale field mappings whose column definition is not in the incoming set", async () => {
+    it("should soft-delete stale field mappings whose normalizedKey is not in the incoming set", async () => {
       mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([
         { id: "fm-old", columnDefinitionId: "cd-integer", normalizedKey: "age" },
         { id: "fm-name", columnDefinitionId: "cd-name", normalizedKey: "name" },
@@ -407,7 +403,7 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      // cd-integer is not in the incoming columns (cd-name, cd-email), so fm-old should be deleted
+      // "age" is not in the incoming normalizedKeys (name, email), so fm-old should be deleted
       expect(mockFieldMappingsSoftDeleteMany).toHaveBeenCalledWith(
         ["fm-old"],
         USER_ID,
@@ -415,7 +411,7 @@ describe("UploadsService", () => {
       );
     });
 
-    it("should not soft-delete any mappings when all existing column definitions are in the incoming set", async () => {
+    it("should not soft-delete any mappings when all existing normalizedKeys are in the incoming set", async () => {
       mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([
         { id: "fm-name", columnDefinitionId: "cd-name", normalizedKey: "name" },
         { id: "fm-email", columnDefinitionId: "cd-email", normalizedKey: "email" },
@@ -438,13 +434,7 @@ describe("UploadsService", () => {
   });
 
   describe("confirm() — reference columns", () => {
-    it("resolves refColumnDefinitionId correctly for reference-type columns", async () => {
-      mockColumnDefinitionsFindById.mockImplementation(async (id: string) => {
-        if (id === "cd-reference") return COLDEF_REFERENCE;
-        if (id === "cd-roles-id") return { id: "cd-roles-id", organizationId: ORG_ID, key: "id", label: "ID", type: "string" };
-        return undefined;
-      });
-
+    it("passes refNormalizedKey and refEntityKey for reference-type columns", async () => {
       const body = createConfirmBody({
         entities: [
           {
@@ -460,7 +450,7 @@ describe("UploadsService", () => {
                 isPrimaryKey: false,
                 required: false,
                 refEntityKey: "roles",
-                refColumnDefinitionId: "cd-roles-id",
+                refNormalizedKey: "role_key",
               },
             ],
           },
@@ -469,59 +459,16 @@ describe("UploadsService", () => {
 
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
         expect.objectContaining({
-          refColumnDefinitionId: "cd-roles-id",
+          refNormalizedKey: "role_key",
           refEntityKey: "roles",
         }),
         "mock-tx"
       );
     });
 
-    it("falls back to DB lookup when refColumnKey is provided without refColumnDefinitionId", async () => {
-      mockColumnDefinitionsFindByKey.mockResolvedValue({
-        id: "cd-from-db",
-        key: "role_key",
-        organizationId: ORG_ID,
-      });
-
-      const body = createConfirmBody({
-        entities: [
-          {
-            entityKey: "users",
-            entityLabel: "Users",
-            sourceFileName: "contacts.csv",
-            columns: [
-              {
-                sourceField: "role_id",
-                existingColumnDefinitionId: "cd-reference",
-                normalizedKey: "role_id",
-                format: null,
-                isPrimaryKey: false,
-                required: false,
-                refEntityKey: "roles",
-                refColumnKey: "role_key",
-              },
-            ],
-          },
-        ],
-      });
-
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
-
-      expect(mockColumnDefinitionsFindByKey).toHaveBeenCalledWith(ORG_ID, "role_key", "mock-tx");
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          refColumnDefinitionId: "cd-from-db",
-          refEntityKey: "roles",
-        }),
-        "mock-tx"
-      );
-    });
-
-    it("resolves ref fields from field mapping even when column definition type is not 'reference'", async () => {
-      // Scenario: Account entity has a "text" column definition but the field
-      // mapping carries refEntityKey / refColumnDefinitionId pointing to User.
+    it("passes refNormalizedKey even when column definition type is not 'reference'", async () => {
       const COLDEF_TEXT = { id: "cd-text", organizationId: ORG_ID, key: "owner", label: "Owner", type: "text" };
 
       mockColumnDefinitionsFindById.mockImplementation(async (id: string) => {
@@ -544,7 +491,7 @@ describe("UploadsService", () => {
                 isPrimaryKey: false,
                 required: false,
                 refEntityKey: "users",
-                refColumnDefinitionId: "cd-user-id",
+                refNormalizedKey: "user_id",
               },
             ],
           },
@@ -553,44 +500,74 @@ describe("UploadsService", () => {
 
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
         expect.objectContaining({
-          refColumnDefinitionId: "cd-user-id",
+          refNormalizedKey: "user_id",
           refEntityKey: "users",
         }),
         "mock-tx"
       );
     });
 
-    it("stores null refColumnDefinitionId when refColumnKey cannot be resolved", async () => {
+    it("stores null refNormalizedKey when no ref fields are provided on a non-reference column", async () => {
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceField: "Name",
+          refNormalizedKey: null,
+        }),
+        "mock-tx"
+      );
+    });
+
+    it("creates two distinct field mappings when columns share the same columnDefinitionId but different normalizedKey", async () => {
       const body = createConfirmBody({
         entities: [
           {
-            entityKey: "users",
-            entityLabel: "Users",
+            entityKey: "contacts",
+            entityLabel: "Contacts",
             sourceFileName: "contacts.csv",
             columns: [
               {
-                sourceField: "role_id",
-                existingColumnDefinitionId: "cd-reference",
-                normalizedKey: "role_id",
+                sourceField: "First Name",
+                existingColumnDefinitionId: "cd-name",
+                normalizedKey: "first_name",
+                format: null,
+                isPrimaryKey: false,
+                required: true,
+              },
+              {
+                sourceField: "Last Name",
+                existingColumnDefinitionId: "cd-name",
+                normalizedKey: "last_name",
                 format: null,
                 isPrimaryKey: false,
                 required: false,
-                refEntityKey: "roles",
-                refColumnKey: "nonexistent_key",
               },
             ],
           },
         ],
       });
 
-      await expect(
-        UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body)
-      ).resolves.toBeDefined();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndColumn).toHaveBeenCalledWith(
-        expect.objectContaining({ refColumnDefinitionId: null }),
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledTimes(2);
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceField: "First Name",
+          columnDefinitionId: "cd-name",
+          normalizedKey: "first_name",
+        }),
+        "mock-tx"
+      );
+      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceField: "Last Name",
+          columnDefinitionId: "cd-name",
+          normalizedKey: "last_name",
+        }),
         "mock-tx"
       );
     });

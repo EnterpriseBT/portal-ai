@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, jsonb, uniqueIndex, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
@@ -9,8 +9,8 @@ import { columnDefinitions } from "./column-definitions.table.js";
  * Field mappings table.
  * Maps a source field name from a connector entity to a shared
  * column definition. When the mapped column is a reference type,
- * refColumnDefinitionId and refEntityKey capture the relationship
- * target at the per-entity level (rather than on the shared column
+ * refNormalizedKey and refEntityKey capture the relationship target
+ * at the per-entity level (rather than on the shared column
  * definition catalog).
  */
 export const fieldMappings = pgTable(
@@ -35,20 +35,10 @@ export const fieldMappings = pgTable(
     enumValues: jsonb("enum_values").$type<string[]>(),
 
     // Reference fields (populated when the mapped column has type "reference" or "reference-array")
-    refColumnDefinitionId: text("ref_column_definition_id").references(
-      () => columnDefinitions.id,
-    ),
+    refNormalizedKey: text("ref_normalized_key"),
     refEntityKey: text("ref_entity_key"),
-    refBidirectionalFieldMappingId: text("ref_bidirectional_field_mapping_id"),
   },
   (table) => [
-    uniqueIndex("field_mappings_entity_column_unique")
-      .on(table.connectorEntityId, table.columnDefinitionId)
-      .where(sql`deleted IS NULL`),
-    foreignKey({
-      columns: [table.refBidirectionalFieldMappingId],
-      foreignColumns: [table.id],
-    }),
     uniqueIndex("field_mappings_entity_normalized_key_unique")
       .on(table.connectorEntityId, table.normalizedKey)
       .where(sql`deleted IS NULL`),

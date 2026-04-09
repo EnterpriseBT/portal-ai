@@ -10,9 +10,7 @@ const defaultProps = {
   onClose: jest.fn(),
   onSubmit: jest.fn(),
   onSearchConnectorEntities: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
-  onSearchColumnDefinitions: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
   onSearchConnectorEntitiesForRefKey: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
-  onSearchFieldMappings: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
   isPending: false,
   serverError: null,
   columnDefinitionId: "cd-1",
@@ -32,9 +30,8 @@ describe("CreateFieldMappingDialog", () => {
     expect(screen.getByText("Primary Key")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Connector Entity" })).toBeInTheDocument();
     // Ref fields hidden for non-reference types
-    expect(screen.queryByRole("combobox", { name: "Ref Column Definition" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Ref Entity Key" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Ref Bidirectional Field Mapping" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Ref Normalized Key")).not.toBeInTheDocument();
     // Locked column definition field
     const cdField = screen.getByDisplayValue("First Name");
     expect(cdField).toBeDisabled();
@@ -42,14 +39,13 @@ describe("CreateFieldMappingDialog", () => {
 
   it("should show ref fields when column definition type is reference", () => {
     render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference" />);
-    expect(screen.getByRole("combobox", { name: "Ref Column Definition" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Ref Entity Key" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Ref Bidirectional Field Mapping" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Ref Normalized Key")).toBeInTheDocument();
   });
 
   it("should show ref fields when column definition type is reference-array", () => {
     render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference-array" />);
-    expect(screen.getByRole("combobox", { name: "Ref Column Definition" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Ref Entity Key" })).toBeInTheDocument();
   });
 
   it("should not render when open is false", () => {
@@ -224,9 +220,8 @@ describe("CreateFieldMappingDialog", () => {
         format: null,
         enumValues: null,
         isPrimaryKey: false,
-        refColumnDefinitionId: null,
+        refNormalizedKey: null,
         refEntityKey: null,
-        refBidirectionalFieldMappingId: null,
       });
     });
   });
@@ -265,22 +260,9 @@ describe("CreateFieldMappingDialog", () => {
     });
   });
 
-  it("should call onSearchColumnDefinitions when typing in ref column definition select", async () => {
+  it("should render Ref Normalized Key text field for reference type", () => {
     render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference" />);
-    const refColDefInput = screen.getByRole("combobox", { name: "Ref Column Definition" });
-    fireEvent.change(refColDefInput, { target: { value: "test" } });
-    await waitFor(() => {
-      expect(defaultProps.onSearchColumnDefinitions).toHaveBeenCalled();
-    });
-  });
-
-  it("should call onSearchFieldMappings when typing in ref bidirectional select", async () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference" />);
-    const refBidiInput = screen.getByRole("combobox", { name: "Ref Bidirectional Field Mapping" });
-    fireEvent.change(refBidiInput, { target: { value: "test" } });
-    await waitFor(() => {
-      expect(defaultProps.onSearchFieldMappings).toHaveBeenCalled();
-    });
+    expect(screen.getByLabelText("Ref Normalized Key")).toBeInTheDocument();
   });
 
   // ── New field rendering ────────────────────────────────────────────

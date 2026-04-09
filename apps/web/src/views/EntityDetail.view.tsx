@@ -614,7 +614,7 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
         const bidirectionalFieldMappings = (
           fieldMappingsResult.data?.fieldMappings ?? []
         )
-          .filter((fm) => fm.refBidirectionalFieldMappingId !== null)
+          .filter((fm) => fm.refEntityKey !== null && fm.refNormalizedKey !== null)
           .map((fm) => ({ id: fm.id, sourceField: fm.sourceField }));
 
         const instance = instanceResult.data?.connectorInstance;

@@ -5,7 +5,7 @@ const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
 const mockFindById = jest.fn<any>().mockResolvedValue({ id: "fm-1", connectorEntityId: "ce-1", organizationId: "org-1", sourceField: "Name" });
 const mockValidateDelete = jest.fn<any>().mockResolvedValue(undefined);
-const mockExecuteDelete = jest.fn<any>().mockResolvedValue({ cascadedEntityGroupMembers: 2, bidirectionalCleared: true });
+const mockExecuteDelete = jest.fn<any>().mockResolvedValue({ cascadedEntityGroupMembers: 2, counterpartCleared: true });
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,
@@ -32,11 +32,11 @@ const exec = (input: Input) =>
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
 
 describe("FieldMappingDeleteTool", () => {
-  it("returns cascaded counts (entityGroupMembers, bidirectionalCleared)", async () => {
+  it("returns cascaded counts (entityGroupMembers, counterpartCleared)", async () => {
     const result: any = await exec({ fieldMappingId: "fm-1" });
     expect(result.success).toBe(true);
     expect(result.summary.cascaded.entityGroupMembers).toBe(2);
-    expect(result.summary.cascaded.bidirectionalCleared).toBe(true);
+    expect(result.summary.cascaded.counterpartCleared).toBe(true);
   });
 
   it("returns error when entity has records", async () => {

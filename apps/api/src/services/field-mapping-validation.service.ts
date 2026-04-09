@@ -11,7 +11,7 @@ const BOOLEAN_FORMAT_REGEX = /^.+\/.+$/;
 
 export interface FieldMappingCascadeResult {
   cascadedEntityGroupMembers: number;
-  bidirectionalCleared: boolean;
+  counterpartCleared: boolean;
 }
 
 /**
@@ -164,21 +164,37 @@ export class FieldMappingValidationService {
           tx,
         );
 
-      let bidirectionalCleared = false;
-      if (mapping.refBidirectionalFieldMappingId) {
-        await DbService.repository.fieldMappings.updateWhere(
-          eq(fieldMappings.id, mapping.refBidirectionalFieldMappingId),
-          {
-            refBidirectionalFieldMappingId: null,
-            updated: Date.now(),
-            updatedBy: userId,
-          } as never,
-          tx,
+      let counterpartCleared = false;
+      if (mapping.refEntityKey && mapping.refNormalizedKey) {
+        // Look up the entity key for the mapping's connector entity
+        const entity = await DbService.repository.connectorEntities.findById(
+          mapping.connectorEntityId, tx,
         );
-        bidirectionalCleared = true;
+        if (entity) {
+          const counterpart = await DbService.repository.fieldMappings.findCounterpart(
+            mapping.organizationId,
+            entity.key,
+            mapping.refEntityKey,
+            mapping.refNormalizedKey,
+            tx,
+          );
+          if (counterpart) {
+            await DbService.repository.fieldMappings.update(
+              counterpart.id,
+              {
+                refNormalizedKey: null,
+                refEntityKey: null,
+                updated: Date.now(),
+                updatedBy: userId,
+              },
+              tx,
+            );
+            counterpartCleared = true;
+          }
+        }
       }
 
-      return { cascadedEntityGroupMembers, bidirectionalCleared };
+      return { cascadedEntityGroupMembers, counterpartCleared };
     };
 
     if (client) return run(client);

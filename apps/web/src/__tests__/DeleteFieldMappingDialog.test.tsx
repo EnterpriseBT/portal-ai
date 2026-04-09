@@ -9,31 +9,31 @@ const { DeleteFieldMappingDialog } = await import(
 const impactWithCascade: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 5,
   entityRecords: 0,
-  bidirectionalCounterpart: null,
+  counterpart: null,
 };
 
 const zeroImpact: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 0,
   entityRecords: 0,
-  bidirectionalCounterpart: null,
+  counterpart: null,
 };
 
 const impactWithBidirectional: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 0,
   entityRecords: 0,
-  bidirectionalCounterpart: { id: "fm-counterpart", sourceField: "related_id" },
+  counterpart: { id: "fm-counterpart", sourceField: "related_id", normalizedKey: "related_id" },
 };
 
 const impactWithBoth: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 3,
   entityRecords: 0,
-  bidirectionalCounterpart: { id: "fm-counterpart", sourceField: "related_id" },
+  counterpart: { id: "fm-counterpart", sourceField: "related_id", normalizedKey: "related_id" },
 };
 
 const impactWithRecords: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 0,
   entityRecords: 42,
-  bidirectionalCounterpart: null,
+  counterpart: null,
 };
 
 const defaultProps = {

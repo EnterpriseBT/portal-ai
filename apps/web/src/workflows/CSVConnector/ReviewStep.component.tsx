@@ -110,10 +110,10 @@ const CompletionSummary: React.FC<{
 
 function formatRefTarget(col: {
   refEntityKey?: string | null;
-  refColumnKey?: string | null;
+  refNormalizedKey?: string | null;
 }): string {
-  if (col.refEntityKey && col.refColumnKey) {
-    return ` → ${col.refEntityKey}.${col.refColumnKey}`;
+  if (col.refEntityKey && col.refNormalizedKey) {
+    return ` → ${col.refEntityKey}.${col.refNormalizedKey}`;
   }
   if (col.refEntityKey) {
     return ` → ${col.refEntityKey}`;
