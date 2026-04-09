@@ -251,8 +251,8 @@ describe("OPERATORS_BY_COLUMN_TYPE", () => {
     expect(OPERATORS_BY_COLUMN_TYPE.json).toEqual(["is_empty", "is_not_empty"]);
   });
 
-  it("should include 'between' for number, currency, date, and datetime", () => {
-    const types: ColumnDataType[] = ["number", "currency", "date", "datetime"];
+  it("should include 'between' for number, date, and datetime", () => {
+    const types: ColumnDataType[] = ["number", "date", "datetime"];
     for (const type of types) {
       expect(OPERATORS_BY_COLUMN_TYPE[type]).toContain("between");
     }
@@ -378,7 +378,6 @@ describe("validateOperatorTypeCompat", () => {
     status: "enum",
     tags: "array",
     metadata: "json",
-    amount: "currency",
     ref_id: "reference",
   };
 

@@ -12,7 +12,7 @@ import type { ColumnDataType } from "@portalai/core/models";
 import type {
   EntityDataQuery,
   EntityDataResult,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
 } from "../adapters/adapter.interface.js";
 import { connectorEntitiesRepo } from "../db/repositories/connector-entities.repository.js";
 import { entityRecordsRepo } from "../db/repositories/entity-records.repository.js";
@@ -30,7 +30,7 @@ export async function resolveColumns(
   connectorEntityId: string,
   _organizationId: string,
   client?: DbClient
-): Promise<ColumnDefinitionSummary[]> {
+): Promise<ResolvedColumn[]> {
   const mappings = await fieldMappingsRepo.findByConnectorEntityId(
     connectorEntityId,
     client
@@ -51,16 +51,20 @@ export async function resolveColumns(
       .map((cd) => [cd.id, cd])
   );
 
-  return mappings.reduce<ColumnDefinitionSummary[]>((acc, m) => {
+  return mappings.reduce<ResolvedColumn[]>((acc, m) => {
     const cd = colDefMap.get(m.columnDefinitionId);
     if (!cd) return acc;
     acc.push({
       key: cd.key,
       label: cd.label,
       type: cd.type as ColumnDataType,
-      required: cd.required,
-      enumValues: cd.enumValues ?? null,
-      defaultValue: cd.defaultValue ?? null,
+      normalizedKey: m.normalizedKey,
+      required: m.required,
+      enumValues: m.enumValues ?? null,
+      defaultValue: m.defaultValue ?? null,
+      format: m.format ?? null,
+      validationPattern: cd.validationPattern ?? null,
+      canonicalFormat: cd.canonicalFormat ?? null,
     });
     return acc;
   }, []);

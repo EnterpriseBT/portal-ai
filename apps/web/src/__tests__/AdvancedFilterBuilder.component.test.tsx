@@ -6,16 +6,16 @@ import {
 } from "../components/AdvancedFilterBuilder.component";
 
 import type { AdvancedFilterBuilderProps } from "../components/AdvancedFilterBuilder.component";
-import type { FilterExpression, ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { FilterExpression, ResolvedColumn } from "@portalai/core/contracts";
 
 // ── Test data ───────────────────────────────────────────────────────
 
-const columnDefs: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
-  { key: "created_at", label: "Created At", type: "date", required: false, enumValues: null, defaultValue: null },
-  { key: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null },
+const columnDefs: ResolvedColumn[] = [
+  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "created_at", normalizedKey: "created_at", label: "Created At", type: "date", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "status", normalizedKey: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
 ];
 
 const emptyExpression: FilterExpression = {

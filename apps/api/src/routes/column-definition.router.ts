@@ -19,6 +19,7 @@ import { DbService } from "../services/db.service.js";
 import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ColumnDefinitionValidationService } from "../services/column-definition-validation.service.js";
+import { RevalidationService } from "../services/revalidation.service.js";
 
 const logger = createLogger({ module: "column-definition" });
 
@@ -62,13 +63,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         name: type
  *         schema:
  *           type: string
- *         description: Comma-separated list of column data types to filter by (string, number, boolean, date, datetime, enum, json, array, reference, currency)
- *       - in: query
- *         name: required
- *         schema:
- *           type: string
- *           enum: ["true", "false"]
- *         description: Filter by required flag
+ *         description: Comma-separated list of column data types to filter by (string, number, boolean, date, datetime, enum, json, array, reference, reference-array)
  *     responses:
  *       200:
  *         description: Paginated list of column definitions
@@ -94,7 +89,7 @@ columnDefinitionRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, type, required } =
+      const { limit, offset, sortBy, sortOrder, search, type } =
         ColumnDefinitionListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -116,10 +111,6 @@ columnDefinitionRouter.get(
           filters.push(inArray(columnDefinitions.type, types as never[]));
         }
       }
-      if (required !== undefined) {
-        filters.push(eq(columnDefinitions.required, required));
-      }
-
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
 
@@ -256,22 +247,17 @@ columnDefinitionRouter.get(
  *                 description: Human-readable label
  *               type:
  *                 type: string
- *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, currency]
- *               required:
- *                 type: boolean
- *                 default: false
- *               defaultValue:
- *                 type: string
- *                 nullable: true
- *               format:
- *                 type: string
- *                 nullable: true
- *               enumValues:
- *                 type: array
- *                 items:
- *                   type: string
- *                 nullable: true
+ *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, reference-array]
  *               description:
+ *                 type: string
+ *                 nullable: true
+ *               validationPattern:
+ *                 type: string
+ *                 nullable: true
+ *               validationMessage:
+ *                 type: string
+ *                 nullable: true
+ *               canonicalFormat:
  *                 type: string
  *                 nullable: true
  *     responses:
@@ -312,6 +298,9 @@ columnDefinitionRouter.post(
         );
       }
 
+      // Validate regex pattern if provided
+      ColumnDefinitionValidationService.validatePattern(parsed.data.validationPattern);
+
       const { organizationId, userId } = req.application!.metadata;
 
       const factory = new ColumnDefinitionModelFactory();
@@ -321,11 +310,10 @@ columnDefinitionRouter.post(
         key: parsed.data.key,
         label: parsed.data.label,
         type: parsed.data.type,
-        required: parsed.data.required,
-        defaultValue: parsed.data.defaultValue,
-        format: parsed.data.format,
-        enumValues: parsed.data.enumValues,
         description: parsed.data.description,
+        validationPattern: parsed.data.validationPattern,
+        validationMessage: parsed.data.validationMessage,
+        canonicalFormat: parsed.data.canonicalFormat,
       });
 
       const columnDefinition = await DbService.repository.columnDefinitions.create(
@@ -383,21 +371,17 @@ columnDefinitionRouter.post(
  *                 minLength: 1
  *               type:
  *                 type: string
- *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, currency]
- *               required:
- *                 type: boolean
- *               defaultValue:
- *                 type: string
- *                 nullable: true
- *               format:
- *                 type: string
- *                 nullable: true
- *               enumValues:
- *                 type: array
- *                 items:
- *                   type: string
- *                 nullable: true
+ *                 enum: [string, number, boolean, date, datetime, enum, json, array, reference, reference-array]
  *               description:
+ *                 type: string
+ *                 nullable: true
+ *               validationPattern:
+ *                 type: string
+ *                 nullable: true
+ *               validationMessage:
+ *                 type: string
+ *                 nullable: true
+ *               canonicalFormat:
  *                 type: string
  *                 nullable: true
  *     responses:
@@ -469,12 +453,18 @@ columnDefinitionRouter.patch(
         );
       }
 
+      // Validate regex pattern if provided
+      ColumnDefinitionValidationService.validatePattern(parsed.data.validationPattern);
+
       const existing = await DbService.repository.columnDefinitions.findById(id);
       if (!existing) {
         return next(
           new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
         );
       }
+
+      // Block if a revalidation job is active for any entity using this column definition
+      await RevalidationService.assertNoActiveJobForColumnDefinition(id);
 
       // Rule 3: validate type transitions
       if (parsed.data.type && parsed.data.type !== existing.type) {
@@ -511,20 +501,27 @@ columnDefinitionRouter.patch(
 
       logger.info({ id }, "Column definition updated");
 
-      // Rule 4: warn on enum value removal
-      const warnings: string[] = [];
-      if (parsed.data.enumValues && existing.type === "enum" && existing.enumValues) {
-        const removed = (existing.enumValues as string[]).filter(
-          (v) => !(parsed.data.enumValues as string[]).includes(v)
-        );
-        if (removed.length > 0) {
-          warnings.push(`Removed enum values: ${removed.join(", ")}. Existing records with these values will not be automatically updated.`);
+      // Trigger revalidation if normalization-affecting fields changed
+      const REVALIDATION_FIELDS = ["validationPattern", "canonicalFormat"] as const;
+      const needsRevalidation = REVALIDATION_FIELDS.some((field) =>
+        field in parsed.data && (parsed.data as Record<string, unknown>)[field] !== (existing as Record<string, unknown>)[field]
+      );
+
+      if (needsRevalidation) {
+        const { organizationId } = req.application!.metadata;
+        // Enqueue revalidation for all entities that have mappings pointing to this column definition
+        const affectedMappings = await DbService.repository.fieldMappings.findByColumnDefinitionId(id);
+        const affectedEntityIds = [...new Set(affectedMappings.map((m) => m.connectorEntityId))];
+
+        for (const entityId of affectedEntityIds) {
+          await RevalidationService.enqueue(entityId, organizationId, userId).catch((err) => {
+            logger.warn({ id, entityId, err }, "Failed to enqueue revalidation after column definition update");
+          });
         }
       }
 
       return HttpService.success<ColumnDefinitionUpdateResponsePayload>(res, {
         columnDefinition: columnDefinition as unknown as ColumnDefinitionUpdateResponsePayload["columnDefinition"],
-        ...(warnings.length > 0 ? { warnings } : {}),
       });
     } catch (error) {
       logger.error(
@@ -699,6 +696,9 @@ columnDefinitionRouter.delete(
           new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
         );
       }
+
+      // Block if a revalidation job is active for any entity using this column definition
+      await RevalidationService.assertNoActiveJobForColumnDefinition(id);
 
       await ColumnDefinitionValidationService.validateDelete(id);
 

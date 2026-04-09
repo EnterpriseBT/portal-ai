@@ -34,26 +34,9 @@ export function hasEntityStepErrors(errors: EntityStepErrors): boolean {
 
 // ── Column Mapping Step (Step 3) ────────────────────────────────────
 
-const BaseColumnSchema = z.object({
-  key: z.string().trim().min(1, "Column key is required"),
-  label: z.string().trim().min(1, "Column label is required"),
-  type: z.string().min(1, "Column type is required"),
-});
-
-const ReferenceColumnSchema = BaseColumnSchema.extend({
-  type: z.enum(["reference", "reference-array"]),
-  refEntityKey: z.union([
-    z.string().min(1, "Reference entity is required"),
-    z.null(),
-  ]).refine((v) => v !== null && v.length > 0, {
-    message: "Reference entity is required",
-  }),
-  refColumnKey: z.string().min(1).nullable(),
-  refColumnDefinitionId: z.string().min(1).nullable(),
-}).refine(
-  (data) => !!data.refColumnKey || !!data.refColumnDefinitionId,
-  { message: "Reference column is required", path: ["refColumnKey"] }
-);
+const NormalizedKeySchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/, "Normalized key must be lowercase snake_case");
 
 /** Per-entity → per-column error map. Key format: `entityIndex.columnIndex.fieldName` */
 export type ColumnStepErrors = Record<number, Record<number, FormErrors>>;
@@ -62,24 +45,56 @@ export function validateColumnStep(entities: RecommendedEntity[]): ColumnStepErr
   const allErrors: ColumnStepErrors = {};
   for (let ei = 0; ei < entities.length; ei++) {
     const colErrors: Record<number, FormErrors> = {};
+
+    // Per-column validation
     for (let ci = 0; ci < entities[ei].columns.length; ci++) {
-      const col = entities[ei].columns[ci].recommended;
-      const isRef = col.type === "reference" || col.type === "reference-array";
-      const schema = isRef ? ReferenceColumnSchema : BaseColumnSchema;
-      const result = schema.safeParse(col);
-      if (!result.success) {
-        const fieldErrors: FormErrors = {};
-        for (const issue of result.error.issues) {
-          const key = issue.path.join(".");
-          if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+      const col = entities[ei].columns[ci];
+      const fieldErrors: FormErrors = {};
+
+      // Validate existingColumnDefinitionId is present
+      if (!col.existingColumnDefinitionId) {
+        fieldErrors.existingColumnDefinitionId = "Column definition must be selected";
+      }
+
+      // Validate normalizedKey
+      const nk = col.normalizedKey;
+      if (!nk) {
+        fieldErrors.normalizedKey = "Normalized key is required";
+      } else {
+        const nkResult = NormalizedKeySchema.safeParse(nk);
+        if (!nkResult.success) {
+          fieldErrors.normalizedKey = nkResult.error.issues[0].message;
         }
+      }
+
+      if (Object.keys(fieldErrors).length > 0) {
         colErrors[ci] = fieldErrors;
       }
     }
+
+    // Uniqueness check for normalizedKey within the entity
+    const seen = new Map<string, number>();
+    for (let ci = 0; ci < entities[ei].columns.length; ci++) {
+      const col = entities[ei].columns[ci];
+      const nk = col.normalizedKey;
+      if (!nk) continue;
+      const nkResult = NormalizedKeySchema.safeParse(nk);
+      if (!nkResult.success) continue; // skip invalid keys for uniqueness check
+      const prev = seen.get(nk);
+      if (prev !== undefined) {
+        colErrors[ci] = {
+          ...(colErrors[ci] ?? {}),
+          normalizedKey: `Duplicate normalized key "${nk}"`,
+        };
+      }
+      seen.set(nk, ci);
+    }
+
     if (Object.keys(colErrors).length > 0) {
       allErrors[ei] = colErrors;
     }
   }
+
   return allErrors;
 }
 

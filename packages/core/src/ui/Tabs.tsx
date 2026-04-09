@@ -69,16 +69,17 @@ export const Tab = React.forwardRef<HTMLDivElement, TabProps>(
 
 export const TabPanel = React.forwardRef<HTMLDivElement, TabPanelProps>(
   ({ children, value, index, ...props }, ref) => {
+    const active = value === index;
     return (
       <Box
         ref={ref}
         role="tabpanel"
-        hidden={value !== index}
+        hidden={!active}
         id={`tabpanel-${index}`}
         aria-labelledby={`tab-${index}`}
         {...props}
       >
-        {value === index && <Box padding={2}>{children}</Box>}
+        <Box padding={2}>{children}</Box>
       </Box>
     );
   }

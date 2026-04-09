@@ -4,7 +4,6 @@ import type { JobStatus } from "@portalai/core/models";
 import type { ConfirmRequestBody, ConfirmResponsePayload } from "@portalai/core/contracts";
 
 import { sdk } from "../../../api/sdk";
-import { useAuthFetch } from "../../../utils/api.util";
 import { useFileUpload } from "../../../utils/file-upload.util";
 import type { FileUploadProgress, UploadPhase } from "../../../utils/file-upload.util";
 
@@ -20,24 +19,22 @@ export const WORKFLOW_STEPS = [
 ] as const;
 
 export interface RecommendedColumn {
-  action: "match_existing" | "create_new";
   confidence: number;
-  existingColumnDefinitionId: string | null;
-  recommended: {
-    key: string;
-    label: string;
-    type: string;
-    required?: boolean;
-    format?: string | null;
-    enumValues?: string[] | null;
-    description?: string | null;
-    refEntityKey?: string | null;
-    refColumnKey?: string | null;
-    refColumnDefinitionId?: string | null;
-  };
+  existingColumnDefinitionId: string;
+  existingColumnDefinitionKey: string;
   sourceField: string;
   isPrimaryKeyCandidate: boolean;
   sampleValues: string[];
+  /** Field-mapping-level fields (editable per entity-column). */
+  normalizedKey?: string;
+  required?: boolean;
+  defaultValue?: string | null;
+  format?: string | null;
+  enumValues?: string[] | null;
+  /** Reference fields. */
+  refEntityKey?: string | null;
+  refColumnKey?: string | null;
+  refColumnDefinitionId?: string | null;
 }
 
 export interface RecommendedEntity {
@@ -86,6 +83,8 @@ export interface WorkflowState {
   isCancelling: boolean;
 }
 
+export type RecommendedColumnUpdate = Partial<RecommendedColumn>;
+
 export interface UseUploadWorkflowReturn extends WorkflowState {
   addFiles: (newFiles: File[]) => void;
   removeFile: (index: number) => void;
@@ -94,7 +93,7 @@ export interface UseUploadWorkflowReturn extends WorkflowState {
   goNext: () => void;
   goBack: () => void;
   updateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
-  updateColumn: (entityIndex: number, columnIndex: number, updates: Partial<RecommendedColumn>) => void;
+  updateColumn: (entityIndex: number, columnIndex: number, updates: RecommendedColumnUpdate) => void;
   updateConnectorName: (name: string) => void;
   confirm: () => Promise<void>;
   cancel: () => Promise<void>;
@@ -114,19 +113,17 @@ interface BackendRecommendation {
     sourceFileName: string;
     columns: Array<{
       sourceField: string;
-      key: string;
-      label: string;
-      type: string;
-      format: string | null;
-      isPrimaryKey: boolean;
-      required: boolean;
-      action: "match_existing" | "create_new";
-      existingColumnDefinitionId: string | null;
+      existingColumnDefinitionId: string;
+      existingColumnDefinitionKey: string;
       confidence: number;
       sampleValues: string[];
-      refEntityKey?: string | null;
-      refColumnKey?: string | null;
-      refColumnDefinitionId?: string | null;
+      isPrimaryKey: boolean;
+      // Field-mapping-level
+      normalizedKey?: string;
+      required?: boolean;
+      defaultValue?: string | null;
+      format?: string | null;
+      enumValues?: string[] | null;
     }>;
   }>;
 }
@@ -142,22 +139,17 @@ function mapBackendRecommendations(backend: BackendRecommendation): Recommendati
       connectorEntity: { key: entity.entityKey, label: entity.entityLabel },
       sourceFileName: entity.sourceFileName,
       columns: entity.columns.map((col) => ({
-        action: col.action,
         confidence: col.confidence,
         existingColumnDefinitionId: col.existingColumnDefinitionId,
-        recommended: {
-          key: col.key,
-          label: col.label,
-          type: col.type,
-          required: col.required,
-          format: col.format,
-          refEntityKey: col.refEntityKey ?? null,
-          refColumnKey: col.refColumnKey ?? null,
-          refColumnDefinitionId: col.refColumnDefinitionId ?? null,
-        },
+        existingColumnDefinitionKey: col.existingColumnDefinitionKey,
         sourceField: col.sourceField,
         isPrimaryKeyCandidate: col.isPrimaryKey,
         sampleValues: col.sampleValues,
+        normalizedKey: col.normalizedKey ?? col.sourceField,
+        required: col.required ?? false,
+        defaultValue: col.defaultValue ?? null,
+        format: col.format ?? null,
+        enumValues: col.enumValues ?? null,
       })),
     })),
   };
@@ -199,13 +191,13 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
   const [files, setFiles] = useState<File[]>([]);
   // User edits override the initial recommendations from SSE.
   const [editedRecommendations, setEditedRecommendations] = useState<Recommendations | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmResult, setConfirmResult] = useState<ConfirmResponsePayload | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  const { fetchWithAuth } = useAuthFetch();
   const fileUpload = useFileUpload();
+  const confirmMutation = sdk.uploads.confirm(fileUpload.jobId ?? "");
+  const cancelMutation = sdk.jobs.cancel(fileUpload.jobId ?? "");
 
   // SSE subscription — activates once we have a jobId and upload is done
   const shouldStream = fileUpload.phase === "done" || fileUpload.phase === "processing";
@@ -296,7 +288,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
   );
 
   const updateColumn = useCallback(
-    (entityIndex: number, columnIndex: number, updates: Partial<RecommendedColumn>) => {
+    (entityIndex: number, columnIndex: number, updates: RecommendedColumnUpdate) => {
       setEditedRecommendations((prev) => {
         const base = prev ?? sseRecommendations;
         if (!base) return prev;
@@ -326,8 +318,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
 
   const confirm = useCallback(async () => {
     const activeRecs = editedRecommendations ?? sseRecommendations;
-    const jobId = fileUpload.jobId;
-    if (!activeRecs || !jobId) return;
+    if (!activeRecs || !fileUpload.jobId) return;
 
     const body: ConfirmRequestBody = {
       connectorInstanceName: activeRecs.connectorInstance.name,
@@ -337,64 +328,53 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
         sourceFileName: entity.sourceFileName,
         columns: entity.columns.map((col) => ({
           sourceField: col.sourceField,
-          key: col.recommended.key,
-          label: col.recommended.label,
-          type: col.recommended.type as ConfirmRequestBody["entities"][number]["columns"][number]["type"],
-          format: col.recommended.format ?? null,
-          isPrimaryKey: col.isPrimaryKeyCandidate,
-          required: col.recommended.required ?? false,
-          action: col.action,
           existingColumnDefinitionId: col.existingColumnDefinitionId,
-          refEntityKey: col.recommended.refEntityKey ?? null,
-          refColumnKey: col.recommended.refColumnKey ?? null,
-          refColumnDefinitionId: col.recommended.refColumnDefinitionId ?? null,
+          normalizedKey: col.normalizedKey ?? col.sourceField,
+          isPrimaryKey: col.isPrimaryKeyCandidate,
+          required: col.required ?? false,
+          format: col.format ?? null,
+          defaultValue: col.defaultValue ?? null,
+          enumValues: col.enumValues ?? null,
+          refEntityKey: col.refEntityKey ?? null,
+          refColumnKey: col.refColumnKey ?? null,
+          refColumnDefinitionId: col.refColumnDefinitionId ?? null,
         })),
       })),
     };
 
-    setIsConfirming(true);
     setConfirmError(null);
     try {
-      const response = await fetchWithAuth<{ payload: ConfirmResponsePayload }>(
-        `/api/uploads/${encodeURIComponent(jobId)}/confirm`,
-        { method: "POST", body: JSON.stringify(body) },
-      );
-      setConfirmResult(response.payload);
+      const result = await confirmMutation.mutateAsync(body);
+      setConfirmResult(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Confirmation failed";
       setConfirmError(message);
-    } finally {
-      setIsConfirming(false);
     }
-  }, [editedRecommendations, sseRecommendations, fileUpload.jobId, fetchWithAuth]);
+  }, [editedRecommendations, sseRecommendations, fileUpload.jobId, confirmMutation]);
 
   const cancel = useCallback(async () => {
-    const jobId = fileUpload.jobId;
-    if (!jobId) return;
+    if (!fileUpload.jobId) return;
 
     setIsCancelling(true);
     try {
-      await fetchWithAuth(
-        `/api/jobs/${encodeURIComponent(jobId)}/cancel`,
-        { method: "POST" },
-      );
+      await cancelMutation.mutateAsync(undefined as void);
     } catch {
       // Best-effort cancellation
     } finally {
       setIsCancelling(false);
     }
-  }, [fileUpload.jobId, fetchWithAuth]);
+  }, [fileUpload.jobId, cancelMutation]);
 
   const reset = useCallback(() => {
     setUserStep(null);
     setFiles([]);
     setEditedRecommendations(null);
-    setIsConfirming(false);
+    confirmMutation.reset();
     setConfirmError(null);
     setConfirmResult(null);
     setIsCancelling(false);
     fileUpload.reset();
-  }, [fileUpload]);
+  }, [fileUpload, confirmMutation]);
 
   // --- Derived state ---
 
@@ -428,7 +408,7 @@ export const useUploadWorkflow = (): UseUploadWorkflowReturn => {
     parseResults,
     uploadError: fileUpload.error,
     isProcessing,
-    isConfirming,
+    isConfirming: confirmMutation.isPending,
     confirmError,
     confirmResult,
     isCancelling,

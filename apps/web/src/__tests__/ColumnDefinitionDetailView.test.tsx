@@ -15,6 +15,8 @@ let currentFieldMappingListQuery: Partial<ListQuery> = {};
 
 const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
 
+const noopSearch = () => ({ onSearch: jest.fn(() => Promise.resolve([])), onSearchPending: false, onSearchError: null, getById: jest.fn(() => Promise.resolve(null)), getByIdPending: false, getByIdError: null, labelMap: {} });
+
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     columnDefinitions: {
@@ -22,6 +24,10 @@ jest.unstable_mockModule("../api/sdk", () => ({
       update: () => noopMutation,
       delete: () => noopMutation,
       impact: () => ({ data: null, isLoading: false }),
+      search: noopSearch,
+    },
+    connectorEntities: {
+      search: noopSearch,
     },
     fieldMappings: {
       list: () => currentFieldMappingListQuery,
@@ -29,6 +35,7 @@ jest.unstable_mockModule("../api/sdk", () => ({
       update: () => noopMutation,
       delete: () => noopMutation,
       impact: () => ({ data: null, isLoading: false }),
+      searchWithEntity: noopSearch,
     },
   },
   queryKeys: {
@@ -50,11 +57,10 @@ const makeColumnDefinition = (
   key: "first_name",
   label: "First Name",
   type: "string",
-  required: true,
-  defaultValue: null,
-  format: null,
-  enumValues: null,
   description: null,
+  validationPattern: null,
+  validationMessage: null,
+  canonicalFormat: null,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,
@@ -72,6 +78,11 @@ const makeFieldMapping = (
   connectorEntityId: "ce-1",
   columnDefinitionId: "cd-1",
   sourceField: "email",
+  normalizedKey: "email",
+  required: false,
+  defaultValue: null,
+  format: null,
+  enumValues: null,
   isPrimaryKey: false,
   refColumnDefinitionId: null,
   refEntityKey: null,
@@ -109,11 +120,9 @@ describe("ColumnDefinitionDetailView", () => {
       label: "Email Address",
       key: "email_address",
       type: "string",
-      required: true,
       description: "Primary email",
-      format: "RFC5322",
-      defaultValue: "user@example.com",
-      enumValues: null,
+      validationPattern: "^.+@.+$",
+      canonicalFormat: "RFC5322",
     });
     currentGetQuery = {
       data: { columnDefinition: cd },
@@ -132,32 +141,9 @@ describe("ColumnDefinitionDetailView", () => {
     expect(screen.getByRole("heading", { name: "Email Address" })).toBeInTheDocument();
     expect(screen.getByText("email_address")).toBeInTheDocument();
     expect(screen.getByText("string")).toBeInTheDocument();
-    expect(screen.getAllByText("Required").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Primary email/)).toBeInTheDocument();
     expect(screen.getByText("RFC5322")).toBeInTheDocument();
-    expect(screen.getByText(/user@example\.com/)).toBeInTheDocument();
-  });
-
-  it("should display enum values when present", () => {
-    const cd = makeColumnDefinition({
-      type: "enum",
-      enumValues: ["active", "inactive", "pending"],
-    });
-    currentGetQuery = {
-      data: { columnDefinition: cd },
-      isLoading: false,
-      isError: false,
-      isSuccess: true,
-    } as Partial<GetQuery>;
-    currentFieldMappingListQuery = {
-      data: { fieldMappings: [], total: 0, limit: 10, offset: 0 },
-      isLoading: false,
-      isError: false,
-      isSuccess: true,
-    } as Partial<ListQuery>;
-
-    render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
-    expect(screen.getByText(/active, inactive, pending/)).toBeInTheDocument();
+    expect(screen.getByText("^.+@.+$")).toBeInTheDocument();
   });
 
   it("should display field mappings table with mock data", () => {
@@ -195,6 +181,43 @@ describe("ColumnDefinitionDetailView", () => {
     expect(screen.getByText("ce-200")).toBeInTheDocument();
     // Primary key check icon should be present (at least one CheckIcon via testId)
     expect(screen.getByText("Field Mappings")).toBeInTheDocument();
+  });
+
+  it("should display new field mapping columns: normalizedKey, required, defaultValue, format, enumValues", () => {
+    const cd = makeColumnDefinition();
+    const fm1 = makeFieldMapping({
+      id: "fm-1",
+      sourceField: "raw_status",
+      normalizedKey: "status",
+      required: true,
+      defaultValue: "active",
+      format: "lowercase",
+      enumValues: ["active", "inactive"],
+      connectorEntityId: "ce-100",
+    });
+
+    currentGetQuery = {
+      data: { columnDefinition: cd },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<GetQuery>;
+    currentFieldMappingListQuery = {
+      data: { fieldMappings: [fm1], total: 1, limit: 10, offset: 0 },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    } as Partial<ListQuery>;
+
+    render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+    // Column headers
+    expect(screen.getByText("Normalized Key")).toBeInTheDocument();
+    expect(screen.getByText("Default Value")).toBeInTheDocument();
+    // Cell values
+    expect(screen.getByText("status")).toBeInTheDocument();
+    expect(screen.getByText("active")).toBeInTheDocument();
+    expect(screen.getByText("lowercase")).toBeInTheDocument();
+    expect(screen.getByText("active, inactive")).toBeInTheDocument();
   });
 
   it("should display empty state when no field mappings exist", () => {

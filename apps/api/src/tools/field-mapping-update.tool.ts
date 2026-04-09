@@ -10,12 +10,17 @@ const InputSchema = z.object({
   fieldMappingId: z.string().describe("The field mapping ID to update"),
   sourceField: z.string().min(1).optional().describe("New source field name"),
   isPrimaryKey: z.boolean().optional().describe("Whether this mapping is a primary key"),
+  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/).optional().describe("Key used in normalizedData for this entity-column pair"),
+  required: z.boolean().optional().describe("Whether this field is required for this source"),
+  defaultValue: z.string().nullable().optional().describe("Default fill value when source value is missing"),
+  format: z.string().nullable().optional().describe("Per-source parse format instructions"),
+  enumValues: z.array(z.string()).nullable().optional().describe("Allowed values for this field"),
 });
 
 export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_update";
   name = "Field Mapping Update Tool";
-  description = "Updates a field mapping's source field or primary key flag.";
+  description = "Updates a field mapping's source field, primary key flag, normalizedKey, required, defaultValue, format, or enumValues.";
 
   get schema() { return InputSchema; }
 
@@ -38,6 +43,11 @@ export class FieldMappingUpdateTool extends Tool<typeof InputSchema> {
           const updateData: Record<string, unknown> = { updated: Date.now(), updatedBy: userId };
           if (fields.sourceField !== undefined) updateData.sourceField = fields.sourceField;
           if (fields.isPrimaryKey !== undefined) updateData.isPrimaryKey = fields.isPrimaryKey;
+          if (fields.normalizedKey !== undefined) updateData.normalizedKey = fields.normalizedKey;
+          if (fields.required !== undefined) updateData.required = fields.required;
+          if (fields.defaultValue !== undefined) updateData.defaultValue = fields.defaultValue;
+          if (fields.format !== undefined) updateData.format = fields.format;
+          if (fields.enumValues !== undefined) updateData.enumValues = fields.enumValues;
 
           await DbService.repository.fieldMappings.update(fieldMappingId, updateData as never);
           AnalyticsService.applyFieldMappingUpdate(stationId, {

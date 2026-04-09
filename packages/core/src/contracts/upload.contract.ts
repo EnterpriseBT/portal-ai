@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { JobSchema, ColumnRecommendationActionEnum } from "../models/job.model.js";
+import { JobSchema } from "../models/job.model.js";
 
 // --- Request Schemas ---
 
@@ -48,14 +48,13 @@ export type ProcessResponsePayload = z.infer<typeof ProcessResponsePayloadSchema
 
 export const ConfirmColumnSchema = z.object({
   sourceField: z.string(),
-  key: z.string(),
-  label: z.string(),
-  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array", "currency"]),
+  existingColumnDefinitionId: z.string(),
+  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/),
   format: z.string().nullable(),
   isPrimaryKey: z.boolean(),
   required: z.boolean(),
-  action: ColumnRecommendationActionEnum,
-  existingColumnDefinitionId: z.string().nullable(),
+  defaultValue: z.string().nullable().optional(),
+  enumValues: z.array(z.string()).nullable().optional(),
   // Reference fields (populated when type === "reference")
   refEntityKey: z.string().nullable().optional(),
   refColumnKey: z.string().nullable().optional(),
@@ -91,11 +90,13 @@ export const ConfirmResponseEntitySchema = z.object({
     sourceField: z.string(),
     columnDefinitionId: z.string(),
     isPrimaryKey: z.boolean(),
+    normalizedKey: z.string(),
   })),
   importResult: z.object({
     created: z.number(),
     updated: z.number(),
     unchanged: z.number(),
+    invalid: z.number(),
   }).optional(),
 });
 export type ConfirmResponseEntity = z.infer<typeof ConfirmResponseEntitySchema>;

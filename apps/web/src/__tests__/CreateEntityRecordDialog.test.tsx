@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 // Mock react-markdown and remark-gfm so jsdom doesn't choke on ESM
 jest.unstable_mockModule("react-markdown", () => ({
@@ -16,11 +16,11 @@ const { CreateEntityRecordDialog } = await import(
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
-const columns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Name", type: "string", required: true, enumValues: null, defaultValue: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
-  { key: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null },
+const columns: ResolvedColumn[] = [
+  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: true, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "metadata", normalizedKey: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
 ];
 
 const defaultProps = {
@@ -66,8 +66,8 @@ describe("CreateEntityRecordDialog — rendering", () => {
   });
 
   it("pre-fills default values from columns", () => {
-    const columnsWithDefault: ColumnDefinitionSummary[] = [
-      { key: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: "Default Name" },
+    const columnsWithDefault: ResolvedColumn[] = [
+      { key: "name", normalizedKey: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: "Default Name", validationPattern: null, canonicalFormat: null, format: null },
     ];
     render(<CreateEntityRecordDialog {...defaultProps} columns={columnsWithDefault} />);
     expect(screen.getByLabelText("Name")).toHaveValue("Default Name");

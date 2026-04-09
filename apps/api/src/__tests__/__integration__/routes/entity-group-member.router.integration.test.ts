@@ -138,11 +138,10 @@ function createColumnDef(organizationId: string, overrides?: Partial<Record<stri
     key: `col_${generateId().replace(/-/g, "").slice(0, 8)}`,
     label: "Email",
     type: "string",
-    required: false,
-    defaultValue: null,
-    format: null,
-    enumValues: null,
     description: null,
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -159,6 +158,7 @@ function createFieldMapping(
   columnDefinitionId: string,
   overrides?: Partial<Record<string, unknown>>
 ) {
+  const uniqueSuffix = generateId().replace(/-/g, "").slice(0, 8);
   return {
     id: generateId(),
     organizationId,
@@ -166,6 +166,11 @@ function createFieldMapping(
     columnDefinitionId,
     sourceField: "email",
     isPrimaryKey: false,
+    normalizedKey: `nk_${uniqueSuffix}`,
+    required: false,
+    defaultValue: null,
+    format: null,
+    enumValues: null,
     refColumnDefinitionId: null,
     refEntityKey: null,
     refBidirectionalFieldMappingId: null,
@@ -193,6 +198,8 @@ function createEntityRecord(
     sourceId: `src-${generateId().slice(0, 8)}`,
     checksum: "abc123",
     syncedAt: now,
+    validationErrors: null,
+    isValid: true,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,

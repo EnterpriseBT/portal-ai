@@ -2,7 +2,7 @@ import React, { useState } from "react";
 
 import type {
   EntityRecordPatchRequestBody,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 
@@ -20,7 +20,7 @@ import {
 export interface EditEntityRecordDialogProps {
   open: boolean;
   onClose: () => void;
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   normalizedData: Record<string, unknown>;
   onSubmit: (body: EntityRecordPatchRequestBody) => void;
   isPending?: boolean;
@@ -28,7 +28,7 @@ export interface EditEntityRecordDialogProps {
 }
 
 const EditForm: React.FC<{
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   normalizedData: Record<string, unknown>;
   onSubmit: (body: EntityRecordPatchRequestBody) => void;
   onClose: () => void;
@@ -61,7 +61,7 @@ const EditForm: React.FC<{
   const handleSubmit = () => {
     // Mark all fields as touched
     const allTouched: Record<string, boolean> = {};
-    for (const col of columns) allTouched[col.key] = true;
+    for (const col of columns) allTouched[col.normalizedKey] = true;
     setTouched(allTouched);
 
     // Validate required fields
@@ -82,8 +82,8 @@ const EditForm: React.FC<{
     let hasChanges = false;
     for (const col of columns) {
       if (
-        JSON.stringify(serializedData[col.key]) !==
-        JSON.stringify(normalizedData[col.key])
+        JSON.stringify(serializedData[col.normalizedKey]) !==
+        JSON.stringify(normalizedData[col.normalizedKey])
       ) {
         hasChanges = true;
         break;
@@ -131,13 +131,13 @@ const EditForm: React.FC<{
         </Typography>
         {columns.map((col, i) => (
           <DynamicRecordField
-            key={col.key}
+            key={col.normalizedKey}
             column={col}
-            value={values[col.key]}
+            value={values[col.normalizedKey]}
             onChange={handleChange}
-            onBlur={() => handleBlur(col.key)}
-            error={errors[col.key]}
-            touched={touched[col.key]}
+            onBlur={() => handleBlur(col.normalizedKey)}
+            error={errors[col.normalizedKey]}
+            touched={touched[col.normalizedKey]}
             inputRef={i === 0 ? firstRef : undefined}
             disabled={isPending}
           />

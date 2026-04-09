@@ -17,7 +17,6 @@ export const BooleanTrue: Story = { args: { value: true, type: "boolean" } };
 export const BooleanFalse: Story = { args: { value: false, type: "boolean" } };
 export const DateType: Story = { args: { value: "2024-06-15", type: "date" } };
 export const DatetimeType: Story = { args: { value: 1718438400000, type: "datetime" } };
-export const CurrencyType: Story = { args: { value: 1299.99, type: "currency" } };
 export const JsonObject: Story = {
   args: {
     value: { id: 1, name: "Alice", roles: ["admin", "editor"], meta: { active: true } },

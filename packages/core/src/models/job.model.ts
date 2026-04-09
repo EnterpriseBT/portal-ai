@@ -31,6 +31,7 @@ export const TERMINAL_JOB_STATUSES: JobStatus[] = ["completed", "failed", "cance
 export const JobTypeEnum = z.enum([
   "file_upload",
   "system_check",
+  "revalidation",
 ]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
@@ -89,37 +90,30 @@ export const FileParseResultSchema = z.object({
 });
 export type FileParseResult = z.infer<typeof FileParseResultSchema>;
 
-/** Action the user should take for a column recommendation. */
-export const ColumnRecommendationActionEnum = z.enum([
-  "match_existing",
-  "create_new",
-]);
-export type ColumnRecommendationAction = z.infer<typeof ColumnRecommendationActionEnum>;
-
 /** Per-column recommendation produced by AI analysis or heuristic fallback. */
 export const FileUploadColumnRecommendationSchema = z.object({
   /** Source column name from the CSV header. */
   sourceField: z.string(),
-  /** Recommended column definition key (snake_case). */
-  key: z.string(),
-  /** Human-readable label for the column. */
-  label: z.string(),
-  /** Inferred data type. */
-  type: z.enum(["string", "number", "boolean", "date", "datetime", "enum", "json", "array", "reference", "reference-array", "currency"]),
-  /** Optional format hint (e.g. "YYYY-MM-DD", "email", "url"). */
-  format: z.string().nullable(),
-  /** Whether this column is a candidate primary key. */
-  isPrimaryKey: z.boolean(),
-  /** Whether the column should be required. */
-  required: z.boolean(),
-  /** Match or create action. */
-  action: ColumnRecommendationActionEnum,
-  /** ID of an existing column definition when action is "match_existing". */
-  existingColumnDefinitionId: z.string().nullable(),
+  /** ID of the matched existing column definition. */
+  existingColumnDefinitionId: z.string(),
+  /** Key of the matched existing column definition. */
+  existingColumnDefinitionKey: z.string(),
   /** Confidence score for the recommendation (0-1). */
   confidence: z.number().min(0).max(1),
   /** Sample values from the parsed data. */
   sampleValues: z.array(z.string()),
+  /** Optional format hint (e.g. "YYYY-MM-DD", "email", "url"). Mapping-level. */
+  format: z.string().nullable(),
+  /** Whether this column is a candidate primary key. */
+  isPrimaryKey: z.boolean(),
+  /** Whether the column should be required. Mapping-level. */
+  required: z.boolean(),
+  /** Key used in normalizedData. Mapping-level. */
+  normalizedKey: z.string().optional(),
+  /** Default fill value when source value is missing. Mapping-level. */
+  defaultValue: z.string().nullable().optional(),
+  /** Allowed values for enum-like columns. Mapping-level. */
+  enumValues: z.array(z.string()).nullable().optional(),
 });
 export type FileUploadColumnRecommendation = z.infer<typeof FileUploadColumnRecommendationSchema>;
 
@@ -151,6 +145,24 @@ export const FileUploadResultSchema = z.object({
 });
 export type FileUploadResult = z.infer<typeof FileUploadResultSchema>;
 
+/** revalidation — re-runs normalization pipeline on all records for an entity. */
+export const RevalidationMetadataSchema = z.object({
+  connectorEntityId: z.string(),
+  organizationId: z.string(),
+});
+export type RevalidationMetadata = z.infer<typeof RevalidationMetadataSchema>;
+
+export const RevalidationResultSchema = z.object({
+  total: z.number(),
+  valid: z.number(),
+  invalid: z.number(),
+  errors: z.array(z.object({
+    recordId: z.string(),
+    errors: z.array(z.object({ field: z.string(), error: z.string() })),
+  })),
+});
+export type RevalidationResult = z.infer<typeof RevalidationResultSchema>;
+
 // --- Type Map ---
 
 /**
@@ -164,6 +176,7 @@ export type FileUploadResult = z.infer<typeof FileUploadResultSchema>;
 export interface JobTypeMap {
   system_check: { metadata: SystemCheckMetadata; result: SystemCheckResult };
   file_upload: { metadata: FileUploadMetadata; result: FileUploadResult };
+  revalidation: { metadata: RevalidationMetadata; result: RevalidationResult };
 }
 
 /**
@@ -178,6 +191,7 @@ export const JOB_TYPE_SCHEMAS: {
 } = {
   system_check: { metadata: SystemCheckMetadataSchema, result: SystemCheckResultSchema },
   file_upload: { metadata: FileUploadMetadataSchema, result: FileUploadResultSchema },
+  revalidation: { metadata: RevalidationMetadataSchema, result: RevalidationResultSchema },
 };
 
 // --- Schema ---

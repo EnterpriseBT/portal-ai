@@ -21,6 +21,7 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
   disabled,
   required,
   size = "small",
+  fullWidth,
   inputRef,
 }) => {
   const selectedOptions = value
@@ -37,6 +38,7 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
       getOptionLabel={(option) => option.label}
       disabled={disabled}
       size={size}
+      fullWidth={fullWidth}
       renderInput={(params) => (
         <TextField
           {...params}

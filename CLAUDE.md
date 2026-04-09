@@ -27,8 +27,8 @@ npm run storybook        # Storybook (core :7006, web :6007)
 ### API Database Scripts (run from `apps/api/`)
 
 ```bash
-npm run db:generate      # Generate SQL migration from schema changes
-npm run db:migrate       # Apply pending migrations
+npm run db:generate -- --name <descriptive-name>  # Generate named SQL migration from schema changes
+npm run db:migrate                                # Apply pending migrations
 npm run db:push          # Push schema directly (dev only)
 npm run db:studio        # Open Drizzle Studio GUI
 npm run db:seed          # Seed the database
@@ -200,7 +200,7 @@ This project enforces a dual-schema approach — Zod models in `@portalai/core` 
 2. **Define Drizzle table** in `apps/api/src/db/schema/<entity>.table.ts` — use `baseColumns`
 3. **Generate drizzle-zod schemas** in `apps/api/src/db/schema/zod.ts` — `createSelectSchema` / `createInsertSchema`
 4. **Add type guards** in `apps/api/src/db/schema/type-checks.ts` — bidirectional `IsAssignable` checks
-5. **Generate & apply migration** — `npm run db:generate` then `npm run db:migrate`
+5. **Generate & apply migration** — `npm run db:generate -- --name <descriptive-name>` then `npm run db:migrate`
 
 If either side is updated without the other, **the build fails**.
 

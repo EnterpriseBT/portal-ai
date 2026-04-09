@@ -49,8 +49,8 @@ const stubRecordsList = {
       },
     ],
     columns: [
-      { key: "first_name", label: "First Name", type: "string" as const, required: false, enumValues: null, defaultValue: null },
-      { key: "email", label: "Email", type: "string" as const, required: false, enumValues: null, defaultValue: null },
+      { key: "first_name", normalizedKey: "first_name", label: "First Name", type: "string" as const, required: false, enumValues: null, defaultValue: null, canonicalFormat: null },
+      { key: "email", normalizedKey: "email", label: "Email", type: "string" as const, required: false, enumValues: null, defaultValue: null, canonicalFormat: null },
     ],
     source: "cache" as const,
     total: 1,

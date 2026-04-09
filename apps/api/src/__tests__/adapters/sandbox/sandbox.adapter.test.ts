@@ -100,7 +100,12 @@ const stubMappings = [
     connectorEntityId: "ent-1",
     columnDefinitionId: "cd-1",
     sourceField: "First Name",
+    normalizedKey: "first_name",
     isPrimaryKey: false,
+    required: false,
+    defaultValue: null,
+    enumValues: null,
+    format: null,
     organizationId: "org-1",
     created: Date.now(),
     createdBy: "system",
@@ -114,7 +119,12 @@ const stubMappings = [
     connectorEntityId: "ent-1",
     columnDefinitionId: "cd-2",
     sourceField: "Email",
+    normalizedKey: "email",
     isPrimaryKey: true,
+    required: true,
+    defaultValue: null,
+    enumValues: null,
+    format: "email",
     organizationId: "org-1",
     created: Date.now(),
     createdBy: "system",
@@ -136,6 +146,8 @@ const stubColDefs = [
     defaultValue: null,
     format: null,
     enumValues: null,
+    validationPattern: null,
+    canonicalFormat: null,
     description: null,
     created: Date.now(),
     createdBy: "system",
@@ -154,6 +166,8 @@ const stubColDefs = [
     defaultValue: null,
     format: "email",
     enumValues: null,
+    validationPattern: null,
+    canonicalFormat: null,
     description: null,
     created: Date.now(),
     createdBy: "system",
@@ -266,8 +280,8 @@ describe("sandboxAdapter", () => {
 
       expect(result.columns).toEqual(
         expect.arrayContaining([
-          { key: "first_name", label: "First Name", type: "string", required: false, enumValues: null, defaultValue: null },
-          { key: "email", label: "Email", type: "string", required: true, enumValues: null, defaultValue: null },
+          { key: "first_name", normalizedKey: "first_name", label: "First Name", type: "string", required: false, enumValues: null, defaultValue: null, format: null, validationPattern: null, canonicalFormat: null },
+          { key: "email", normalizedKey: "email", label: "Email", type: "string", required: true, enumValues: null, defaultValue: null, format: "email", validationPattern: null, canonicalFormat: null },
         ])
       );
     });

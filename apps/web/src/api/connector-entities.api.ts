@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useState } from "react";
 
+import { useMutation } from "@tanstack/react-query";
 import type {
   ApiSuccessResponse,
   ConnectorEntityCreateRequestBody,
@@ -13,46 +14,18 @@ import type {
   ConnectorEntityPatchResponsePayload,
 } from "@portalai/core/contracts";
 import type { ConnectorEntity } from "@portalai/core/models";
-import { useAsyncFilterOptions } from "@portalai/core/ui";
-import type { AsyncFilterOptionsConfig } from "@portalai/core/ui";
-import { useAuthQuery, useAuthMutation, useAuthFetch } from "../utils/api.util";
+import type { SelectOption } from "@portalai/core/ui";
+import { useAuthQuery, useAuthMutation, useAuthFetch, type ApiError } from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
-import type { QueryOptions } from "./types";
+import type { QueryOptions, SearchHookOptions, SearchResult } from "./types";
 
-const CONNECTOR_ENTITY_SEARCH_BASE = {
-  url: "/api/connector-entities",
-  getItems: (res: ApiSuccessResponse<ConnectorEntityListResponsePayload>) =>
-    res.payload.connectorEntities,
-  mapItem: (entity: ConnectorEntity) => ({
-    value: entity.id,
-    label: entity.label,
-  }),
-} as const;
+const CONNECTOR_ENTITIES_URL = "/api/connector-entities";
 
-export function useConnectorEntitySearch(options?: {
-  mapItem?: (entity: ConnectorEntity) => { value: string; label: string };
-  defaultParams?: Record<string, string>;
-}) {
-  const { fetchWithAuth } = useAuthFetch();
-
-  const config = useMemo<
-    AsyncFilterOptionsConfig<
-      ApiSuccessResponse<ConnectorEntityListResponsePayload>,
-      ConnectorEntity
-    >
-  >(
-    () => ({
-      ...CONNECTOR_ENTITY_SEARCH_BASE,
-      fetcher: fetchWithAuth,
-      ...(options?.mapItem && { mapItem: options.mapItem }),
-      ...(options?.defaultParams && { defaultParams: options.defaultParams }),
-    }),
-    [fetchWithAuth, options]
-  );
-
-  return useAsyncFilterOptions(config);
-}
+const defaultMapItem = (entity: ConnectorEntity): SelectOption => ({
+  value: entity.id,
+  label: entity.label,
+});
 
 export const connectorEntities = {
   list: (
@@ -61,7 +34,7 @@ export const connectorEntities = {
   ) =>
     useAuthQuery<ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload>(
       queryKeys.connectorEntities.list(params),
-      buildUrl("/api/connector-entities", params),
+      buildUrl(CONNECTOR_ENTITIES_URL, params),
       undefined,
       options
     ),
@@ -72,7 +45,7 @@ export const connectorEntities = {
   ) =>
     useAuthQuery<ConnectorEntityGetResponsePayload>(
       queryKeys.connectorEntities.get(id),
-      buildUrl(`/api/connector-entities/${encodeURIComponent(id)}`),
+      buildUrl(`${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`),
       undefined,
       options
     ),
@@ -83,26 +56,72 @@ export const connectorEntities = {
   ) =>
     useAuthQuery<ConnectorEntityImpactResponsePayload>(
       queryKeys.connectorEntities.impact(id),
-      buildUrl(`/api/connector-entities/${encodeURIComponent(id)}/impact`),
+      buildUrl(`${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}/impact`),
       undefined,
       options
     ),
 
   update: (id: string) =>
     useAuthMutation<ConnectorEntityPatchResponsePayload, ConnectorEntityPatchRequestBody>({
-      url: `/api/connector-entities/${encodeURIComponent(id)}`,
+      url: `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),
 
   create: () =>
     useAuthMutation<ConnectorEntityCreateResponsePayload, ConnectorEntityCreateRequestBody>({
-      url: "/api/connector-entities",
+      url: CONNECTOR_ENTITIES_URL,
       method: "POST",
     }),
 
   delete: (id: string) =>
     useAuthMutation<void, void>({
-      url: `/api/connector-entities/${encodeURIComponent(id)}`,
+      url: `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`,
       method: "DELETE",
     }),
+
+  search: <TOption extends SelectOption = SelectOption>(
+    options?: SearchHookOptions<ConnectorEntity, TOption>
+  ): SearchResult<TOption> => {
+    const { fetchWithAuth } = useAuthFetch();
+    const mapFn = (options?.mapItem ?? defaultMapItem) as (item: ConnectorEntity) => TOption;
+    const [labelMap, setLabelMap] = useState<Record<string, string>>({});
+
+    const searchMutation = useMutation<TOption[], ApiError, string>({
+      mutationFn: async (query: string) => {
+        const params: Record<string, string> = { ...options?.defaultParams };
+        if (query) params.search = query;
+        const res = await fetchWithAuth<ApiSuccessResponse<ConnectorEntityListResponsePayload>>(
+          buildUrl(CONNECTOR_ENTITIES_URL, params)
+        );
+        const mapped = res.payload.connectorEntities.map(mapFn);
+        setLabelMap((prev) => {
+          const next = { ...prev };
+          for (const opt of mapped) next[String(opt.value)] = opt.label;
+          return next;
+        });
+        return mapped;
+      },
+    });
+
+    const getByIdMutation = useMutation<TOption | null, ApiError, string>({
+      mutationFn: async (id: string) => {
+        const res = await fetchWithAuth<ApiSuccessResponse<ConnectorEntityGetResponsePayload>>(
+          `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`
+        );
+        const option = mapFn(res.payload.connectorEntity);
+        setLabelMap((prev) => ({ ...prev, [String(option.value)]: option.label }));
+        return option;
+      },
+    });
+
+    return {
+      onSearch: searchMutation.mutateAsync,
+      onSearchPending: searchMutation.isPending,
+      onSearchError: searchMutation.error,
+      getById: getByIdMutation.mutateAsync,
+      getByIdPending: getByIdMutation.isPending,
+      getByIdError: getByIdMutation.error,
+      labelMap,
+    };
+  },
 };

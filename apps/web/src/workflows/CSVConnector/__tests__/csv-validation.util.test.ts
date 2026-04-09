@@ -8,23 +8,19 @@ import type { RecommendedEntity, RecommendedColumn } from "../utils/upload-workf
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function makeColumn(overrides: Partial<RecommendedColumn["recommended"]> = {}): RecommendedColumn {
+function makeColumn(overrides: Partial<RecommendedColumn> = {}): RecommendedColumn {
   return {
-    action: "create_new",
     confidence: 0.9,
-    existingColumnDefinitionId: null,
-    recommended: {
-      key: "col_key",
-      label: "Col Label",
-      type: "string",
-      format: null,
-      enumValues: null,
-      description: null,
-      ...overrides,
-    },
+    existingColumnDefinitionId: "cd-text",
+    existingColumnDefinitionKey: "text",
     sourceField: "source",
     isPrimaryKeyCandidate: false,
     sampleValues: [],
+    normalizedKey: "col_key",
+    format: null,
+    enumValues: null,
+    defaultValue: null,
+    ...overrides,
   };
 }
 
@@ -104,138 +100,97 @@ describe("validateColumnStep", () => {
     expect(hasColumnStepErrors(errors)).toBe(false);
   });
 
-  it("returns error when column key is empty", () => {
+  // ── existingColumnDefinitionId validation ──────────────────────────
+
+  it("returns error when existingColumnDefinitionId is empty string", () => {
     const errors = validateColumnStep([
-      makeEntity("e", "E", [makeColumn({ key: "" })]),
+      makeEntity("e", "E", [makeColumn({ existingColumnDefinitionId: "" })]),
     ]);
     expect(hasColumnStepErrors(errors)).toBe(true);
-    expect(errors[0][0].key).toBe("Column key is required");
+    expect(errors[0][0].existingColumnDefinitionId).toBe("Column definition must be selected");
   });
 
-  it("returns error when column label is empty", () => {
+  it("passes when existingColumnDefinitionId is a valid string", () => {
     const errors = validateColumnStep([
-      makeEntity("e", "E", [makeColumn({ label: "" })]),
-    ]);
-    expect(errors[0][0].label).toBe("Column label is required");
-  });
-
-  it("returns error when column type is empty", () => {
-    const errors = validateColumnStep([
-      makeEntity("e", "E", [makeColumn({ type: "" })]),
-    ]);
-    expect(errors[0][0].type).toBe("Column type is required");
-  });
-
-  it("does not require refEntityKey for non-reference types", () => {
-    const errors = validateColumnStep([
-      makeEntity("e", "E", [makeColumn({ type: "number" })]),
+      makeEntity("e", "E", [makeColumn({ existingColumnDefinitionId: "cd-email" })]),
     ]);
     expect(hasColumnStepErrors(errors)).toBe(false);
   });
 
-  it("returns error when reference type is missing refEntityKey", () => {
+  // ── normalizedKey validation ──────────────────────────────────────
+
+  it("returns error when normalizedKey is missing", () => {
     const errors = validateColumnStep([
-      makeEntity("e", "E", [
-        makeColumn({
-          type: "reference",
-          refEntityKey: null,
-          refColumnKey: null,
-        }),
-      ]),
+      makeEntity("e", "E", [makeColumn({ normalizedKey: undefined })]),
     ]);
     expect(hasColumnStepErrors(errors)).toBe(true);
-    expect(errors[0][0].refEntityKey).toBe("Reference entity is required");
+    expect(errors[0][0].normalizedKey).toBe("Normalized key is required");
   });
 
-  it("returns error when reference-array type is missing refEntityKey", () => {
+  it("returns error when normalizedKey has uppercase letters", () => {
     const errors = validateColumnStep([
-      makeEntity("e", "E", [
-        makeColumn({
-          type: "reference-array",
-          refEntityKey: null,
-          refColumnKey: null,
-        }),
-      ]),
+      makeEntity("e", "E", [makeColumn({ normalizedKey: "MyColumn" })]),
     ]);
     expect(hasColumnStepErrors(errors)).toBe(true);
-    expect(errors[0][0].refEntityKey).toBe("Reference entity is required");
+    expect(errors[0][0].normalizedKey).toBe("Normalized key must be lowercase snake_case");
   });
 
-  it("returns error when reference has entity but no column", () => {
+  it("returns error when normalizedKey has special chars", () => {
+    const errors = validateColumnStep([
+      makeEntity("e", "E", [makeColumn({ normalizedKey: "my-column" })]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(true);
+    expect(errors[0][0].normalizedKey).toBe("Normalized key must be lowercase snake_case");
+  });
+
+  it("passes when normalizedKey is valid snake_case", () => {
+    const errors = validateColumnStep([
+      makeEntity("e", "E", [makeColumn({ normalizedKey: "my_column_2" })]),
+    ]);
+    expect(hasColumnStepErrors(errors)).toBe(false);
+  });
+
+  // ── normalizedKey uniqueness ──────────────────────────────────────
+
+  it("flags duplicate normalizedKey within same entity", () => {
     const errors = validateColumnStep([
       makeEntity("e", "E", [
-        makeColumn({
-          type: "reference",
-          refEntityKey: "other",
-          refColumnKey: null,
-          refColumnDefinitionId: null,
-        }),
+        makeColumn({ normalizedKey: "email", sourceField: "Email" }),
+        makeColumn({ normalizedKey: "email", sourceField: "Contact Email" }),
       ]),
     ]);
     expect(hasColumnStepErrors(errors)).toBe(true);
-    expect(errors[0][0].refColumnKey).toBe("Reference column is required");
+    expect(errors[0][1].normalizedKey).toMatch(/Duplicate/);
   });
 
-  it("passes when reference has entity and refColumnKey", () => {
+  it("allows duplicate normalizedKey across different entities", () => {
     const errors = validateColumnStep([
-      makeEntity("e", "E", [
-        makeColumn({
-          type: "reference",
-          refEntityKey: "other",
-          refColumnKey: "id",
-          refColumnDefinitionId: null,
-        }),
-      ]),
+      makeEntity("a", "A", [makeColumn({ normalizedKey: "email" })]),
+      makeEntity("b", "B", [makeColumn({ normalizedKey: "email" })]),
     ]);
     expect(hasColumnStepErrors(errors)).toBe(false);
   });
 
-  it("passes when reference has entity and refColumnDefinitionId", () => {
-    const errors = validateColumnStep([
-      makeEntity("e", "E", [
-        makeColumn({
-          type: "reference",
-          refEntityKey: "other",
-          refColumnKey: null,
-          refColumnDefinitionId: "cd_001",
-        }),
-      ]),
-    ]);
-    expect(hasColumnStepErrors(errors)).toBe(false);
-  });
-
-  it("does not require format for any type", () => {
-    const errors = validateColumnStep([
-      makeEntity("e", "E", [makeColumn({ type: "date", format: null })]),
-    ]);
-    expect(hasColumnStepErrors(errors)).toBe(false);
-  });
-
-  it("does not require enumValues for enum type", () => {
-    const errors = validateColumnStep([
-      makeEntity("e", "E", [makeColumn({ type: "enum", enumValues: null })]),
-    ]);
-    expect(hasColumnStepErrors(errors)).toBe(false);
-  });
+  // ── Multiple columns and entities ─────────────────────────────────
 
   it("validates columns across multiple entities independently", () => {
     const errors = validateColumnStep([
       makeEntity("a", "A", [makeColumn()]),
-      makeEntity("b", "B", [makeColumn({ key: "" })]),
+      makeEntity("b", "B", [makeColumn({ existingColumnDefinitionId: "" })]),
     ]);
     expect(errors[0]).toBeUndefined();
     expect(errors[1]).toBeDefined();
-    expect(errors[1][0].key).toBe("Column key is required");
+    expect(errors[1][0].existingColumnDefinitionId).toBe("Column definition must be selected");
   });
 
   it("validates multiple columns within the same entity", () => {
     const errors = validateColumnStep([
       makeEntity("e", "E", [
         makeColumn(),
-        makeColumn({ label: "" }),
+        makeColumn({ normalizedKey: undefined }),
       ]),
     ]);
     expect(errors[0][0]).toBeUndefined();
-    expect(errors[0][1].label).toBe("Column label is required");
+    expect(errors[0][1].normalizedKey).toBe("Normalized key is required");
   });
 });

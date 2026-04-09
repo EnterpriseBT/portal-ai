@@ -17,6 +17,11 @@ export const FieldMappingSchema = CoreSchema.extend({
   columnDefinitionId: z.string(),
   sourceField: z.string(),
   isPrimaryKey: z.boolean(),
+  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/),
+  required: z.boolean(),
+  defaultValue: z.string().nullable(),
+  format: z.string().nullable(),
+  enumValues: z.array(z.string()).nullable(),
 
   // Reference fields (populated when the mapped column has type "reference" or "reference-array")
   refColumnDefinitionId: z.string().nullable(),

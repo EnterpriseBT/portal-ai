@@ -80,7 +80,7 @@ function createConnEntity(organizationId: string, connectorInstanceId: string) {
 function createColumnDef(organizationId: string, key: string) {
   return {
     id: generateId(), organizationId, key, label: key, type: "string",
-    required: false, defaultValue: null, format: null, enumValues: null, description: null,
+    description: null, validationPattern: null, validationMessage: null, canonicalFormat: null,
     created: now, createdBy: "SYSTEM_TEST",
     updated: null, updatedBy: null, deleted: null, deletedBy: null,
   };
@@ -89,7 +89,8 @@ function createColumnDef(organizationId: string, key: string) {
 function createFieldMapping(organizationId: string, connectorEntityId: string, columnDefinitionId: string, sourceField: string) {
   return {
     id: generateId(), organizationId, connectorEntityId, columnDefinitionId, sourceField,
-    isPrimaryKey: false,
+    isPrimaryKey: false, normalizedKey: sourceField.toLowerCase().replace(/\s+/g, "_"),
+    required: false, defaultValue: null, format: null, enumValues: null,
     created: now, createdBy: "SYSTEM_TEST",
     updated: null, updatedBy: null, deleted: null, deletedBy: null,
   };
@@ -107,6 +108,7 @@ function createSyncRecord(
     data, normalizedData,
     sourceId, checksum: generateId().slice(0, 16),
     syncedAt: now, origin: "sync" as const,
+    validationErrors: null, isValid: true,
     created: now, createdBy: "SYSTEM_TEST",
     updated: null, updatedBy: null, deleted: null, deletedBy: null,
   };

@@ -8,12 +8,15 @@
 import { Readable } from "node:stream";
 import crypto from "crypto";
 
+import { eq } from "drizzle-orm";
 import { parse } from "csv-parse";
 
 import { EntityRecordModelFactory } from "@portalai/core/models";
 
 import { S3Service } from "./s3.service.js";
 import { DbService } from "./db.service.js";
+import { NormalizationService } from "./normalization.service.js";
+import { fieldMappings } from "../db/schema/index.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "csv-import-service" });
@@ -30,11 +33,7 @@ export interface CsvImportResult {
   created: number;
   updated: number;
   unchanged: number;
-}
-
-export interface FieldMappingInfo {
-  sourceField: string;
-  columnDefinitionKey: string;
+  invalid: number;
 }
 
 interface ImportEntityParams {
@@ -42,7 +41,6 @@ interface ImportEntityParams {
   connectorEntityId: string;
   organizationId: string;
   userId: string;
-  fieldMappings: FieldMappingInfo[];
 }
 
 function detectDelimiter(sample: string): string {
@@ -97,12 +95,12 @@ export class CsvImportService {
    * Import CSV rows from an S3 file into entity_records.
    *
    * 1. Downloads and parses the CSV from S3
-   * 2. Builds raw `data` and `normalizedData` for each row using field mappings
+   * 2. Normalizes each row through the NormalizationService pipeline
    * 3. Computes checksums for change detection
    * 4. Upserts records into entity_records (dedup by sourceId)
    */
   static async importFromS3(params: ImportEntityParams): Promise<CsvImportResult> {
-    const { s3Key, connectorEntityId, organizationId, userId, fieldMappings } = params;
+    const { s3Key, connectorEntityId, organizationId, userId } = params;
 
     logger.info(
       { connectorEntityId, s3Key },
@@ -124,7 +122,7 @@ export class CsvImportService {
     // 3. Parse CSV
     const allRows = await parseCSVBuffer(buffer, delimiter);
     if (allRows.length === 0) {
-      return { created: 0, updated: 0, unchanged: 0 };
+      return { created: 0, updated: 0, unchanged: 0, invalid: 0 };
     }
 
     // 4. Extract headers (first row) and detect header presence
@@ -138,11 +136,11 @@ export class CsvImportService {
 
     const dataRows = hasHeader ? allRows.slice(1) : allRows;
 
-    // 5. Build a source→columnKey lookup from field mappings
-    const sourceToKey = new Map<string, string>();
-    for (const fm of fieldMappings) {
-      sourceToKey.set(fm.sourceField, fm.columnDefinitionKey);
-    }
+    // 5. Fetch field mappings once for the entity
+    const mappings = await DbService.repository.fieldMappings.findMany(
+      eq(fieldMappings.connectorEntityId, connectorEntityId),
+      { include: ["columnDefinition"] },
+    ) as any[];
 
     // 6. Build import records
     const factory = new EntityRecordModelFactory();
@@ -159,6 +157,7 @@ export class CsvImportService {
     let created = 0;
     let updated = 0;
     let unchanged = 0;
+    let invalid = 0;
 
     const toUpsert = [];
 
@@ -166,52 +165,59 @@ export class CsvImportService {
       const row = dataRows[i];
       const sourceId = String(i);
 
-      // Build raw data: header → value
-      const data: Record<string, unknown> = {};
-      for (let j = 0; j < headers.length; j++) {
-        data[headers[j]] = j < row.length ? row[j] : null;
-      }
-
-      // Build normalizedData: column definition key → value
-      const normalizedData: Record<string, unknown> = {};
-      for (let j = 0; j < headers.length; j++) {
-        const colKey = sourceToKey.get(headers[j]);
-        if (colKey) {
-          normalizedData[colKey] = j < row.length ? row[j] : null;
+      try {
+        // Build raw data: header → value
+        const data: Record<string, unknown> = {};
+        for (let j = 0; j < headers.length; j++) {
+          data[headers[j]] = j < row.length ? row[j] : null;
         }
+
+        // Normalize through the pipeline
+        const { normalizedData, validationErrors, isValid } =
+          NormalizationService.normalizeWithMappings(mappings, data);
+
+        if (!isValid) invalid++;
+
+        const checksum = computeChecksum(data);
+
+        // Change detection
+        const prev = existingMap.get(sourceId);
+        if (prev && prev.checksum === checksum) {
+          unchanged++;
+          continue;
+        }
+
+        if (prev) {
+          updated++;
+        } else {
+          created++;
+        }
+
+        const model = factory.create(userId);
+        model.update({
+          id: prev?.id ?? model.toJSON().id,
+          organizationId,
+          connectorEntityId,
+          data,
+          normalizedData,
+          sourceId,
+          checksum,
+          syncedAt: now,
+          origin: "sync",
+          validationErrors,
+          isValid,
+          updated: prev ? now : null,
+          updatedBy: prev ? userId : null,
+        });
+
+        toUpsert.push(model.parse());
+      } catch (err) {
+        invalid++;
+        logger.warn(
+          { sourceId, error: err instanceof Error ? err.message : String(err) },
+          "Skipping row due to unexpected processing error"
+        );
       }
-
-      const checksum = computeChecksum(data);
-
-      // Change detection
-      const prev = existingMap.get(sourceId);
-      if (prev && prev.checksum === checksum) {
-        unchanged++;
-        continue;
-      }
-
-      if (prev) {
-        updated++;
-      } else {
-        created++;
-      }
-
-      const model = factory.create(userId);
-      model.update({
-        id: prev?.id ?? model.toJSON().id,
-        organizationId,
-        connectorEntityId,
-        data,
-        normalizedData,
-        sourceId,
-        checksum,
-        syncedAt: now,
-        origin: "sync",
-        updated: prev ? now : null,
-        updatedBy: prev ? userId : null,
-      });
-
-      toUpsert.push(model.parse());
     }
 
     // 7. Batch upsert
@@ -220,11 +226,18 @@ export class CsvImportService {
       await DbService.repository.entityRecords.upsertManyBySourceId(batch);
     }
 
+    if (invalid > 0) {
+      logger.warn(
+        { connectorEntityId, invalid, total: dataRows.length },
+        "CSV import completed with validation errors"
+      );
+    }
+
     logger.info(
-      { connectorEntityId, created, updated, unchanged, total: dataRows.length },
+      { connectorEntityId, created, updated, unchanged, invalid, total: dataRows.length },
       "CSV import completed"
     );
 
-    return { created, updated, unchanged };
+    return { created, updated, unchanged, invalid };
   }
 }

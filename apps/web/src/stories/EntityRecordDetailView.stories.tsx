@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { EntityRecordDetailViewUI } from "../views/EntityRecordDetail.view";
 import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 const stubEntity: ConnectorEntity = {
   id: "ent-1",
@@ -23,6 +23,8 @@ const stubRecord: EntityRecord = {
   connectorEntityId: "ent-1",
   data: {},
   origin: "manual",
+  validationErrors: null,
+  isValid: true,
   normalizedData: {
     name: "Alice Johnson",
     email: "alice@example.com",
@@ -44,15 +46,15 @@ const stubRecord: EntityRecord = {
   deletedBy: null,
 };
 
-const stubColumns: ColumnDefinitionSummary[] = [
-  { key: "name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null },
-  { key: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null },
-  { key: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null },
-  { key: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null },
-  { key: "joined", label: "Joined", type: "date", required: false, enumValues: null, defaultValue: null },
-  { key: "score", label: "Score", type: "currency", required: false, enumValues: null, defaultValue: null },
-  { key: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null },
-  { key: "meta", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null },
+const stubColumns: ResolvedColumn[] = [
+  { key: "name", normalizedKey: "name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "email", normalizedKey: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "joined", normalizedKey: "joined", label: "Joined", type: "date", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "score", normalizedKey: "score", label: "Score", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "tags", normalizedKey: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  { key: "meta", normalizedKey: "meta", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
 ];
 
 const meta = {

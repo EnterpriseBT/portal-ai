@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 
 import { sdk } from "../../api/sdk";
 import type { ConnectorEntityListWithMappingsResponsePayload, ConnectorEntityWithMappings } from "@portalai/core/contracts";
@@ -12,7 +12,7 @@ import {
   Stepper,
   StepPanel,
 } from "@portalai/core/ui";
-import type { StepConfig } from "@portalai/core/ui";
+import type { StepConfig, SelectOption } from "@portalai/core/ui";
 import type { JobStatus } from "@portalai/core/models";
 
 import { UploadStep } from "./UploadStep.component";
@@ -37,7 +37,7 @@ import type {
   UseUploadWorkflowReturn,
   Recommendations,
   RecommendedEntity,
-  RecommendedColumn,
+  RecommendedColumnUpdate,
   ParseSummary,
   WorkflowStep,
 } from "./utils/upload-workflow.util";
@@ -83,8 +83,10 @@ export interface CSVConnectorWorkflowUIProps {
   onUpdateColumn: (
     entityIndex: number,
     columnIndex: number,
-    updates: Partial<RecommendedColumn>
+    updates: RecommendedColumnUpdate
   ) => void;
+  onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
+  onColumnKeyGetById: ((id: string) => Promise<SelectOption | null>) | undefined;
 
   // Review step
   onConnectorNameChange: (name: string) => void;
@@ -132,6 +134,8 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
   isLoadingDbEntities,
   columnStepErrors,
   onUpdateColumn,
+  onColumnKeySearch,
+  onColumnKeyGetById,
   onConnectorNameChange,
   onConfirm,
   isConfirming,
@@ -201,6 +205,8 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
                 isLoadingDbEntities={isLoadingDbEntities}
                 onUpdateColumn={onUpdateColumn}
                 errors={columnStepErrors}
+                onColumnKeySearch={onColumnKeySearch}
+                onColumnKeyGetById={onColumnKeyGetById}
               />
             ) : (
               <Typography color="text.secondary">
@@ -333,6 +339,13 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
   const workflow = useUploadWorkflow();
   const [entityStepErrors, setEntityStepErrors] = useState<EntityStepErrors>({});
   const [columnStepErrors, setColumnStepErrors] = useState<ColumnStepErrors>({});
+  const { onSearch: onColumnKeySearch, getById: onColumnKeyGetById } = sdk.columnDefinitions.search({
+    mapItem: (cd) => ({
+      value: cd.id,
+      label: `${cd.label} (${cd.key}) — ${cd.type}${cd.description ? ` · ${cd.description}` : ""}`,
+      columnDefinition: cd,
+    }),
+  });
 
   const { data: dbEntitiesData, isLoading: isLoadingDbEntities } =
     sdk.connectorEntities.list(
@@ -398,7 +411,7 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
     handleClose();
   }, [workflow, handleClose]);
 
-  const stepConfigs = useMemo(() => deriveStepConfigs(workflow), [workflow]);
+  const stepConfigs = deriveStepConfigs(workflow);
 
   return (
     <CSVConnectorWorkflowUI
@@ -426,6 +439,8 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
       isLoadingDbEntities={isLoadingDbEntities}
       columnStepErrors={columnStepErrors}
       onUpdateColumn={workflow.updateColumn}
+      onColumnKeySearch={onColumnKeySearch}
+      onColumnKeyGetById={onColumnKeyGetById}
       onConnectorNameChange={workflow.updateConnectorName}
       onConfirm={handleConfirm}
       isConfirming={workflow.isConfirming}

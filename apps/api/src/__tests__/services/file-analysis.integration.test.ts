@@ -72,6 +72,23 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
   };
 }
 
+/** Standard seed column definitions covering all types. */
+function makeSeedColumns(): ExistingColumnDefinition[] {
+  return [
+    { id: "cd-uuid", key: "uuid", label: "UUID", type: "string", description: "Universally unique identifier", validationPattern: null, canonicalFormat: "lowercase" },
+    { id: "cd-email", key: "email", label: "Email", type: "string", description: "Email address", validationPattern: null, canonicalFormat: "lowercase" },
+    { id: "cd-phone", key: "phone", label: "Phone", type: "string", description: "Phone number", validationPattern: null, canonicalFormat: "phone" },
+    { id: "cd-name", key: "name", label: "Name", type: "string", description: "Person or entity name", validationPattern: null, canonicalFormat: "trim" },
+    { id: "cd-text", key: "text", label: "Text", type: "string", description: "General-purpose text content", validationPattern: null, canonicalFormat: "trim" },
+    { id: "cd-integer", key: "integer", label: "Integer", type: "number", description: "Whole number", validationPattern: null, canonicalFormat: "#,##0" },
+    { id: "cd-decimal", key: "decimal", label: "Decimal", type: "number", description: "Decimal number", validationPattern: null, canonicalFormat: "#,##0.00" },
+    { id: "cd-boolean", key: "boolean", label: "Boolean", type: "boolean", description: "True or false", validationPattern: null, canonicalFormat: null },
+    { id: "cd-date", key: "date", label: "Date", type: "date", description: "Calendar date", validationPattern: null, canonicalFormat: null },
+    { id: "cd-datetime", key: "datetime", label: "Date & Time", type: "datetime", description: "Date and time", validationPattern: null, canonicalFormat: null },
+    { id: "cd-url", key: "url", label: "Website", type: "string", description: "Website URL", validationPattern: null, canonicalFormat: "lowercase" },
+  ];
+}
+
 function makeAiRecommendation(parseResult: FileParseResult) {
   return {
     entityKey: "contacts",
@@ -79,16 +96,16 @@ function makeAiRecommendation(parseResult: FileParseResult) {
     sourceFileName: parseResult.fileName,
     columns: parseResult.columnStats.map((s) => ({
       sourceField: s.name,
-      key: s.name.toLowerCase(),
-      label: s.name,
-      type: "string",
+      existingColumnDefinitionId: "cd-text",
+      existingColumnDefinitionKey: "text",
+      confidence: 0.85,
+      sampleValues: s.sampleValues,
       format: null,
       isPrimaryKey: false,
       required: true,
-      action: "create_new",
-      existingColumnDefinitionId: null,
-      confidence: 0.85,
-      sampleValues: s.sampleValues,
+      normalizedKey: s.name.toLowerCase().replace(/\s+/g, "_"),
+      defaultValue: null,
+      enumValues: null,
     })),
   };
 }
@@ -122,34 +139,44 @@ describe("FileAnalysisService — Integration", () => {
         sourceFileName: "customers.csv",
         columns: [
           {
-            sourceField: "customer_id", key: "customer_id", label: "Customer ID",
-            type: "string", format: null, isPrimaryKey: true, required: true,
-            action: "create_new", existingColumnDefinitionId: null, confidence: 0.9,
+            sourceField: "customer_id",
+            existingColumnDefinitionId: "cd-text", existingColumnDefinitionKey: "text",
+            confidence: 0.9,
             sampleValues: ["CUS001", "CUS002", "CUS003"],
+            format: null, isPrimaryKey: true, required: true,
+            normalizedKey: "customer_id", defaultValue: null, enumValues: null,
           },
           {
-            sourceField: "email", key: "email", label: "Email",
-            type: "string", format: "email", isPrimaryKey: false, required: true,
-            action: "create_new", existingColumnDefinitionId: null, confidence: 0.95,
+            sourceField: "email",
+            existingColumnDefinitionId: "cd-email", existingColumnDefinitionKey: "email",
+            confidence: 0.95,
             sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
+            format: "email", isPrimaryKey: false, required: true,
+            normalizedKey: "email", defaultValue: null, enumValues: null,
           },
           {
-            sourceField: "created_at", key: "created_at", label: "Created At",
-            type: "date", format: null, isPrimaryKey: false, required: false,
-            action: "create_new", existingColumnDefinitionId: null, confidence: 0.88,
+            sourceField: "created_at",
+            existingColumnDefinitionId: "cd-date", existingColumnDefinitionKey: "date",
+            confidence: 0.88,
             sampleValues: ["2024-01-15", "2024-02-20", "2024-03-10"],
+            format: null, isPrimaryKey: false, required: false,
+            normalizedKey: "created_at", defaultValue: null, enumValues: null,
           },
           {
-            sourceField: "is_active", key: "is_active", label: "Is Active",
-            type: "boolean", format: null, isPrimaryKey: false, required: false,
-            action: "create_new", existingColumnDefinitionId: null, confidence: 0.92,
+            sourceField: "is_active",
+            existingColumnDefinitionId: "cd-boolean", existingColumnDefinitionKey: "boolean",
+            confidence: 0.92,
             sampleValues: ["true", "false", "true"],
+            format: null, isPrimaryKey: false, required: false,
+            normalizedKey: "is_active", defaultValue: null, enumValues: null,
           },
           {
-            sourceField: "total_spent", key: "total_spent", label: "Total Spent",
-            type: "number", format: null, isPrimaryKey: false, required: false,
-            action: "create_new", existingColumnDefinitionId: null, confidence: 0.87,
+            sourceField: "total_spent",
+            existingColumnDefinitionId: "cd-decimal", existingColumnDefinitionKey: "decimal",
+            confidence: 0.87,
             sampleValues: ["150.00", "299.99", "45.50"],
+            format: null, isPrimaryKey: false, required: false,
+            normalizedKey: "total_spent", defaultValue: null, enumValues: null,
           },
         ],
       };
@@ -158,7 +185,7 @@ describe("FileAnalysisService — Integration", () => {
 
       const result = await FileAnalysisService.getRecommendations({
         parseResult,
-        existingColumns: [],
+        existingColumns: makeSeedColumns(),
         priorRecommendations: [],
       });
 
@@ -168,10 +195,11 @@ describe("FileAnalysisService — Integration", () => {
       expect(result.columns).toHaveLength(5);
     });
 
-    it("AI result with existing column matches produces match_existing actions", async () => {
+    it("AI result with existing column matches preserves existingColumnDefinitionId", async () => {
       const existingColumns: ExistingColumnDefinition[] = [
-        { id: "col_email", key: "email", label: "Email Address", type: "string" },
-        { id: "col_name", key: "name", label: "Full Name", type: "string" },
+        ...makeSeedColumns(),
+        { id: "col_email", key: "email", label: "Email Address", type: "string", description: "Email", validationPattern: null, canonicalFormat: "lowercase" },
+        { id: "col_name", key: "name", label: "Full Name", type: "string", description: "Name", validationPattern: null, canonicalFormat: "trim" },
       ];
 
       const parseResult = makeParseResult({
@@ -189,22 +217,28 @@ describe("FileAnalysisService — Integration", () => {
         sourceFileName: parseResult.fileName,
         columns: [
           {
-            sourceField: "email", key: "email", label: "Email",
-            type: "string", format: "email", isPrimaryKey: false, required: true,
-            action: "match_existing", existingColumnDefinitionId: "col_email", confidence: 0.98,
+            sourceField: "email",
+            existingColumnDefinitionId: "col_email", existingColumnDefinitionKey: "email",
+            confidence: 0.98,
             sampleValues: ["alice@test.com"],
+            format: "email", isPrimaryKey: false, required: true,
+            normalizedKey: "email", defaultValue: null, enumValues: null,
           },
           {
-            sourceField: "name", key: "name", label: "Name",
-            type: "string", format: null, isPrimaryKey: false, required: true,
-            action: "match_existing", existingColumnDefinitionId: "col_name", confidence: 0.95,
+            sourceField: "name",
+            existingColumnDefinitionId: "col_name", existingColumnDefinitionKey: "name",
+            confidence: 0.95,
             sampleValues: ["Alice"],
+            format: null, isPrimaryKey: false, required: true,
+            normalizedKey: "name", defaultValue: null, enumValues: null,
           },
           {
-            sourceField: "phone", key: "phone", label: "Phone",
-            type: "string", format: null, isPrimaryKey: false, required: false,
-            action: "create_new", existingColumnDefinitionId: null, confidence: 0.7,
+            sourceField: "phone",
+            existingColumnDefinitionId: "cd-phone", existingColumnDefinitionKey: "phone",
+            confidence: 0.7,
             sampleValues: ["+1-555-0100"],
+            format: null, isPrimaryKey: false, required: false,
+            normalizedKey: "phone", defaultValue: null, enumValues: null,
           },
         ],
       };
@@ -218,14 +252,13 @@ describe("FileAnalysisService — Integration", () => {
       });
 
       const emailCol = result.columns.find((c) => c.sourceField === "email")!;
-      expect(emailCol.action).toBe("match_existing");
       expect(emailCol.existingColumnDefinitionId).toBe("col_email");
 
       const nameCol = result.columns.find((c) => c.sourceField === "name")!;
-      expect(nameCol.action).toBe("match_existing");
+      expect(nameCol.existingColumnDefinitionId).toBe("col_name");
 
       const phoneCol = result.columns.find((c) => c.sourceField === "phone")!;
-      expect(phoneCol.action).toBe("create_new");
+      expect(phoneCol.existingColumnDefinitionId).toBe("cd-phone");
     });
   });
 
@@ -245,7 +278,7 @@ describe("FileAnalysisService — Integration", () => {
 
       const result = await FileAnalysisService.getRecommendations({
         parseResult,
-        existingColumns: [],
+        existingColumns: makeSeedColumns(),
         priorRecommendations: [],
       });
 
@@ -253,26 +286,23 @@ describe("FileAnalysisService — Integration", () => {
       expect(validated.success).toBe(true);
       expect(result.columns).toHaveLength(4);
 
-      // Heuristic should infer types
+      // Heuristic should map to appropriate seed column definitions
       const emailCol = result.columns.find((c) => c.sourceField === "email")!;
       expect(emailCol.format).toBe("email");
+      expect(emailCol.existingColumnDefinitionId).toBe("cd-email");
 
       const dateCol = result.columns.find((c) => c.sourceField === "created_date")!;
-      expect(dateCol.type).toBe("date");
+      expect(dateCol.existingColumnDefinitionId).toBe("cd-date");
 
       const amountCol = result.columns.find((c) => c.sourceField === "amount")!;
-      expect(amountCol.type).toBe("number");
+      expect(amountCol.existingColumnDefinitionId).toBe("cd-decimal");
 
       const boolCol = result.columns.find((c) => c.sourceField === "is_verified")!;
-      expect(boolCol.type).toBe("boolean");
+      expect(boolCol.existingColumnDefinitionId).toBe("cd-boolean");
     });
 
     it("heuristic matches existing columns when AI is down", async () => {
       mockGenerateText.mockRejectedValue(new Error("Network error"));
-
-      const existingColumns: ExistingColumnDefinition[] = [
-        { id: "col_email", key: "email", label: "Email", type: "string" },
-      ];
 
       const parseResult = makeParseResult({
         headers: ["email", "phone"],
@@ -284,23 +314,23 @@ describe("FileAnalysisService — Integration", () => {
 
       const result = await FileAnalysisService.getRecommendations({
         parseResult,
-        existingColumns,
+        existingColumns: makeSeedColumns(),
         priorRecommendations: [],
       });
 
       const emailCol = result.columns.find((c) => c.sourceField === "email")!;
-      expect(emailCol.action).toBe("match_existing");
-      expect(emailCol.existingColumnDefinitionId).toBe("col_email");
+      expect(emailCol.existingColumnDefinitionId).toBe("cd-email");
       expect(emailCol.confidence).toBe(1);
 
       const phoneCol = result.columns.find((c) => c.sourceField === "phone")!;
-      expect(phoneCol.action).toBe("create_new");
-      expect(phoneCol.confidence).toBe(0);
+      expect(phoneCol.existingColumnDefinitionId).toBe("cd-phone");
     });
   });
 
-  describe("Multi-file analysis builds cumulative context correctly", () => {
-    it("second file matches columns from first file's recommendations", async () => {
+  describe("Multi-file analysis with existing column definitions", () => {
+    it("second file uses seed columns for heuristic fallback", async () => {
+      const seedColumns = makeSeedColumns();
+
       // First file: AI succeeds
       const parseResult1 = makeParseResult({
         fileName: "contacts.csv",
@@ -316,11 +346,11 @@ describe("FileAnalysisService — Integration", () => {
 
       const result1 = await FileAnalysisService.getRecommendations({
         parseResult: parseResult1,
-        existingColumns: [],
+        existingColumns: seedColumns,
         priorRecommendations: [],
       });
 
-      // Second file: AI fails, heuristic uses prior recommendations
+      // Second file: AI fails, heuristic uses seed columns
       mockGenerateText.mockRejectedValueOnce(new Error("AI down"));
 
       const parseResult2 = makeParseResult({
@@ -335,29 +365,29 @@ describe("FileAnalysisService — Integration", () => {
 
       const result2 = await FileAnalysisService.getRecommendations({
         parseResult: parseResult2,
-        existingColumns: [],
+        existingColumns: seedColumns,
         priorRecommendations: [result1],
       });
 
       const validated = FileUploadRecommendationEntitySchema.safeParse(result2);
       expect(validated.success).toBe(true);
 
-      // email should be matched from prior recommendations with confidence 0.9
+      // email should be matched to seed column via exact key match
       const emailCol = result2.columns.find((c) => c.sourceField === "email")!;
-      expect(emailCol.action).toBe("match_existing");
-      expect(emailCol.confidence).toBe(0.9);
+      expect(emailCol.existingColumnDefinitionId).toBe("cd-email");
+      expect(emailCol.confidence).toBe(1);
 
-      // order_id and total should be create_new
+      // order_id should fall back to text via type-based fallback
       const orderCol = result2.columns.find((c) => c.sourceField === "order_id")!;
-      expect(orderCol.action).toBe("create_new");
-      expect(orderCol.confidence).toBe(0);
+      expect(orderCol.existingColumnDefinitionId).toBe("cd-text");
     });
 
     it("existing column definitions take priority over prior recommendations", async () => {
       mockGenerateText.mockRejectedValue(new Error("AI down"));
 
       const existingColumns: ExistingColumnDefinition[] = [
-        { id: "col_email_org", key: "email", label: "Org Email", type: "string" },
+        ...makeSeedColumns(),
+        { id: "col_email_org", key: "org_email", label: "Org Email", type: "string", description: "Org email", validationPattern: null, canonicalFormat: "lowercase" },
       ];
 
       const priorRecommendation = {
@@ -366,10 +396,17 @@ describe("FileAnalysisService — Integration", () => {
         sourceFileName: "contacts.csv",
         columns: [
           {
-            sourceField: "email", key: "email", label: "email",
-            type: "string" as const, format: "email", isPrimaryKey: false, required: true,
-            action: "create_new" as const, existingColumnDefinitionId: null, confidence: 0,
+            sourceField: "email",
+            existingColumnDefinitionId: "cd-text",
+            existingColumnDefinitionKey: "text",
+            confidence: 0.85,
             sampleValues: ["alice@test.com"],
+            format: "email",
+            isPrimaryKey: false,
+            required: true,
+            normalizedKey: "email",
+            defaultValue: null,
+            enumValues: null,
           },
         ],
       };
@@ -388,14 +425,15 @@ describe("FileAnalysisService — Integration", () => {
         priorRecommendations: [priorRecommendation],
       });
 
-      // Existing column definition should win over prior recommendation
+      // Existing column definition should win — exact key match on seed "email"
       const emailCol = result.columns.find((c) => c.sourceField === "email")!;
-      expect(emailCol.action).toBe("match_existing");
-      expect(emailCol.existingColumnDefinitionId).toBe("col_email_org");
+      expect(emailCol.existingColumnDefinitionId).toBe("cd-email");
       expect(emailCol.confidence).toBe(1);
     });
 
-    it("three-file sequential analysis accumulates context correctly", async () => {
+    it("three-file sequential analysis all produce valid output", async () => {
+      const seedColumns = makeSeedColumns();
+
       // File 1: AI succeeds
       const parseResult1 = makeParseResult({
         fileName: "file1.csv",
@@ -405,7 +443,7 @@ describe("FileAnalysisService — Integration", () => {
       mockGenerateText.mockResolvedValueOnce({ output: makeAiRecommendation(parseResult1) });
       const result1 = await FileAnalysisService.getRecommendations({
         parseResult: parseResult1,
-        existingColumns: [],
+        existingColumns: seedColumns,
         priorRecommendations: [],
       });
 
@@ -421,11 +459,11 @@ describe("FileAnalysisService — Integration", () => {
       mockGenerateText.mockResolvedValueOnce({ output: makeAiRecommendation(parseResult2) });
       const result2 = await FileAnalysisService.getRecommendations({
         parseResult: parseResult2,
-        existingColumns: [],
+        existingColumns: seedColumns,
         priorRecommendations: [result1],
       });
 
-      // File 3: AI fails, heuristic uses cumulative prior
+      // File 3: AI fails, heuristic uses seed columns
       mockGenerateText.mockRejectedValueOnce(new Error("AI down"));
       const parseResult3 = makeParseResult({
         fileName: "file3.csv",
@@ -438,26 +476,25 @@ describe("FileAnalysisService — Integration", () => {
       });
       const result3 = await FileAnalysisService.getRecommendations({
         parseResult: parseResult3,
-        existingColumns: [],
+        existingColumns: seedColumns,
         priorRecommendations: [result1, result2],
       });
 
       const validated = FileUploadRecommendationEntitySchema.safeParse(result3);
       expect(validated.success).toBe(true);
 
-      // email and phone should be matched from prior recs
+      // email should match seed column via exact key
       const emailCol = result3.columns.find((c) => c.sourceField === "email")!;
-      expect(emailCol.action).toBe("match_existing");
-      expect(emailCol.confidence).toBe(0.9);
+      expect(emailCol.existingColumnDefinitionId).toBe("cd-email");
+      expect(emailCol.confidence).toBe(1);
 
+      // phone should match seed column via exact key
       const phoneCol = result3.columns.find((c) => c.sourceField === "phone")!;
-      expect(phoneCol.action).toBe("match_existing");
-      expect(phoneCol.confidence).toBe(0.9);
+      expect(phoneCol.existingColumnDefinitionId).toBe("cd-phone");
 
-      // address should be create_new
+      // address should fall back to text via type-based fallback
       const addressCol = result3.columns.find((c) => c.sourceField === "address")!;
-      expect(addressCol.action).toBe("create_new");
-      expect(addressCol.confidence).toBe(0);
+      expect(addressCol.existingColumnDefinitionId).toBe("cd-text");
     });
   });
 });

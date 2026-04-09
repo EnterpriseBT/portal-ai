@@ -4,7 +4,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import type {
   EntityRecordListRequestQuery,
   EntityRecordListResponsePayload,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import { SORTABLE_COLUMN_TYPES } from "@portalai/core/models";
 import { Stack } from "@portalai/core/ui";
@@ -14,6 +14,8 @@ import {
   type DataTableColumn,
   type ColumnConfig,
 } from "@portalai/core/ui";
+import CancelIcon from "@mui/icons-material/Cancel";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import Chip from "@mui/material/Chip";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
@@ -41,19 +43,38 @@ export const EntityRecordDataTable = (props: EntityRecordDataTableProps) => {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
+const VALID_COLUMN: DataTableColumn = {
+  key: "isValid",
+  label: "Valid",
+  sortable: false,
+  render: (value: unknown) =>
+    value === false ? (
+      <CancelIcon fontSize="small" color="error" />
+    ) : (
+      <CheckCircleIcon fontSize="small" color="success" />
+    ),
+};
+
 function toDataTableColumns(
-  columns: ColumnDefinitionSummary[]
+  columns: ResolvedColumn[]
 ): DataTableColumn[] {
-  return columns.map((col) => {
+  const cols: DataTableColumn[] = columns.map((col) => {
+    // Use normalizedKey as the header label since it's the field-mapping-level
+    // identifier; show the column definition label as a caption alongside type.
+    const headerLabel = col.normalizedKey;
+    const caption = col.normalizedKey !== col.key
+      ? `${col.label} · ${col.type}`
+      : col.type;
+
     if (
       col.type === "json" ||
       col.type === "array" ||
       col.type === "reference-array"
     ) {
       return {
-        key: col.key,
-        label: col.label,
-        caption: col.type,
+        key: col.normalizedKey,
+        label: headerLabel,
+        caption,
         sortable: SORTABLE_COLUMN_TYPES.has(col.type),
         render: (value: unknown) => (
           <EntityRecordCellCode
@@ -64,13 +85,17 @@ function toDataTableColumns(
       };
     }
     return {
-      key: col.key,
-      label: col.label,
-      caption: col.type,
+      key: col.normalizedKey,
+      label: headerLabel,
+      caption,
       sortable: SORTABLE_COLUMN_TYPES.has(col.type),
-      format: (value: unknown) => Formatter.format(value, col.type),
+      format: (value: unknown) =>
+        Formatter.format(value, col.type, { canonicalFormat: col.canonicalFormat }),
     };
   });
+
+  cols.push(VALID_COLUMN);
+  return cols;
 }
 
 // ── Pure UI component ───────────────────────────────────────────────
@@ -78,7 +103,7 @@ function toDataTableColumns(
 export interface EntityRecordDataTableUIProps {
   connectorEntityId: string;
   rows: Record<string, unknown>[];
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   source: "cache" | "live";
   sortColumn?: string;
   sortDirection?: "asc" | "desc";

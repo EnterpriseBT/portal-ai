@@ -21,6 +21,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   disabled,
   required,
   size = "small",
+  fullWidth,
   inputRef,
 }) => {
   const selectedOption = options.find((o) => o.value === value) ?? null;
@@ -34,6 +35,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
       getOptionLabel={(option) => option.label}
       disabled={disabled}
       size={size}
+      fullWidth={fullWidth}
       renderInput={(params) => (
         <TextField
           {...params}

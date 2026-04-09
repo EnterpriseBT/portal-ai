@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 
-import { render, screen } from "../../../__tests__/test-utils";
+import { render, screen, act } from "../../../__tests__/test-utils";
 import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -9,64 +9,124 @@ import type {
   RecommendedColumn,
   RecommendedEntity,
 } from "../utils/upload-workflow.util";
+import type { ColumnDefinition } from "@portalai/core/models";
 import type { ColumnStepErrors } from "../utils/csv-validation.util";
 
 // ---------------------------------------------------------------------------
 // Mock Data
 // ---------------------------------------------------------------------------
 
-const MOCK_COLUMN_HIGH: RecommendedColumn = {
-  action: "match_existing",
-  confidence: 0.95,
-  existingColumnDefinitionId: "col_001",
-  recommended: {
+const mockColumnDefsByKey: Record<string, ColumnDefinition> = {
+  email: {
+    id: "col_001",
     key: "email",
     label: "Email",
     type: "string",
-    required: true,
-    format: "email",
-    enumValues: null,
-    description: "Contact email",
+    description: "Email address",
+    validationPattern: "^[^@]+@[^@]+$",
+    validationMessage: "Must be valid email",
+    canonicalFormat: "lowercase",
+    organizationId: "org-1",
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
   },
-  sourceField: "Email Address",
-  isPrimaryKeyCandidate: true,
-  sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
-};
-
-const MOCK_COLUMN_MED: RecommendedColumn = {
-  action: "match_existing",
-  confidence: 0.65,
-  existingColumnDefinitionId: "col_002",
-  recommended: {
+  name: {
+    id: "col_002",
     key: "name",
     label: "Name",
     type: "string",
-    required: false,
-    format: null,
-    enumValues: null,
     description: null,
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: "trim",
+    organizationId: "org-1",
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
   },
+  role_id: {
+    id: "col_003",
+    key: "role_id",
+    label: "Role ID",
+    type: "reference",
+    description: "Reference to roles",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
+    organizationId: "org-1",
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  },
+  status: {
+    id: "col_004",
+    key: "status",
+    label: "Status",
+    type: "enum",
+    description: "Current status",
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
+    organizationId: "org-1",
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  },
+};
+
+const MOCK_COLUMN_HIGH: RecommendedColumn = {
+  confidence: 0.95,
+  existingColumnDefinitionId: "col_001",
+  existingColumnDefinitionKey: "email",
+  sourceField: "Email Address",
+  isPrimaryKeyCandidate: true,
+  sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
+  normalizedKey: "email_address",
+  required: true,
+  format: "email",
+  enumValues: null,
+  defaultValue: null,
+};
+
+const MOCK_COLUMN_MED: RecommendedColumn = {
+  confidence: 0.65,
+  existingColumnDefinitionId: "col_002",
+  existingColumnDefinitionKey: "name",
   sourceField: "Full Name",
   isPrimaryKeyCandidate: false,
   sampleValues: ["Alice Smith", "Bob Jones"],
+  normalizedKey: "full_name",
+  required: false,
+  format: null,
+  enumValues: null,
+  defaultValue: null,
 };
 
 const MOCK_COLUMN_LOW: RecommendedColumn = {
-  action: "create_new",
   confidence: 0.3,
-  existingColumnDefinitionId: null,
-  recommended: {
-    key: "phone",
-    label: "Phone",
-    type: "string",
-    required: false,
-    format: null,
-    enumValues: null,
-    description: null,
-  },
+  existingColumnDefinitionId: "",
+  existingColumnDefinitionKey: "",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100", "+1-555-0101"],
+  normalizedKey: "phone_number",
+  required: false,
+  format: null,
+  enumValues: null,
+  defaultValue: null,
 };
 
 const MOCK_ENTITY_A: RecommendedEntity = {
@@ -82,13 +142,63 @@ const MOCK_ENTITY_B: RecommendedEntity = {
 };
 
 // ---------------------------------------------------------------------------
+// Default search props (no-op for most tests)
+// ---------------------------------------------------------------------------
+
+// Search mock returns options with columnDefinition attached for cache population
+const mockSearchResults = Object.values(mockColumnDefsByKey).map((cd) => ({
+  value: cd.id,
+  label: `${cd.label} (${cd.key}) — ${cd.type}`,
+  columnDefinition: cd,
+}));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockOnColumnKeySearch = jest.fn<any>().mockResolvedValue(mockSearchResults);
+
+const mockColumnDefsById = Object.fromEntries(
+  Object.values(mockColumnDefsByKey).map((cd) => [cd.id, cd])
+);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockOnColumnKeyGetById = jest.fn<any>().mockImplementation(
+  async (id: string) => {
+    const cd = mockColumnDefsById[id];
+    if (!cd) return null;
+    return { value: cd.id, label: `${cd.label} (${cd.key}) — ${cd.type}`, columnDefinition: cd };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Renders ColumnMappingStep and waits for the initial search effect to populate definitions. */
+async function renderAndWait(...args: Parameters<typeof render>) {
+  let result: ReturnType<typeof render>;
+  await act(async () => {
+    result = render(...args);
+    // Wait for the initial useEffect search to resolve and state to update
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  return result!;
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("ColumnMappingStep", () => {
   describe("Empty state", () => {
-    it("shows no-entities message when entities array is empty", () => {
-      render(<ColumnMappingStep entities={[]} dbEntities={[]} isLoadingDbEntities={false} onUpdateColumn={jest.fn()} />);
+    it("shows no-entities message when entities array is empty", async () => {
+      await renderAndWait(
+        <ColumnMappingStep
+          entities={[]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
+        />
+      );
       expect(
         screen.getByText(
           "No entities available. Please go back and review entities."
@@ -98,26 +208,32 @@ describe("ColumnMappingStep", () => {
   });
 
   describe("Tabbed layout", () => {
-    it("renders one tab per entity", () => {
-      render(
+    it("renders one tab per entity", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A, MOCK_ENTITY_B]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
       expect(screen.getByRole("tab", { name: "Contacts" })).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Products" })).toBeInTheDocument();
     });
 
-    it("shows first entity tab content by default", () => {
-      render(
+    it("shows first entity tab content by default", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A, MOCK_ENTITY_B]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
       // First entity columns visible
@@ -127,12 +243,15 @@ describe("ColumnMappingStep", () => {
 
     it("switches tab content when clicking another tab", async () => {
       const user = userEvent.setup();
-      render(
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A, MOCK_ENTITY_B]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -143,84 +262,149 @@ describe("ColumnMappingStep", () => {
   });
 
   describe("Column rows", () => {
-    it("displays source field for each column", () => {
-      render(
+    it("displays source field for each column", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
       expect(screen.getByText("Email Address")).toBeInTheDocument();
       expect(screen.getByText("Phone Number")).toBeInTheDocument();
     });
 
-    it("displays recommended key and label in text inputs", () => {
-      render(
+    it("displays column count", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
-        />
-      );
-      // Use getAllByDisplayValue because format input may share the same value as the key input
-      expect(screen.getAllByDisplayValue("email").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByDisplayValue("Email")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("phone")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("Phone")).toBeInTheDocument();
-    });
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
-    it("displays type as an enabled select", () => {
-      render(
-        <ColumnMappingStep
-          entities={[MOCK_ENTITY_A]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-      // MUI Select renders a hidden input holding the value
-      const typeInputs = screen.getAllByDisplayValue("string");
-      for (const input of typeInputs) {
-        expect(input).not.toBeDisabled();
-      }
-    });
-
-    it("displays column count", () => {
-      render(
-        <ColumnMappingStep
-          entities={[MOCK_ENTITY_A]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
         />
       );
       expect(screen.getByText("2 columns")).toBeInTheDocument();
     });
 
-    it("displays sample values", () => {
-      render(
+    it("displays sample values", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
       expect(screen.getByText(/alice@example\.com/)).toBeInTheDocument();
     });
-  });
 
-  describe("Confidence badge", () => {
-    it("renders confidence percentage", () => {
-      render(
+    it("renders AsyncSearchableSelect for column definition selection", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
+        />
+      );
+      // Two columns, each with a "Column Definition" autocomplete
+      const defInputs = screen.getAllByLabelText(/column definition/i);
+      expect(defInputs.length).toBe(2);
+    });
+
+    it("displays read-only type and description when column has a matched definition", async () => {
+      await renderAndWait(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
+        />
+      );
+      // MOCK_COLUMN_HIGH matches "email" column def with type "string" and description "Email address"
+      expect(screen.getByText("string")).toBeInTheDocument();
+      expect(screen.getByText("Email address")).toBeInTheDocument();
+    });
+
+    it("displays read-only validation pattern and canonical format when definition has them", async () => {
+      await renderAndWait(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
+        />
+      );
+      // email column def has validationPattern and canonicalFormat
+      expect(screen.getByText(/\^.*@.*\$/)).toBeInTheDocument();
+      expect(screen.getByText(/lowercase/)).toBeInTheDocument();
+    });
+
+    it("shows 'Select a column definition' prompt when no definition is matched", async () => {
+      await renderAndWait(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
+        />
+      );
+      // MOCK_COLUMN_LOW has empty existingColumnDefinitionId
+      expect(screen.getByText("Select a column definition")).toBeInTheDocument();
+    });
+
+    it("renders field-mapping editors: normalizedKey, format, required, primary key", async () => {
+      await renderAndWait(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
+        />
+      );
+      expect(screen.getAllByLabelText(/normalized key/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByLabelText(/^format$/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/primary key/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/required/i).length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe("Confidence badge", () => {
+    it("renders confidence percentage", async () => {
+      await renderAndWait(
+        <ColumnMappingStep
+          entities={[MOCK_ENTITY_A]}
+          dbEntities={[]}
+          isLoadingDbEntities={false}
+          onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
       expect(screen.getByText("95%")).toBeInTheDocument();
@@ -228,82 +412,85 @@ describe("ColumnMappingStep", () => {
     });
   });
 
-  describe("Action display", () => {
-    it("shows Match label for match_existing action", () => {
-      render(
+  describe("Validation errors", () => {
+    it("shows existingColumnDefinitionId error from errors prop", async () => {
+      const errors: ColumnStepErrors = {
+        0: {
+          0: { existingColumnDefinitionId: "Column definition is required" },
+        },
+      };
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          errors={errors}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
-      expect(screen.getByText("Match")).toBeInTheDocument();
+      expect(screen.getByText("Column definition is required")).toBeInTheDocument();
     });
 
-    it("shows New label for create_new action", () => {
-      render(
+    it("shows normalizedKey error from errors prop", async () => {
+      const errors: ColumnStepErrors = {
+        0: {
+          0: { normalizedKey: "Normalized key is required" },
+        },
+      };
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          errors={errors}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
-      expect(screen.getByText("New")).toBeInTheDocument();
+      expect(screen.getByText("Normalized key is required")).toBeInTheDocument();
     });
   });
 
   describe("Editing columns", () => {
-    it("onUpdateColumn fires with correct entity and column indices when key changes", async () => {
+    it("selecting a definition calls onUpdateColumn with existingColumnDefinitionId", async () => {
       const user = userEvent.setup();
       const onUpdateColumn = jest.fn();
 
-      render(
+      // Mock search to return a result
+      const mockSearch = jest.fn<() => Promise<{ value: string; label: string }[]>>().mockResolvedValue([
+        { value: "col_002", label: "Name (name)" },
+      ]);
+
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockSearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
         />
       );
 
-      // getAllByDisplayValue because format input may share value "email" with the key input
-      const keyInput = screen.getAllByDisplayValue("email")[0];
-      await user.clear(keyInput);
-      await user.type(keyInput, "x");
+      // The first Column Definition input corresponds to MOCK_COLUMN_HIGH
+      const defInputs = screen.getAllByLabelText(/column definition/i);
+      await user.clear(defInputs[0]);
+      await user.type(defInputs[0], "name");
+
+      // Wait for search results to appear, then click the option
+      const option = await screen.findByText("Name (name)");
+      await user.click(option);
 
       expect(onUpdateColumn).toHaveBeenCalledWith(
         0, // entityIndex
         0, // columnIndex
         expect.objectContaining({
-          recommended: expect.objectContaining({ key: expect.any(String) }),
-        })
-      );
-    });
-
-    it("onUpdateColumn fires with correct indices when label changes", async () => {
-      const user = userEvent.setup();
-      const onUpdateColumn = jest.fn();
-
-      render(
-        <ColumnMappingStep
-          entities={[MOCK_ENTITY_A]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={onUpdateColumn}
-        />
-      );
-
-      const labelInput = screen.getByDisplayValue("Email");
-      await user.clear(labelInput);
-      await user.type(labelInput, "x");
-
-      expect(onUpdateColumn).toHaveBeenCalledWith(
-        0, // entityIndex
-        0, // columnIndex
-        expect.objectContaining({
-          recommended: expect.objectContaining({ label: expect.any(String) }),
+          existingColumnDefinitionId: "col_002",
         })
       );
     });
@@ -312,12 +499,15 @@ describe("ColumnMappingStep", () => {
       const user = userEvent.setup();
       const onUpdateColumn = jest.fn();
 
-      render(
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -334,70 +524,52 @@ describe("ColumnMappingStep", () => {
       );
     });
 
-    it("type select fires onUpdateColumn with new type", async () => {
-      const user = userEvent.setup();
+    it("fires onUpdateColumn with format on change", async () => {
       const onUpdateColumn = jest.fn();
-
-      render(
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
-
-      // Open the first type select (for MOCK_COLUMN_HIGH)
-      const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
-      await user.click(typeSelects[0]);
-      await user.click(screen.getByRole("option", { name: "Currency" }));
-
+      const formatInputs = screen.getAllByLabelText(/^format$/i);
+      fireEvent.change(formatInputs[0], { target: { value: "DD/MM/YYYY" } });
+      fireEvent.blur(formatInputs[0]);
       expect(onUpdateColumn).toHaveBeenCalledWith(
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({ type: "currency" }),
+          format: "DD/MM/YYYY",
         })
       );
     });
 
-    it("switching type away from reference clears ref fields", async () => {
-      const user = userEvent.setup();
+    it("fires onUpdateColumn with normalizedKey on change", async () => {
       const onUpdateColumn = jest.fn();
-
-      const refColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: {
-          ...MOCK_COLUMN_HIGH.recommended,
-          type: "reference",
-          refEntityKey: "products",
-          refColumnKey: "id",
-        },
-      };
-
-      render(
+      await renderAndWait(
         <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
+          entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
-
-      const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
-      await user.click(typeSelects[0]);
-      await user.click(screen.getByRole("option", { name: "Number" }));
-
+      const nkInputs = screen.getAllByLabelText(/normalized key/i);
+      fireEvent.change(nkInputs[0], { target: { value: "new_key" } });
+      fireEvent.blur(nkInputs[0]);
       expect(onUpdateColumn).toHaveBeenCalledWith(
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({
-            type: "number",
-            refEntityKey: null,
-            refColumnKey: null,
-            refColumnDefinitionId: null,
-          }),
+          normalizedKey: "new_key",
         })
       );
     });
@@ -405,32 +577,32 @@ describe("ColumnMappingStep", () => {
 
   describe("Reference editor", () => {
     const refColumn: RecommendedColumn = {
-      action: "create_new",
       confidence: 0.9,
-      existingColumnDefinitionId: null,
-      recommended: {
-        key: "role_id",
-        label: "Role ID",
-        type: "reference",
-        required: false,
-        format: null,
-        enumValues: null,
-        description: null,
-        refEntityKey: null,
-        refColumnKey: null,
-      },
+      existingColumnDefinitionId: "col_003",
+      existingColumnDefinitionKey: "role_id",
       sourceField: "role_id",
       isPrimaryKeyCandidate: false,
       sampleValues: ["1", "2"],
+      normalizedKey: "role_id",
+      required: false,
+      format: null,
+      enumValues: null,
+      defaultValue: null,
+      refEntityKey: null,
+      refColumnKey: null,
+      refColumnDefinitionId: null,
     };
 
-    it("shows reference entity and column selects when type is reference", () => {
-      render(
+    it("shows reference entity and column selects when definition type is reference", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -442,35 +614,16 @@ describe("ColumnMappingStep", () => {
       ).toBeInTheDocument();
     });
 
-    it("shows reference entity and column selects when type is reference-array", () => {
-      const refArrayColumn: RecommendedColumn = {
-        ...refColumn,
-        recommended: { ...refColumn.recommended, type: "reference-array" },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [refArrayColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-
-      expect(
-        screen.getByRole("combobox", { name: /reference entity/i })
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("combobox", { name: /reference column/i })
-      ).toBeInTheDocument();
-    });
-
-    it("does not show reference editor for non-reference columns", () => {
-      render(
+    it("does not show reference editor for non-reference columns", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -481,7 +634,7 @@ describe("ColumnMappingStep", () => {
 
     it("entity select is populated with all entities", async () => {
       const user = userEvent.setup();
-      render(
+      await renderAndWait(
         <ColumnMappingStep
           entities={[
             { ...MOCK_ENTITY_A, columns: [refColumn] },
@@ -490,6 +643,9 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -510,7 +666,7 @@ describe("ColumnMappingStep", () => {
       const user = userEvent.setup();
       const onUpdateColumn = jest.fn();
 
-      render(
+      await renderAndWait(
         <ColumnMappingStep
           entities={[
             { ...MOCK_ENTITY_A, columns: [refColumn] },
@@ -519,6 +675,9 @@ describe("ColumnMappingStep", () => {
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -532,22 +691,23 @@ describe("ColumnMappingStep", () => {
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({
-            refEntityKey: "products",
-            refColumnKey: null,
-            refColumnDefinitionId: null,
-          }),
+          refEntityKey: "products",
+          refColumnKey: null,
+          refColumnDefinitionId: null,
         })
       );
     });
 
-    it("column select is disabled when no entity is selected", () => {
-      render(
+    it("column select is disabled when no entity is selected", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -557,50 +717,16 @@ describe("ColumnMappingStep", () => {
       expect(columnSelect).toHaveAttribute("aria-disabled", "true");
     });
 
-    it("selecting a reference column fires onUpdateColumn with refColumnKey", async () => {
-      const user = userEvent.setup();
-      const onUpdateColumn = jest.fn();
-
-      const refColumnWithEntity: RecommendedColumn = {
-        ...refColumn,
-        recommended: {
-          ...refColumn.recommended,
-          refEntityKey: "contacts",
-        },
-      };
-
-      // Include MOCK_COLUMN_HIGH so the "contacts" entity has a selectable column
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [refColumnWithEntity, MOCK_COLUMN_HIGH] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={onUpdateColumn}
-        />
-      );
-
-      const columnSelect = screen.getByRole("combobox", {
-        name: /reference column/i,
-      });
-      await user.click(columnSelect);
-      await user.click(screen.getByRole("option", { name: /Email/i }));
-
-      expect(onUpdateColumn).toHaveBeenCalledWith(
-        0,
-        0,
-        expect.objectContaining({
-          recommended: expect.objectContaining({ refColumnKey: "email" }),
-        })
-      );
-    });
-
-    it("entity select is disabled while loading DB entities", () => {
-      render(
+    it("entity select is disabled while loading DB entities", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
           dbEntities={[]}
           isLoadingDbEntities={true}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -627,12 +753,15 @@ describe("ColumnMappingStep", () => {
         fieldMappings: [],
       };
 
-      render(
+      await renderAndWait(
         <ColumnMappingStep
           entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
           dbEntities={[mockDbEntity]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -670,6 +799,11 @@ describe("ColumnMappingStep", () => {
             sourceField: "id",
             columnDefinitionId: "cd_001",
             isPrimaryKey: true,
+            normalizedKey: "id",
+            required: false,
+            defaultValue: null,
+            format: null,
+            enumValues: null,
             refColumnDefinitionId: null,
             refEntityKey: null,
             refBidirectionalFieldMappingId: null,
@@ -685,13 +819,10 @@ describe("ColumnMappingStep", () => {
               key: "id",
               label: "ID",
               type: "string" as const,
-              format: null,
-              required: false,
-              refEntityKey: null,
-              refColumnDefinitionId: null,
-              enumValues: null,
-              defaultValue: null,
               description: null,
+              validationPattern: null,
+              validationMessage: null,
+              canonicalFormat: null,
               created: 0,
               updated: null,
               createdBy: "system",
@@ -703,24 +834,23 @@ describe("ColumnMappingStep", () => {
         ],
       };
 
-      // refColumn with refEntityKey set to a DB-only entity (not in batch), no column chosen yet.
-      // deriveEntitySelectValue will pick "db:roles" because "roles" is in dbEntities but not in batch.
+      // refColumn with refEntityKey set to a DB-only entity (not in batch)
       const refColumnInDbMode: RecommendedColumn = {
         ...refColumn,
-        recommended: {
-          ...refColumn.recommended,
-          refEntityKey: "roles",
-          refColumnKey: null,
-          refColumnDefinitionId: null,
-        },
+        refEntityKey: "roles",
+        refColumnKey: null,
+        refColumnDefinitionId: null,
       };
 
-      render(
+      await renderAndWait(
         <ColumnMappingStep
           entities={[{ ...MOCK_ENTITY_A, columns: [refColumnInDbMode] }]}
           dbEntities={[mockDbEntity]}
           isLoadingDbEntities={false}
           onUpdateColumn={onUpdateColumn}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
 
@@ -734,390 +864,83 @@ describe("ColumnMappingStep", () => {
         0,
         0,
         expect.objectContaining({
-          recommended: expect.objectContaining({
-            refColumnDefinitionId: "cd_001",
-            refColumnKey: null,
-          }),
-        })
-      );
-    });
-  });
-
-  describe("Format editor", () => {
-    it("shows format input when type is string", () => {
-      render(
-        <ColumnMappingStep
-          entities={[MOCK_ENTITY_A]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-      // MOCK_COLUMN_HIGH has type "string"
-      expect(screen.getAllByLabelText(/^format$/i)[0]).toBeInTheDocument();
-    });
-
-    it("shows format input when type is date", () => {
-      const dateColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: "YYYY-MM-DD" },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [dateColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-      expect(screen.getByLabelText(/^format$/i)).toBeInTheDocument();
-    });
-
-    it("shows format input when type is datetime", () => {
-      const dtColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "datetime", format: "ISO8601" },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [dtColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-      expect(screen.getByLabelText(/^format$/i)).toBeInTheDocument();
-    });
-
-    it("does not show format input for number type", () => {
-      const numberColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "number", format: null },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [numberColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-      expect(screen.queryByLabelText(/^format$/i)).not.toBeInTheDocument();
-    });
-
-    it("pre-populates format input with existing value", () => {
-      const dateColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: "YYYY-MM-DD" },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [dateColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-      expect(screen.getByDisplayValue("YYYY-MM-DD")).toBeInTheDocument();
-    });
-
-    it("fires onUpdateColumn with new format on change", () => {
-      const onUpdateColumn = jest.fn();
-      const dateColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: null },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [dateColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={onUpdateColumn}
-        />
-      );
-      fireEvent.change(screen.getByLabelText(/^format$/i), { target: { value: "DD/MM/YYYY" } });
-      expect(onUpdateColumn).toHaveBeenCalledWith(
-        0,
-        0,
-        expect.objectContaining({
-          recommended: expect.objectContaining({ format: "DD/MM/YYYY" }),
-        })
-      );
-    });
-
-    it("switching type to number clears format", async () => {
-      const user = userEvent.setup();
-      const onUpdateColumn = jest.fn();
-      const dateColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: "YYYY-MM-DD" },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [dateColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={onUpdateColumn}
-        />
-      );
-      const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
-      await user.click(typeSelects[0]);
-      await user.click(screen.getByRole("option", { name: "Number" }));
-      expect(onUpdateColumn).toHaveBeenCalledWith(
-        0,
-        0,
-        expect.objectContaining({
-          recommended: expect.objectContaining({ format: null }),
-        })
-      );
-    });
-
-    it("switching type to another format-supporting type keeps format", async () => {
-      const user = userEvent.setup();
-      const onUpdateColumn = jest.fn();
-      const dateColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: { ...MOCK_COLUMN_HIGH.recommended, type: "date", format: "YYYY-MM-DD" },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [dateColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={onUpdateColumn}
-        />
-      );
-      const typeSelects = screen.getAllByRole("combobox", { name: /type/i });
-      await user.click(typeSelects[0]);
-      await user.click(screen.getByRole("option", { name: "Date & Time" }));
-      expect(onUpdateColumn).toHaveBeenCalledWith(
-        0,
-        0,
-        expect.objectContaining({
-          recommended: expect.objectContaining({ type: "datetime", format: "YYYY-MM-DD" }),
+          refColumnDefinitionId: "cd_001",
+          refColumnKey: null,
         })
       );
     });
   });
 
   describe("Enum values editor", () => {
-    const enumColumn: RecommendedColumn = {
-      action: "create_new",
-      confidence: 0.85,
-      existingColumnDefinitionId: null,
-      recommended: {
-        key: "status",
-        label: "Status",
-        type: "enum",
-        required: false,
-        format: null,
+    it("shows enum values input when column definition type is enum", async () => {
+      const enumColumn: RecommendedColumn = {
+        ...MOCK_COLUMN_HIGH,
+        existingColumnDefinitionId: "col_004",
+        existingColumnDefinitionKey: "status",
+        normalizedKey: "status",
         enumValues: ["active", "inactive"],
-        description: null,
-      },
-      sourceField: "Status",
-      isPrimaryKeyCandidate: false,
-      sampleValues: ["active", "inactive"],
-    };
-
-    it("shows enum values input when type is enum", () => {
-      render(
+      };
+      await renderAndWait(
         <ColumnMappingStep
           entities={[{ ...MOCK_ENTITY_A, columns: [enumColumn] }]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
-
-      expect(
-        screen.getByLabelText(/enum values/i)
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText(/enum values/i)).toBeInTheDocument();
     });
 
-    it("does not show enum values input for non-enum columns", () => {
-      render(
+    it("does not show enum values input when column definition type is not enum", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
-
       expect(screen.queryByLabelText(/enum values/i)).not.toBeInTheDocument();
-    });
-
-    it("displays existing enum values as comma-separated string", () => {
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [enumColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-
-      expect(
-        screen.getByDisplayValue("active, inactive")
-      ).toBeInTheDocument();
-    });
-
-    it("fires onUpdateColumn with parsed enum values array on change", () => {
-      const onUpdateColumn = jest.fn();
-
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [enumColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={onUpdateColumn}
-        />
-      );
-
-      const enumInput = screen.getByLabelText(/enum values/i);
-      fireEvent.change(enumInput, { target: { value: "a, b, c" } });
-
-      expect(onUpdateColumn).toHaveBeenLastCalledWith(
-        0,
-        0,
-        expect.objectContaining({
-          recommended: expect.objectContaining({
-            enumValues: ["a", "b", "c"],
-          }),
-        })
-      );
     });
   });
 
-  describe("Validation errors", () => {
-    it("displays key error on a column row", () => {
-      const errors: ColumnStepErrors = {
-        0: { 0: { key: "Column key is required" } },
-      };
-      render(
+  describe("Format editor", () => {
+    it("shows format input for columns", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
-          errors={errors}
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
+
         />
       );
-      expect(screen.getByText("Column key is required")).toBeInTheDocument();
+      expect(screen.getAllByLabelText(/^format$/i).length).toBeGreaterThanOrEqual(1);
     });
 
-    it("displays label error on a column row", () => {
-      const errors: ColumnStepErrors = {
-        0: { 1: { label: "Column label is required" } },
-      };
-      render(
+    it("pre-populates format input with existing value", async () => {
+      await renderAndWait(
         <ColumnMappingStep
           entities={[MOCK_ENTITY_A]}
           dbEntities={[]}
           isLoadingDbEntities={false}
           onUpdateColumn={jest.fn()}
-          errors={errors}
-        />
-      );
-      expect(screen.getByText("Column label is required")).toBeInTheDocument();
-    });
+          onColumnKeySearch={mockOnColumnKeySearch}
+          onColumnKeyGetById={mockOnColumnKeyGetById}
 
-    it("displays type error on a column row", () => {
-      const errors: ColumnStepErrors = {
-        0: { 0: { type: "Column type is required" } },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[MOCK_ENTITY_A]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-          errors={errors}
         />
       );
-      expect(screen.getByText("Column type is required")).toBeInTheDocument();
-    });
-
-    it("displays reference entity error on reference column", () => {
-      const refColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: {
-          ...MOCK_COLUMN_HIGH.recommended,
-          type: "reference",
-          refEntityKey: null,
-          refColumnKey: null,
-        },
-      };
-      const errors: ColumnStepErrors = {
-        0: { 0: { refEntityKey: "Reference entity is required" } },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-          errors={errors}
-        />
-      );
-      expect(screen.getByText("Reference entity is required")).toBeInTheDocument();
-    });
-
-    it("displays reference column error on reference column", () => {
-      const refColumn: RecommendedColumn = {
-        ...MOCK_COLUMN_HIGH,
-        recommended: {
-          ...MOCK_COLUMN_HIGH.recommended,
-          type: "reference",
-          refEntityKey: "other",
-          refColumnKey: null,
-          refColumnDefinitionId: null,
-        },
-      };
-      const errors: ColumnStepErrors = {
-        0: { 0: { refColumnKey: "Reference column is required" } },
-      };
-      render(
-        <ColumnMappingStep
-          entities={[{ ...MOCK_ENTITY_A, columns: [refColumn] }]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-          errors={errors}
-        />
-      );
-      expect(screen.getByText("Reference column is required")).toBeInTheDocument();
-    });
-
-    it("does not display errors when errors prop is empty", () => {
-      render(
-        <ColumnMappingStep
-          entities={[MOCK_ENTITY_A]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-          errors={{}}
-        />
-      );
-      expect(screen.queryByText("Column key is required")).not.toBeInTheDocument();
-      expect(screen.queryByText("Column label is required")).not.toBeInTheDocument();
-      expect(screen.queryByText("Column type is required")).not.toBeInTheDocument();
-    });
-
-    it("marks key, label, and type fields as required", () => {
-      render(
-        <ColumnMappingStep
-          entities={[MOCK_ENTITY_A]}
-          dbEntities={[]}
-          isLoadingDbEntities={false}
-          onUpdateColumn={jest.fn()}
-        />
-      );
-      // Each column row has key, label, type — check first column's inputs
-      const keyInput = screen.getAllByDisplayValue("email")[0];
-      const labelInput = screen.getByDisplayValue("Email");
-      expect(keyInput).toBeRequired();
-      expect(labelInput).toBeRequired();
+      // MOCK_COLUMN_HIGH has format "email" — find the Format input specifically
+      const formatInputs = screen.getAllByDisplayValue("email");
+      expect(formatInputs.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

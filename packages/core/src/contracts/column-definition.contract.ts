@@ -7,10 +7,6 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 
 export const ColumnDefinitionListRequestQuerySchema = PaginationRequestQuerySchema.extend({
   type: z.string().optional(),
-  required: z
-    .enum(["true", "false"])
-    .transform((v) => v === "true")
-    .optional(),
 });
 
 export type ColumnDefinitionListRequestQuery = z.infer<typeof ColumnDefinitionListRequestQuerySchema>;
@@ -35,11 +31,10 @@ export const ColumnDefinitionCreateRequestBodySchema = z.object({
   key: z.string().regex(/^[a-z][a-z0-9_]*$/),
   label: z.string().min(1),
   type: ColumnDataTypeEnum,
-  required: z.boolean().optional().default(false),
-  defaultValue: z.string().nullable().optional().default(null),
-  format: z.string().nullable().optional().default(null),
-  enumValues: z.array(z.string()).nullable().optional().default(null),
   description: z.string().nullable().optional().default(null),
+  validationPattern: z.string().nullable().optional().default(null),
+  validationMessage: z.string().nullable().optional().default(null),
+  canonicalFormat: z.string().nullable().optional().default(null),
 });
 
 export type ColumnDefinitionCreateRequestBody = z.infer<typeof ColumnDefinitionCreateRequestBodySchema>;
@@ -55,11 +50,10 @@ export type ColumnDefinitionCreateResponsePayload = z.infer<typeof ColumnDefinit
 export const ColumnDefinitionUpdateRequestBodySchema = z.object({
   label: z.string().min(1).optional(),
   type: ColumnDataTypeEnum.optional(),
-  required: z.boolean().optional(),
-  defaultValue: z.string().nullable().optional(),
-  format: z.string().nullable().optional(),
-  enumValues: z.array(z.string()).nullable().optional(),
   description: z.string().nullable().optional(),
+  validationPattern: z.string().nullable().optional(),
+  validationMessage: z.string().nullable().optional(),
+  canonicalFormat: z.string().nullable().optional(),
 });
 
 export type ColumnDefinitionUpdateRequestBody = z.infer<typeof ColumnDefinitionUpdateRequestBodySchema>;

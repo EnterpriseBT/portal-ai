@@ -41,8 +41,6 @@ import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.c
 import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useConnectorEntitySearch } from "../api/connector-entities.api";
-import { useFieldMappingWithColumnDefinitionSearch } from "../api/field-mappings.api";
 import { useAuthFetch, toServerError, type ServerError } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
@@ -557,7 +555,7 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     [selectedEntityId, fetchOverlap]
   );
 
-  const { onSearch: handleSearchEntities } = useConnectorEntitySearch();
+  const { onSearch: handleSearchEntities } = sdk.connectorEntities.search();
 
   const fieldMappingDefaultParams = React.useMemo(
     () =>
@@ -567,7 +565,7 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
     [selectedEntityId]
   );
   const { onSearch: fieldMappingSearch } =
-    useFieldMappingWithColumnDefinitionSearch({
+    sdk.fieldMappings.searchWithColumnDefinition({
       defaultParams: fieldMappingDefaultParams,
     });
   const handleSearchFieldMappings = useCallback(

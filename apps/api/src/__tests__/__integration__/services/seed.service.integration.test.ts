@@ -13,8 +13,10 @@ import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
 import { Repository } from "../../../db/repositories/base.repository.js";
 import { SeedService } from "../../../services/seed.service.js";
+import { ColumnDefinitionsRepository } from "../../../db/repositories/column-definitions.repository.js";
+import { seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
 
-const { connectorDefinitions } = schema;
+const { connectorDefinitions, columnDefinitions } = schema;
 
 describe("SeedService Integration Tests", () => {
   let connection!: ReturnType<typeof postgres>;
@@ -25,6 +27,7 @@ describe("SeedService Integration Tests", () => {
     schema.ConnectorDefinitionSelect,
     schema.ConnectorDefinitionInsert
   >;
+  let columnDefsRepo: ColumnDefinitionsRepository;
 
   beforeEach(async () => {
     if (!process.env.DATABASE_URL) {
@@ -35,9 +38,10 @@ describe("SeedService Integration Tests", () => {
     db = drizzle(connection, { schema });
     seedService = new SeedService();
     connectorDefsRepo = new Repository(connectorDefinitions);
+    columnDefsRepo = new ColumnDefinitionsRepository();
 
-    // Clean connector_definitions table
-    await db.delete(connectorDefinitions);
+    // Clean tables in FK-safe order
+    await teardownOrg(db);
   });
 
   afterEach(async () => {
@@ -160,6 +164,144 @@ describe("SeedService Integration Tests", () => {
       const rows = await connectorDefsRepo.findMany(undefined, {}, db);
 
       expect(rows.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe("seedSystemColumnDefinitions", () => {
+    let organizationId: string;
+
+    beforeEach(async () => {
+      const seed = await seedUserAndOrg(db as ReturnType<typeof drizzle>, "auth0|seed-col-test");
+      organizationId = seed.organizationId;
+    });
+
+    it("should insert 26 system column definitions for the organization", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+
+      expect(rows).toHaveLength(26);
+    });
+
+    it("should create column definitions with correct keys", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+      const keys = rows.map((r) => r.key).sort();
+
+      expect(keys).toEqual([
+        "address",
+        "array",
+        "boolean",
+        "code",
+        "currency",
+        "date",
+        "datetime",
+        "decimal",
+        "description",
+        "email",
+        "enum",
+        "integer",
+        "json_data",
+        "name",
+        "number_id",
+        "percentage",
+        "phone",
+        "quantity",
+        "reference",
+        "reference_array",
+        "status",
+        "string_id",
+        "tag",
+        "text",
+        "url",
+        "uuid",
+      ]);
+    });
+
+    it("should create email column definition with correct fields", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const email = await columnDefsRepo.findByKey(organizationId, "email", db);
+
+      expect(email).toBeDefined();
+      expect(email?.label).toBe("Email");
+      expect(email?.type).toBe("string");
+      expect(email?.description).toBe("Email address");
+      expect(email?.validationPattern).toBe("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+      expect(email?.validationMessage).toBe("Must be a valid email address");
+      expect(email?.canonicalFormat).toBe("lowercase");
+    });
+
+    it("should create currency column definition with correct fields", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const currency = await columnDefsRepo.findByKey(organizationId, "currency", db);
+
+      expect(currency).toBeDefined();
+      expect(currency?.label).toBe("Currency");
+      expect(currency?.type).toBe("number");
+      expect(currency?.canonicalFormat).toBe("$#,##0.00");
+    });
+
+    it("should create date column definition with null validation fields", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const date = await columnDefsRepo.findByKey(organizationId, "date", db);
+
+      expect(date).toBeDefined();
+      expect(date?.type).toBe("date");
+      expect(date?.validationPattern).toBeNull();
+      expect(date?.validationMessage).toBeNull();
+      expect(date?.canonicalFormat).toBeNull();
+    });
+
+    it("should be idempotent — running twice should not duplicate rows", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+
+      expect(rows).toHaveLength(26);
+    });
+
+    it("should use deterministic IDs — running twice produces the same IDs", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+      const first = await columnDefsRepo.findByKey(organizationId, "uuid", db);
+
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+      const second = await columnDefsRepo.findByKey(organizationId, "uuid", db);
+
+      expect(first?.id).toBe(second?.id);
+    });
+
+    it("should scope definitions to the given organization", async () => {
+      const seedB = await seedUserAndOrg(db as ReturnType<typeof drizzle>, "auth0|seed-col-test-b");
+
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+      await seedService.seedSystemColumnDefinitions(seedB.organizationId, db);
+
+      const rowsA = await columnDefsRepo.findByOrganizationId(organizationId, db);
+      const rowsB = await columnDefsRepo.findByOrganizationId(seedB.organizationId, db);
+
+      expect(rowsA).toHaveLength(26);
+      expect(rowsB).toHaveLength(26);
+
+      // IDs should differ between organizations
+      const uuidA = rowsA.find((r) => r.key === "uuid");
+      const uuidB = rowsB.find((r) => r.key === "uuid");
+      expect(uuidA?.id).not.toBe(uuidB?.id);
+    });
+
+    it("should work within a transaction that can be rolled back", async () => {
+      const { tx, rollback } = await Repository.createTransactionClient();
+
+      await seedService.seedSystemColumnDefinitions(organizationId, tx);
+      await rollback();
+
+      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+
+      expect(rows).toHaveLength(0);
     });
   });
 });

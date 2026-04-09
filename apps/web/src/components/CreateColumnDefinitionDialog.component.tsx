@@ -3,10 +3,8 @@ import React, { useState } from "react";
 import { z } from "zod";
 import type { ColumnDefinitionCreateRequestBody } from "@portalai/core/contracts";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
-import { Button, Modal, Stack } from "@portalai/core/ui";
-import FormControlLabel from "@mui/material/FormControlLabel";
+import { Button, Modal, Stack, Select } from "@portalai/core/ui";
 import MenuItem from "@mui/material/MenuItem";
-import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 
 import { FormAlert } from "./FormAlert.component";
@@ -17,6 +15,12 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import {
+  VALIDATION_PRESETS,
+  VALIDATION_PRESET_VALUES,
+  getTypeConfig,
+  validateRegex,
+} from "../utils/column-definition-form.util";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -25,10 +29,10 @@ interface ColumnDefinitionFormState {
   label: string;
   type: string;
   description: string;
-  required: boolean;
-  defaultValue: string;
-  format: string;
-  enumValues: string;
+  preset: string;
+  validationPattern: string;
+  validationMessage: string;
+  canonicalFormat: string;
 }
 
 const CreateColumnDefinitionFormSchema = z.object({
@@ -47,10 +51,10 @@ const INITIAL_FORM: ColumnDefinitionFormState = {
   label: "",
   type: "string",
   description: "",
-  required: false,
-  defaultValue: "",
-  format: "",
-  enumValues: "",
+  preset: "",
+  validationPattern: "",
+  validationMessage: "",
+  canonicalFormat: "",
 };
 
 function validateForm(form: ColumnDefinitionFormState): FormErrors {
@@ -59,7 +63,12 @@ function validateForm(form: ColumnDefinitionFormState): FormErrors {
     label: form.label,
     type: form.type,
   });
-  return result.success ? {} : result.errors;
+  const errors = result.success ? {} : { ...result.errors };
+
+  const regexError = validateRegex(form.validationPattern);
+  if (regexError) errors.validationPattern = regexError;
+
+  return errors;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -92,8 +101,29 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
     }
   }, [open]);
 
+  const typeConfig = getTypeConfig(form.type);
+
   const handleChange = (field: keyof ColumnDefinitionFormState, value: string | boolean) => {
-    const next = { ...form, [field]: value };
+    let next = { ...form, [field]: value };
+
+    if (field === "type" && typeof value === "string") {
+      const newConfig = getTypeConfig(value);
+      const prevConfig = getTypeConfig(form.type);
+      if (!newConfig.validation.enabled) {
+        next = { ...next, validationPattern: "", validationMessage: "", preset: "" };
+      }
+      if (!newConfig.canonicalFormat.enabled || newConfig.canonicalFormat.options !== prevConfig.canonicalFormat.options) {
+        next = { ...next, canonicalFormat: "" };
+      }
+    }
+
+    if (field === "preset" && typeof value === "string") {
+      const presetValues = VALIDATION_PRESET_VALUES[value];
+      if (presetValues) {
+        next = { ...next, validationPattern: presetValues.pattern, validationMessage: presetValues.message };
+      }
+    }
+
     setForm(next);
     if (touched[field]) {
       setErrors(validateForm(next));
@@ -106,7 +136,7 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
   };
 
   const handleSubmit = () => {
-    setTouched({ key: true, label: true, type: true });
+    setTouched({ key: true, label: true, type: true, validationPattern: true });
     const formErrors = validateForm(form);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
@@ -115,22 +145,18 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
     }
 
     const trimDesc = form.description.trim();
-    const trimDefault = form.defaultValue.trim();
-    const trimFormat = form.format.trim();
-    const parsedEnum = form.enumValues
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
+    const trimValidationPattern = form.validationPattern.trim();
+    const trimValidationMessage = form.validationMessage.trim();
+    const trimCanonicalFormat = form.canonicalFormat.trim();
 
     const body: ColumnDefinitionCreateRequestBody = {
       key: form.key,
       label: form.label.trim(),
       type: form.type as ColumnDefinitionCreateRequestBody["type"],
-      required: form.required,
-      defaultValue: trimDefault || null,
-      format: trimFormat || null,
       description: trimDesc || null,
-      enumValues: parsedEnum.length > 0 ? parsedEnum : null,
+      validationPattern: trimValidationPattern || null,
+      validationMessage: trimValidationMessage || null,
+      canonicalFormat: trimCanonicalFormat || null,
     };
     onSubmit(body);
   };
@@ -212,36 +238,59 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
           multiline
           rows={2}
         />
-        <FormControlLabel
-          control={
-            <Switch
-              checked={form.required}
-              onChange={(e) => handleChange("required", e.target.checked)}
-            />
+        <Select
+          label="Validation Preset"
+          value={form.preset}
+          onChange={(e) => handleChange("preset", e.target.value)}
+          options={VALIDATION_PRESETS}
+          fullWidth
+          disabled={!typeConfig.validation.enabled}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : "Auto-populate validation pattern and message"
           }
-          label="Required"
         />
         <TextField
-          label="Default Value"
-          value={form.defaultValue}
-          onChange={(e) => handleChange("defaultValue", e.target.value)}
+          label="Validation Pattern"
+          value={form.validationPattern}
+          onChange={(e) => handleChange("validationPattern", e.target.value)}
+          onBlur={() => handleBlur("validationPattern")}
           fullWidth
+          disabled={!typeConfig.validation.enabled}
+          error={touched.validationPattern && !!errors.validationPattern}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : (touched.validationPattern && errors.validationPattern) || "Regex that values must match after coercion"
+          }
+          slotProps={{ htmlInput: { "aria-invalid": touched.validationPattern && !!errors.validationPattern } }}
         />
         <TextField
-          label="Format"
-          value={form.format}
-          onChange={(e) => handleChange("format", e.target.value)}
+          label="Validation Message"
+          value={form.validationMessage}
+          onChange={(e) => handleChange("validationMessage", e.target.value)}
           fullWidth
+          disabled={!typeConfig.validation.enabled}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : "Shown when the pattern doesn't match"
+          }
         />
-        {form.type === "enum" && (
-          <TextField
-            label="Enum Values"
-            value={form.enumValues}
-            onChange={(e) => handleChange("enumValues", e.target.value)}
-            fullWidth
-            helperText="Comma-separated values"
-          />
-        )}
+        <Select
+          label="Canonical Format"
+          value={form.canonicalFormat}
+          onChange={(e) => handleChange("canonicalFormat", e.target.value)}
+          options={typeConfig.canonicalFormat.options}
+          fullWidth
+          disabled={!typeConfig.canonicalFormat.enabled}
+          helperText={
+            !typeConfig.canonicalFormat.enabled
+              ? "Not applicable for this column type"
+              : "Normalizes the stored value before saving"
+          }
+        />
         <FormAlert serverError={serverError} />
       </Stack>
     </Modal>

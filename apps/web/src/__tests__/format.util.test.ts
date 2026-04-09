@@ -36,11 +36,6 @@ describe("Formatter", () => {
         })
       ).toBe("10:30");
 
-      expect(
-        Formatter.format(42.5, "currency", {
-          currency: { currency: "USD", locale: "en-US" },
-        })
-      ).toBe("$42.50");
     });
   });
 
@@ -201,49 +196,61 @@ describe("Formatter", () => {
     });
   });
 
-  // ── currency ────────────────────────────────────────────────────
+  // ── canonicalFormat support ────────────────────────────────────
 
-  describe("currency", () => {
-    it("formats a number with two decimal places by default", () => {
-      const result = Formatter.currency(1234.5);
+  describe("format with canonicalFormat", () => {
+    it("applies canonicalFormat to date type (overrides default)", () => {
+      expect(
+        Formatter.format("2025-06-15", "date", { canonicalFormat: "dd/MM/yyyy" })
+      ).toBe("15/06/2025");
+    });
+
+    it("applies canonicalFormat to datetime type", () => {
+      expect(
+        Formatter.format("2025-06-15T10:30:00Z", "datetime", { canonicalFormat: "HH:mm" })
+      ).toBe("10:30");
+    });
+
+    it("applies canonicalFormat to number type with currency prefix", () => {
+      const result = Formatter.format(1234.5, "number", { canonicalFormat: "$#,##0.00" });
+      expect(result).toMatch(/^\$/);
       expect(result).toContain("1");
-      expect(result).toContain("234");
-      expect(result).toContain("50");
     });
 
-    it("parses a numeric string", () => {
-      const result = Formatter.currency("99.9");
-      expect(result).toContain("99");
-      expect(result).toContain("90");
+    it("applies canonicalFormat to number with fixed decimals", () => {
+      const result = Formatter.format(42, "number", { canonicalFormat: "#,##0.00" });
+      // Should have 2 decimal places
+      expect(result).toMatch(/42[.,]00/);
     });
 
-    it("returns raw value for non-numeric input", () => {
-      expect(Formatter.currency("N/A")).toBe("N/A");
+    it("ignores canonicalFormat when null", () => {
+      expect(
+        Formatter.format("2025-06-15", "date", { canonicalFormat: null })
+      ).toBe("2025-06-15");
     });
 
-    it("formats with USD currency code", () => {
-      const result = Formatter.currency(42.5, {
-        currency: "USD",
-        locale: "en-US",
-      });
-      expect(result).toBe("$42.50");
+    it("ignores canonicalFormat for string type", () => {
+      expect(
+        Formatter.format("hello", "string", { canonicalFormat: "UPPER" })
+      ).toBe("hello");
+    });
+  });
+
+  // ── numberWithFormat ──────────────────────────────────────────
+
+  describe("numberWithFormat", () => {
+    it("formats with currency prefix", () => {
+      const result = Formatter.numberWithFormat(1234.5, "$#,##0.00");
+      expect(result).toMatch(/^\$/);
     });
 
-    it("formats with EUR currency code", () => {
-      const result = Formatter.currency(42.5, {
-        currency: "EUR",
-        locale: "de-DE",
-      });
-      expect(result).toContain("42,50");
-      expect(result).toContain("€");
+    it("formats with fixed decimal places", () => {
+      const result = Formatter.numberWithFormat(42, "#,##0.00");
+      expect(result).toMatch(/42[.,]00/);
     });
 
-    it("respects custom fraction digits", () => {
-      const result = Formatter.currency(42.1234, {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 4,
-      });
-      expect(result).toContain("1234");
+    it("returns string for NaN input", () => {
+      expect(Formatter.numberWithFormat("abc", "$#,##0.00")).toBe("abc");
     });
   });
 });

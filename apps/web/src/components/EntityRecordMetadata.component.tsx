@@ -1,7 +1,9 @@
 import React from "react";
 
 import type { EntityRecord } from "@portalai/core/models";
-import { MetadataList } from "@portalai/core/ui";
+import { MetadataList, Stack, Typography } from "@portalai/core/ui";
+import Alert from "@mui/material/Alert";
+import Chip from "@mui/material/Chip";
 
 import { Formatter } from "../utils/format.util";
 
@@ -25,17 +27,44 @@ export const EntityRecordMetadata: React.FC<EntityRecordMetadataProps> = ({
     : "—";
 
   return (
-    <MetadataList
-      items={[
-        { label: "ID", value: record.id, variant: "mono" },
-        { label: "Source ID", value: record.sourceId, variant: "mono" },
-        { label: "Checksum", value: record.checksum, variant: "mono" },
-        { label: "Connector entity ID", value: record.connectorEntityId, variant: "mono" },
-        { label: "Origin", value: record.origin, variant: "chip" },
-        { label: "Synced at", value: syncedAt },
-        { label: "Created", value: created },
-        { label: "Updated", value: updated },
-      ]}
-    />
+    <Stack spacing={1}>
+      <MetadataList
+        items={[
+          { label: "ID", value: record.id, variant: "mono" },
+          { label: "Source ID", value: record.sourceId, variant: "mono" },
+          { label: "Checksum", value: record.checksum, variant: "mono" },
+          { label: "Connector entity ID", value: record.connectorEntityId, variant: "mono" },
+          { label: "Origin", value: record.origin, variant: "chip" },
+          {
+            label: "Valid",
+            value: (
+              <Chip
+                label={record.isValid ? "Valid" : "Invalid"}
+                color={record.isValid ? "success" : "error"}
+                size="small"
+                variant="outlined"
+              />
+            ),
+            variant: "chip",
+          },
+          { label: "Synced at", value: syncedAt },
+          { label: "Created", value: created },
+          { label: "Updated", value: updated },
+        ]}
+      />
+
+      {record.validationErrors && record.validationErrors.length > 0 && (
+        <Alert severity="error">
+          <Typography variant="body2" sx={{ fontWeight: "bold", mb: 0.5 }}>
+            Validation Errors
+          </Typography>
+          {record.validationErrors.map((err, i) => (
+            <Typography key={i} variant="body2">
+              {err.field}: {err.error}
+            </Typography>
+          ))}
+        </Alert>
+      )}
+    </Stack>
   );
 };

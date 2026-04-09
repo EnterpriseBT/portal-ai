@@ -32,7 +32,7 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
           await assertStationScope(stationId, connectorEntityId);
           await assertWriteCapability(connectorEntityId);
 
-          const normalizedData = await NormalizationService.normalize(connectorEntityId, data);
+          const { normalizedData, validationErrors, isValid } = await NormalizationService.normalize(connectorEntityId, data);
 
           const factory = new EntityRecordModelFactory();
           const model = factory.create(userId);
@@ -45,6 +45,8 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
             checksum: "manual",
             syncedAt: Date.now(),
             origin: "portal",
+            isValid,
+            validationErrors,
           });
 
           const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);

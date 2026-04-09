@@ -1,4 +1,4 @@
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 import {
   serializeRecordFields,
@@ -10,16 +10,20 @@ import {
 
 function col(
   key: string,
-  type: ColumnDefinitionSummary["type"],
-  overrides?: Partial<ColumnDefinitionSummary>
-): ColumnDefinitionSummary {
+  type: ResolvedColumn["type"],
+  overrides?: Partial<ResolvedColumn>
+): ResolvedColumn {
   return {
     key,
+    normalizedKey: key,
     label: key.charAt(0).toUpperCase() + key.slice(1),
     type,
     required: false,
     enumValues: null,
     defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
     ...overrides,
   };
 }
@@ -150,15 +154,6 @@ describe("serializeRecordFields", () => {
     expect(errors).toEqual({});
   });
 
-  it("serializes currency same as number", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("price", "currency")],
-      { price: "9.99" }
-    );
-    expect(data.price).toBe(9.99);
-    expect(errors).toEqual({});
-  });
-
   it("serializes enum field as string", () => {
     const { data, errors } = serializeRecordFields(
       [col("status", "enum")],
@@ -277,5 +272,37 @@ describe("initializeRecordFields", () => {
       { name: "Alice" }
     );
     expect(values.name).toBe("Alice");
+  });
+});
+
+// ── normalizedKey differs from key ──────────────────────────────────
+
+describe("normalizedKey used as data key (not col.key)", () => {
+  it("serializeRecordFields uses normalizedKey for input and output", () => {
+    const c = col("first_name", "string", { normalizedKey: "fname" });
+    const { data, errors } = serializeRecordFields([c], { fname: "Alice" });
+    expect(data.fname).toBe("Alice");
+    expect(data).not.toHaveProperty("first_name");
+    expect(errors).toEqual({});
+  });
+
+  it("validateRequiredFields uses normalizedKey for value lookup and error keys", () => {
+    const c = col("first_name", "string", { normalizedKey: "fname", required: true });
+    const errors = validateRequiredFields([c], { fname: "" });
+    expect(errors.fname).toBe("First_name is required");
+    expect(errors).not.toHaveProperty("first_name");
+  });
+
+  it("initializeRecordFields uses normalizedKey for output keys", () => {
+    const c = col("first_name", "string", { normalizedKey: "fname", defaultValue: "hello" });
+    const values = initializeRecordFields([c]);
+    expect(values.fname).toBe("hello");
+    expect(values).not.toHaveProperty("first_name");
+  });
+
+  it("initializeRecordFields reads existingData by normalizedKey", () => {
+    const c = col("first_name", "string", { normalizedKey: "fname" });
+    const values = initializeRecordFields([c], { fname: "Bob" });
+    expect(values.fname).toBe("Bob");
   });
 });

@@ -2,6 +2,7 @@ import {
   pgTable,
   text,
   bigint,
+  boolean,
   jsonb,
   uniqueIndex,
   index,
@@ -49,6 +50,8 @@ export const entityRecords = pgTable(
     checksum: text("checksum").notNull(),
     syncedAt: bigint("synced_at", { mode: "number" }).notNull(),
     origin: entityRecordOriginEnum("origin").notNull().default("manual"),
+    validationErrors: jsonb("validation_errors").$type<{ field: string; error: string }[]>(),
+    isValid: boolean("is_valid").notNull(),
   },
   (table) => [
     uniqueIndex("entity_records_entity_source_unique")
@@ -61,6 +64,10 @@ export const entityRecords = pgTable(
     index("entity_records_entity_synced_at_idx").on(
       table.connectorEntityId,
       table.syncedAt
+    ),
+    index("entity_records_entity_is_valid_idx").on(
+      table.connectorEntityId,
+      table.isValid
     ),
   ]
 );

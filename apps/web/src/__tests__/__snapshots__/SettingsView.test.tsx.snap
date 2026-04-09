@@ -154,6 +154,64 @@ exports[`SettingsView Component should match snapshot 1`] = `
     hidden=""
     id="tabpanel-1"
     role="tabpanel"
-  />
+  >
+    <div
+      class="MuiBox-root css-19midj6"
+    >
+      <div
+        class="MuiPaper-root MuiPaper-outlined MuiPaper-rounded css-1b7vojq-MuiPaper-root"
+      >
+        <div
+          class="MuiStack-root css-1sazv7p-MuiStack-root"
+        >
+          <div
+            class="MuiStack-root css-zkdgmh-MuiStack-root"
+          >
+            <div
+              class="MuiStack-root css-kdc3n8-MuiStack-root"
+            >
+              <h2
+                class="MuiTypography-root MuiTypography-h2 css-1eof97i-MuiTypography-root"
+              >
+                Organization
+              </h2>
+            </div>
+          </div>
+          <div
+            class="MuiBox-root css-0"
+          >
+            <div
+              class="MuiStack-root css-1n7fu9l-MuiStack-root"
+            >
+              <span
+                class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-1t1ckwe-MuiCircularProgress-root"
+                role="progressbar"
+                style="width: 20px; height: 20px;"
+              >
+                <svg
+                  class="MuiCircularProgress-svg css-54pwck-MuiCircularProgress-svg"
+                  viewBox="22 22 44 44"
+                >
+                  <circle
+                    class="MuiCircularProgress-circle MuiCircularProgress-circleIndeterminate css-19t5dcl-MuiCircularProgress-circle"
+                    cx="44"
+                    cy="44"
+                    fill="none"
+                    r="20.2"
+                    stroke-width="3.6"
+                  />
+                </svg>
+              </span>
+              <p
+                class="MuiTypography-root MuiTypography-body2 css-g7ji6g-MuiTypography-root"
+              >
+                Loading...
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 `;

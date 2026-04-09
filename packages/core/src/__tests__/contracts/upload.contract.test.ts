@@ -8,6 +8,7 @@ import {
   PresignResponsePayloadSchema,
   ConfirmColumnSchema,
 } from "../../contracts/upload.contract.js";
+import { FileUploadColumnRecommendationSchema } from "../../models/job.model.js";
 
 // ── PresignFileSchema ─────────────────────────────────────────────
 
@@ -118,49 +119,133 @@ describe("ProcessRequestParamsSchema", () => {
   });
 });
 
+// ── FileUploadColumnRecommendationSchema ──────────────────────────
+
+describe("FileUploadColumnRecommendationSchema", () => {
+  const validRecommendation = {
+    sourceField: "email_address",
+    existingColumnDefinitionId: "coldef_email",
+    existingColumnDefinitionKey: "email",
+    confidence: 0.95,
+    sampleValues: ["a@b.com", "c@d.com"],
+    format: null,
+    isPrimaryKey: false,
+    required: true,
+    normalizedKey: "email_address",
+  };
+
+  it("should accept valid payloads with field-mapping-level fields only", () => {
+    const result = FileUploadColumnRecommendationSchema.safeParse(validRecommendation);
+    expect(result.success).toBe(true);
+  });
+
+  it("should require existingColumnDefinitionId as a non-nullable string", () => {
+    const withNull = { ...validRecommendation, existingColumnDefinitionId: null };
+    expect(FileUploadColumnRecommendationSchema.safeParse(withNull).success).toBe(false);
+
+    const { existingColumnDefinitionId: _, ...withoutId } = validRecommendation;
+    expect(FileUploadColumnRecommendationSchema.safeParse(withoutId).success).toBe(false);
+  });
+
+  it("should reject payloads with action field", () => {
+    const withAction = { ...validRecommendation, action: "match_existing" };
+    const result = FileUploadColumnRecommendationSchema.strict().safeParse(withAction);
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject payloads with key/label/type fields", () => {
+    const withKey = { ...validRecommendation, key: "email" };
+    expect(FileUploadColumnRecommendationSchema.strict().safeParse(withKey).success).toBe(false);
+
+    const withLabel = { ...validRecommendation, label: "Email" };
+    expect(FileUploadColumnRecommendationSchema.strict().safeParse(withLabel).success).toBe(false);
+
+    const withType = { ...validRecommendation, type: "string" };
+    expect(FileUploadColumnRecommendationSchema.strict().safeParse(withType).success).toBe(false);
+  });
+
+  it("should accept optional field-mapping fields", () => {
+    const full = {
+      ...validRecommendation,
+      defaultValue: "N/A",
+      enumValues: ["a", "b"],
+    };
+    const result = FileUploadColumnRecommendationSchema.safeParse(full);
+    expect(result.success).toBe(true);
+  });
+});
+
 // ── ConfirmColumnSchema ───────────────────────────────────────────
 
 describe("ConfirmColumnSchema", () => {
   const validColumn = {
     sourceField: "role_id",
-    key: "role_id",
-    label: "Role ID",
-    type: "number",
+    existingColumnDefinitionId: "coldef_integer",
+    normalizedKey: "role_id",
     format: null,
     isPrimaryKey: false,
     required: true,
-    action: "create_new",
-    existingColumnDefinitionId: null,
   };
 
-  it("should parse a valid column without ref fields", () => {
+  it("should accept valid payloads with all field-mapping-level fields", () => {
     const result = ConfirmColumnSchema.safeParse(validColumn);
     expect(result.success).toBe(true);
   });
 
-  it("should parse a reference column with refEntityKey and refColumnKey", () => {
+  it("should require existingColumnDefinitionId as a non-nullable string", () => {
+    const withNull = { ...validColumn, existingColumnDefinitionId: null };
+    expect(ConfirmColumnSchema.safeParse(withNull).success).toBe(false);
+
+    const { existingColumnDefinitionId: _, ...withoutId } = validColumn;
+    expect(ConfirmColumnSchema.safeParse(withoutId).success).toBe(false);
+  });
+
+  it("should require normalizedKey matching /^[a-z][a-z0-9_]*$/", () => {
+    // Missing normalizedKey
+    const { normalizedKey: _, ...withoutKey } = validColumn;
+    expect(ConfirmColumnSchema.safeParse(withoutKey).success).toBe(false);
+
+    // Invalid normalizedKey
+    const withUpperCase = { ...validColumn, normalizedKey: "RoleId" };
+    expect(ConfirmColumnSchema.safeParse(withUpperCase).success).toBe(false);
+
+    const withSpecialChars = { ...validColumn, normalizedKey: "role-id" };
+    expect(ConfirmColumnSchema.safeParse(withSpecialChars).success).toBe(false);
+
+    // Valid normalizedKey
+    const withValid = { ...validColumn, normalizedKey: "role_id_2" };
+    expect(ConfirmColumnSchema.safeParse(withValid).success).toBe(true);
+  });
+
+  it("should reject payloads with action, key, label, type, validationPattern, validationMessage, canonicalFormat", () => {
+    const removedFields = [
+      { action: "create_new" },
+      { key: "role_id" },
+      { label: "Role ID" },
+      { type: "number" },
+      { validationPattern: "^\\d+$" },
+      { validationMessage: "Must be a number" },
+      { canonicalFormat: "lowercase" },
+    ];
+
+    for (const extra of removedFields) {
+      const payload = { ...validColumn, ...extra };
+      const result = ConfirmColumnSchema.strict().safeParse(payload);
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it("should parse a reference column with ref fields", () => {
     const result = ConfirmColumnSchema.safeParse({
       ...validColumn,
-      type: "reference",
       refEntityKey: "roles",
       refColumnKey: "id",
+      refColumnDefinitionId: "coldef_abc123",
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.refEntityKey).toBe("roles");
       expect(result.data.refColumnKey).toBe("id");
-    }
-  });
-
-  it("should parse a reference column with refColumnDefinitionId for an existing DB column", () => {
-    const result = ConfirmColumnSchema.safeParse({
-      ...validColumn,
-      type: "reference",
-      refEntityKey: "roles",
-      refColumnDefinitionId: "coldef_abc123",
-    });
-    expect(result.success).toBe(true);
-    if (result.success) {
       expect(result.data.refColumnDefinitionId).toBe("coldef_abc123");
     }
   });
@@ -175,22 +260,13 @@ describe("ConfirmColumnSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should parse when ref fields are omitted", () => {
-    const result = ConfirmColumnSchema.safeParse(validColumn);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.refEntityKey).toBeUndefined();
-      expect(result.data.refColumnKey).toBeUndefined();
-      expect(result.data.refColumnDefinitionId).toBeUndefined();
-    }
-  });
-
-  it("should reject an invalid type", () => {
+  it("should accept optional defaultValue and enumValues", () => {
     const result = ConfirmColumnSchema.safeParse({
       ...validColumn,
-      type: "uuid",
+      defaultValue: "0",
+      enumValues: ["admin", "user"],
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 });
 

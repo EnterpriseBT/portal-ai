@@ -19,6 +19,8 @@ const validRecordFields = {
   sourceId: "row-0",
   checksum: "abc123",
   syncedAt: Date.now(),
+  validationErrors: null,
+  isValid: true,
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -188,6 +190,8 @@ describe("EntityRecordSchema — origin field", () => {
     sourceId: "row-0",
     checksum: "abc123",
     syncedAt: Date.now(),
+    validationErrors: null,
+    isValid: true,
     created: Date.now(),
     createdBy: "user-1",
     updated: null,
@@ -221,6 +225,59 @@ describe("EntityRecordSchema — origin field", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.origin).toBe("manual");
+    }
+  });
+});
+
+// ── Validation fields tests ───────────────────────────────────────
+
+describe("EntityRecordSchema — validation fields", () => {
+  const baseRecord = {
+    id: "rec-1",
+    organizationId: "org-1",
+    connectorEntityId: "ce-1",
+    data: { name: "Jane" },
+    normalizedData: { name: "Jane" },
+    sourceId: "row-0",
+    checksum: "abc123",
+    syncedAt: Date.now(),
+    validationErrors: null,
+    isValid: true,
+    created: Date.now(),
+    createdBy: "user-1",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+
+  it("should accept validationErrors array with { field, error } objects", () => {
+    const result = EntityRecordSchema.safeParse({
+      ...baseRecord,
+      validationErrors: [
+        { field: "email", error: "Invalid email format" },
+        { field: "name", error: "Required" },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept isValid: false", () => {
+    const result = EntityRecordSchema.safeParse({
+      ...baseRecord,
+      isValid: false,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.isValid).toBe(false);
+    }
+  });
+
+  it("should accept validationErrors: null", () => {
+    const result = EntityRecordSchema.safeParse(baseRecord);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.validationErrors).toBeNull();
     }
   });
 });

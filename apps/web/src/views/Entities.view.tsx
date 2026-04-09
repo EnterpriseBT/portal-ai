@@ -25,8 +25,6 @@ import {
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
-import { useEntityTagFilter } from "../api/entity-tags.api";
-import { useConnectorInstanceFilter } from "../api/connector-instances.api";
 
 // ── Entity card ─────────────────────────────────────────────────────
 
@@ -215,9 +213,9 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
 export const EntitiesView: React.FC = () => {
   const queryClient = useQueryClient();
   const { fetchPage: connectorInstanceFetchPage, labelMap: connectorInstanceLabelMap } =
-    useConnectorInstanceFilter();
+    sdk.connectorInstances.filter();
   const { fetchPage: tagFetchPage, labelMap: tagLabelMap } =
-    useEntityTagFilter();
+    sdk.entityTags.filter();
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.connectorEntities.create();

@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 
 import type { ConnectorEntity, EntityRecord } from "@portalai/core/models";
 import type {
-  ColumnDefinitionSummary,
+  ResolvedColumn,
   ConnectorEntityGetResponsePayload,
   EntityRecordGetResponsePayload,
   EntityRecordPatchRequestBody,
@@ -10,6 +10,7 @@ import type {
 } from "@portalai/core/contracts";
 import type { EntityGroup } from "@portalai/core/models";
 import { Box, Icon, IconName, MetadataList, PageGrid, PageGridItem, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
@@ -198,7 +199,7 @@ export const RelatedRecordsSection: React.FC<RelatedRecordsSectionProps> = ({
 export interface EntityRecordDetailViewUIProps {
   entity: ConnectorEntity;
   record: EntityRecord;
-  columns: ColumnDefinitionSummary[];
+  columns: ResolvedColumn[];
   groups?: EntityGroup[];
   isWriteEnabled?: boolean;
   onDelete?: () => void;
@@ -213,6 +214,8 @@ export interface EntityRecordDetailViewUIProps {
   editDialogOpen?: boolean;
   onOpenEditDialog?: () => void;
   onCloseEditDialog?: () => void;
+  onRevalidate?: () => void;
+  isRevalidating?: boolean;
 }
 
 export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> = ({
@@ -233,6 +236,8 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
   editDialogOpen,
   onOpenEditDialog,
   onCloseEditDialog,
+  onRevalidate,
+  isRevalidating,
 }) => {
   const navigate = useNavigate();
 
@@ -250,6 +255,9 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
           title="Record Details"
           icon={<Icon name={IconName.DataObject} />}
           secondaryActions={[
+            ...(onRevalidate
+              ? [{ label: "Re-validate", icon: <RefreshIcon />, onClick: onRevalidate, disabled: isRevalidating }]
+              : []),
             ...(isWriteEnabled
               ? [{ label: "Edit", icon: <EditIcon />, onClick: () => onOpenEditDialog?.(), disabled: isUpdating }]
               : []),
@@ -258,6 +266,7 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
               : []),
           ]}
         />
+
         <PageGrid columns={{ xs: 1, md: 2 }}>
           {/* Metadata */}
           <PageGridItem>
@@ -300,8 +309,9 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
                   label: col.label,
                   value: (
                     <EntityRecordFieldValue
-                      value={record.normalizedData[col.key]}
+                      value={record.normalizedData[col.normalizedKey]}
                       type={col.type}
+                      canonicalFormat={col.canonicalFormat}
                     />
                   ),
                 }))}
@@ -368,6 +378,7 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   const groupsResult = sdk.entityGroups.listByEntity(entityId);
   const updateMutation = sdk.entityRecords.update(entityId, recordId);
   const deleteMutation = sdk.entityRecords.delete(entityId, recordId);
+  const revalidateMutation = sdk.entityRecords.revalidate(entityId);
 
   // Resolve write capability
   const connectorInstanceId = entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
@@ -398,6 +409,15 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
     },
     [updateMutation, queryClient, entityId, recordId]
   );
+
+  const handleRevalidate = useCallback(() => {
+    revalidateMutation.mutate(undefined, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        queryClient.invalidateQueries({ queryKey: queryKeys.jobs.root });
+      },
+    });
+  }, [revalidateMutation, queryClient]);
 
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(undefined, {
@@ -436,6 +456,8 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
           editDialogOpen={editDialogOpen}
           onOpenEditDialog={() => setEditDialogOpen(true)}
           onCloseEditDialog={() => setEditDialogOpen(false)}
+          onRevalidate={handleRevalidate}
+          isRevalidating={revalidateMutation.isPending}
         />
       )}
     </DataResult>

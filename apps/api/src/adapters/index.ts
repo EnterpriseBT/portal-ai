@@ -1,7 +1,7 @@
 export type {
   AccessMode,
   ConnectorAdapter,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
   DiscoveredColumn,
   DiscoveredEntity,
   EntityDataQuery,

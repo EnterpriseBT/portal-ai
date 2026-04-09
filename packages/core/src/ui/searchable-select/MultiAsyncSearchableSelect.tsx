@@ -24,6 +24,7 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
   disabled,
   required,
   size = "small",
+  fullWidth,
   inputRef,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
@@ -42,13 +43,21 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
     });
   }, [value]);
 
+  // Initial load on mount
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    onSearch("").then((results) => {
+      if (!cancelled) setOptions(results);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced search on input change
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    if (!inputValue) {
-      setOptions([]);
-      return;
-    }
 
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
@@ -90,6 +99,7 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
       loading={loading}
       disabled={disabled}
       size={size}
+      fullWidth={fullWidth}
       renderInput={(params) => (
         <TextField
           {...params}

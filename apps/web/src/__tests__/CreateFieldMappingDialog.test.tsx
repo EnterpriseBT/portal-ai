@@ -139,8 +139,9 @@ describe("CreateFieldMappingDialog", () => {
 
   it("should default isPrimaryKey to false", () => {
     render(<CreateFieldMappingDialog {...defaultProps} />);
-    const toggle = screen.getByRole("switch");
-    expect(toggle).not.toBeChecked();
+    const switches = screen.getAllByRole("switch");
+    // First switch is Primary Key
+    expect(switches[0]).not.toBeChecked();
   });
 
   it("should submit form on Enter key press", async () => {
@@ -217,6 +218,11 @@ describe("CreateFieldMappingDialog", () => {
         connectorEntityId: "ce-1",
         columnDefinitionId: "cd-1",
         sourceField: "user_email",
+        normalizedKey: "user_email",
+        required: false,
+        defaultValue: null,
+        format: null,
+        enumValues: null,
         isPrimaryKey: false,
         refColumnDefinitionId: null,
         refEntityKey: null,
@@ -274,6 +280,110 @@ describe("CreateFieldMappingDialog", () => {
     fireEvent.change(refBidiInput, { target: { value: "test" } });
     await waitFor(() => {
       expect(defaultProps.onSearchFieldMappings).toHaveBeenCalled();
+    });
+  });
+
+  // ── New field rendering ────────────────────────────────────────────
+
+  it("should render Normalized Key field", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} />);
+    expect(screen.getByLabelText(/Normalized Key/)).toBeInTheDocument();
+  });
+
+  it("should render Required switch defaulting to unchecked", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} />);
+    const switches = screen.getAllByRole("switch");
+    // First switch is Primary Key, second is Required
+    expect(switches[1]).not.toBeChecked();
+    expect(screen.getByText("Required")).toBeInTheDocument();
+  });
+
+  it("should render Default Value and Format fields", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} />);
+    expect(screen.getByLabelText(/Default Value/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Format/)).toBeInTheDocument();
+  });
+
+  it("should NOT render Enum Values when column type is string", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="string" />);
+    expect(screen.queryByLabelText(/Enum Values/)).not.toBeInTheDocument();
+  });
+
+  it("should render Enum Values when column type is enum", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="enum" />);
+    expect(screen.getByLabelText(/Enum Values/)).toBeInTheDocument();
+  });
+
+  // ── Normalized Key auto-suggest ────────────────────────────────────
+
+  it("should auto-populate normalizedKey from sourceField as snake_case", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "User Email" },
+    });
+    expect(screen.getByLabelText(/Normalized Key/)).toHaveValue("user_email");
+  });
+
+  it("should allow manual editing of normalizedKey after auto-population", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "User Email" },
+    });
+    expect(screen.getByLabelText(/Normalized Key/)).toHaveValue("user_email");
+    fireEvent.change(screen.getByLabelText(/Normalized Key/), {
+      target: { value: "custom_key" },
+    });
+    expect(screen.getByLabelText(/Normalized Key/)).toHaveValue("custom_key");
+    // Changing sourceField again should NOT overwrite manual edit
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "Other Field" },
+    });
+    expect(screen.getByLabelText(/Normalized Key/)).toHaveValue("custom_key");
+  });
+
+  it("should show validation error for invalid normalizedKey format", async () => {
+    render(<CreateFieldMappingDialog {...defaultProps} />);
+    fireEvent.change(screen.getByLabelText(/Normalized Key/), {
+      target: { value: "Bad Key!" },
+    });
+    fireEvent.blur(screen.getByLabelText(/Normalized Key/));
+    await waitFor(() => {
+      expect(screen.getByText(/Must be lowercase alphanumeric/)).toBeInTheDocument();
+    });
+  });
+
+  // ── Type-aware Format field ──────────────────────────────────────────
+
+  it("should disable Format field when column type does not support it", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="string" />);
+    expect(screen.getByLabelText(/^Format/)).toBeDisabled();
+    expect(screen.getByText("Not used for string columns")).toBeInTheDocument();
+  });
+
+  it("should enable Format field with type-specific helper text for date type", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="date" />);
+    expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
+    expect(screen.getByText(/Date format for parsing/)).toBeInTheDocument();
+  });
+
+  it("should enable Format field with type-specific helper text for boolean type", () => {
+    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="boolean" />);
+    expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
+    expect(screen.getByText(/Custom true\/false labels/)).toBeInTheDocument();
+  });
+
+  it("should show validation error for empty normalizedKey on submit", async () => {
+    render(<CreateFieldMappingDialog {...defaultProps} />);
+    // Fill source field but clear normalizedKey
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "email" },
+    });
+    fireEvent.change(screen.getByLabelText(/Normalized Key/), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Normalized Key/)).toHaveAttribute("aria-invalid", "true");
     });
   });
 });

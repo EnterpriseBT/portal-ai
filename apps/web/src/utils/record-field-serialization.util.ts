@@ -1,18 +1,18 @@
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 /**
  * Serialize form values into normalizedData for API submission.
  * Returns { data, errors } — errors is non-empty if fields are invalid.
  */
 export function serializeRecordFields(
-  columns: ColumnDefinitionSummary[],
+  columns: ResolvedColumn[],
   values: Record<string, unknown>
 ): { data: Record<string, unknown>; errors: Record<string, string> } {
   const data: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
 
   for (const col of columns) {
-    const raw = values[col.key];
+    const raw = values[col.normalizedKey];
 
     switch (col.type) {
       case "string":
@@ -21,42 +21,41 @@ export function serializeRecordFields(
       case "reference":
       case "enum": {
         const str = String(raw ?? "");
-        data[col.key] = str === "" ? null : str;
+        data[col.normalizedKey] = str === "" ? null : str;
         break;
       }
 
-      case "number":
-      case "currency": {
+      case "number": {
         const str = String(raw ?? "");
         if (str === "") {
-          data[col.key] = null;
+          data[col.normalizedKey] = null;
         } else {
           const num = Number(str);
           if (isNaN(num)) {
-            errors[col.key] = "Must be a valid number";
-            data[col.key] = null;
+            errors[col.normalizedKey] = "Must be a valid number";
+            data[col.normalizedKey] = null;
           } else {
-            data[col.key] = num;
+            data[col.normalizedKey] = num;
           }
         }
         break;
       }
 
       case "boolean": {
-        data[col.key] = raw;
+        data[col.normalizedKey] = raw;
         break;
       }
 
       case "json": {
         const str = String(raw ?? "");
         if (str === "") {
-          data[col.key] = null;
+          data[col.normalizedKey] = null;
         } else {
           try {
-            data[col.key] = JSON.parse(str);
+            data[col.normalizedKey] = JSON.parse(str);
           } catch (e) {
-            errors[col.key] = `Invalid JSON: ${(e as Error).message}`;
-            data[col.key] = null;
+            errors[col.normalizedKey] = `Invalid JSON: ${(e as Error).message}`;
+            data[col.normalizedKey] = null;
           }
         }
         break;
@@ -65,19 +64,19 @@ export function serializeRecordFields(
       case "array": {
         const str = String(raw ?? "");
         if (str === "") {
-          data[col.key] = null;
+          data[col.normalizedKey] = null;
         } else {
           try {
             const parsed = JSON.parse(str);
             if (!Array.isArray(parsed)) {
-              errors[col.key] = "Value must be a JSON array";
-              data[col.key] = null;
+              errors[col.normalizedKey] = "Value must be a JSON array";
+              data[col.normalizedKey] = null;
             } else {
-              data[col.key] = parsed;
+              data[col.normalizedKey] = parsed;
             }
           } catch (e) {
-            errors[col.key] = `Invalid JSON: ${(e as Error).message}`;
-            data[col.key] = null;
+            errors[col.normalizedKey] = `Invalid JSON: ${(e as Error).message}`;
+            data[col.normalizedKey] = null;
           }
         }
         break;
@@ -86,9 +85,9 @@ export function serializeRecordFields(
       case "reference-array": {
         const str = String(raw ?? "");
         if (str === "") {
-          data[col.key] = null;
+          data[col.normalizedKey] = null;
         } else {
-          data[col.key] = str
+          data[col.normalizedKey] = str
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
@@ -97,7 +96,7 @@ export function serializeRecordFields(
       }
 
       default:
-        data[col.key] = raw;
+        data[col.normalizedKey] = raw;
     }
   }
 
@@ -108,7 +107,7 @@ export function serializeRecordFields(
  * Validate required fields. Returns errors for required columns with empty/null values.
  */
 export function validateRequiredFields(
-  columns: ColumnDefinitionSummary[],
+  columns: ResolvedColumn[],
   values: Record<string, unknown>
 ): Record<string, string> {
   const errors: Record<string, string> = {};
@@ -118,9 +117,9 @@ export function validateRequiredFields(
     // Boolean fields always pass — no empty state
     if (col.type === "boolean") continue;
 
-    const val = values[col.key];
+    const val = values[col.normalizedKey];
     if (val === null || val === undefined || val === "") {
-      errors[col.key] = `${col.label} is required`;
+      errors[col.normalizedKey] = `${col.label} is required`;
     }
   }
 
@@ -133,20 +132,20 @@ export function validateRequiredFields(
  * Used by EditEntityRecordDialog to deserialize existing normalizedData.
  */
 export function initializeRecordFields(
-  columns: ColumnDefinitionSummary[],
+  columns: ResolvedColumn[],
   existingData?: Record<string, unknown>
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {};
 
   for (const col of columns) {
-    if (existingData && col.key in existingData) {
-      const val = existingData[col.key];
+    if (existingData && col.normalizedKey in existingData) {
+      const val = existingData[col.normalizedKey];
 
       switch (col.type) {
         case "json":
         case "array":
           // Deserialize objects/arrays to pretty-printed JSON string
-          values[col.key] =
+          values[col.normalizedKey] =
             val !== null && typeof val === "object"
               ? JSON.stringify(val, null, 2)
               : val !== null && val !== undefined
@@ -155,28 +154,27 @@ export function initializeRecordFields(
           break;
 
         case "number":
-        case "currency":
-          values[col.key] =
+          values[col.normalizedKey] =
             val !== null && val !== undefined ? String(val) : "";
           break;
 
         case "boolean":
-          values[col.key] = val;
+          values[col.normalizedKey] = val;
           break;
 
         default:
-          values[col.key] = val ?? "";
+          values[col.normalizedKey] = val ?? "";
           break;
       }
     } else {
       // Create mode — use defaults
       switch (col.type) {
         case "boolean":
-          values[col.key] = false;
+          values[col.normalizedKey] = false;
           break;
 
         default:
-          values[col.key] = col.defaultValue ?? "";
+          values[col.normalizedKey] = col.defaultValue ?? "";
           break;
       }
     }

@@ -4,18 +4,37 @@ import { ColumnDataTypeEnum } from "../models/column-definition.model.js";
 import { EntityRecordSchema } from "../models/entity-record.model.js";
 import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
 
-// ── Column summary (returned alongside record rows) ─────────────────
+// ── Resolved column (merges column-definition + field-mapping fields) ─
 
-export const ColumnDefinitionSummarySchema = z.object({
+export const ResolvedColumnSchema = z.object({
+  /** Column definition key. */
   key: z.string(),
+  /** Column definition label. */
   label: z.string(),
+  /** Column definition data type. */
   type: ColumnDataTypeEnum,
+  /** Key used in normalizedData JSONB — may differ from `key` (field-mapping-level). */
+  normalizedKey: z.string(),
+  /** Whether this field is required (field-mapping-level). */
   required: z.boolean(),
+  /** Allowed values (field-mapping-level). */
   enumValues: z.array(z.string()).nullable(),
+  /** Default fill value (field-mapping-level). */
   defaultValue: z.string().nullable(),
+  /** Per-source parse format hint, e.g. "YYYY-MM-DD", "email" (field-mapping-level). */
+  format: z.string().nullable(),
+  /** Regex validation pattern (column-definition-level). */
+  validationPattern: z.string().nullable(),
+  /** Display/storage format (column-definition-level). */
+  canonicalFormat: z.string().nullable(),
 });
 
-export type ColumnDefinitionSummary = z.infer<typeof ColumnDefinitionSummarySchema>;
+export type ResolvedColumn = z.infer<typeof ResolvedColumnSchema>;
+
+/** @deprecated Use `ResolvedColumnSchema` instead. */
+export const ColumnDefinitionSummarySchema = ResolvedColumnSchema;
+/** @deprecated Use `ResolvedColumn` instead. */
+export type ColumnDefinitionSummary = ResolvedColumn;
 
 // ── List records ────────────────────────────────────────────────────
 
@@ -23,13 +42,15 @@ export const EntityRecordListRequestQuerySchema = PaginationRequestQuerySchema.e
   columns: z.string().optional(),
   /** Base64-encoded JSON string containing a FilterExpression. Decoded and validated at the API layer. */
   filters: z.string().optional(),
+  /** Filter by validation status. Query params are strings; parsed to boolean in the router. */
+  isValid: z.enum(["true", "false"]).optional(),
 });
 
 export type EntityRecordListRequestQuery = z.infer<typeof EntityRecordListRequestQuerySchema>;
 
 export const EntityRecordListResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
   records: z.array(EntityRecordSchema),
-  columns: z.array(ColumnDefinitionSummarySchema),
+  columns: z.array(ResolvedColumnSchema),
   source: z.enum(["cache", "live"]),
 });
 
@@ -81,7 +102,7 @@ export type EntityRecordSyncResponsePayload = z.infer<typeof EntityRecordSyncRes
 
 export const EntityRecordGetResponsePayloadSchema = z.object({
   record: EntityRecordSchema,
-  columns: z.array(ColumnDefinitionSummarySchema),
+  columns: z.array(ResolvedColumnSchema),
 });
 
 export type EntityRecordGetResponsePayload = z.infer<typeof EntityRecordGetResponsePayloadSchema>;

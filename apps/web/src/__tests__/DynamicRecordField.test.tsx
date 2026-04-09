@@ -1,7 +1,7 @@
 import React from "react";
 import { jest } from "@jest/globals";
 
-import type { ColumnDefinitionSummary } from "@portalai/core/contracts";
+import type { ResolvedColumn } from "@portalai/core/contracts";
 
 // Mock react-markdown and remark-gfm so jsdom doesn't choke on ESM
 jest.unstable_mockModule("react-markdown", () => ({
@@ -19,16 +19,20 @@ const { DynamicRecordField } = await import(
 
 function col(
   key: string,
-  type: ColumnDefinitionSummary["type"],
-  overrides?: Partial<ColumnDefinitionSummary>
-): ColumnDefinitionSummary {
+  type: ResolvedColumn["type"],
+  overrides?: Partial<ResolvedColumn>
+): ResolvedColumn {
   return {
     key,
+    normalizedKey: key,
     label: key.charAt(0).toUpperCase() + key.slice(1),
     type,
     required: false,
     enumValues: null,
     defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
     ...overrides,
   };
 }
@@ -51,11 +55,6 @@ describe("DynamicRecordField — rendering by type", () => {
   it("renders type=number input for number type", () => {
     render(<DynamicRecordField column={col("age", "number")} value="" onChange={noop} />);
     expect(screen.getByLabelText("Age")).toHaveAttribute("type", "number");
-  });
-
-  it("renders type=number input for currency type", () => {
-    render(<DynamicRecordField column={col("price", "currency")} value="" onChange={noop} />);
-    expect(screen.getByLabelText("Price")).toHaveAttribute("type", "number");
   });
 
   it("renders checkbox for boolean type", () => {

@@ -8,6 +8,7 @@ import {
 } from "@jest/globals";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
@@ -48,6 +49,7 @@ const {
   fieldMappings,
   entityRecords,
   organizations,
+  jobs,
 } = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -64,11 +66,10 @@ function createColumnDefinition(
     key: `col_${generateId().replace(/-/g, "").slice(0, 8)}`,
     label: "Test Column",
     type: "string" as const,
-    required: false,
-    defaultValue: null,
-    format: null,
-    enumValues: null,
     description: null,
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -163,6 +164,11 @@ function createFieldMap(
     columnDefinitionId,
     sourceField: "source_field",
     isPrimaryKey: false,
+    normalizedKey: "source_field",
+    required: false,
+    defaultValue: null,
+    format: null,
+    enumValues: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -187,6 +193,8 @@ function createEntityRecord(
     sourceId: `src_${generateId().replace(/-/g, "").slice(0, 8)}`,
     checksum: "abc123",
     syncedAt: now,
+    validationErrors: null,
+    isValid: true,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -347,7 +355,7 @@ describe("Column Definition Router", () => {
       expect(labels).not.toContain("Number Col");
     });
 
-    it("should filter by required", async () => {
+    it("should filter by search", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -357,22 +365,20 @@ describe("Column Definition Router", () => {
         .insert(columnDefinitions)
         .values([
           createColumnDefinition(organizationId, {
-            label: "Optional",
-            required: false,
+            label: "Email Address",
           }),
           createColumnDefinition(organizationId, {
-            label: "Required",
-            required: true,
+            label: "Phone Number",
           }),
         ] as never);
 
       const res = await request(app)
-        .get("/api/column-definitions?required=true")
+        .get("/api/column-definitions?search=email")
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
       expect(res.body.payload.columnDefinitions).toHaveLength(1);
-      expect(res.body.payload.columnDefinitions[0].label).toBe("Required");
+      expect(res.body.payload.columnDefinitions[0].label).toBe("Email Address");
     });
 
     it("should scope results to the requested organization", async () => {
@@ -518,8 +524,6 @@ describe("Column Definition Router", () => {
           key: "email",
           label: "Email Address",
           type: "string",
-          required: true,
-          format: "email",
         });
 
       expect(res.status).toBe(201);
@@ -528,8 +532,6 @@ describe("Column Definition Router", () => {
       expect(created.key).toBe("email");
       expect(created.label).toBe("Email Address");
       expect(created.type).toBe("string");
-      expect(created.required).toBe(true);
-      expect(created.format).toBe("email");
       expect(created.organizationId).toBe(organizationId);
     });
 
@@ -588,12 +590,11 @@ describe("Column Definition Router", () => {
       const res = await request(app)
         .patch(`/api/column-definitions/${colDef.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ label: "Updated Label", required: true });
+        .send({ label: "Updated Label" });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.payload.columnDefinition.label).toBe("Updated Label");
-      expect(res.body.payload.columnDefinition.required).toBe(true);
     });
 
     // 1.T6: PATCH with `key` in body returns 422 COLUMN_DEFINITION_KEY_IMMUTABLE
@@ -632,7 +633,7 @@ describe("Column Definition Router", () => {
       const res = await request(app)
         .patch(`/api/column-definitions/${colDef.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ type: "enum", enumValues: ["a", "b", "c"] });
+        .send({ type: "enum" });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.columnDefinition.type).toBe("enum");
@@ -700,16 +701,15 @@ describe("Column Definition Router", () => {
       expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED);
     });
 
-    // 1.T10: PATCH removing enum values returns 200 with warnings array
-    it("should return warnings when enum values are removed (Rule 4)", async () => {
+    // 1.T10: PATCH updating description returns 200
+    it("should update description successfully", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
       );
 
       const colDef = createColumnDefinition(organizationId, {
-        type: "enum",
-        enumValues: ["a", "b", "c"],
+        type: "string",
       });
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
@@ -718,36 +718,10 @@ describe("Column Definition Router", () => {
       const res = await request(app)
         .patch(`/api/column-definitions/${colDef.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ enumValues: ["a", "c"] });
+        .send({ description: "Updated description" });
 
       expect(res.status).toBe(200);
-      expect(res.body.payload.warnings).toBeDefined();
-      expect(res.body.payload.warnings).toHaveLength(1);
-      expect(res.body.payload.warnings[0]).toContain("b");
-    });
-
-    // 1.T11: PATCH adding enum values returns 200 without warnings
-    it("should not return warnings when enum values are added", async () => {
-      const { organizationId } = await seedUserAndOrg(
-        db as ReturnType<typeof drizzle>,
-        AUTH0_ID
-      );
-
-      const colDef = createColumnDefinition(organizationId, {
-        type: "enum",
-        enumValues: ["a", "b"],
-      });
-      await (db as ReturnType<typeof drizzle>)
-        .insert(columnDefinitions)
-        .values(colDef as never);
-
-      const res = await request(app)
-        .patch(`/api/column-definitions/${colDef.id}`)
-        .set("Authorization", "Bearer test-token")
-        .send({ enumValues: ["a", "b", "c"] });
-
-      expect(res.status).toBe(200);
-      expect(res.body.payload.warnings).toBeUndefined();
+      expect(res.body.payload.columnDefinition.description).toBe("Updated description");
     });
   });
 
@@ -925,7 +899,7 @@ describe("Column Definition Router", () => {
         organizationId,
         connectorEntityId,
         refColDef.id,
-        { refColumnDefinitionId: colDef.id }
+        { refColumnDefinitionId: colDef.id, normalizedKey: "ref_source_field" }
       );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
@@ -967,6 +941,353 @@ describe("Column Definition Router", () => {
       expect(res.body.payload.fieldMappings).toBe(0);
       expect(res.body.payload.refFieldMappings).toBe(0);
       expect(res.body.payload.entityRecords).toBe(0);
+    });
+  });
+
+  // ── Phase 4: Field ownership & revalidation triggers ────────────
+
+  describe("Phase 4 — Field ownership validation", () => {
+    describe("POST /api/column-definitions", () => {
+      it("should reject request body containing removed fields (required, defaultValue, format, enumValues)", async () => {
+        await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+        // Zod strict parsing strips unknown keys, so these are just ignored.
+        // But the important check is that these fields do NOT appear on the created resource.
+        const res = await request(app)
+          .post("/api/column-definitions")
+          .set("Authorization", "Bearer test-token")
+          .send({
+            key: "test_removed_fields",
+            label: "Test",
+            type: "string",
+            required: true,
+            defaultValue: "foo",
+            format: "uppercase",
+            enumValues: ["a", "b"],
+          });
+
+        expect(res.status).toBe(201);
+        const created = res.body.payload.columnDefinition;
+        expect(created).not.toHaveProperty("required");
+        expect(created).not.toHaveProperty("defaultValue");
+        expect(created).not.toHaveProperty("format");
+        expect(created).not.toHaveProperty("enumValues");
+      });
+
+      it("should accept and persist validationPattern, validationMessage, canonicalFormat", async () => {
+        await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+        const res = await request(app)
+          .post("/api/column-definitions")
+          .set("Authorization", "Bearer test-token")
+          .send({
+            key: "email_field",
+            label: "Email",
+            type: "string",
+            validationPattern: "^[^@]+@[^@]+\\.[^@]+$",
+            validationMessage: "Must be a valid email",
+            canonicalFormat: "lowercase",
+          });
+
+        expect(res.status).toBe(201);
+        const created = res.body.payload.columnDefinition;
+        expect(created.validationPattern).toBe("^[^@]+@[^@]+\\.[^@]+$");
+        expect(created.validationMessage).toBe("Must be a valid email");
+        expect(created.canonicalFormat).toBe("lowercase");
+      });
+
+      it("should reject an invalid validationPattern regex on POST", async () => {
+        await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+        const res = await request(app)
+          .post("/api/column-definitions")
+          .set("Authorization", "Bearer test-token")
+          .send({
+            key: "bad_pattern",
+            label: "Bad Pattern",
+            type: "string",
+            validationPattern: "[invalid(",
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_VALIDATION_PATTERN);
+      });
+
+      it("should reject type 'currency'", async () => {
+        await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+        const res = await request(app)
+          .post("/api/column-definitions")
+          .set("Authorization", "Bearer test-token")
+          .send({
+            key: "price",
+            label: "Price",
+            type: "currency",
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD);
+      });
+    });
+
+    describe("PATCH /api/column-definitions/:id", () => {
+      it("should ignore removed fields in request body (required, defaultValue, format, enumValues)", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+
+        const colDef = createColumnDefinition(organizationId);
+        await (db as ReturnType<typeof drizzle>)
+          .insert(columnDefinitions)
+          .values(colDef as never);
+
+        const res = await request(app)
+          .patch(`/api/column-definitions/${colDef.id}`)
+          .set("Authorization", "Bearer test-token")
+          .send({
+            label: "Updated",
+            required: true,
+            defaultValue: "foo",
+            format: "uppercase",
+            enumValues: ["a"],
+          });
+
+        expect(res.status).toBe(200);
+        const updated = res.body.payload.columnDefinition;
+        expect(updated.label).toBe("Updated");
+        expect(updated).not.toHaveProperty("required");
+        expect(updated).not.toHaveProperty("defaultValue");
+        expect(updated).not.toHaveProperty("format");
+        expect(updated).not.toHaveProperty("enumValues");
+      });
+
+      it("should reject an invalid validationPattern regex on PATCH", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+
+        const colDef = createColumnDefinition(organizationId);
+        await (db as ReturnType<typeof drizzle>)
+          .insert(columnDefinitions)
+          .values(colDef as never);
+
+        const res = await request(app)
+          .patch(`/api/column-definitions/${colDef.id}`)
+          .set("Authorization", "Bearer test-token")
+          .send({ validationPattern: "(unclosed" });
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_VALIDATION_PATTERN);
+      });
+
+      it("should accept and persist validationPattern, validationMessage, canonicalFormat", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+
+        const colDef = createColumnDefinition(organizationId);
+        await (db as ReturnType<typeof drizzle>)
+          .insert(columnDefinitions)
+          .values(colDef as never);
+
+        const res = await request(app)
+          .patch(`/api/column-definitions/${colDef.id}`)
+          .set("Authorization", "Bearer test-token")
+          .send({
+            validationPattern: "^\\d{3}-\\d{4}$",
+            validationMessage: "Must be XXX-XXXX format",
+            canonicalFormat: "phone",
+          });
+
+        expect(res.status).toBe(200);
+        const updated = res.body.payload.columnDefinition;
+        expect(updated.validationPattern).toBe("^\\d{3}-\\d{4}$");
+        expect(updated.validationMessage).toBe("Must be XXX-XXXX format");
+        expect(updated.canonicalFormat).toBe("phone");
+      });
+    });
+
+    describe("GET /api/column-definitions", () => {
+      it("should include new fields and exclude removed fields in response", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+
+        const colDef = createColumnDefinition(organizationId, {
+          validationPattern: "^\\w+$",
+          validationMessage: "Alphanumeric only",
+          canonicalFormat: "lowercase",
+        });
+        await (db as ReturnType<typeof drizzle>)
+          .insert(columnDefinitions)
+          .values(colDef as never);
+
+        const res = await request(app)
+          .get("/api/column-definitions")
+          .set("Authorization", "Bearer test-token");
+
+        expect(res.status).toBe(200);
+        const returned = res.body.payload.columnDefinitions[0];
+        // New fields present
+        expect(returned.validationPattern).toBe("^\\w+$");
+        expect(returned.validationMessage).toBe("Alphanumeric only");
+        expect(returned.canonicalFormat).toBe("lowercase");
+        // Old fields absent
+        expect(returned).not.toHaveProperty("required");
+        expect(returned).not.toHaveProperty("defaultValue");
+        expect(returned).not.toHaveProperty("format");
+        expect(returned).not.toHaveProperty("enumValues");
+      });
+
+      it("should not accept 'required' as a filter query parameter", async () => {
+        const { organizationId } = await seedUserAndOrg(
+          db as ReturnType<typeof drizzle>,
+          AUTH0_ID
+        );
+
+        await (db as ReturnType<typeof drizzle>)
+          .insert(columnDefinitions)
+          .values([
+            createColumnDefinition(organizationId, { label: "Col A" }),
+            createColumnDefinition(organizationId, { label: "Col B" }),
+          ] as never);
+
+        // 'required' param should be ignored — all results returned
+        const res = await request(app)
+          .get("/api/column-definitions?required=true")
+          .set("Authorization", "Bearer test-token");
+
+        expect(res.status).toBe(200);
+        expect(res.body.payload.columnDefinitions).toHaveLength(2);
+      });
+    });
+  });
+
+  describe("Phase 4 — Revalidation triggers on PATCH", () => {
+    it("should trigger revalidation when validationPattern changes", async () => {
+      const { organizationId, connectorEntityId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const colDef = createColumnDefinition(organizationId, {
+        validationPattern: null,
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
+
+      // Create field mapping linking entity to this column def
+      const fm = createFieldMap(organizationId, connectorEntityId, colDef.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(fm as never);
+
+      const res = await request(app)
+        .patch(`/api/column-definitions/${colDef.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ validationPattern: "^[A-Z]+$" });
+
+      expect(res.status).toBe(200);
+
+      // Verify a revalidation job was created
+      const jobRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, "revalidation"),
+            eq(jobs.organizationId, organizationId)
+          )
+        );
+
+      expect(jobRows.length).toBeGreaterThanOrEqual(1);
+      const revalJob = jobRows.find(
+        (j) => (j.metadata as Record<string, unknown>).connectorEntityId === connectorEntityId
+      );
+      expect(revalJob).toBeDefined();
+    });
+
+    it("should trigger revalidation when canonicalFormat changes", async () => {
+      const { organizationId, connectorEntityId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const colDef = createColumnDefinition(organizationId, {
+        canonicalFormat: null,
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
+
+      const fm = createFieldMap(organizationId, connectorEntityId, colDef.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(fm as never);
+
+      const res = await request(app)
+        .patch(`/api/column-definitions/${colDef.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ canonicalFormat: "YYYY-MM-DD" });
+
+      expect(res.status).toBe(200);
+
+      const jobRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, "revalidation"),
+            eq(jobs.organizationId, organizationId)
+          )
+        );
+
+      expect(jobRows.length).toBeGreaterThanOrEqual(1);
+      const revalJob = jobRows.find(
+        (j) => (j.metadata as Record<string, unknown>).connectorEntityId === connectorEntityId
+      );
+      expect(revalJob).toBeDefined();
+    });
+
+    it("should NOT trigger revalidation when only validationMessage changes", async () => {
+      const { organizationId, connectorEntityId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
+
+      const colDef = createColumnDefinition(organizationId, {
+        validationMessage: "Old message",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
+
+      const fm = createFieldMap(organizationId, connectorEntityId, colDef.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(fm as never);
+
+      const res = await request(app)
+        .patch(`/api/column-definitions/${colDef.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ validationMessage: "New message" });
+
+      expect(res.status).toBe(200);
+
+      // No revalidation job should have been created
+      const jobRows = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, "revalidation"),
+            eq(jobs.organizationId, organizationId)
+          )
+        );
+
+      expect(jobRows).toHaveLength(0);
     });
   });
 });

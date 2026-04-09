@@ -31,6 +31,7 @@ export const InfiniteScrollSelect: React.FC<InfiniteScrollSelectProps> = ({
   disabled,
   required,
   size = "small",
+  fullWidth,
   inputRef,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
@@ -143,6 +144,7 @@ export const InfiniteScrollSelect: React.FC<InfiniteScrollSelectProps> = ({
             filterOptions={(x) => x}
             disabled={disabled}
             size={size}
+            fullWidth={fullWidth}
             ListboxComponent={InfiniteListboxComponent}
             renderInput={(params) => (
               <TextField

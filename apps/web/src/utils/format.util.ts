@@ -22,22 +22,10 @@ export interface BooleanFormatOptions {
   falseLabel?: string;
 }
 
-export interface CurrencyFormatOptions {
-  /** ISO 4217 currency code (e.g. `"USD"`, `"EUR"`). When set, uses `Intl.NumberFormat` with currency style. */
-  currency?: string;
-  /** BCP 47 locale tag (default: `undefined` — uses host locale). */
-  locale?: string;
-  /** Minimum fraction digits (default: `2`). */
-  minimumFractionDigits?: number;
-  /** Maximum fraction digits (default: `2`). */
-  maximumFractionDigits?: number;
-}
-
 export interface FormatOptions {
   date?: DateFormatOptions;
   datetime?: DatetimeFormatOptions;
   boolean?: BooleanFormatOptions;
-  currency?: CurrencyFormatOptions;
 }
 
 // ── Formatter ───────────────────────────────────────────────────────
@@ -48,28 +36,33 @@ export interface FormatOptions {
  * Uses {@link DateFactory} for timezone-aware date/datetime formatting.
  *
  * Use {@link Formatter.format} for type-dispatched formatting,
- * or call individual methods directly (e.g. {@link Formatter.currency}).
+ * or call individual methods directly (e.g. {@link Formatter.number}).
  */
 export class Formatter {
   /**
    * Null-safe entry point — returns a dash for null/undefined values,
    * otherwise delegates to the type-specific static method.
+   *
+   * When `canonicalFormat` is provided, it overrides the default format
+   * for date/datetime types and applies display formatting for numbers.
    */
   static format(
     value: unknown,
     type: ColumnDataType,
-    options?: FormatOptions
+    options?: FormatOptions & { canonicalFormat?: string | null }
   ): string {
     if (value == null) return "—";
+    const cf = options?.canonicalFormat;
     switch (type) {
       case "date":
-        return Formatter.date(value, options?.date);
+        return Formatter.date(value, cf ? { format: cf } : options?.date);
       case "datetime":
-        return Formatter.datetime(value, options?.datetime);
+        return Formatter.datetime(value, cf ? { format: cf } : options?.datetime);
       case "boolean":
         return Formatter.boolean(value, options?.boolean);
-      case "currency":
-        return Formatter.currency(value, options?.currency);
+      case "number":
+        if (cf) return Formatter.numberWithFormat(value, cf);
+        return Formatter.number(value);
       default:
         return this.formatters[type](value);
     }
@@ -83,6 +76,29 @@ export class Formatter {
     if (typeof value === "number") return value.toLocaleString();
     const n = Number(value);
     return isNaN(n) ? String(value) : n.toLocaleString();
+  }
+
+  /**
+   * Format a number using a canonical format pattern.
+   * Supports currency-style prefixes (e.g., `"$#,##0.00"`) and
+   * fixed-decimal patterns (e.g., `"#,##0.00"`).
+   */
+  static numberWithFormat(value: unknown, canonicalFormat: string): string {
+    const n = typeof value === "number" ? value : Number(value);
+    if (isNaN(n)) return String(value);
+
+    // Extract prefix (e.g., "$", "€") and decimal places from pattern
+    const prefixMatch = canonicalFormat.match(/^([^#0]*)/);
+    const prefix = prefixMatch?.[1] ?? "";
+    const decimalMatch = canonicalFormat.match(/\.([0#]+)$/);
+    const decimals = decimalMatch ? decimalMatch[1].length : undefined;
+
+    const formatted =
+      decimals !== undefined
+        ? n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+        : n.toLocaleString();
+
+    return `${prefix}${formatted}`;
   }
 
   static boolean(
@@ -137,34 +153,6 @@ export class Formatter {
     return String(value);
   }
 
-  static currency(
-    value: unknown,
-    options?: CurrencyFormatOptions
-  ): string {
-    const minFrac = options?.minimumFractionDigits ?? 2;
-    const maxFrac = options?.maximumFractionDigits ?? 2;
-    const locale = options?.locale;
-
-    const intlOptions: Intl.NumberFormatOptions = options?.currency
-      ? {
-          style: "currency",
-          currency: options.currency,
-          minimumFractionDigits: minFrac,
-          maximumFractionDigits: maxFrac,
-        }
-      : {
-          minimumFractionDigits: minFrac,
-          maximumFractionDigits: maxFrac,
-        };
-
-    if (typeof value === "number") {
-      return value.toLocaleString(locale, intlOptions);
-    }
-    const n = Number(value);
-    if (isNaN(n)) return String(value);
-    return n.toLocaleString(locale, intlOptions);
-  }
-
   private static readonly formatters: Record<
     ColumnDataType,
     (value: unknown) => string
@@ -179,6 +167,5 @@ export class Formatter {
     array: Formatter.array,
     reference: Formatter.reference,
     "reference-array": Formatter.array,
-    currency: Formatter.currency,
   };
 }

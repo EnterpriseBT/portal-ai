@@ -1,17 +1,15 @@
 /**
  * Uploads Service — handles confirmation of file upload recommendations.
  *
- * Orchestrates the creation of connector instances, entities, column
- * definitions, and field mappings in a single database transaction.
+ * Orchestrates the creation of connector instances, entities, and field
+ * mappings in a single database transaction. Column definitions are
+ * referenced by ID — they must already exist (seeded or user-created).
  */
-
-import crypto from "crypto";
 
 import type {
   ConfirmRequestBody,
   ConfirmResponsePayload,
   ConfirmResponseEntity,
-  ConfirmColumn,
 } from "@portalai/core/contracts";
 import type { FileUploadMetadata } from "@portalai/core/models";
 
@@ -22,6 +20,7 @@ import { DbService } from "./db.service.js";
 import { JobEventsService } from "./job-events.service.js";
 import { CsvImportService } from "./csv-import.service.js";
 import type { DbTransaction } from "../db/repositories/base.repository.js";
+import { SystemUtilities } from "../utils/system.util.js";
 
 const logger = createLogger({ module: "uploads-service" });
 
@@ -34,7 +33,7 @@ export class UploadsService {
    * Runs inside a single database transaction:
    * 1. Upsert connector instance
    * 2. For each entity: upsert connector entity
-   * 3. For each column: upsert column definition
+   * 3. For each column: validate existing column definition
    * 4. For each mapping: upsert field mapping
    * 5. Transition job to completed
    * 6. Emit job:complete SSE event
@@ -63,26 +62,24 @@ export class UploadsService {
       );
     }
 
-    // Validate existing column definition references
+    // Validate all column definition references up front
     for (const entity of body.entities) {
       for (const col of entity.columns) {
-        if (col.action === "match_existing" && col.existingColumnDefinitionId) {
-          const existing = await DbService.repository.columnDefinitions.findById(
-            col.existingColumnDefinitionId
+        const existing = await DbService.repository.columnDefinitions.findById(
+          col.existingColumnDefinitionId
+        );
+        if (!existing || existing.organizationId !== organizationId) {
+          throw new ApiError(
+            400,
+            ApiCode.UPLOAD_INVALID_REFERENCE,
+            `Column definition "${col.existingColumnDefinitionId}" not found or does not belong to this organization`
           );
-          if (!existing || existing.organizationId !== organizationId) {
-            throw new ApiError(
-              400,
-              ApiCode.UPLOAD_INVALID_REFERENCE,
-              `Column definition "${col.existingColumnDefinitionId}" not found or does not belong to this organization`
-            );
-          }
         }
       }
     }
 
     const metadata = job.metadata as unknown as FileUploadMetadata;
-    const now = Date.now();
+    const now = SystemUtilities.utc.now().getTime();
 
     // Run entire confirmation in a transaction with timeout
     const result = await Promise.race([
@@ -123,24 +120,12 @@ export class UploadsService {
         continue;
       }
 
-      // Build field mapping info from the confirmed entity
-      const fieldMappingInfo = confirmedEntity.fieldMappings.map((fm) => {
-        const colDef = confirmedEntity.columnDefinitions.find(
-          (cd) => cd.id === fm.columnDefinitionId
-        );
-        return {
-          sourceField: fm.sourceField,
-          columnDefinitionKey: colDef?.key ?? fm.sourceField,
-        };
-      });
-
       try {
         const importResult = await CsvImportService.importFromS3({
           s3Key: s3File.s3Key,
           connectorEntityId: confirmedEntity.connectorEntityId,
           organizationId,
           userId,
-          fieldMappings: fieldMappingInfo,
         });
         (confirmedEntity as ConfirmResponseEntity).importResult = importResult;
       } catch (err) {
@@ -149,7 +134,7 @@ export class UploadsService {
           "Failed to import CSV records for entity"
         );
         // Set empty import result so the confirm still succeeds
-        (confirmedEntity as ConfirmResponseEntity).importResult = { created: 0, updated: 0, unchanged: 0 };
+        (confirmedEntity as ConfirmResponseEntity).importResult = { created: 0, updated: 0, unchanged: 0, invalid: 0 };
       }
     }
 
@@ -211,7 +196,7 @@ export class UploadsService {
 
       connectorInstance = await DbService.repository.connectorInstances.create(
         {
-          id: crypto.randomUUID(),
+          id: SystemUtilities.id.v4.generate(),
           connectorDefinitionId: metadata.connectorDefinitionId,
           organizationId,
           name: body.connectorInstanceName,
@@ -237,14 +222,11 @@ export class UploadsService {
     // 2. Process each entity
     const confirmedEntities: ConfirmResponseEntity[] = [];
 
-    // Track column definitions by key to avoid duplicates across entities
-    const columnDefCache = new Map<string, { id: string; key: string; label: string }>();
-
     for (const entity of body.entities) {
       // Upsert connector entity
       const connectorEntity = await DbService.repository.connectorEntities.upsertByKey(
         {
-          id: crypto.randomUUID(),
+          id: SystemUtilities.id.v4.generate(),
           organizationId,
           connectorInstanceId: connectorInstance.id,
           key: entity.entityKey,
@@ -265,34 +247,58 @@ export class UploadsService {
         sourceField: string;
         columnDefinitionId: string;
         isPrimaryKey: boolean;
+        normalizedKey: string;
       }[] = [];
 
-      for (const col of entity.columns) {
-        // Resolve or create column definition
-        const colDef = await UploadsService.resolveColumnDefinition(
-          tx, organizationId, userId, col, columnDefCache, now
-        );
-        entityColumnDefs.push(colDef);
+      // Soft-delete existing field mappings for this entity whose column
+      // definition is not in the incoming set.  This prevents unique-constraint
+      // violations on (connector_entity_id, normalized_key) when a re-confirm
+      // reassigns a normalized key to a different column definition.
+      const incomingColDefIds = entity.columns.map((c) => c.existingColumnDefinitionId);
+      const existingMappings = await DbService.repository.fieldMappings
+        .findByConnectorEntityId(connectorEntity.id, tx);
+      const staleIds = existingMappings
+        .filter((fm) => !incomingColDefIds.includes(fm.columnDefinitionId))
+        .map((fm) => fm.id);
+      if (staleIds.length > 0) {
+        await DbService.repository.fieldMappings.softDeleteMany(staleIds, userId, tx);
+      }
 
-        // For reference columns, resolve the target column definition ID.
-        // Priority: pre-resolved ID from client → cache (same batch) → DB lookup.
-        const refColumnDefinitionId = col.type === "reference"
+      for (const col of entity.columns) {
+        // Look up the existing column definition (already validated above)
+        const colDef = await DbService.repository.columnDefinitions.findById(
+          col.existingColumnDefinitionId, tx
+        );
+        entityColumnDefs.push({ id: colDef!.id, key: colDef!.key, label: colDef!.label });
+
+        // Reference resolution is field-mapping-level: the incoming column
+        // carries refEntityKey / refColumnKey / refColumnDefinitionId when the
+        // mapping points to another entity's normalized key, regardless of the
+        // column definition type.
+        const hasRefFields = !!(col.refColumnKey || col.refColumnDefinitionId)
+          || colDef!.type === "reference" || colDef!.type === "reference-array";
+        const refColumnDefinitionId = hasRefFields
           ? await UploadsService.resolveRefColumnDefinitionId(
-              organizationId, col.refColumnKey, col.refColumnDefinitionId, columnDefCache, tx
-            )
+            organizationId, col.refColumnKey, col.refColumnDefinitionId, tx
+          )
           : null;
 
-        // Upsert field mapping (ref metadata stored here, not on the column def)
+        // Upsert field mapping
         const fieldMapping = await DbService.repository.fieldMappings.upsertByEntityAndColumn(
           {
-            id: crypto.randomUUID(),
+            id: SystemUtilities.id.v4.generate(),
             organizationId,
             connectorEntityId: connectorEntity.id,
-            columnDefinitionId: colDef.id,
+            columnDefinitionId: colDef!.id,
             sourceField: col.sourceField,
             isPrimaryKey: col.isPrimaryKey,
+            normalizedKey: col.normalizedKey,
+            required: col.required,
+            defaultValue: col.defaultValue ?? null,
+            format: col.format,
+            enumValues: col.enumValues ?? null,
             refColumnDefinitionId: refColumnDefinitionId ?? null,
-            refEntityKey: col.type === "reference" ? (col.refEntityKey ?? null) : null,
+            refEntityKey: hasRefFields ? (col.refEntityKey ?? null) : null,
             created: now,
             createdBy: userId,
             updated: null,
@@ -308,6 +314,7 @@ export class UploadsService {
           sourceField: fieldMapping.sourceField,
           columnDefinitionId: fieldMapping.columnDefinitionId,
           isPrimaryKey: fieldMapping.isPrimaryKey,
+          normalizedKey: fieldMapping.normalizedKey,
         });
       }
 
@@ -329,78 +336,18 @@ export class UploadsService {
 
   /**
    * Resolve the column definition ID that a reference column points to.
-   * Checks in order: pre-resolved ID from client, in-batch cache, then DB.
+   * Checks in order: pre-resolved ID from client, then DB lookup by key.
    */
   private static async resolveRefColumnDefinitionId(
     organizationId: string,
     refColumnKey: string | null | undefined,
     refColumnDefinitionId: string | null | undefined,
-    columnDefCache: Map<string, { id: string; key: string; label: string }>,
     tx: DbTransaction
   ): Promise<string | null> {
     if (refColumnDefinitionId) return refColumnDefinitionId;
     if (!refColumnKey) return null;
 
-    const cached = columnDefCache.get(`${organizationId}:${refColumnKey}`);
-    if (cached) return cached.id;
-
     const existing = await DbService.repository.columnDefinitions.findByKey(organizationId, refColumnKey, tx);
     return existing?.id ?? null;
-  }
-
-  /**
-   * Resolve a column definition: either use an existing one (match_existing)
-   * or upsert a new one (create_new). Uses a cache to avoid duplicates
-   * across entities within the same confirmation.
-   */
-  private static async resolveColumnDefinition(
-    tx: DbTransaction,
-    organizationId: string,
-    userId: string,
-    col: ConfirmColumn,
-    cache: Map<string, { id: string; key: string; label: string }>,
-    now: number
-  ): Promise<{ id: string; key: string; label: string }> {
-    // Check cache first (handles shared columns across entities)
-    const cacheKey = `${organizationId}:${col.key}`;
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
-
-    let colDef;
-    if (col.action === "match_existing" && col.existingColumnDefinitionId) {
-      // Use existing column definition — already validated above
-      const existing = await DbService.repository.columnDefinitions.findById(
-        col.existingColumnDefinitionId,
-        tx
-      );
-      colDef = { id: existing!.id, key: existing!.key, label: existing!.label };
-    } else {
-      // Upsert column definition by (organizationId, key)
-      const upserted = await DbService.repository.columnDefinitions.upsertByKey(
-        {
-          id: crypto.randomUUID(),
-          organizationId,
-          key: col.key,
-          label: col.label,
-          type: col.type,
-          required: col.required,
-          defaultValue: null,
-          format: col.format,
-          enumValues: null,
-          description: null,
-          created: now,
-          createdBy: userId,
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        },
-        tx
-      );
-      colDef = { id: upserted.id, key: upserted.key, label: upserted.label };
-    }
-
-    cache.set(cacheKey, colDef);
-    return colDef;
   }
 }

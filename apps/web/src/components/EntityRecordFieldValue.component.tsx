@@ -15,6 +15,7 @@ import { Formatter } from "../utils/format.util";
 export interface EntityRecordFieldValueProps {
   value: unknown;
   type: ColumnDataType;
+  canonicalFormat?: string | null;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -22,6 +23,7 @@ export interface EntityRecordFieldValueProps {
 export const EntityRecordFieldValue: React.FC<EntityRecordFieldValueProps> = ({
   value,
   type,
+  canonicalFormat,
 }) => {
   const [copied, setCopied] = React.useState(false);
 
@@ -89,6 +91,6 @@ export const EntityRecordFieldValue: React.FC<EntityRecordFieldValueProps> = ({
   }
 
   return (
-    <Typography variant="body2">{Formatter.format(value, type)}</Typography>
+    <Typography variant="body2">{Formatter.format(value, type, { canonicalFormat })}</Typography>
   );
 };

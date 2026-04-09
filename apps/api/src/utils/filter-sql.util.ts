@@ -19,7 +19,7 @@ import type {
   FilterGroup,
   FilterCondition,
   FilterOperator,
-  ColumnDefinitionSummary,
+  ResolvedColumn,
 } from "@portalai/core/contracts";
 import type { ColumnDataType } from "@portalai/core/models";
 
@@ -43,7 +43,7 @@ export interface FilterValidationError {
  */
 export function parseAndBuildFilterSQL(
   encodedFilters: string,
-  columnDefs: ColumnDefinitionSummary[],
+  columnDefs: ResolvedColumn[],
 ): FilterSQLResult | FilterValidationError {
   // 1. Decode base64
   let parsed: unknown;
@@ -140,7 +140,6 @@ function buildConditionSQL(
   // Delegate to type-specific builders
   switch (dataType) {
     case "number":
-    case "currency":
       return buildNumericCondition(jsonbText, operator, value);
     case "boolean":
       return buildBooleanCondition(jsonbText, operator, value);

@@ -1,5 +1,5 @@
 import {
-  ColumnDefinitionSummarySchema,
+  ResolvedColumnSchema,
   EntityRecordCreateRequestBodySchema,
   EntityRecordCreateResponsePayloadSchema,
 } from "../../contracts/entity-record.contract.js";
@@ -15,6 +15,8 @@ const validRecord = {
   sourceId: "src-1",
   checksum: "abc123",
   syncedAt: Date.now(),
+  validationErrors: null,
+  isValid: true,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,
@@ -23,40 +25,68 @@ const validRecord = {
   deletedBy: null,
 };
 
-// ── ColumnDefinitionSummarySchema ────────────────────────────────────
+// ── ResolvedColumnSchema ────────────────────────────────────
 
-describe("ColumnDefinitionSummarySchema", () => {
-  it("should accept enriched fields", () => {
-    const result = ColumnDefinitionSummarySchema.safeParse({
+describe("ResolvedColumnSchema", () => {
+  it("should accept all fields including normalizedKey and format", () => {
+    const result = ResolvedColumnSchema.safeParse({
+      key: "name",
+      label: "Name",
+      type: "string",
+      normalizedKey: "name",
+      required: true,
+      enumValues: null,
+      defaultValue: null,
+      format: null,
+      validationPattern: null,
+      canonicalFormat: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept non-null enumValues, defaultValue, and format", () => {
+    const result = ResolvedColumnSchema.safeParse({
+      key: "status",
+      label: "Status",
+      type: "enum",
+      normalizedKey: "account_status",
+      required: false,
+      enumValues: ["active", "inactive"],
+      defaultValue: "active",
+      format: "lowercase",
+      validationPattern: null,
+      canonicalFormat: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject payload missing required field", () => {
+    const result = ResolvedColumnSchema.safeParse({
+      key: "name",
+      label: "Name",
+      type: "string",
+      normalizedKey: "name",
+      enumValues: null,
+      defaultValue: null,
+      format: null,
+      validationPattern: null,
+      canonicalFormat: null,
+    });
+    // missing 'required'
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject payload missing normalizedKey", () => {
+    const result = ResolvedColumnSchema.safeParse({
       key: "name",
       label: "Name",
       type: "string",
       required: true,
       enumValues: null,
       defaultValue: null,
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("should accept non-null enumValues and defaultValue", () => {
-    const result = ColumnDefinitionSummarySchema.safeParse({
-      key: "status",
-      label: "Status",
-      type: "enum",
-      required: false,
-      enumValues: ["active", "inactive"],
-      defaultValue: "active",
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("should reject payload missing required field", () => {
-    const result = ColumnDefinitionSummarySchema.safeParse({
-      key: "name",
-      label: "Name",
-      type: "string",
-      enumValues: null,
-      defaultValue: null,
+      format: null,
+      validationPattern: null,
+      canonicalFormat: null,
     });
     expect(result.success).toBe(false);
   });

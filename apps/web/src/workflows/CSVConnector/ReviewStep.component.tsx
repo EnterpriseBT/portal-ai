@@ -76,11 +76,18 @@ const CompletionSummary: React.FC<{
                   {entity.fieldMappings.length} field mapping{entity.fieldMappings.length !== 1 ? "s" : ""} created
                 </Typography>
                 {entity.importResult && (
-                  <Typography variant="body2" color="text.secondary">
-                    {entity.importResult.created} record{entity.importResult.created !== 1 ? "s" : ""} imported
-                    {entity.importResult.updated > 0 && `, ${entity.importResult.updated} updated`}
-                    {entity.importResult.unchanged > 0 && `, ${entity.importResult.unchanged} unchanged`}
-                  </Typography>
+                  <>
+                    <Typography variant="body2" color="text.secondary">
+                      {entity.importResult.created} record{entity.importResult.created !== 1 ? "s" : ""} imported
+                      {entity.importResult.updated > 0 && `, ${entity.importResult.updated} updated`}
+                      {entity.importResult.unchanged > 0 && `, ${entity.importResult.unchanged} unchanged`}
+                    </Typography>
+                    {entity.importResult.invalid > 0 && (
+                      <Typography variant="body2" color="warning.main">
+                        {entity.importResult.invalid} row{entity.importResult.invalid !== 1 ? "s" : ""} skipped due to validation errors
+                      </Typography>
+                    )}
+                  </>
                 )}
               </Stack>
             </Box>
@@ -101,19 +108,17 @@ const CompletionSummary: React.FC<{
 
 // --- Helpers ---
 
-function formatColumnType(recommended: {
-  type: string;
+function formatRefTarget(col: {
   refEntityKey?: string | null;
   refColumnKey?: string | null;
 }): string {
-  if (recommended.type !== "reference") return recommended.type;
-  if (recommended.refEntityKey && recommended.refColumnKey) {
-    return `reference → ${recommended.refEntityKey}.${recommended.refColumnKey}`;
+  if (col.refEntityKey && col.refColumnKey) {
+    return ` → ${col.refEntityKey}.${col.refColumnKey}`;
   }
-  if (recommended.refEntityKey) {
-    return `reference → ${recommended.refEntityKey}`;
+  if (col.refEntityKey) {
+    return ` → ${col.refEntityKey}`;
   }
-  return "reference";
+  return "";
 }
 
 // --- Review Form ---
@@ -140,11 +145,6 @@ const ReviewForm: React.FC<{
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const totalColumns = entities.reduce((sum, e) => sum + e.columns.length, 0);
-  const newColumns = entities.reduce(
-    (sum, e) => sum + e.columns.filter((c) => c.action === "create_new").length,
-    0,
-  );
-  const matchedColumns = totalColumns - newColumns;
 
   const validate = (data: { name: string }): FormErrors => {
     const result = validateWithSchema(ConnectorNameSchema, data);
@@ -216,8 +216,7 @@ const ReviewForm: React.FC<{
           <Stack spacing={0.5}>
             <Typography variant="body2">Entities: {entities.length}</Typography>
             <Typography variant="body2">
-              Total columns: {totalColumns} ({matchedColumns} matched,{" "}
-              {newColumns} new)
+              Total columns: {totalColumns}
             </Typography>
           </Stack>
         </Box>
@@ -231,38 +230,38 @@ const ReviewForm: React.FC<{
               {entity.connectorEntity.label} ({entity.connectorEntity.key})
             </Typography>
             <Stack spacing={0.5} sx={{ pl: 2 }}>
-              {entity.columns.map((col, colIdx) => (
-                <Stack
-                  key={colIdx}
-                  direction="row"
-                  spacing={2}
-                  alignItems="center"
-                  sx={{ flexWrap: "wrap", rowGap: 0.5 }}
-                >
-                  <Typography
-                    variant="body2"
-                    sx={{ minWidth: 120, flexShrink: 0 }}
-                  >
-                    {col.sourceField}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    →
-                  </Typography>
-                  <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
-                    {col.recommended.key} ({formatColumnType(col.recommended)})
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color={
-                      col.action === "match_existing"
-                        ? "success.main"
-                        : "info.main"
-                    }
-                  >
-                    {col.action === "match_existing" ? "match" : "new"}
-                  </Typography>
-                </Stack>
-              ))}
+              {entity.columns.map((col, colIdx) => {
+                const nk = col.normalizedKey ?? col.sourceField;
+                return (
+                  <Stack key={colIdx} spacing={0.25} sx={{ py: 0.5 }}>
+                    <Stack
+                      direction="row"
+                      spacing={2}
+                      alignItems="center"
+                      sx={{ flexWrap: "wrap", rowGap: 0.5 }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{ minWidth: 120, flexShrink: 0 }}
+                      >
+                        {col.sourceField}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        →
+                      </Typography>
+                      <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+                        {nk}{formatRefTarget(col)}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary" sx={{ pl: 2 }}>
+                      normalizedKey: {nk}
+                      {col.required && " · required"}
+                      {col.format && ` · format: ${col.format}`}
+                      {col.defaultValue && ` · default: ${col.defaultValue}`}
+                    </Typography>
+                  </Stack>
+                );
+              })}
             </Stack>
           </Box>
         ))}

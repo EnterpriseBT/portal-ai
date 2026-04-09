@@ -119,21 +119,24 @@ describe("MultiAsyncSearchableSelect", () => {
       { value: "banana", label: "Banana" },
     ]);
 
-    render(
-      <MultiAsyncSearchableSelect
-        label="Fruits"
-        value={[]}
-        onChange={() => {}}
-        onSearch={onSearch}
-        debounceMs={300}
-      />
-    );
+    await act(async () => {
+      render(
+        <MultiAsyncSearchableSelect
+          label="Fruits"
+          value={[]}
+          onChange={() => {}}
+          onSearch={onSearch}
+          debounceMs={300}
+        />
+      );
+    });
 
+    const initialCallCount = onSearch.mock.calls.length; // from mount
     const input = screen.getByRole("combobox");
     await user.type(input, "ban");
 
-    // Not called before debounce
-    expect(onSearch).not.toHaveBeenCalled();
+    // Not called before debounce (beyond initial mount call)
+    expect(onSearch).toHaveBeenCalledTimes(initialCallCount);
 
     act(() => { jest.advanceTimersByTime(300); });
 

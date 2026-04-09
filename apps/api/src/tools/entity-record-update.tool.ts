@@ -35,13 +35,15 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             return { error: "Record not found or does not belong to entity" };
           }
 
-          const normalizedData = await NormalizationService.normalize(connectorEntityId, data);
+          const { normalizedData, validationErrors, isValid } = await NormalizationService.normalize(connectorEntityId, data);
 
           const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
 
           await DbService.repository.entityRecords.update(entityRecordId, {
             data,
             normalizedData,
+            validationErrors,
+            isValid,
             updated: Date.now(),
             updatedBy: userId,
           } as any);

@@ -18,39 +18,31 @@ import type { EntityStepErrors, ColumnStepErrors } from "../utils/csv-validation
 // ---------------------------------------------------------------------------
 
 const MOCK_COLUMN: RecommendedColumn = {
-  action: "match_existing",
   confidence: 0.95,
   existingColumnDefinitionId: "col_001",
-  recommended: {
-    key: "email",
-    label: "Email",
-    type: "string",
-    required: true,
-    format: "email",
-    enumValues: null,
-    description: "Contact email",
-  },
+  existingColumnDefinitionKey: "email",
   sourceField: "Email Address",
   isPrimaryKeyCandidate: true,
   sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
+  normalizedKey: "email_address",
+  required: true,
+  format: "email",
+  enumValues: null,
+  defaultValue: null,
 };
 
 const MOCK_COLUMN_NEW: RecommendedColumn = {
-  action: "create_new",
   confidence: 0.45,
-  existingColumnDefinitionId: null,
-  recommended: {
-    key: "phone",
-    label: "Phone",
-    type: "string",
-    required: false,
-    format: null,
-    enumValues: null,
-    description: null,
-  },
+  existingColumnDefinitionId: "col_002",
+  existingColumnDefinitionKey: "phone",
   sourceField: "Phone Number",
   isPrimaryKeyCandidate: false,
   sampleValues: ["+1-555-0100", "+1-555-0101"],
+  normalizedKey: "phone_number",
+  required: false,
+  format: null,
+  enumValues: null,
+  defaultValue: null,
 };
 
 const MOCK_ENTITIES: RecommendedEntity[] = [
@@ -107,6 +99,9 @@ function makeProps(
     dbEntities: [],
     isLoadingDbEntities: false,
     onUpdateColumn: jest.fn(),
+    onColumnKeySearch: jest.fn<() => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
+    onColumnKeyGetById: jest.fn<() => Promise<null>>().mockResolvedValue(null),
+
     onConnectorNameChange: jest.fn(),
     onConfirm: jest.fn(),
     isConfirming: false,
@@ -336,7 +331,7 @@ describe("CSVConnectorWorkflowUI", () => {
       expect(screen.getByText("45%")).toBeInTheDocument();
     });
 
-    it("shows Match label for match_existing action", () => {
+    it("shows confidence percentages for columns", () => {
       render(
         <CSVConnectorWorkflowUI
           {...makeProps({
@@ -345,8 +340,8 @@ describe("CSVConnectorWorkflowUI", () => {
           })}
         />
       );
-      expect(screen.getByText("Match")).toBeInTheDocument();
-      expect(screen.getByText("New")).toBeInTheDocument();
+      expect(screen.getByText("95%")).toBeInTheDocument();
+      expect(screen.getByText("45%")).toBeInTheDocument();
     });
   });
 
@@ -384,9 +379,7 @@ describe("CSVConnectorWorkflowUI", () => {
         />
       );
       expect(screen.getByText("Entities: 1")).toBeInTheDocument();
-      expect(
-        screen.getByText("Total columns: 2 (1 matched, 1 new)")
-      ).toBeInTheDocument();
+      expect(screen.getByText("Total columns: 2")).toBeInTheDocument();
     });
 
     it("shows per-entity column mapping details", () => {
@@ -399,8 +392,8 @@ describe("CSVConnectorWorkflowUI", () => {
         />
       );
       expect(screen.getByText("Contacts (contacts)")).toBeInTheDocument();
-      expect(screen.getByText("email (string)")).toBeInTheDocument();
-      expect(screen.getByText("phone (string)")).toBeInTheDocument();
+      expect(screen.getByText("Email Address")).toBeInTheDocument();
+      expect(screen.getByText("Phone Number")).toBeInTheDocument();
     });
 
     it("calls onConnectorNameChange when name is edited", async () => {
@@ -472,9 +465,9 @@ describe("CSVConnectorWorkflowUI", () => {
   });
 
   describe("Step 2: Column validation errors", () => {
-    it("displays column key error when columnStepErrors is passed", () => {
+    it("displays column definition error when columnStepErrors is passed", () => {
       const columnStepErrors: ColumnStepErrors = {
-        0: { 0: { key: "Column key is required" } },
+        0: { 0: { existingColumnDefinitionId: "Column definition must be selected" } },
       };
       render(
         <CSVConnectorWorkflowUI
@@ -485,12 +478,12 @@ describe("CSVConnectorWorkflowUI", () => {
           })}
         />
       );
-      expect(screen.getByText("Column key is required")).toBeInTheDocument();
+      expect(screen.getByText("Column definition must be selected")).toBeInTheDocument();
     });
 
-    it("displays column type error when columnStepErrors is passed", () => {
+    it("displays normalizedKey error when columnStepErrors is passed", () => {
       const columnStepErrors: ColumnStepErrors = {
-        0: { 0: { type: "Column type is required" } },
+        0: { 0: { normalizedKey: "Normalized key must be lowercase snake_case" } },
       };
       render(
         <CSVConnectorWorkflowUI
@@ -501,7 +494,7 @@ describe("CSVConnectorWorkflowUI", () => {
           })}
         />
       );
-      expect(screen.getByText("Column type is required")).toBeInTheDocument();
+      expect(screen.getByText("Normalized key must be lowercase snake_case")).toBeInTheDocument();
     });
 
     it("does not display column errors when columnStepErrors is undefined", () => {
@@ -513,7 +506,7 @@ describe("CSVConnectorWorkflowUI", () => {
           })}
         />
       );
-      expect(screen.queryByText("Column key is required")).not.toBeInTheDocument();
+      expect(screen.queryByText("Column definition must be selected")).not.toBeInTheDocument();
     });
   });
 });

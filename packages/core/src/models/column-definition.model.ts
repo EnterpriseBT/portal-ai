@@ -25,7 +25,6 @@ export const ColumnDataTypeEnum = z.enum([
   "array",
   "reference",
   "reference-array",
-  "currency",
 ]);
 
 export type ColumnDataType = z.infer<typeof ColumnDataTypeEnum>;
@@ -40,7 +39,6 @@ export const SORTABLE_COLUMN_TYPES: ReadonlySet<ColumnDataType> = new Set<Column
   "number",
   "date",
   "datetime",
-  "currency",
 ]);
 
 // ── Schema ───────────────────────────────────────────────────────────
@@ -50,11 +48,10 @@ export const ColumnDefinitionSchema = CoreSchema.extend({
   key: z.string().regex(/^[a-z][a-z0-9_]*$/),
   label: z.string(),
   type: ColumnDataTypeEnum,
-  required: z.boolean(),
-  defaultValue: z.string().nullable(),
-  format: z.string().nullable(),
-  enumValues: z.array(z.string()).nullable(),
   description: z.string().nullable(),
+  validationPattern: z.string().nullable(),
+  validationMessage: z.string().nullable(),
+  canonicalFormat: z.string().nullable(),
 
 });
 

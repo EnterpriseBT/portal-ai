@@ -37,7 +37,6 @@ export type FilterOperator = z.infer<typeof FilterOperatorEnum>;
 export const OPERATORS_BY_COLUMN_TYPE: Record<ColumnDataType, FilterOperator[]> = {
   string: ["eq", "neq", "contains", "not_contains", "starts_with", "ends_with", "is_empty", "is_not_empty"],
   number: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "is_empty", "is_not_empty"],
-  currency: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "is_empty", "is_not_empty"],
   boolean: ["eq", "neq"],
   date: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "is_empty", "is_not_empty"],
   datetime: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "is_empty", "is_not_empty"],

@@ -221,6 +221,11 @@ export class FieldMappingsRepository extends Repository<
         set: {
           sourceField: data.sourceField,
           isPrimaryKey: data.isPrimaryKey,
+          normalizedKey: data.normalizedKey,
+          required: data.required,
+          defaultValue: data.defaultValue,
+          format: data.format,
+          enumValues: data.enumValues,
           refColumnDefinitionId: data.refColumnDefinitionId,
           refEntityKey: data.refEntityKey,
           refBidirectionalFieldMappingId: data.refBidirectionalFieldMappingId,

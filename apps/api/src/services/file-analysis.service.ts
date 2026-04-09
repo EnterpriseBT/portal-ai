@@ -16,7 +16,7 @@ import type {
 import { FileUploadRecommendationEntitySchema } from "@portalai/core/models";
 
 import { AiService } from "./ai.service.js";
-import { heuristicAnalyze } from "../utils/heuristic-analyzer.util.js";
+import { heuristicAnalyze, inferType } from "../utils/heuristic-analyzer.util.js";
 import { buildFileAnalysisPrompt } from "../prompts/file-analysis.prompt.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -37,6 +37,9 @@ export interface ExistingColumnDefinition {
   key: string;
   label: string;
   type: string;
+  description: string | null;
+  validationPattern: string | null;
+  canonicalFormat: string | null;
 }
 
 export interface AnalyzeFileInput {
@@ -70,11 +73,30 @@ async function aiAnalyze(input: AnalyzeFileInput): Promise<FileUploadRecommendat
 // ---------------------------------------------------------------------------
 
 /**
+ * Maps inferred type to the seed column definition key to use as fallback.
+ */
+function typeFallbackKey(inferredType: string, sampleValues: string[]): string {
+  switch (inferredType) {
+    case "boolean": return "boolean";
+    case "date": return "date";
+    case "datetime": return "datetime";
+    case "number": {
+      const nonEmpty = sampleValues.filter((v) => v.trim() !== "");
+      const hasDecimals = nonEmpty.some((v) => v.includes("."));
+      return hasDecimals ? "decimal" : "integer";
+    }
+    case "string":
+    default:
+      return "text";
+  }
+}
+
+/**
  * Resolve existingColumnDefinitionId values from AI output.
  *
  * The LLM sometimes returns the column key or label instead of the UUID.
  * This function looks up the correct ID from the existing columns list,
- * and clears invalid references (setting action to "create_new").
+ * and falls back to type-based matching when the reference is unresolvable.
  */
 function resolveColumnDefinitionIds(
   recommendation: FileUploadRecommendationEntity,
@@ -87,32 +109,46 @@ function resolveColumnDefinitionIds(
   return {
     ...recommendation,
     columns: recommendation.columns.map((col) => {
-      if (col.action !== "match_existing" || !col.existingColumnDefinitionId) {
-        return col;
-      }
-
       const rawId = col.existingColumnDefinitionId;
 
       // Already a valid ID
-      if (byId.has(rawId)) return col;
+      const existing = byId.get(rawId);
+      if (existing) {
+        return { ...col, existingColumnDefinitionKey: existing.key };
+      }
 
       // LLM returned a key instead of UUID — resolve it
       const matchByKey = byKey.get(rawId);
       if (matchByKey) {
         logger.debug({ sourceField: col.sourceField, rawId, resolvedId: matchByKey.id }, "Resolved column definition ID from key");
-        return { ...col, existingColumnDefinitionId: matchByKey.id };
+        return { ...col, existingColumnDefinitionId: matchByKey.id, existingColumnDefinitionKey: matchByKey.key };
       }
 
       // LLM returned a label instead of UUID — resolve it
       const matchByLabel = byLabel.get(rawId.toLowerCase());
       if (matchByLabel) {
         logger.debug({ sourceField: col.sourceField, rawId, resolvedId: matchByLabel.id }, "Resolved column definition ID from label");
-        return { ...col, existingColumnDefinitionId: matchByLabel.id };
+        return { ...col, existingColumnDefinitionId: matchByLabel.id, existingColumnDefinitionKey: matchByLabel.key };
       }
 
-      // Unresolvable — demote to create_new
-      logger.warn({ sourceField: col.sourceField, rawId }, "Could not resolve existingColumnDefinitionId — demoting to create_new");
-      return { ...col, action: "create_new" as const, existingColumnDefinitionId: null };
+      // Unresolvable — attempt type-based fallback
+      logger.warn({ sourceField: col.sourceField, rawId }, "Could not resolve existingColumnDefinitionId — attempting type-based fallback");
+      const { type: inferredType } = inferType(col.sampleValues);
+      const fallbackKey = typeFallbackKey(inferredType, col.sampleValues);
+      const fallbackDef = byKey.get(fallbackKey);
+      if (fallbackDef) {
+        return { ...col, existingColumnDefinitionId: fallbackDef.id, existingColumnDefinitionKey: fallbackDef.key, confidence: 0.5 };
+      }
+
+      // Last resort — pick "text" if available
+      const textDef = byKey.get("text");
+      if (textDef) {
+        return { ...col, existingColumnDefinitionId: textDef.id, existingColumnDefinitionKey: textDef.key, confidence: 0.5 };
+      }
+
+      // Absolute fallback: use the first existing column definition
+      const firstDef = existingColumns[0];
+      return { ...col, existingColumnDefinitionId: firstDef?.id ?? "", existingColumnDefinitionKey: firstDef?.key ?? "", confidence: 0 };
     }),
   };
 }

@@ -10,12 +10,11 @@ import {
   Modal,
   Stack,
   Typography,
+  Select,
 } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
-import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 
 import { FormAlert } from "./FormAlert.component";
@@ -26,6 +25,13 @@ import {
   type FormErrors,
 } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import {
+  VALIDATION_PRESETS,
+  VALIDATION_PRESET_VALUES,
+  getTypeConfig,
+  findPresetByPattern,
+  validateRegex,
+} from "../utils/column-definition-form.util";
 
 /**
  * Allowlist of permitted column definition type transitions.
@@ -36,8 +42,6 @@ const ALLOWED_TYPE_TRANSITIONS: Record<string, string[]> = {
   enum: ["string"],
   date: ["datetime"],
   datetime: ["date"],
-  number: ["currency"],
-  currency: ["number"],
 };
 
 const BLOCKED_TYPES = new Set(["reference", "reference-array"]);
@@ -53,7 +57,6 @@ const ALL_TYPES = [
   "array",
   "reference",
   "reference-array",
-  "currency",
 ] as const;
 
 export interface EditColumnDefinitionDialogProps {
@@ -78,53 +81,77 @@ const EditForm: React.FC<{
   const [label, setLabel] = useState(cd.label);
   const [type, setType] = useState<ColumnDataType>(cd.type);
   const [description, setDescription] = useState(cd.description ?? "");
-  const [required, setRequired] = useState(cd.required);
-  const [defaultValue, setDefaultValue] = useState(cd.defaultValue ?? "");
-  const [format, setFormat] = useState(cd.format ?? "");
-  const [enumValues, setEnumValues] = useState(cd.enumValues?.join(", ") ?? "");
+  const [preset, setPreset] = useState(() => findPresetByPattern(cd.validationPattern));
+  const [validationPattern, setValidationPattern] = useState(cd.validationPattern ?? "");
+  const [validationMessage, setValidationMessage] = useState(cd.validationMessage ?? "");
+  const [canonicalFormat, setCanonicalFormat] = useState(cd.canonicalFormat ?? "");
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [showRevalidationWarning, setShowRevalidationWarning] = useState(false);
+  const [pendingBody, setPendingBody] = useState<ColumnDefinitionUpdateRequestBody | null>(null);
   const labelRef = useDialogAutoFocus(true);
 
   const allowedTargetTypes = BLOCKED_TYPES.has(cd.type)
     ? []
     : ALLOWED_TYPE_TRANSITIONS[cd.type] ?? [];
 
-  const validate = (data: Record<string, unknown>): FormErrors => {
+  const typeConfig = getTypeConfig(type);
+
+  const validate = (data: Record<string, unknown>, vp?: string): FormErrors => {
     const result = validateWithSchema(ColumnDefinitionUpdateRequestBodySchema, data);
-    return result.success ? {} : result.errors;
+    const errs = result.success ? {} : { ...result.errors };
+    const regexError = validateRegex(vp ?? validationPattern);
+    if (regexError) errs.validationPattern = regexError;
+    return errs;
+  };
+
+  const handleTypeChange = (newType: ColumnDataType) => {
+    const newConfig = getTypeConfig(newType);
+    const prevConfig = getTypeConfig(type);
+    setType(newType);
+    if (!newConfig.validation.enabled) {
+      setValidationPattern("");
+      setValidationMessage("");
+      setPreset("");
+    }
+    if (!newConfig.canonicalFormat.enabled || newConfig.canonicalFormat.options !== prevConfig.canonicalFormat.options) {
+      setCanonicalFormat("");
+    }
+  };
+
+  const handlePresetChange = (value: string) => {
+    setPreset(value);
+    const presetValues = VALIDATION_PRESET_VALUES[value];
+    if (presetValues) {
+      setValidationPattern(presetValues.pattern);
+      setValidationMessage(presetValues.message);
+    }
   };
 
   const buildBody = (): ColumnDefinitionUpdateRequestBody => {
     const body: ColumnDefinitionUpdateRequestBody = {};
     const trimLabel = label.trim();
     const trimDesc = description.trim();
-    const trimDefault = defaultValue.trim();
-    const trimFormat = format.trim();
-    const parsedEnum = enumValues
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
+    const trimValidationPattern = validationPattern.trim();
+    const trimValidationMessage = validationMessage.trim();
+    const trimCanonicalFormat = canonicalFormat.trim();
 
     if (trimLabel !== cd.label) body.label = trimLabel;
     if (type !== cd.type) body.type = type;
     if (trimDesc !== (cd.description ?? "")) body.description = trimDesc || null;
-    if (required !== cd.required) body.required = required;
-    if (trimDefault !== (cd.defaultValue ?? "")) body.defaultValue = trimDefault || null;
-    if (trimFormat !== (cd.format ?? "")) body.format = trimFormat || null;
-
-    const origEnum = cd.enumValues?.join(", ") ?? "";
-    const newEnum = parsedEnum.join(", ");
-    if (newEnum !== origEnum) {
-      body.enumValues = parsedEnum.length > 0 ? parsedEnum : null;
-    }
+    if (trimValidationPattern !== (cd.validationPattern ?? "")) body.validationPattern = trimValidationPattern || null;
+    if (trimValidationMessage !== (cd.validationMessage ?? "")) body.validationMessage = trimValidationMessage || null;
+    if (trimCanonicalFormat !== (cd.canonicalFormat ?? "")) body.canonicalFormat = trimCanonicalFormat || null;
 
     return body;
   };
 
+  const needsRevalidation = (body: ColumnDefinitionUpdateRequestBody): boolean =>
+    body.validationPattern !== undefined || body.canonicalFormat !== undefined;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setTouched({ label: true });
+    setTouched({ label: true, validationPattern: true });
     const formErrors = validate({ label: label.trim() });
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
@@ -137,7 +164,22 @@ const EditForm: React.FC<{
       onClose();
       return;
     }
+
+    if (needsRevalidation(body)) {
+      setPendingBody(body);
+      setShowRevalidationWarning(true);
+      return;
+    }
+
     onSubmit(body);
+  };
+
+  const handleConfirmRevalidation = () => {
+    if (pendingBody) {
+      onSubmit(pendingBody);
+      setShowRevalidationWarning(false);
+      setPendingBody(null);
+    }
   };
 
   return (
@@ -206,7 +248,7 @@ const EditForm: React.FC<{
           select
           label="Type"
           value={type}
-          onChange={(e) => setType(e.target.value as ColumnDataType)}
+          onChange={(e) => handleTypeChange(e.target.value as ColumnDataType)}
           fullWidth
           size="small"
           disabled={BLOCKED_TYPES.has(cd.type) && allowedTargetTypes.length === 0}
@@ -236,41 +278,97 @@ const EditForm: React.FC<{
           rows={2}
         />
 
-        {/* Required */}
-        <FormControlLabel
-          control={
-            <Switch checked={required} onChange={(e) => setRequired(e.target.checked)} />
+        {/* Validation Preset */}
+        <Select
+          label="Validation Preset"
+          value={preset}
+          onChange={(e) => handlePresetChange(e.target.value)}
+          options={VALIDATION_PRESETS}
+          fullWidth
+          size="small"
+          disabled={!typeConfig.validation.enabled}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : "Auto-populate validation pattern and message"
           }
-          label="Required"
         />
 
-        {/* Default Value */}
+        {/* Validation Pattern */}
         <TextField
-          label="Default Value"
-          value={defaultValue}
-          onChange={(e) => setDefaultValue(e.target.value)}
+          label="Validation Pattern"
+          value={validationPattern}
+          onChange={(e) => {
+            setValidationPattern(e.target.value);
+            if (touched.validationPattern) setErrors(validate({ label: label.trim() }, e.target.value));
+          }}
+          onBlur={() => {
+            setTouched((p) => ({ ...p, validationPattern: true }));
+            setErrors(validate({ label: label.trim() }));
+          }}
           fullWidth
           size="small"
+          disabled={!typeConfig.validation.enabled}
+          error={touched.validationPattern && !!errors.validationPattern}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : (touched.validationPattern && errors.validationPattern) || "Regex that values must match after coercion"
+          }
+          slotProps={{ htmlInput: { "aria-invalid": touched.validationPattern && !!errors.validationPattern } }}
         />
 
-        {/* Format */}
+        {/* Validation Message */}
         <TextField
-          label="Format"
-          value={format}
-          onChange={(e) => setFormat(e.target.value)}
+          label="Validation Message"
+          value={validationMessage}
+          onChange={(e) => setValidationMessage(e.target.value)}
           fullWidth
           size="small"
+          disabled={!typeConfig.validation.enabled}
+          helperText={
+            !typeConfig.validation.enabled
+              ? "Not applicable for this column type"
+              : "Shown when the pattern doesn't match"
+          }
         />
 
-        {/* Enum Values */}
-        <TextField
-          label="Enum Values"
-          value={enumValues}
-          onChange={(e) => setEnumValues(e.target.value)}
+        {/* Canonical Format */}
+        <Select
+          label="Canonical Format"
+          value={canonicalFormat}
+          onChange={(e) => setCanonicalFormat(e.target.value)}
+          options={typeConfig.canonicalFormat.options}
           fullWidth
           size="small"
-          helperText="Comma-separated values"
+          disabled={!typeConfig.canonicalFormat.enabled}
+          helperText={
+            !typeConfig.canonicalFormat.enabled
+              ? "Not applicable for this column type"
+              : "Normalizes the stored value before saving"
+          }
         />
+
+        {/* Revalidation confirmation */}
+        {showRevalidationWarning && (
+          <Alert
+            severity="info"
+            action={
+              <Button
+                type="button"
+                size="small"
+                variant="contained"
+                onClick={handleConfirmRevalidation}
+              >
+                Confirm &amp; Save
+              </Button>
+            }
+          >
+            <Typography variant="body2">
+              Changing validation pattern or canonical format will trigger re-validation of affected records. This may take a moment.
+            </Typography>
+          </Alert>
+        )}
 
         {/* Warnings */}
         {warnings && warnings.length > 0 && (

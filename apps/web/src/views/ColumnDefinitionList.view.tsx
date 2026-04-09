@@ -62,11 +62,6 @@ export const ColumnDefinitionListViewUI: React.FC<ColumnDefinitionListViewUIProp
         label: "Type",
         options: TYPE_OPTIONS,
       },
-      {
-        type: "boolean",
-        field: "required",
-        label: "Required",
-      },
     ],
   });
 

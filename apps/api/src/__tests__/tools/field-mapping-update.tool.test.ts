@@ -24,7 +24,16 @@ const { FieldMappingUpdateTool } = await import("../../tools/field-mapping-updat
 
 beforeEach(() => { jest.clearAllMocks(); });
 
-interface Input { fieldMappingId: string; sourceField?: string; isPrimaryKey?: boolean }
+interface Input {
+  fieldMappingId: string;
+  sourceField?: string;
+  isPrimaryKey?: boolean;
+  normalizedKey?: string;
+  required?: boolean;
+  defaultValue?: string | null;
+  format?: string | null;
+  enumValues?: string[] | null;
+}
 const exec = (input: Input) =>
   new FieldMappingUpdateTool().build("station-1", "org-1", "user-1")
     .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
@@ -55,4 +64,33 @@ describe("FieldMappingUpdateTool", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
+  it("updates normalizedKey", async () => {
+    const result = await exec({ fieldMappingId: "fm-1", normalizedKey: "new_key" }) as Record<string, unknown>;
+    expect(result.success).toBe(true);
+    expect(mockUpdate).toHaveBeenCalledWith("fm-1", expect.objectContaining({ normalizedKey: "new_key" }));
+  });
+
+  it("updates required", async () => {
+    const result = await exec({ fieldMappingId: "fm-1", required: true }) as Record<string, unknown>;
+    expect(result.success).toBe(true);
+    expect(mockUpdate).toHaveBeenCalledWith("fm-1", expect.objectContaining({ required: true }));
+  });
+
+  it("updates defaultValue", async () => {
+    const result = await exec({ fieldMappingId: "fm-1", defaultValue: "n/a" }) as Record<string, unknown>;
+    expect(result.success).toBe(true);
+    expect(mockUpdate).toHaveBeenCalledWith("fm-1", expect.objectContaining({ defaultValue: "n/a" }));
+  });
+
+  it("updates format", async () => {
+    const result = await exec({ fieldMappingId: "fm-1", format: "YYYY-MM-DD" }) as Record<string, unknown>;
+    expect(result.success).toBe(true);
+    expect(mockUpdate).toHaveBeenCalledWith("fm-1", expect.objectContaining({ format: "YYYY-MM-DD" }));
+  });
+
+  it("updates enumValues", async () => {
+    const result = await exec({ fieldMappingId: "fm-1", enumValues: ["a", "b", "c"] }) as Record<string, unknown>;
+    expect(result.success).toBe(true);
+    expect(mockUpdate).toHaveBeenCalledWith("fm-1", expect.objectContaining({ enumValues: ["a", "b", "c"] }));
+  });
 });

@@ -33,6 +33,8 @@ const validRecord = {
   sourceId: "src-1",
   checksum: "abc123",
   syncedAt: Date.now(),
+  validationErrors: null,
+  isValid: true,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,

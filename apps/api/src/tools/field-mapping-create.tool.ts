@@ -12,6 +12,11 @@ const InputSchema = z.object({
   columnDefinitionId: z.string().describe("The column definition to map to"),
   sourceField: z.string().min(1).describe("The source field name in the raw data"),
   isPrimaryKey: z.boolean().optional().describe("Whether this mapping is a primary key"),
+  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/).describe("A snake_case normalized key for the field"),
+  required: z.boolean().optional().describe("Whether this field is required"),
+  defaultValue: z.string().nullable().optional().describe("Default value for the field"),
+  format: z.string().nullable().optional().describe("Format string for the field"),
+  enumValues: z.array(z.string()).nullable().optional().describe("Allowed enum values for the field"),
 });
 
 export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
@@ -27,7 +32,7 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         try {
-          const { connectorEntityId, columnDefinitionId, sourceField, isPrimaryKey } = this.validate(input);
+          const { connectorEntityId, columnDefinitionId, sourceField, isPrimaryKey, normalizedKey, required: isRequired, defaultValue, format, enumValues } = this.validate(input);
           await assertStationScope(stationId, connectorEntityId);
           await assertWriteCapability(connectorEntityId);
 
@@ -44,6 +49,11 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
             columnDefinitionId,
             sourceField,
             isPrimaryKey: isPrimaryKey ?? false,
+            normalizedKey,
+            required: isRequired ?? false,
+            defaultValue: defaultValue ?? null,
+            format: format ?? null,
+            enumValues: enumValues ?? null,
             refColumnDefinitionId: null,
             refEntityKey: null,
             refBidirectionalFieldMappingId: null,

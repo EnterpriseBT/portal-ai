@@ -22,9 +22,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
-import { useColumnDefinitionSearch } from "../api/column-definitions.api";
-import { useConnectorEntitySearch } from "../api/connector-entities.api";
-import { useFieldMappingWithEntitySearch } from "../api/field-mappings.api";
 import { toServerError } from "../utils/api.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
 import { CreateFieldMappingDialog } from "../components/CreateFieldMappingDialog.component";
@@ -54,7 +51,6 @@ const TYPE_COLOR: Record<
   array: "default",
   reference: "error",
   "reference-array": "error",
-  currency: "info",
 };
 
 interface ColumnDefinitionDetailViewProps {
@@ -112,12 +108,12 @@ export const ColumnDefinitionDetailView: React.FC<
     [updateMutation, queryClient, columnDefinitionId]
   );
 
-  const { onSearch: handleSearchColumnDefinitions } = useColumnDefinitionSearch();
-  const { onSearch: handleSearchConnectorEntities } = useConnectorEntitySearch();
-  const { onSearch: handleSearchConnectorEntitiesForRefKey } = useConnectorEntitySearch({
+  const { onSearch: handleSearchColumnDefinitions } = sdk.columnDefinitions.search();
+  const { onSearch: handleSearchConnectorEntities } = sdk.connectorEntities.search();
+  const { onSearch: handleSearchConnectorEntitiesForRefKey } = sdk.connectorEntities.search({
     mapItem: (ce) => ({ value: ce.key, label: `${ce.label} (${ce.key})` }),
   });
-  const { onSearch: handleSearchFieldMappings } = useFieldMappingWithEntitySearch();
+  const { onSearch: handleSearchFieldMappings } = sdk.fieldMappings.searchWithEntity();
 
   const handleFieldMappingCreate = useCallback(
     (body: FieldMappingCreateRequestBody) => {
@@ -214,12 +210,6 @@ export const ColumnDefinitionDetailView: React.FC<
                           ),
                           variant: "chip",
                         },
-                        {
-                          label: "Required",
-                          value: <Chip label="Required" size="small" color="error" />,
-                          variant: "chip",
-                          hidden: !cd.required,
-                        },
                       ]}
                     />
                   </PageHeader>
@@ -234,9 +224,9 @@ export const ColumnDefinitionDetailView: React.FC<
                           items={[
                             { label: "Key", value: cd.key, variant: "mono" },
                             { label: "Description", value: cd.description ?? "", hidden: !cd.description },
-                            { label: "Format", value: cd.format ?? "", hidden: !cd.format },
-                            { label: "Default Value", value: cd.defaultValue ?? "", hidden: !cd.defaultValue },
-                            { label: "Enum Values", value: cd.enumValues?.join(", ") ?? "", hidden: !cd.enumValues || cd.enumValues.length === 0 },
+                            { label: "Validation Pattern", value: cd.validationPattern ?? "", hidden: !cd.validationPattern, variant: "mono" },
+                            { label: "Validation Message", value: cd.validationMessage ?? "", hidden: !cd.validationMessage },
+                            { label: "Canonical Format", value: cd.canonicalFormat ?? "", hidden: !cd.canonicalFormat, variant: "mono" },
                             { label: "Created", value: new Date(cd.created).toLocaleString() },
                           ]}
                         />
@@ -332,7 +322,12 @@ export const ColumnDefinitionDetailView: React.FC<
                       }
                       : {
                         sourceField: "",
+                        normalizedKey: "",
                         isPrimaryKey: false,
+                        required: false,
+                        defaultValue: null,
+                        format: null,
+                        enumValues: null,
                         columnDefinitionId: "",
                         columnDefinitionLabel: "",
                         connectorEntityLabel: "",
@@ -422,10 +417,23 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
         }
       },
     },
+    { key: "normalizedKey", label: "Normalized Key" },
     {
       key: "isPrimaryKey",
       label: "Primary Key",
       render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+    },
+    {
+      key: "required",
+      label: "Required",
+      render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+    },
+    { key: "defaultValue", label: "Default Value" },
+    { key: "format", label: "Format" },
+    {
+      key: "enumValues",
+      label: "Enum Values",
+      render: (value) => (Array.isArray(value) ? value.join(", ") : null),
     },
     ...((onEdit || onDelete)
       ? [

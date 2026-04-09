@@ -16,11 +16,10 @@ const validColumnDefinition = {
   key: "email",
   label: "Email",
   type: "string",
-  required: true,
-  defaultValue: null,
-  format: "email",
-  enumValues: null,
   description: "Primary email",
+  validationPattern: null,
+  validationMessage: null,
+  canonicalFormat: null,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,
@@ -60,13 +59,6 @@ describe("ColumnDefinitionListRequestQuerySchema", () => {
     if (result.success) {
       expect(result.data.type).toBe("string,number");
     }
-  });
-
-  it("should accept optional required filter and coerce to boolean", () => {
-    const result = ColumnDefinitionListRequestQuerySchema.parse({
-      required: "true",
-    });
-    expect(result.required).toBe(true);
   });
 
   it("should cap limit at 100", () => {
@@ -153,11 +145,10 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
       label: "Email",
       type: "string",
     });
-    expect(result.required).toBe(false);
-    expect(result.defaultValue).toBeNull();
-    expect(result.format).toBeNull();
-    expect(result.enumValues).toBeNull();
     expect(result.description).toBeNull();
+    expect(result.validationPattern).toBeNull();
+    expect(result.validationMessage).toBeNull();
+    expect(result.canonicalFormat).toBeNull();
   });
 
   it("should accept all optional fields", () => {
@@ -165,11 +156,10 @@ describe("ColumnDefinitionCreateRequestBodySchema", () => {
       key: "status",
       label: "Status",
       type: "enum",
-      required: true,
-      defaultValue: "active",
-      format: null,
-      enumValues: ["active", "inactive"],
       description: "Account status",
+      validationPattern: "^(active|inactive)$",
+      validationMessage: "Must be active or inactive",
+      canonicalFormat: null,
     });
     expect(result.success).toBe(true);
   });
@@ -240,11 +230,10 @@ describe("ColumnDefinitionUpdateRequestBodySchema", () => {
     const result = ColumnDefinitionUpdateRequestBodySchema.safeParse({
       label: "New Label",
       type: "enum",
-      required: true,
-      defaultValue: "active",
-      format: null,
-      enumValues: ["active", "inactive"],
       description: "Updated description",
+      validationPattern: "^(active|inactive)$",
+      validationMessage: "Must be active or inactive",
+      canonicalFormat: null,
     });
     expect(result.success).toBe(true);
   });

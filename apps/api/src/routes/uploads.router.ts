@@ -380,7 +380,7 @@ uploadsRouter.post(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.UPLOAD_S3_ERROR, error instanceof Error ? error.message : "Failed to confirm upload")
+          : new ApiError(500, ApiCode.UPLOAD_CONFIRM_FAILED, error instanceof Error ? error.message : "Failed to confirm upload")
       );
     }
   }

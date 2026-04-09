@@ -82,7 +82,7 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                     </PageHeader>
 
                     {status === "active" && (
-                      <Progress value={progress} height={10} color="info" />
+                      <Progress value={progress} height={10} color="info" animated />
                     )}
 
                     <PageSection title="Details" icon={<Icon name={IconName.Info} />} variant="outlined">

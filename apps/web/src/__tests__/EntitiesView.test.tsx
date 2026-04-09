@@ -24,30 +24,24 @@ jest.unstable_mockModule("../api/sdk", () => ({
         isLoading: false,
       }),
     },
+    entityTags: {
+      filter: () => ({
+        fetchPage: mockTagFetchPage,
+        labelMap: {},
+      }),
+    },
+    connectorInstances: {
+      filter: () => ({
+        fetchPage: mockConnectorInstanceFetchPage,
+        labelMap: {},
+      }),
+    },
   },
   queryKeys: {
     connectorEntities: {
       root: ["connectorEntities"],
     },
   },
-}));
-
-jest.unstable_mockModule("../api/entity-tags.api", () => ({
-  useEntityTagFilter: () => ({
-    fetchPage: mockTagFetchPage,
-    labelMap: {},
-  }),
-}));
-
-jest.unstable_mockModule("../api/connector-instances.api", () => ({
-  useConnectorInstanceSearch: () => ({
-    onSearch: jest.fn(() => Promise.resolve([])),
-    labelMap: {},
-  }),
-  useConnectorInstanceFilter: () => ({
-    fetchPage: mockConnectorInstanceFetchPage,
-    labelMap: {},
-  }),
 }));
 
 const { render, screen } = await import("./test-utils");
