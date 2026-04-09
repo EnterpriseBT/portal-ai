@@ -5,16 +5,21 @@ import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import { Repository } from "../db/repositories/base.repository.js";
 
-const InputSchema = z.object({
+const ItemSchema = z.object({
   connectorEntityId: z.string().describe("The connector entity ID to update"),
   label: z.string().min(1).describe("New label for the entity"),
+});
+
+const InputSchema = z.object({
+  items: z.array(ItemSchema).min(1).max(100).describe("Connector entities to update (1–100)"),
 });
 
 export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_update";
   name = "Connector Entity Update Tool";
-  description = "Updates a connector entity's label.";
+  description = "Updates one or more connector entities' labels. Accepts 1–100 items.";
 
   get schema() { return InputSchema; }
 
@@ -24,32 +29,69 @@ export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         try {
-          const { connectorEntityId, label } = this.validate(input);
-          await assertStationScope(stationId, connectorEntityId);
-          await assertWriteCapability(connectorEntityId);
+          const { items } = this.validate(input);
 
-          const existing = await DbService.repository.connectorEntities.findById(connectorEntityId);
-          if (!existing) {
-            return { error: "Connector entity not found" };
+          // ── Phase 1: Validate ──────────────────────────────────────
+          const failures: { index: number; error: string }[] = [];
+          const entities: Record<string, any> = {};
+
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            try {
+              await assertStationScope(stationId, item.connectorEntityId);
+              await assertWriteCapability(item.connectorEntityId);
+            } catch (err: any) {
+              failures.push({ index: i, error: err.message ?? "Scope/capability check failed" });
+              continue;
+            }
+
+            const existing = await DbService.repository.connectorEntities.findById(item.connectorEntityId);
+            if (!existing) {
+              failures.push({ index: i, error: "Connector entity not found" });
+              continue;
+            }
+            entities[item.connectorEntityId] = existing;
           }
 
-          await DbService.repository.connectorEntities.update(connectorEntityId, {
-            label,
-            updated: Date.now(),
-            updatedBy: userId,
-          } as any);
+          if (failures.length > 0) {
+            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+          }
 
-          AnalyticsService.applyEntityUpdate(stationId, {
-            id: connectorEntityId, key: existing.key, label, connectorInstanceId: existing.connectorInstanceId,
-          });          return {
+          // ── Phase 2: Execute ───────────────────────────────────────
+          await Repository.transaction(async (tx) => {
+            for (const item of items) {
+              await DbService.repository.connectorEntities.update(item.connectorEntityId, {
+                label: item.label,
+                updated: Date.now(),
+                updatedBy: userId,
+              } as any, tx);
+            }
+          });
+
+          // ── Phase 3: Cache ─────────────────────────────────────────
+          const cacheRows = items.map((item) => {
+            const existing = entities[item.connectorEntityId];
+            return {
+              id: item.connectorEntityId,
+              key: existing.key,
+              label: item.label,
+              connectorInstanceId: existing.connectorInstanceId,
+            };
+          });
+          AnalyticsService.applyEntityUpdateMany(stationId, cacheRows);
+
+          return {
             success: true,
-            operation: "updated",
+            operation: "updated" as const,
             entity: "connector entity",
-            entityId: connectorEntityId,
-            summary: { label },
+            count: items.length,
+            items: items.map((item) => ({
+              entityId: item.connectorEntityId,
+              summary: { label: item.label },
+            })),
           };
         } catch (err: any) {
-          return { error: err.message ?? "Failed to update entity" };
+          return { error: err.message ?? "Failed to update entities" };
         }
       },
     });

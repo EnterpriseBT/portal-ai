@@ -132,22 +132,13 @@ describe("ColumnDefinitionCardUI", () => {
     expect(screen.getByText("User email")).toBeInTheDocument();
   });
 
-  it("should render validationPattern and canonicalFormat when present", () => {
+  it("should not render validationPattern or canonicalFormat on the card", () => {
     const cd = makeColumnDefinition({
       validationPattern: "^\\d{4}-\\d{2}-\\d{2}$",
       canonicalFormat: "yyyy-MM-dd",
     });
     render(<ColumnDefinitionCardUI columnDefinition={cd} />);
-    expect(screen.getByText("^\\d{4}-\\d{2}-\\d{2}$")).toBeInTheDocument();
-    expect(screen.getByText("yyyy-MM-dd")).toBeInTheDocument();
-  });
-
-  it("should not render metadata row when no validationPattern or canonicalFormat", () => {
-    const cd = makeColumnDefinition({
-      validationPattern: null,
-      canonicalFormat: null,
-    });
-    render(<ColumnDefinitionCardUI columnDefinition={cd} />);
+    expect(screen.queryByText("^\\d{4}-\\d{2}-\\d{2}$")).not.toBeInTheDocument();
     expect(screen.queryByText("yyyy-MM-dd")).not.toBeInTheDocument();
   });
 

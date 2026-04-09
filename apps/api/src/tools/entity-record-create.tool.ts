@@ -8,17 +8,22 @@ import { AnalyticsService } from "../services/analytics.service.js";
 import { EntityRecordModelFactory } from "@portalai/core/models";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { NormalizationService } from "../services/normalization.service.js";
+import { Repository } from "../db/repositories/base.repository.js";
 
-const InputSchema = z.object({
+const ItemSchema = z.object({
   connectorEntityId: z.string().describe("The connector entity to create a record in"),
   sourceId: z.string().optional().describe("Optional source ID; auto-generated if omitted"),
   data: z.record(z.string(), z.unknown()).describe("Record data keyed by source field names"),
 });
 
+const InputSchema = z.object({
+  items: z.array(ItemSchema).min(1).max(100).describe("Records to create (1–100)"),
+});
+
 export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
   slug = "entity_record_create";
   name = "Entity Record Create Tool";
-  description = "Creates a new entity record with auto-normalized data.";
+  description = "Creates one or more entity records with auto-normalized data. Accepts 1–100 items.";
 
   get schema() { return InputSchema; }
 
@@ -28,46 +33,105 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         try {
-          const { connectorEntityId, sourceId, data } = this.validate(input);
-          await assertStationScope(stationId, connectorEntityId);
-          await assertWriteCapability(connectorEntityId);
+          const { items } = this.validate(input);
 
-          const { normalizedData, validationErrors, isValid } = await NormalizationService.normalize(connectorEntityId, data);
+          // ── Phase 1: Validate ──────────────────────────────────────
+          const groups = new Map<string, typeof items>();
+          for (const item of items) {
+            const group = groups.get(item.connectorEntityId) ?? [];
+            group.push(item);
+            groups.set(item.connectorEntityId, group);
+          }
 
+          const failures: { index: number; error: string }[] = [];
+
+          for (const connectorEntityId of groups.keys()) {
+            try {
+              await assertStationScope(stationId, connectorEntityId);
+              await assertWriteCapability(connectorEntityId);
+            } catch (err: any) {
+              const groupItems = groups.get(connectorEntityId)!;
+              for (const item of groupItems) {
+                failures.push({ index: items.indexOf(item), error: err.message ?? "Scope/capability check failed" });
+              }
+            }
+          }
+
+          if (failures.length > 0) {
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
+          }
+
+          // Normalize per group
+          type NormResult = { normalizedData: Record<string, unknown>; validationErrors: any; isValid: boolean };
+          const normResults: NormResult[] = new Array(items.length);
+
+          for (const [connectorEntityId, groupItems] of groups) {
+            const dataArray = groupItems.map((item) => item.data);
+            const results = await NormalizationService.normalizeMany(connectorEntityId, dataArray);
+            for (let i = 0; i < groupItems.length; i++) {
+              normResults[items.indexOf(groupItems[i])] = results[i] as NormResult;
+            }
+          }
+
+          // Build models
           const factory = new EntityRecordModelFactory();
-          const model = factory.create(userId);
-          model.update({
-            organizationId,
-            connectorEntityId,
-            data,
-            normalizedData,
-            sourceId: sourceId ?? uuidv4(),
-            checksum: "manual",
-            syncedAt: Date.now(),
-            origin: "portal",
-            isValid,
-            validationErrors,
+          const parsedModels = items.map((item, idx) => {
+            const norm = normResults[idx];
+            const model = factory.create(userId);
+            model.update({
+              organizationId,
+              connectorEntityId: item.connectorEntityId,
+              data: item.data,
+              normalizedData: norm.normalizedData,
+              sourceId: item.sourceId ?? uuidv4(),
+              checksum: "manual",
+              syncedAt: Date.now(),
+              origin: "portal",
+              isValid: norm.isValid,
+              validationErrors: norm.validationErrors,
+            });
+            return model.parse();
           });
 
-          const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
-          const record = await DbService.repository.entityRecords.create(model.parse());
+          // ── Phase 2: Execute ───────────────────────────────────────
+          const created = await Repository.transaction(async (tx) => {
+            return DbService.repository.entityRecords.createMany(parsedModels, tx);
+          });
 
-          if (entity) {
-            AnalyticsService.applyRecordInsert(stationId, entity.key, {
-              _record_id: record.id,
-              _connector_entity_id: connectorEntityId,
-              ...normalizedData,
+          // ── Phase 3: Cache ─────────────────────────────────────────
+          for (const connectorEntityId of groups.keys()) {
+            const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
+            if (!entity) continue;
+            const groupItems = groups.get(connectorEntityId)!;
+            const rows = groupItems.map((item) => {
+              const idx = items.indexOf(item);
+              const record = created[idx];
+              const norm = normResults[idx];
+              return {
+                _record_id: record.id,
+                _connector_entity_id: connectorEntityId,
+                ...norm.normalizedData,
+              };
             });
+            AnalyticsService.applyRecordInsertMany(stationId, (entity as any).key, rows);
           }
+
           return {
             success: true,
-            operation: "created",
+            operation: "created" as const,
             entity: "record",
-            entityId: record.id,
-            summary: { entityLabel: entity?.label ?? connectorEntityId, sourceId: record.sourceId },
+            count: created.length,
+            items: created.map((record, idx) => ({
+              entityId: record.id,
+              summary: { sourceId: parsedModels[idx].sourceId },
+            })),
           };
         } catch (err: any) {
-          return { error: err.message ?? "Failed to create record" };
+          return { error: err.message ?? "Failed to create records" };
         }
       },
     });

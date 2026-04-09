@@ -9,6 +9,7 @@ import {
   ToolResultEventSchema,
   DoneEventSchema,
   PortalListResponsePayloadSchema,
+  MutationResultContentBlockSchema,
 } from "../../contracts/portal.contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -157,6 +158,61 @@ describe("PortalBlockTypeSchema", () => {
 describe("PINNABLE_BLOCK_TYPES", () => {
   it("should contain \"vega\"", () => {
     expect(PINNABLE_BLOCK_TYPES.has("vega")).toBe(true);
+  });
+});
+
+// ── MutationResultContentBlockSchema ────────────────────────────────
+
+describe("MutationResultContentBlockSchema", () => {
+  it("should accept the old single-item shape with entityId", () => {
+    const result = MutationResultContentBlockSchema.safeParse({
+      type: "mutation-result",
+      operation: "created",
+      entity: "record",
+      entityId: "r-1",
+      summary: { sourceId: "abc" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept bulk shape without entityId, with count and items", () => {
+    const result = MutationResultContentBlockSchema.safeParse({
+      type: "mutation-result",
+      operation: "created",
+      entity: "record",
+      count: 5,
+      items: [
+        { entityId: "r-1", summary: { sourceId: "a" } },
+        { entityId: "r-2" },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept minimal shape with only required fields", () => {
+    const result = MutationResultContentBlockSchema.safeParse({
+      type: "mutation-result",
+      operation: "deleted",
+      entity: "field mapping",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject invalid operation", () => {
+    const result = MutationResultContentBlockSchema.safeParse({
+      type: "mutation-result",
+      operation: "upserted",
+      entity: "record",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject missing entity", () => {
+    const result = MutationResultContentBlockSchema.safeParse({
+      type: "mutation-result",
+      operation: "created",
+    });
+    expect(result.success).toBe(false);
   });
 });
 

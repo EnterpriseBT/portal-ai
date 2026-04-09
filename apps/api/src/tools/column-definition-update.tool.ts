@@ -4,8 +4,9 @@ import { tool } from "ai";
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
+import { Repository } from "../db/repositories/base.repository.js";
 
-const InputSchema = z.object({
+const ItemSchema = z.object({
   columnDefinitionId: z.string().describe("The column definition ID to update"),
   label: z.string().min(1).optional().describe("New display label"),
   description: z.string().nullable().optional().describe("New description"),
@@ -14,10 +15,14 @@ const InputSchema = z.object({
   canonicalFormat: z.string().nullable().optional().describe("New canonical display format"),
 });
 
+const InputSchema = z.object({
+  items: z.array(ItemSchema).min(1).max(100).describe("Column definitions to update (1–100)"),
+});
+
 export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
   slug = "column_definition_update";
   name = "Column Definition Update Tool";
-  description = "Updates a column definition's label, description, or validation fields. Key and type are immutable.";
+  description = "Updates one or more column definitions' label, description, or validation fields. Key and type are immutable. Accepts 1–100 items.";
 
   get schema() { return InputSchema; }
 
@@ -27,35 +32,66 @@ export class ColumnDefinitionUpdateTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         try {
-          const { columnDefinitionId, ...fields } = this.validate(input);
+          const { items } = this.validate(input);
 
-          const existing = await DbService.repository.columnDefinitions.findById(columnDefinitionId);
-          if (!existing || existing.organizationId !== organizationId) {
-            return { error: "Column definition not found" };
+          // ── Phase 1: Validate ──────────────────────────────────────
+          const failures: { index: number; error: string }[] = [];
+          const existingDefs: Record<string, any> = {};
+
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const existing = await DbService.repository.columnDefinitions.findById(item.columnDefinitionId);
+            if (!existing || existing.organizationId !== organizationId) {
+              failures.push({ index: i, error: "Column definition not found" });
+            } else {
+              existingDefs[item.columnDefinitionId] = existing;
+            }
           }
 
-          const updateData: Record<string, unknown> = { updated: Date.now(), updatedBy: userId };
-          if (fields.label !== undefined) updateData.label = fields.label;
-          if (fields.description !== undefined) updateData.description = fields.description;
-          if (fields.validationPattern !== undefined) updateData.validationPattern = fields.validationPattern;
-          if (fields.validationMessage !== undefined) updateData.validationMessage = fields.validationMessage;
-          if (fields.canonicalFormat !== undefined) updateData.canonicalFormat = fields.canonicalFormat;
+          if (failures.length > 0) {
+            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+          }
 
-          await DbService.repository.columnDefinitions.update(columnDefinitionId, updateData as any);
-          AnalyticsService.applyColumnDefinitionUpdate(stationId, {
-            id: columnDefinitionId, key: existing.key,
-            label: (fields.label ?? existing.label) as string,
-            type: existing.type as string,
-            description: (fields.description !== undefined ? fields.description : existing.description) as string | null,
-          });          return {
+          // ── Phase 2: Execute ───────────────────────────────────────
+          await Repository.transaction(async (tx) => {
+            for (const item of items) {
+              const { columnDefinitionId, ...fields } = item;
+              const updateData: Record<string, unknown> = { updated: Date.now(), updatedBy: userId };
+              if (fields.label !== undefined) updateData.label = fields.label;
+              if (fields.description !== undefined) updateData.description = fields.description;
+              if (fields.validationPattern !== undefined) updateData.validationPattern = fields.validationPattern;
+              if (fields.validationMessage !== undefined) updateData.validationMessage = fields.validationMessage;
+              if (fields.canonicalFormat !== undefined) updateData.canonicalFormat = fields.canonicalFormat;
+
+              await DbService.repository.columnDefinitions.update(columnDefinitionId, updateData as any, tx);
+            }
+          });
+
+          // ── Phase 3: Cache ─────────────────────────────────────────
+          const cacheRows = items.map((item) => {
+            const existing = existingDefs[item.columnDefinitionId];
+            return {
+              id: item.columnDefinitionId,
+              key: existing.key,
+              label: (item.label ?? existing.label) as string,
+              type: existing.type as string,
+              description: (item.description !== undefined ? item.description : existing.description) as string | null,
+            };
+          });
+          AnalyticsService.applyColumnDefinitionUpdateMany(stationId, cacheRows);
+
+          return {
             success: true,
-            operation: "updated",
+            operation: "updated" as const,
             entity: "column definition",
-            entityId: columnDefinitionId,
-            summary: { label: existing.label, fields: Object.keys(fields).filter((k) => (fields as Record<string, unknown>)[k] !== undefined) },
+            count: items.length,
+            items: items.map((item) => ({
+              entityId: item.columnDefinitionId,
+              summary: { label: existingDefs[item.columnDefinitionId]?.label },
+            })),
           };
         } catch (err: any) {
-          return { error: err.message ?? "Failed to update column definition" };
+          return { error: err.message ?? "Failed to update column definitions" };
         }
       },
     });

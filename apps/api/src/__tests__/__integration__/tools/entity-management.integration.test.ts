@@ -260,12 +260,12 @@ describe("Entity management tool integration", () => {
       const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
 
       const result = await tool.execute!(
-        { connectorEntityId: s.connectorEntityId, data: { Name: "Jane" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Jane" } }] },
         toolOpts,
       ) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
-      const recordId = result.entityId as string;
+      const recordId = (result.items as any[])[0].entityId as string;
 
       // Verify in DB
       const rows = await db.select().from(entityRecords).where(eq(entityRecords.id, recordId));
@@ -281,7 +281,7 @@ describe("Entity management tool integration", () => {
       const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
 
       const result = await tool.execute!(
-        { connectorEntityId: s.connectorEntityId, data: { Name: "X" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "X" } }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -306,7 +306,7 @@ describe("Entity management tool integration", () => {
       const tool = new EntityRecordCreateTool().build(otherStation.id, s.organizationId, s.userId);
 
       const result = await tool.execute!(
-        { connectorEntityId: s.connectorEntityId, data: { Name: "X" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "X" } }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -322,15 +322,15 @@ describe("Entity management tool integration", () => {
       // Create a record first
       const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       const created = await createTool.execute!(
-        { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
         toolOpts,
       ) as Record<string, unknown>;
-      const recordId = created.entityId as string;
+      const recordId = (created.items as any[])[0].entityId as string;
 
       // Now update
       const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
       const result = await updateTool.execute!(
-        { connectorEntityId: s.connectorEntityId, entityRecordId: recordId, data: { Name: "Bob" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, entityRecordId: recordId, data: { Name: "Bob" } }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -345,7 +345,7 @@ describe("Entity management tool integration", () => {
       const s = await seed(db);
       const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       const created = await createTool.execute!(
-        { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -355,7 +355,7 @@ describe("Entity management tool integration", () => {
 
       const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
       const result = await updateTool.execute!(
-        { connectorEntityId: otherEntity.id, entityRecordId: created.entityId as string, data: { Name: "X" } },
+        { items: [{ connectorEntityId: otherEntity.id, entityRecordId: (created.items as any[])[0].entityId as string, data: { Name: "X" } }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -370,14 +370,14 @@ describe("Entity management tool integration", () => {
       const s = await seed(db);
       const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       const created = await createTool.execute!(
-        { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
         toolOpts,
       ) as Record<string, unknown>;
-      const recordId = created.entityId as string;
+      const recordId = (created.items as any[])[0].entityId as string;
 
       const deleteTool = new EntityRecordDeleteTool().build(s.stationId, s.userId);
       const result = await deleteTool.execute!(
-        { connectorEntityId: s.connectorEntityId, entityRecordId: recordId },
+        { items: [{ connectorEntityId: s.connectorEntityId, entityRecordId: recordId }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -402,18 +402,19 @@ describe("Entity management tool integration", () => {
       // Create a record so cascades have something to delete
       const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       await createTool.execute!(
-        { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
         toolOpts,
       );
 
       const tool = new ConnectorEntityDeleteTool().build(s.stationId, s.userId);
       const result = await tool.execute!(
-        { connectorEntityId: s.connectorEntityId },
+        { items: [{ connectorEntityId: s.connectorEntityId }] },
         toolOpts,
       ) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
-      expect((result.summary as Record<string, unknown>)?.cascaded).toBeDefined();
+      const firstItem = (result.items as any[])[0];
+      expect(firstItem.summary?.cascaded).toBeDefined();
     });
 
     it("blocks when external references exist — nothing deleted", async () => {
@@ -439,7 +440,7 @@ describe("Entity management tool integration", () => {
 
       const tool = new ConnectorEntityDeleteTool().build(s.stationId, s.userId);
       const result = await tool.execute!(
-        { connectorEntityId: s.connectorEntityId },
+        { items: [{ connectorEntityId: s.connectorEntityId }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -461,18 +462,19 @@ describe("Entity management tool integration", () => {
       // Create a record so the entity has records
       const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
       await createTool.execute!(
-        { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
         toolOpts,
       );
 
       const tool = new FieldMappingDeleteTool().build(s.stationId, s.organizationId, s.userId);
       const result = await tool.execute!(
-        { fieldMappingId: s.fieldMappingId },
+        { items: [{ fieldMappingId: s.fieldMappingId }] },
         toolOpts,
       ) as Record<string, unknown>;
 
       expect(result.error).toBeDefined();
-      expect(result.error).toContain("record");
+      const failureErrors = ((result.failures ?? []) as any[]).map((f: any) => f.error).join(" ");
+      expect(failureErrors).toContain("record");
     });
 
     it("succeeds and cascades when entity has no records", async () => {
@@ -480,7 +482,7 @@ describe("Entity management tool integration", () => {
 
       const tool = new FieldMappingDeleteTool().build(s.stationId, s.organizationId, s.userId);
       const result = await tool.execute!(
-        { fieldMappingId: s.fieldMappingId },
+        { items: [{ fieldMappingId: s.fieldMappingId }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -496,7 +498,7 @@ describe("Entity management tool integration", () => {
 
       const tool = new ColumnDefinitionDeleteTool().build(s.stationId, s.organizationId, s.userId);
       const result = await tool.execute!(
-        { columnDefinitionId: s.columnDefinitionId },
+        { items: [{ columnDefinitionId: s.columnDefinitionId }] },
         toolOpts,
       ) as Record<string, unknown>;
 
@@ -511,7 +513,7 @@ describe("Entity management tool integration", () => {
 
       const tool = new ColumnDefinitionDeleteTool().build(s.stationId, s.organizationId, s.userId);
       const result = await tool.execute!(
-        { columnDefinitionId: orphanCol.id },
+        { items: [{ columnDefinitionId: orphanCol.id }] },
         toolOpts,
       ) as Record<string, unknown>;
 

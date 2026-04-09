@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 
 import type {
   ColumnDefinitionGetResponsePayload,
@@ -9,8 +9,8 @@ import type {
   FieldMappingWithConnectorEntity,
   FieldMappingUpdateRequestBody,
 } from "@portalai/core/contracts";
-import { Box, Button, DataTable, Icon, IconName, MetadataList, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack } from "@portalai/core/ui";
-import type { DataTableColumn } from "@portalai/core/ui";
+import { Box, Button, DataTable, Icon, IconName, MetadataList, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack, useColumnConfig } from "@portalai/core/ui";
+import type { ColumnConfig, DataTableColumn } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
 import AddIcon from "@mui/icons-material/Add";
@@ -23,6 +23,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
+import { useStorage } from "../utils/storage.util";
 import { ColumnDefinitionDataItem } from "../components/ColumnDefinition.component";
 import { CreateFieldMappingDialog } from "../components/CreateFieldMappingDialog.component";
 import { DeleteColumnDefinitionDialog } from "../components/DeleteColumnDefinitionDialog.component";
@@ -391,7 +392,14 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
 }) => {
   const navigate = useNavigate();
 
-  const columns: DataTableColumn[] = [
+  const { value: storedConfig, setValue: persistConfig } = useStorage<
+    ColumnConfig[]
+  >({
+    key: "column-config:field-mappings",
+    defaultValue: [],
+  });
+
+  const dataColumns: DataTableColumn[] = useMemo(() => [
     { key: "sourceField", label: "Source Field" },
     {
       key: "connectorEntity",
@@ -428,54 +436,73 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
       label: "Enum Values",
       render: (value) => (Array.isArray(value) ? value.join(", ") : null),
     },
-    ...((onEdit || onDelete)
-      ? [
-        {
-          key: "actions",
-          label: "Actions",
-          render: (_value: unknown, row: Record<string, unknown>) => {
-            const fm = fieldMappings.find((f) => f.id === row.id);
-            if (!fm) return null;
-            return (
-              <Stack direction="row" spacing={0.5}>
-                {onEdit && (
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit(fm);
-                    }}
-                    aria-label="Edit field mapping"
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                )}
-                {onDelete && (
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(fm);
-                    }}
-                    aria-label="Delete field mapping"
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                )}
-              </Stack>
-            );
-          },
-        } as DataTableColumn,
-      ]
-      : []),
-  ];
+  ], [fieldMappings, navigate]);
+
+  const actionsColumn: DataTableColumn | null = useMemo(() => (onEdit || onDelete)
+    ? {
+      key: "actions",
+      label: "Actions",
+      render: (_value: unknown, row: Record<string, unknown>) => {
+        const fm = fieldMappings.find((f) => f.id === row.id);
+        if (!fm) return null;
+        return (
+          <Stack direction="row" spacing={0.5}>
+            {onEdit && (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(fm);
+                }}
+                aria-label="Edit field mapping"
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            )}
+            {onDelete && (
+              <IconButton
+                size="small"
+                color="error"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(fm);
+                }}
+                aria-label="Delete field mapping"
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Stack>
+        );
+      },
+    }
+    : null, [onEdit, onDelete, fieldMappings]);
+
+  const [columnConfig, setColumnConfig] = useColumnConfig(dataColumns, {
+    initialValue: storedConfig.length > 0 ? storedConfig : undefined,
+    onPersist: persistConfig,
+  });
+
+  const allColumns = useMemo(
+    () => actionsColumn ? [...dataColumns, actionsColumn] : dataColumns,
+    [dataColumns, actionsColumn],
+  );
+  const fullConfig = useMemo(
+    () => actionsColumn ? [...columnConfig, { key: "actions", visible: true }] : columnConfig,
+    [columnConfig, actionsColumn],
+  );
+  const handleColumnConfigChange = useCallback(
+    (config: ColumnConfig[]) => setColumnConfig(config.filter((c) => c.key !== "actions")),
+    [setColumnConfig],
+  );
 
   return (
     <DataTable
-      columns={columns}
-      rows={fieldMappings.map((fm) => ({ ...fm } as Record<string, unknown>))}
+      columns={allColumns}
+      rows={fieldMappings}
       emptyMessage="No field mappings found"
+      columnConfig={fullConfig}
+      onColumnConfigChange={handleColumnConfigChange}
     />
   );
 };

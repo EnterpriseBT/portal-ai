@@ -32,6 +32,7 @@ export interface MutationResultBlockProps {
 
 export const MutationResultBlock: React.FC<MutationResultBlockProps> = ({ content }) => {
   const config = OPERATION_LABELS[content.operation] ?? { label: content.operation, severity: "info" as const };
+  const isBulk = (content.count ?? 0) > 1;
   const summaryText = content.summary ? formatSummary(content.summary) : "";
 
   return (
@@ -45,7 +46,7 @@ export const MutationResultBlock: React.FC<MutationResultBlockProps> = ({ conten
       </Typography>
       {" "}
       <Typography variant="body2" component="span">
-        {content.entity}
+        {isBulk ? `${content.count} ${content.entity}s` : content.entity}
       </Typography>
       {summaryText && (
         <Typography variant="body2" component="span" sx={{ color: "text.secondary", ml: 1 }}>

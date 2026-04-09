@@ -509,6 +509,117 @@ export class AnalyticsService {
     this.cacheDelete(stationId, "_field_mappings", "id", fieldMappingId);
   }
 
+  // -------------------------------------------------------------------------
+  // Batch cache mutations (called from bulk tools)
+  // -------------------------------------------------------------------------
+
+  private static cacheBatchInsert(stationId: string, table: string, rows: Record<string, unknown>[]): void {
+    const entry = stationDatabases.get(stationId);
+    if (!entry || rows.length === 0) return;
+    try {
+      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [rows]);
+    } catch (err) {
+      logger.warn({ stationId, table, count: rows.length, err }, "AlaSQL batch insert failed");
+    }
+  }
+
+  private static cacheBatchUpsert(stationId: string, table: string, idColumn: string, rows: Record<string, unknown>[]): void {
+    const entry = stationDatabases.get(stationId);
+    if (!entry || rows.length === 0) return;
+    try {
+      const ids = rows.map((r) => r[idColumn]);
+      alasql(`DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] IN @(?)`, [ids]);
+      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [rows]);
+    } catch (err) {
+      logger.warn({ stationId, table, count: rows.length, err }, "AlaSQL batch upsert failed");
+    }
+  }
+
+  private static cacheBatchDelete(stationId: string, table: string, idColumn: string, ids: string[]): void {
+    const entry = stationDatabases.get(stationId);
+    if (!entry || ids.length === 0) return;
+    try {
+      alasql(`DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] IN @(?)`, [ids]);
+    } catch (err) {
+      logger.warn({ stationId, table, count: ids.length, err }, "AlaSQL batch delete failed");
+    }
+  }
+
+  // -- Batch: entity records ------------------------------------------------
+
+  static applyRecordInsertMany(stationId: string, entityKey: string, rows: Record<string, unknown>[]): void {
+    this.cacheBatchInsert(stationId, entityKey, rows);
+  }
+
+  static applyRecordUpdateMany(stationId: string, entityKey: string, rows: Record<string, unknown>[]): void {
+    this.cacheBatchUpsert(stationId, entityKey, "_record_id", rows);
+  }
+
+  static applyRecordDeleteMany(stationId: string, entityKey: string, recordIds: string[]): void {
+    this.cacheBatchDelete(stationId, entityKey, "_record_id", recordIds);
+  }
+
+  // -- Batch: column definitions --------------------------------------------
+
+  static applyColumnDefinitionInsertMany(stationId: string, rows: Record<string, unknown>[]): void {
+    this.cacheBatchInsert(stationId, "_column_definitions", rows);
+  }
+
+  static applyColumnDefinitionUpdateMany(stationId: string, rows: Record<string, unknown>[]): void {
+    this.cacheBatchUpsert(stationId, "_column_definitions", "id", rows);
+  }
+
+  static applyColumnDefinitionDeleteMany(stationId: string, ids: string[]): void {
+    this.cacheBatchDelete(stationId, "_column_definitions", "id", ids);
+  }
+
+  // -- Batch: field mappings ------------------------------------------------
+
+  static applyFieldMappingInsertMany(stationId: string, rows: Record<string, unknown>[]): void {
+    this.cacheBatchInsert(stationId, "_field_mappings", rows);
+  }
+
+  static applyFieldMappingUpdateMany(stationId: string, rows: Record<string, unknown>[]): void {
+    this.cacheBatchUpsert(stationId, "_field_mappings", "id", rows);
+  }
+
+  static applyFieldMappingDeleteMany(stationId: string, ids: string[]): void {
+    this.cacheBatchDelete(stationId, "_field_mappings", "id", ids);
+  }
+
+  // -- Batch: connector entities --------------------------------------------
+
+  static applyEntityInsertMany(stationId: string, rows: { id: string; key: string; label: string; connectorInstanceId: string }[]): void {
+    const cacheRows = rows.map((r) => ({
+      id: r.id, key: r.key, label: r.label, connector_instance_id: r.connectorInstanceId,
+    }));
+    this.cacheBatchInsert(stationId, "_connector_entities", cacheRows);
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    for (const r of rows) {
+      try { entry.db.exec(`CREATE TABLE IF NOT EXISTS [${r.key}]`); } catch { /* ignore */ }
+    }
+  }
+
+  static applyEntityUpdateMany(stationId: string, rows: { id: string; key: string; label: string; connectorInstanceId: string }[]): void {
+    const cacheRows = rows.map((r) => ({
+      id: r.id, key: r.key, label: r.label, connector_instance_id: r.connectorInstanceId,
+    }));
+    this.cacheBatchUpsert(stationId, "_connector_entities", "id", cacheRows);
+  }
+
+  static applyEntityDeleteMany(stationId: string, entityIds: string[], entityKeys: string[]): void {
+    this.cacheBatchDelete(stationId, "_connector_entities", "id", entityIds);
+    const entry = stationDatabases.get(stationId);
+    if (!entry) return;
+    for (const key of entityKeys) {
+      try { entry.db.exec(`DROP TABLE IF EXISTS [${key}]`); } catch { /* ignore */ }
+    }
+    for (const entityId of entityIds) {
+      try { alasql(`DELETE FROM [${entry.dbName}].[_field_mappings] WHERE connector_entity_id = ?`, [entityId]); } catch { /* ignore */ }
+    }
+  }
+
   /**
    * Discover entity groups that have ≥2 member entities loaded in this station.
    */

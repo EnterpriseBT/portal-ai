@@ -171,8 +171,13 @@ export const MutationResultContentBlockSchema = z.object({
   type: z.literal("mutation-result"),
   operation: z.enum(["created", "updated", "deleted"]),
   entity: z.string(),
-  entityId: z.string(),
+  entityId: z.string().optional(),
+  count: z.number().int().optional(),
   summary: z.record(z.string(), z.unknown()).optional(),
+  items: z.array(z.object({
+    entityId: z.string(),
+    summary: z.record(z.string(), z.unknown()).optional(),
+  })).optional(),
 });
 
 export type MutationResultContentBlock = z.infer<typeof MutationResultContentBlockSchema>;
