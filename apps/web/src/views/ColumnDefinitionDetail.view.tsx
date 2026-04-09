@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 
 import type {
   ColumnDefinitionGetResponsePayload,
@@ -399,7 +399,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
     defaultValue: [],
   });
 
-  const dataColumns: DataTableColumn[] = [
+  const dataColumns: DataTableColumn[] = useMemo(() => [
     { key: "sourceField", label: "Source Field" },
     {
       key: "connectorEntity",
@@ -436,9 +436,9 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
       label: "Enum Values",
       render: (value) => (Array.isArray(value) ? value.join(", ") : null),
     },
-  ];
+  ], [fieldMappings, navigate]);
 
-  const actionsColumn: DataTableColumn | null = (onEdit || onDelete)
+  const actionsColumn: DataTableColumn | null = useMemo(() => (onEdit || onDelete)
     ? {
       key: "actions",
       label: "Actions",
@@ -476,7 +476,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
         );
       },
     }
-    : null;
+    : null, [onEdit, onDelete, fieldMappings]);
 
   const [columnConfig, setColumnConfig] = useColumnConfig(dataColumns, {
     initialValue: storedConfig.length > 0 ? storedConfig : undefined,
@@ -484,8 +484,18 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
     defaultVisibleCount: 5,
   });
 
-  const allColumns = actionsColumn ? [...dataColumns, actionsColumn] : dataColumns;
-  const fullConfig = actionsColumn ? [...columnConfig, { key: "actions", visible: true }] : columnConfig;
+  const allColumns = useMemo(
+    () => actionsColumn ? [...dataColumns, actionsColumn] : dataColumns,
+    [dataColumns, actionsColumn],
+  );
+  const fullConfig = useMemo(
+    () => actionsColumn ? [...columnConfig, { key: "actions", visible: true }] : columnConfig,
+    [columnConfig, actionsColumn],
+  );
+  const handleColumnConfigChange = useCallback(
+    (config: ColumnConfig[]) => setColumnConfig(config.filter((c) => c.key !== "actions")),
+    [setColumnConfig],
+  );
 
   return (
     <DataTable
@@ -493,7 +503,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
       rows={fieldMappings}
       emptyMessage="No field mappings found"
       columnConfig={fullConfig}
-      onColumnConfigChange={(config) => setColumnConfig(config.filter((c) => c.key !== "actions"))}
+      onColumnConfigChange={handleColumnConfigChange}
     />
   );
 };
