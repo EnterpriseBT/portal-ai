@@ -3,6 +3,7 @@ import { HealthGetResponse } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
+import { environment } from "../environment.js";
 
 const logger = createLogger({ module: "health" });
 
@@ -30,6 +31,8 @@ healthRouter.get("/", (_req: Request, res: Response, next: NextFunction) => {
 
     const payload: HealthGetResponse = {
       timestamp: new Date().toISOString(),
+      version: environment.BUILD_VERSION,
+      sha: environment.BUILD_SHA,
     };
 
     // return next(

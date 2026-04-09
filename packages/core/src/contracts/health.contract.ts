@@ -5,6 +5,8 @@ import { z } from "zod";
  */
 export const HealthGetResponseSchema = z.object({
   timestamp: z.string(),
+  version: z.string(),
+  sha: z.string(),
 });
 
 export type HealthGetResponse = z.infer<typeof HealthGetResponseSchema>;

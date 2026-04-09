@@ -1,5 +1,7 @@
 export const environment = {
   NODE_ENV: process.env.NODE_ENV || "development",
+  BUILD_VERSION: process.env.BUILD_VERSION || "dev",
+  BUILD_SHA: process.env.BUILD_SHA || "local",
   NAMESPACE: process.env.NAMESPACE,
   PORT: process.env.PORT,
   CORS_ORIGIN: process.env.CORS_ORIGIN
