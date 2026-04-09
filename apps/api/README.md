@@ -234,8 +234,8 @@ If the Zod model and Drizzle table ever disagree on field names, types, or nulla
 
 ```bash
 cd apps/api
-npm run db:generate    # creates a new numbered .sql migration file
-npm run db:migrate     # applies versioned migrations
+npm run db:generate -- --name <descriptive-name>  # creates a named .sql migration file
+npm run db:migrate                                # applies versioned migrations
 # OR
 npm run db:push        # pushes schema directly (dev convenience)
 ```
@@ -245,7 +245,7 @@ npm run db:push        # pushes schema directly (dev convenience)
 1. **Update the Zod model** in `packages/core/src/models/` — add the new field to the schema.
 2. **Update the Drizzle table** in `apps/api/src/db/schema/` — add the matching column.
 3. **Build** — run `npm run build` from the root. The type-check guards will fail if one side was updated without the other.
-4. **Generate & apply the migration** — `npm run db:generate` then `npm run db:migrate`.
+4. **Generate & apply the migration** — `npm run db:generate -- --name <descriptive-name>` then `npm run db:migrate`.
 
 ### How the Safety Net Works
 
@@ -269,7 +269,7 @@ npm run db:push        # pushes schema directly (dev convenience)
 
 ### Database Scripts
 
-- `npm run db:generate` — Generate SQL migration from schema changes
+- `npm run db:generate -- --name <descriptive-name>` — Generate named SQL migration from schema changes
 - `npm run db:migrate` — Run pending migrations
 - `npm run db:push` — Push schema directly (dev only)
 - `npm run db:studio` — Open Drizzle Studio GUI

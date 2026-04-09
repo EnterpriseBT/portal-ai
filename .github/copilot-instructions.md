@@ -47,7 +47,7 @@ New table workflow:
 2. Drizzle table using `baseColumns`
 3. `createSelectSchema`/`createInsertSchema` in `zod.ts`
 4. Bidirectional `IsAssignable` checks in `type-checks.ts`
-5. `npm run db:generate && npm run db:migrate`
+5. `npm run db:generate -- --name <descriptive-name> && npm run db:migrate`
 
 ## Repositories
 
