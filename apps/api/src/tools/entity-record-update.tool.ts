@@ -6,17 +6,22 @@ import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 import { NormalizationService } from "../services/normalization.service.js";
+import { Repository } from "../db/repositories/base.repository.js";
 
-const InputSchema = z.object({
+const ItemSchema = z.object({
   connectorEntityId: z.string().describe("The connector entity the record belongs to"),
   entityRecordId: z.string().describe("The record ID to update"),
   data: z.record(z.string(), z.unknown()).describe("Updated record data keyed by source field names"),
 });
 
+const InputSchema = z.object({
+  items: z.array(ItemSchema).min(1).max(100).describe("Records to update (1–100)"),
+});
+
 export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
   slug = "entity_record_update";
   name = "Entity Record Update Tool";
-  description = "Updates an existing entity record's data and normalized data.";
+  description = "Updates one or more entity records' data and normalized data. Accepts 1–100 items.";
 
   get schema() { return InputSchema; }
 
@@ -26,44 +31,108 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
       inputSchema: this.schema,
       execute: async (input) => {
         try {
-          const { connectorEntityId, entityRecordId, data } = this.validate(input);
-          await assertStationScope(stationId, connectorEntityId);
-          await assertWriteCapability(connectorEntityId);
+          const { items } = this.validate(input);
 
-          const existing = await DbService.repository.entityRecords.findById(entityRecordId);
-          if (!existing || existing.connectorEntityId !== connectorEntityId) {
-            return { error: "Record not found or does not belong to entity" };
+          // ── Phase 1: Validate ──────────────────────────────────────
+          const groups = new Map<string, typeof items>();
+          for (const item of items) {
+            const group = groups.get(item.connectorEntityId) ?? [];
+            group.push(item);
+            groups.set(item.connectorEntityId, group);
           }
 
-          const { normalizedData, validationErrors, isValid } = await NormalizationService.normalize(connectorEntityId, data);
+          const failures: { index: number; error: string }[] = [];
 
-          const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
+          // Scope checks once per entity
+          for (const connectorEntityId of groups.keys()) {
+            try {
+              await assertStationScope(stationId, connectorEntityId);
+              await assertWriteCapability(connectorEntityId);
+            } catch (err: any) {
+              const groupItems = groups.get(connectorEntityId)!;
+              for (const item of groupItems) {
+                failures.push({ index: items.indexOf(item), error: err.message ?? "Scope/capability check failed" });
+              }
+            }
+          }
 
-          await DbService.repository.entityRecords.update(entityRecordId, {
-            data,
-            normalizedData,
-            validationErrors,
-            isValid,
-            updated: Date.now(),
-            updatedBy: userId,
-          } as any);
+          if (failures.length > 0) {
+            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+          }
 
-          if (entity) {
-            AnalyticsService.applyRecordUpdate(stationId, entity.key, entityRecordId, {
-              _record_id: entityRecordId,
-              _connector_entity_id: connectorEntityId,
-              ...normalizedData,
+          // Verify each record exists and belongs to its entity
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const existing = await DbService.repository.entityRecords.findById(item.entityRecordId);
+            if (!existing || existing.connectorEntityId !== item.connectorEntityId) {
+              failures.push({ index: i, error: "Record not found or does not belong to entity" });
+            }
+          }
+
+          if (failures.length > 0) {
+            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+          }
+
+          // Normalize per group
+          type NormResult = { normalizedData: Record<string, unknown>; validationErrors: any; isValid: boolean };
+          const normResults: NormResult[] = new Array(items.length);
+
+          for (const [connectorEntityId, groupItems] of groups) {
+            const dataArray = groupItems.map((item) => item.data);
+            const results = await NormalizationService.normalizeMany(connectorEntityId, dataArray);
+            for (let i = 0; i < groupItems.length; i++) {
+              normResults[items.indexOf(groupItems[i])] = results[i] as NormResult;
+            }
+          }
+
+          // ── Phase 2: Execute ───────────────────────────────────────
+          const payloads = items.map((item, idx) => {
+            const norm = normResults[idx];
+            return {
+              id: item.entityRecordId,
+              data: {
+                data: item.data,
+                normalizedData: norm.normalizedData,
+                validationErrors: norm.validationErrors,
+                isValid: norm.isValid,
+                updated: Date.now(),
+                updatedBy: userId,
+              },
+            };
+          });
+
+          const updated = await Repository.transaction(async (tx) => {
+            return DbService.repository.entityRecords.updateMany(payloads, tx);
+          });
+
+          // ── Phase 3: Cache ─────────────────────────────────────────
+          for (const [connectorEntityId, groupItems] of groups) {
+            const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
+            if (!entity) continue;
+            const rows = groupItems.map((item) => {
+              const idx = items.indexOf(item);
+              const norm = normResults[idx];
+              return {
+                _record_id: item.entityRecordId,
+                _connector_entity_id: connectorEntityId,
+                ...norm.normalizedData,
+              };
             });
+            AnalyticsService.applyRecordUpdateMany(stationId, (entity as any).key, rows);
           }
+
           return {
             success: true,
-            operation: "updated",
+            operation: "updated" as const,
             entity: "record",
-            entityId: entityRecordId,
-            summary: { entityLabel: entity?.label ?? connectorEntityId, fields: Object.keys(data) },
+            count: updated.length,
+            items: items.map((item, idx) => ({
+              entityId: item.entityRecordId,
+              summary: { fields: Object.keys(item.data) },
+            })),
           };
         } catch (err: any) {
-          return { error: err.message ?? "Failed to update record" };
+          return { error: err.message ?? "Failed to update records" };
         }
       },
     });

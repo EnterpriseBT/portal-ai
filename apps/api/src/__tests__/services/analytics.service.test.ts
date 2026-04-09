@@ -1165,4 +1165,171 @@ describe("AnalyticsService", () => {
       expect(result.returns).toHaveLength(0);
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Batch cache methods
+  // -----------------------------------------------------------------------
+
+  describe("batch cache methods", () => {
+    beforeEach(async () => {
+      AnalyticsService.cleanup(STATION_ID);
+      setupLoadStationMocks();
+      await AnalyticsService.loadStation(STATION_ID, ORG_ID);
+    });
+
+    describe("applyRecordInsertMany", () => {
+      it("inserts multiple rows in a single call", () => {
+        const rows = [
+          { _record_id: "r-new-1", _connector_entity_id: "ent-1", name: "Dave" },
+          { _record_id: "r-new-2", _connector_entity_id: "ent-1", name: "Eve" },
+          { _record_id: "r-new-3", _connector_entity_id: "ent-1", name: "Frank" },
+        ];
+        AnalyticsService.applyRecordInsertMany(STATION_ID, "customers", rows);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM customers WHERE _record_id IN ('r-new-1','r-new-2','r-new-3')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(3);
+      });
+
+      it("is a no-op when rows array is empty", () => {
+        AnalyticsService.applyRecordInsertMany(STATION_ID, "customers", []);
+        // Should not throw
+      });
+    });
+
+    describe("applyRecordUpdateMany", () => {
+      it("replaces existing rows by record ID", () => {
+        // Insert rows first
+        AnalyticsService.applyRecordInsert(STATION_ID, "customers", { _record_id: "r-up-1", _connector_entity_id: "ent-1", name: "Old" });
+        AnalyticsService.applyRecordInsert(STATION_ID, "customers", { _record_id: "r-up-2", _connector_entity_id: "ent-1", name: "Old" });
+
+        // Batch update
+        AnalyticsService.applyRecordUpdateMany(STATION_ID, "customers", [
+          { _record_id: "r-up-1", _connector_entity_id: "ent-1", name: "New1" },
+          { _record_id: "r-up-2", _connector_entity_id: "ent-1", name: "New2" },
+        ]);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM customers WHERE _record_id IN ('r-up-1','r-up-2')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(2);
+        expect((result[0] as any).name).toBe("New1");
+        expect((result[1] as any).name).toBe("New2");
+      });
+    });
+
+    describe("applyRecordDeleteMany", () => {
+      it("removes multiple rows by ID", () => {
+        // Use orders table to avoid loadStation data conflicts with customers
+        AnalyticsService.applyRecordInsert(STATION_ID, "orders", { _record_id: "r-del-1", _connector_entity_id: "ent-2", name: "A" });
+        AnalyticsService.applyRecordInsert(STATION_ID, "orders", { _record_id: "r-del-2", _connector_entity_id: "ent-2", name: "B" });
+        AnalyticsService.applyRecordInsert(STATION_ID, "orders", { _record_id: "r-del-3", _connector_entity_id: "ent-2", name: "C" });
+
+        AnalyticsService.applyRecordDeleteMany(STATION_ID, "orders", ["r-del-1", "r-del-2"]);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM orders WHERE _record_id IN ('r-del-1','r-del-2','r-del-3')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(1);
+        expect((result[0] as any)._record_id).toBe("r-del-3");
+      });
+    });
+
+    describe("applyColumnDefinitionInsertMany", () => {
+      it("inserts multiple column definitions", () => {
+        const rows = [
+          { id: "cd-new-1", key: "batch_col_1", label: "Batch 1", type: "string", description: null },
+          { id: "cd-new-2", key: "batch_col_2", label: "Batch 2", type: "number", description: null },
+        ];
+        AnalyticsService.applyColumnDefinitionInsertMany(STATION_ID, rows);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM _column_definitions WHERE id IN ('cd-new-1','cd-new-2')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(2);
+      });
+    });
+
+    describe("applyColumnDefinitionDeleteMany", () => {
+      it("deletes multiple column definitions", () => {
+        AnalyticsService.applyColumnDefinitionInsert(STATION_ID, { id: "cd-d-1", key: "del_1", label: "D1", type: "string", description: null });
+        AnalyticsService.applyColumnDefinitionInsert(STATION_ID, { id: "cd-d-2", key: "del_2", label: "D2", type: "string", description: null });
+
+        AnalyticsService.applyColumnDefinitionDeleteMany(STATION_ID, ["cd-d-1", "cd-d-2"]);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM _column_definitions WHERE id IN ('cd-d-1','cd-d-2')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(0);
+      });
+    });
+
+    describe("applyFieldMappingInsertMany", () => {
+      it("inserts multiple field mappings", () => {
+        const rows = [
+          { id: "fm-new-1", connector_entity_id: "ent-1", column_definition_id: "cd-1", source_field: "A", is_primary_key: false },
+          { id: "fm-new-2", connector_entity_id: "ent-1", column_definition_id: "cd-2", source_field: "B", is_primary_key: true },
+        ];
+        AnalyticsService.applyFieldMappingInsertMany(STATION_ID, rows);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM _field_mappings WHERE id IN ('fm-new-1','fm-new-2')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(2);
+      });
+    });
+
+    describe("applyFieldMappingDeleteMany", () => {
+      it("deletes multiple field mappings", () => {
+        AnalyticsService.applyFieldMappingInsert(STATION_ID, { id: "fm-d-1", connector_entity_id: "ent-1", column_definition_id: "cd-1", source_field: "X", is_primary_key: false });
+        AnalyticsService.applyFieldMappingInsert(STATION_ID, { id: "fm-d-2", connector_entity_id: "ent-1", column_definition_id: "cd-2", source_field: "Y", is_primary_key: false });
+
+        AnalyticsService.applyFieldMappingDeleteMany(STATION_ID, ["fm-d-1", "fm-d-2"]);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM _field_mappings WHERE id IN ('fm-d-1','fm-d-2')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(0);
+      });
+    });
+
+    describe("applyEntityInsertMany", () => {
+      it("inserts multiple connector entities", () => {
+        const rows = [
+          { id: "ent-new-1", key: "batch_entity_1", label: "BE1", connectorInstanceId: "ci-1" },
+          { id: "ent-new-2", key: "batch_entity_2", label: "BE2", connectorInstanceId: "ci-1" },
+        ];
+        AnalyticsService.applyEntityInsertMany(STATION_ID, rows);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM _connector_entities WHERE id IN ('ent-new-1','ent-new-2')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(2);
+      });
+    });
+
+    describe("applyEntityDeleteMany", () => {
+      it("deletes multiple connector entities and their data tables", () => {
+        AnalyticsService.applyEntityInsert(STATION_ID, { id: "ent-d-1", key: "del_ent_1", label: "DE1", connectorInstanceId: "ci-1" });
+        AnalyticsService.applyEntityInsert(STATION_ID, { id: "ent-d-2", key: "del_ent_2", label: "DE2", connectorInstanceId: "ci-1" });
+
+        AnalyticsService.applyEntityDeleteMany(STATION_ID, ["ent-d-1", "ent-d-2"], ["del_ent_1", "del_ent_2"]);
+
+        const result = AnalyticsService.sqlQuery({
+          sql: "SELECT * FROM _connector_entities WHERE id IN ('ent-d-1','ent-d-2')",
+          stationId: STATION_ID,
+        });
+        expect(result).toHaveLength(0);
+      });
+    });
+  });
 });

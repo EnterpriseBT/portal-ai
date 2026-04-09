@@ -41,6 +41,24 @@ export class NormalizationService {
   }
 
   /**
+   * Normalize multiple data objects for the same connector entity.
+   * Loads field mappings once and applies to all items.
+   */
+  static async normalizeMany(
+    connectorEntityId: string,
+    dataItems: Record<string, unknown>[],
+  ): Promise<NormalizationResult[]> {
+    const mappings = await DbService.repository.fieldMappings.findMany(
+      eq(fieldMappings.connectorEntityId, connectorEntityId),
+      { include: ["columnDefinition"] },
+    ) as unknown as MappingWithColumnDef[];
+
+    return dataItems.map((data) =>
+      NormalizationService.normalizeWithMappings(mappings, data),
+    );
+  }
+
+  /**
    * Normalize data using pre-fetched field mappings. Use this for bulk
    * operations (e.g. CSV import) to avoid repeated DB queries.
    */

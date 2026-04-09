@@ -268,3 +268,55 @@ describe("NormalizationService.normalize", () => {
     expect(result.isValid).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// normalizeMany
+// ---------------------------------------------------------------------------
+
+describe("NormalizationService.normalizeMany", () => {
+  it("loads mappings once and normalizes all items", async () => {
+    mockFindMany.mockResolvedValue([
+      mapping({ sourceField: "Name", normalizedKey: "name" }),
+      mapping({ sourceField: "Email", normalizedKey: "email", columnDefinition: { key: "email", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null } }),
+    ]);
+
+    const results = await NormalizationService.normalizeMany("ce-1", [
+      { Name: "Alice", Email: "alice@example.com" },
+      { Name: "Bob", Email: "bob@example.com" },
+      { Name: "Charlie", Email: "charlie@example.com" },
+    ]);
+
+    expect(mockFindMany).toHaveBeenCalledTimes(1);
+    expect(results).toHaveLength(3);
+    expect(results[0].normalizedData).toEqual({ name: "Alice", email: "alice@example.com" });
+    expect(results[1].normalizedData).toEqual({ name: "Bob", email: "bob@example.com" });
+    expect(results[2].normalizedData).toEqual({ name: "Charlie", email: "charlie@example.com" });
+    expect(results.every((r) => r.isValid)).toBe(true);
+  });
+
+  it("returns empty array for empty input", async () => {
+    mockFindMany.mockResolvedValue([
+      mapping({ sourceField: "Name", normalizedKey: "name" }),
+    ]);
+
+    const results = await NormalizationService.normalizeMany("ce-1", []);
+
+    expect(results).toEqual([]);
+    expect(mockFindMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports per-item validation errors independently", async () => {
+    mockFindMany.mockResolvedValue([
+      mapping({ sourceField: "Email", normalizedKey: "email", required: true, columnDefinition: { key: "email", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null } }),
+    ]);
+
+    const results = await NormalizationService.normalizeMany("ce-1", [
+      { Email: "alice@example.com" },
+      {},
+    ]);
+
+    expect(results[0].isValid).toBe(true);
+    expect(results[1].isValid).toBe(false);
+    expect(results[1].validationErrors).toEqual([{ field: "email", error: "Required field is missing" }]);
+  });
+});

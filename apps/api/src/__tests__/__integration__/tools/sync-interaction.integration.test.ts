@@ -165,11 +165,11 @@ describe("Sync-after-mutation interaction", () => {
     // Create a portal record (UUID sourceId)
     const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
     const result = await tool.execute!(
-      { connectorEntityId: s.connectorEntityId, data: { Name: "Portal User" } },
+      { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Portal User" } }] },
       toolOpts,
     ) as Record<string, unknown>;
     expect(result.success).toBe(true);
-    const portalRecordId = result.entityId as string;
+    const portalRecordId = (result.items as any[])[0].entityId as string;
 
     // Simulate a sync by upserting records with row-index sourceIds
     const syncRecord = createSyncRecord(s.organizationId, s.connectorEntityId, "0", { Name: "Synced User" }, { name: "Synced User" });
@@ -192,7 +192,7 @@ describe("Sync-after-mutation interaction", () => {
     // Delete it via tool
     const deleteTool = new EntityRecordDeleteTool().build(s.stationId, s.userId);
     await deleteTool.execute!(
-      { connectorEntityId: s.connectorEntityId, entityRecordId: syncRec.id },
+      { items: [{ connectorEntityId: s.connectorEntityId, entityRecordId: syncRec.id }] },
       toolOpts,
     );
 
@@ -216,7 +216,7 @@ describe("Sync-after-mutation interaction", () => {
     // Modify via tool
     const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
     await updateTool.execute!(
-      { connectorEntityId: s.connectorEntityId, entityRecordId: syncRec.id, data: { Name: "Modified" } },
+      { items: [{ connectorEntityId: s.connectorEntityId, entityRecordId: syncRec.id, data: { Name: "Modified" } }] },
       toolOpts,
     );
 
