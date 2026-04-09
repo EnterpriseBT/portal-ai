@@ -5,6 +5,7 @@ import {
   Divider,
   ClickAwayListener,
   IconName,
+  Typography,
 } from "@portalai/core/ui";
 import { useLayout } from "../utils";
 import { SidebarNavItem } from "./SidebarNavItem.component";
@@ -144,6 +145,13 @@ export const SidebarNav = () => {
             label="Logout"
             onClick={logout}
           />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", textAlign: "center", py: 0.5, fontSize: "0.65rem" }}
+          >
+            {import.meta.env?.VITE_APP_VERSION ?? "dev"} ({import.meta.env?.VITE_APP_SHA ?? "local"})
+          </Typography>
         </>
       }
     >

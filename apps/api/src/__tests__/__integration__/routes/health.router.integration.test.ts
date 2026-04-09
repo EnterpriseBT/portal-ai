@@ -18,6 +18,8 @@ describe("Health Router", () => {
       expect(res.body.success).toBe(true);
       expect(res.body.payload).toBeDefined();
       expect(res.body.payload.timestamp).toBeDefined();
+      expect(res.body.payload.version).toBeDefined();
+      expect(res.body.payload.sha).toBeDefined();
     });
 
     it("should include a valid ISO timestamp in the payload", async () => {

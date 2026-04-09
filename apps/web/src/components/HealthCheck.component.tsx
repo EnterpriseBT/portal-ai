@@ -121,7 +121,7 @@ export const HealthCheck: React.FC<HealthCheckProps> = ({
       {({ health }) =>
         withLabel(
           <HealthCheckUI data={health} className={className} {...rest} />,
-          "API connected"
+          `API connected — ${health.version} (${health.sha})`
         )
       }
     </DataResult>
