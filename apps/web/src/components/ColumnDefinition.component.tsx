@@ -100,9 +100,6 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
           },
           { label: "Key", value: cd.key, variant: "mono" },
           { label: "Description", value: cd.description ?? "", hidden: !cd.description },
-          { label: "Validation Pattern", value: cd.validationPattern ?? "", hidden: !cd.validationPattern, variant: "mono" },
-          { label: "Validation Message", value: cd.validationMessage ?? "", hidden: !cd.validationMessage },
-          { label: "Canonical Format", value: cd.canonicalFormat ?? "", hidden: !cd.canonicalFormat, variant: "mono" },
         ]}
       />
     </DetailCard>

@@ -92,7 +92,7 @@ const toSpanValue = (
 
 export const PageGridItem = React.forwardRef<HTMLDivElement, PageGridItemProps>(
   ({ children, span, rowSpan, className, ...rest }, ref) => {
-    const sx: Record<string, unknown> = {};
+    const sx: Record<string, unknown> = { minWidth: 0 };
     if (span) sx.gridColumn = toSpanValue(span);
     if (rowSpan) sx.gridRow = toSpanValue(rowSpan);
 
