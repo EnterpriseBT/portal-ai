@@ -814,45 +814,6 @@ describe("Column Definition Router", () => {
       expect(res.body.details.fieldMappings).toContain(fm.id);
     });
 
-    // 1.T2: DELETE returns 422 when field mappings reference it via refColumnDefinitionId
-    it("should return 422 when field mappings reference it via refColumnDefinitionId (Rule 1)", async () => {
-      const { organizationId, connectorEntityId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
-
-      // The column definition being deleted (used as refColumnDefinitionId)
-      const refColDef = createColumnDefinition(organizationId, {
-        type: "reference",
-      });
-      await (db as ReturnType<typeof drizzle>)
-        .insert(columnDefinitions)
-        .values(refColDef as never);
-
-      // Another column definition to be the primary columnDefinitionId
-      const primaryColDef = createColumnDefinition(organizationId);
-      await (db as ReturnType<typeof drizzle>)
-        .insert(columnDefinitions)
-        .values(primaryColDef as never);
-
-      // Field mapping that references refColDef via refColumnDefinitionId
-      const fm = createFieldMap(
-        organizationId,
-        connectorEntityId,
-        primaryColDef.id,
-        { refColumnDefinitionId: refColDef.id }
-      );
-      await (db as ReturnType<typeof drizzle>)
-        .insert(fieldMappings)
-        .values(fm as never);
-
-      const res = await request(app)
-        .delete(`/api/column-definitions/${refColDef.id}`)
-        .set("Authorization", "Bearer test-token");
-
-      expect(res.status).toBe(422);
-      expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_HAS_DEPENDENCIES);
-      expect(res.body.details.refFieldMappings).toContain(fm.id);
-    });
   });
 
   // ── GET /api/column-definitions/:id/impact ──────────────────────
@@ -881,29 +842,11 @@ describe("Column Definition Router", () => {
         .insert(columnDefinitions)
         .values(colDef as never);
 
-      const refColDef = createColumnDefinition(organizationId, {
-        type: "reference",
-      });
-      await (db as ReturnType<typeof drizzle>)
-        .insert(columnDefinitions)
-        .values(refColDef as never);
-
       // Create field mapping referencing colDef via columnDefinitionId
       const fm1 = createFieldMap(organizationId, connectorEntityId, colDef.id);
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(fm1 as never);
-
-      // Create field mapping referencing colDef via refColumnDefinitionId
-      const fm2 = createFieldMap(
-        organizationId,
-        connectorEntityId,
-        refColDef.id,
-        { refColumnDefinitionId: colDef.id, normalizedKey: "ref_source_field" }
-      );
-      await (db as ReturnType<typeof drizzle>)
-        .insert(fieldMappings)
-        .values(fm2 as never);
 
       // Create entity records in the entity that uses this column definition
       for (let i = 0; i < 3; i++) {
@@ -918,7 +861,6 @@ describe("Column Definition Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.fieldMappings).toBe(1);
-      expect(res.body.payload.refFieldMappings).toBe(1);
       expect(res.body.payload.entityRecords).toBe(3);
     });
 
@@ -939,7 +881,6 @@ describe("Column Definition Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.fieldMappings).toBe(0);
-      expect(res.body.payload.refFieldMappings).toBe(0);
       expect(res.body.payload.entityRecords).toBe(0);
     });
   });

@@ -770,16 +770,16 @@ describe("useUploadWorkflow", () => {
       act(() => {
         result.current.updateColumn(0, 0, {
           refEntityKey: "roles",
-          refColumnKey: "id",
+          refNormalizedKey: "role_id",
         });
       });
 
       const col = result.current.recommendations?.entities[0].columns[0];
       expect(col?.refEntityKey).toBe("roles");
-      expect(col?.refColumnKey).toBe("id");
+      expect(col?.refNormalizedKey).toBe("role_id");
     });
 
-    it("updateColumn can set refColumnDefinitionId for an existing DB column", () => {
+    it("updateColumn sets refNormalizedKey for DB mode", () => {
       mockStreamState = createMockStreamState({
         status: "awaiting_confirmation",
         result: { recommendations: MOCK_RECOMMENDATIONS },
@@ -790,12 +790,12 @@ describe("useUploadWorkflow", () => {
       act(() => {
         result.current.updateColumn(0, 0, {
           refEntityKey: "roles",
-          refColumnDefinitionId: "coldef_roles_id",
+          refNormalizedKey: "role_pk",
         });
       });
 
       const col = result.current.recommendations?.entities[0].columns[0];
-      expect(col?.refColumnDefinitionId).toBe("coldef_roles_id");
+      expect(col?.refNormalizedKey).toBe("role_pk");
     });
 
     it("confirm() includes ref fields in request body", async () => {
@@ -816,7 +816,7 @@ describe("useUploadWorkflow", () => {
       act(() => {
         result.current.updateColumn(0, 0, {
           refEntityKey: "roles",
-          refColumnKey: "id",
+          refNormalizedKey: "role_id",
         });
       });
 
@@ -827,8 +827,7 @@ describe("useUploadWorkflow", () => {
       const body = mockConfirmMutateAsync.mock.calls[0][0] as Record<string, unknown>;
       const col = (body.entities as Record<string, unknown>[])[0].columns as Record<string, unknown>[];
       expect(col[0].refEntityKey).toBe("roles");
-      expect(col[0].refColumnKey).toBe("id");
-      expect(col[0].refColumnDefinitionId).toBeNull();
+      expect(col[0].refNormalizedKey).toBe("role_id");
     });
 
     it("confirm() sends null ref fields when column has no ref fields set", async () => {
@@ -853,8 +852,7 @@ describe("useUploadWorkflow", () => {
       const body = mockConfirmMutateAsync.mock.calls[0][0] as Record<string, unknown>;
       const col = (body.entities as Record<string, unknown>[])[0].columns as Record<string, unknown>[];
       expect(col[0].refEntityKey).toBeNull();
-      expect(col[0].refColumnKey).toBeNull();
-      expect(col[0].refColumnDefinitionId).toBeNull();
+      expect(col[0].refNormalizedKey).toBeNull();
     });
   });
 

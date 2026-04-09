@@ -250,15 +250,15 @@ export class UploadsService {
         normalizedKey: string;
       }[] = [];
 
-      // Soft-delete existing field mappings for this entity whose column
-      // definition is not in the incoming set.  This prevents unique-constraint
+      // Soft-delete existing field mappings for this entity whose normalized
+      // key is not in the incoming set.  This prevents unique-constraint
       // violations on (connector_entity_id, normalized_key) when a re-confirm
       // reassigns a normalized key to a different column definition.
-      const incomingColDefIds = entity.columns.map((c) => c.existingColumnDefinitionId);
+      const incomingNormalizedKeys = new Set(entity.columns.map((c) => c.normalizedKey));
       const existingMappings = await DbService.repository.fieldMappings
         .findByConnectorEntityId(connectorEntity.id, tx);
       const staleIds = existingMappings
-        .filter((fm) => !incomingColDefIds.includes(fm.columnDefinitionId))
+        .filter((fm) => !incomingNormalizedKeys.has(fm.normalizedKey))
         .map((fm) => fm.id);
       if (staleIds.length > 0) {
         await DbService.repository.fieldMappings.softDeleteMany(staleIds, userId, tx);
@@ -272,19 +272,13 @@ export class UploadsService {
         entityColumnDefs.push({ id: colDef!.id, key: colDef!.key, label: colDef!.label });
 
         // Reference resolution is field-mapping-level: the incoming column
-        // carries refEntityKey / refColumnKey / refColumnDefinitionId when the
-        // mapping points to another entity's normalized key, regardless of the
-        // column definition type.
-        const hasRefFields = !!(col.refColumnKey || col.refColumnDefinitionId)
+        // carries refEntityKey / refNormalizedKey when the mapping points to
+        // another entity's normalized key, regardless of the column definition type.
+        const hasRefFields = !!col.refNormalizedKey
           || colDef!.type === "reference" || colDef!.type === "reference-array";
-        const refColumnDefinitionId = hasRefFields
-          ? await UploadsService.resolveRefColumnDefinitionId(
-            organizationId, col.refColumnKey, col.refColumnDefinitionId, tx
-          )
-          : null;
 
         // Upsert field mapping
-        const fieldMapping = await DbService.repository.fieldMappings.upsertByEntityAndColumn(
+        const fieldMapping = await DbService.repository.fieldMappings.upsertByEntityAndNormalizedKey(
           {
             id: SystemUtilities.id.v4.generate(),
             organizationId,
@@ -297,7 +291,7 @@ export class UploadsService {
             defaultValue: col.defaultValue ?? null,
             format: col.format,
             enumValues: col.enumValues ?? null,
-            refColumnDefinitionId: refColumnDefinitionId ?? null,
+            refNormalizedKey: col.refNormalizedKey ?? null,
             refEntityKey: hasRefFields ? (col.refEntityKey ?? null) : null,
             created: now,
             createdBy: userId,
@@ -334,20 +328,4 @@ export class UploadsService {
     };
   }
 
-  /**
-   * Resolve the column definition ID that a reference column points to.
-   * Checks in order: pre-resolved ID from client, then DB lookup by key.
-   */
-  private static async resolveRefColumnDefinitionId(
-    organizationId: string,
-    refColumnKey: string | null | undefined,
-    refColumnDefinitionId: string | null | undefined,
-    tx: DbTransaction
-  ): Promise<string | null> {
-    if (refColumnDefinitionId) return refColumnDefinitionId;
-    if (!refColumnKey) return null;
-
-    const existing = await DbService.repository.columnDefinitions.findByKey(organizationId, refColumnKey, tx);
-    return existing?.id ?? null;
-  }
 }

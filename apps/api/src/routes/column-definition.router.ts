@@ -569,8 +569,6 @@ columnDefinitionRouter.patch(
  *                   properties:
  *                     fieldMappings:
  *                       type: integer
- *                     refFieldMappings:
- *                       type: integer
  *                     entityRecords:
  *                       type: integer
  *       404:
@@ -600,9 +598,8 @@ columnDefinitionRouter.get(
         );
       }
 
-      const [fieldMappingCount, refFieldMappingCount, fieldMappingsForRecords] = await Promise.all([
+      const [fieldMappingCount, fieldMappingsForRecords] = await Promise.all([
         DbService.repository.fieldMappings.countByColumnDefinitionId(id),
-        DbService.repository.fieldMappings.countByRefColumnDefinitionId(id),
         DbService.repository.fieldMappings.findByColumnDefinitionId(id),
       ]);
 
@@ -614,7 +611,6 @@ columnDefinitionRouter.get(
 
       return HttpService.success(res, {
         fieldMappings: fieldMappingCount,
-        refFieldMappings: refFieldMappingCount,
         entityRecords,
       });
     } catch (error) {

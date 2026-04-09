@@ -8,8 +8,10 @@ const mockFindMappingById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFindMany = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
 const mockCountByEntityId = jest.fn<(...args: unknown[]) => Promise<number>>();
 const mockSoftDeleteMapping = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
-const mockUpdateWhere = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
+const mockUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
+const mockFindCounterpart = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(null);
 const mockSoftDeleteGroupMembers = jest.fn<(...args: unknown[]) => Promise<number>>().mockResolvedValue(0);
+const mockConnectorEntitiesFindById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockTransaction = jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
@@ -19,7 +21,11 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         findById: mockFindMappingById,
         findMany: mockFindMany,
         softDelete: mockSoftDeleteMapping,
-        updateWhere: mockUpdateWhere,
+        update: mockUpdate,
+        findCounterpart: mockFindCounterpart,
+      },
+      connectorEntities: {
+        findById: mockConnectorEntitiesFindById,
       },
       entityRecords: {
         countByConnectorEntityId: mockCountByEntityId,
@@ -235,8 +241,10 @@ describe("FieldMappingValidationService.executeDelete", () => {
   it("cascade soft-deletes group members", async () => {
     mockFindMappingById.mockResolvedValue({
       id: "fm-1",
+      organizationId: "org-1",
       connectorEntityId: "ce-1",
-      refBidirectionalFieldMappingId: null,
+      refEntityKey: null,
+      refNormalizedKey: null,
     });
     mockSoftDeleteGroupMembers.mockResolvedValue(3);
 
@@ -253,27 +261,43 @@ describe("FieldMappingValidationService.executeDelete", () => {
     );
   });
 
-  it("clears bidirectional counterpart", async () => {
+  it("clears counterpart ref fields when bidirectional pair exists", async () => {
     mockFindMappingById.mockResolvedValue({
       id: "fm-1",
+      organizationId: "org-1",
       connectorEntityId: "ce-1",
-      refBidirectionalFieldMappingId: "fm-2",
+      refEntityKey: "tags",
+      refNormalizedKey: "contact_id",
     });
+    mockConnectorEntitiesFindById.mockResolvedValue({ id: "ce-1", key: "contacts" });
+    mockFindCounterpart.mockResolvedValue({ id: "fm-2" });
 
     const result = await FieldMappingValidationService.executeDelete(
       "fm-1",
       "user-1",
     );
 
-    expect(result.bidirectionalCleared).toBe(true);
-    expect(mockUpdateWhere).toHaveBeenCalled();
+    expect(result.counterpartCleared).toBe(true);
+    expect(mockFindCounterpart).toHaveBeenCalledWith(
+      "org-1", "contacts", "tags", "contact_id", "tx-mock",
+    );
+    expect(mockUpdate).toHaveBeenCalledWith(
+      "fm-2",
+      expect.objectContaining({
+        refNormalizedKey: null,
+        refEntityKey: null,
+      }),
+      "tx-mock",
+    );
   });
 
-  it("returns bidirectionalCleared: false when no counterpart", async () => {
+  it("returns counterpartCleared: false when no ref fields", async () => {
     mockFindMappingById.mockResolvedValue({
       id: "fm-1",
+      organizationId: "org-1",
       connectorEntityId: "ce-1",
-      refBidirectionalFieldMappingId: null,
+      refEntityKey: null,
+      refNormalizedKey: null,
     });
 
     const result = await FieldMappingValidationService.executeDelete(
@@ -281,15 +305,38 @@ describe("FieldMappingValidationService.executeDelete", () => {
       "user-1",
     );
 
-    expect(result.bidirectionalCleared).toBe(false);
-    expect(mockUpdateWhere).not.toHaveBeenCalled();
+    expect(result.counterpartCleared).toBe(false);
+    expect(mockFindCounterpart).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("returns counterpartCleared: false when counterpart does not point back", async () => {
+    mockFindMappingById.mockResolvedValue({
+      id: "fm-1",
+      organizationId: "org-1",
+      connectorEntityId: "ce-1",
+      refEntityKey: "tags",
+      refNormalizedKey: "contact_id",
+    });
+    mockConnectorEntitiesFindById.mockResolvedValue({ id: "ce-1", key: "contacts" });
+    mockFindCounterpart.mockResolvedValue(null);
+
+    const result = await FieldMappingValidationService.executeDelete(
+      "fm-1",
+      "user-1",
+    );
+
+    expect(result.counterpartCleared).toBe(false);
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("uses provided client directly without creating a transaction", async () => {
     mockFindMappingById.mockResolvedValue({
       id: "fm-1",
+      organizationId: "org-1",
       connectorEntityId: "ce-1",
-      refBidirectionalFieldMappingId: null,
+      refEntityKey: null,
+      refNormalizedKey: null,
     });
     mockSoftDeleteGroupMembers.mockResolvedValue(0);
 

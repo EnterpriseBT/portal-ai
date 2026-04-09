@@ -433,7 +433,7 @@ describe("Entity management tool integration", () => {
       const refMapping = {
         ...createFieldMapping(s.organizationId, entity2.id, refColDef.id, "ref_field"),
         refEntityKey: firstEntity.key,
-        refColumnDefinitionId: s.columnDefinitionId,
+        refNormalizedKey: "name",
       };
       await db.insert(fieldMappings).values(refMapping as never);
 

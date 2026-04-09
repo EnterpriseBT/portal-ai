@@ -108,12 +108,10 @@ export const ColumnDefinitionDetailView: React.FC<
     [updateMutation, queryClient, columnDefinitionId]
   );
 
-  const { onSearch: handleSearchColumnDefinitions } = sdk.columnDefinitions.search();
   const { onSearch: handleSearchConnectorEntities } = sdk.connectorEntities.search();
   const { onSearch: handleSearchConnectorEntitiesForRefKey } = sdk.connectorEntities.search({
     mapItem: (ce) => ({ value: ce.key, label: `${ce.label} (${ce.key})` }),
   });
-  const { onSearch: handleSearchFieldMappings } = sdk.fieldMappings.searchWithEntity();
 
   const handleFieldMappingCreate = useCallback(
     (body: FieldMappingCreateRequestBody) => {
@@ -302,9 +300,7 @@ export const ColumnDefinitionDetailView: React.FC<
                     onClose={() => setCreateFieldMappingOpen(false)}
                     onSubmit={handleFieldMappingCreate}
                     onSearchConnectorEntities={handleSearchConnectorEntities}
-                    onSearchColumnDefinitions={handleSearchColumnDefinitions}
                     onSearchConnectorEntitiesForRefKey={handleSearchConnectorEntitiesForRefKey}
-                    onSearchFieldMappings={handleSearchFieldMappings}
                     isPending={fmCreateMutation.isPending}
                     serverError={toServerError(fmCreateMutation.error)}
                     columnDefinitionId={columnDefinitionId}
@@ -331,15 +327,12 @@ export const ColumnDefinitionDetailView: React.FC<
                         columnDefinitionId: "",
                         columnDefinitionLabel: "",
                         connectorEntityLabel: "",
-                        refColumnDefinitionId: null,
+                        refNormalizedKey: null,
                         refEntityKey: null,
-                        refBidirectionalFieldMappingId: null,
                       }
                     }
                     onSubmit={handleFieldMappingUpdate}
-                    onSearchColumnDefinitions={handleSearchColumnDefinitions}
                     onSearchConnectorEntitiesForRefKey={handleSearchConnectorEntitiesForRefKey}
-                    onSearchFieldMappings={handleSearchFieldMappings}
                     isPending={fmUpdateMutation.isPending}
                     serverError={toServerError(fmUpdateMutation.error)}
                     columnDefinitionType={cd.type}

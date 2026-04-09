@@ -54,12 +54,11 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
             defaultValue: defaultValue ?? null,
             format: format ?? null,
             enumValues: enumValues ?? null,
-            refColumnDefinitionId: null,
+            refNormalizedKey: null,
             refEntityKey: null,
-            refBidirectionalFieldMappingId: null,
           });
 
-          const result = await DbService.repository.fieldMappings.upsertByEntityAndColumn(model.parse());
+          const result = await DbService.repository.fieldMappings.upsertByEntityAndNormalizedKey(model.parse());
           AnalyticsService.applyFieldMappingInsert(stationId, {
             id: result.id, connector_entity_id: connectorEntityId,
             column_definition_id: columnDefinitionId,

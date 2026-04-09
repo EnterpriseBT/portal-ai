@@ -239,14 +239,12 @@ describe("ConfirmColumnSchema", () => {
     const result = ConfirmColumnSchema.safeParse({
       ...validColumn,
       refEntityKey: "roles",
-      refColumnKey: "id",
-      refColumnDefinitionId: "coldef_abc123",
+      refNormalizedKey: "role_id",
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.refEntityKey).toBe("roles");
-      expect(result.data.refColumnKey).toBe("id");
-      expect(result.data.refColumnDefinitionId).toBe("coldef_abc123");
+      expect(result.data.refNormalizedKey).toBe("role_id");
     }
   });
 
@@ -254,10 +252,18 @@ describe("ConfirmColumnSchema", () => {
     const result = ConfirmColumnSchema.safeParse({
       ...validColumn,
       refEntityKey: null,
-      refColumnKey: null,
-      refColumnDefinitionId: null,
+      refNormalizedKey: null,
     });
     expect(result.success).toBe(true);
+  });
+
+  it("should reject when old refColumnKey field is present", () => {
+    const result = ConfirmColumnSchema.strict().safeParse({
+      ...validColumn,
+      refEntityKey: "roles",
+      refColumnKey: "id",
+    });
+    expect(result.success).toBe(false);
   });
 
   it("should accept optional defaultValue and enumValues", () => {

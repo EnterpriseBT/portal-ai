@@ -30,9 +30,8 @@ const CreateFieldMappingFormSchema = z.object({
       "Must be lowercase alphanumeric with underscores, starting with a letter"
     ),
   isPrimaryKey: z.boolean(),
-  refColumnDefinitionId: z.string().nullable(),
+  refNormalizedKey: z.string().nullable(),
   refEntityKey: z.string().nullable(),
-  refBidirectionalFieldMappingId: z.string().nullable(),
 });
 
 interface CreateFieldMappingFormState {
@@ -45,9 +44,8 @@ interface CreateFieldMappingFormState {
   defaultValue: string;
   format: string;
   enumValues: string;
-  refColumnDefinitionId: string | null;
+  refNormalizedKey: string | null;
   refEntityKey: string | null;
-  refBidirectionalFieldMappingId: string | null;
 }
 
 const INITIAL_FORM: CreateFieldMappingFormState = {
@@ -60,9 +58,8 @@ const INITIAL_FORM: CreateFieldMappingFormState = {
   defaultValue: "",
   format: "",
   enumValues: "",
-  refColumnDefinitionId: null,
+  refNormalizedKey: null,
   refEntityKey: null,
-  refBidirectionalFieldMappingId: null,
 };
 
 function toSnakeCase(s: string): string {
@@ -75,9 +72,8 @@ function validateForm(form: CreateFieldMappingFormState): FormErrors {
     sourceField: form.sourceField,
     normalizedKey: form.normalizedKey,
     isPrimaryKey: form.isPrimaryKey,
-    refColumnDefinitionId: form.refColumnDefinitionId,
+    refNormalizedKey: form.refNormalizedKey,
     refEntityKey: form.refEntityKey,
-    refBidirectionalFieldMappingId: form.refBidirectionalFieldMappingId,
   });
   return result.success ? {} : result.errors;
 }
@@ -89,9 +85,7 @@ export interface CreateFieldMappingDialogProps {
   onClose: () => void;
   onSubmit: (body: FieldMappingCreateRequestBody) => void;
   onSearchConnectorEntities: (query: string) => Promise<SelectOption[]>;
-  onSearchColumnDefinitions: (query: string) => Promise<SelectOption[]>;
   onSearchConnectorEntitiesForRefKey: (query: string) => Promise<SelectOption[]>;
-  onSearchFieldMappings: (query: string) => Promise<SelectOption[]>;
   isPending: boolean;
   serverError: ServerError | null;
   columnDefinitionId: string;
@@ -104,9 +98,7 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
   onClose,
   onSubmit,
   onSearchConnectorEntities,
-  onSearchColumnDefinitions,
   onSearchConnectorEntitiesForRefKey,
-  onSearchFieldMappings,
   isPending,
   serverError,
   columnDefinitionId,
@@ -178,9 +170,8 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
           ? trimEnum.split(",").map((s) => s.trim()).filter(Boolean)
           : null,
       isPrimaryKey: form.isPrimaryKey,
-      refColumnDefinitionId: form.refColumnDefinitionId,
+      refNormalizedKey: form.refNormalizedKey,
       refEntityKey: form.refEntityKey,
-      refBidirectionalFieldMappingId: form.refBidirectionalFieldMappingId,
     });
   };
 
@@ -294,22 +285,17 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
         {(columnDefinitionType === "reference" || columnDefinitionType === "reference-array") && (
           <>
             <AsyncSearchableSelect
-              label="Ref Column Definition"
-              value={form.refColumnDefinitionId}
-              onChange={(val) => handleChange("refColumnDefinitionId", val)}
-              onSearch={onSearchColumnDefinitions}
-            />
-            <AsyncSearchableSelect
               label="Ref Entity Key"
               value={form.refEntityKey}
               onChange={(val) => handleChange("refEntityKey", val)}
               onSearch={onSearchConnectorEntitiesForRefKey}
             />
-            <AsyncSearchableSelect
-              label="Ref Bidirectional Field Mapping"
-              value={form.refBidirectionalFieldMappingId}
-              onChange={(val) => handleChange("refBidirectionalFieldMappingId", val)}
-              onSearch={onSearchFieldMappings}
+            <TextField
+              label="Ref Normalized Key"
+              value={form.refNormalizedKey ?? ""}
+              onChange={(e) => handleChange("refNormalizedKey", e.target.value || null)}
+              fullWidth
+              helperText="Normalized key of the referenced field in the target entity"
             />
           </>
         )}

@@ -30,9 +30,8 @@ const EditFieldMappingFormSchema = z.object({
       "Must be lowercase alphanumeric with underscores, starting with a letter"
     ),
   isPrimaryKey: z.boolean(),
-  refColumnDefinitionId: z.string().nullable(),
+  refNormalizedKey: z.string().nullable(),
   refEntityKey: z.string().nullable(),
-  refBidirectionalFieldMappingId: z.string().nullable(),
 });
 
 interface EditFieldMappingFormState {
@@ -43,9 +42,8 @@ interface EditFieldMappingFormState {
   defaultValue: string;
   format: string;
   enumValues: string;
-  refColumnDefinitionId: string | null;
+  refNormalizedKey: string | null;
   refEntityKey: string | null;
-  refBidirectionalFieldMappingId: string | null;
 }
 
 function validateForm(form: EditFieldMappingFormState): FormErrors {
@@ -53,9 +51,8 @@ function validateForm(form: EditFieldMappingFormState): FormErrors {
     sourceField: form.sourceField,
     normalizedKey: form.normalizedKey,
     isPrimaryKey: form.isPrimaryKey,
-    refColumnDefinitionId: form.refColumnDefinitionId,
+    refNormalizedKey: form.refNormalizedKey,
     refEntityKey: form.refEntityKey,
-    refBidirectionalFieldMappingId: form.refBidirectionalFieldMappingId,
   });
   return result.success ? {} : result.errors;
 }
@@ -78,14 +75,11 @@ export interface EditFieldMappingDialogProps {
     columnDefinitionId: string;
     columnDefinitionLabel?: string;
     connectorEntityLabel?: string;
-    refColumnDefinitionId: string | null;
+    refNormalizedKey: string | null;
     refEntityKey: string | null;
-    refBidirectionalFieldMappingId: string | null;
   };
   onSubmit: (body: FieldMappingUpdateRequestBody) => void;
-  onSearchColumnDefinitions: (query: string) => Promise<SelectOption[]>;
   onSearchConnectorEntitiesForRefKey: (query: string) => Promise<SelectOption[]>;
-  onSearchFieldMappings: (query: string) => Promise<SelectOption[]>;
   isPending?: boolean;
   serverError?: ServerError | null;
   columnDefinitionType: string;
@@ -94,9 +88,7 @@ export interface EditFieldMappingDialogProps {
 const EditForm: React.FC<{
   fieldMapping: EditFieldMappingDialogProps["fieldMapping"];
   onSubmit: (body: FieldMappingUpdateRequestBody) => void;
-  onSearchColumnDefinitions: (query: string) => Promise<SelectOption[]>;
   onSearchConnectorEntitiesForRefKey: (query: string) => Promise<SelectOption[]>;
-  onSearchFieldMappings: (query: string) => Promise<SelectOption[]>;
   onClose: () => void;
   isPending?: boolean;
   serverError?: ServerError | null;
@@ -104,9 +96,7 @@ const EditForm: React.FC<{
 }> = ({
   fieldMapping: fm,
   onSubmit,
-  onSearchColumnDefinitions,
   onSearchConnectorEntitiesForRefKey,
-  onSearchFieldMappings,
   onClose,
   isPending,
   serverError,
@@ -120,9 +110,8 @@ const EditForm: React.FC<{
       defaultValue: fm.defaultValue ?? "",
       format: fm.format ?? "",
       enumValues: fm.enumValues?.join(", ") ?? "",
-      refColumnDefinitionId: fm.refColumnDefinitionId,
+      refNormalizedKey: fm.refNormalizedKey,
       refEntityKey: fm.refEntityKey,
-      refBidirectionalFieldMappingId: fm.refBidirectionalFieldMappingId,
     });
     const [errors, setErrors] = useState<FormErrors>({});
     const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -165,9 +154,8 @@ const EditForm: React.FC<{
             ? trimEnum.split(",").map((s) => s.trim()).filter(Boolean)
             : null,
         isPrimaryKey: form.isPrimaryKey,
-        refColumnDefinitionId: form.refColumnDefinitionId,
+        refNormalizedKey: form.refNormalizedKey,
         refEntityKey: form.refEntityKey,
-        refBidirectionalFieldMappingId: form.refBidirectionalFieldMappingId,
       };
     };
 
@@ -321,22 +309,17 @@ const EditForm: React.FC<{
           {showRefFields && (
             <>
               <AsyncSearchableSelect
-                label="Ref Column Definition"
-                value={form.refColumnDefinitionId}
-                onChange={(val: string | null) => handleChange("refColumnDefinitionId", val)}
-                onSearch={onSearchColumnDefinitions}
-              />
-              <AsyncSearchableSelect
                 label="Ref Entity Key"
                 value={form.refEntityKey}
                 onChange={(val: string | null) => handleChange("refEntityKey", val)}
                 onSearch={onSearchConnectorEntitiesForRefKey}
               />
-              <AsyncSearchableSelect
-                label="Ref Bidirectional Field Mapping"
-                value={form.refBidirectionalFieldMappingId}
-                onChange={(val: string | null) => handleChange("refBidirectionalFieldMappingId", val)}
-                onSearch={onSearchFieldMappings}
+              <TextField
+                label="Ref Normalized Key"
+                value={form.refNormalizedKey ?? ""}
+                onChange={(e) => handleChange("refNormalizedKey", e.target.value || null)}
+                fullWidth
+                helperText="Normalized key of the referenced field in the target entity"
               />
             </>
           )}
@@ -372,9 +355,7 @@ export const EditFieldMappingDialog: React.FC<EditFieldMappingDialogProps> = ({
   onClose,
   fieldMapping,
   onSubmit,
-  onSearchColumnDefinitions,
   onSearchConnectorEntitiesForRefKey,
-  onSearchFieldMappings,
   isPending,
   serverError,
   columnDefinitionType,
@@ -386,9 +367,7 @@ export const EditFieldMappingDialog: React.FC<EditFieldMappingDialogProps> = ({
       key={fieldMapping.sourceField}
       fieldMapping={fieldMapping}
       onSubmit={onSubmit}
-      onSearchColumnDefinitions={onSearchColumnDefinitions}
       onSearchConnectorEntitiesForRefKey={onSearchConnectorEntitiesForRefKey}
-      onSearchFieldMappings={onSearchFieldMappings}
       onClose={onClose}
       isPending={isPending}
       serverError={serverError}

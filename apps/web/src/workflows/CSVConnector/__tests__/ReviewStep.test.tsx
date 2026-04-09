@@ -37,8 +37,7 @@ type RecommendedColumn = {
   format?: string | null;
   enumValues?: string[] | null;
   refEntityKey?: string | null;
-  refColumnKey?: string | null;
-  refColumnDefinitionId?: string | null;
+  refNormalizedKey?: string | null;
 };
 
 type RecommendedEntity = {
@@ -172,7 +171,7 @@ describe("ReviewStep", () => {
       expect(screen.getByText("Phone Number")).toBeInTheDocument();
     });
 
-    it("shows reference target as 'entity.column' when refEntityKey and refColumnKey are set", () => {
+    it("shows reference target as 'entity.normalizedKey' when refEntityKey and refNormalizedKey are set", () => {
       const refColumn: RecommendedColumn = {
         confidence: 0.9,
         existingColumnDefinitionId: "col_ref",
@@ -182,7 +181,7 @@ describe("ReviewStep", () => {
         sampleValues: [],
         normalizedKey: "role_id",
         refEntityKey: "roles",
-        refColumnKey: "id",
+        refNormalizedKey: "role_id",
       };
 
       render(
@@ -203,7 +202,7 @@ describe("ReviewStep", () => {
       );
 
       expect(
-        screen.getByText("role_id → roles.id")
+        screen.getByText("role_id → roles.role_id")
       ).toBeInTheDocument();
     });
 
@@ -217,7 +216,7 @@ describe("ReviewStep", () => {
         sampleValues: [],
         normalizedKey: "role_id",
         refEntityKey: "roles",
-        refColumnKey: null,
+        refNormalizedKey: null,
       };
 
       render(

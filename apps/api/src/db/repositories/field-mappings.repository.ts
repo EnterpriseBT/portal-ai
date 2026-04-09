@@ -5,7 +5,7 @@
  * column-definition-scoped queries and composite-key upserts.
  */
 
-import { eq, and, not, asc, desc, getTableColumns, type SQL, or, inArray, isNull } from "drizzle-orm";
+import { eq, and, not, asc, desc, getTableColumns, type SQL, inArray, isNull } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import { fieldMappings, connectorEntities, columnDefinitions } from "../schema/index.js";
@@ -86,36 +86,12 @@ export class FieldMappingsRepository extends Repository<
       )) as FieldMappingSelect[];
   }
 
-  /** Find all field mappings that reference a given column definition via refColumnDefinitionId. */
-  async findByRefColumnDefinitionId(
-    refColumnDefinitionId: string,
-    client: DbClient = db
-  ): Promise<FieldMappingSelect[]> {
-    return (await (client as typeof db)
-      .select()
-      .from(this.table)
-      .where(
-        and(
-          eq(fieldMappings.refColumnDefinitionId, refColumnDefinitionId),
-          this.notDeleted()
-        )
-      )) as FieldMappingSelect[];
-  }
-
   /** Count field mappings for a given column definition (soft-delete aware). */
   async countByColumnDefinitionId(
     columnDefinitionId: string,
     client: DbClient = db
   ): Promise<number> {
     return this.count(eq(fieldMappings.columnDefinitionId, columnDefinitionId), client);
-  }
-
-  /** Count field mappings referencing a given column definition via refColumnDefinitionId (soft-delete aware). */
-  async countByRefColumnDefinitionId(
-    refColumnDefinitionId: string,
-    client: DbClient = db
-  ): Promise<number> {
-    return this.count(eq(fieldMappings.refColumnDefinitionId, refColumnDefinitionId), client);
   }
 
   /**
@@ -202,10 +178,10 @@ export class FieldMappingsRepository extends Repository<
 
   /**
    * Insert a field mapping or update it if a row with the same
-   * `(connector_entity_id, column_definition_id)` already exists.
+   * `(connector_entity_id, normalized_key)` already exists.
    * Returns the resulting row.
    */
-  async upsertByEntityAndColumn(
+  async upsertByEntityAndNormalizedKey(
     data: FieldMappingInsert,
     client: DbClient = db
   ): Promise<FieldMappingSelect> {
@@ -215,20 +191,19 @@ export class FieldMappingsRepository extends Repository<
       .onConflictDoUpdate({
         target: [
           fieldMappings.connectorEntityId,
-          fieldMappings.columnDefinitionId,
+          fieldMappings.normalizedKey,
         ] as IndexColumn[],
         targetWhere: isNull(fieldMappings.deleted),
         set: {
           sourceField: data.sourceField,
           isPrimaryKey: data.isPrimaryKey,
-          normalizedKey: data.normalizedKey,
+          columnDefinitionId: data.columnDefinitionId,
           required: data.required,
           defaultValue: data.defaultValue,
           format: data.format,
           enumValues: data.enumValues,
-          refColumnDefinitionId: data.refColumnDefinitionId,
+          refNormalizedKey: data.refNormalizedKey,
           refEntityKey: data.refEntityKey,
-          refBidirectionalFieldMappingId: data.refBidirectionalFieldMappingId,
           updated: data.updated ?? Date.now(),
           updatedBy: data.updatedBy,
         } as never,
@@ -238,9 +213,40 @@ export class FieldMappingsRepository extends Repository<
   }
 
   /**
-   * Return a field mapping and its bidirectional counterpart in a single query.
-   * If `refBidirectionalFieldMappingId` is null on the mapping, `counterpart`
-   * will be null.
+   * Find the counterpart of a bidirectional reference pair.
+   * Looks for a field mapping in the target entity that points back
+   * to the source entity with a matching normalizedKey.
+   */
+  async findCounterpart(
+    organizationId: string,
+    entityKey: string,
+    refEntityKey: string,
+    refNormalizedKey: string,
+    client: DbClient = db
+  ): Promise<FieldMappingSelect | null> {
+    const rows = await (client as typeof db)
+      .select({ fieldMapping: getTableColumns(fieldMappings) })
+      .from(fieldMappings)
+      .innerJoin(
+        connectorEntities,
+        eq(fieldMappings.connectorEntityId, connectorEntities.id)
+      )
+      .where(
+        and(
+          eq(fieldMappings.organizationId, organizationId),
+          eq(connectorEntities.key, refEntityKey),
+          eq(fieldMappings.normalizedKey, refNormalizedKey),
+          eq(fieldMappings.refEntityKey, entityKey),
+          this.notDeleted(),
+        )
+      );
+
+    return (rows[0]?.fieldMapping as FieldMappingSelect) ?? null;
+  }
+
+  /**
+   * Return a field mapping and its bidirectional counterpart.
+   * If the mapping has no ref fields, `counterpart` will be null.
    */
   async findBidirectionalPair(
     fieldMappingId: string,
@@ -250,28 +256,28 @@ export class FieldMappingsRepository extends Repository<
     if (!mapping) {
       return { mapping: null as unknown as FieldMappingSelect, counterpart: null };
     }
-    if (!mapping.refBidirectionalFieldMappingId) {
+    if (!mapping.refEntityKey || !mapping.refNormalizedKey) {
       return { mapping, counterpart: null };
     }
-    const rows = await (client as typeof db)
-      .select()
-      .from(this.table)
-      .where(
-        and(
-          or(
-            eq(fieldMappings.id, fieldMappingId),
-            eq(fieldMappings.id, mapping.refBidirectionalFieldMappingId),
-          ),
-          this.notDeleted(),
-        )
-      ) as FieldMappingSelect[];
 
-    const primary = rows.find((r) => r.id === fieldMappingId) ?? null;
-    const counterpart = rows.find((r) => r.id === mapping.refBidirectionalFieldMappingId) ?? null;
-    return {
-      mapping: primary as FieldMappingSelect,
-      counterpart,
-    };
+    // Look up the entity key for this mapping's connector entity
+    const entityRows = await (client as typeof db)
+      .select({ key: connectorEntities.key })
+      .from(connectorEntities)
+      .where(eq(connectorEntities.id, mapping.connectorEntityId));
+    const entityKey = entityRows[0]?.key;
+    if (!entityKey) {
+      return { mapping, counterpart: null };
+    }
+
+    const counterpart = await this.findCounterpart(
+      mapping.organizationId,
+      entityKey,
+      mapping.refEntityKey,
+      mapping.refNormalizedKey,
+      client
+    );
+    return { mapping, counterpart };
   }
   /** Find field mappings from *other* entities where `refEntityKey` matches a given entity key. */
   async findByRefEntityKey(

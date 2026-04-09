@@ -24,9 +24,8 @@ export const FieldMappingSchema = CoreSchema.extend({
   enumValues: z.array(z.string()).nullable(),
 
   // Reference fields (populated when the mapped column has type "reference" or "reference-array")
-  refColumnDefinitionId: z.string().nullable(),
+  refNormalizedKey: z.string().nullable(),
   refEntityKey: z.string().nullable(),
-  refBidirectionalFieldMappingId: z.string().nullable(),
 });
 
 export type FieldMapping = z.infer<typeof FieldMappingSchema>;

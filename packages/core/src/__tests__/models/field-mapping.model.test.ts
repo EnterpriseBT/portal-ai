@@ -24,9 +24,8 @@ describe("FieldMappingSchema", () => {
     defaultValue: null,
     format: null,
     enumValues: null,
-    refColumnDefinitionId: null,
+    refNormalizedKey: null,
     refEntityKey: null,
-    refBidirectionalFieldMappingId: null,
     created: Date.now(),
     createdBy: "user-1",
     updated: null,
@@ -35,21 +34,22 @@ describe("FieldMappingSchema", () => {
     deletedBy: null,
   };
 
-  it("accepts refBidirectionalFieldMappingId: null", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, refBidirectionalFieldMappingId: null });
+  it("accepts refNormalizedKey: null and refEntityKey: null", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, refNormalizedKey: null, refEntityKey: null });
     expect(result.success).toBe(true);
   });
 
-  it("accepts refBidirectionalFieldMappingId as a valid string ID", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, refBidirectionalFieldMappingId: "fm-99" });
+  it("accepts refNormalizedKey as a valid string with refEntityKey", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, refNormalizedKey: "user_id", refEntityKey: "user" });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.refBidirectionalFieldMappingId).toBe("fm-99");
+      expect(result.data.refNormalizedKey).toBe("user_id");
+      expect(result.data.refEntityKey).toBe("user");
     }
   });
 
-  it("rejects refBidirectionalFieldMappingId as a non-string value", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, refBidirectionalFieldMappingId: 42 });
+  it("rejects refNormalizedKey as a non-string value", () => {
+    const result = FieldMappingSchema.safeParse({ ...base, refNormalizedKey: 42 });
     expect(result.success).toBe(false);
   });
 
@@ -82,9 +82,8 @@ const validMappingFields = {
   defaultValue: null,
   format: null,
   enumValues: null,
-  refColumnDefinitionId: null,
+  refNormalizedKey: null,
   refEntityKey: null,
-  refBidirectionalFieldMappingId: null,
   updated: null,
   updatedBy: null,
   deleted: null,

@@ -95,10 +95,8 @@ function deriveEntitySelectValue(
   allEntities: RecommendedEntity[],
   dbEntities: ConnectorEntityWithMappings[]
 ): string {
-  const { refEntityKey, refColumnKey, refColumnDefinitionId } = column;
+  const { refEntityKey } = column;
   if (!refEntityKey) return "";
-  if (refColumnDefinitionId) return `db:${refEntityKey}`;
-  if (refColumnKey) return `batch:${refEntityKey}`;
   const inBatch = allEntities.some(
     (e) => e.connectorEntity.key === refEntityKey
   );
@@ -136,8 +134,6 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
     dbEntities
   );
 
-  const isDbMode = currentEntityValue.startsWith("db:");
-
   let columnOptions: SelectOption[] = [];
   if (currentEntityValue.startsWith("batch:")) {
     const entityKey = currentEntityValue.slice("batch:".length);
@@ -155,25 +151,21 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
     const selectedDbEntity = dbEntities.find((e) => e.key === entityKey);
     columnOptions = selectedDbEntity
       ? selectedDbEntity.fieldMappings
-        .filter((fm) => fm.columnDefinition !== null)
         .map((fm) => ({
-          value: fm.columnDefinition!.id,
-          label: `${fm.columnDefinition!.label} (${fm.columnDefinition!.key})`,
+          value: fm.normalizedKey,
+          label: `${fm.normalizedKey} (${fm.sourceField})`,
         }))
       : [];
   }
 
-  const currentColumnValue = isDbMode
-    ? (column.refColumnDefinitionId ?? "")
-    : (column.refColumnKey ?? "");
+  const currentColumnValue = column.refNormalizedKey ?? "";
 
   const handleEntityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     if (!val) {
       onUpdate(entityIndex, columnIndex, {
         refEntityKey: null,
-        refColumnKey: null,
-        refColumnDefinitionId: null,
+        refNormalizedKey: null,
       });
       return;
     }
@@ -181,24 +173,13 @@ const ReferenceEditor: React.FC<ReferenceEditorProps> = ({
     const entityKey = val.slice(colonIdx + 1);
     onUpdate(entityIndex, columnIndex, {
       refEntityKey: entityKey,
-      refColumnKey: null,
-      refColumnDefinitionId: null,
+      refNormalizedKey: null,
     });
   };
 
   const handleColumnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value || null;
-    if (isDbMode) {
-      onUpdate(entityIndex, columnIndex, {
-        refColumnKey: null,
-        refColumnDefinitionId: val,
-      });
-    } else {
-      onUpdate(entityIndex, columnIndex, {
-        refColumnKey: val,
-        refColumnDefinitionId: null,
-      });
-    }
+    onUpdate(entityIndex, columnIndex, { refNormalizedKey: val });
   };
 
   return (

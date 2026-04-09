@@ -45,7 +45,7 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
               sourceField: mapping.sourceField,
               cascaded: {
                 entityGroupMembers: result.cascadedEntityGroupMembers,
-                bidirectionalCleared: result.bidirectionalCleared,
+                counterpartCleared: result.counterpartCleared,
               },
             },
           };

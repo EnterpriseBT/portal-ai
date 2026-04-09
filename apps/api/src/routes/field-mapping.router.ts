@@ -362,9 +362,8 @@ fieldMappingRouter.post(
         defaultValue: parsed.data.defaultValue,
         format: parsed.data.format,
         enumValues: parsed.data.enumValues,
-        refColumnDefinitionId: parsed.data.refColumnDefinitionId,
+        refNormalizedKey: parsed.data.refNormalizedKey,
         refEntityKey: parsed.data.refEntityKey,
-        refBidirectionalFieldMappingId: parsed.data.refBidirectionalFieldMappingId,
       });
 
       const fieldMapping = await DbService.repository.fieldMappings.create(
@@ -628,23 +627,30 @@ fieldMappingRouter.get(
         DbService.repository.entityRecords.countByConnectorEntityId(existing.connectorEntityId),
       ]);
 
-      let bidirectionalCounterpart: { id: string; sourceField: string } | null = null;
-      if (existing.refBidirectionalFieldMappingId) {
-        const counterpart = await DbService.repository.fieldMappings.findById(
-          existing.refBidirectionalFieldMappingId
-        );
-        if (counterpart) {
-          bidirectionalCounterpart = {
-            id: counterpart.id,
-            sourceField: counterpart.sourceField,
-          };
+      let counterpartResult: { id: string; sourceField: string; normalizedKey: string } | null = null;
+      if (existing.refEntityKey && existing.refNormalizedKey) {
+        const entity = await DbService.repository.connectorEntities.findById(existing.connectorEntityId);
+        if (entity) {
+          const counterpart = await DbService.repository.fieldMappings.findCounterpart(
+            existing.organizationId,
+            entity.key,
+            existing.refEntityKey,
+            existing.refNormalizedKey,
+          );
+          if (counterpart) {
+            counterpartResult = {
+              id: counterpart.id,
+              sourceField: counterpart.sourceField,
+              normalizedKey: counterpart.normalizedKey,
+            };
+          }
         }
       }
 
       return HttpService.success<FieldMappingImpactResponsePayload>(res, {
         entityGroupMembers: dependentMembers.length,
         entityRecords: entityRecordCount,
-        bidirectionalCounterpart,
+        counterpart: counterpartResult,
       });
     } catch (error) {
       logger.error(
@@ -736,7 +742,7 @@ fieldMappingRouter.delete(
         id,
         cascaded: {
           entityGroupMembers: result.cascadedEntityGroupMembers,
-          bidirectionalCleared: result.bidirectionalCleared,
+          counterpartCleared: result.counterpartCleared,
         },
       });
     } catch (error) {
@@ -800,7 +806,7 @@ fieldMappingRouter.get(
       }
 
       // 3. No back-reference configured — unidirectional mode
-      if (!mapping.refBidirectionalFieldMappingId) {
+      if (!mapping.refEntityKey || !mapping.refNormalizedKey) {
         return HttpService.success<FieldMappingBidirectionalValidationResponsePayload>(res, {
           isConsistent: null,
           inconsistentRecordIds: [],
@@ -815,14 +821,8 @@ fieldMappingRouter.get(
         return next(new ApiError(400, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND, "Configured back-reference field mapping no longer exists"));
       }
 
-      // 5. Load both column definitions to get their normalizedData keys
-      const counterpartColumnDef = await DbService.repository.columnDefinitions.findById(counterpart.columnDefinitionId);
-      if (!counterpartColumnDef) {
-        return next(new ApiError(400, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND, "Back-reference column definition not found"));
-      }
-
-      const keyA = columnDef.key;       // e.g. "enrolled_student_ids"
-      const keyB = counterpartColumnDef.key; // e.g. "classes_enrolled_ids"
+      const keyA = mapping.normalizedKey;       // e.g. "enrolled_student_ids"
+      const keyB = counterpart.normalizedKey;    // e.g. "classes_enrolled_ids"
 
       // 6. Load all records from both entities
       const [recordsA, recordsB] = await Promise.all([

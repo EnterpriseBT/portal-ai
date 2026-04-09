@@ -24,9 +24,8 @@ const validFieldMapping = {
   defaultValue: null,
   format: null,
   enumValues: null,
-  refColumnDefinitionId: null,
+  refNormalizedKey: null,
   refEntityKey: null,
-  refBidirectionalFieldMappingId: null,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,
@@ -186,25 +185,27 @@ describe("FieldMappingCreateRequestBodySchema", () => {
     expect(result.enumValues).toBeNull();
   });
 
-  it("should default refBidirectionalFieldMappingId to null when omitted", () => {
+  it("should default refNormalizedKey to null when omitted", () => {
     const result = FieldMappingCreateRequestBodySchema.parse({
       connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
       sourceField: "account_name",
       normalizedKey: "account_name",
     });
-    expect(result.refBidirectionalFieldMappingId).toBeNull();
+    expect(result.refNormalizedKey).toBeNull();
   });
 
-  it("should accept refBidirectionalFieldMappingId as a string ID", () => {
+  it("should accept refNormalizedKey as a string", () => {
     const result = FieldMappingCreateRequestBodySchema.parse({
       connectorEntityId: "ce-1",
       columnDefinitionId: "cd-1",
       sourceField: "account_name",
       normalizedKey: "account_name",
-      refBidirectionalFieldMappingId: "fm-42",
+      refNormalizedKey: "user_id",
+      refEntityKey: "user",
     });
-    expect(result.refBidirectionalFieldMappingId).toBe("fm-42");
+    expect(result.refNormalizedKey).toBe("user_id");
+    expect(result.refEntityKey).toBe("user");
   });
 
   it("should default isPrimaryKey to false", () => {
@@ -279,22 +280,24 @@ describe("FieldMappingUpdateRequestBodySchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should allow update with refBidirectionalFieldMappingId set to a string", () => {
+  it("should allow update with refNormalizedKey set to a string", () => {
     const result = FieldMappingUpdateRequestBodySchema.parse({
       sourceField: "email",
       columnDefinitionId: "cd-1",
-      refBidirectionalFieldMappingId: "fm-42",
+      refNormalizedKey: "user_id",
+      refEntityKey: "user",
     });
-    expect(result.refBidirectionalFieldMappingId).toBe("fm-42");
+    expect(result.refNormalizedKey).toBe("user_id");
+    expect(result.refEntityKey).toBe("user");
   });
 
-  it("should allow update clearing refBidirectionalFieldMappingId to null", () => {
+  it("should allow update clearing refNormalizedKey to null", () => {
     const result = FieldMappingUpdateRequestBodySchema.parse({
       sourceField: "email",
       columnDefinitionId: "cd-1",
-      refBidirectionalFieldMappingId: null,
+      refNormalizedKey: null,
     });
-    expect(result.refBidirectionalFieldMappingId).toBeNull();
+    expect(result.refNormalizedKey).toBeNull();
   });
 
   it("should accept update with isPrimaryKey", () => {
@@ -344,7 +347,7 @@ describe("FieldMappingDeleteResponsePayloadSchema", () => {
   it("should accept a valid delete response with cascaded counts", () => {
     const result = FieldMappingDeleteResponsePayloadSchema.safeParse({
       id: "fm-1",
-      cascaded: { entityGroupMembers: 3, bidirectionalCleared: false },
+      cascaded: { entityGroupMembers: 3, counterpartCleared: false },
     });
     expect(result.success).toBe(true);
   });
@@ -352,7 +355,7 @@ describe("FieldMappingDeleteResponsePayloadSchema", () => {
   it("should accept zero cascaded entity group members", () => {
     const result = FieldMappingDeleteResponsePayloadSchema.safeParse({
       id: "fm-1",
-      cascaded: { entityGroupMembers: 0, bidirectionalCleared: false },
+      cascaded: { entityGroupMembers: 0, counterpartCleared: false },
     });
     expect(result.success).toBe(true);
   });
@@ -379,7 +382,7 @@ describe("FieldMappingImpactResponsePayloadSchema", () => {
     const result = FieldMappingImpactResponsePayloadSchema.safeParse({
       entityGroupMembers: 5,
       entityRecords: 10,
-      bidirectionalCounterpart: { id: "fm-2", sourceField: "email" },
+      counterpart: { id: "fm-2", sourceField: "email", normalizedKey: "email" },
     });
     expect(result.success).toBe(true);
   });
@@ -388,7 +391,7 @@ describe("FieldMappingImpactResponsePayloadSchema", () => {
     const result = FieldMappingImpactResponsePayloadSchema.safeParse({
       entityGroupMembers: 0,
       entityRecords: 0,
-      bidirectionalCounterpart: null,
+      counterpart: null,
     });
     expect(result.success).toBe(true);
   });

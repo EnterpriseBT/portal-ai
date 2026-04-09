@@ -66,9 +66,8 @@ export const FieldMappingCreateRequestBodySchema = z.object({
   defaultValue: nullableString.optional().default(null),
   format: nullableString.optional().default(null),
   enumValues: z.array(z.string()).nullable().optional().default(null),
-  refColumnDefinitionId: nullableString.optional().default(null),
+  refNormalizedKey: nullableString.optional().default(null),
   refEntityKey: nullableString.optional().default(null),
-  refBidirectionalFieldMappingId: nullableString.optional().default(null),
 });
 
 export type FieldMappingCreateRequestBody = z.infer<typeof FieldMappingCreateRequestBodySchema>;
@@ -90,9 +89,8 @@ export const FieldMappingUpdateRequestBodySchema = z.object({
   defaultValue: nullableString.optional(),
   format: nullableString.optional(),
   enumValues: z.array(z.string()).nullable().optional(),
-  refColumnDefinitionId: nullableString.optional(),
+  refNormalizedKey: nullableString.optional(),
   refEntityKey: nullableString.optional(),
-  refBidirectionalFieldMappingId: nullableString.optional(),
 });
 
 export type FieldMappingUpdateRequestBody = z.infer<typeof FieldMappingUpdateRequestBodySchema>;
@@ -109,7 +107,7 @@ export const FieldMappingDeleteResponsePayloadSchema = z.object({
   id: z.string(),
   cascaded: z.object({
     entityGroupMembers: z.number(),
-    bidirectionalCleared: z.boolean(),
+    counterpartCleared: z.boolean(),
   }),
 });
 
@@ -120,10 +118,11 @@ export type FieldMappingDeleteResponsePayload = z.infer<typeof FieldMappingDelet
 export const FieldMappingImpactResponsePayloadSchema = z.object({
   entityGroupMembers: z.number(),
   entityRecords: z.number(),
-  bidirectionalCounterpart: z
+  counterpart: z
     .object({
       id: z.string(),
       sourceField: z.string(),
+      normalizedKey: z.string(),
     })
     .nullable(),
 });
