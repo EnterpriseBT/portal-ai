@@ -20,7 +20,7 @@ exports[`LoginFormUI Component should match snapshot 1`] = `
           <h1
             class="MuiTypography-root MuiTypography-h4 MuiTypography-gutterBottom css-1pmdao1-MuiTypography-root"
           >
-            Welcome
+            Welcome to Portals AI
           </h1>
         </div>
         <hr

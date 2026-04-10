@@ -40,7 +40,7 @@ export const LoginFormUI: React.FC<LoginFormUIProps> = ({
           <Stack spacing={3}>
             <Box sx={{ textAlign: "center" }}>
               <Typography variant="h4" component="h1" gutterBottom>
-                Welcome
+                Welcome to Portals AI
               </Typography>
             </Box>
 

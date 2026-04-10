@@ -6,7 +6,7 @@ services:
       target: dev
     volumes:
       - .:/workspace:cached
-
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "3000:3000"
       - "3001:3001"

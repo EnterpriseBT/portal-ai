@@ -54,12 +54,12 @@ describe("AuthorizedLayout", () => {
     expect(screen.getByRole("banner")).toBeInTheDocument();
   });
 
-  it("should render Portal.ai title in header", () => {
+  it("should render Portals.ai title in header", () => {
     render(
       <AuthorizedLayout>
         <div>Test Content</div>
       </AuthorizedLayout>
     );
-    expect(screen.getByText("Portal.ai")).toBeInTheDocument();
+    expect(screen.getByText("Portals.ai")).toBeInTheDocument();
   });
 });

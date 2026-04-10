@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Portal.ai — RDS PostgreSQL
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  InstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  AllocatedStorage:
+    Type: Number
+    Default: 20
+  MultiAZ:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+  MasterUsername:
+    Type: String
+    Default: portalai
+
+Resources:
+  # ── DB Subnet Group ──────────────────────────────────────
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "portalai-${Environment} private subnets"
+      SubnetIds:
+        - !ImportValue
+          Fn::Sub: "${Environment}-PrivateSubnet1"
+        - !ImportValue
+          Fn::Sub: "${Environment}-PrivateSubnet2"
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-db-subnet-group"
+
+  # ── Security Group ───────────────────────────────────────
+  # Initially allows access from the entire VPC CIDR.
+  # After backend.yml deploys, re-deploy this stack with an
+  # additional ingress rule scoped to the ECS security group.
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "portalai-${Environment} RDS PostgreSQL access"
+      VpcId: !ImportValue
+        Fn::Sub: "${Environment}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: !ImportValue
+            Fn::Sub: "${Environment}-VpcCidr"
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-db-sg"
+
+  # ── RDS Instance ─────────────────────────────────────────
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub "portalai-${Environment}"
+      Engine: postgres
+      EngineVersion: "17.9"
+      DBInstanceClass: !Ref InstanceClass
+      AllocatedStorage: !Ref AllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: !Ref MultiAZ
+      MasterUsername: !Ref MasterUsername
+      ManageMasterUserPassword: true
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      BackupRetentionPeriod: 7
+      AutoMinorVersionUpgrade: true
+      PubliclyAccessible: false
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-db"
+
+# ── Exports ──────────────────────────────────────────────
+Outputs:
+  DbEndpoint:
+    Value: !GetAtt DBInstance.Endpoint.Address
+    Export:
+      Name: !Sub "${Environment}-DbEndpoint"
+
+  DbPort:
+    Value: !GetAtt DBInstance.Endpoint.Port
+    Export:
+      Name: !Sub "${Environment}-DbPort"
+
+  DbSecurityGroupId:
+    Value: !Ref DBSecurityGroup
+    Export:
+      Name: !Sub "${Environment}-DbSecurityGroupId"

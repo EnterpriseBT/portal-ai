@@ -26,6 +26,10 @@ export function toServerError(
     : null;
 }
 
+export function resolveApiUrl(path: string): string {
+  return `${import.meta.env.VITE_API_BASE_URL}${path}`;
+}
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -64,7 +68,7 @@ export const useAuthFetch = () => {
         throw error;
       }
 
-      const response = await fetch(url, {
+      const response = await fetch(resolveApiUrl(url), {
         ...options,
         headers: {
           ...options.headers,

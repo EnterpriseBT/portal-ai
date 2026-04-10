@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Portal.ai — S3 + CloudFront (static frontend)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  Subdomain:
+    Type: String
+    Default: app-dev
+    Description: Subdomain prefix (e.g. app-dev for dev, app for prod)
+  DomainName:
+    Type: String
+    Default: portalsai.io
+  CertificateArn:
+    Type: String
+    Description: ACM certificate ARN (must be in us-east-1 for CloudFront)
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route 53 hosted zone for DomainName
+
+Resources:
+  # ── S3 Access Logs Bucket ────────────────────────────────────────────────
+  # Separate bucket for server-access logs. Configured to log to itself
+  # (standard pattern for access log buckets) so S3_BUCKET_LOGGING_ENABLED
+  # is satisfied for all S3 resources in this template.
+  FrontendAccessLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Subdomain}.${DomainName}-access-logs"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        LogFilePrefix: self-logs/
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-frontend-access-logs"
+
+  # ── S3 Bucket (private — served exclusively via CloudFront OAC) ──────────
+  # DependsOn is omitted — the !Ref in LoggingConfiguration.DestinationBucketName
+  # already establishes the dependency implicitly.
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Subdomain}.${DomainName}"
+      # Block all public access; objects are served via CloudFront OAC only.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LoggingConfiguration:
+        DestinationBucketName: !Ref FrontendAccessLogsBucket
+        LogFilePrefix: s3-access/
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-frontend"
+
+  # ── Bucket Policy: allow CloudFront OAC to read objects ─────────────────
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+          - Sid: DenyNonSSLRequests
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt FrontendBucket.Arn
+              - !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # ── Origin Access Control ────────────────────────────────────────────────
+  # OAC replaces the legacy OAI pattern. CloudFront signs S3 requests with
+  # SigV4 so the bucket stays fully private.
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "portalai-${Environment}-frontend-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ── CloudFront Distribution ──────────────────────────────────────────────
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "Portal.ai ${Environment} frontend"
+        Aliases:
+          - !Sub "${Subdomain}.${DomainName}"
+        # Serve index.html for the root path automatically
+        DefaultRootObject: index.html
+        # SPA routing: return index.html (200) for any path that doesn't
+        # match an S3 object. S3 returns 403 (object doesn't exist with OAC)
+        # or 404; both cases must be mapped for reliable SPA routing.
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized (AWS managed)
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        HttpVersion: http2and3
+        IPV6Enabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-frontend"
+
+  # ── Route 53 A-record (alias → CloudFront) ──────────────────────────────
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${Subdomain}.${DomainName}"
+      Type: A
+      AliasTarget:
+        # CloudFront's hosted zone ID is fixed for all distributions.
+        HostedZoneId: Z2FDTNDATAQYW2
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        EvaluateTargetHealth: false
+
+Outputs:
+  FrontendBucketName:
+    Description: S3 bucket name (used by pipeline for s3 sync)
+    Value: !Ref FrontendBucket
+    Export:
+      Name: !Sub "${Environment}-FrontendBucketName"
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (used by pipeline for cache invalidation)
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub "${Environment}-CloudFrontDistributionId"
+
+  CloudFrontDomain:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName
