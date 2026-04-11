@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
 import { SidebarNavUI } from "../components/SidebarNav.component";
