@@ -1,0 +1,307 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # ── Tests ─────────────────────────────────────────────────
+  unit-test:
+    uses: ./.github/workflows/unit-test.yml
+
+  integration-test:
+    uses: ./.github/workflows/integration-test.yml
+
+  # ── Infrastructure ────────────────────────────────────────
+  deploy-infra:
+    needs: [unit-test, integration-test]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy network stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-dev-network \
+            --template-file infra/cloudformation/network.yml \
+            --parameter-overrides Environment=dev \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy DNS & certs stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-dev-dns-certs \
+            --template-file infra/cloudformation/dns-certs.yml \
+            --parameter-overrides \
+              Environment=dev \
+              HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy database stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-dev-database \
+            --template-file infra/cloudformation/database.yml \
+            --parameter-overrides Environment=dev \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy cache stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-dev-cache \
+            --template-file infra/cloudformation/cache.yml \
+            --parameter-overrides Environment=dev \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy frontend stack
+        run: |
+          CERT_ARN=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-dns-certs \
+            --query "Stacks[0].Outputs[?ExportName=='dev-CertificateArn'].OutputValue" \
+            --output text)
+          aws cloudformation deploy \
+            --stack-name portalai-dev-frontend \
+            --template-file infra/cloudformation/frontend.yml \
+            --parameter-overrides \
+              Environment=dev \
+              CertificateArn="$CERT_ARN" \
+              HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy backend stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-dev-backend \
+            --template-file infra/cloudformation/backend.yml \
+            --parameter-overrides \
+              Environment=dev \
+              HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
+              SecretArnDatabaseUrl=${{ secrets.DEV_SECRET_ARN_DATABASE_URL }} \
+              SecretArnEncryptionKey=${{ secrets.DEV_SECRET_ARN_ENCRYPTION_KEY }} \
+              SecretArnAuth0WebhookSecret=${{ secrets.DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET }} \
+              SecretArnAnthropicApiKey=${{ secrets.DEV_SECRET_ARN_ANTHROPIC_API_KEY }} \
+              SecretArnTavilyApiKey=${{ secrets.DEV_SECRET_ARN_TAVILY_API_KEY }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+
+  # ── Frontend ──────────────────────────────────────────────
+  deploy-frontend:
+    needs: deploy-infra
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build frontend
+        env:
+          VITE_APP_VERSION: dev-${{ github.sha }}
+          VITE_APP_SHA: ${{ github.sha }}
+          VITE_AUTH0_DOMAIN: ${{ secrets.DEV_VITE_AUTH0_DOMAIN }}
+          VITE_AUTH0_CLIENT_ID: ${{ secrets.DEV_VITE_AUTH0_CLIENT_ID }}
+          VITE_AUTH0_AUDIENCE: ${{ secrets.DEV_VITE_AUTH0_AUDIENCE }}
+          VITE_API_BASE_URL: https://api-dev.portalsai.io
+        run: npm run build --workspace=apps/web
+
+      - name: Get frontend outputs
+        id: frontend
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-frontend \
+            --query "Stacks[0].Outputs[?ExportName=='dev-FrontendBucketName'].OutputValue" \
+            --output text)
+          DIST_ID=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-frontend \
+            --query "Stacks[0].Outputs[?ExportName=='dev-CloudFrontDistributionId'].OutputValue" \
+            --output text)
+          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+          echo "dist_id=$DIST_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Sync to S3
+        run: aws s3 sync apps/web/dist/ s3://${{ steps.frontend.outputs.bucket }} --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.frontend.outputs.dist_id }} \
+            --paths "/*"
+
+  # ── Backend ───────────────────────────────────────────────
+  deploy-backend:
+    needs: deploy-infra
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get ECR repository URI
+        id: ecr
+        run: |
+          ECR_URI=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-backend \
+            --query "Stacks[0].Outputs[?ExportName=='dev-EcrRepositoryUri'].OutputValue" \
+            --output text)
+          echo "uri=$ECR_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.uri }}:dev-${{ github.sha }}
+            ${{ steps.ecr.outputs.uri }}:latest
+          build-args: |
+            BUILD_VERSION=dev-${{ github.sha }}
+            BUILD_SHA=${{ github.sha }}
+          provenance: false
+
+      - name: Get ECS configuration
+        id: ecs
+        run: |
+          CLUSTER=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-backend \
+            --query "Stacks[0].Outputs[?ExportName=='dev-EcsClusterName'].OutputValue" \
+            --output text)
+          SERVICE=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-backend \
+            --query "Stacks[0].Outputs[?ExportName=='dev-EcsServiceName'].OutputValue" \
+            --output text)
+          ECS_SG=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-backend \
+            --query "Stacks[0].Outputs[?ExportName=='dev-EcsSecurityGroupId'].OutputValue" \
+            --output text)
+          SUBNET1=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-network \
+            --query "Stacks[0].Outputs[?ExportName=='dev-PrivateSubnet1'].OutputValue" \
+            --output text)
+          SUBNET2=$(aws cloudformation describe-stacks \
+            --stack-name portalai-dev-network \
+            --query "Stacks[0].Outputs[?ExportName=='dev-PrivateSubnet2'].OutputValue" \
+            --output text)
+          TASK_DEF=$(aws ecs describe-services \
+            --cluster "$CLUSTER" --services "$SERVICE" \
+            --query "services[0].taskDefinition" --output text)
+          echo "cluster=$CLUSTER" >> "$GITHUB_OUTPUT"
+          echo "service=$SERVICE" >> "$GITHUB_OUTPUT"
+          echo "task_def=$TASK_DEF" >> "$GITHUB_OUTPUT"
+          echo "network_config=awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$ECS_SG],assignPublicIp=DISABLED}" >> "$GITHUB_OUTPUT"
+
+      - name: Run database migrations
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.ecs.outputs.cluster }} \
+            --task-definition ${{ steps.ecs.outputs.task_def }} \
+            --launch-type FARGATE \
+            --network-configuration "${{ steps.ecs.outputs.network_config }}" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["npm","run","db:migrate:ci"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Waiting for migration task to complete..."
+          aws ecs wait tasks-stopped \
+            --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Migration failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+          echo "Migration completed successfully"
+
+      - name: Run database seed
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.ecs.outputs.cluster }} \
+            --task-definition ${{ steps.ecs.outputs.task_def }} \
+            --launch-type FARGATE \
+            --network-configuration "${{ steps.ecs.outputs.network_config }}" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["npm","run","db:seed:ci"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Waiting for seed task to complete..."
+          aws ecs wait tasks-stopped \
+            --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ steps.ecs.outputs.cluster }} --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Seed failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+          echo "Seed completed successfully"
+
+      - name: Update backend stack and deploy
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-dev-backend \
+            --template-file infra/cloudformation/backend.yml \
+            --parameter-overrides \
+              BuildVersion=dev-${{ github.sha }} \
+              BuildSha=${{ github.sha }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+          echo "ECS service deployment triggered via CloudFormation"
+
+  # ── Tag ───────────────────────────────────────────────────
+  tag-deploy:
+    needs: [deploy-frontend, deploy-backend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create deploy tag
+        run: |
+          TAG="dev-$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          git tag "$TAG"
+          git push origin "$TAG"

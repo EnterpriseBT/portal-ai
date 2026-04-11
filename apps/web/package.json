@@ -16,7 +16,7 @@
     "storybook": "storybook dev -p 7007 --no-open",
     "build-storybook": "storybook build",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:unit": "NODE_OPTIONS='--experimental-vm-modules --max-old-space-size=4096' jest",
     "test:integration": "true",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",

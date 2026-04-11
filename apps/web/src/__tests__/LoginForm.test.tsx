@@ -40,7 +40,7 @@ describe("LoginFormUI Component", () => {
 
   it("should render welcome message", () => {
     render(<LoginFormUI onClickGoogleLogin={mockOnClickGoogleLogin} />);
-    expect(screen.getByText("Welcome")).toBeInTheDocument();
+    expect(screen.getByText("Welcome to Portals AI")).toBeInTheDocument();
   });
 
   it("should render Google login button", () => {

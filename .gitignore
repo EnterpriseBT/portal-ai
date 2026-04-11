@@ -42,3 +42,6 @@ swagger.json
 
 # Vite
 vite.config.ts.timestamp-*
+
+# Credentials
+credentials.md

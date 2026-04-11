@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Portal.ai — Route 53 & ACM Certificates
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  DomainName:
+    Type: String
+    Default: portalsai.io
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+
+Resources:
+  # ── Wildcard ACM Certificate ─────────────────────────────
+  # Covers *.portalsai.io (all subdomains) + portalsai.io (apex).
+  # DNS validation records are created automatically when
+  # HostedZoneId is provided in DomainValidationOptions.
+  WildcardCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Sub "*.${DomainName}"
+      ValidationMethod: DNS
+      # Only one DomainValidationOptions entry needed — apex and wildcard
+      # share the same DNS validation CNAME record. Two entries cause a
+      # duplicate-record error in Route 53.
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-wildcard-cert"
+
+# ── Exports ──────────────────────────────────────────────
+# DNS records for CloudFront and ALB live in their respective
+# stacks (frontend.yml, backend.yml) so each stack owns its
+# own record.
+Outputs:
+  CertificateArn:
+    Value: !Ref WildcardCertificate
+    Export:
+      Name: !Sub "${Environment}-CertificateArn"

@@ -13,12 +13,12 @@ type Story = StoryObj<typeof HealthCheckUI>;
 
 export const Healthy: Story = {
   args: {
-    data: { timestamp: new Date().toISOString() },
+    data: { timestamp: new Date().toISOString(), version: "v1.0.0", sha: "abc1234" },
   },
 };
 
 export const UnknownTimestamp: Story = {
   args: {
-    data: { timestamp: "" },
+    data: { timestamp: "", version: "dev", sha: "unknown" },
   },
 };

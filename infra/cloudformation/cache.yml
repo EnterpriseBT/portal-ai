@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Portal.ai — ElastiCache Redis
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  NodeType:
+    Type: String
+    Default: cache.t4g.micro
+  NumCacheNodes:
+    Type: Number
+    Default: 1
+
+Resources:
+  # ── Cache Subnet Group ───────────────────────────────────
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: !Sub "portalai-${Environment} private subnets"
+      SubnetIds:
+        - !ImportValue
+          Fn::Sub: "${Environment}-PrivateSubnet1"
+        - !ImportValue
+          Fn::Sub: "${Environment}-PrivateSubnet2"
+
+  # ── Security Group ───────────────────────────────────────
+  # Initially allows access from the entire VPC CIDR.
+  # After backend.yml deploys, re-deploy this stack with an
+  # additional ingress rule scoped to the ECS security group.
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "portalai-${Environment} ElastiCache Redis access"
+      VpcId: !ImportValue
+        Fn::Sub: "${Environment}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: !ImportValue
+            Fn::Sub: "${Environment}-VpcCidr"
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-cache-sg"
+
+  # ── Redis Cluster ────────────────────────────────────────
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: !Sub "portalai-${Environment}"
+      Engine: redis
+      EngineVersion: "7.1"
+      CacheNodeType: !Ref NodeType
+      NumCacheNodes: !Ref NumCacheNodes
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref CacheSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-redis"
+
+# ── Exports ──────────────────────────────────────────────
+Outputs:
+  RedisEndpoint:
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+    Export:
+      Name: !Sub "${Environment}-RedisEndpoint"
+
+  RedisPort:
+    Value: !GetAtt RedisCluster.RedisEndpoint.Port
+    Export:
+      Name: !Sub "${Environment}-RedisPort"
+
+  CacheSecurityGroupId:
+    Value: !Ref CacheSecurityGroup
+    Export:
+      Name: !Sub "${Environment}-CacheSecurityGroupId"
