@@ -29,7 +29,7 @@
     "db:push": "dotenv -e .env -- drizzle-kit push",
     "db:studio": "dotenv -e .env -- drizzle-kit studio",
     "db:seed": "dotenv -e .env -- tsx src/db/seed.ts",
-    "db:seed:ci": "tsx src/db/seed.ts",
+    "db:seed:ci": "node dist/db/seed.js",
     "db:reset:hard": "dotenv -e .env -- tsx src/db/reset-hard.ts",
     "db:reset": "dotenv -e .env -- tsx src/db/reset.ts",
     "tunnel": "dotenv -e .env -- ngrok http 3001"
