@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Box,
   Drawer,
@@ -7,6 +7,8 @@ import {
   IconName,
   Typography,
 } from "@portalai/core/ui";
+import Dialog from "@mui/material/Dialog";
+import DialogContent from "@mui/material/DialogContent";
 import { useLayout } from "../utils";
 import { SidebarNavItem } from "./SidebarNavItem.component";
 import { useRouter } from "@tanstack/react-router";
@@ -120,6 +122,7 @@ export const SidebarNav = () => {
     useLayout();
   const router = useRouter();
   const { logout } = sdk.auth.logout();
+  const [versionOpen, setVersionOpen] = useState(false);
   const pathname = router.state.location.pathname;
   const handleClick = (path: string) => {
     if (isMobileExpanded) toggle();
@@ -148,10 +151,40 @@ export const SidebarNav = () => {
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ display: "block", textAlign: "center", py: 0.5, fontSize: "0.65rem" }}
+            onClick={() => setVersionOpen(true)}
+            sx={{
+              display: "block",
+              textAlign: "center",
+              py: 0.5,
+              px: 1,
+              fontSize: "0.65rem",
+              cursor: "pointer",
+              "&:hover": { textDecoration: "underline" },
+            }}
           >
-            {import.meta.env?.VITE_APP_VERSION ?? "dev"} ({import.meta.env?.VITE_APP_SHA ?? "local"})
+            {isCollapsed ? `\u00A9 ${new Date().getFullYear()}` : `Portalsai \u00A9 ${new Date().getFullYear()}`}
           </Typography>
+          <Dialog open={versionOpen} onClose={() => setVersionOpen(false)} maxWidth="xs">
+            <DialogContent>
+              <Typography variant="body2" sx={{ mb: 1, textAlign: "center" }}>App version</Typography>
+              <Box
+                component="code"
+                sx={(theme) => ({
+                  display: "block",
+                  wordBreak: "break-all",
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  fontFamily: (theme.typography as any).code?.fontFamily,
+                  fontSize: "0.75rem",
+                  backgroundColor: theme.palette.action.hover,
+                  borderRadius: 1,
+                  px: 1.5,
+                  py: 1,
+                })}
+              >
+                {import.meta.env?.VITE_APP_VERSION ?? "dev"} ({import.meta.env?.VITE_APP_SHA ?? "local"})
+              </Box>
+            </DialogContent>
+          </Dialog>
         </>
       }
     >
