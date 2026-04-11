@@ -43,6 +43,7 @@ jest.unstable_mockModule("../utils/api.util", () => ({
   useAuthQuery: jest.fn(),
   useAuthMutation: jest.fn(),
   toServerError: (error: unknown) => (error ? { message: String(error), code: "UNKNOWN" } : null),
+  resolveApiUrl: (path: string) => path,
 }));
 
 const { render, screen } = await import("./test-utils");

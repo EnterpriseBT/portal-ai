@@ -28,6 +28,7 @@ jest.unstable_mockModule("../utils/api.util", () => ({
   }),
   useAuthQuery: jest.fn(),
   useAuthMutation: jest.fn(),
+  resolveApiUrl: (path: string) => path,
 }));
 
 const { render, screen } = await import("./test-utils");

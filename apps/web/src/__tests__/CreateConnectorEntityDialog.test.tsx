@@ -19,6 +19,7 @@ jest.unstable_mockModule("../utils/api.util", () => ({
   useAuthQuery: jest.fn(),
   useAuthMutation: jest.fn(),
   toServerError: (err: unknown) => err ?? null,
+  resolveApiUrl: (path: string) => path,
   ApiError: class extends Error {
     code: string;
     status: number;
