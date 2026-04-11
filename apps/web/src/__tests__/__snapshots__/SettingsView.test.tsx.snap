@@ -32,7 +32,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
             </svg>
           </div>
           <h1
-            class="MuiTypography-root MuiTypography-h1 css-5hru3w-MuiTypography-root"
+            class="MuiTypography-root MuiTypography-h1 css-1j662f1-MuiTypography-root"
           >
             Settings
           </h1>

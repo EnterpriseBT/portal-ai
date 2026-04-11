@@ -8,7 +8,7 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
     class="MuiBox-root css-1qocved"
   >
     <div
-      class="MuiFormControl-root MuiTextField-root css-vzphw3-MuiFormControl-root-MuiTextField-root"
+      class="MuiFormControl-root MuiTextField-root css-1yla13q-MuiFormControl-root-MuiTextField-root"
     >
       <div
         class="MuiInputBase-root MuiOutlinedInput-root MuiInputBase-colorPrimary Mui-focused MuiInputBase-formControl MuiInputBase-sizeSmall MuiInputBase-adornedStart MuiInputBase-adornedEnd css-1s5w79c-MuiInputBase-root-MuiOutlinedInput-root"
@@ -135,10 +135,10 @@ exports[`PaginationToolbar snapshot should match snapshot with all features 1`] 
       Sort
     </button>
     <div
-      class="MuiBox-root css-1rr4qq7"
+      class="MuiBox-root css-1gn42bd"
     />
     <div
-      class="MuiBox-root css-171onha"
+      class="MuiBox-root css-642mqi"
     >
       <div
         class="MuiInputBase-root MuiOutlinedInput-root MuiInputBase-colorPrimary MuiInputBase-sizeSmall MuiSelect-root css-z37i1b-MuiInputBase-root-MuiOutlinedInput-root-MuiSelect-root"
