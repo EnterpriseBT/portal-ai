@@ -2,8 +2,8 @@ name: Integration Tests
 
 on:
   push:
-    branches:
-      - "**"
+    branches-ignore:
+      - main
   workflow_call:
 
 concurrency:
