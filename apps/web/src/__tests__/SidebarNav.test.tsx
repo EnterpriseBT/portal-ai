@@ -1,5 +1,10 @@
+import React, { useState } from "react";
 import { render, screen } from "./test-utils";
+import userEvent from "@testing-library/user-event";
 import { SidebarNavUI } from "../components/SidebarNav.component";
+import { Box, Typography } from "@portalai/core/ui";
+import Dialog from "@mui/material/Dialog";
+import DialogContent from "@mui/material/DialogContent";
 
 describe("SidebarNavUI", () => {
   const defaultProps = {
@@ -83,5 +88,139 @@ describe("SidebarNavUI", () => {
       ?.parentElement;
     expect(wrapper).not.toHaveStyle({ display: "none" });
   });
+});
 
+const VersionFooter = ({
+  collapsed,
+  version = "dev-abc123",
+  sha = "abc123",
+}: {
+  collapsed: boolean;
+  version?: string;
+  sha?: string;
+}) => {
+  const [versionOpen, setVersionOpen] = useState(false);
+  return (
+    <>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        onClick={() => setVersionOpen(true)}
+        sx={{ cursor: "pointer" }}
+      >
+        {collapsed
+          ? `\u00A9 ${new Date().getFullYear()}`
+          : `Portalsai \u00A9 ${new Date().getFullYear()}`}
+      </Typography>
+      <Dialog
+        open={versionOpen}
+        onClose={() => setVersionOpen(false)}
+        maxWidth="xs"
+      >
+        <DialogContent>
+          <Typography variant="body2">App version</Typography>
+          <Box component="code">
+            {version} ({sha})
+          </Box>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
+describe("Version footer", () => {
+  it("displays copyright with 'Portalsai' prefix when expanded", () => {
+    render(
+      <SidebarNavUI
+        collapsed={false}
+        hidden={false}
+        footer={<VersionFooter collapsed={false} />}
+      >
+        <div>Nav</div>
+      </SidebarNavUI>
+    );
+
+    const year = new Date().getFullYear();
+    expect(
+      screen.getByText(`Portalsai \u00A9 ${year}`)
+    ).toBeInTheDocument();
+  });
+
+  it("displays copyright without prefix when collapsed", () => {
+    render(
+      <SidebarNavUI
+        collapsed={true}
+        hidden={false}
+        footer={<VersionFooter collapsed={true} />}
+      >
+        <div>Nav</div>
+      </SidebarNavUI>
+    );
+
+    const year = new Date().getFullYear();
+    expect(screen.getByText(`\u00A9 ${year}`)).toBeInTheDocument();
+  });
+
+  it("does not show version dialog by default", () => {
+    render(
+      <SidebarNavUI
+        collapsed={false}
+        hidden={false}
+        footer={<VersionFooter collapsed={false} />}
+      >
+        <div>Nav</div>
+      </SidebarNavUI>
+    );
+
+    expect(screen.queryByText("App version")).not.toBeInTheDocument();
+  });
+
+  it("opens version dialog on copyright click", async () => {
+    const user = userEvent.setup();
+    render(
+      <SidebarNavUI
+        collapsed={false}
+        hidden={false}
+        footer={
+          <VersionFooter
+            collapsed={false}
+            version="dev-abc123"
+            sha="abc123"
+          />
+        }
+      >
+        <div>Nav</div>
+      </SidebarNavUI>
+    );
+
+    const year = new Date().getFullYear();
+    await user.click(screen.getByText(`Portalsai \u00A9 ${year}`));
+
+    expect(screen.getByText("App version")).toBeInTheDocument();
+    expect(screen.getByText("dev-abc123 (abc123)")).toBeInTheDocument();
+  });
+
+  it("displays version and SHA in the dialog", async () => {
+    const user = userEvent.setup();
+    render(
+      <SidebarNavUI
+        collapsed={false}
+        hidden={false}
+        footer={
+          <VersionFooter
+            collapsed={false}
+            version="v1.2.3"
+            sha="deadbeef"
+          />
+        }
+      >
+        <div>Nav</div>
+      </SidebarNavUI>
+    );
+
+    const year = new Date().getFullYear();
+    await user.click(screen.getByText(`Portalsai \u00A9 ${year}`));
+
+    expect(screen.getByText("v1.2.3 (deadbeef)")).toBeInTheDocument();
+  });
 });
