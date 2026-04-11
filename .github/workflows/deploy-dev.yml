@@ -130,7 +130,7 @@ jobs:
           VITE_AUTH0_CLIENT_ID: ${{ secrets.DEV_VITE_AUTH0_CLIENT_ID }}
           VITE_AUTH0_AUDIENCE: ${{ secrets.DEV_VITE_AUTH0_AUDIENCE }}
           VITE_API_BASE_URL: https://api-dev.portalsai.io
-        run: npm run build --workspace=apps/web
+        run: npx turbo run build --filter=@portalai/web
 
       - name: Get frontend outputs
         id: frontend
