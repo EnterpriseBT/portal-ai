@@ -424,6 +424,7 @@ Resources:
       DesiredCount: !Ref DesiredCount
       LaunchType: FARGATE
       EnableExecuteCommand: true
+      HealthCheckGracePeriodSeconds: 120
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
@@ -441,6 +442,9 @@ Resources:
       DeploymentConfiguration:
         MinimumHealthyPercent: 100
         MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
       Tags:
         - Key: Name
           Value: !Sub "portalai-api-${Environment}"

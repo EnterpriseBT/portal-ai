@@ -549,7 +549,7 @@ export const PaginationToolbar = React.forwardRef<
                 ) : undefined,
               },
             }}
-            sx={{ minWidth: 200 }}
+            sx={{ minWidth: { xs: 120, sm: 200 }, flex: { xs: 1, sm: "unset" } }}
           />
 
           {/* Filter Button */}
@@ -793,10 +793,10 @@ export const PaginationToolbar = React.forwardRef<
           )}
 
           {/* Spacer */}
-          <Box sx={{ flex: 1 }} />
+          <Box sx={{ flex: 1, display: { xs: "none", sm: "block" } }} />
 
           {/* Pagination */}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexWrap: "wrap", ml: { xs: 0, sm: "auto" } }}>
             <Select
               size="small"
               value={limit}

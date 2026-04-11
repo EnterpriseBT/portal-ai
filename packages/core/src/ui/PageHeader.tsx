@@ -85,9 +85,8 @@ export const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
               <MuiTypography
                 variant="h1"
                 sx={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  overflowWrap: "break-word",
+                  wordBreak: "break-word",
                 }}
               >
                 {title}
