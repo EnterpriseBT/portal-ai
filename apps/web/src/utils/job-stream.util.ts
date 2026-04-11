@@ -1,9 +1,10 @@
-import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, useRef, useState } from "react";
 
 import { JobModel } from "@portalai/core/models";
 import type { JobStatus } from "@portalai/core/models";
 import type { JobSnapshotEvent, JobUpdateEvent } from "@portalai/core/contracts";
+
+import { sse } from "../api/sse.api";
 
 // --- Types ---
 
@@ -48,17 +49,17 @@ const RECONNECT_DELAY_MS = 3000;
  * Pass `null` or `undefined` as `jobId` to disable the stream.
  */
 export const useJobStream = (jobId: string | null | undefined): JobStreamState => {
-  const { getAccessTokenSilently } = useAuth0();
+  const createSSEConnection = sse.create();
   const [state, setState] = useState<JobStreamState>(INITIAL_STATE);
 
   // Refs for stable access inside async/event callbacks
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const getTokenRef = useRef(getAccessTokenSilently);
+  const connectRef = useRef(createSSEConnection);
 
   useEffect(() => {
-    getTokenRef.current = getAccessTokenSilently;
-  }, [getAccessTokenSilently]);
+    connectRef.current = createSSEConnection;
+  }, [createSSEConnection]);
 
   useEffect(() => {
     if (!jobId) return;
@@ -85,13 +86,11 @@ export const useJobStream = (jobId: string | null | undefined): JobStreamState =
 
       if (cancelled) return;
 
-      let token: string;
+      let es: EventSource;
       try {
-        token = await getTokenRef.current({
-          authorizationParams: {
-            audience: import.meta.env?.VITE_AUTH0_AUDIENCE,
-          },
-        });
+        es = await connectRef.current(
+          `/api/sse/jobs/${encodeURIComponent(jobId)}/events`
+        );
       } catch {
         if (!cancelled) {
           setState((prev) => ({ ...prev, connectionStatus: "error" }));
@@ -101,8 +100,6 @@ export const useJobStream = (jobId: string | null | undefined): JobStreamState =
 
       if (cancelled) return;
 
-      const url = `/api/sse/jobs/${encodeURIComponent(jobId)}/events?token=${encodeURIComponent(token)}`;
-      const es = new EventSource(url);
       eventSourceRef.current = es;
 
       es.addEventListener("snapshot", (e: MessageEvent) => {

@@ -14,6 +14,7 @@ import { organizationTools } from "./organization-tools.api";
 import { organizations } from "./organizations.api";
 import { portalResults } from "./portal-results.api";
 import { portals } from "./portals.api";
+import { sse } from "./sse.api";
 import { stationTools } from "./station-tools.api";
 import { stations } from "./stations.api";
 import { uploads } from "./uploads.api";
@@ -37,6 +38,7 @@ export const sdk = {
   organizations,
   portalResults,
   portals,
+  sse,
   stationTools,
   stations,
   uploads,

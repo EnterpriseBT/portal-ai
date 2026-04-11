@@ -1,18 +1,14 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import React, { useRef, useMemo, useCallback } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Box, StatusMessage } from "@portalai/core/ui";
 import { ContentBlockRenderer } from "@portalai/core";
 import type {
   PortalMessageResponse,
   PortalMessageBlock,
-  DeltaEvent,
-  ToolResultEvent,
-  DoneEvent,
-  StreamErrorEvent,
 } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
+import { usePortalStream } from "../utils/portal-stream.util";
 import { ChatWindowUI, type ChatWindowHandle } from "./ChatWindow.component";
 import { PortalMessage } from "./PortalMessage.component";
 
@@ -121,7 +117,6 @@ interface PortalSessionProps {
 }
 
 export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
-  const { getAccessTokenSilently } = useAuth0();
   const router = useRouter();
 
   // Server messages come directly from the query (no local copy).
@@ -146,20 +141,19 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     portalQuery.refetch();
   }, [portalQuery]);
 
-  // Local messages: optimistic user messages + finalized assistant messages
-  // added during this session. Combined with serverMessages for display.
-  const [localMessages, setLocalMessages] = useState<PortalMessageResponse[]>([]);
-  const [streamingBlocks, setStreamingBlocks] =
-    useState<PortalMessageBlock[] | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamError, setStreamError] = useState<string | null>(null);
+  // Refetch so server-stored blocks (which include tool-call/tool-result
+  // metadata) replace the display-only local copies. This ensures pin
+  // operations send correct block indices. The hook stores onDone in a ref
+  // internally, so this callback can safely close over portalQuery.
+  const handleStreamDone = useCallback((clear: () => void) => {
+    portalQuery.refetch().then(() => {
+      clear();
+    });
+  }, [portalQuery]);
 
-  // Keep a ref to the latest streaming blocks so the done handler can
-  // read the current value without stale closure issues.
-  const streamingBlocksRef = useRef<PortalMessageBlock[]>([]);
+  const [streamState, streamActions] = usePortalStream(handleStreamDone);
 
   const chatRef = useRef<ChatWindowHandle>(null);
-  const esRef = useRef<EventSource | null>(null);
   const sendMessage = sdk.portals.sendMessage(portalId);
   const resetMessages = sdk.portals.resetMessages(portalId);
 
@@ -170,21 +164,17 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
     const serverIds = new Set(serverMessages.map((m) => m.id));
     return [
       ...serverMessages,
-      ...localMessages.filter((m) => !serverIds.has(m.id)),
+      ...streamState.localMessages.filter((m) => !serverIds.has(m.id)),
     ];
-  }, [serverMessages, localMessages]);
+  }, [serverMessages, streamState.localMessages]);
 
   const handleCancel = () => {
-    esRef.current?.close();
-    esRef.current = null;
-    setIsStreaming(false);
-    setStreamingBlocks(null);
-    streamingBlocksRef.current = [];
+    streamActions.cancel();
   };
 
   const handleReset = async () => {
-    handleCancel();
-    setLocalMessages([]);
+    streamActions.cancel();
+    streamActions.clearLocalMessages();
     chatRef.current?.clear();
     try {
       await resetMessages.mutateAsync();
@@ -196,162 +186,31 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
 
   const handleSubmit = async (rawMessage: string) => {
     const message = rawMessage.trim();
-    if (!message || isStreaming) return;
+    if (!message || streamState.isStreaming) return;
 
     chatRef.current?.clear();
-    setStreamError(null);
 
-    // Add optimistic user message to local state (called from event handler, not effect).
-    const optimisticUserMsg: PortalMessageResponse = {
-      id: `optimistic-${Date.now()}`,
+    // Add optimistic user message to local state.
+    const optimisticId = `optimistic-${Date.now()}`;
+    streamActions.addLocalMessage({
+      id: optimisticId,
       portalId,
       organizationId: "",
       role: "user",
       blocks: [{ type: "text", content: message }],
       created: Date.now(),
-    };
-    setLocalMessages((prev) => [...prev, optimisticUserMsg]);
+    });
 
     try {
       await sendMessage.mutateAsync({ message });
     } catch {
       // Remove the optimistic message if the send failed.
-      setLocalMessages((prev) =>
-        prev.filter((m) => m.id !== optimisticUserMsg.id)
-      );
+      streamActions.removeLocalMessage(optimisticId);
       return;
     }
 
-    let token: string;
-    try {
-      token = await getAccessTokenSilently({
-        authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-        },
-      });
-    } catch {
-      return;
-    }
-
-    streamingBlocksRef.current = [];
-    setStreamingBlocks([]);
-    setIsStreaming(true);
-
-    const url = `/api/sse/portals/${encodeURIComponent(portalId)}/stream?token=${encodeURIComponent(token)}`;
-    const es = new EventSource(url);
-    esRef.current = es;
-
-    es.addEventListener("delta", (e: MessageEvent) => {
-      const data = JSON.parse(e.data) as DeltaEvent;
-      setStreamingBlocks((prev) => {
-        const blocks = prev ?? [];
-        const last = blocks[blocks.length - 1];
-        let next: PortalMessageBlock[];
-        if (last?.type === "text") {
-          next = [
-            ...blocks.slice(0, -1),
-            { type: "text", content: String(last.content) + data.content },
-          ];
-        } else {
-          next = [...blocks, { type: "text", content: data.content }];
-        }
-        streamingBlocksRef.current = next;
-        return next;
-      });
-    });
-
-    es.addEventListener("tool_result", (e: MessageEvent) => {
-      const data = JSON.parse(e.data) as ToolResultEvent;
-      const result = data.result as Record<string, unknown> | null;
-
-      let block: PortalMessageBlock | null = null;
-
-      const isVegaLite =
-        result != null &&
-        typeof result === "object" &&
-        (data.toolName === "visualize" || result["type"] === "vega-lite");
-
-      const isVega =
-        result != null &&
-        typeof result === "object" &&
-        (data.toolName === "visualize_tree" || result["type"] === "vega");
-
-      if (isVegaLite) {
-        block = { type: "vega-lite", content: result };
-      } else if (isVega) {
-        block = { type: "vega", content: result };
-      } else if (result && typeof result === "object" && result["type"] === "data-table") {
-        block = { type: "data-table", content: result };
-      } else if (result && typeof result === "object" && result["type"] === "mutation-result") {
-        block = { type: "mutation-result", content: result };
-      }
-
-      if (block) {
-        setStreamingBlocks((prev) => {
-          const next = [...(prev ?? []), block];
-          streamingBlocksRef.current = next;
-          return next;
-        });
-      }
-    });
-
-    es.addEventListener("done", (_e: MessageEvent) => {
-      const doneData = JSON.parse(_e.data) as DoneEvent;
-      es.close();
-      esRef.current = null;
-
-      // Finalise assistant message into local state from event listener (not effect).
-      const finalBlocks = streamingBlocksRef.current;
-      if (finalBlocks.length > 0) {
-        const assistantMsg: PortalMessageResponse = {
-          id: doneData.messageId,
-          portalId,
-          organizationId: "",
-          role: "assistant",
-          blocks: finalBlocks,
-          created: Date.now(),
-        };
-        setLocalMessages((prev) => [...prev, assistantMsg]);
-      }
-
-      streamingBlocksRef.current = [];
-      setStreamingBlocks(null);
-      setIsStreaming(false);
-
-      // Refetch so server-stored blocks (which include tool-call/tool-result
-      // metadata) replace the display-only local copies. This ensures pin
-      // operations send correct block indices.
-      portalQuery.refetch().then(() => {
-        setLocalMessages([]);
-      });
-    });
-
-    es.addEventListener("stream_error", (e: MessageEvent) => {
-      const data = JSON.parse(e.data) as StreamErrorEvent;
-      es.close();
-      esRef.current = null;
-      setIsStreaming(false);
-      setStreamingBlocks(null);
-      streamingBlocksRef.current = [];
-      setStreamError(data.message);
-    });
-
-    es.onerror = () => {
-      es.close();
-      esRef.current = null;
-      setIsStreaming(false);
-      setStreamingBlocks(null);
-      streamingBlocksRef.current = [];
-      setStreamError("Connection to the server was lost. Please try again.");
-    };
+    await streamActions.send(portalId);
   };
-
-  // Cleanup EventSource on unmount.
-  useEffect(() => {
-    return () => {
-      esRef.current?.close();
-    };
-  }, []);
 
   return (
     <PortalSessionUI
@@ -359,14 +218,14 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
       messages={allMessages}
       pinnedBlocks={pinnedBlocks}
       onPinChange={handlePinChange}
-      streamingBlocks={streamingBlocks}
-      streamError={streamError}
+      streamingBlocks={streamState.streamingBlocks}
+      streamError={streamState.streamError}
       chatRef={chatRef}
       onSubmit={handleSubmit}
       onReset={handleReset}
       onCancel={handleCancel}
       onExit={() => router.history.back()}
-      isStreaming={isStreaming}
+      isStreaming={streamState.isStreaming}
     />
   );
 };

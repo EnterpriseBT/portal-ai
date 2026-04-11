@@ -61,15 +61,15 @@ Object.defineProperty(globalThis, "EventSource", {
 });
 
 // ---------------------------------------------------------------------------
-// Mock Auth0
+// Mock SSE SDK (sse.create() is a hook that returns an async connect fn)
 // ---------------------------------------------------------------------------
 
-const mockGetAccessTokenSilently = jest.fn<(...args: unknown[]) => Promise<string>>();
+const mockConnect = jest.fn<(path: string) => Promise<MockEventSource>>();
 
-jest.unstable_mockModule("@auth0/auth0-react", () => ({
-  useAuth0: () => ({
-    getAccessTokenSilently: mockGetAccessTokenSilently,
-  }),
+jest.unstable_mockModule("../api/sse.api", () => ({
+  sse: {
+    create: () => mockConnect,
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -108,7 +108,10 @@ const waitForConnection = async () => {
 describe("useJobStream", () => {
   beforeEach(() => {
     MockEventSource.reset();
-    mockGetAccessTokenSilently.mockResolvedValue("test-token-123");
+    mockConnect.mockImplementation(async (path: string) => {
+      const es = new MockEventSource(`https://api.test.com${path}`);
+      return es;
+    });
   });
 
   // --- Idle / disabled ---
@@ -136,17 +139,15 @@ describe("useJobStream", () => {
 
   // --- Connection ---
 
-  it("should connect with correct URL and auth token", async () => {
+  it("should connect with correct path via SDK", async () => {
     renderHook(() => useJobStream("job-123"));
     const es = await waitForConnection();
 
-    expect(es.url).toBe(
-      "/api/sse/jobs/job-123/events?token=test-token-123"
+    expect(mockConnect).toHaveBeenCalledWith(
+      "/api/sse/jobs/job-123/events"
     );
-    // Verify token was requested with authorizationParams
-    // (audience comes from import.meta.env which is undefined in Jest)
-    expect(mockGetAccessTokenSilently).toHaveBeenCalledWith(
-      expect.objectContaining({ authorizationParams: expect.any(Object) })
+    expect(es.url).toBe(
+      "https://api.test.com/api/sse/jobs/job-123/events"
     );
   });
 
@@ -305,7 +306,6 @@ describe("useJobStream", () => {
   it("should auto-reconnect after error when not terminal", async () => {
     jest.useFakeTimers();
 
-    mockGetAccessTokenSilently.mockResolvedValue("test-token-123");
     const { result } = renderHook(() => useJobStream("job-123"));
 
     // Flush async openStream (token fetch is a microtask)
@@ -348,10 +348,8 @@ describe("useJobStream", () => {
     expect(result.current.connectionStatus).toBe("closed");
   });
 
-  it("should handle token fetch error gracefully", async () => {
-    mockGetAccessTokenSilently.mockRejectedValueOnce(
-      new Error("Auth failed")
-    );
+  it("should handle connection error gracefully", async () => {
+    mockConnect.mockRejectedValueOnce(new Error("Auth failed"));
 
     const { result } = renderHook(() => useJobStream("job-123"));
 
