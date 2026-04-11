@@ -1,5 +1,5 @@
-# --- Build stage ---
-FROM node:22-alpine AS build
+# --- Build stage (runs on native arch, not under QEMU) ---
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 
 ARG BUILD_VERSION=dev
@@ -23,7 +23,15 @@ COPY apps/api/ apps/api/
 # --env-mode=loose allows build to proceed without .env
 RUN npx turbo run build --filter=@portalai/api --env-mode=loose
 
-# --- Runtime stage ---
+# --- Deps stage (install production deps for target arch) ---
+FROM --platform=$TARGETPLATFORM node:22-alpine AS deps
+WORKDIR /app
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/apps/api/package.json apps/api/
+COPY --from=build /app/packages/core/package.json packages/core/
+RUN npm ci --omit=dev
+
+# --- Runtime stage (target arch) ---
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
@@ -39,8 +47,8 @@ COPY --from=build /app/apps/api/package.json ./
 COPY --from=build /app/apps/api/drizzle ./drizzle
 COPY --from=build /app/apps/api/drizzle.config.ts ./drizzle.config.ts
 
-# Copy production node_modules
-COPY --from=build /app/node_modules ./node_modules
+# Copy production node_modules (installed for target arch)
+COPY --from=deps /app/node_modules ./node_modules
 
 # Copy built @portalai/core into node_modules
 COPY --from=build /app/packages/core/dist ./node_modules/@portalai/core/dist
