@@ -138,6 +138,12 @@ export const SidebarNav = () => {
       footer={
         <>
           <SidebarNavItem
+            icon={IconName.HelpOutline}
+            label="Help"
+            selected={pathname.startsWith(ApplicationRoute.Help)}
+            onClick={() => handleClick(ApplicationRoute.Help)}
+          />
+          <SidebarNavItem
             icon={IconName.Settings}
             label="Settings"
             selected={pathname === ApplicationRoute.Settings}

@@ -46,6 +46,7 @@ import HubIcon from "@mui/icons-material/Hub";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import SatelliteAltIcon from "@mui/icons-material/SatelliteAlt";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 
 export enum IconName {
   Home = "home",
@@ -94,6 +95,7 @@ export enum IconName {
   RocketLaunch = "rocket_launch",
   PushPin = "push_pin",
   SatelliteAlt = "satellite_alt",
+  HelpOutline = "help_outline",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {
@@ -200,6 +202,8 @@ export const Icon = React.forwardRef<SVGSVGElement, IconProps>(
         return <PushPinIcon ref={ref} {...props} />;
       case IconName.SatelliteAlt:
         return <SatelliteAltIcon ref={ref} {...props} />;
+      case IconName.HelpOutline:
+        return <HelpOutlineIcon ref={ref} {...props} />;
       default:
         // If no name is provided or the name doesn't match, render children as a custom icon
         throw new Error(
