@@ -66,4 +66,22 @@ describe("HeaderMenuUI Component", () => {
     expect(settingsItem).toBeInTheDocument();
     expect(settingsItem.closest("a")).toHaveAttribute("href", "/settings");
   });
+
+  it("should render a Help menu item that links to /help", async () => {
+    const user = userEvent.setup();
+    render(
+      <HeaderMenuUI>
+        <MenuItem component="a" href="/help">
+          <ListItemText>Help</ListItemText>
+        </MenuItem>
+      </HeaderMenuUI>
+    );
+
+    const avatarButton = screen.getByRole("button", { name: /account menu/i });
+    await user.click(avatarButton);
+
+    const helpItem = screen.getByText("Help");
+    expect(helpItem).toBeInTheDocument();
+    expect(helpItem.closest("a")).toHaveAttribute("href", "/help");
+  });
 });

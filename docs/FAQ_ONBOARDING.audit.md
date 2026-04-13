@@ -53,7 +53,7 @@ Each glossary entry includes:
 Organized by user journey stage:
 
 **Getting Started**
-- What is Portal.ai and what can I do with it?
+- What is Portals.ai and what can I do with it?
 - How do I connect my first data source?
 - What is a Station and why do I need one?
 - How do I start asking questions about my data?

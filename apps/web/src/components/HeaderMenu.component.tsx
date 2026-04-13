@@ -110,6 +110,12 @@ export const HeaderMenu: React.FC = () => {
         </ListItemIcon>
         <ListItemText>Settings</ListItemText>
       </MenuItem>
+      <MenuItem component={Link} to="/help">
+        <ListItemIcon>
+          <Icon name={IconName.HelpOutline} fontSize="small" />
+        </ListItemIcon>
+        <ListItemText>Help</ListItemText>
+      </MenuItem>
       <MenuItem onClick={handleLogout}>
         <ListItemIcon>
           <Icon name={IconName.Logout} fontSize="small" />

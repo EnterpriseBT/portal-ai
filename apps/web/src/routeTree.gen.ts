@@ -15,6 +15,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PortalResultsRouteImport } from './routes/portal-results'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JobsRouteImport } from './routes/jobs'
+import { Route as HelpRouteImport } from './routes/help'
 import { Route as EntityGroupsRouteImport } from './routes/entity-groups'
 import { Route as EntitiesRouteImport } from './routes/entities'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
@@ -24,6 +25,7 @@ import { Route as TagsIndexRouteImport } from './routes/tags.index'
 import { Route as StationsIndexRouteImport } from './routes/stations.index'
 import { Route as PortalResultsIndexRouteImport } from './routes/portal-results.index'
 import { Route as JobsIndexRouteImport } from './routes/jobs.index'
+import { Route as HelpIndexRouteImport } from './routes/help.index'
 import { Route as EntityGroupsIndexRouteImport } from './routes/entity-groups.index'
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as ConnectorsIndexRouteImport } from './routes/connectors.index'
@@ -67,6 +69,11 @@ const LoginRoute = LoginRouteImport.update({
 const JobsRoute = JobsRouteImport.update({
   id: '/jobs',
   path: '/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HelpRoute = HelpRouteImport.update({
+  id: '/help',
+  path: '/help',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EntityGroupsRoute = EntityGroupsRouteImport.update({
@@ -113,6 +120,11 @@ const JobsIndexRoute = JobsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => JobsRoute,
+} as any)
+const HelpIndexRoute = HelpIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => HelpRoute,
 } as any)
 const EntityGroupsIndexRoute = EntityGroupsIndexRouteImport.update({
   id: '/',
@@ -196,6 +208,7 @@ export interface FileRoutesByFullPath {
   '/connectors': typeof ConnectorsRouteWithChildren
   '/entities': typeof EntitiesRouteWithChildren
   '/entity-groups': typeof EntityGroupsRouteWithChildren
+  '/help': typeof HelpRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/portal-results': typeof PortalResultsRouteWithChildren
@@ -214,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
   '/entity-groups/': typeof EntityGroupsIndexRoute
+  '/help/': typeof HelpIndexRoute
   '/jobs/': typeof JobsIndexRoute
   '/portal-results/': typeof PortalResultsIndexRoute
   '/stations/': typeof StationsIndexRoute
@@ -236,6 +250,7 @@ export interface FileRoutesByTo {
   '/connectors': typeof ConnectorsIndexRoute
   '/entities': typeof EntitiesIndexRoute
   '/entity-groups': typeof EntityGroupsIndexRoute
+  '/help': typeof HelpIndexRoute
   '/jobs': typeof JobsIndexRoute
   '/portal-results': typeof PortalResultsIndexRoute
   '/stations': typeof StationsIndexRoute
@@ -250,6 +265,7 @@ export interface FileRoutesById {
   '/connectors': typeof ConnectorsRouteWithChildren
   '/entities': typeof EntitiesRouteWithChildren
   '/entity-groups': typeof EntityGroupsRouteWithChildren
+  '/help': typeof HelpRouteWithChildren
   '/jobs': typeof JobsRouteWithChildren
   '/login': typeof LoginRoute
   '/portal-results': typeof PortalResultsRouteWithChildren
@@ -268,6 +284,7 @@ export interface FileRoutesById {
   '/connectors/': typeof ConnectorsIndexRoute
   '/entities/': typeof EntitiesIndexRoute
   '/entity-groups/': typeof EntityGroupsIndexRoute
+  '/help/': typeof HelpIndexRoute
   '/jobs/': typeof JobsIndexRoute
   '/portal-results/': typeof PortalResultsIndexRoute
   '/stations/': typeof StationsIndexRoute
@@ -283,6 +300,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/entities'
     | '/entity-groups'
+    | '/help'
     | '/jobs'
     | '/login'
     | '/portal-results'
@@ -301,6 +319,7 @@ export interface FileRouteTypes {
     | '/connectors/'
     | '/entities/'
     | '/entity-groups/'
+    | '/help/'
     | '/jobs/'
     | '/portal-results/'
     | '/stations/'
@@ -323,6 +342,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/entities'
     | '/entity-groups'
+    | '/help'
     | '/jobs'
     | '/portal-results'
     | '/stations'
@@ -336,6 +356,7 @@ export interface FileRouteTypes {
     | '/connectors'
     | '/entities'
     | '/entity-groups'
+    | '/help'
     | '/jobs'
     | '/login'
     | '/portal-results'
@@ -354,6 +375,7 @@ export interface FileRouteTypes {
     | '/connectors/'
     | '/entities/'
     | '/entity-groups/'
+    | '/help/'
     | '/jobs/'
     | '/portal-results/'
     | '/stations/'
@@ -368,6 +390,7 @@ export interface RootRouteChildren {
   ConnectorsRoute: typeof ConnectorsRouteWithChildren
   EntitiesRoute: typeof EntitiesRouteWithChildren
   EntityGroupsRoute: typeof EntityGroupsRouteWithChildren
+  HelpRoute: typeof HelpRouteWithChildren
   JobsRoute: typeof JobsRouteWithChildren
   LoginRoute: typeof LoginRoute
   PortalResultsRoute: typeof PortalResultsRouteWithChildren
@@ -419,6 +442,13 @@ declare module '@tanstack/react-router' {
       path: '/jobs'
       fullPath: '/jobs'
       preLoaderRoute: typeof JobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/help': {
+      id: '/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof HelpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/entity-groups': {
@@ -483,6 +513,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/jobs/'
       preLoaderRoute: typeof JobsIndexRouteImport
       parentRoute: typeof JobsRoute
+    }
+    '/help/': {
+      id: '/help/'
+      path: '/'
+      fullPath: '/help/'
+      preLoaderRoute: typeof HelpIndexRouteImport
+      parentRoute: typeof HelpRoute
     }
     '/entity-groups/': {
       id: '/entity-groups/'
@@ -654,6 +691,16 @@ const EntityGroupsRouteWithChildren = EntityGroupsRoute._addFileChildren(
   EntityGroupsRouteChildren,
 )
 
+interface HelpRouteChildren {
+  HelpIndexRoute: typeof HelpIndexRoute
+}
+
+const HelpRouteChildren: HelpRouteChildren = {
+  HelpIndexRoute: HelpIndexRoute,
+}
+
+const HelpRouteWithChildren = HelpRoute._addFileChildren(HelpRouteChildren)
+
 interface JobsRouteChildren {
   JobsJobIdRoute: typeof JobsJobIdRoute
   JobsIndexRoute: typeof JobsIndexRoute
@@ -710,6 +757,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectorsRoute: ConnectorsRouteWithChildren,
   EntitiesRoute: EntitiesRouteWithChildren,
   EntityGroupsRoute: EntityGroupsRouteWithChildren,
+  HelpRoute: HelpRouteWithChildren,
   JobsRoute: JobsRouteWithChildren,
   LoginRoute: LoginRoute,
   PortalResultsRoute: PortalResultsRouteWithChildren,
