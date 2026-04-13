@@ -7,6 +7,7 @@ import {
   ColumnDefinitionUpdateRequestBodySchema,
   ColumnDefinitionUpdateResponsePayloadSchema,
 } from "../../contracts/column-definition.contract.js";
+import { ColumnDefinitionSchema } from "../../models/column-definition.model.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ const validColumnDefinition = {
   validationPattern: null,
   validationMessage: null,
   canonicalFormat: null,
+  system: false,
   created: Date.now(),
   createdBy: "user-1",
   updated: null,
@@ -77,6 +79,24 @@ describe("ColumnDefinitionListRequestQuerySchema", () => {
     expect(result.search).toBe("email");
     expect(result.sortBy).toBe("key");
     expect(result.sortOrder).toBe("desc");
+  });
+
+  it("should accept a system filter of 'true' or 'false'", () => {
+    expect(
+      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "true" }).success
+    ).toBe(true);
+    expect(
+      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "false" }).success
+    ).toBe(true);
+  });
+
+  it("should reject a system filter with any other value", () => {
+    expect(
+      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "yes" }).success
+    ).toBe(false);
+    expect(
+      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "1" }).success
+    ).toBe(false);
   });
 });
 
@@ -261,5 +281,32 @@ describe("ColumnDefinitionUpdateResponsePayloadSchema", () => {
       columnDefinition: validColumnDefinition,
     });
     expect(result.success).toBe(true);
+  });
+});
+
+// ── system field guardrails ──────────────────────────────────────────
+
+describe("ColumnDefinition write contracts reject client-supplied `system`", () => {
+  it("CreateRequestBody rejects a client-supplied system flag", () => {
+    const res = ColumnDefinitionCreateRequestBodySchema.strict().safeParse({
+      key: "foo",
+      label: "Foo",
+      type: "string",
+      system: true,
+    });
+    expect(res.success).toBe(false);
+  });
+
+  it("UpdateRequestBody rejects a client-supplied system flag", () => {
+    const res = ColumnDefinitionUpdateRequestBodySchema.strict().safeParse({
+      label: "Foo",
+      system: true,
+    });
+    expect(res.success).toBe(false);
+  });
+
+  it("ColumnDefinitionSchema exposes system on reads", () => {
+    const shape = ColumnDefinitionSchema.shape;
+    expect(shape.system).toBeDefined();
   });
 });

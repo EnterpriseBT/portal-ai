@@ -93,4 +93,14 @@ describe("SeedService.seedSystemColumnDefinitions", () => {
 
     expect(mockUpsertByKey).toHaveBeenCalledTimes(26);
   });
+
+  it("marks every seeded row with system: true", async () => {
+    await seedService.seedSystemColumnDefinitions("org-123", fakeDb);
+
+    const calls = mockUpsertByKey.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [arg] of calls) {
+      expect((arg as { system: boolean }).system).toBe(true);
+    }
+  });
 });

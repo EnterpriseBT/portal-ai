@@ -419,6 +419,50 @@ describe("Column Definition Router", () => {
       expect(res.body.payload.columnDefinitions).toHaveLength(1);
       expect(res.body.payload.columnDefinitions[0].label).toBe("Org A Col");
     });
+
+    it("should filter by system=true (system rows only)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values([
+          createColumnDefinition(organizationId, { label: "Seeded", system: true }),
+          createColumnDefinition(organizationId, { label: "Custom", system: false }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/column-definitions?system=true")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.columnDefinitions).toHaveLength(1);
+      expect(res.body.payload.columnDefinitions[0].label).toBe("Seeded");
+    });
+
+    it("should filter by system=false (custom rows only, excludes seeded)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values([
+          createColumnDefinition(organizationId, { label: "Seeded", system: true }),
+          createColumnDefinition(organizationId, { label: "Custom", system: false }),
+        ] as never);
+
+      const res = await request(app)
+        .get("/api/column-definitions?system=false")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.columnDefinitions).toHaveLength(1);
+      expect(res.body.payload.columnDefinitions[0].label).toBe("Custom");
+    });
   });
 
   // ── GET /api/column-definitions/:id ──────────────────────────────
@@ -556,6 +600,23 @@ describe("Column Definition Router", () => {
       expect(getRes.status).toBe(200);
       expect(getRes.body.payload.columnDefinition.id).toBe(id);
       expect(getRes.body.payload.columnDefinition.key).toBe("name");
+    });
+
+    it("should ignore a client-supplied system:true and persist system:false", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post("/api/column-definitions")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          key: "foo_bar",
+          label: "Foo Bar",
+          type: "string",
+          system: true,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.payload.columnDefinition.system).toBe(false);
     });
   });
 
@@ -723,6 +784,30 @@ describe("Column Definition Router", () => {
       expect(res.status).toBe(200);
       expect(res.body.payload.columnDefinition.description).toBe("Updated description");
     });
+
+    it("should return 422 COLUMN_DEFINITION_SYSTEM_READONLY for a system row", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const colDef = createColumnDefinition(organizationId, {
+        label: "Email",
+        key: "email",
+        system: true,
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
+
+      const res = await request(app)
+        .patch(`/api/column-definitions/${colDef.id}`)
+        .set("Authorization", "Bearer test-token")
+        .send({ label: "Electronic Mail" });
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_SYSTEM_READONLY);
+    });
   });
 
   // ── DELETE /api/column-definitions/:id ───────────────────────────
@@ -812,6 +897,29 @@ describe("Column Definition Router", () => {
       expect(res.status).toBe(422);
       expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_HAS_DEPENDENCIES);
       expect(res.body.details.fieldMappings).toContain(fm.id);
+    });
+
+    it("should return 422 COLUMN_DEFINITION_SYSTEM_READONLY for a system row", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const colDef = createColumnDefinition(organizationId, {
+        label: "Email",
+        key: "email",
+        system: true,
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
+
+      const res = await request(app)
+        .delete(`/api/column-definitions/${colDef.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_SYSTEM_READONLY);
     });
 
   });

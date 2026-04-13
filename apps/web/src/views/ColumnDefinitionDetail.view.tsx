@@ -187,16 +187,34 @@ export const ColumnDefinitionDetailView: React.FC<
                         variant="contained"
                         startIcon={<EditIcon />}
                         onClick={() => setEditDialogOpen(true)}
+                        disabled={cd.system}
+                        title={cd.system ? "System column definitions are read-only" : undefined}
                       >
                         Edit
                       </Button>
                     }
-                    secondaryActions={[
-                      { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
-                    ]}
+                    secondaryActions={
+                      cd.system
+                        ? []
+                        : [
+                            { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
+                          ]
+                    }
                   >
                     <MetadataList
                       items={[
+                        {
+                          label: "Origin",
+                          value: (
+                            <Chip
+                              label={cd.system ? "System" : "Custom"}
+                              size="small"
+                              color={cd.system ? "default" : "primary"}
+                              variant="outlined"
+                            />
+                          ),
+                          variant: "chip",
+                        },
                         {
                           label: "Type",
                           value: (

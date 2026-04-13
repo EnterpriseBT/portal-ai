@@ -12,6 +12,7 @@ interface SystemColumnDefinitionSpec {
   validationPattern: string | null;
   validationMessage: string | null;
   canonicalFormat: string | null;
+  system: true;
 }
 
 export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
@@ -23,6 +24,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     validationMessage: "Must be a valid UUID",
     canonicalFormat: "lowercase",
+    system: true,
   },
   {
     key: "string_id",
@@ -32,6 +34,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: "^[A-Za-z0-9_\\-]+$",
     validationMessage: "Must contain only letters, numbers, hyphens, and underscores",
     canonicalFormat: "trim",
+    system: true,
   },
   {
     key: "number_id",
@@ -41,6 +44,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: "^\\d+$",
     validationMessage: "Must be a whole number",
     canonicalFormat: null,
+    system: true,
   },
   {
     key: "email",
@@ -50,6 +54,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
     validationMessage: "Must be a valid email address",
     canonicalFormat: "lowercase",
+    system: true,
   },
   {
     key: "phone",
@@ -59,6 +64,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: "^\\+?[\\d\\s\\-().]+$",
     validationMessage: "Must be a valid phone number",
     canonicalFormat: "phone",
+    system: true,
   },
   {
     key: "url",
@@ -68,6 +74,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: "^https?://[^\\s]+$",
     validationMessage: "Must be a valid URL starting with http:// or https://",
     canonicalFormat: "lowercase",
+    system: true,
   },
   {
     key: "name",
@@ -77,6 +84,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "trim",
+    system: true,
   },
   {
     key: "description",
@@ -86,6 +94,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "trim",
+    system: true,
   },
   {
     key: "text",
@@ -95,6 +104,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "trim",
+    system: true,
   },
   {
     key: "code",
@@ -104,6 +114,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "uppercase",
+    system: true,
   },
   {
     key: "address",
@@ -113,6 +124,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "trim",
+    system: true,
   },
   {
     key: "status",
@@ -122,6 +134,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "lowercase",
+    system: true,
   },
   {
     key: "tag",
@@ -131,6 +144,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "lowercase",
+    system: true,
   },
   {
     key: "integer",
@@ -140,6 +154,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: "^-?\\d+$",
     validationMessage: "Must be a whole number",
     canonicalFormat: "#,##0",
+    system: true,
   },
   {
     key: "decimal",
@@ -149,6 +164,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "#,##0.00",
+    system: true,
   },
   {
     key: "percentage",
@@ -158,6 +174,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "0.00%",
+    system: true,
   },
   {
     key: "currency",
@@ -167,6 +184,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "$#,##0.00",
+    system: true,
   },
   {
     key: "quantity",
@@ -176,6 +194,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: "#,##0",
+    system: true,
   },
   {
     key: "boolean",
@@ -185,6 +204,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    system: true,
   },
   {
     key: "date",
@@ -194,6 +214,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    system: true,
   },
   {
     key: "datetime",
@@ -203,6 +224,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    system: true,
   },
   {
     key: "enum",
@@ -212,6 +234,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    system: true,
   },
   {
     key: "json_data",
@@ -221,6 +244,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    system: true,
   },
   {
     key: "array",
@@ -230,6 +254,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    system: true,
   },
   {
     key: "reference",
@@ -239,6 +264,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    system: true,
   },
   {
     key: "reference_array",
@@ -248,6 +274,7 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     validationPattern: null,
     validationMessage: null,
     canonicalFormat: null,
+    system: true,
   },
 ];
 

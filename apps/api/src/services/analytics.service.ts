@@ -559,20 +559,6 @@ export class AnalyticsService {
     this.cacheBatchDelete(stationId, entityKey, "_record_id", recordIds);
   }
 
-  // -- Batch: column definitions --------------------------------------------
-
-  static applyColumnDefinitionInsertMany(stationId: string, rows: Record<string, unknown>[]): void {
-    this.cacheBatchInsert(stationId, "_column_definitions", rows);
-  }
-
-  static applyColumnDefinitionUpdateMany(stationId: string, rows: Record<string, unknown>[]): void {
-    this.cacheBatchUpsert(stationId, "_column_definitions", "id", rows);
-  }
-
-  static applyColumnDefinitionDeleteMany(stationId: string, ids: string[]): void {
-    this.cacheBatchDelete(stationId, "_column_definitions", "id", ids);
-  }
-
   // -- Batch: field mappings ------------------------------------------------
 
   static applyFieldMappingInsertMany(stationId: string, rows: Record<string, unknown>[]): void {

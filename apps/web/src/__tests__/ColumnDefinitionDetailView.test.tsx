@@ -61,6 +61,7 @@ const makeColumnDefinition = (
   validationPattern: null,
   validationMessage: null,
   canonicalFormat: null,
+  system: false,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,
@@ -277,6 +278,55 @@ describe("ColumnDefinitionDetailView", () => {
     expect(breadcrumbLinks).toHaveLength(2);
     // "My Column" appears in both breadcrumb and heading
     expect(screen.getAllByText("My Column")).toHaveLength(2);
+  });
+
+  describe("System vs. Custom column definition", () => {
+    beforeEach(() => {
+      currentFieldMappingListQuery = {
+        data: { fieldMappings: [], total: 0, limit: 10, offset: 0 },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<ListQuery>;
+    });
+
+    it("disables Edit and hides Delete when the column definition is system", () => {
+      const cd = makeColumnDefinition({ system: true });
+      currentGetQuery = {
+        data: { columnDefinition: cd },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<GetQuery>;
+
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      const edit = screen.getByRole("button", { name: /edit/i });
+      expect(edit).toBeDisabled();
+
+      // Secondary actions menu (which hosts Delete) is absent when empty.
+      expect(
+        screen.queryByRole("button", { name: /more actions/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("keeps Edit enabled and renders the Delete menu for custom column definitions", () => {
+      const cd = makeColumnDefinition({ system: false });
+      currentGetQuery = {
+        data: { columnDefinition: cd },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<GetQuery>;
+
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      const edit = screen.getByRole("button", { name: /edit/i });
+      expect(edit).not.toBeDisabled();
+
+      const moreActions = screen.getByRole("button", { name: /more actions/i });
+      expect(moreActions).toBeInTheDocument();
+    });
   });
 
   describe("Create Field Mapping", () => {

@@ -22,7 +22,6 @@ const { EntityRecordUpdateTool } = await import("../../../tools/entity-record-up
 const { EntityRecordDeleteTool } = await import("../../../tools/entity-record-delete.tool.js");
 const { ConnectorEntityDeleteTool } = await import("../../../tools/connector-entity-delete.tool.js");
 const { FieldMappingDeleteTool } = await import("../../../tools/field-mapping-delete.tool.js");
-const { ColumnDefinitionDeleteTool } = await import("../../../tools/column-definition-delete.tool.js");
 
 const {
   connectorDefinitions,
@@ -490,34 +489,4 @@ describe("Entity management tool integration", () => {
     });
   });
 
-  // ── column_definition_delete ──────────────────────────────────
-
-  describe("column_definition_delete", () => {
-    it("blocks when field mappings reference it", async () => {
-      const s = await seed(db);
-
-      const tool = new ColumnDefinitionDeleteTool().build(s.stationId, s.organizationId, s.userId);
-      const result = await tool.execute!(
-        { items: [{ columnDefinitionId: s.columnDefinitionId }] },
-        toolOpts,
-      ) as Record<string, unknown>;
-
-      expect(result.error).toBeDefined();
-    });
-
-    it("succeeds when unreferenced", async () => {
-      const s = await seed(db);
-      // Create an unreferenced column definition
-      const orphanCol = createColumnDef(s.organizationId, "orphan_col", "string");
-      await db.insert(columnDefinitions).values(orphanCol as never);
-
-      const tool = new ColumnDefinitionDeleteTool().build(s.stationId, s.organizationId, s.userId);
-      const result = await tool.execute!(
-        { items: [{ columnDefinitionId: orphanCol.id }] },
-        toolOpts,
-      ) as Record<string, unknown>;
-
-      expect(result.success).toBe(true);
-    });
-  });
 });

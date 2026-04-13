@@ -46,6 +46,7 @@ const makeColumnDefinition = (
   validationPattern: null,
   validationMessage: null,
   canonicalFormat: null,
+  system: false,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,

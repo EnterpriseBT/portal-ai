@@ -186,6 +186,34 @@ describe("ColumnDefinitionsRepository Integration Tests", () => {
       const count = await repo.count(undefined, db);
       expect(count).toBe(1);
     });
+
+    it("does not flip a custom row's `system` flag on upsert", async () => {
+      // Insert a non-system (custom) row directly.
+      const data = makeColumnDef({
+        key: "custom_col",
+        label: "Custom",
+        system: false,
+      } as Partial<ColumnDefinitionInsert>);
+      await repo.upsertByKey(data, db);
+
+      // Re-upsert with system: true in the payload. The update path must
+      // NOT include `system` in its SET clause — the row stays custom.
+      const reUpserted = await repo.upsertByKey(
+        {
+          ...data,
+          id: generateId(),
+          label: "Custom Updated",
+          system: true,
+        } as ColumnDefinitionInsert,
+        db
+      );
+
+      expect(reUpserted.label).toBe("Custom Updated");
+      expect(reUpserted.system).toBe(false);
+
+      const persisted = await repo.findByKey(orgId, "custom_col", db);
+      expect(persisted?.system).toBe(false);
+    });
   });
 
   // ── Unique constraint ──────────────────────────────────────────

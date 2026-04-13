@@ -62,6 +62,15 @@ export const ColumnDefinitionListViewUI: React.FC<ColumnDefinitionListViewUIProp
         label: "Type",
         options: TYPE_OPTIONS,
       },
+      {
+        type: "select",
+        field: "system",
+        label: "Origin",
+        options: [
+          { label: "Custom", value: "false" },
+          { label: "System", value: "true" },
+        ],
+      },
     ],
   });
 

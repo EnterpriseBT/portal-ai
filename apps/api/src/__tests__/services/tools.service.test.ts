@@ -466,7 +466,7 @@ describe("buildAnalyticsTools()", () => {
     expect(tools.field_mapping_update).toBeUndefined();
   });
 
-  it("should register all 12 write tools when any instance has write", async () => {
+  it("should register the 9 write tools when any instance has write, without column_definition_* tools", async () => {
     setupStationMocks(["entity_management"]);
     mockResolveStationCapabilities.mockResolvedValue([
       { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
@@ -480,12 +480,15 @@ describe("buildAnalyticsTools()", () => {
     expect(tools.connector_entity_create).toBeDefined();
     expect(tools.connector_entity_update).toBeDefined();
     expect(tools.connector_entity_delete).toBeDefined();
-    expect(tools.column_definition_create).toBeDefined();
-    expect(tools.column_definition_update).toBeDefined();
-    expect(tools.column_definition_delete).toBeDefined();
     expect(tools.field_mapping_create).toBeDefined();
     expect(tools.field_mapping_update).toBeDefined();
     expect(tools.field_mapping_delete).toBeDefined();
+
+    // Column definitions are managed outside the portal session — these
+    // tools must not be registered, even when write capability is present.
+    expect(tools.column_definition_create).toBeUndefined();
+    expect(tools.column_definition_update).toBeUndefined();
+    expect(tools.column_definition_delete).toBeUndefined();
   });
 
   it("should not register entity_management tools when pack is not enabled", async () => {

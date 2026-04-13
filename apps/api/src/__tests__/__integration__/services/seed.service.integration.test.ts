@@ -183,6 +183,15 @@ describe("SeedService Integration Tests", () => {
       expect(rows).toHaveLength(26);
     });
 
+    it("should persist system: true for every seeded definition", async () => {
+      await seedService.seedSystemColumnDefinitions(organizationId, db);
+
+      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((r) => r.system === true)).toBe(true);
+    });
+
     it("should create column definitions with correct keys", async () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
 
