@@ -167,20 +167,69 @@ export const DataTableContentBlockSchema = z.object({
 
 export type DataTableContentBlock = z.infer<typeof DataTableContentBlockSchema>;
 
-export const MutationResultContentBlockSchema = z.object({
-  type: z.literal("mutation-result"),
-  operation: z.enum(["created", "updated", "deleted"]),
-  entity: z.string(),
-  entityId: z.string().optional(),
-  count: z.number().int().optional(),
+/**
+ * A single mutated entity. Used for both variants below.
+ */
+export const MutationItemSchema = z.object({
+  entityId: z.string(),
   summary: z.record(z.string(), z.unknown()).optional(),
-  items: z.array(z.object({
-    entityId: z.string(),
-    summary: z.record(z.string(), z.unknown()).optional(),
-  })).optional(),
 });
 
+export type MutationItem = z.infer<typeof MutationItemSchema>;
+
+export const MutationOperationSchema = z.enum(["created", "updated", "deleted"]);
+
+export type MutationOperation = z.infer<typeof MutationOperationSchema>;
+
+/**
+ * Mutation-result content block.
+ *
+ * A discriminated union over cardinality:
+ *
+ * - `item` present   → a single entity was mutated. Use `item.entityId` and
+ *                      optionally `item.summary` to describe what changed.
+ * - `items` present  → multiple entities were mutated. `count` matches
+ *                      `items.length` (≥ 2).
+ *
+ * Exactly one of `item` / `items` is present, so display logic can
+ * branch unambiguously. There is no free-floating top-level summary —
+ * per-entity detail always lives under the item it describes.
+ */
+export const SingleMutationResultContentBlockSchema = z.object({
+  type: z.literal("mutation-result"),
+  operation: MutationOperationSchema,
+  entity: z.string(),
+  item: MutationItemSchema,
+});
+
+export type SingleMutationResultContentBlock = z.infer<
+  typeof SingleMutationResultContentBlockSchema
+>;
+
+export const BulkMutationResultContentBlockSchema = z.object({
+  type: z.literal("mutation-result"),
+  operation: MutationOperationSchema,
+  entity: z.string(),
+  count: z.number().int().min(2),
+  items: z.array(MutationItemSchema).min(2),
+});
+
+export type BulkMutationResultContentBlock = z.infer<
+  typeof BulkMutationResultContentBlockSchema
+>;
+
+export const MutationResultContentBlockSchema = z.union([
+  SingleMutationResultContentBlockSchema,
+  BulkMutationResultContentBlockSchema,
+]);
+
 export type MutationResultContentBlock = z.infer<typeof MutationResultContentBlockSchema>;
+
+export function isBulkMutationResult(
+  block: MutationResultContentBlock,
+): block is BulkMutationResultContentBlock {
+  return "items" in block;
+}
 
 // ── SSE Event Payloads ────────────────────────────────────────────────
 

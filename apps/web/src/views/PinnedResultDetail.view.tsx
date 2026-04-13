@@ -64,7 +64,7 @@ export interface PinnedResultDetailUIProps {
   onRename: (name: string) => void;
   onDelete: () => void;
   onUnpin: () => void;
-  onOpenPortal: (portalId: string) => void;
+  onOpenPortal: (portalId: string, messageId: string | null) => void;
   onNavigate: (href: string) => void;
   renamePending?: boolean;
 }
@@ -134,7 +134,7 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
                 {
                   label: "Open Source Portal",
                   icon: <OpenInNewIcon />,
-                  onClick: () => onOpenPortal(result.portalId!),
+                  onClick: () => onOpenPortal(result.portalId!, result.messageId),
                 },
               ]
               : []),
@@ -270,8 +270,11 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
   }, [fetchWithAuth, portalResultId, queryClient, navigate]);
 
   const handleOpenPortal = useCallback(
-    (portalId: string) => {
-      navigate({ to: `/portals/${portalId}` });
+    (portalId: string, messageId: string | null) => {
+      navigate({
+        to: `/portals/${portalId}`,
+        ...(messageId ? { hash: messageId } : {}),
+      });
     },
     [navigate]
   );

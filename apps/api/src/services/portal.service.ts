@@ -145,8 +145,10 @@ function handleToolResult(ctx: StreamContext, chunk: any): void {
 /**
  * Determine if a tool result should produce a display block for inline
  * rendering. Returns null for scalar/non-display results.
+ *
+ * Exported for unit testing.
  */
-function resolveDisplayBlock(
+export function resolveDisplayBlock(
   toolName: string,
   toolResult: Record<string, unknown> | null
 ): {
@@ -186,15 +188,24 @@ function resolveDisplayBlock(
     MUTATION_TOOLS.has(toolName) &&
     toolResult != null &&
     toolResult.success === true &&
-    typeof toolResult.operation === "string"
+    typeof toolResult.operation === "string" &&
+    typeof toolResult.entity === "string" &&
+    Array.isArray(toolResult.items) &&
+    toolResult.items.length > 0
   ) {
-    const mutationContent = {
+    const items = toolResult.items as {
+      entityId: string;
+      summary?: Record<string, unknown>;
+    }[];
+    const base = {
       type: "mutation-result" as const,
-      operation: toolResult.operation as string,
+      operation: toolResult.operation as "created" | "updated" | "deleted",
       entity: toolResult.entity as string,
-      entityId: toolResult.entityId as string,
-      summary: (toolResult.summary as Record<string, unknown>) ?? {},
     };
+    const mutationContent =
+      items.length === 1
+        ? { ...base, item: items[0] }
+        : { ...base, count: items.length, items };
     return {
       block: { type: "mutation-result" as const, content: mutationContent },
       sseResult: mutationContent,

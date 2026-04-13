@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "./test-utils";
-import { ChatWindowUI } from "../components/ChatWindow.component";
+import { ChatWindowUI, CHAT_INPUT_PLACEHOLDER } from "../components/ChatWindow.component";
 
 const mockBreakpoint = (breakpoint: "mobile" | "desktop") => {
   Object.defineProperty(window, "matchMedia", {
@@ -65,7 +65,7 @@ describe("ChatWindowUI", () => {
     it("renders the text input with placeholder", () => {
       render(<ChatWindowUI {...createProps()} />);
       expect(
-        screen.getByPlaceholderText("Type a message...")
+        screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)
       ).toBeInTheDocument();
     });
 
@@ -88,7 +88,7 @@ describe("ChatWindowUI", () => {
 
     it("displays typed text in the text field", () => {
       render(<ChatWindowUI {...createProps()} />);
-      const textarea = screen.getByPlaceholderText("Type a message...");
+      const textarea = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
       fireEvent.change(textarea, { target: { value: "Hello world" } });
       expect(screen.getByDisplayValue("Hello world")).toBeInTheDocument();
     });
@@ -96,7 +96,7 @@ describe("ChatWindowUI", () => {
     it("calls onSubmit with value when Submit button is clicked", () => {
       const props = createProps();
       render(<ChatWindowUI {...props} />);
-      fireEvent.change(screen.getByPlaceholderText("Type a message..."), {
+      fireEvent.change(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER), {
         target: { value: "hello" },
       });
       fireEvent.click(screen.getByRole("button", { name: /submit/i }));
@@ -128,7 +128,7 @@ describe("ChatWindowUI", () => {
   describe("Disabled State", () => {
     it("disables the text field when disabled", () => {
       render(<ChatWindowUI {...createProps({ disabled: true })} />);
-      expect(screen.getByPlaceholderText("Type a message...")).toBeDisabled();
+      expect(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)).toBeDisabled();
     });
 
     it("disables Submit when disabled is true", () => {
@@ -143,7 +143,7 @@ describe("ChatWindowUI", () => {
 
     it("enables Submit when value is non-empty and not disabled", () => {
       render(<ChatWindowUI {...createProps()} />);
-      fireEvent.change(screen.getByPlaceholderText("Type a message..."), {
+      fireEvent.change(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER), {
         target: { value: "hello" },
       });
       expect(screen.getByRole("button", { name: /submit/i })).toBeEnabled();
@@ -164,7 +164,7 @@ describe("ChatWindowUI", () => {
     it("calls onSubmit with value when Enter is pressed without Shift", () => {
       const props = createProps();
       render(<ChatWindowUI {...props} />);
-      const textarea = screen.getByPlaceholderText("Type a message...");
+      const textarea = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
       fireEvent.change(textarea, { target: { value: "hello" } });
       fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
       expect(props.onSubmit).toHaveBeenCalledWith("hello");
@@ -173,7 +173,7 @@ describe("ChatWindowUI", () => {
     it("does not call onSubmit when Shift+Enter is pressed", () => {
       const props = createProps();
       render(<ChatWindowUI {...props} />);
-      const textarea = screen.getByPlaceholderText("Type a message...");
+      const textarea = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
       fireEvent.change(textarea, { target: { value: "hello" } });
       fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
       expect(props.onSubmit).not.toHaveBeenCalled();
@@ -194,7 +194,7 @@ describe("ChatWindowUI", () => {
     it("calls onSubmit on mobile submit icon click", () => {
       const props = createProps();
       const { container } = render(<ChatWindowUI {...props} />);
-      fireEvent.change(screen.getByPlaceholderText("Type a message..."), {
+      fireEvent.change(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER), {
         target: { value: "hello" },
       });
       const sendIcon = container.querySelector("[data-testid='SendIcon']")!;

@@ -3,13 +3,23 @@ import React from "react";
 import Alert from "@mui/material/Alert";
 import Typography from "@mui/material/Typography";
 
-import type { MutationResultContentBlock } from "../contracts/portal.contract.js";
+import {
+  isBulkMutationResult,
+  type MutationResultContentBlock,
+} from "../contracts/portal.contract.js";
 
-const OPERATION_LABELS: Record<string, { label: string; severity: "success" | "info" | "warning" }> = {
+const OPERATION_LABELS: Record<
+  string,
+  { label: string; severity: "success" | "info" | "warning" }
+> = {
   created: { label: "Created", severity: "success" },
   updated: { label: "Updated", severity: "info" },
   deleted: { label: "Deleted", severity: "warning" },
 };
+
+function pluralize(entity: string): string {
+  return entity.endsWith("s") ? entity : `${entity}s`;
+}
 
 function formatSummary(summary: Record<string, unknown>): string {
   const parts: string[] = [];
@@ -31,9 +41,16 @@ export interface MutationResultBlockProps {
 }
 
 export const MutationResultBlock: React.FC<MutationResultBlockProps> = ({ content }) => {
-  const config = OPERATION_LABELS[content.operation] ?? { label: content.operation, severity: "info" as const };
-  const isBulk = (content.count ?? 0) > 1;
-  const summaryText = content.summary ? formatSummary(content.summary) : "";
+  const config =
+    OPERATION_LABELS[content.operation] ??
+    { label: content.operation, severity: "info" as const };
+
+  const isBulk = isBulkMutationResult(content);
+  const subject = isBulk
+    ? `${content.count} ${pluralize(content.entity)}`
+    : content.entity;
+  const summary = isBulk ? undefined : content.item.summary;
+  const summaryText = summary ? formatSummary(summary) : "";
 
   return (
     <Alert
@@ -46,7 +63,7 @@ export const MutationResultBlock: React.FC<MutationResultBlockProps> = ({ conten
       </Typography>
       {" "}
       <Typography variant="body2" component="span">
-        {isBulk ? `${content.count} ${content.entity}s` : content.entity}
+        {subject}
       </Typography>
       {summaryText && (
         <Typography variant="body2" component="span" sx={{ color: "text.secondary", ml: 1 }}>

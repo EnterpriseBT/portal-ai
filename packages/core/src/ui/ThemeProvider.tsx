@@ -2,16 +2,27 @@ import React, { createContext, useContext, useMemo, useState } from "react";
 import {
   ThemeProvider as MuiThemeProvider,
   createTheme,
+  responsiveFontSizes,
   useTheme as useMuiTheme,
+  type Theme,
   type ThemeOptions,
 } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import brandTheme from "../assets/themes/brand-theme.json" with { type: "json" };
 import brandDarkTheme from "../assets/themes/brand-theme-dark.json" with { type: "json" };
 
+/**
+ * Wrap `createTheme` with `responsiveFontSizes` so every typography variant
+ * (h1–h6, body, etc.) scales down on smaller breakpoints automatically. This
+ * means components can use `variant="h1"` / `variant="h2"` without redefining
+ * responsive `fontSize` rules at every call site — the theme owns the scale.
+ */
+const buildTheme = (options: ThemeOptions): Theme =>
+  responsiveFontSizes(createTheme(options));
+
 export const THEME_MAP = {
-  brand: createTheme(brandTheme as ThemeOptions),
-  "brand.dark": createTheme(brandDarkTheme as ThemeOptions),
+  brand: buildTheme(brandTheme as ThemeOptions),
+  "brand.dark": buildTheme(brandDarkTheme as ThemeOptions),
 };
 
 export type ThemeName = keyof typeof THEME_MAP;

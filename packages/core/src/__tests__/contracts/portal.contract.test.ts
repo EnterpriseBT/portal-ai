@@ -10,6 +10,9 @@ import {
   DoneEventSchema,
   PortalListResponsePayloadSchema,
   MutationResultContentBlockSchema,
+  SingleMutationResultContentBlockSchema,
+  BulkMutationResultContentBlockSchema,
+  isBulkMutationResult,
 } from "../../contracts/portal.contract.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -164,55 +167,116 @@ describe("PINNABLE_BLOCK_TYPES", () => {
 // ── MutationResultContentBlockSchema ────────────────────────────────
 
 describe("MutationResultContentBlockSchema", () => {
-  it("should accept the old single-item shape with entityId", () => {
-    const result = MutationResultContentBlockSchema.safeParse({
-      type: "mutation-result",
-      operation: "created",
-      entity: "record",
-      entityId: "r-1",
-      summary: { sourceId: "abc" },
+  describe("Single variant", () => {
+    it("accepts a single-item shape with an `item` object", () => {
+      const result = MutationResultContentBlockSchema.safeParse({
+        type: "mutation-result",
+        operation: "created",
+        entity: "record",
+        item: { entityId: "r-1", summary: { sourceId: "abc" } },
+      });
+      expect(result.success).toBe(true);
     });
-    expect(result.success).toBe(true);
+
+    it("accepts a single-item shape with no summary", () => {
+      const result = MutationResultContentBlockSchema.safeParse({
+        type: "mutation-result",
+        operation: "deleted",
+        entity: "field mapping",
+        item: { entityId: "fm-1" },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("parses as a Single variant through its dedicated schema", () => {
+      const parsed = SingleMutationResultContentBlockSchema.parse({
+        type: "mutation-result",
+        operation: "updated",
+        entity: "connector entity",
+        item: { entityId: "ce-1", summary: { label: "Customers" } },
+      });
+      expect(parsed.item.entityId).toBe("ce-1");
+    });
   });
 
-  it("should accept bulk shape without entityId, with count and items", () => {
-    const result = MutationResultContentBlockSchema.safeParse({
-      type: "mutation-result",
-      operation: "created",
-      entity: "record",
-      count: 5,
-      items: [
-        { entityId: "r-1", summary: { sourceId: "a" } },
-        { entityId: "r-2" },
-      ],
+  describe("Bulk variant", () => {
+    it("accepts a bulk shape with count and items", () => {
+      const result = MutationResultContentBlockSchema.safeParse({
+        type: "mutation-result",
+        operation: "created",
+        entity: "record",
+        count: 2,
+        items: [
+          { entityId: "r-1", summary: { sourceId: "a" } },
+          { entityId: "r-2" },
+        ],
+      });
+      expect(result.success).toBe(true);
     });
-    expect(result.success).toBe(true);
+
+    it("rejects bulk with fewer than 2 items", () => {
+      const result = BulkMutationResultContentBlockSchema.safeParse({
+        type: "mutation-result",
+        operation: "created",
+        entity: "record",
+        count: 1,
+        items: [{ entityId: "r-1" }],
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
-  it("should accept minimal shape with only required fields", () => {
-    const result = MutationResultContentBlockSchema.safeParse({
-      type: "mutation-result",
-      operation: "deleted",
-      entity: "field mapping",
+  describe("Discriminator", () => {
+    it("isBulkMutationResult returns false for Single", () => {
+      const block = SingleMutationResultContentBlockSchema.parse({
+        type: "mutation-result",
+        operation: "created",
+        entity: "record",
+        item: { entityId: "r-1" },
+      });
+      expect(isBulkMutationResult(block)).toBe(false);
     });
-    expect(result.success).toBe(true);
+
+    it("isBulkMutationResult returns true for Bulk", () => {
+      const block = BulkMutationResultContentBlockSchema.parse({
+        type: "mutation-result",
+        operation: "created",
+        entity: "record",
+        count: 2,
+        items: [{ entityId: "r-1" }, { entityId: "r-2" }],
+      });
+      expect(isBulkMutationResult(block)).toBe(true);
+    });
   });
 
-  it("should reject invalid operation", () => {
-    const result = MutationResultContentBlockSchema.safeParse({
-      type: "mutation-result",
-      operation: "upserted",
-      entity: "record",
+  describe("Rejections", () => {
+    it("rejects invalid operation", () => {
+      const result = MutationResultContentBlockSchema.safeParse({
+        type: "mutation-result",
+        operation: "upserted",
+        entity: "record",
+        item: { entityId: "r-1" },
+      });
+      expect(result.success).toBe(false);
     });
-    expect(result.success).toBe(false);
-  });
 
-  it("should reject missing entity", () => {
-    const result = MutationResultContentBlockSchema.safeParse({
-      type: "mutation-result",
-      operation: "created",
+    it("rejects missing entity", () => {
+      const result = MutationResultContentBlockSchema.safeParse({
+        type: "mutation-result",
+        operation: "created",
+        item: { entityId: "r-1" },
+      });
+      expect(result.success).toBe(false);
     });
-    expect(result.success).toBe(false);
+
+    it("rejects a shape with neither item nor items", () => {
+      const result = MutationResultContentBlockSchema.safeParse({
+        type: "mutation-result",
+        operation: "deleted",
+        entity: "record",
+      });
+      expect(result.success).toBe(false);
+    });
   });
 });
 

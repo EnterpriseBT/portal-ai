@@ -21,13 +21,13 @@ exports[`UnauthorizedView Component should match snapshot 1`] = `
     </svg>
   </div>
   <h1
-    class="MuiTypography-root MuiTypography-h1 css-1hlpb9j-MuiTypography-root"
+    class="MuiTypography-root MuiTypography-h1 css-w0wbp3-MuiTypography-root"
     style="color: rgb(255, 86, 48); margin-bottom: 8px;"
   >
     401
   </h1>
   <h4
-    class="MuiTypography-root MuiTypography-h4 css-kp3j89-MuiTypography-root"
+    class="MuiTypography-root MuiTypography-h4 css-1speupf-MuiTypography-root"
     style="margin-bottom: 16px;"
   >
     Unauthorized

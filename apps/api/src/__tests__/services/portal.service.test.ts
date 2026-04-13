@@ -81,7 +81,7 @@ jest.unstable_mockModule("../../utils/system.util.js", () => ({
 // Dynamic imports (after mocks)
 // ---------------------------------------------------------------------------
 
-const { PortalService } = await import("../../services/portal.service.js");
+const { PortalService, resolveDisplayBlock } = await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 // ---------------------------------------------------------------------------
@@ -899,5 +899,104 @@ describe("PortalService", () => {
         })
       ).rejects.toMatchObject({ code: ApiCode.PORTAL_NOT_FOUND });
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveDisplayBlock — mutation-result variants
+// ---------------------------------------------------------------------------
+
+describe("resolveDisplayBlock → mutation-result", () => {
+  it("returns null for non-mutation tools", () => {
+    const result = resolveDisplayBlock("sql_query", {
+      rows: [{ id: 1 }],
+    });
+    // sql_query is a row-set tool, not a mutation — should produce a data-table,
+    // but the shape is handled by the row-set branch, not the mutation branch.
+    expect(result?.block.content).not.toMatchObject({ type: "mutation-result" });
+  });
+
+  it("returns null when tool result has no items", () => {
+    const result = resolveDisplayBlock("entity_record_create", {
+      success: true,
+      operation: "created",
+      entity: "record",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("returns null on failed tool result", () => {
+    const result = resolveDisplayBlock("entity_record_create", {
+      success: false,
+      error: "Scope violation",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("maps a single-item tool result to the Single variant", () => {
+    const result = resolveDisplayBlock("entity_record_create", {
+      success: true,
+      operation: "created",
+      entity: "record",
+      items: [{ entityId: "r-1", summary: { sourceId: "abc" } }],
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.block).toEqual({
+      type: "mutation-result",
+      content: {
+        type: "mutation-result",
+        operation: "created",
+        entity: "record",
+        item: { entityId: "r-1", summary: { sourceId: "abc" } },
+      },
+    });
+    expect(result!.sseResult).toEqual(result!.block.content);
+  });
+
+  it("maps a multi-item tool result to the Bulk variant with count", () => {
+    const result = resolveDisplayBlock("field_mapping_create", {
+      success: true,
+      operation: "created",
+      entity: "field mapping",
+      items: [
+        { entityId: "fm-1", summary: { sourceField: "A" } },
+        { entityId: "fm-2", summary: { sourceField: "B" } },
+        { entityId: "fm-3", summary: { sourceField: "C" } },
+      ],
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.block.content).toEqual({
+      type: "mutation-result",
+      operation: "created",
+      entity: "field mapping",
+      count: 3,
+      items: [
+        { entityId: "fm-1", summary: { sourceField: "A" } },
+        { entityId: "fm-2", summary: { sourceField: "B" } },
+        { entityId: "fm-3", summary: { sourceField: "C" } },
+      ],
+    });
+  });
+
+  it("does not leak legacy top-level summary / entityId / count fields", () => {
+    const result = resolveDisplayBlock("entity_record_create", {
+      success: true,
+      operation: "created",
+      entity: "record",
+      // Legacy fields the old contract allowed — must be dropped.
+      entityId: "legacy-id",
+      count: 1,
+      summary: { legacy: "value" },
+      items: [{ entityId: "r-1" }],
+    });
+
+    const content = result!.block.content as Record<string, unknown>;
+    expect(content).not.toHaveProperty("entityId");
+    expect(content).not.toHaveProperty("summary");
+    expect(content).not.toHaveProperty("count");
+    expect(content).not.toHaveProperty("items");
+    expect(content.item).toEqual({ entityId: "r-1" });
   });
 });
