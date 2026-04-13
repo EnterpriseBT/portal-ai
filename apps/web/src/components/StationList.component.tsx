@@ -16,6 +16,7 @@ import StarOutlineIcon from "@mui/icons-material/StarOutline";
 
 import DataResult from "./DataResult.component";
 import { SyncTotal } from "./SyncTotal.component";
+import { ToolPackChip } from "./ToolPackChip.component";
 import { sdk } from "../api/sdk";
 
 // ── Data list component ─────────────────────────────────────────────
@@ -92,7 +93,18 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
             hidden: !isDefault,
           },
           { label: "Description", value: station.description ?? "", hidden: !station.description },
-          { label: "Tool packs", value: station.toolPacks.join(", "), hidden: station.toolPacks.length === 0 },
+          {
+            label: "Tool packs",
+            value: (
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                {station.toolPacks.map((pack) => (
+                  <ToolPackChip key={pack} pack={pack} />
+                ))}
+              </Stack>
+            ),
+            variant: "chip",
+            hidden: station.toolPacks.length === 0,
+          },
         ]}
       />
     </DetailCard>
