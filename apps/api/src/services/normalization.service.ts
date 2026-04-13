@@ -79,8 +79,11 @@ export class NormalizationService {
       const cd = mapping.columnDefinition!;
       const key = mapping.normalizedKey;
 
-      // 1. Extract
-      let sourceValue: unknown = mapping.sourceField in data
+      // 1. Extract — prefer `normalizedKey` (used by portal-origin writes)
+      // and fall back to `sourceField` (used by connector sync payloads).
+      let sourceValue: unknown = mapping.normalizedKey in data
+        ? data[mapping.normalizedKey]
+        : mapping.sourceField in data
         ? data[mapping.sourceField]
         : undefined;
 

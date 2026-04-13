@@ -82,6 +82,52 @@ describe("NormalizationService.normalize", () => {
     expect(result.validationErrors).toBeNull();
   });
 
+  it("prefers normalizedKey-keyed input over sourceField (portal-origin writes)", async () => {
+    mockFindMany.mockResolvedValue([
+      mapping({ sourceField: "Full Name", normalizedKey: "full_name" }),
+      mapping({
+        sourceField: "Email Address",
+        normalizedKey: "email",
+        columnDefinition: { key: "email", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null },
+      }),
+    ]);
+
+    const result = await NormalizationService.normalize("ce-1", {
+      full_name: "Jane Doe",
+      email: "jane@example.com",
+    });
+
+    expect(result.normalizedData).toEqual({ full_name: "Jane Doe", email: "jane@example.com" });
+    expect(result.isValid).toBe(true);
+    expect(result.validationErrors).toBeNull();
+  });
+
+  it("falls back to sourceField when normalizedKey is absent (connector sync payloads)", async () => {
+    mockFindMany.mockResolvedValue([
+      mapping({ sourceField: "Full Name", normalizedKey: "full_name" }),
+    ]);
+
+    const result = await NormalizationService.normalize("ce-1", {
+      "Full Name": "Jane Doe",
+    });
+
+    expect(result.normalizedData).toEqual({ full_name: "Jane Doe" });
+    expect(result.isValid).toBe(true);
+  });
+
+  it("prefers normalizedKey value when both keys are present", async () => {
+    mockFindMany.mockResolvedValue([
+      mapping({ sourceField: "Full Name", normalizedKey: "full_name" }),
+    ]);
+
+    const result = await NormalizationService.normalize("ce-1", {
+      full_name: "Jane Doe",
+      "Full Name": "Stale Value",
+    });
+
+    expect(result.normalizedData).toEqual({ full_name: "Jane Doe" });
+  });
+
   it("omits unmapped source fields", async () => {
     mockFindMany.mockResolvedValue([
       mapping({ sourceField: "Name", normalizedKey: "name" }),

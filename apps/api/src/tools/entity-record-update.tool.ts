@@ -11,7 +11,7 @@ import { Repository } from "../db/repositories/base.repository.js";
 const ItemSchema = z.object({
   connectorEntityId: z.string().describe("The connector entity the record belongs to"),
   entityRecordId: z.string().describe("The record ID to update"),
-  data: z.record(z.string(), z.unknown()).describe("Updated record data keyed by source field names"),
+  data: z.record(z.string(), z.unknown()).describe("Updated record data keyed by `normalizedKey` from the entity's field mappings"),
 });
 
 const InputSchema = z.object({
