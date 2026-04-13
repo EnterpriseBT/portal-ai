@@ -17,12 +17,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { DefaultStationCardConnected } from "../components/DefaultStationCard.component";
-import { PinnedResultsListConnected } from "../components/PinnedResultsList.component";
 import { RecentPortalsListConnected } from "../components/RecentPortalsList.component";
 import { CreatePortalDialog } from "../components/CreatePortalDialog.component";
 import { HealthCheck } from "../components/HealthCheck.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch, toServerError } from "../utils/api.util";
+import { toServerError } from "../utils/api.util";
 
 // ── Dashboard UI (pure) ─────────────────────────────────────────────
 
@@ -32,9 +31,6 @@ export interface DashboardViewUIProps {
   onChangeDefault: () => void;
   onViewStation: (stationId: string) => void;
   onPortalClick: (portalId: string) => void;
-  onPinnedResultClick: (id: string) => void;
-  onUnpinResult: (id: string) => void;
-  onViewAllPinnedResults: () => void;
 }
 
 export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
@@ -43,9 +39,6 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
   onChangeDefault,
   onViewStation,
   onPortalClick,
-  onPinnedResultClick,
-  onUnpinResult,
-  onViewAllPinnedResults,
 }) => (
   <Box>
     <Stack spacing={4}>
@@ -67,6 +60,12 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
       </PageHeader>
 
       <PageGrid columns={{ xs: 1, md: 2 }}>
+        <PageGridItem span={{ xs: 1, md: 2 }}>
+          <PageSection title="Recent Portals" icon={<Icon name={IconName.RocketLaunch} />}>
+            <RecentPortalsListConnected onPortalClick={onPortalClick} />
+          </PageSection>
+        </PageGridItem>
+
         <PageGridItem>
           <PageSection title="Default Station" icon={<Icon name={IconName.SatelliteAlt} />}>
             <DefaultStationCardConnected
@@ -74,22 +73,6 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
               onChangeDefault={onChangeDefault}
               onViewStation={onViewStation}
             />
-          </PageSection>
-        </PageGridItem>
-
-        <PageGridItem>
-          <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
-            <PinnedResultsListConnected
-              onResultClick={onPinnedResultClick}
-              onUnpin={onUnpinResult}
-              onViewAll={onViewAllPinnedResults}
-            />
-          </PageSection>
-        </PageGridItem>
-
-        <PageGridItem span={{ xs: 1, md: 2 }}>
-          <PageSection title="Recent Portals" icon={<Icon name={IconName.RocketLaunch} />}>
-            <RecentPortalsListConnected onPortalClick={onPortalClick} />
           </PageSection>
         </PageGridItem>
       </PageGrid>
@@ -102,7 +85,6 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 export const DashboardView: React.FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { fetchWithAuth } = useAuthFetch();
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.portals.create();
@@ -163,30 +145,6 @@ export const DashboardView: React.FC = () => {
     [navigate]
   );
 
-  const handlePinnedResultClick = useCallback(
-    (id: string) => {
-      navigate({ to: `/portal-results/${id}` });
-    },
-    [navigate]
-  );
-
-  const handleUnpinResult = useCallback(
-    async (id: string) => {
-      await fetchWithAuth(
-        `/api/portal-results/${encodeURIComponent(id)}`,
-        { method: "DELETE" }
-      );
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.portalResults.root,
-      });
-    },
-    [fetchWithAuth, queryClient]
-  );
-
-  const handleViewAllPinnedResults = useCallback(() => {
-    navigate({ to: "/portal-results" });
-  }, [navigate]);
-
   return (
     <>
       <DashboardViewUI
@@ -195,9 +153,6 @@ export const DashboardView: React.FC = () => {
         onChangeDefault={handleChangeDefault}
         onViewStation={handleViewStation}
         onPortalClick={handlePortalClick}
-        onPinnedResultClick={handlePinnedResultClick}
-        onUnpinResult={handleUnpinResult}
-        onViewAllPinnedResults={handleViewAllPinnedResults}
       />
 
       <CreatePortalDialog
