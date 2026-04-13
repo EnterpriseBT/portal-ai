@@ -13,10 +13,18 @@ import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
 import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
+import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
 import { ToolPackUtil } from "../utils/tool-packs.util";
 
 const TOOL_PACK_OPTIONS: SelectOption[] = StationToolPackSchema.options.map(
-  (value) => ({ value, label: ToolPackUtil.getLabel(value) })
+  (value) => {
+    const Icon = ToolPackIconUtil.getIcon(value);
+    return {
+      value,
+      label: ToolPackUtil.getLabel(value),
+      icon: <Icon fontSize="small" />,
+    };
+  }
 );
 
 

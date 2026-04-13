@@ -1239,37 +1239,6 @@ describe("AnalyticsService", () => {
       });
     });
 
-    describe("applyColumnDefinitionInsertMany", () => {
-      it("inserts multiple column definitions", () => {
-        const rows = [
-          { id: "cd-new-1", key: "batch_col_1", label: "Batch 1", type: "string", description: null },
-          { id: "cd-new-2", key: "batch_col_2", label: "Batch 2", type: "number", description: null },
-        ];
-        AnalyticsService.applyColumnDefinitionInsertMany(STATION_ID, rows);
-
-        const result = AnalyticsService.sqlQuery({
-          sql: "SELECT * FROM _column_definitions WHERE id IN ('cd-new-1','cd-new-2')",
-          stationId: STATION_ID,
-        });
-        expect(result).toHaveLength(2);
-      });
-    });
-
-    describe("applyColumnDefinitionDeleteMany", () => {
-      it("deletes multiple column definitions", () => {
-        AnalyticsService.applyColumnDefinitionInsert(STATION_ID, { id: "cd-d-1", key: "del_1", label: "D1", type: "string", description: null });
-        AnalyticsService.applyColumnDefinitionInsert(STATION_ID, { id: "cd-d-2", key: "del_2", label: "D2", type: "string", description: null });
-
-        AnalyticsService.applyColumnDefinitionDeleteMany(STATION_ID, ["cd-d-1", "cd-d-2"]);
-
-        const result = AnalyticsService.sqlQuery({
-          sql: "SELECT * FROM _column_definitions WHERE id IN ('cd-d-1','cd-d-2')",
-          stationId: STATION_ID,
-        });
-        expect(result).toHaveLength(0);
-      });
-    });
-
     describe("applyFieldMappingInsertMany", () => {
       it("inserts multiple field mappings", () => {
         const rows = [

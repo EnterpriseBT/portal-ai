@@ -6,10 +6,10 @@ import { StationToolPackSchema } from "@portalai/core/models";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
-import Chip from "@mui/material/Chip";
 
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
+import { ToolPackChip } from "./ToolPackChip.component";
 import type { ServerError } from "../utils/api.util";
 import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
@@ -171,14 +171,7 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           renderTags={(value, getTagProps) =>
             value.map((option, index) => {
               const { key, ...tagProps } = getTagProps({ index });
-              return (
-                <Chip
-                  key={key}
-                  label={ToolPackUtil.getLabel(option)}
-                  size="small"
-                  {...tagProps}
-                />
-              );
+              return <ToolPackChip key={key} pack={option} {...tagProps} />;
             })
           }
           renderInput={(params) => (

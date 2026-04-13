@@ -52,7 +52,7 @@ export const ColumnDefinitionSchema = CoreSchema.extend({
   validationPattern: z.string().nullable(),
   validationMessage: z.string().nullable(),
   canonicalFormat: z.string().nullable(),
-
+  system: z.boolean(),
 });
 
 export type ColumnDefinition = z.infer<typeof ColumnDefinitionSchema>;

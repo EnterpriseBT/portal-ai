@@ -21,6 +21,7 @@ const validColumnFields = {
   validationPattern: null,
   validationMessage: null,
   canonicalFormat: null,
+  system: false,
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -49,6 +50,40 @@ describe("ColumnDataTypeEnum", () => {
   it("should reject unknown types", () => {
     const result = ColumnDataTypeEnum.safeParse("bigint");
     expect(result.success).toBe(false);
+  });
+});
+
+// ── ColumnDefinitionSchema system field ──────────────────────────────
+
+describe("ColumnDefinitionSchema system field", () => {
+  const minimalBase = {
+    id: "cd-1",
+    organizationId: "org-1",
+    key: "email",
+    label: "Email",
+    type: "string" as const,
+    description: null,
+    validationPattern: null,
+    validationMessage: null,
+    canonicalFormat: null,
+    createdBy: "user-1",
+    created: Date.now(),
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  };
+
+  it("requires a boolean `system` field", () => {
+    const ok = ColumnDefinitionSchema.safeParse({ ...minimalBase, system: false });
+    expect(ok.success).toBe(true);
+
+    const missing: Record<string, unknown> = { ...minimalBase };
+    delete missing.system;
+    expect(ColumnDefinitionSchema.safeParse(missing).success).toBe(false);
+
+    const wrong = { ...minimalBase, system: "yes" };
+    expect(ColumnDefinitionSchema.safeParse(wrong).success).toBe(false);
   });
 });
 

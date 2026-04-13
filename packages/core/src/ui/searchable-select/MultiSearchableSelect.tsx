@@ -1,5 +1,7 @@
 import React from "react";
 import MuiAutocomplete from "@mui/material/Autocomplete";
+import Box from "@mui/material/Box";
+import Chip from "@mui/material/Chip";
 import TextField from "@mui/material/TextField";
 
 import type { SelectOption, SelectBaseProps } from "./types.js";
@@ -39,6 +41,29 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
       disabled={disabled}
       size={size}
       fullWidth={fullWidth}
+      renderOption={(props, option) => {
+        const { key, ...optionProps } = props as React.HTMLAttributes<HTMLLIElement> & { key?: React.Key };
+        return (
+          <Box component="li" key={key} {...optionProps} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {option.icon}
+            <span>{option.label}</span>
+          </Box>
+        );
+      }}
+      renderTags={(tagValue, getTagProps) =>
+        tagValue.map((option, index) => {
+          const { key, ...tagProps } = getTagProps({ index });
+          return (
+            <Chip
+              key={key}
+              icon={option.icon ? (option.icon as React.ReactElement) : undefined}
+              label={option.label}
+              size={size}
+              {...tagProps}
+            />
+          );
+        })
+      }
       renderInput={(params) => (
         <TextField
           {...params}

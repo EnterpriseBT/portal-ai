@@ -1,4 +1,4 @@
-import { pgTable, text, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
@@ -35,7 +35,7 @@ export const columnDefinitions = pgTable(
     validationPattern: text("validation_pattern"),
     validationMessage: text("validation_message"),
     canonicalFormat: text("canonical_format"),
-
+    system: boolean("system").notNull().default(false),
   },
   (table) => [
     uniqueIndex("column_definitions_org_key_unique")

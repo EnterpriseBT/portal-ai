@@ -114,9 +114,11 @@ export function buildSystemPrompt(stationContext: StationContext): string {
       "`_column_definitions` (id, key, label, type, description, validation_pattern, validation_message, canonical_format), " +
       "`_field_mappings` (id, connector_entity_id, column_definition_id, source_field, is_primary_key, normalized_key, required, default_value, format, enum_values). " +
       "Use these to look up IDs before calling write tools. " +
-      "To add a new field mapping, either find an existing column definition " +
-      "from `_column_definitions` or create one with column_definition_create, " +
-      "then call field_mapping_create."
+      "To add a new field mapping, find an existing column definition in " +
+      "`_column_definitions` and call field_mapping_create with its id. " +
+      "Column definitions are managed outside the portal session — if no " +
+      "suitable column definition exists, surface the unmapped source field " +
+      "to the user and stop; do not attempt to create one."
     );
     lines.push("");
   }

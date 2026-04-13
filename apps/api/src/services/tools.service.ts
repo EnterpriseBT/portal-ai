@@ -40,9 +40,6 @@ import { EntityRecordDeleteTool } from "../tools/entity-record-delete.tool.js";
 import { ConnectorEntityCreateTool } from "../tools/connector-entity-create.tool.js";
 import { ConnectorEntityUpdateTool } from "../tools/connector-entity-update.tool.js";
 import { ConnectorEntityDeleteTool } from "../tools/connector-entity-delete.tool.js";
-import { ColumnDefinitionCreateTool } from "../tools/column-definition-create.tool.js";
-import { ColumnDefinitionUpdateTool } from "../tools/column-definition-update.tool.js";
-import { ColumnDefinitionDeleteTool } from "../tools/column-definition-delete.tool.js";
 import { FieldMappingCreateTool } from "../tools/field-mapping-create.tool.js";
 import { FieldMappingUpdateTool } from "../tools/field-mapping-update.tool.js";
 import { FieldMappingDeleteTool } from "../tools/field-mapping-delete.tool.js";
@@ -113,9 +110,6 @@ export class ToolService {
     "connector_entity_create",
     "connector_entity_update",
     "connector_entity_delete",
-    "column_definition_create",
-    "column_definition_update",
-    "column_definition_delete",
     "field_mapping_create",
     "field_mapping_update",
     "field_mapping_delete",
@@ -260,9 +254,6 @@ export class ToolService {
         tools.connector_entity_create = new ConnectorEntityCreateTool().build(stationId, userId);
         tools.connector_entity_update = new ConnectorEntityUpdateTool().build(stationId, userId);
         tools.connector_entity_delete = new ConnectorEntityDeleteTool().build(stationId, userId);
-        tools.column_definition_create = new ColumnDefinitionCreateTool().build(stationId, organizationId, userId);
-        tools.column_definition_update = new ColumnDefinitionUpdateTool().build(stationId, organizationId, userId);
-        tools.column_definition_delete = new ColumnDefinitionDeleteTool().build(stationId, organizationId, userId);
         tools.field_mapping_create = new FieldMappingCreateTool().build(stationId, organizationId, userId);
         tools.field_mapping_update = new FieldMappingUpdateTool().build(stationId, organizationId, userId);
         tools.field_mapping_delete = new FieldMappingDeleteTool().build(stationId, organizationId, userId);

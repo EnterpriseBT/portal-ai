@@ -13,7 +13,7 @@ import { Repository } from "../db/repositories/base.repository.js";
 const ItemSchema = z.object({
   connectorEntityId: z.string().describe("The connector entity to create a record in"),
   sourceId: z.string().optional().describe("Optional source ID; auto-generated if omitted"),
-  data: z.record(z.string(), z.unknown()).describe("Record data keyed by source field names"),
+  data: z.record(z.string(), z.unknown()).describe("Record data keyed by `normalizedKey` from the entity's field mappings"),
 });
 
 const InputSchema = z.object({

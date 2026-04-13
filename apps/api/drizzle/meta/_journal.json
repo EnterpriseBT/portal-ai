@@ -253,6 +253,13 @@
       "when": 1775572800000,
       "tag": "0035_add-ref-normalized-key",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1775659200000,
+      "tag": "0036_add_system_flag_to_column_definitions",
+      "breakpoints": true
     }
   ]
 }

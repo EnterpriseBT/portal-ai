@@ -7,6 +7,7 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 
 export const ColumnDefinitionListRequestQuerySchema = PaginationRequestQuerySchema.extend({
   type: z.string().optional(),
+  system: z.enum(["true", "false"]).optional(),
 });
 
 export type ColumnDefinitionListRequestQuery = z.infer<typeof ColumnDefinitionListRequestQuerySchema>;

@@ -48,6 +48,7 @@ const makeColumnDefinition = (
   validationPattern: null,
   validationMessage: null,
   canonicalFormat: null,
+  system: false,
   created: 1735689600000,
   createdBy: "user-1",
   updated: null,
@@ -154,5 +155,19 @@ describe("ColumnDefinitionCardUI", () => {
     const cd = makeColumnDefinition();
     render(<ColumnDefinitionCardUI columnDefinition={cd} />);
     expect(() => fireEvent.click(screen.getByText("First Name"))).not.toThrow();
+  });
+
+  it("renders a Custom chip and a Delete action for non-system rows", () => {
+    const cd = makeColumnDefinition({ system: false });
+    render(<ColumnDefinitionCardUI columnDefinition={cd} onDelete={jest.fn()} />);
+    expect(screen.getByText("Custom")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
+  });
+
+  it("renders a System chip and NO Delete action for system rows", () => {
+    const cd = makeColumnDefinition({ system: true });
+    render(<ColumnDefinitionCardUI columnDefinition={cd} onDelete={jest.fn()} />);
+    expect(screen.getByText("System")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /delete/i })).not.toBeInTheDocument();
   });
 });

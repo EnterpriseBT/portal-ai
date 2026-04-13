@@ -74,7 +74,7 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
   onClick,
   onDelete,
 }) => {
-  const actions: ActionSuiteItem[] = onDelete
+  const actions: ActionSuiteItem[] = !cd.system && onDelete
     ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(cd), color: "error" }]
     : [];
 
@@ -86,6 +86,18 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
     >
       <MetadataList
         items={[
+          {
+            label: "Origin",
+            value: (
+              <Chip
+                label={cd.system ? "System" : "Custom"}
+                size="small"
+                color={cd.system ? "default" : "primary"}
+                variant="outlined"
+              />
+            ),
+            variant: "chip",
+          },
           {
             label: "Type",
             value: (

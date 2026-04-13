@@ -64,6 +64,12 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  *         schema:
  *           type: string
  *         description: Comma-separated list of column data types to filter by (string, number, boolean, date, datetime, enum, json, array, reference, reference-array)
+ *       - in: query
+ *         name: system
+ *         schema:
+ *           type: string
+ *           enum: [true, false]
+ *         description: Filter by origin — "true" returns system-seeded column definitions, "false" returns user-created (custom) column definitions
  *     responses:
  *       200:
  *         description: Paginated list of column definitions
@@ -89,7 +95,7 @@ columnDefinitionRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, type } =
+      const { limit, offset, sortBy, sortOrder, search, type, system } =
         ColumnDefinitionListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
@@ -110,6 +116,9 @@ columnDefinitionRouter.get(
         } else if (types.length > 1) {
           filters.push(inArray(columnDefinitions.type, types as never[]));
         }
+      }
+      if (system !== undefined) {
+        filters.push(eq(columnDefinitions.system, system === "true"));
       }
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
@@ -314,6 +323,7 @@ columnDefinitionRouter.post(
         validationPattern: parsed.data.validationPattern,
         validationMessage: parsed.data.validationMessage,
         canonicalFormat: parsed.data.canonicalFormat,
+        system: false,
       });
 
       const columnDefinition = await DbService.repository.columnDefinitions.create(
@@ -421,7 +431,8 @@ columnDefinitionRouter.post(
  *         description: >
  *           Guardrail violation. Possible codes:
  *           COLUMN_DEFINITION_KEY_IMMUTABLE (key field cannot be changed),
- *           COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED (type transition not allowed)
+ *           COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED (type transition not allowed),
+ *           COLUMN_DEFINITION_SYSTEM_READONLY (system column definitions are read-only)
  *         content:
  *           application/json:
  *             schema:
@@ -460,6 +471,16 @@ columnDefinitionRouter.patch(
       if (!existing) {
         return next(
           new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+        );
+      }
+
+      if (existing.system) {
+        return next(
+          new ApiError(
+            422,
+            ApiCode.COLUMN_DEFINITION_SYSTEM_READONLY,
+            "System column definitions are read-only"
+          )
         );
       }
 
@@ -667,7 +688,10 @@ columnDefinitionRouter.get(
  *             schema:
  *               $ref: '#/components/schemas/ApiErrorResponse'
  *       422:
- *         description: Column definition has dependent field mappings (COLUMN_DEFINITION_HAS_DEPENDENCIES)
+ *         description: >
+ *           Guardrail violation. Possible codes:
+ *           COLUMN_DEFINITION_HAS_DEPENDENCIES (field mappings reference it),
+ *           COLUMN_DEFINITION_SYSTEM_READONLY (system column definitions are read-only)
  *         content:
  *           application/json:
  *             schema:
@@ -690,6 +714,16 @@ columnDefinitionRouter.delete(
       if (!existing) {
         return next(
           new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+        );
+      }
+
+      if (existing.system) {
+        return next(
+          new ApiError(
+            422,
+            ApiCode.COLUMN_DEFINITION_SYSTEM_READONLY,
+            "System column definitions are read-only"
+          )
         );
       }
 

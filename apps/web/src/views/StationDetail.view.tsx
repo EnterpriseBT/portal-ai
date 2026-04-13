@@ -11,7 +11,6 @@ import { DateFactory } from "@portalai/core/utils";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import HandymanOutlined from "@mui/icons-material/HandymanOutlined";
 import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,13 +21,13 @@ import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
 import { EditStationDialog } from "../components/EditStationDialog.component";
 import { SyncTotal } from "../components/SyncTotal.component";
+import { ToolPackChip } from "../components/ToolPackChip.component";
 import {
   usePagination,
   PaginationToolbar,
 } from "../components/PaginationToolbar.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch, toServerError } from "../utils/api.util";
-import { ToolPackUtil } from "../utils/tool-packs.util";
 
 // ── Station data item component ─────────────────────────────────────
 
@@ -174,13 +173,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                             value: (
                               <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
                                 {station.toolPacks.map((pack) => (
-                                  <Chip
-                                    key={pack}
-                                    icon={<HandymanOutlined fontSize="small" />}
-                                    label={ToolPackUtil.getLabel(pack)}
-                                    size="small"
-                                    variant="outlined"
-                                  />
+                                  <ToolPackChip key={pack} pack={pack} />
                                 ))}
                               </Stack>
                             ),

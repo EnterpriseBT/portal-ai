@@ -28,7 +28,7 @@ export const PageEmptyState = React.forwardRef<
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        py: 8,
+        py: 3,
         px: 3,
       }}
       {...rest}
