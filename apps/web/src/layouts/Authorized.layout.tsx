@@ -22,7 +22,7 @@ export const AuthorizedLayout = ({
             alignItems: "center",
           }}
         >
-          <ButtonGroup sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <ButtonGroup sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {isMobile && <SidebarNavToggle />}
             <Link
               to="/"
@@ -33,7 +33,7 @@ export const AuthorizedLayout = ({
                 alignItems: "center",
               }}
             >
-              <Typography variant="h5" color="inherit" margin="auto">
+              <Typography variant="h3" color="inherit" margin="auto">
                 Portals.ai
               </Typography>
             </Link>

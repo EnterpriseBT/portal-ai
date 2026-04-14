@@ -28,7 +28,10 @@ export const auth = {
     const { logout } = useAuth0();
     return {
       logout: () =>
-        logout({ logoutParams: { returnTo: window.location.origin } }),
+        logout({
+          logoutParams: { returnTo: window.location.origin },
+          openUrl: (url) => window.location.replace(url),
+        }),
     };
   },
 

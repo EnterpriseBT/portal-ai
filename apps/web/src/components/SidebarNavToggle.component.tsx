@@ -23,10 +23,6 @@ export const SidebarNavToggleUI = ({
       color="inherit"
       onClick={onClick}
       size="small"
-      sx={{
-        width: 16,
-        height: 32,
-      }}
       icon={collapsed ? collapsedIcon : expandedIcon}
     />
   );

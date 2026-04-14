@@ -9,7 +9,7 @@ export const PublicLayout = ({ children }: { children: React.ReactNode }) => {
       <AppBar position="static">
         <Toolbar sx={{ justifyContent: "space-between" }}>
           <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
-            <Typography variant="h6" color="inherit">
+            <Typography variant="h3" color="inherit">
               Portals.ai
             </Typography>
           </Link>
