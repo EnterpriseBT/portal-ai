@@ -272,6 +272,7 @@ export class PortalService {
       organizationId,
       stationId,
       name,
+      lastOpened: null,
       created: now,
       createdBy: userId,
       updated: null,

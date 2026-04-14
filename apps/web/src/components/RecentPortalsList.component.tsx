@@ -59,7 +59,7 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
                   color="text.secondary"
                   sx={{ ml: 2, flexShrink: 0 }}
                 >
-                  {DateFactory.relativeTime(portal.created)}
+                  {DateFactory.relativeTime(portal.lastOpened ?? portal.created)}
                 </Typography>
               </Stack>
             </CardContent>
@@ -80,7 +80,7 @@ const RecentPortalData: React.FC<PortalDataProps> = ({ children }) => {
   const res = sdk.portals.list({
     limit: 5,
     offset: 0,
-    sortBy: "created",
+    sortBy: "lastOpened",
     sortOrder: "desc",
   });
   return <>{children(res)}</>;

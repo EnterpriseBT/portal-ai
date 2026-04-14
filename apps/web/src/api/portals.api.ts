@@ -64,4 +64,10 @@ export const portals = {
       url: `/api/portals/${encodeURIComponent(portalId)}/messages`,
       method: "DELETE",
     }),
+
+  touch: (id: string) =>
+    useAuthMutation<{ portal: { id: string } }, { lastOpened: number }>({
+      url: `/api/portals/${encodeURIComponent(id)}`,
+      method: "PATCH",
+    }),
 };

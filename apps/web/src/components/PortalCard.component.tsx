@@ -9,6 +9,7 @@ interface PortalCardUIProps {
   id: string;
   name: string;
   created: number;
+  lastOpened: number | null;
   onClick: (id: string) => void;
   onDelete: (id: string) => void;
 }
@@ -17,6 +18,7 @@ export const PortalCardUI: React.FC<PortalCardUIProps> = ({
   id,
   name,
   created,
+  lastOpened,
   onClick,
   onDelete,
 }) => {
@@ -32,7 +34,9 @@ export const PortalCardUI: React.FC<PortalCardUIProps> = ({
       data-testid={`portal-card-${id}`}
     >
       <Typography variant="caption" color="text.secondary">
-        {DateFactory.relativeTime(created)}
+        {lastOpened
+          ? `Opened ${DateFactory.relativeTime(lastOpened)}`
+          : `Created ${DateFactory.relativeTime(created)}`}
       </Typography>
     </DetailCard>
   );

@@ -30,7 +30,7 @@ export class PortalsRepository extends Repository<
     return this.findMany(eq(portals.stationId, stationId), opts, client);
   }
 
-  /** Return the most recent portals for an organization, ordered by created desc. */
+  /** Return the most recent portals for an organization, ordered by lastOpened desc. */
   async findRecentByOrg(
     organizationId: string,
     limit: number = 10,
@@ -38,7 +38,7 @@ export class PortalsRepository extends Repository<
   ): Promise<PortalSelect[]> {
     return this.findMany(
       eq(portals.organizationId, organizationId),
-      { limit, orderBy: { column: this.cols.created, direction: "desc" } },
+      { limit, orderBy: { column: this.cols.lastOpened, direction: "desc" } },
       client
     );
   }

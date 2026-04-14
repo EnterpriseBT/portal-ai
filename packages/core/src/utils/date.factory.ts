@@ -136,6 +136,11 @@ export class DateFactory {
     }) as TZDate;
   }
 
+  /** Returns the current Unix-ms timestamp. */
+  static now(): number {
+    return Date.now();
+  }
+
   /**
    * Returns a human-readable relative time string for a Unix-ms timestamp
    * compared to now (e.g. "just now", "5m ago", "3h ago", "2d ago").

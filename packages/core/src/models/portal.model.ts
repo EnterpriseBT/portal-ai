@@ -14,6 +14,7 @@ export const PortalSchema = CoreSchema.extend({
   organizationId: z.string(),
   stationId: z.string(),
   name: z.string().min(1),
+  lastOpened: z.number().nullable(),
 });
 
 export type Portal = z.infer<typeof PortalSchema>;

@@ -80,6 +80,7 @@ describe("PortalsRepository Integration Tests", () => {
       organizationId: orgId,
       stationId,
       name: `portal-${generateId().slice(0, 8)}`,
+      lastOpened: null,
       created: now,
       createdBy: "test-system",
       updated: null,
@@ -157,11 +158,11 @@ describe("PortalsRepository Integration Tests", () => {
   // ── findRecentByOrg ────────────────────────────────────────────
 
   describe("findRecentByOrg", () => {
-    it("should return portals ordered by created desc", async () => {
+    it("should return portals ordered by lastOpened desc", async () => {
       const now = Date.now();
-      await repo.create(makePortal({ name: "oldest", created: now - 2000 }), db);
-      await repo.create(makePortal({ name: "middle", created: now - 1000 }), db);
-      await repo.create(makePortal({ name: "newest", created: now }), db);
+      await repo.create(makePortal({ name: "oldest", created: now, lastOpened: now - 2000 }), db);
+      await repo.create(makePortal({ name: "middle", created: now, lastOpened: now - 1000 }), db);
+      await repo.create(makePortal({ name: "newest", created: now, lastOpened: now }), db);
 
       const results = await repo.findRecentByOrg(orgId, 10, db);
       expect(results).toHaveLength(3);
@@ -170,11 +171,23 @@ describe("PortalsRepository Integration Tests", () => {
       expect(results[2].name).toBe("oldest");
     });
 
+    it("should order by lastOpened independent of created", async () => {
+      const now = Date.now();
+      // Portal created first but opened most recently
+      await repo.create(makePortal({ name: "old-but-recent", created: now - 5000, lastOpened: now }), db);
+      // Portal created last but opened earlier
+      await repo.create(makePortal({ name: "new-but-stale", created: now, lastOpened: now - 3000 }), db);
+
+      const results = await repo.findRecentByOrg(orgId, 10, db);
+      expect(results[0].name).toBe("old-but-recent");
+      expect(results[1].name).toBe("new-but-stale");
+    });
+
     it("should respect the limit parameter", async () => {
       const now = Date.now();
-      await repo.create(makePortal({ created: now - 2000 }), db);
-      await repo.create(makePortal({ created: now - 1000 }), db);
-      await repo.create(makePortal({ created: now }), db);
+      await repo.create(makePortal({ lastOpened: now - 2000 }), db);
+      await repo.create(makePortal({ lastOpened: now - 1000 }), db);
+      await repo.create(makePortal({ lastOpened: now }), db);
 
       const results = await repo.findRecentByOrg(orgId, 2, db);
       expect(results).toHaveLength(2);
@@ -182,8 +195,8 @@ describe("PortalsRepository Integration Tests", () => {
 
     it("should exclude soft-deleted portals", async () => {
       const now = Date.now();
-      const portal = await repo.create(makePortal({ created: now }), db);
-      await repo.create(makePortal({ created: now - 1000 }), db);
+      const portal = await repo.create(makePortal({ lastOpened: now }), db);
+      await repo.create(makePortal({ lastOpened: now - 1000 }), db);
       await repo.softDelete(portal.id, "test-system", db);
 
       const results = await repo.findRecentByOrg(orgId, 10, db);

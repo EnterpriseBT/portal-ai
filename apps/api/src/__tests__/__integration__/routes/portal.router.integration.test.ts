@@ -84,6 +84,7 @@ function createPortal(
     organizationId,
     stationId,
     name: "Test Portal",
+    lastOpened: null,
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -221,6 +222,41 @@ describe("Portal Router", () => {
 
       expect(res.body.payload.portals).toHaveLength(1);
       expect(res.body.payload.portals[0].id).toBe(portalA.id);
+    });
+
+    it("sorts portals by lastOpened desc", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const older = createPortal(organizationId, station.id, {
+        name: "Older",
+        lastOpened: now - 10000,
+      });
+      const newer = createPortal(organizationId, station.id, {
+        name: "Newer",
+        lastOpened: now,
+      });
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values([older as never, newer as never]);
+
+      const res = await request(app)
+        .get("/api/portals?sortBy=lastOpened&sortOrder=desc")
+        .expect(200);
+
+      const names = res.body.payload.portals.map(
+        (p: { name: string }) => p.name
+      );
+      expect(names[0]).toBe("Newer");
+      expect(names[1]).toBe("Older");
     });
   });
 
@@ -439,7 +475,65 @@ describe("Portal Router", () => {
       expect(row.updated).not.toBeNull();
     });
 
-    it("returns 400 when name is missing", async () => {
+    it("updates lastOpened", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const timestamp = Date.now();
+      const res = await request(app)
+        .patch(`/api/portals/${portal.id}`)
+        .send({ lastOpened: timestamp })
+        .expect(200);
+
+      expect(res.body.payload.portal.lastOpened).toBe(timestamp);
+
+      const [row] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(portals)
+        .where(eq(portals.id, portal.id));
+      expect(row.lastOpened).toBe(timestamp);
+      expect(row.updated).not.toBeNull();
+    });
+
+    it("updates both name and lastOpened simultaneously", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const timestamp = Date.now();
+      const res = await request(app)
+        .patch(`/api/portals/${portal.id}`)
+        .send({ name: "New Name", lastOpened: timestamp })
+        .expect(200);
+
+      expect(res.body.payload.portal.name).toBe("New Name");
+      expect(res.body.payload.portal.lastOpened).toBe(timestamp);
+    });
+
+    it("returns 400 when neither name nor lastOpened is provided", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
       await request(app)
@@ -448,7 +542,7 @@ describe("Portal Router", () => {
         .expect(400);
     });
 
-    it("returns 400 when name is empty", async () => {
+    it("returns 400 when name is empty and lastOpened is absent", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
       await request(app)

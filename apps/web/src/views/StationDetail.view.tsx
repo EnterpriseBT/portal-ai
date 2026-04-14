@@ -121,8 +121,11 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   }, [deleteTarget, fetchWithAuth, queryClient]);
 
   const portalsPagination = usePagination({
-    sortFields: [{ field: "created", label: "Created" }],
-    defaultSortBy: "created",
+    sortFields: [
+      { field: "lastOpened", label: "Last Opened" },
+      { field: "created", label: "Created" },
+    ],
+    defaultSortBy: "lastOpened",
     defaultSortOrder: "desc",
   });
 
@@ -245,6 +248,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                           id={portal.id}
                                           name={portal.name}
                                           created={portal.created}
+                                          lastOpened={portal.lastOpened}
                                           onClick={(id) =>
                                             navigate({ to: `/portals/${id}` })
                                           }

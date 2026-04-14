@@ -17,6 +17,7 @@ const makePortal = (overrides: Partial<Portal> = {}): Portal => ({
   updatedBy: null,
   deleted: null,
   deletedBy: null,
+  lastOpened: null,
   ...overrides,
 });
 
@@ -62,6 +63,33 @@ describe("RecentPortalsListUI", () => {
     render(<RecentPortalsListUI {...defaultProps} portals={[]} />);
     expect(screen.getByTestId("empty-portals")).toBeInTheDocument();
     expect(screen.getByText("No portals yet")).toBeInTheDocument();
+  });
+
+  it("should display lastOpened timestamp when available", () => {
+    const portal = makePortal({
+      id: "portal-lo",
+      name: "Recently Opened",
+      created: Date.now() - 86400000, // 1 day ago
+      lastOpened: Date.now() - 3600000, // 1 hour ago
+    });
+    render(
+      <RecentPortalsListUI portals={[portal]} onPortalClick={jest.fn()} />
+    );
+    // Should show lastOpened (1h) not created (1d)
+    expect(screen.getByText("1h ago")).toBeInTheDocument();
+  });
+
+  it("should fall back to created when lastOpened is null", () => {
+    const portal = makePortal({
+      id: "portal-null",
+      name: "Never Opened",
+      created: Date.now() - 86400000, // 1 day ago
+      lastOpened: null,
+    });
+    render(
+      <RecentPortalsListUI portals={[portal]} onPortalClick={jest.fn()} />
+    );
+    expect(screen.getByText("1d ago")).toBeInTheDocument();
   });
 
   it("should render all portals passed", () => {

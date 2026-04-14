@@ -28,6 +28,7 @@ const validPortal = {
   updatedBy: null,
   deleted: null,
   deletedBy: null,
+  lastOpened: null,
 };
 
 // ── CreatePortalBodySchema ──────────────────────────────────────────
