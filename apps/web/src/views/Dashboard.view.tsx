@@ -12,7 +12,6 @@ import {
   PageSection,
   Stack,
 } from "@portalai/core/ui";
-import RocketLaunch from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -49,7 +48,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
         primaryAction={
           <Button
             variant="contained"
-            startIcon={<RocketLaunch />}
+            startIcon={<Icon name={IconName.Portal} />}
             onClick={onNewPortal}
           >
             Launch New Portal
@@ -61,7 +60,7 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 
       <PageGrid columns={{ xs: 1, md: 2 }}>
         <PageGridItem span={{ xs: 1, md: 2 }}>
-          <PageSection title="Recent Portals" icon={<Icon name={IconName.RocketLaunch} />}>
+          <PageSection title="Recent Portals" icon={<Icon name={IconName.Portal} />}>
             <RecentPortalsListConnected onPortalClick={onPortalClick} />
           </PageSection>
         </PageGridItem>

@@ -7,7 +7,6 @@ import type {
 } from "@portalai/core/contracts";
 import { Button, DetailCard, Icon, IconName, MetadataList, PageEmptyState, Stack, Typography } from "@portalai/core/ui";
 import Link from "@mui/material/Link";
-import RocketLaunch from "@mui/icons-material/RocketLaunch";
 
 import DataResult from "./DataResult.component";
 import { OrgData } from "./StationList.component";
@@ -65,7 +64,7 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
       actions={[
         {
           label: "Open Portal",
-          icon: <RocketLaunch />,
+          icon: <Icon name={IconName.Portal} />,
           variant: "contained",
           onClick: () => onLaunchPortal(station.id),
         },
