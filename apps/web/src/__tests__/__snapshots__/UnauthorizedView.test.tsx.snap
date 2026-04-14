@@ -10,7 +10,7 @@ exports[`UnauthorizedView Component should match snapshot 1`] = `
   >
     <svg
       aria-hidden="true"
-      class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1n2dx9w-MuiSvgIcon-root"
+      class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium css-1xmkh9g-MuiSvgIcon-root"
       data-testid="LockIcon"
       focusable="false"
       viewBox="0 0 24 24"
@@ -21,20 +21,20 @@ exports[`UnauthorizedView Component should match snapshot 1`] = `
     </svg>
   </div>
   <h1
-    class="MuiTypography-root MuiTypography-h1 css-w0wbp3-MuiTypography-root"
-    style="color: rgb(255, 86, 48); margin-bottom: 8px;"
+    class="MuiTypography-root MuiTypography-h1 css-3k0xml-MuiTypography-root"
+    style="color: rgb(220, 38, 38); margin-bottom: 8px;"
   >
     401
   </h1>
   <h4
-    class="MuiTypography-root MuiTypography-h4 css-1speupf-MuiTypography-root"
+    class="MuiTypography-root MuiTypography-h4 css-sc444u-MuiTypography-root"
     style="margin-bottom: 16px;"
   >
     Unauthorized
   </h4>
   <p
-    class="MuiTypography-root MuiTypography-body1 css-wlsem8-MuiTypography-root"
-    style="color: rgb(107, 119, 140); max-width: 480px; margin-bottom: 32px;"
+    class="MuiTypography-root MuiTypography-body1 css-1jshwn9-MuiTypography-root"
+    style="color: rgb(74, 68, 104); max-width: 480px; margin-bottom: 32px;"
   >
     You need to sign in to access this page.
   </p>
@@ -42,15 +42,15 @@ exports[`UnauthorizedView Component should match snapshot 1`] = `
     class="MuiBox-root css-10egq61"
   >
     <button
-      class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary css-1ltjtnm-MuiButtonBase-root-MuiButton-root"
-      style="border-color: rgba(0, 82, 204, 0.5);"
+      class="MuiButtonBase-root MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-outlined MuiButton-outlinedPrimary MuiButton-sizeMedium MuiButton-outlinedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation css-54uywz-MuiButtonBase-root-MuiButton-root"
+      style="border-color: rgba(91, 63, 192, 0.5);"
       tabindex="0"
       type="button"
     >
       Go Back
     </button>
     <button
-      class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary css-1b8afgd-MuiButtonBase-root-MuiButton-root"
+      class="MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-disableElevation css-w0xxa4-MuiButtonBase-root-MuiButton-root"
       tabindex="0"
       type="button"
     >
