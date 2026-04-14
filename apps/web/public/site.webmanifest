@@ -1,6 +1,6 @@
 {
-  "name": "Portal.ai",
-  "short_name": "Portal.ai",
+  "name": "Portals",
+  "short_name": "Portals",
   "description": "AI-powered data portals for intelligent data integration and visualization",
   "start_url": "/",
   "display": "standalone",

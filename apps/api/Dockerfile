@@ -25,11 +25,21 @@ RUN npx turbo run build --filter=@portalai/api --env-mode=loose
 
 # --- Deps stage (install production deps on native arch to avoid QEMU crashes) ---
 FROM --platform=$BUILDPLATFORM node:22-alpine AS deps
+ARG TARGETPLATFORM
 WORKDIR /app
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/apps/api/package.json apps/api/
 COPY --from=build /app/packages/core/package.json packages/core/
 RUN npm ci --omit=dev
+# esbuild ships platform-specific binaries; npm installs the one matching the
+# build platform, but the runtime may be a different arch (e.g. CI builds on
+# x64, ECS runs on arm64). Install the correct binary for the target platform.
+RUN <<EOF
+  case "$TARGETPLATFORM" in
+    linux/arm64) npm install --no-save @esbuild/linux-arm64 ;;
+    linux/amd64) npm install --no-save @esbuild/linux-x64 ;;
+  esac
+EOF
 
 # --- Runtime stage (target arch) ---
 FROM node:22-alpine AS runtime
