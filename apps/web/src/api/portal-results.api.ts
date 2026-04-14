@@ -11,6 +11,7 @@ export type PortalResultsListParams = {
   search?: string;
   limit?: number;
   offset?: number;
+  include?: string;
 };
 
 export interface PortalResultsListPayload {

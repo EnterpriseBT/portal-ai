@@ -200,6 +200,18 @@ describe("DateFactory", () => {
     });
   });
 
+  // ── now (static) ─────────────────────────────────────────────────
+
+  describe("now()", () => {
+    it("returns a number close to Date.now()", () => {
+      const before = Date.now();
+      const result = DateFactory.now();
+      const after = Date.now();
+      expect(result).toBeGreaterThanOrEqual(before);
+      expect(result).toBeLessThanOrEqual(after);
+    });
+  });
+
   // ── fns passthrough with tzContext ────────────────────────────────
 
   describe("fns + tzContext passthrough", () => {

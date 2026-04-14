@@ -16,6 +16,7 @@ import { DbService } from "../services/db.service.js";
 import { portals, portalMessages, portalResults } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { PortalService } from "../services/portal.service.js";
+import { SystemUtilities } from "../utils/system.util.js";
 
 const logger = createLogger({ module: "portal" });
 
@@ -150,6 +151,13 @@ portalRouter.post(
  *       - $ref: '#/components/parameters/offsetParam'
  *       - $ref: '#/components/parameters/sortOrderParam'
  *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [created, lastOpened]
+ *           default: created
+ *         description: Field to sort portals by
+ *       - in: query
  *         name: stationId
  *         schema:
  *           type: string
@@ -179,7 +187,7 @@ portalRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortOrder, stationId } =
+      const { limit, offset, sortOrder, sortBy, stationId, include } =
         PortalListRequestQuerySchema.parse(req.query);
       const { organizationId } = req.application!.metadata;
 
@@ -189,10 +197,15 @@ portalRouter.get(
       }
       const where = and(...filters);
 
+      const sortColumn =
+        sortBy === "lastOpened" ? portals.lastOpened : portals.created;
+
+      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
       const listOpts = {
         limit,
         offset,
-        orderBy: { column: portals.created, direction: sortOrder },
+        orderBy: { column: sortColumn, direction: sortOrder },
+        include: include_,
       };
 
       const [data, total] = await Promise.all([
@@ -473,7 +486,8 @@ portalRouter.delete(
  *   patch:
  *     tags:
  *       - Portals
- *     summary: Rename a portal
+ *     summary: Update a portal
+ *     description: Updates portal fields. At least one of `name` or `lastOpened` must be provided.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -489,16 +503,19 @@ portalRouter.delete(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name]
  *             properties:
  *               name:
  *                 type: string
  *                 example: Updated Portal Name
+ *               lastOpened:
+ *                 type: number
+ *                 description: Unix-ms timestamp of when the portal was last visited
+ *                 example: 1713100800000
  *     responses:
  *       200:
- *         description: Portal renamed successfully
+ *         description: Portal updated successfully
  *       400:
- *         description: Invalid payload
+ *         description: Invalid payload (neither name nor lastOpened provided)
  *       404:
  *         description: Portal not found
  *       500:
@@ -512,10 +529,17 @@ portalRouter.patch(
       const { id } = req.params;
       const { organizationId, userId } = req.application!.metadata;
 
-      const { name } = req.body as { name?: string };
-      if (!name || typeof name !== "string" || name.trim() === "") {
+      const { name, lastOpened } = req.body as {
+        name?: string;
+        lastOpened?: number;
+      };
+
+      const hasName = name && typeof name === "string" && name.trim() !== "";
+      const hasLastOpened = typeof lastOpened === "number";
+
+      if (!hasName && !hasLastOpened) {
         return next(
-          new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "name is required")
+          new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "name or lastOpened is required")
         );
       }
 
@@ -526,23 +550,35 @@ portalRouter.patch(
         );
       }
 
+      const now = SystemUtilities.utc.now().getTime();
+      const updates: Record<string, unknown> = {
+        updated: now,
+        updatedBy: userId,
+      };
+      if (hasName) {
+        updates.name = name!.trim();
+      }
+      if (hasLastOpened) {
+        updates.lastOpened = lastOpened;
+      }
+
       const portal = await DbService.repository.portals.update(
         id,
-        { name: name.trim(), updated: Date.now(), updatedBy: userId } as never
+        updates as never
       );
 
-      logger.info({ id }, "Portal renamed");
+      logger.info({ id }, "Portal updated");
 
       return HttpService.success(res, { portal });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown" },
-        "Failed to rename portal"
+        "Failed to update portal"
       );
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to rename portal")
+          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to update portal")
       );
     }
   }

@@ -8,6 +8,7 @@ import type {
 } from "@portalai/core/contracts";
 import { Box, Button, Icon, IconName, MetadataList, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
+import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -66,6 +67,9 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const { fetchWithAuth } = useAuthFetch();
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
+  const orgResult = sdk.organizations.current();
+  const defaultStationId = orgResult.data?.organization.defaultStationId ?? null;
+  const isDefaultStation = defaultStationId === stationId;
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteStationOpen, setDeleteStationOpen] = useState(false);
@@ -121,8 +125,11 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   }, [deleteTarget, fetchWithAuth, queryClient]);
 
   const portalsPagination = usePagination({
-    sortFields: [{ field: "created", label: "Created" }],
-    defaultSortBy: "created",
+    sortFields: [
+      { field: "lastOpened", label: "Last Opened" },
+      { field: "created", label: "Created" },
+    ],
+    defaultSortBy: "lastOpened",
     defaultSortOrder: "desc",
   });
 
@@ -199,8 +206,14 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                             hidden: (station.instances ?? []).length === 0,
                           },
                           { label: "Created", value: DateFactory.relativeTime(station.created) },
+                          { label: "Organization Default", value: "Yes", hidden: !isDefaultStation },
                         ]}
                       />
+                      {(station.instances ?? []).length === 0 && (
+                        <Alert severity="warning" variant="outlined">
+                          This station has no connector instances. Add connectors to enable data access.
+                        </Alert>
+                      )}
                     </PageHeader>
 
 
@@ -245,6 +258,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                           id={portal.id}
                                           name={portal.name}
                                           created={portal.created}
+                                          lastOpened={portal.lastOpened}
                                           onClick={(id) =>
                                             navigate({ to: `/portals/${id}` })
                                           }

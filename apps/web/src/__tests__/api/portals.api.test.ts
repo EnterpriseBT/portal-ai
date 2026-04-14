@@ -99,4 +99,14 @@ describe("portals.api", () => {
       });
     });
   });
+
+  describe("touch", () => {
+    it("sends PATCH to portal endpoint", () => {
+      portals.touch("portal-123");
+      expect(mockUseAuthMutation).toHaveBeenCalledWith({
+        url: "/api/portals/portal-123",
+        method: "PATCH",
+      });
+    });
+  });
 });

@@ -15,6 +15,7 @@ const validPortalFields = {
   organizationId: "org-1",
   stationId: "station-1",
   name: "Portal — 2026-03-25",
+  lastOpened: null,
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -36,6 +37,7 @@ describe("PortalSchema", () => {
       organizationId: "org-1",
       stationId: "station-1",
       name: "Portal — 2026-03-25",
+      lastOpened: null,
     };
     const result = PortalSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -69,9 +71,46 @@ describe("PortalSchema", () => {
       deletedBy: null,
       organizationId: "org-1",
       name: "Portal A",
+      lastOpened: null,
     };
     const result = PortalSchema.safeParse(data);
     expect(result.success).toBe(false);
+  });
+
+  it("should accept lastOpened as a number", () => {
+    const data = {
+      id: "p-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: "org-1",
+      stationId: "station-1",
+      name: "Portal A",
+      lastOpened: Date.now(),
+    };
+    const result = PortalSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it("should accept lastOpened as null", () => {
+    const data = {
+      id: "p-1",
+      created: Date.now(),
+      createdBy: "user-1",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+      organizationId: "org-1",
+      stationId: "station-1",
+      name: "Portal A",
+      lastOpened: null,
+    };
+    const result = PortalSchema.safeParse(data);
+    expect(result.success).toBe(true);
   });
 });
 
@@ -162,6 +201,7 @@ describe("PortalModelFactory", () => {
       expect(shape).toHaveProperty("organizationId");
       expect(shape).toHaveProperty("stationId");
       expect(shape).toHaveProperty("name");
+      expect(shape).toHaveProperty("lastOpened");
     });
 
     it("should allow updating domain fields after creation", () => {

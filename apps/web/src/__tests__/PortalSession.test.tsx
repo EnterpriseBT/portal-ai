@@ -93,6 +93,7 @@ const makeQueryResult = (
       updatedBy: null,
       deleted: null,
       deletedBy: null,
+      lastOpened: null,
     },
     messages,
   },

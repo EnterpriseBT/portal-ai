@@ -1,4 +1,4 @@
-import { pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, pgTable, text } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 import { organizations } from "./organizations.table.js";
 import { stations } from "./stations.table.js";
@@ -16,4 +16,5 @@ export const portals = pgTable("portals", {
     .notNull()
     .references(() => stations.id),
   name: text("name").notNull(),
+  lastOpened: bigint("last_opened", { mode: "number" }),
 });

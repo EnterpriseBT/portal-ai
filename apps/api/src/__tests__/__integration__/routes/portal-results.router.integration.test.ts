@@ -302,6 +302,91 @@ describe("Portal Results Router", () => {
       expect(res.body.payload.portalResults).toHaveLength(1);
       expect(res.body.payload.portalResults[0].id).toBe(resultA.id);
     });
+
+    it("attaches portalName when include=portal", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      (portal as Record<string, unknown>).name = "Sales Portal";
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const result = createPortalResult(organizationId, station.id, portal.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(result as never);
+
+      const res = await request(app)
+        .get("/api/portal-results?include=portal")
+        .expect(200);
+
+      expect(res.body.payload.portalResults).toHaveLength(1);
+      expect(res.body.payload.portalResults[0].portalName).toBe("Sales Portal");
+    });
+
+    it("returns portalName as null when portalId is null", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const result = createPortalResult(
+        organizationId,
+        station.id,
+        null as unknown as string,
+        { portalId: null }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(result as never);
+
+      const res = await request(app)
+        .get("/api/portal-results?include=portal")
+        .expect(200);
+
+      expect(res.body.payload.portalResults).toHaveLength(1);
+      expect(res.body.payload.portalResults[0].portalName).toBeNull();
+    });
+
+    it("omits portalName when include is absent", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const result = createPortalResult(organizationId, station.id, portal.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portalResults)
+        .values(result as never);
+
+      const res = await request(app).get("/api/portal-results").expect(200);
+
+      expect(res.body.payload.portalResults[0]).not.toHaveProperty("portalName");
+    });
   });
 
   // ── GET /api/portal-results/:id ─────────────────────────────────

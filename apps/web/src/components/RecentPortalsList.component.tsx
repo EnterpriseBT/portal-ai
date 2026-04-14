@@ -1,12 +1,10 @@
 import React from "react";
 
-import type { Portal } from "@portalai/core/models";
-import type { PortalListResponsePayload } from "@portalai/core/contracts";
-import { Box, Stack, Typography } from "@portalai/core/ui";
+import type { PortalListResponsePayload, PortalWithIncludes } from "@portalai/core/contracts";
+import { DetailCard, Icon, IconName, Stack, Typography } from "@portalai/core/ui";
+import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
-import Card from "@mui/material/Card";
-import CardActionArea from "@mui/material/CardActionArea";
-import CardContent from "@mui/material/CardContent";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 import DataResult from "./DataResult.component";
 import { sdk } from "../api/sdk";
@@ -14,13 +12,15 @@ import { sdk } from "../api/sdk";
 // ── Pure UI ─────────────────────────────────────────────────────────
 
 export interface RecentPortalsListUIProps {
-  portals: Portal[];
+  portals: PortalWithIncludes[];
   onPortalClick: (portalId: string) => void;
+  onDeletePortal: (portalId: string, portalName: string) => void;
 }
 
 export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
   portals,
   onPortalClick,
+  onDeletePortal,
 }) => {
   if (portals.length === 0) {
     return (
@@ -37,35 +37,40 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
 
   return (
     <Stack spacing={1}>
-      {portals.map((portal) => (
-        <Card key={portal.id} variant="outlined">
-          <CardActionArea
+      {portals.map((portal) => {
+        const actions: ActionSuiteItem[] = [
+          {
+            label: "Delete",
+            icon: <DeleteIcon />,
+            color: "error",
+            onClick: () => onDeletePortal(portal.id, portal.name),
+          },
+        ];
+
+        return (
+          <DetailCard
+            key={portal.id}
+            title={portal.name}
             onClick={() => onPortalClick(portal.id)}
+            actions={actions}
             data-testid={`portal-row-${portal.id}`}
           >
-            <CardContent sx={{ "&:last-child": { pb: 2 } }}>
-              <Stack
-                direction="row"
-                justifyContent="space-between"
-                alignItems="center"
-              >
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography variant="subtitle2" noWrap>
-                    {portal.name}
+            <Stack spacing={0.25}>
+              {portal.stationName && (
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <Icon name={IconName.SatelliteAlt} sx={{ fontSize: "0.875rem", color: "text.secondary" }} />
+                  <Typography variant="caption" color="text.secondary">
+                    {portal.stationName}
                   </Typography>
-                </Box>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ ml: 2, flexShrink: 0 }}
-                >
-                  {DateFactory.relativeTime(portal.created)}
-                </Typography>
-              </Stack>
-            </CardContent>
-          </CardActionArea>
-        </Card>
-      ))}
+                </Stack>
+              )}
+              <Typography variant="caption" color="text.secondary">
+                {DateFactory.relativeTime(portal.lastOpened ?? portal.created)}
+              </Typography>
+            </Stack>
+          </DetailCard>
+        );
+      })}
     </Stack>
   );
 };
@@ -80,8 +85,9 @@ const RecentPortalData: React.FC<PortalDataProps> = ({ children }) => {
   const res = sdk.portals.list({
     limit: 5,
     offset: 0,
-    sortBy: "created",
+    sortBy: "lastOpened",
     sortOrder: "desc",
+    include: "station",
   });
   return <>{children(res)}</>;
 };
@@ -90,11 +96,12 @@ const RecentPortalData: React.FC<PortalDataProps> = ({ children }) => {
 
 export interface RecentPortalsListConnectedProps {
   onPortalClick: (portalId: string) => void;
+  onDeletePortal: (portalId: string, portalName: string) => void;
 }
 
 export const RecentPortalsListConnected: React.FC<
   RecentPortalsListConnectedProps
-> = ({ onPortalClick }) => (
+> = ({ onPortalClick, onDeletePortal }) => (
   <RecentPortalData>
     {(result) => (
       <DataResult results={{ portals: result }}>
@@ -105,6 +112,7 @@ export const RecentPortalsListConnected: React.FC<
             <RecentPortalsListUI
               portals={payload.portals}
               onPortalClick={onPortalClick}
+              onDeletePortal={onDeletePortal}
             />
           );
         }}

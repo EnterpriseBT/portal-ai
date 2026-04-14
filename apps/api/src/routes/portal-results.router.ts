@@ -252,7 +252,7 @@ portalResultsRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortOrder, search, stationId, portalId } =
+      const { limit, offset, sortOrder, search, stationId, portalId, include } =
         PortalResultListRequestQuerySchema.parse(req.query);
       const { organizationId } = req.application!.metadata;
 
@@ -270,10 +270,12 @@ portalResultsRouter.get(
       }
       const where = and(...filters);
 
+      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
       const listOpts = {
         limit,
         offset,
         orderBy: { column: portalResults.created, direction: sortOrder },
+        include: include_,
       };
 
       const [data, total] = await Promise.all([

@@ -1,6 +1,6 @@
 import React from "react";
 
-import type { PortalResult } from "@portalai/core/models";
+import type { PortalResultWithIncludes } from "@portalai/core/contracts";
 import { Box, DetailCard, Stack, Typography } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
@@ -28,7 +28,7 @@ function ResultTypeIcon({ type }: { type: string }) {
 // ── Card UI (pure) ──────────────────────────────────────────────────
 
 export interface PinnedResultCardUIProps {
-  result: PortalResult;
+  result: PortalResultWithIncludes;
   onResultClick: (id: string) => void;
   onUnpin: (id: string) => void;
 }
@@ -50,9 +50,16 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
       actions={actions}
       data-testid={`pinned-result-row-${result.id}`}
     >
-      <Typography variant="caption" color="text.secondary">
-        {DateFactory.relativeTime(result.created)}
-      </Typography>
+      <Stack spacing={0.25}>
+        {result.portalName && (
+          <Typography variant="caption" color="text.secondary">
+            from {result.portalName}
+          </Typography>
+        )}
+        <Typography variant="caption" color="text.secondary">
+          {DateFactory.relativeTime(result.created)}
+        </Typography>
+      </Stack>
     </DetailCard>
   );
 };
@@ -60,7 +67,7 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
 // ── List UI (pure) ──────────────────────────────────────────────────
 
 export interface PinnedResultsListUIProps {
-  results: PortalResult[];
+  results: PortalResultWithIncludes[];
   onResultClick: (id: string) => void;
   onUnpin: (id: string) => void;
   onViewAll: () => void;
@@ -118,7 +125,7 @@ interface PinnedResultsDataProps {
 }
 
 const PinnedResultsData: React.FC<PinnedResultsDataProps> = ({ children }) => {
-  const res = sdk.portalResults.list({ limit: 5, offset: 0 });
+  const res = sdk.portalResults.list({ limit: 5, offset: 0, include: "portal" });
   return <>{children(res)}</>;
 };
 
@@ -140,7 +147,7 @@ export const PinnedResultsListConnected: React.FC<
           const payload = data.pinned as unknown as PortalResultsListPayload;
           return (
             <PinnedResultsListUI
-              results={payload.portalResults as unknown as PortalResult[]}
+              results={payload.portalResults as unknown as PortalResultWithIncludes[]}
               onResultClick={onResultClick}
               onUnpin={onUnpin}
               onViewAll={onViewAll}

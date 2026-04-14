@@ -2,6 +2,7 @@ import React, { useState, useCallback } from "react";
 
 import type { PortalGetResponsePayload } from "@portalai/core/contracts";
 import { Box, Button, Icon, IconName, MetadataList, Modal, PageHeader, Stack } from "@portalai/core/ui";
+import { DateFactory } from "@portalai/core/utils";
 import Chip from "@mui/material/Chip";
 import Collapse from "@mui/material/Collapse";
 import MuiLink from "@mui/material/Link";
@@ -227,9 +228,23 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
 
   const renameMutation = sdk.portals.rename(portalId);
   const removeMutation = sdk.portals.remove(portalId);
+  const touchMutation = sdk.portals.touch(portalId);
 
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // Update lastOpened timestamp when the portal view is visited
+  React.useEffect(() => {
+    touchMutation.mutate(
+      { lastOpened: DateFactory.now() },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
+        },
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portalId]);
 
   const handleRenameSubmit = useCallback(
     (name: string) => {

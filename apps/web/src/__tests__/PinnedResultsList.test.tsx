@@ -1,12 +1,14 @@
 import { jest } from "@jest/globals";
-import type { PortalResult } from "@portalai/core/models";
+import type { PortalResultWithIncludes } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
 const { PinnedResultCardUI, PinnedResultsListUI } = await import(
   "../components/PinnedResultsList.component"
 );
 
-const makePinnedResult = (overrides: Partial<PortalResult> = {}): PortalResult => ({
+const makePinnedResult = (
+  overrides: Partial<PortalResultWithIncludes> = {}
+): PortalResultWithIncludes => ({
   id: "result-1",
   organizationId: "org-1",
   stationId: "station-1",
@@ -79,6 +81,30 @@ describe("PinnedResultCardUI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
     expect(onUnpin).toHaveBeenCalledWith("result-1");
     expect(onResultClick).not.toHaveBeenCalled();
+  });
+
+  it("should render portal name when portalName is provided", () => {
+    const result = makePinnedResult({ portalName: "Research Portal" });
+    render(
+      <PinnedResultCardUI result={result} onResultClick={jest.fn()} onUnpin={jest.fn()} />
+    );
+    expect(screen.getByText("from Research Portal")).toBeInTheDocument();
+  });
+
+  it("should not render portal name when portalName is null", () => {
+    const result = makePinnedResult({ portalName: null });
+    render(
+      <PinnedResultCardUI result={result} onResultClick={jest.fn()} onUnpin={jest.fn()} />
+    );
+    expect(screen.queryByText(/from/)).not.toBeInTheDocument();
+  });
+
+  it("should not render portal name when portalName is absent", () => {
+    const result = makePinnedResult();
+    render(
+      <PinnedResultCardUI result={result} onResultClick={jest.fn()} onUnpin={jest.fn()} />
+    );
+    expect(screen.queryByText(/from/)).not.toBeInTheDocument();
   });
 });
 
