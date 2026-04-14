@@ -65,7 +65,7 @@ export const GlossaryList: React.FC<GlossaryListProps> = ({
                 alignItems="center"
                 sx={{ width: "100%" }}
               >
-                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                   {entry.term}
                 </Typography>
                 <Chip

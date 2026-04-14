@@ -6,6 +6,7 @@ import {
   Icon,
   IconName,
   PageHeader,
+  PageSection,
   Stack,
   Tab,
   TabPanel,
@@ -149,87 +150,93 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
         )}
 
         <TabPanel {...getTabPanelProps(TAB_GETTING_STARTED)}>
-          <GettingStarted steps={steps} onNavigate={onNavigate} />
+          <PageSection title="Getting Started" variant="divider">
+            <GettingStarted steps={steps} onNavigate={onNavigate} />
+          </PageSection>
         </TabPanel>
 
         <TabPanel {...getTabPanelProps(TAB_GLOSSARY)}>
-          <Stack spacing={2}>
-            <Stack
-              direction="row"
-              spacing={1}
-              rowGap={1}
-              flexWrap="wrap"
-              data-testid="glossary-category-filters"
-            >
-              <Chip
-                label="All"
-                color={glossaryCategory === null ? "primary" : "default"}
-                onClick={() => setGlossaryCategory(null)}
-              />
-              {Object.values(GlossaryCategory).map((cat) => (
+          <PageSection title="Glossary" variant="divider">
+            <Stack spacing={2}>
+              <Stack
+                direction="row"
+                spacing={1}
+                rowGap={1}
+                flexWrap="wrap"
+                data-testid="glossary-category-filters"
+              >
                 <Chip
-                  key={cat}
-                  label={GLOSSARY_CATEGORY_LABELS[cat]}
-                  color={glossaryCategory === cat ? "primary" : "default"}
-                  onClick={() =>
-                    setGlossaryCategory(glossaryCategory === cat ? null : cat)
-                  }
+                  label="All"
+                  color={glossaryCategory === null ? "primary" : "default"}
+                  onClick={() => setGlossaryCategory(null)}
                 />
-              ))}
-            </Stack>
+                {Object.values(GlossaryCategory).map((cat) => (
+                  <Chip
+                    key={cat}
+                    label={GLOSSARY_CATEGORY_LABELS[cat]}
+                    color={glossaryCategory === cat ? "primary" : "default"}
+                    onClick={() =>
+                      setGlossaryCategory(glossaryCategory === cat ? null : cat)
+                    }
+                  />
+                ))}
+              </Stack>
 
-            <GlossaryList
-              entries={filteredGlossary}
-              expandedTerm={expandedGlossaryTerm}
-              onSelectTerm={handleSelectGlossaryTerm}
-              registerEntryRef={registerGlossaryEntryRef}
-            />
-          </Stack>
+              <GlossaryList
+                entries={filteredGlossary}
+                expandedTerm={expandedGlossaryTerm}
+                onSelectTerm={handleSelectGlossaryTerm}
+                registerEntryRef={registerGlossaryEntryRef}
+              />
+            </Stack>
+          </PageSection>
         </TabPanel>
 
         <TabPanel {...getTabPanelProps(TAB_FAQ)}>
-          <Stack spacing={2}>
-            <Stack
-              direction="row"
-              spacing={1}
-              rowGap={1}
-              flexWrap="wrap"
-              data-testid="faq-category-filters"
-            >
-              <Chip
-                label="All"
-                color={faqCategory === null ? "primary" : "default"}
-                onClick={() => setFaqCategory(null)}
-              />
-              {Object.values(FAQCategory).map((cat) => (
-                <Chip
-                  key={cat}
-                  label={FAQ_CATEGORY_LABELS[cat]}
-                  color={faqCategory === cat ? "primary" : "default"}
-                  onClick={() =>
-                    setFaqCategory(faqCategory === cat ? null : cat)
-                  }
-                />
-              ))}
-            </Stack>
-
-            {filteredFAQ.length === 0 ? (
-              <Box
-                data-testid="faq-empty-passthrough"
-                sx={{ py: 4, textAlign: "center" }}
+          <PageSection title="Frequently Asked Questions" variant="divider">
+            <Stack spacing={2}>
+              <Stack
+                direction="row"
+                spacing={1}
+                rowGap={1}
+                flexWrap="wrap"
+                data-testid="faq-category-filters"
               >
-                <Typography variant="body2" color="text.secondary">
-                  No FAQ entries match your search.
-                </Typography>
-              </Box>
-            ) : (
-              <FAQList
-                entries={filteredFAQ}
-                groupByCategory={!faqCategory}
-                onSelectTerm={handleSelectGlossaryTerm}
-              />
-            )}
-          </Stack>
+                <Chip
+                  label="All"
+                  color={faqCategory === null ? "primary" : "default"}
+                  onClick={() => setFaqCategory(null)}
+                />
+                {Object.values(FAQCategory).map((cat) => (
+                  <Chip
+                    key={cat}
+                    label={FAQ_CATEGORY_LABELS[cat]}
+                    color={faqCategory === cat ? "primary" : "default"}
+                    onClick={() =>
+                      setFaqCategory(faqCategory === cat ? null : cat)
+                    }
+                  />
+                ))}
+              </Stack>
+
+              {filteredFAQ.length === 0 ? (
+                <Box
+                  data-testid="faq-empty-passthrough"
+                  sx={{ py: 4, textAlign: "center" }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    No FAQ entries match your search.
+                  </Typography>
+                </Box>
+              ) : (
+                <FAQList
+                  entries={filteredFAQ}
+                  groupByCategory={!faqCategory}
+                  onSelectTerm={handleSelectGlossaryTerm}
+                />
+              )}
+            </Stack>
+          </PageSection>
         </TabPanel>
       </Stack>
     </Box>

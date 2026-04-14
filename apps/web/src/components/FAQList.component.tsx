@@ -1,6 +1,6 @@
-import React, { Fragment } from "react";
+import React from "react";
 
-import { Box, Stack, Typography } from "@portalai/core/ui";
+import { Box, PageSection, Stack, Typography } from "@portalai/core/ui";
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
@@ -48,7 +48,7 @@ const FAQEntryAccordion: React.FC<{
   return (
     <Accordion data-testid={`faq-entry-${slug}`}>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
           {entry.question}
         </Typography>
       </AccordionSummary>
@@ -124,14 +124,12 @@ export const FAQList: React.FC<FAQListProps> = ({
   return (
     <Stack spacing={3}>
       {grouped.map(([category, categoryEntries]) => (
-        <Fragment key={category}>
-          <Typography
-            variant="h6"
-            data-testid={`faq-category-header-${category}`}
-            sx={{ fontWeight: 600 }}
-          >
-            {FAQ_CATEGORY_LABELS[category]}
-          </Typography>
+        <PageSection
+          key={category}
+          title={FAQ_CATEGORY_LABELS[category]}
+          variant="divider"
+          data-testid={`faq-category-header-${category}`}
+        >
           <Stack spacing={1}>
             {categoryEntries.map((entry) => (
               <FAQEntryAccordion
@@ -141,7 +139,7 @@ export const FAQList: React.FC<FAQListProps> = ({
               />
             ))}
           </Stack>
-        </Fragment>
+        </PageSection>
       ))}
     </Stack>
   );
