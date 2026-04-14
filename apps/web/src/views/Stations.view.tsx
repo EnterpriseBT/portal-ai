@@ -17,6 +17,7 @@ import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
+import { DefaultStationMeta } from "../components/DefaultStationMeta.component";
 import { StationListConnected } from "../components/StationList.component";
 import { CreateStationDialog } from "../components/CreateStationDialog.component";
 import { DeleteStationDialog } from "../components/DeleteStationDialog.component";
@@ -73,7 +74,9 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
               New Station
             </Button>
           }
-        />
+        >
+          <DefaultStationMeta />
+        </PageHeader>
 
         <PaginationToolbar {...pagination.toolbarProps} />
 
