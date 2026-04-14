@@ -187,7 +187,7 @@ portalRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortOrder, sortBy, stationId } =
+      const { limit, offset, sortOrder, sortBy, stationId, include } =
         PortalListRequestQuerySchema.parse(req.query);
       const { organizationId } = req.application!.metadata;
 
@@ -200,10 +200,12 @@ portalRouter.get(
       const sortColumn =
         sortBy === "lastOpened" ? portals.lastOpened : portals.created;
 
+      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
       const listOpts = {
         limit,
         offset,
         orderBy: { column: sortColumn, direction: sortOrder },
+        include: include_,
       };
 
       const [data, total] = await Promise.all([

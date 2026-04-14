@@ -258,6 +258,51 @@ describe("Portal Router", () => {
       expect(names[0]).toBe("Newer");
       expect(names[1]).toBe("Older");
     });
+
+    it("attaches stationName when include=station", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId, { name: "Research Lab" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app)
+        .get("/api/portals?include=station")
+        .expect(200);
+
+      expect(res.body.payload.portals).toHaveLength(1);
+      expect(res.body.payload.portals[0].stationName).toBe("Research Lab");
+    });
+
+    it("omits stationName when include is absent", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+
+      const station = createStation(organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(stations)
+        .values(station as never);
+
+      const portal = createPortal(organizationId, station.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(portals)
+        .values(portal as never);
+
+      const res = await request(app).get("/api/portals").expect(200);
+
+      expect(res.body.payload.portals[0]).not.toHaveProperty("stationName");
+    });
   });
 
   // ── GET /api/portals/:id ──────────────────────────────────────────

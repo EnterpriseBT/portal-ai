@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { PortalSchema } from "../models/portal.model.js";
-import { PortalResultTypeSchema, type PortalResultType } from "../models/portal-result.model.js";
+import { PortalResultSchema, PortalResultTypeSchema, type PortalResultType } from "../models/portal-result.model.js";
 import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
@@ -12,15 +12,22 @@ import {
 export const PortalListRequestQuerySchema =
   PaginationRequestQuerySchema.extend({
     stationId: z.string().optional(),
+    include: z.string().optional(),
   });
 
 export type PortalListRequestQuery = z.infer<
   typeof PortalListRequestQuerySchema
 >;
 
+const PortalWithIncludesSchema = PortalSchema.extend({
+  stationName: z.string().optional(),
+});
+
+export type PortalWithIncludes = z.infer<typeof PortalWithIncludesSchema>;
+
 export const PortalListResponsePayloadSchema =
   PaginatedResponsePayloadSchema.extend({
-    portals: z.array(PortalSchema),
+    portals: z.array(PortalWithIncludesSchema),
   });
 
 export type PortalListResponsePayload = z.infer<
@@ -113,6 +120,14 @@ export const PortalResultListRequestQuerySchema =
 
 export type PortalResultListRequestQuery = z.infer<
   typeof PortalResultListRequestQuerySchema
+>;
+
+const PortalResultWithIncludesSchema = PortalResultSchema.extend({
+  portalName: z.string().nullable().optional(),
+});
+
+export type PortalResultWithIncludes = z.infer<
+  typeof PortalResultWithIncludesSchema
 >;
 
 // ── Pin Result ────────────────────────────────────────────────────────
