@@ -21,13 +21,13 @@ exports[`NotFoundView Component should match snapshot 1`] = `
     </svg>
   </div>
   <h1
-    class="MuiTypography-root MuiTypography-h1 css-3k0xml-MuiTypography-root"
+    class="MuiTypography-root MuiTypography-h1 css-1m5odvn-MuiTypography-root"
     style="color: rgb(220, 38, 38); margin-bottom: 8px;"
   >
     404
   </h1>
   <h4
-    class="MuiTypography-root MuiTypography-h4 css-sc444u-MuiTypography-root"
+    class="MuiTypography-root MuiTypography-h4 css-cqf26c-MuiTypography-root"
     style="margin-bottom: 16px;"
   >
     Page Not Found

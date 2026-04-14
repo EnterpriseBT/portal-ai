@@ -5,7 +5,7 @@ exports[`EmptyResults should match snapshot 1`] = `
   class="MuiBox-root css-73fhj2"
 >
   <h2
-    class="MuiTypography-root MuiTypography-h2 css-11p6bua-MuiTypography-root"
+    class="MuiTypography-root MuiTypography-h2 css-v1g2lg-MuiTypography-root"
   >
     No results found
   </h2>

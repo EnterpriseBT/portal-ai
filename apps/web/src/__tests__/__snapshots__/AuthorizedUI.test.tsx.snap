@@ -28,7 +28,7 @@ exports[`AuthorizedUI Component Error State should call handleAuthError and show
           style="text-decoration: none;"
         >
           <h6
-            class="MuiTypography-root MuiTypography-h6 css-12cmjis-MuiTypography-root"
+            class="MuiTypography-root MuiTypography-h6 css-dysqv4-MuiTypography-root"
           >
             Portals.ai
           </h6>
@@ -111,7 +111,7 @@ exports[`AuthorizedUI Component Loading State should render LoadingView when loa
           style="text-decoration: none;"
         >
           <h6
-            class="MuiTypography-root MuiTypography-h6 css-12cmjis-MuiTypography-root"
+            class="MuiTypography-root MuiTypography-h6 css-dysqv4-MuiTypography-root"
           >
             Portals.ai
           </h6>
