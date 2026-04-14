@@ -62,7 +62,7 @@ export const MixedVariants: Story = {
     items: [
       {
         label: "Launch",
-        icon: <Icon name={IconName.RocketLaunch} sx={{ fontSize: 18 }} />,
+        icon: <Icon name={IconName.Portal} sx={{ fontSize: 18 }} />,
         onClick: () => console.log("Launch"),
         variant: "contained",
       },
@@ -87,7 +87,7 @@ export const SingleAction: Story = {
     items: [
       {
         label: "Open Portal",
-        icon: <Icon name={IconName.RocketLaunch} sx={{ fontSize: 18 }} />,
+        icon: <Icon name={IconName.Portal} sx={{ fontSize: 18 }} />,
         onClick: () => console.log("Open"),
         variant: "contained",
       },

@@ -86,7 +86,7 @@ export const WithAllActions: Story = {
     ],
     primaryAction: (
       <Button variant="contained" size="small">
-        <Icon name={IconName.RocketLaunch} sx={{ mr: 0.5, fontSize: 18 }} />
+        <Icon name={IconName.Portal} sx={{ mr: 0.5, fontSize: 18 }} />
         Launch Portal
       </Button>
     ),

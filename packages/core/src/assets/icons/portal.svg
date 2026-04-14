@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
+  <!--
+    Portal icon — 24×24 MUI icon grid
+    Uses currentColor throughout for automatic theme inheritance.
+
+    As a React/MUI component:
+
+      const PortalIcon = (props) => (
+        <SvgIcon viewBox="0 0 24 24" {...props}>
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.75" fill="none"/>
+          <ellipse cx="12" cy="12" rx="5.5" ry="9" stroke="currentColor" strokeWidth="1.75" fill="none"/>
+          <line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" strokeWidth="1.5"/>
+          <line x1="12" y1="2" x2="12" y2="4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+          <line x1="12" y1="19.5" x2="12" y2="22" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+          <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+        </SvgIcon>
+      )
+
+    Usage:
+      <PortalIcon sx={{ color: 'primary.main' }} />
+      <PortalIcon sx={{ color: 'text.primary' }} />
+      <PortalIcon color="primary" />
+      <PortalIcon fontSize="large" />
+  -->
+
+  <!-- Outer ring -->
+  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.75"/>
+
+  <!-- Perspective ellipse — reads as portal mouth in 3D -->
+  <ellipse cx="12" cy="12" rx="5.5" ry="9" stroke="currentColor" stroke-width="1.75"/>
+
+  <!-- Horizon crossbar — anchors depth plane -->
+  <line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.5"/>
+
+  <!-- Cardinal ticks on outer ring -->
+  <line x1="12" y1="2"    x2="12" y2="4.5"  stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+  <line x1="12" y1="19.5" x2="12" y2="22"   stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+
+  <!-- Core dot -->
+  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+</svg>

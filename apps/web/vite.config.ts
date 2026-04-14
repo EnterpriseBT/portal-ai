@@ -1,6 +1,7 @@
 import path from "path";
 import { defineConfig, PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
+import svgr from "vite-plugin-svgr";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 
 /**
@@ -28,6 +29,15 @@ function serveCatalogs(): PluginOption {
 export default defineConfig({
   plugins: [
     serveCatalogs(),
+    svgr({
+      svgrOptions: {
+        exportType: "default",
+        ref: true,
+        svgo: false,
+        titleProp: true,
+      },
+      include: "**/*.svg",
+    }) as PluginOption,
     tanstackRouter({
       target: "react",
       autoCodeSplitting: true,

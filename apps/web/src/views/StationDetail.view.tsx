@@ -12,7 +12,6 @@ import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
-import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import DataResult from "../components/DataResult.component";
@@ -149,7 +148,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                       primaryAction={
                         <Button
                           variant="contained"
-                          startIcon={<RocketLaunchIcon />}
+                          startIcon={<Icon name={IconName.Portal} />}
                           onClick={handleLaunchPortal}
                           disabled={createPortalMutation.isPending}
                         >
@@ -206,7 +205,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
 
                     {/* Portals Section */}
-                    <PageSection title="Portals" icon={<Icon name={IconName.RocketLaunch} />}>
+                    <PageSection title="Portals" icon={<Icon name={IconName.Portal} />}>
                       <PaginationToolbar {...portalsPagination.toolbarProps} />
 
                       <Box sx={{ mt: 2 }}>
@@ -232,7 +231,7 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                                   if (portals.portals.length === 0) {
                                     return (
                                       <PageEmptyState
-                                        icon={<Icon name={IconName.RocketLaunch} />}
+                                        icon={<Icon name={IconName.Portal} />}
                                         title="No portals yet"
                                       />
                                     );

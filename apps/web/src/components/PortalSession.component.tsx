@@ -88,7 +88,7 @@ const PortalSessionEmptyState: React.FC = () => (
     }}
   >
     <Icon
-      name={IconName.RocketLaunch}
+      name={IconName.Portal}
       sx={{ fontSize: 64, color: "primary.main", mb: 2 }}
     />
     <Typography variant="h6" sx={{ mb: 1, color: "text.primary" }}>
