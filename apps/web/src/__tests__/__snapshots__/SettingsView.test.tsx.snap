@@ -17,7 +17,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
           class="MuiStack-root css-3zqkp-MuiStack-root"
         >
           <div
-            class="MuiBox-root css-1nkum9t"
+            class="MuiBox-root css-1unn8l8"
           >
             <svg
               aria-hidden="true"
@@ -32,7 +32,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
             </svg>
           </div>
           <h1
-            class="MuiTypography-root MuiTypography-h1 css-1qbu4lc-MuiTypography-root"
+            class="MuiTypography-root MuiTypography-h1 css-wg9zqp-MuiTypography-root"
           >
             Settings
           </h1>
@@ -41,24 +41,24 @@ exports[`SettingsView Component should match snapshot 1`] = `
     </div>
   </div>
   <div
-    class="MuiTabs-root css-jhczcq-MuiTabs-root"
+    class="MuiTabs-root css-1880cua-MuiTabs-root"
   >
     <div
       class="MuiTabs-scrollableX MuiTabs-hideScrollbar css-i8yde5"
       style="width: 99px; height: 99px; position: absolute; top: -9999px; overflow: scroll;"
     />
     <div
-      class="MuiTabs-scroller MuiTabs-hideScrollbar MuiTabs-scrollableX css-1fr578y-MuiTabs-scroller"
+      class="MuiTabs-scroller MuiTabs-hideScrollbar MuiTabs-scrollableX css-1afximb-MuiTabs-scroller"
       style="margin-bottom: 0px;"
     >
       <div
-        class="MuiTabs-list MuiTabs-flexContainer css-hzcega-MuiTabs-list"
+        class="MuiTabs-list MuiTabs-flexContainer css-m9849h-MuiTabs-list"
         role="tablist"
       >
         <button
           aria-controls="tabpanel-0"
           aria-selected="true"
-          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary Mui-selected css-w0pbba-MuiButtonBase-root-MuiTab-root"
+          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary Mui-selected css-5xls38-MuiButtonBase-root-MuiTab-root"
           id="tab-0"
           role="tab"
           tabindex="0"
@@ -69,7 +69,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
         <button
           aria-controls="tabpanel-1"
           aria-selected="false"
-          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary css-w0pbba-MuiButtonBase-root-MuiTab-root"
+          class="MuiButtonBase-root MuiTab-root MuiTab-textColorPrimary css-5xls38-MuiButtonBase-root-MuiTab-root"
           id="tab-1"
           role="tab"
           tabindex="-1"
@@ -79,7 +79,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
         </button>
       </div>
       <span
-        class="MuiTabs-indicator css-ab78ty-MuiTabs-indicator"
+        class="MuiTabs-indicator css-12g1kzl-MuiTabs-indicator"
         style="left: 0px; width: 0px;"
       />
     </div>
@@ -94,7 +94,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
       class="MuiBox-root css-19midj6"
     >
       <div
-        class="MuiPaper-root MuiPaper-outlined MuiPaper-rounded css-1b7vojq-MuiPaper-root"
+        class="MuiPaper-root MuiPaper-outlined MuiPaper-rounded css-xux67c-MuiPaper-root"
       >
         <div
           class="MuiStack-root css-1sazv7p-MuiStack-root"
@@ -106,7 +106,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
               class="MuiStack-root css-kdc3n8-MuiStack-root"
             >
               <h2
-                class="MuiTypography-root MuiTypography-h2 css-1cb8xhq-MuiTypography-root"
+                class="MuiTypography-root MuiTypography-h2 css-y0nfb7-MuiTypography-root"
               >
                 Profile
               </h2>
@@ -119,7 +119,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
               class="MuiStack-root css-1n7fu9l-MuiStack-root"
             >
               <span
-                class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-1t1ckwe-MuiCircularProgress-root"
+                class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-9zmsly-MuiCircularProgress-root"
                 role="progressbar"
                 style="width: 20px; height: 20px;"
               >
@@ -138,7 +138,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
                 </svg>
               </span>
               <p
-                class="MuiTypography-root MuiTypography-body2 css-g7ji6g-MuiTypography-root"
+                class="MuiTypography-root MuiTypography-body2 css-9mn2to-MuiTypography-root"
               >
                 Loading...
               </p>
@@ -159,7 +159,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
       class="MuiBox-root css-19midj6"
     >
       <div
-        class="MuiPaper-root MuiPaper-outlined MuiPaper-rounded css-1b7vojq-MuiPaper-root"
+        class="MuiPaper-root MuiPaper-outlined MuiPaper-rounded css-xux67c-MuiPaper-root"
       >
         <div
           class="MuiStack-root css-1sazv7p-MuiStack-root"
@@ -171,7 +171,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
               class="MuiStack-root css-kdc3n8-MuiStack-root"
             >
               <h2
-                class="MuiTypography-root MuiTypography-h2 css-1cb8xhq-MuiTypography-root"
+                class="MuiTypography-root MuiTypography-h2 css-y0nfb7-MuiTypography-root"
               >
                 Organization
               </h2>
@@ -184,7 +184,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
               class="MuiStack-root css-1n7fu9l-MuiStack-root"
             >
               <span
-                class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-1t1ckwe-MuiCircularProgress-root"
+                class="MuiCircularProgress-root MuiCircularProgress-indeterminate MuiCircularProgress-colorPrimary css-9zmsly-MuiCircularProgress-root"
                 role="progressbar"
                 style="width: 20px; height: 20px;"
               >
@@ -203,7 +203,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
                 </svg>
               </span>
               <p
-                class="MuiTypography-root MuiTypography-body2 css-g7ji6g-MuiTypography-root"
+                class="MuiTypography-root MuiTypography-body2 css-9mn2to-MuiTypography-root"
               >
                 Loading...
               </p>
