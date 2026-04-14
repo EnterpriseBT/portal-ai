@@ -1,4 +1,5 @@
 import path from "path";
+import crypto from "crypto";
 import { defineConfig, PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 import svgr from "vite-plugin-svgr";
@@ -25,9 +26,36 @@ function serveCatalogs(): PluginOption {
   };
 }
 
+/**
+ * Generates a `version.json` file in the build output with a unique hash.
+ * The frontend polls this file to detect new deployments and prompt a reload.
+ */
+function versionJson(): PluginOption {
+  const buildHash = crypto.randomUUID();
+
+  return {
+    name: "version-json",
+    configureServer(server) {
+      server.middlewares.use("/version.json", (_req, res) => {
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-cache");
+        res.end(JSON.stringify({ version: buildHash }));
+      });
+    },
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "version.json",
+        source: JSON.stringify({ version: buildHash }),
+      });
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
+    versionJson(),
     serveCatalogs(),
     svgr({
       svgrOptions: {

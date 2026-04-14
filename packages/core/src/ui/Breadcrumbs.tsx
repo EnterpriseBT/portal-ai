@@ -53,8 +53,9 @@ export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
             return (
               <MuiTypography
                 key={index}
+                variant="inherit"
                 color="text.primary"
-                sx={{ display: "flex", alignItems: "center" }}
+                sx={{ display: "flex", alignItems: "center", fontSize: 14, lineHeight: "24px" }}
               >
                 {icon}
                 {item.label}
@@ -68,7 +69,7 @@ export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
               href={item.href}
               underline="hover"
               color="inherit"
-              sx={{ display: "flex", alignItems: "center" }}
+              sx={{ display: "flex", alignItems: "center", fontSize: 14, lineHeight: "24px" }}
               onClick={(event: React.MouseEvent) => {
                 if (onNavigate) {
                   event.preventDefault();

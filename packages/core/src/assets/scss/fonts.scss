@@ -1,44 +1,79 @@
-/* Noto Sans - Primary sans-serif font */
+/* Exo 2 - Primary sans-serif font */
 @font-face {
-  font-family: 'Noto Sans';
+  font-family: 'Exo 2';
   font-style: normal;
   font-weight: 100 900;
-  font-stretch: 62.5% 100%;
   font-display: swap;
-  src: url('../fonts/NotoSans-VariableFont_wdth,wght.ttf') format('truetype');
+  src:
+    url('../fonts/Exo2-VariableFont_wght.ttf') format('truetype'),
+    url('../fonts/Exo2[wght].ttf') format('truetype');
 }
 
 @font-face {
-  font-family: 'Noto Sans';
+  font-family: 'Exo 2';
   font-style: italic;
   font-weight: 100 900;
-  font-stretch: 62.5% 100%;
   font-display: swap;
-  src: url('../fonts/NotoSans-Italic-VariableFont_wdth,wght.ttf') format('truetype');
+  src:
+    url('../fonts/Exo2-Italic-VariableFont_wght.ttf') format('truetype'),
+    url('../fonts/Exo2-Italic[wght].ttf') format('truetype');
 }
 
-/* Playfair Display - Display/heading font */
+/* Fraunces - Display/heading font */
 @font-face {
-  font-family: 'Playfair Display';
+  font-family: 'Fraunces';
   font-style: normal;
-  font-weight: 400 900;
+  font-weight: 100 900;
   font-display: swap;
-  src: url('../fonts/PlayfairDisplay-VariableFont_wght.ttf') format('truetype');
+  src: url('../fonts/Fraunces[SOFT,WONK,opsz,wght].ttf') format('truetype');
 }
 
 @font-face {
-  font-family: 'Playfair Display';
+  font-family: 'Fraunces';
   font-style: italic;
-  font-weight: 400 900;
+  font-weight: 100 900;
   font-display: swap;
-  src: url('../fonts/PlayfairDisplay-Italic-VariableFont_wght.ttf') format('truetype');
+  src: url('../fonts/Fraunces-Italic[SOFT,WONK,opsz,wght].ttf') format('truetype');
 }
 
-/* Cutive Mono - Monospace font */
+/* Space Grotesk - Secondary sans-serif font */
 @font-face {
-  font-family: 'Cutive Mono';
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('../fonts/SpaceGrotesk[wght].ttf') format('truetype');
+}
+
+/* Space Mono - Monospace font */
+@font-face {
+  font-family: 'Space Mono';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('../fonts/CutiveMono-Regular.ttf') format('truetype');
+  src: url('../fonts/SpaceMono-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Space Mono';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/SpaceMono-Italic.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Space Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/SpaceMono-Bold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Space Mono';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/SpaceMono-BoldItalic.ttf') format('truetype');
 }
