@@ -23,8 +23,8 @@ COPY apps/api/ apps/api/
 # --env-mode=loose allows build to proceed without .env
 RUN npx turbo run build --filter=@portalai/api --env-mode=loose
 
-# --- Deps stage (install production deps for target arch) ---
-FROM --platform=$TARGETPLATFORM node:22-alpine AS deps
+# --- Deps stage (install production deps on native arch to avoid QEMU crashes) ---
+FROM --platform=$BUILDPLATFORM node:22-alpine AS deps
 WORKDIR /app
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/apps/api/package.json apps/api/
