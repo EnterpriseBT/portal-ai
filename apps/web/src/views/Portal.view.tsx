@@ -1,20 +1,26 @@
 import React, { useState, useCallback } from "react";
 
 import type { PortalGetResponsePayload } from "@portalai/core/contracts";
-import { Box, Button, Modal, PageHeader, Stack } from "@portalai/core/ui";
+import { Box, Button, Icon, IconName, MetadataList, Modal, PageHeader, Stack } from "@portalai/core/ui";
+import Chip from "@mui/material/Chip";
+import Collapse from "@mui/material/Collapse";
+import MuiLink from "@mui/material/Link";
 import TextField from "@mui/material/TextField";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import MemoryOutlined from "@mui/icons-material/MemoryOutlined";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import DataResult from "../components/DataResult.component";
 import { DeletePortalDialog } from "../components/DeletePortalDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { PortalSession } from "../components/PortalSession.component";
+import { ToolPackChip } from "../components/ToolPackChip.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { focusFirstInvalidField } from "../utils/form-validation.util";
+import { useLayout } from "../utils/layout.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Portal data item component ──────────────────────────────────────
@@ -107,6 +113,108 @@ const RenamePortalDialog: React.FC<RenamePortalDialogProps> = ({
   );
 };
 
+// ── Portal header metadata ──────────────────────────────────────────
+//
+// Fetches the station (+ connector instance details) attached to this
+// portal and renders a compact metadata row under the page title showing
+// the station, its connectors, and its tool packs.
+
+interface PortalHeaderMetaProps {
+  stationId: string;
+}
+
+export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({ stationId }) => {
+  const { data } = sdk.stations.get(stationId, { include: "connectorInstance" });
+  const { isMobile } = useLayout();
+  const [expanded, setExpanded] = useState(false);
+  const station = data?.station;
+  if (!station) return null;
+
+  const instances = station.instances ?? [];
+  const toolPacks = station.toolPacks ?? [];
+
+  const metadata = (
+    <MetadataList
+      size="small"
+      spacing={0.75}
+      items={[
+        {
+          label: "Station",
+          value: (
+            <MuiLink
+              component={Link}
+              to={`/stations/${station.id}`}
+              variant="body2"
+              data-testid="portal-header-station-link"
+            >
+              {station.name}
+            </MuiLink>
+          ),
+        },
+        {
+          label: "Connectors",
+          value: (
+            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+              {instances.map((inst) => (
+                <Chip
+                  key={inst.id}
+                  icon={<MemoryOutlined fontSize="small" />}
+                  label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                />
+              ))}
+            </Stack>
+          ),
+          variant: "chip",
+          hidden: instances.length === 0,
+        },
+        {
+          label: "Tool Packs",
+          value: (
+            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+              {toolPacks.map((pack) => (
+                <ToolPackChip key={pack} pack={pack} />
+              ))}
+            </Stack>
+          ),
+          variant: "chip",
+          hidden: toolPacks.length === 0,
+        },
+      ]}
+    />
+  );
+
+  if (!isMobile) return metadata;
+
+  // On small screens, tuck the metadata behind a toggle so the session feed
+  // gets the full viewport. The button is kept small and inline.
+  return (
+    <Box>
+      <Button
+        size="small"
+        variant="text"
+        onClick={() => setExpanded((e) => !e)}
+        startIcon={
+          <Icon name={expanded ? IconName.ExpandLess : IconName.ExpandMore} />
+        }
+        aria-expanded={expanded}
+        aria-controls="portal-header-meta-panel"
+        data-testid="portal-header-meta-toggle"
+        sx={{ px: 0.5, textTransform: "none" }}
+      >
+        {expanded ? "Hide session details" : "Show session details"}
+      </Button>
+      <Collapse in={expanded} unmountOnExit>
+        <Box id="portal-header-meta-panel" sx={{ pt: 1 }}>
+          {metadata}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+};
+
 // ── Portal view ─────────────────────────────────────────────────────
 
 interface PortalViewProps {
@@ -180,7 +288,9 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                     secondaryActions={[
                       { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteOpen(true), color: "error" },
                     ]}
-                  />
+                  >
+                    <PortalHeaderMeta stationId={item.portal.stationId} />
+                  </PageHeader>
                 </Box>
 
                 {renameOpen && (

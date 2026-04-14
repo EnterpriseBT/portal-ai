@@ -117,7 +117,21 @@ describe("PinnedResultDetailUI", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Open Source Portal/i }));
-    expect(onOpenPortal).toHaveBeenCalledWith("portal-1");
+    expect(onOpenPortal).toHaveBeenCalledWith("portal-1", null);
+  });
+
+  it("should pass messageId to onOpenPortal when present on the result", () => {
+    const onOpenPortal = jest.fn();
+    render(
+      <PinnedResultDetailUI
+        {...defaultProps}
+        result={makePinnedResult({ messageId: "msg-42", blockIndex: 0 })}
+        onOpenPortal={onOpenPortal}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Open Source Portal/i }));
+    expect(onOpenPortal).toHaveBeenCalledWith("portal-1", "msg-42");
   });
 
   it("should call onUnpin when Unpin button is clicked", () => {

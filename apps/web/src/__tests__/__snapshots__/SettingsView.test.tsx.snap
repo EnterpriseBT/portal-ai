@@ -32,7 +32,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
             </svg>
           </div>
           <h1
-            class="MuiTypography-root MuiTypography-h1 css-1j662f1-MuiTypography-root"
+            class="MuiTypography-root MuiTypography-h1 css-1qbu4lc-MuiTypography-root"
           >
             Settings
           </h1>
@@ -106,7 +106,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
               class="MuiStack-root css-kdc3n8-MuiStack-root"
             >
               <h2
-                class="MuiTypography-root MuiTypography-h2 css-1eof97i-MuiTypography-root"
+                class="MuiTypography-root MuiTypography-h2 css-1cb8xhq-MuiTypography-root"
               >
                 Profile
               </h2>
@@ -171,7 +171,7 @@ exports[`SettingsView Component should match snapshot 1`] = `
               class="MuiStack-root css-kdc3n8-MuiStack-root"
             >
               <h2
-                class="MuiTypography-root MuiTypography-h2 css-1eof97i-MuiTypography-root"
+                class="MuiTypography-root MuiTypography-h2 css-1cb8xhq-MuiTypography-root"
               >
                 Organization
               </h2>

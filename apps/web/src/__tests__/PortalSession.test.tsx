@@ -60,6 +60,9 @@ const { render, screen, fireEvent, waitFor } = await import("./test-utils");
 const { PortalSessionUI } = await import(
   "../components/PortalSession.component"
 );
+const { CHAT_INPUT_PLACEHOLDER } = await import(
+  "../components/ChatWindow.component"
+);
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -119,7 +122,30 @@ describe("PortalSessionUI", () => {
 
   it("renders ChatWindowUI input", () => {
     render(<PortalSessionUI {...defaultProps} />);
-    expect(screen.getByPlaceholderText("Type a message...")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)).toBeInTheDocument();
+  });
+
+  it("renders the empty state when there are no messages or streaming content", () => {
+    render(<PortalSessionUI {...defaultProps} />);
+    expect(screen.getByTestId("portal-session-empty")).toBeInTheDocument();
+  });
+
+  it("hides the empty state once messages are present", () => {
+    const messages = [
+      makeMessage({ id: "msg-1", role: "user", blocks: [{ type: "text", content: "Hello" }] }),
+    ];
+    render(<PortalSessionUI {...defaultProps} messages={messages} />);
+    expect(screen.queryByTestId("portal-session-empty")).not.toBeInTheDocument();
+  });
+
+  it("hides the empty state while streaming blocks are rendering", () => {
+    render(
+      <PortalSessionUI
+        {...defaultProps}
+        streamingBlocks={[{ type: "text", content: "..." }]}
+      />
+    );
+    expect(screen.queryByTestId("portal-session-empty")).not.toBeInTheDocument();
   });
 
   it("renders a list of messages", () => {
@@ -144,7 +170,7 @@ describe("PortalSessionUI", () => {
 
   it("disables input while streaming", () => {
     render(<PortalSessionUI {...defaultProps} isStreaming={true} />);
-    expect(screen.getByPlaceholderText("Type a message...")).toBeDisabled();
+    expect(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)).toBeDisabled();
   });
 
   it("renders data-table streaming blocks inline", () => {
@@ -188,7 +214,7 @@ describe("PortalSessionUI", () => {
         onSubmit={onSubmit}
       />
     );
-    const textarea = screen.getByPlaceholderText("Type a message...");
+    const textarea = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
     fireEvent.change(textarea, { target: { value: "test message" } });
     fireEvent.click(screen.getByRole("button", { name: /submit/i }));
     expect(onSubmit).toHaveBeenCalledWith("test message");
@@ -222,7 +248,7 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     const { PortalSession } = await import("../components/PortalSession.component");
     render(<PortalSession portalId="portal-1" />);
 
-    const input = screen.getByPlaceholderText("Type a message...");
+    const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
     fireEvent.change(input, { target: { value: "Hello!" } });
     fireEvent.click(screen.getByRole("button", { name: /submit/i }));
 

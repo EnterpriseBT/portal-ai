@@ -58,7 +58,10 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
 
   if (message.role === "user") {
     return (
-      <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}>
+      <Box
+        data-message-id={message.id}
+        sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}
+      >
         <Paper
           elevation={1}
           sx={{ p: 1.5, maxWidth: "80%", bgcolor: "primary.main", color: "primary.contrastText" }}
@@ -74,7 +77,7 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
   }
 
   return (
-    <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
+    <Box data-message-id={message.id} sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
       {message.blocks.map((block: PortalMessageBlock, i: number) => {
         const pinnable = hasPinnableContent(block);
         if (!pinnable) return null;
