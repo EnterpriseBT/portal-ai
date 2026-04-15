@@ -30,7 +30,7 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
         sx={{ py: 4, textAlign: "center" }}
         data-testid="empty-portals"
       >
-        No portals yet
+        No portals yet — open a station to start your first conversation.
       </Typography>
     );
   }
