@@ -193,8 +193,9 @@ export const ConnectorInstanceView = ({
                             const flags = ci.enabledCapabilityFlags;
                             const writeSupported = !!defFlags?.write;
                             const syncSupported = !!defFlags?.sync;
+                            const pushSupported = !!defFlags?.push;
 
-                            const makeHandler = (flag: "write" | "sync") => (
+                            const makeHandler = (flag: "write" | "sync" | "push") => (
                               _e: React.ChangeEvent<HTMLInputElement>,
                               checked: boolean
                             ) => {
@@ -238,6 +239,19 @@ export const ConnectorInstanceView = ({
                                       />
                                     }
                                     label="Sync"
+                                  />
+                                </Tooltip>
+                                <Tooltip title={pushSupported ? "" : "This connector type does not support push"}>
+                                  <FormControlLabel
+                                    control={
+                                      <Checkbox
+                                        checked={!!flags?.push}
+                                        onChange={makeHandler("push")}
+                                        disabled={!pushSupported || updateMutation.isPending}
+                                        size="small"
+                                      />
+                                    }
+                                    label="Push"
                                   />
                                 </Tooltip>
                               </Stack>

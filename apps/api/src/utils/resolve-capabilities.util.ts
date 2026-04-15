@@ -10,6 +10,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 export interface ResolvedCapabilities {
   read: boolean;
   write: boolean;
+  push: boolean;
 }
 
 /**
@@ -28,8 +29,9 @@ export function resolveCapabilities(
   const override = instance.enabledCapabilityFlags;
 
   return {
-    read: (ceil.query ?? false) && (override?.read ?? true),
+    read: (ceil.read ?? false) && (override?.read ?? true),
     write: (ceil.write ?? false) && (override?.write ?? true),
+    push: (ceil.push ?? false) && (override?.push ?? true),
   };
 }
 

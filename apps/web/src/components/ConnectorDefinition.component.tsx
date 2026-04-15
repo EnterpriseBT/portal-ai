@@ -66,7 +66,7 @@ export const ConnectorDefinitionCardUI = ({
   connectorDefinition: cd,
   onConnect,
 }: ConnectorDefinitionCardUIProps) => {
-  const capabilities = (["sync", "query", "write"] as const).filter(
+  const capabilities = (["sync", "read", "write", "push"] as const).filter(
     (c) => cd.capabilityFlags[c]
   );
 

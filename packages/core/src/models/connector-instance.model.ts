@@ -22,9 +22,10 @@ export const ConnectorInstanceSchema = CoreSchema.extend({
   lastErrorMessage: z.string().nullable(),
   enabledCapabilityFlags: z
     .object({
+      sync: z.boolean().optional(),
       read: z.boolean().optional(),
       write: z.boolean().optional(),
-      sync: z.boolean().optional(),
+      push: z.boolean().optional(),
     })
     .nullable(),
 });

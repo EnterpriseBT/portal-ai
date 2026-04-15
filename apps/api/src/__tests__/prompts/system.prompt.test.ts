@@ -45,8 +45,8 @@ describe("buildSystemPrompt — entityCapabilities", () => {
     const prompt = buildSystemPrompt(
       makeContext({
         entityCapabilities: {
-          "entity-1": { read: true, write: true },
-          "entity-2": { read: true, write: true },
+          "entity-1": { read: true, write: true, push: false },
+          "entity-2": { read: true, write: true, push: false },
         },
       }),
     );
@@ -61,8 +61,8 @@ describe("buildSystemPrompt — entityCapabilities", () => {
       makeContext({
         toolPacks: ["entity_management"],
         entityCapabilities: {
-          "entity-1": { read: true, write: false },
-          "entity-2": { read: true, write: true },
+          "entity-1": { read: true, write: false, push: false },
+          "entity-2": { read: true, write: true, push: false },
         },
       }),
     );

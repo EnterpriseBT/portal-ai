@@ -62,42 +62,46 @@ beforeEach(() => {
 
 describe("resolveCapabilities", () => {
   it("inherits all definition capabilities when enabledCapabilityFlags is null", () => {
-    const definition = { capabilityFlags: { query: true, write: true } };
+    const definition = { capabilityFlags: { read: true, write: true } };
     const instance = { enabledCapabilityFlags: null };
 
     expect(resolveCapabilities(definition, instance)).toEqual({
       read: true,
       write: true,
+      push: false,
     });
   });
 
   it("narrows write to false when instance disables it", () => {
-    const definition = { capabilityFlags: { query: true, write: true } };
+    const definition = { capabilityFlags: { read: true, write: true } };
     const instance = { enabledCapabilityFlags: { write: false } };
 
     expect(resolveCapabilities(definition, instance)).toEqual({
       read: true,
       write: false,
+      push: false,
     });
   });
 
   it("cannot exceed definition ceiling — instance cannot enable write if definition lacks it", () => {
-    const definition = { capabilityFlags: { query: true, write: false } };
+    const definition = { capabilityFlags: { read: true, write: false } };
     const instance = { enabledCapabilityFlags: { write: true } };
 
     expect(resolveCapabilities(definition, instance)).toEqual({
       read: true,
       write: false,
+      push: false,
     });
   });
 
-  it("returns read false when definition has query false", () => {
-    const definition = { capabilityFlags: { query: false } };
+  it("returns read false when definition has read false", () => {
+    const definition = { capabilityFlags: { read: false } };
     const instance = { enabledCapabilityFlags: null };
 
     expect(resolveCapabilities(definition, instance)).toEqual({
       read: false,
       write: false,
+      push: false,
     });
   });
 
@@ -108,26 +112,51 @@ describe("resolveCapabilities", () => {
     expect(resolveCapabilities(definition, instance)).toEqual({
       read: false,
       write: false,
+      push: false,
     });
   });
 
   it("allows partial overrides — only read set, write inherits", () => {
-    const definition = { capabilityFlags: { query: true, write: true } };
+    const definition = { capabilityFlags: { read: true, write: true } };
     const instance = { enabledCapabilityFlags: { read: true } };
 
     expect(resolveCapabilities(definition, instance)).toEqual({
       read: true,
       write: true,
+      push: false,
     });
   });
 
   it("instance can disable read independently of write", () => {
-    const definition = { capabilityFlags: { query: true, write: true } };
+    const definition = { capabilityFlags: { read: true, write: true } };
     const instance = { enabledCapabilityFlags: { read: false, write: true } };
 
     expect(resolveCapabilities(definition, instance)).toEqual({
       read: false,
       write: true,
+      push: false,
+    });
+  });
+
+  it("resolves push from definition ceiling and instance override", () => {
+    const definition = { capabilityFlags: { read: true, push: true } };
+    const instance = { enabledCapabilityFlags: { push: true } };
+
+    expect(resolveCapabilities(definition, instance)).toEqual({
+      read: true,
+      write: false,
+      push: true,
+    });
+  });
+
+  it("cannot enable push if definition ceiling does not support it", () => {
+    const definition = { capabilityFlags: { read: true, push: false } };
+    const instance = { enabledCapabilityFlags: { push: true } };
+
+    expect(resolveCapabilities(definition, instance)).toEqual({
+      read: true,
+      write: false,
+      push: false,
     });
   });
 });
@@ -166,16 +195,16 @@ describe("resolveStationCapabilities", () => {
     });
     mockConnDefFindById.mockImplementation(async (id: unknown) => {
       if (id === "cd-1")
-        return { id: "cd-1", capabilityFlags: { query: true, write: true } };
+        return { id: "cd-1", capabilityFlags: { read: true, write: true } };
       if (id === "cd-2")
-        return { id: "cd-2", capabilityFlags: { query: true, write: false } };
+        return { id: "cd-2", capabilityFlags: { read: true, write: false } };
       return null;
     });
 
     const result = await resolveStationCapabilities("station-1");
     expect(result).toEqual([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
-      { connectorInstanceId: "ci-2", capabilities: { read: true, write: false } },
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true, push: false } },
+      { connectorInstanceId: "ci-2", capabilities: { read: true, write: false, push: false } },
     ]);
   });
 
@@ -190,12 +219,12 @@ describe("resolveStationCapabilities", () => {
     });
     mockConnDefFindById.mockResolvedValue({
       id: "cd-1",
-      capabilityFlags: { query: true, write: true },
+      capabilityFlags: { read: true, write: true },
     });
 
     const result = await resolveStationCapabilities("station-1");
     expect(result).toEqual([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: false } },
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: false, push: false } },
     ]);
   });
 
@@ -210,12 +239,12 @@ describe("resolveStationCapabilities", () => {
     });
     mockConnDefFindById.mockResolvedValue({
       id: "cd-1",
-      capabilityFlags: { query: true, write: true },
+      capabilityFlags: { read: true, write: true },
     });
 
     const result = await resolveStationCapabilities("station-1");
     expect(result).toEqual([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true, push: false } },
     ]);
   });
 
@@ -241,7 +270,7 @@ describe("resolveStationCapabilities", () => {
     });
     mockConnDefFindById.mockImplementation(async (id: unknown) => {
       if (id === "cd-1")
-        return { id: "cd-1", capabilityFlags: { query: true, write: true } };
+        return { id: "cd-1", capabilityFlags: { read: true, write: true } };
       return null; // cd-missing not found
     });
 
@@ -313,7 +342,7 @@ describe("resolveEntityCapabilities", () => {
     });
     mockConnDefFindById.mockResolvedValue({
       id: "cd-1",
-      capabilityFlags: { query: true, write: true },
+      capabilityFlags: { read: true, write: true },
     });
     mockConnEntityFindByInstanceId.mockResolvedValue([
       { id: "entity-1", connectorInstanceId: "ci-1" },
@@ -322,8 +351,8 @@ describe("resolveEntityCapabilities", () => {
 
     const result = await resolveEntityCapabilities("station-1");
     expect(result).toEqual({
-      "entity-1": { read: true, write: true },
-      "entity-2": { read: true, write: true },
+      "entity-1": { read: true, write: true, push: false },
+      "entity-2": { read: true, write: true, push: false },
     });
   });
 

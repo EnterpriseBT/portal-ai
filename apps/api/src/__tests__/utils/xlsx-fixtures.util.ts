@@ -38,8 +38,18 @@ export async function buildMultiSheetXlsx(
 
   for (const [name, rows] of Object.entries(sheets)) {
     const ws = workbook.addWorksheet(name);
-    for (const row of rows) {
-      ws.addRow(row);
+    // ExcelJS's streaming reader crashes reading workbooks where a worksheet
+    // never had addRow called (it emits malformed workbook.xml missing the
+    // <sheets> relationship). Add a placeholder empty row to guarantee the
+    // sheet's XML is initialized; the parser treats all-blank rows as empty
+    // and skips them, so this preserves the fixture's intent for truly
+    // empty sheets.
+    if (rows.length === 0) {
+      ws.addRow([""]);
+    } else {
+      for (const row of rows) {
+        ws.addRow(row);
+      }
     }
   }
 

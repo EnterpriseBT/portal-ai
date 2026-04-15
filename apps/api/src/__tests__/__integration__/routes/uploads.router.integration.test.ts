@@ -542,7 +542,7 @@ describe("Uploads Router", () => {
         category: "file",
         authType: "none",
         configSchema: {},
-        capabilityFlags: { sync: false, query: false, write: true },
+        capabilityFlags: { sync: false, read: false, write: true },
         isActive: true,
         version: "1.0.0",
         iconUrl: null,

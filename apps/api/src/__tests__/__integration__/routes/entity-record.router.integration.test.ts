@@ -63,7 +63,7 @@ function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>)
     category: "crm",
     authType: "oauth2",
     configSchema: null,
-    capabilityFlags: { sync: true, query: true, write: false },
+    capabilityFlags: { sync: true, read: true, write: false },
     isActive: true,
     version: "1.0.0",
     iconUrl: null,
@@ -1515,7 +1515,7 @@ describe("Entity Record Router — POST /", () => {
     const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
 
     const def = createConnectorDefinition({
-      capabilityFlags: { sync: true, query: true, write: opts.definitionWrite },
+      capabilityFlags: { sync: true, read: true, write: opts.definitionWrite },
     });
     await db.insert(connectorDefinitions).values(def as never);
 
@@ -1765,7 +1765,7 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
 
     const def = createConnectorDefinition({
-      capabilityFlags: { sync: true, query: true, write: opts.definitionWrite },
+      capabilityFlags: { sync: true, read: true, write: opts.definitionWrite },
     });
     await db.insert(connectorDefinitions).values(def as never);
 

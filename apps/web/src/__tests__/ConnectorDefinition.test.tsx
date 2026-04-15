@@ -46,7 +46,7 @@ const makeConnectorDefinition = (
   category: "Database",
   authType: "password",
   configSchema: null,
-  capabilityFlags: { sync: true, query: true, write: false },
+  capabilityFlags: { sync: true, read: true, write: false, push: false },
   isActive: true,
   version: "1.0.0",
   iconUrl: "https://example.com/pg.png",
@@ -164,32 +164,35 @@ describe("ConnectorDefinitionCardUI", () => {
 
   it("should render capability chips for enabled capabilities", () => {
     const cd = makeConnectorDefinition({
-      capabilityFlags: { sync: true, query: true, write: true },
+      capabilityFlags: { sync: true, read: true, write: true, push: true },
     });
     render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText("sync")).toBeInTheDocument();
-    expect(screen.getByText("query")).toBeInTheDocument();
+    expect(screen.getByText("read")).toBeInTheDocument();
     expect(screen.getByText("write")).toBeInTheDocument();
+    expect(screen.getByText("push")).toBeInTheDocument();
   });
 
   it("should not render capability chips for disabled capabilities", () => {
     const cd = makeConnectorDefinition({
-      capabilityFlags: { sync: false, query: false, write: false },
+      capabilityFlags: { sync: false, read: false, write: false, push: false },
     });
     render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.queryByText("sync")).not.toBeInTheDocument();
-    expect(screen.queryByText("query")).not.toBeInTheDocument();
+    expect(screen.queryByText("read")).not.toBeInTheDocument();
     expect(screen.queryByText("write")).not.toBeInTheDocument();
+    expect(screen.queryByText("push")).not.toBeInTheDocument();
   });
 
   it("should render only enabled capability chips", () => {
     const cd = makeConnectorDefinition({
-      capabilityFlags: { sync: true, query: false, write: true },
+      capabilityFlags: { sync: true, read: false, write: true, push: false },
     });
     render(<ConnectorDefinitionCardUI connectorDefinition={cd} />);
     expect(screen.getByText("sync")).toBeInTheDocument();
-    expect(screen.queryByText("query")).not.toBeInTheDocument();
+    expect(screen.queryByText("read")).not.toBeInTheDocument();
     expect(screen.getByText("write")).toBeInTheDocument();
+    expect(screen.queryByText("push")).not.toBeInTheDocument();
   });
 
   it("should render avatar with icon when iconUrl is provided", () => {

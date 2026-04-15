@@ -632,11 +632,11 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
             recordCount={countData?.total}
             accessMode={
               definition?.capabilityFlags
-                ? definition.capabilityFlags.sync && definition.capabilityFlags.query
+                ? definition.capabilityFlags.sync && definition.capabilityFlags.read
                   ? "hybrid"
                   : definition.capabilityFlags.sync
                     ? "import"
-                    : definition.capabilityFlags.query
+                    : definition.capabilityFlags.read
                       ? "live"
                       : undefined
                 : undefined

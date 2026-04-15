@@ -4,8 +4,9 @@ import { baseColumns } from "./base.columns.js";
 
 export interface CapabilityFlags {
   sync?: boolean;
-  query?: boolean;
+  read?: boolean;
   write?: boolean;
+  push?: boolean;
 }
 
 /**

@@ -67,7 +67,7 @@ function createConnectorDefinition(
     category: "crm",
     authType: "oauth2",
     configSchema: null,
-    capabilityFlags: { sync: true, query: true, write: false },
+    capabilityFlags: { sync: true, read: true, write: false },
     isActive: true,
     version: "1.0.0",
     iconUrl: null,
