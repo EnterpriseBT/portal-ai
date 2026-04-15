@@ -3,15 +3,15 @@ import { jest } from "@jest/globals";
 import { render, screen } from "../../../__tests__/test-utils";
 import userEvent from "@testing-library/user-event";
 
-import { CSVConnectorWorkflowUI } from "../CSVConnectorWorkflow.component";
-import type { CSVConnectorWorkflowUIProps } from "../CSVConnectorWorkflow.component";
+import { FileUploadConnectorWorkflowUI } from "../FileUploadConnectorWorkflow.component";
+import type { FileUploadConnectorWorkflowUIProps } from "../FileUploadConnectorWorkflow.component";
 import type {
   Recommendations,
   RecommendedColumn,
   RecommendedEntity,
 } from "../utils/upload-workflow.util";
 import type { FileUploadProgress } from "../../../utils/file-upload.util";
-import type { EntityStepErrors, ColumnStepErrors } from "../utils/csv-validation.util";
+import type { EntityStepErrors, ColumnStepErrors } from "../utils/file-upload-validation.util";
 
 // ---------------------------------------------------------------------------
 // Mock Data
@@ -59,9 +59,9 @@ const MOCK_RECOMMENDATIONS: Recommendations = {
 };
 
 const STEP_CONFIGS = [
-  { label: "Upload CSV", description: "Select and upload CSV files" },
+  { label: "Upload Files", description: "Select and upload files" },
   { label: "Confirm Entities", description: "Review detected entities" },
-  { label: "Map Columns", description: "Map CSV columns to definitions" },
+  { label: "Map Columns", description: "Map source columns to definitions" },
   { label: "Review & Import", description: "Review and confirm import" },
 ];
 
@@ -74,8 +74,8 @@ const MOCK_FILES = [
 // ---------------------------------------------------------------------------
 
 function makeProps(
-  overrides: Partial<CSVConnectorWorkflowUIProps> = {}
-): CSVConnectorWorkflowUIProps {
+  overrides: Partial<FileUploadConnectorWorkflowUIProps> = {}
+): FileUploadConnectorWorkflowUIProps {
   return {
     open: true,
     onClose: jest.fn(),
@@ -124,23 +124,23 @@ function makeProps(
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("CSVConnectorWorkflowUI", () => {
+describe("FileUploadConnectorWorkflowUI", () => {
   describe("Modal shell", () => {
     it("renders modal with title when open", () => {
-      render(<CSVConnectorWorkflowUI {...makeProps()} />);
-      expect(screen.getByText("CSV File Upload")).toBeInTheDocument();
+      render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
+      expect(screen.getByText("File Upload")).toBeInTheDocument();
     });
 
     it("does not render content when closed", () => {
-      render(<CSVConnectorWorkflowUI {...makeProps({ open: false })} />);
-      expect(screen.queryByText("CSV File Upload")).not.toBeInTheDocument();
+      render(<FileUploadConnectorWorkflowUI {...makeProps({ open: false })} />);
+      expect(screen.queryByText("File Upload")).not.toBeInTheDocument();
     });
   });
 
   describe("Navigation buttons", () => {
     it("renders back and next buttons with provided labels", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({ backLabel: "Cancel", nextLabel: "Upload" })}
         />
       );
@@ -150,14 +150,14 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("disables next button when isNextDisabled is true", () => {
       render(
-        <CSVConnectorWorkflowUI {...makeProps({ isNextDisabled: true })} />
+        <FileUploadConnectorWorkflowUI {...makeProps({ isNextDisabled: true })} />
       );
       expect(screen.getByRole("button", { name: "Upload" })).toBeDisabled();
     });
 
     it("enables next button when isNextDisabled is false", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({ isNextDisabled: false, nextLabel: "Next" })}
         />
       );
@@ -166,7 +166,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("disables back button when isBackDisabled is true", () => {
       render(
-        <CSVConnectorWorkflowUI {...makeProps({ isBackDisabled: true })} />
+        <FileUploadConnectorWorkflowUI {...makeProps({ isBackDisabled: true })} />
       );
       expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
     });
@@ -175,7 +175,7 @@ describe("CSVConnectorWorkflowUI", () => {
       const user = userEvent.setup();
       const onNext = jest.fn();
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({ onNext, isNextDisabled: false, nextLabel: "Next" })}
         />
       );
@@ -187,7 +187,7 @@ describe("CSVConnectorWorkflowUI", () => {
       const user = userEvent.setup();
       const onBack = jest.fn();
       render(
-        <CSVConnectorWorkflowUI {...makeProps({ onBack, backLabel: "Back" })} />
+        <FileUploadConnectorWorkflowUI {...makeProps({ onBack, backLabel: "Back" })} />
       );
       await user.click(screen.getByRole("button", { name: "Back" }));
       expect(onBack).toHaveBeenCalledTimes(1);
@@ -196,8 +196,8 @@ describe("CSVConnectorWorkflowUI", () => {
 
   describe("Stepper", () => {
     it("renders all step labels", () => {
-      render(<CSVConnectorWorkflowUI {...makeProps()} />);
-      expect(screen.getByText("Upload CSV")).toBeInTheDocument();
+      render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
+      expect(screen.getByText("Upload Files")).toBeInTheDocument();
       expect(screen.getByText("Confirm Entities")).toBeInTheDocument();
       expect(screen.getByText("Map Columns")).toBeInTheDocument();
       expect(screen.getByText("Review & Import")).toBeInTheDocument();
@@ -206,15 +206,15 @@ describe("CSVConnectorWorkflowUI", () => {
 
   describe("Step 0: Upload", () => {
     it("shows file picker text when idle", () => {
-      render(<CSVConnectorWorkflowUI {...makeProps()} />);
+      render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
       expect(
-        screen.getByText("Select one or more CSV files to upload.")
+        screen.getByText("Select one or more files to upload.")
       ).toBeInTheDocument();
     });
 
     it("shows upload error when present", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             uploadPhase: "error",
             uploadError: "S3 upload failed",
@@ -226,7 +226,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("shows processing label during presigning phase", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             files: MOCK_FILES,
             uploadPhase: "presigning",
@@ -247,7 +247,7 @@ describe("CSVConnectorWorkflowUI", () => {
       });
 
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             files: MOCK_FILES,
             uploadPhase: "uploading",
@@ -266,7 +266,7 @@ describe("CSVConnectorWorkflowUI", () => {
   describe("Step 1: Confirm Entities", () => {
     it("shows waiting message when no recommendations", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({ step: 1, recommendations: null })}
         />
       );
@@ -277,7 +277,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("shows entity details when recommendations present", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 1,
             files: MOCK_FILES,
@@ -292,7 +292,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("shows source file name for entity", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 1,
             files: MOCK_FILES,
@@ -307,7 +307,7 @@ describe("CSVConnectorWorkflowUI", () => {
   describe("Step 2: Column Mapping", () => {
     it("shows waiting message when no recommendations", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({ step: 2, recommendations: null })}
         />
       );
@@ -318,7 +318,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("shows column details when recommendations present", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 2,
             recommendations: MOCK_RECOMMENDATIONS,
@@ -333,7 +333,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("shows confidence percentages for columns", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 2,
             recommendations: MOCK_RECOMMENDATIONS,
@@ -348,7 +348,7 @@ describe("CSVConnectorWorkflowUI", () => {
   describe("Step 3: Review & Import", () => {
     it("shows no recommendations message when null", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({ step: 3, recommendations: null })}
         />
       );
@@ -359,7 +359,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("shows connector instance name", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 3,
             recommendations: MOCK_RECOMMENDATIONS,
@@ -371,7 +371,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("shows summary statistics", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 3,
             recommendations: MOCK_RECOMMENDATIONS,
@@ -384,7 +384,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("shows per-entity column mapping details", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 3,
             recommendations: MOCK_RECOMMENDATIONS,
@@ -400,7 +400,7 @@ describe("CSVConnectorWorkflowUI", () => {
       const user = userEvent.setup();
       const onConnectorNameChange = jest.fn();
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 3,
             recommendations: MOCK_RECOMMENDATIONS,
@@ -421,7 +421,7 @@ describe("CSVConnectorWorkflowUI", () => {
         0: { key: "Entity key is required" },
       };
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 1,
             files: MOCK_FILES,
@@ -438,7 +438,7 @@ describe("CSVConnectorWorkflowUI", () => {
         0: { label: "Entity label is required" },
       };
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 1,
             files: MOCK_FILES,
@@ -452,7 +452,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("does not display entity errors when entityStepErrors is undefined", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 1,
             files: MOCK_FILES,
@@ -470,7 +470,7 @@ describe("CSVConnectorWorkflowUI", () => {
         0: { 0: { existingColumnDefinitionId: "Column definition must be selected" } },
       };
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 2,
             recommendations: MOCK_RECOMMENDATIONS,
@@ -486,7 +486,7 @@ describe("CSVConnectorWorkflowUI", () => {
         0: { 0: { normalizedKey: "Normalized key must be lowercase snake_case" } },
       };
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 2,
             recommendations: MOCK_RECOMMENDATIONS,
@@ -499,7 +499,7 @@ describe("CSVConnectorWorkflowUI", () => {
 
     it("does not display column errors when columnStepErrors is undefined", () => {
       render(
-        <CSVConnectorWorkflowUI
+        <FileUploadConnectorWorkflowUI
           {...makeProps({
             step: 2,
             recommendations: MOCK_RECOMMENDATIONS,

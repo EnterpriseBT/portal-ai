@@ -53,56 +53,48 @@ export class ConnectorDefinitionModelFactory extends ModelFactory<
   }
 }
 
-// ── CSV parse options (upload-time) ───────────────────────────────────
+// ── File Upload Connector Definition ──────────────────────────────────
+//
+// Represents the unified CSV + XLSX upload connector. Format-specific
+// behavior (delimiter detection, sheet handling) lives in the streaming
+// parsers and processor; the connector definition itself carries no
+// format-specific data, since the user uploads files of either format
+// through one workflow and the backend routes by extension.
 
 /**
- * Parse-level settings for CSV connectors.
- * Determined by the user at upload time, stored on the upload record.
+ * File Upload Connector Definition schema.
+ *
+ * Parse options and column mappings are determined per-upload by the
+ * streaming parsers, not here.
  */
-export const CSVParseOptionsSchema = z.object({
-  delimiter: z.enum([",", ";", "\t", "|"]).default(","),
-  hasHeader: z.boolean().default(true),
-  encoding: z.enum(["utf-8", "latin1", "ascii"]).default("utf-8"),
-  skipRows: z.number().int().nonnegative().default(0),
-  nullValues: z.array(z.string()).default(["", "NULL", "null", "N/A"]),
+export const FileUploadConnectorDefinitionSchema = ConnectorDefinitionSchema.extend({
+  // No format-specific fields. CSV vs XLSX is decided per-file at parse time.
 });
 
-export type CSVParseOptions = z.infer<typeof CSVParseOptionsSchema>;
+export type FileUploadConnectorDefinition = z.infer<typeof FileUploadConnectorDefinitionSchema>;
 
-// ── CSV Connector Definition ──────────────────────────────────────────
-
-/**
- * CSV Connector Definition schema.
- * Parse options and column mappings are determined per-upload, not here.
- */
-export const CSVConnectorDefinitionSchema = ConnectorDefinitionSchema.extend({
-  // empty for now, but could add CSV-specific metadata fields here in the future
-});
-
-export type CSVConnectorDefinition = z.infer<typeof CSVConnectorDefinitionSchema>;
-
-export class CSVConnectorDefinitionModel extends CoreModel<CSVConnectorDefinition> {
+export class FileUploadConnectorDefinitionModel extends CoreModel<FileUploadConnectorDefinition> {
   get schema() {
-    return CSVConnectorDefinitionSchema;
+    return FileUploadConnectorDefinitionSchema;
   }
 
-  parse(): CSVConnectorDefinition {
+  parse(): FileUploadConnectorDefinition {
     return this.schema.parse(this._model);
   }
 
-  validate(): z.ZodSafeParseResult<CSVConnectorDefinition> {
+  validate(): z.ZodSafeParseResult<FileUploadConnectorDefinition> {
     return this.schema.safeParse(this._model);
   }
 }
 
-export class CSVConnectorDefinitionModelFactory extends ModelFactory<
-  CSVConnectorDefinition,
-  CSVConnectorDefinitionModel
+export class FileUploadConnectorDefinitionModelFactory extends ModelFactory<
+  FileUploadConnectorDefinition,
+  FileUploadConnectorDefinitionModel
 > {
-  create(createdBy: string): CSVConnectorDefinitionModel {
+  create(createdBy: string): FileUploadConnectorDefinitionModel {
     const baseModel = this._coreModelFactory.create(createdBy);
-    const csvConnectorDefinitionModel = new CSVConnectorDefinitionModel(baseModel.toJSON());
-    return csvConnectorDefinitionModel;
+    const fileUploadConnectorDefinitionModel = new FileUploadConnectorDefinitionModel(baseModel.toJSON());
+    return fileUploadConnectorDefinitionModel;
   }
 }
 

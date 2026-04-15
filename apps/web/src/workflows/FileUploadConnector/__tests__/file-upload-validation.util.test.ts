@@ -3,7 +3,7 @@ import {
   hasEntityStepErrors,
   validateColumnStep,
   hasColumnStepErrors,
-} from "../utils/csv-validation.util";
+} from "../utils/file-upload-validation.util";
 import type { RecommendedEntity, RecommendedColumn } from "../utils/upload-workflow.util";
 
 // ── Helpers ──────────────────────────────────────────────────────────

@@ -626,11 +626,7 @@ csv-validation.util.test.ts → file-upload-validation.util.test.ts
 ### 15b. Update all imports across the codebase
 
 - Grep for `CSVConnector` and `csv-validation` imports, update to new paths
-- Update barrel `index.ts` exports with backwards-compat re-export:
-
-```ts
-export { FileUploadConnectorWorkflow as CSVConnectorWorkflow } from "./FileUploadConnectorWorkflow.component";
-```
+- Do not leave a backwards-compat re-export under the old `CSVConnectorWorkflow` name — the rename is internal and we want a clean cut
 
 ### 15c. Verify
 

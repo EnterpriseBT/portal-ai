@@ -358,7 +358,7 @@ describe("FileUploadMetadataSchema", () => {
       },
     ],
     organizationId: "org_123",
-    connectorDefinitionId: "cdef_csv01",
+    connectorDefinitionId: "cdef_fileupload01",
   };
 
   it("should parse valid metadata", () => {
@@ -397,7 +397,7 @@ describe("FileUploadMetadataSchema", () => {
 describe("FileUploadJobModelFactory", () => {
   const uploadParams = {
     organizationId: "org-1",
-    connectorDefinitionId: "cdef-csv",
+    connectorDefinitionId: "cdef-fileupload",
     files: [
       { originalName: "data.csv", s3Key: "uploads/org-1/job-1/data.csv", sizeBytes: 1024 },
     ],
@@ -443,7 +443,7 @@ describe("FileUploadJobModelFactory", () => {
     const metadata = model.fileUploadMetadata;
     expect(metadata.files).toHaveLength(1);
     expect(metadata.files[0].originalName).toBe("data.csv");
-    expect(metadata.connectorDefinitionId).toBe("cdef-csv");
+    expect(metadata.connectorDefinitionId).toBe("cdef-fileupload");
   });
 
   it("should pass full validation after createForUpload", () => {

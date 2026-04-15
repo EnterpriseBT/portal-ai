@@ -3,7 +3,7 @@ import React, { useCallback, useMemo } from "react";
 import { Box, Stack, Typography, TextInput, Divider } from "@portalai/core/ui";
 
 import type { RecommendedEntity, ParseSummary } from "./utils/upload-workflow.util";
-import type { EntityStepErrors } from "./utils/csv-validation.util";
+import type { EntityStepErrors } from "./utils/file-upload-validation.util";
 
 // --- Types ---
 
@@ -77,7 +77,7 @@ export const EntityStep: React.FC<EntityStepProps> = ({
           <Stack spacing={0.5}>
             {parseResults.map((pr) => (
               <Typography key={pr.fileName} variant="body2" color="text.secondary">
-                {pr.fileName}: {pr.rowCount.toLocaleString()} rows, delimiter: &quot;{pr.delimiter}&quot;, {pr.columnCount} columns, {pr.encoding}
+                {formatSourceLabel(pr.fileName)}: {pr.rowCount.toLocaleString()} rows, delimiter: {formatDelimiterDisplay(pr.delimiter)}, {pr.columnCount} columns, {pr.encoding}
               </Typography>
             ))}
           </Stack>
@@ -105,7 +105,7 @@ export const EntityStep: React.FC<EntityStepProps> = ({
               alignItems="center"
             >
               <Typography variant="subtitle2" color="text.secondary">
-                Source: {sourceFile}
+                Source: {formatSourceLabel(sourceFile)}
                 {parseSummary && (
                   <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                     ({parseSummary.rowCount.toLocaleString()} rows)
@@ -151,3 +151,22 @@ export const EntityStep: React.FC<EntityStepProps> = ({
     </Stack>
   );
 };
+
+// --- Utilities ---
+
+/**
+ * Render a human-readable source label for a file or sheet.
+ *   "data.xlsx[Contacts]" → "data.xlsx — Sheet: Contacts"
+ *   "contacts.csv"        → "contacts.csv"
+ */
+function formatSourceLabel(fileName: string): string {
+  const match = fileName.match(/^(.+?)\[([^\]]+)\]$/);
+  if (match) return `${match[1]} — Sheet: ${match[2]}`;
+  return fileName;
+}
+
+/** Display "N/A" for the synthetic xlsx delimiter; quote everything else. */
+function formatDelimiterDisplay(d: string): string {
+  if (d === "xlsx") return "N/A";
+  return `"${d}"`;
+}

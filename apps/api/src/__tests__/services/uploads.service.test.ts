@@ -112,7 +112,7 @@ function createAwaitingJob(overrides?: Partial<Record<string, unknown>>) {
     metadata: {
       files: [{ originalName: "contacts.csv", s3Key: "uploads/org-001/job-001/contacts.csv", sizeBytes: 1024 }],
       organizationId: ORG_ID,
-      connectorDefinitionId: "cdef_csv01",
+      connectorDefinitionId: "cdef_fileupload01",
     },
     result: {
       parseResults: [],
@@ -260,7 +260,7 @@ describe("UploadsService", () => {
       mockConnectorInstancesFindByOrgDefinitionAndName.mockResolvedValue({
         id: "ci-existing",
         name: "My CSV Import",
-        connectorDefinitionId: "cdef_csv01",
+        connectorDefinitionId: "cdef_fileupload01",
         organizationId: ORG_ID,
       });
       mockConnectorInstancesUpdate.mockResolvedValue({
@@ -720,7 +720,7 @@ describe("UploadsService", () => {
             sizeBytes: 4096,
           }],
           organizationId: ORG_ID,
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
         },
         result: {
           parseResults: [],
@@ -788,7 +788,7 @@ describe("UploadsService", () => {
             { originalName: "deals.xlsx", s3Key: "uploads/org-001/job-001/deals.xlsx", sizeBytes: 4096 },
           ],
           organizationId: ORG_ID,
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
         },
       }));
 

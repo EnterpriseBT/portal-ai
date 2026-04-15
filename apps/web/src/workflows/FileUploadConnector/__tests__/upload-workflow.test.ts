@@ -128,7 +128,7 @@ describe("useUploadWorkflow", () => {
   describe("WORKFLOW_STEPS", () => {
     it("exports 4 step definitions", () => {
       expect(WORKFLOW_STEPS).toHaveLength(4);
-      expect(WORKFLOW_STEPS[0].label).toBe("Upload CSV");
+      expect(WORKFLOW_STEPS[0].label).toBe("Upload Files");
       expect(WORKFLOW_STEPS[3].label).toBe("Review & Import");
     });
   });

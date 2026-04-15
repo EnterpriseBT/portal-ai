@@ -62,7 +62,7 @@ describe("PresignFileSchema", () => {
 describe("PresignRequestBodySchema", () => {
   const validBody = {
     organizationId: "org_123",
-    connectorDefinitionId: "cdef_csv01",
+    connectorDefinitionId: "cdef_fileupload01",
     files: [
       { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
     ],

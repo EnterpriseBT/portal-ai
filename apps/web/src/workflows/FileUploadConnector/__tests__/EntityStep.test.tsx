@@ -9,7 +9,7 @@ import type {
   RecommendedEntity,
   ParseSummary,
 } from "../utils/upload-workflow.util";
-import type { EntityStepErrors } from "../utils/csv-validation.util";
+import type { EntityStepErrors } from "../utils/file-upload-validation.util";
 
 // ---------------------------------------------------------------------------
 // Mock Data
@@ -183,6 +183,69 @@ describe("EntityStep", () => {
         />
       );
       expect(screen.queryByText("Parse Summary")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("XLSX sheet display", () => {
+    const XLSX_ENTITIES: RecommendedEntity[] = [
+      {
+        connectorEntity: { key: "contacts", label: "Contacts" },
+        sourceFileName: "data.xlsx[Contacts]",
+        columns: [MOCK_COLUMN],
+      },
+    ];
+    const XLSX_PARSE_RESULTS: ParseSummary[] = [
+      {
+        fileName: "data.xlsx[Contacts]",
+        rowCount: 100,
+        delimiter: "xlsx",
+        encoding: "utf-8",
+        columnCount: 2,
+      },
+    ];
+    const XLSX_FILES = [new File([""], "data.xlsx")];
+
+    it("renders 'Source: <workbook> — Sheet: <sheet>' when sourceFileName has bracket suffix", () => {
+      render(
+        <EntityStep
+          entities={XLSX_ENTITIES}
+          files={XLSX_FILES}
+          parseResults={null}
+          onUpdateEntity={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByText("Source: data.xlsx — Sheet: Contacts")
+      ).toBeInTheDocument();
+    });
+
+    it("displays 'N/A' delimiter for xlsx parse summary", () => {
+      render(
+        <EntityStep
+          entities={XLSX_ENTITIES}
+          files={XLSX_FILES}
+          parseResults={XLSX_PARSE_RESULTS}
+          onUpdateEntity={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByText((content) =>
+          content.includes("data.xlsx — Sheet: Contacts") &&
+          content.includes("delimiter: N/A"),
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("renders plain filename for CSV (no brackets)", () => {
+      render(
+        <EntityStep
+          entities={MOCK_ENTITIES}
+          files={MOCK_FILES}
+          parseResults={null}
+          onUpdateEntity={jest.fn()}
+        />
+      );
+      expect(screen.getByText("Source: contacts.csv")).toBeInTheDocument();
     });
   });
 

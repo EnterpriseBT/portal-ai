@@ -119,7 +119,7 @@ function createJob(
         },
       ],
       organizationId,
-      connectorDefinitionId: "cdef_csv01",
+      connectorDefinitionId: "cdef_fileupload01",
     },
     result: null,
     error: null,
@@ -181,7 +181,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
           ],
@@ -205,7 +205,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "a.csv", contentType: "text/csv", sizeBytes: 100 },
             { fileName: "b.csv", contentType: "text/csv", sizeBytes: 200 },
@@ -225,7 +225,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
           ],
@@ -253,7 +253,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [],
         });
 
@@ -269,7 +269,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "data.pdf", contentType: "application/pdf", sizeBytes: 1024 },
           ],
@@ -289,7 +289,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId,
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "workbook.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", sizeBytes: 4096 },
           ],
@@ -309,7 +309,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "huge.csv", contentType: "text/csv", sizeBytes: 100 * 1024 * 1024 },
           ],
@@ -333,7 +333,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files,
         });
 
@@ -362,7 +362,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
           ],
@@ -498,7 +498,7 @@ describe("Uploads Router", () => {
   // ── POST /api/uploads/:jobId/confirm ────────────────────────────
 
   describe("POST /api/uploads/:jobId/confirm", () => {
-    const CONNECTOR_DEF_ID = "cdef_csv01";
+    const CONNECTOR_DEF_ID = "cdef_fileupload01";
     const NAME_COL_DEF_ID = "coldef_name";
     const EMAIL_COL_DEF_ID = "coldef_email";
 

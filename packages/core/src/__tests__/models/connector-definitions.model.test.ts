@@ -1,7 +1,7 @@
 import {
   ConnectorDefinitionModel,
   ConnectorDefinitionModelFactory,
-  CSVConnectorDefinitionModel,
+  FileUploadConnectorDefinitionModel,
 } from "../../models/connector-definition.model.js";
 import {
   UUID_REGEX,
@@ -253,9 +253,9 @@ describe("ConnectorDefinitionModelFactory", () => {
   });
 });
 
-// ── CSVConnectorDefinitionModel ──────────────────────────────────────
+// ── FileUploadConnectorDefinitionModel ──────────────────────────────────────
 
-describe("CSVConnectorDefinitionModel", () => {
+describe("FileUploadConnectorDefinitionModel", () => {
   let factory: ConnectorDefinitionModelFactory;
   let stubIdFactory: StubIDFactory;
 
@@ -268,13 +268,13 @@ describe("CSVConnectorDefinitionModel", () => {
 
   it("should construct from base model JSON", () => {
     const base = factory.create("user-1");
-    const model = new CSVConnectorDefinitionModel(base.toJSON());
-    expect(model).toBeInstanceOf(CSVConnectorDefinitionModel);
+    const model = new FileUploadConnectorDefinitionModel(base.toJSON());
+    expect(model).toBeInstanceOf(FileUploadConnectorDefinitionModel);
   });
 
-  it("should expose the CSVConnectorDefinitionSchema via the schema getter", () => {
+  it("should expose the FileUploadConnectorDefinitionSchema via the schema getter", () => {
     const base = factory.create("user-1");
-    const model = new CSVConnectorDefinitionModel(base.toJSON());
+    const model = new FileUploadConnectorDefinitionModel(base.toJSON());
     const shape = model.schema.shape;
     expect(shape).toHaveProperty("slug");
     expect(shape).toHaveProperty("display");
@@ -289,7 +289,7 @@ describe("CSVConnectorDefinitionModel", () => {
 
   it("should pass validation with all required fields", () => {
     const base = factory.create("system");
-    const model = new CSVConnectorDefinitionModel(base.toJSON());
+    const model = new FileUploadConnectorDefinitionModel(base.toJSON());
     model.update({
       ...baseCSVConnectorFields,
     });
@@ -300,7 +300,7 @@ describe("CSVConnectorDefinitionModel", () => {
 
   it("should pass validation with configSchema set to null", () => {
     const base = factory.create("system");
-    const model = new CSVConnectorDefinitionModel(base.toJSON());
+    const model = new FileUploadConnectorDefinitionModel(base.toJSON());
     model.update({
       ...baseCSVConnectorFields,
       configSchema: null,
@@ -315,7 +315,7 @@ describe("CSVConnectorDefinitionModel", () => {
 
   it("should fail validation when connector-specific required fields are missing", () => {
     const base = factory.create("user-1");
-    const model = new CSVConnectorDefinitionModel(base.toJSON());
+    const model = new FileUploadConnectorDefinitionModel(base.toJSON());
     model.update({
       updated: null,
       updatedBy: null,

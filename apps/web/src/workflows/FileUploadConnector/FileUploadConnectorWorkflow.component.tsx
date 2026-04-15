@@ -28,8 +28,8 @@ import {
   validateColumnStep,
   hasEntityStepErrors,
   hasColumnStepErrors,
-} from "./utils/csv-validation.util";
-import type { EntityStepErrors, ColumnStepErrors } from "./utils/csv-validation.util";
+} from "./utils/file-upload-validation.util";
+import type { EntityStepErrors, ColumnStepErrors } from "./utils/file-upload-validation.util";
 import { focusFirstInvalidField } from "../../utils/form-validation.util";
 import type { ConfirmResponsePayload } from "@portalai/core/contracts";
 
@@ -48,7 +48,7 @@ import type {
 
 // --- UI Props ---
 
-export interface CSVConnectorWorkflowUIProps {
+export interface FileUploadConnectorWorkflowUIProps {
   open: boolean;
   onClose: () => void;
 
@@ -109,7 +109,7 @@ export interface CSVConnectorWorkflowUIProps {
 
 // --- Pure UI Component ---
 
-export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
+export const FileUploadConnectorWorkflowUI: React.FC<FileUploadConnectorWorkflowUIProps> = ({
   open,
   onClose,
   step,
@@ -155,7 +155,7 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
     <Modal
       open={open}
       onClose={onClose}
-      title="CSV File Upload"
+      title="File Upload"
       maxWidth="md"
       fullWidth
     >
@@ -263,7 +263,7 @@ export const CSVConnectorWorkflowUI: React.FC<CSVConnectorWorkflowUIProps> = ({
 
 // --- Container Props ---
 
-interface CSVConnectorWorkflowProps {
+interface FileUploadConnectorWorkflowProps {
   open: boolean;
   onClose: () => void;
   organizationId: string;
@@ -330,7 +330,7 @@ function deriveStepConfigs(workflow: UseUploadWorkflowReturn): StepConfig[] {
 
 // --- Container Component ---
 
-export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
+export const FileUploadConnectorWorkflow: React.FC<FileUploadConnectorWorkflowProps> = ({
   open,
   onClose,
   organizationId,
@@ -414,7 +414,7 @@ export const CSVConnectorWorkflow: React.FC<CSVConnectorWorkflowProps> = ({
   const stepConfigs = deriveStepConfigs(workflow);
 
   return (
-    <CSVConnectorWorkflowUI
+    <FileUploadConnectorWorkflowUI
       open={open}
       onClose={handleClose}
       step={workflow.step}

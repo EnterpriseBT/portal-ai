@@ -12,9 +12,9 @@ import type { FileUploadProgress, UploadPhase } from "../../../utils/file-upload
 export type WorkflowStep = 0 | 1 | 2 | 3;
 
 export const WORKFLOW_STEPS = [
-  { label: "Upload CSV", description: "Select and upload CSV files" },
+  { label: "Upload Files", description: "Select and upload files" },
   { label: "Confirm Entities", description: "Review detected entities" },
-  { label: "Map Columns", description: "Map CSV columns to definitions" },
+  { label: "Map Columns", description: "Map source columns to definitions" },
   { label: "Review & Import", description: "Review and confirm import" },
 ] as const;
 

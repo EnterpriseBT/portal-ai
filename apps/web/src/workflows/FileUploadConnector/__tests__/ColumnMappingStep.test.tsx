@@ -10,7 +10,7 @@ import type {
   RecommendedEntity,
 } from "../utils/upload-workflow.util";
 import type { ColumnDefinition } from "@portalai/core/models";
-import type { ColumnStepErrors } from "../utils/csv-validation.util";
+import type { ColumnStepErrors } from "../utils/file-upload-validation.util";
 
 // ---------------------------------------------------------------------------
 // Mock Data
