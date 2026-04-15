@@ -11,6 +11,7 @@ import {
 
 import type { JobStatus, FileParseResult } from "@portalai/core/models";
 
+import { SampleFiles } from "./SampleFiles.component";
 import type { FileUploadProgress, UploadPhase } from "../../utils/file-upload.util";
 
 // --- Types ---
@@ -97,6 +98,7 @@ export const UploadStep: React.FC<UploadStepProps> = ({
         <Typography variant="body1">
           Select one or more files to upload.
         </Typography>
+        <SampleFiles />
         <FileUploader
           accept=".csv,.xlsx"
           multiple

@@ -69,6 +69,16 @@ describe("UploadStep", () => {
       ).toBeInTheDocument();
     });
 
+    it("renders sample file download links in idle state", () => {
+      render(<UploadStep {...makeProps()} />);
+      expect(
+        screen.getByRole("link", { name: "sample-contacts.csv" })
+      ).toHaveAttribute("href", "/samples/sample-contacts.csv");
+      expect(
+        screen.getByRole("link", { name: "sample-data.xlsx" })
+      ).toHaveAttribute("href", "/samples/sample-data.xlsx");
+    });
+
     it("shows file picker on error phase when not processing", () => {
       render(
         <UploadStep
