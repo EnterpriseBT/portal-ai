@@ -340,6 +340,39 @@ describe("Entity management tool integration", () => {
       expect(rows[0].normalizedData).toEqual({ name: "Bob" });
     });
 
+    it("merges partial updates with existing data — untouched fields survive", async () => {
+      const s = await seed(db);
+
+      // Add a second field mapping (Email → email) so the record has two fields
+      const emailColDef = createColumnDef(s.organizationId, "email", "string");
+      await db.insert(columnDefinitions).values(emailColDef as never);
+      const emailMapping = createFieldMapping(s.organizationId, s.connectorEntityId, emailColDef.id, "Email");
+      await db.insert(fieldMappings).values(emailMapping as never);
+
+      // Create a record with both fields populated
+      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
+      const created = await createTool.execute!(
+        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice", Email: "alice@example.com" } }] },
+        toolOpts,
+      ) as Record<string, unknown>;
+      const recordId = (created.items as any[])[0].entityId as string;
+
+      // Update ONLY `Name` — `Email` must not be cleared
+      const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
+      const result = await updateTool.execute!(
+        { items: [{ connectorEntityId: s.connectorEntityId, entityRecordId: recordId, data: { Name: "Bob" } }] },
+        toolOpts,
+      ) as Record<string, unknown>;
+
+      expect(result.success).toBe(true);
+
+      const rows = await db.select().from(entityRecords).where(eq(entityRecords.id, recordId));
+      // Raw `data` blob must contain both original Email and updated Name
+      expect(rows[0].data).toEqual({ Name: "Bob", Email: "alice@example.com" });
+      // Normalized data must retain both fields — email must not be null
+      expect(rows[0].normalizedData).toEqual({ name: "Bob", email: "alice@example.com" });
+    });
+
     it("rejects update on record from different entity", async () => {
       const s = await seed(db);
       const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);

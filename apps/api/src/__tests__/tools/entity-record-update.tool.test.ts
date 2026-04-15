@@ -6,7 +6,11 @@ const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
 const mockNormalizeMany = jest.fn<any>().mockResolvedValue([
   { normalizedData: { name: "Bob" }, validationErrors: null, isValid: true },
 ]);
-const mockFindRecordById = jest.fn<any>().mockResolvedValue({ id: "rec-1", connectorEntityId: "ce-1" });
+const mockFindRecordById = jest.fn<any>().mockResolvedValue({
+  id: "rec-1",
+  connectorEntityId: "ce-1",
+  data: { Name: "Alice", Email: "alice@example.com" },
+});
 const mockUpdateMany = jest.fn<any>().mockImplementation(
   (payloads: any[]) => Promise.resolve(payloads.map((p: any) => ({ id: p.id }))),
 );
@@ -54,15 +58,44 @@ describe("EntityRecordUpdateTool", () => {
     expect(result.success).toBe(true);
     expect(result.count).toBe(1);
     expect(result.items).toHaveLength(1);
-    expect(mockNormalizeMany).toHaveBeenCalledWith("ce-1", [{ Name: "Bob" }]);
+    // Existing data { Name: "Alice", Email: "alice@example.com" } is merged
+    // with partial update { Name: "Bob" } before normalization.
+    expect(mockNormalizeMany).toHaveBeenCalledWith("ce-1", [
+      { Name: "Bob", Email: "alice@example.com" },
+    ]);
     expect(mockUpdateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("partial update — merges with existing data so untouched fields survive", async () => {
+    mockFindRecordById.mockResolvedValueOnce({
+      id: "rec-1",
+      connectorEntityId: "ce-1",
+      data: { id: "foo", name: "bar", desc: "fooz" },
+    });
+    mockNormalizeMany.mockResolvedValueOnce([
+      { normalizedData: { id: "foo", name: "baz", desc: "fooz" }, validationErrors: null, isValid: true },
+    ]);
+
+    const result: any = await exec({
+      items: [{ connectorEntityId: "ce-1", entityRecordId: "rec-1", data: { name: "baz" } }],
+    });
+
+    expect(result.success).toBe(true);
+    // Normalization sees the merged object, not the partial payload
+    expect(mockNormalizeMany).toHaveBeenCalledWith("ce-1", [
+      { id: "foo", name: "baz", desc: "fooz" },
+    ]);
+    // The persisted `data` blob is the merged object, not the partial one
+    const payloads = (mockUpdateMany.mock.calls[0] as any[])[0] as any[];
+    expect(payloads[0].data.data).toEqual({ id: "foo", name: "baz", desc: "fooz" });
+    expect(payloads[0].data.normalizedData).toEqual({ id: "foo", name: "baz", desc: "fooz" });
   });
 
   it("bulk update — 3 items updated in single transaction", async () => {
     mockFindRecordById
-      .mockResolvedValueOnce({ id: "rec-1", connectorEntityId: "ce-1" })
-      .mockResolvedValueOnce({ id: "rec-2", connectorEntityId: "ce-1" })
-      .mockResolvedValueOnce({ id: "rec-3", connectorEntityId: "ce-1" });
+      .mockResolvedValueOnce({ id: "rec-1", connectorEntityId: "ce-1", data: {} })
+      .mockResolvedValueOnce({ id: "rec-2", connectorEntityId: "ce-1", data: {} })
+      .mockResolvedValueOnce({ id: "rec-3", connectorEntityId: "ce-1", data: {} });
     mockNormalizeMany.mockResolvedValueOnce([
       { normalizedData: { a: 1 }, validationErrors: null, isValid: true },
       { normalizedData: { b: 2 }, validationErrors: null, isValid: true },

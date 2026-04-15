@@ -60,12 +60,18 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
           }
 
-          // Verify each record exists and belongs to its entity
+          // Verify each record exists and belongs to its entity, and capture
+          // the existing raw `data` so partial updates are merged (not replaced).
+          // `data` and `normalizedData` are JSONB columns — writing them
+          // replaces the entire blob, so we must merge with the existing value.
+          const existingDataByIndex = new Array<Record<string, unknown>>(items.length);
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
             const existing = await DbService.repository.entityRecords.findById(item.entityRecordId);
             if (!existing || existing.connectorEntityId !== item.connectorEntityId) {
               failures.push({ index: i, error: "Record not found or does not belong to entity" });
+            } else {
+              existingDataByIndex[i] = (existing.data ?? {}) as Record<string, unknown>;
             }
           }
 
@@ -73,12 +79,18 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
           }
 
-          // Normalize per group
+          // Merge partial updates over existing raw data so the full record is
+          // re-normalized (otherwise absent fields would be coerced to null).
+          const mergedDataByIndex = items.map(
+            (item, idx) => ({ ...existingDataByIndex[idx], ...item.data }),
+          );
+
+          // Normalize per group using the merged data
           type NormResult = { normalizedData: Record<string, unknown>; validationErrors: any; isValid: boolean };
           const normResults: NormResult[] = new Array(items.length);
 
           for (const [connectorEntityId, groupItems] of groups) {
-            const dataArray = groupItems.map((item) => item.data);
+            const dataArray = groupItems.map((item) => mergedDataByIndex[items.indexOf(item)]);
             const results = await NormalizationService.normalizeMany(connectorEntityId, dataArray);
             for (let i = 0; i < groupItems.length; i++) {
               normResults[items.indexOf(groupItems[i])] = results[i] as NormResult;
@@ -91,7 +103,7 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             return {
               id: item.entityRecordId,
               data: {
-                data: item.data,
+                data: mergedDataByIndex[idx],
                 normalizedData: norm.normalizedData,
                 validationErrors: norm.validationErrors,
                 isValid: norm.isValid,
@@ -126,7 +138,7 @@ export class EntityRecordUpdateTool extends Tool<typeof InputSchema> {
             operation: "updated" as const,
             entity: "record",
             count: updated.length,
-            items: items.map((item, idx) => ({
+            items: items.map((item) => ({
               entityId: item.entityRecordId,
               summary: { fields: Object.keys(item.data) },
             })),
