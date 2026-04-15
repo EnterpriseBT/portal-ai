@@ -11,6 +11,7 @@ const meta = {
   tags: ["autodocs"],
   args: {
     onClick: fn(),
+    variant: "compact",
   },
 } satisfies Meta<typeof SidebarNavToggleUI>;
 
