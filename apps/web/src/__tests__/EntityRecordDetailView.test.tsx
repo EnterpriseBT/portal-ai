@@ -58,7 +58,7 @@ const stubRecord: EntityRecord = {
   validationErrors: null,
   isValid: true,
   normalizedData: {
-    name: "Alice Johnson",
+    first_name: "Alice Johnson",
     age: 32,
     active: true,
     meta: { tier: "gold" },
@@ -77,7 +77,9 @@ const stubRecord: EntityRecord = {
 };
 
 const stubColumns: ResolvedColumn[] = [
-  { key: "name", normalizedKey: "name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  // normalizedKey differs from key/label to mirror real per-source mappings
+  // (e.g. an XLSX "First Name" column mapped to the "name" column definition)
+  { key: "name", normalizedKey: "first_name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
   { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
   { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
   { key: "meta", normalizedKey: "meta", label: "Meta", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
@@ -148,7 +150,7 @@ describe("EntityRecordDetailViewUI", () => {
     expect(screen.getByText("abc123")).toBeInTheDocument();
   });
 
-  it("renders column labels in the fields section", () => {
+  it("renders normalized keys (not column-definition labels) in the fields section", () => {
     render(
       <EntityRecordDetailViewUI
         entity={stubEntity}
@@ -156,9 +158,13 @@ describe("EntityRecordDetailViewUI", () => {
         columns={stubColumns}
       />
     );
-    expect(screen.getByText("Full Name")).toBeInTheDocument();
-    expect(screen.getByText("Age")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    // Use normalizedKey so per-source fields stay distinguishable when
+    // multiple source columns map to the same column definition (e.g. two
+    // "name" columns from a workbook → "first_name" + "last_name").
+    expect(screen.getByText("first_name")).toBeInTheDocument();
+    expect(screen.getByText("age")).toBeInTheDocument();
+    expect(screen.getByText("active")).toBeInTheDocument();
+    expect(screen.queryByText("Full Name")).not.toBeInTheDocument();
   });
 
   it("renders string field value", () => {
@@ -218,7 +224,7 @@ describe("EntityRecordDetailViewUI", () => {
         columns={[...stubColumns, extraColumn]}
       />
     );
-    expect(screen.getByText("Missing")).toBeInTheDocument();
+    expect(screen.getByText("missing_field")).toBeInTheDocument();
     // EntityRecordFieldValue renders — for null/undefined (may be multiple in the page)
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });

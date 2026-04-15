@@ -76,6 +76,7 @@ export const ThemeSwitcherUI: React.FC<ThemeSwitcherUIProps> = ({
             key={theme.themeName}
             selected={theme.themeName === currentThemeName}
             onClick={() => handleThemeSelect(theme.themeName)}
+            sx={{ mb: 0.5, "&:last-of-type": { mb: 0 } }}
           >
             <ListItemIcon>
               <Icon name={theme.icon} fontSize="small" />

@@ -306,7 +306,10 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
               <MetadataList
                 spacing={2}
                 items={columns.map((col) => ({
-                  label: col.label,
+                  // Use normalizedKey (field-mapping-level identifier) so
+                  // per-source fields stay distinct — matches the data-table
+                  // header convention.
+                  label: col.normalizedKey,
                   value: (
                     <EntityRecordFieldValue
                       value={record.normalizedData[col.normalizedKey]}
