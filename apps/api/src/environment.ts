@@ -39,5 +39,5 @@ export const environment = {
   UPLOAD_S3_PRESIGN_EXPIRY_SEC: parseInt(process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "900", 10),
   UPLOAD_MAX_FILE_SIZE_MB: parseInt(process.env.UPLOAD_MAX_FILE_SIZE_MB || "50", 10),
   UPLOAD_MAX_FILES: parseInt(process.env.UPLOAD_MAX_FILES || "5", 10),
-  UPLOAD_ALLOWED_EXTENSIONS: (process.env.UPLOAD_ALLOWED_EXTENSIONS || ".csv").split(","),
+  UPLOAD_ALLOWED_EXTENSIONS: (process.env.UPLOAD_ALLOWED_EXTENSIONS || ".csv,.xlsx").split(","),
 };

@@ -6,6 +6,11 @@ import type { Job as BullJob } from "bullmq";
 import { FileUploadResultSchema } from "@portalai/core/models";
 import type { FileUploadFile } from "@portalai/core/models";
 
+import {
+  buildMultiSheetXlsx,
+  buildSingleSheetXlsx,
+} from "../../utils/xlsx-fixtures.util.js";
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -106,6 +111,26 @@ function setupS3ForMultipleFiles(
   mockGetObjectStream.mockImplementation(async (key: string) => {
     const buf = map.get(key);
     if (buf) return { stream: Readable.from(buf), contentLength: buf.length };
+    throw new Error("Not found");
+  });
+}
+
+/** Buffer-based variant for binary fixtures (e.g. XLSX). */
+function setupS3ForBinaryFiles(
+  entries: Array<{ file: FileUploadFile; buffer: Buffer; contentType?: string }>
+): void {
+  const map = new Map<string, { buf: Buffer; contentType: string }>();
+  for (const { file, buffer, contentType } of entries) {
+    map.set(file.s3Key, { buf: buffer, contentType: contentType ?? "application/octet-stream" });
+  }
+  mockHeadObject.mockImplementation(async (key: string) => {
+    const entry = map.get(key);
+    if (entry) return { contentLength: entry.buf.length, contentType: entry.contentType };
+    return null;
+  });
+  mockGetObjectStream.mockImplementation(async (key: string) => {
+    const entry = map.get(key);
+    if (entry) return { stream: Readable.from(entry.buf), contentLength: entry.buf.length };
     throw new Error("Not found");
   });
 }
@@ -555,6 +580,145 @@ describe("fileUploadProcessor", () => {
       expect(result.parseResults![1].fileName).toBe("products.csv");
       expect(result.parseResults![1].delimiter).toBe("\t");
       expect(result.parseResults![1].rowCount).toBe(1);
+    });
+  });
+
+  // ── XLSX support ────────────────────────────────────────────────────────
+
+  describe("XLSX support", () => {
+    it("parses a single-sheet .xlsx file and produces one parseResult", async () => {
+      const file = makeFile("data.xlsx");
+      const buf = await buildSingleSheetXlsx("Contacts", [
+        ["name", "email"],
+        ["Alice", "a@x.com"],
+        ["Bob", "b@x.com"],
+      ]);
+      file.sizeBytes = buf.length;
+      setupS3ForBinaryFiles([{ file, buffer: buf }]);
+
+      const bullJob = createMockBullJob([file]);
+      const result = await fileUploadProcessor(bullJob);
+
+      expect(result.parseResults).toHaveLength(1);
+      expect(result.parseResults![0].fileName).toBe("data.xlsx[Contacts]");
+      expect(result.parseResults![0].delimiter).toBe("xlsx");
+      expect(result.parseResults![0].rowCount).toBe(2);
+      expect(result.parseResults![0].headers).toEqual(["name", "email"]);
+    });
+
+    it("parses a multi-sheet .xlsx and produces one parseResult per sheet", async () => {
+      const file = makeFile("workbook.xlsx");
+      const buf = await buildMultiSheetXlsx({
+        Contacts: [["name"], ["Alice"], ["Bob"]],
+        Deals: [["title"], ["d1"]],
+      });
+      file.sizeBytes = buf.length;
+      setupS3ForBinaryFiles([{ file, buffer: buf }]);
+
+      const bullJob = createMockBullJob([file]);
+      const result = await fileUploadProcessor(bullJob);
+
+      expect(result.parseResults!.map((r) => r.fileName)).toEqual([
+        "workbook.xlsx[Contacts]",
+        "workbook.xlsx[Deals]",
+      ]);
+      expect(result.parseResults![0].rowCount).toBe(2);
+      expect(result.parseResults![1].rowCount).toBe(1);
+    });
+
+    it("calls getRecommendations once per sheet", async () => {
+      const file = makeFile("multi.xlsx");
+      const buf = await buildMultiSheetXlsx({
+        A: [["x"], ["1"]],
+        B: [["y"], ["2"]],
+        C: [["z"], ["3"]],
+      });
+      file.sizeBytes = buf.length;
+      setupS3ForBinaryFiles([{ file, buffer: buf }]);
+
+      const bullJob = createMockBullJob([file]);
+      await fileUploadProcessor(bullJob);
+
+      expect(mockGetRecommendations).toHaveBeenCalledTimes(3);
+    });
+
+    it("derives connector instance name from XLSX filename, not sheet name", async () => {
+      const file = makeFile("contacts-and-deals.xlsx");
+      const buf = await buildMultiSheetXlsx({
+        Contacts: [["x"], ["1"]],
+        Deals: [["y"], ["2"]],
+      });
+      file.sizeBytes = buf.length;
+      setupS3ForBinaryFiles([{ file, buffer: buf }]);
+
+      const bullJob = createMockBullJob([file]);
+      const result = await fileUploadProcessor(bullJob);
+
+      expect(result.recommendations!.connectorInstanceName).toBe("contacts-and-deals");
+    });
+
+    it("handles mixed upload: one .csv + one .xlsx with 2 sheets → 3 parseResults", async () => {
+      const csvFile = makeFile("plain.csv");
+      const xlsxFile = makeFile("book.xlsx");
+      const csvContent = "name,email\nAlice,a@x.com\n";
+      csvFile.sizeBytes = Buffer.byteLength(csvContent);
+      const xlsxBuf = await buildMultiSheetXlsx({
+        S1: [["a"], ["1"]],
+        S2: [["b"], ["2"]],
+      });
+      xlsxFile.sizeBytes = xlsxBuf.length;
+
+      const map = new Map<string, { buf: Buffer; contentType: string }>();
+      map.set(csvFile.s3Key, { buf: Buffer.from(csvContent), contentType: "text/csv" });
+      map.set(xlsxFile.s3Key, { buf: xlsxBuf, contentType: "application/octet-stream" });
+      mockHeadObject.mockImplementation(async (key) => {
+        const e = map.get(key);
+        return e ? { contentLength: e.buf.length, contentType: e.contentType } : null;
+      });
+      mockGetObjectStream.mockImplementation(async (key) => {
+        const e = map.get(key);
+        if (!e) throw new Error("Not found");
+        return { stream: Readable.from(e.buf), contentLength: e.buf.length };
+      });
+
+      const bullJob = createMockBullJob([csvFile, xlsxFile]);
+      const result = await fileUploadProcessor(bullJob);
+
+      expect(result.parseResults).toHaveLength(3);
+      expect(result.parseResults!.map((r) => r.fileName)).toEqual([
+        "plain.csv",
+        "book.xlsx[S1]",
+        "book.xlsx[S2]",
+      ]);
+      expect(result.recommendations!.connectorInstanceName).toBe("File Import (2 files)");
+    });
+
+    it("rejects corrupt XLSX with UPLOAD_PARSE_FAILED wrapping", async () => {
+      const file = makeFile("bad.xlsx");
+      const buf = Buffer.from("not a valid xlsx file");
+      file.sizeBytes = buf.length;
+      setupS3ForBinaryFiles([{ file, buffer: buf }]);
+
+      const bullJob = createMockBullJob([file]);
+      await expect(fileUploadProcessor(bullJob)).rejects.toThrow(
+        /Failed to parse XLSX file/,
+      );
+    });
+
+    it("rejects XLSX with no data sheets via ProcessorError(XLSX_NO_DATA)", async () => {
+      const file = makeFile("empty-sheets.xlsx");
+      const buf = await buildMultiSheetXlsx({
+        Empty: [],
+        HeaderOnly: [["h1", "h2"]],
+      });
+      file.sizeBytes = buf.length;
+      setupS3ForBinaryFiles([{ file, buffer: buf }]);
+
+      const bullJob = createMockBullJob([file]);
+      await expect(fileUploadProcessor(bullJob)).rejects.toMatchObject({
+        name: "ProcessorError",
+        code: "XLSX_NO_DATA",
+      });
     });
   });
 });

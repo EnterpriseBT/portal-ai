@@ -58,14 +58,14 @@ describe("UploadStep", () => {
     it("renders file picker prompt when phase is idle", () => {
       render(<UploadStep {...makeProps()} />);
       expect(
-        screen.getByText("Select one or more CSV files to upload.")
+        screen.getByText("Select one or more files to upload.")
       ).toBeInTheDocument();
     });
 
-    it("renders FileUploader with .csv accept attribute", () => {
+    it("renders FileUploader with .csv,.xlsx accept attribute", () => {
       render(<UploadStep {...makeProps()} />);
       expect(
-        screen.getByText(/Accepted formats: .csv/)
+        screen.getByText(/Accepted formats: \.csv, \.xlsx/)
       ).toBeInTheDocument();
     });
 
@@ -76,7 +76,7 @@ describe("UploadStep", () => {
         />
       );
       expect(
-        screen.getByText("Select one or more CSV files to upload.")
+        screen.getByText("Select one or more files to upload.")
       ).toBeInTheDocument();
     });
 
@@ -161,7 +161,7 @@ describe("UploadStep", () => {
       expect(screen.getByText("Verifying files...")).toBeInTheDocument();
     });
 
-    it('shows "Parsing CSV files..." when done with jobProgress 11-29', () => {
+    it('shows "Parsing files..." when done with jobProgress 11-29', () => {
       render(
         <UploadStep
           {...makeProps({
@@ -172,7 +172,7 @@ describe("UploadStep", () => {
           })}
         />
       );
-      expect(screen.getByText("Parsing CSV files...")).toBeInTheDocument();
+      expect(screen.getByText("Parsing files...")).toBeInTheDocument();
     });
 
     it('shows "Analyzing schema..." when done with jobProgress 30-69', () => {
@@ -543,6 +543,87 @@ describe("UploadStep", () => {
       expect(
         screen.queryByText(/Successfully parsed/)
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("XLSX parse results", () => {
+    const XLSX_PARSE_RESULTS = {
+      parseResults: [
+        {
+          fileName: "data.xlsx[Contacts]",
+          delimiter: "xlsx",
+          hasHeader: true,
+          encoding: "utf-8",
+          rowCount: 100,
+          headers: ["name", "email"],
+          sampleRows: [["Alice", "a@x.com"]],
+          columnStats: [],
+        },
+        {
+          fileName: "data.xlsx[Deals]",
+          delimiter: "xlsx",
+          hasHeader: true,
+          encoding: "utf-8",
+          rowCount: 50,
+          headers: ["title"],
+          sampleRows: [["d1"]],
+          columnStats: [],
+        },
+      ],
+    };
+
+    it("displays N/A delimiter for xlsx parse results", () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: [new File([""], "data.xlsx", { type: "application/octet-stream" })],
+            uploadPhase: "done",
+            isProcessing: false,
+            jobStatus: "completed",
+            jobResult: XLSX_PARSE_RESULTS,
+          })}
+        />
+      );
+
+      const delimiterTexts = screen.getAllByText(/delimiter: N\/A/);
+      expect(delimiterTexts.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("displays workbook name and sheet name separately", () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: [new File([""], "data.xlsx", { type: "application/octet-stream" })],
+            uploadPhase: "done",
+            isProcessing: false,
+            jobStatus: "completed",
+            jobResult: XLSX_PARSE_RESULTS,
+          })}
+        />
+      );
+
+      // Each card renders the workbook name + " — sheet: " + sheet name as a single block
+      expect(screen.getAllByText(/data\.xlsx/).length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText(/sheet: Contacts/)).toBeInTheDocument();
+      expect(screen.getByText(/sheet: Deals/)).toBeInTheDocument();
+    });
+
+    it("renders one card per sheet for multi-sheet XLSX results", () => {
+      render(
+        <UploadStep
+          {...makeProps({
+            files: [new File([""], "data.xlsx", { type: "application/octet-stream" })],
+            uploadPhase: "done",
+            isProcessing: false,
+            jobStatus: "completed",
+            jobResult: XLSX_PARSE_RESULTS,
+          })}
+        />
+      );
+
+      expect(screen.getByText("Successfully parsed 2 files")).toBeInTheDocument();
+      expect(screen.getByText(/100 rows/)).toBeInTheDocument();
+      expect(screen.getByText(/50 rows/)).toBeInTheDocument();
     });
   });
 });

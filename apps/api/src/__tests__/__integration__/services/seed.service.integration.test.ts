@@ -57,19 +57,20 @@ describe("SeedService Integration Tests", () => {
       expect(rows.length).toBeGreaterThanOrEqual(2);
     });
 
-    it("should create a CSV connector definition with correct fields", async () => {
+    it("should create a File Upload connector definition with correct fields", async () => {
       await seedService.seed();
 
       const rows = await connectorDefsRepo.findMany(undefined, {}, db);
-      const csv = rows.find((r) => r.slug === "csv");
+      const fileUpload = rows.find((r) => r.slug === "file-upload");
 
-      expect(csv).toBeDefined();
-      expect(csv?.display).toBe("CSV Connector");
-      expect(csv?.category).toBe("File-based");
-      expect(csv?.isActive).toBe(true);
-      expect(csv?.version).toBe("1.0.0");
-      expect(csv?.configSchema).toEqual({});
-      expect(csv?.capabilityFlags).toEqual({
+      expect(fileUpload).toBeDefined();
+      expect(fileUpload?.display).toBe("File Upload");
+      expect(fileUpload?.category).toBe("File-based");
+      expect(fileUpload?.authType).toBe("none");
+      expect(fileUpload?.isActive).toBe(true);
+      expect(fileUpload?.version).toBe("1.0.0");
+      expect(fileUpload?.configSchema).toEqual({});
+      expect(fileUpload?.capabilityFlags).toEqual({
         sync: false,
         query: true,
         write: true,
@@ -101,9 +102,9 @@ describe("SeedService Integration Tests", () => {
       await seedService.seed();
 
       const rows = await connectorDefsRepo.findMany(undefined, {}, db);
-      const csvRows = rows.filter((r) => r.slug === "csv");
+      const fileUploadRows = rows.filter((r) => r.slug === "file-upload");
 
-      expect(csvRows).toHaveLength(1);
+      expect(fileUploadRows).toHaveLength(1);
     });
 
     it("should be idempotent for sandbox — running seed twice should not duplicate rows", async () => {
@@ -120,17 +121,17 @@ describe("SeedService Integration Tests", () => {
       await seedService.seed();
 
       const before = await connectorDefsRepo.findMany(undefined, {}, db);
-      const csvBefore = before.find((r) => r.slug === "csv");
-      expect(csvBefore).toBeDefined();
+      const fileUploadBefore = before.find((r) => r.slug === "file-upload");
+      expect(fileUploadBefore).toBeDefined();
 
       // Seed again — the upsert should update, not create a duplicate
       await seedService.seed();
 
       const after = await connectorDefsRepo.findMany(undefined, {}, db);
-      const csvAfter = after.find((r) => r.slug === "csv");
+      const fileUploadAfter = after.find((r) => r.slug === "file-upload");
 
-      expect(csvAfter).toBeDefined();
-      expect(csvAfter?.id).toBe(csvBefore?.id);
+      expect(fileUploadAfter).toBeDefined();
+      expect(fileUploadAfter?.id).toBe(fileUploadBefore?.id);
     });
   });
 
@@ -141,7 +142,7 @@ describe("SeedService Integration Tests", () => {
       const rows = await connectorDefsRepo.findMany(undefined, {}, db);
 
       expect(rows.length).toBeGreaterThanOrEqual(1);
-      expect(rows.find((r) => r.slug === "csv")).toBeDefined();
+      expect(rows.find((r) => r.slug === "file-upload")).toBeDefined();
     });
 
     it("should work within a transaction that can be rolled back", async () => {

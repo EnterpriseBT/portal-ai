@@ -72,7 +72,22 @@ jest.unstable_mockModule("../../services/csv-import.service.js", () => ({
   },
 }));
 
-const { UploadsService } = await import("../../services/uploads.service.js");
+const mockXlsxImportFromS3 = jest.fn<(params: {
+  s3Key: string;
+  sheetName: string;
+  connectorEntityId: string;
+  organizationId: string;
+  userId: string;
+}) => Promise<{ created: number; updated: number; unchanged: number; invalid: number }>>()
+  .mockResolvedValue({ created: 7, updated: 0, unchanged: 0, invalid: 0 });
+
+jest.unstable_mockModule("../../services/xlsx-import.service.js", () => ({
+  XlsxImportService: {
+    importFromS3: mockXlsxImportFromS3,
+  },
+}));
+
+const { UploadsService, extractSheetName } = await import("../../services/uploads.service.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,7 +112,7 @@ function createAwaitingJob(overrides?: Partial<Record<string, unknown>>) {
     metadata: {
       files: [{ originalName: "contacts.csv", s3Key: "uploads/org-001/job-001/contacts.csv", sizeBytes: 1024 }],
       organizationId: ORG_ID,
-      connectorDefinitionId: "cdef_csv01",
+      connectorDefinitionId: "cdef_fileupload01",
     },
     result: {
       parseResults: [],
@@ -245,7 +260,7 @@ describe("UploadsService", () => {
       mockConnectorInstancesFindByOrgDefinitionAndName.mockResolvedValue({
         id: "ci-existing",
         name: "My CSV Import",
-        connectorDefinitionId: "cdef_csv01",
+        connectorDefinitionId: "cdef_fileupload01",
         organizationId: ORG_ID,
       });
       mockConnectorInstancesUpdate.mockResolvedValue({
@@ -688,6 +703,185 @@ describe("UploadsService", () => {
 
       // Job transition should NOT have been called
       expect(mockTransition).not.toHaveBeenCalled();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // confirm() — XLSX routing
+  // ──────────────────────────────────────────────────────────────────────
+
+  describe("confirm() — XLSX routing", () => {
+    function createXlsxJob() {
+      return createAwaitingJob({
+        metadata: {
+          files: [{
+            originalName: "data.xlsx",
+            s3Key: "uploads/org-001/job-001/data.xlsx",
+            sizeBytes: 4096,
+          }],
+          organizationId: ORG_ID,
+          connectorDefinitionId: "cdef_fileupload01",
+        },
+        result: {
+          parseResults: [],
+          recommendations: { connectorInstanceName: "data", entities: [] },
+        },
+      });
+    }
+
+    function createXlsxConfirmBody(sourceFileName: string): ConfirmRequestBody {
+      return createConfirmBody({
+        entities: [
+          {
+            entityKey: "contacts",
+            entityLabel: "Contacts",
+            sourceFileName,
+            columns: [
+              {
+                sourceField: "Name",
+                existingColumnDefinitionId: "cd-name",
+                normalizedKey: "name",
+                format: null,
+                isPrimaryKey: false,
+                required: true,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    it("calls XlsxImportService for .xlsx entities with the extracted sheet name", async () => {
+      mockJobsFindById.mockResolvedValue(createXlsxJob());
+
+      await UploadsService.confirm(
+        JOB_ID, ORG_ID, USER_ID,
+        createXlsxConfirmBody("data.xlsx[Contacts]"),
+      );
+
+      expect(mockXlsxImportFromS3).toHaveBeenCalledTimes(1);
+      expect(mockXlsxImportFromS3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          s3Key: "uploads/org-001/job-001/data.xlsx",
+          sheetName: "Contacts",
+          connectorEntityId: "ce-001",
+          organizationId: ORG_ID,
+          userId: USER_ID,
+        }),
+      );
+      expect(mockImportFromS3).not.toHaveBeenCalled();
+    });
+
+    it("calls CsvImportService for .csv entities (regression)", async () => {
+      const body = createConfirmBody();
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+
+      expect(mockImportFromS3).toHaveBeenCalledTimes(1);
+      expect(mockXlsxImportFromS3).not.toHaveBeenCalled();
+    });
+
+    it("handles mixed confirm with both .csv and .xlsx entities", async () => {
+      mockJobsFindById.mockResolvedValue(createAwaitingJob({
+        metadata: {
+          files: [
+            { originalName: "contacts.csv", s3Key: "uploads/org-001/job-001/contacts.csv", sizeBytes: 1024 },
+            { originalName: "deals.xlsx", s3Key: "uploads/org-001/job-001/deals.xlsx", sizeBytes: 4096 },
+          ],
+          organizationId: ORG_ID,
+          connectorDefinitionId: "cdef_fileupload01",
+        },
+      }));
+
+      // Two confirmedEntities keyed by "contacts" and "deals_pipe"
+      const csvEntity = {
+        entityKey: "contacts",
+        entityLabel: "Contacts",
+        sourceFileName: "contacts.csv",
+        columns: [
+          {
+            sourceField: "Name",
+            existingColumnDefinitionId: "cd-name",
+            normalizedKey: "name",
+            format: null,
+            isPrimaryKey: false,
+            required: true,
+          },
+        ],
+      };
+      const xlsxEntity = {
+        entityKey: "deals_pipe",
+        entityLabel: "Deals Pipe",
+        sourceFileName: "deals.xlsx[Pipeline]",
+        columns: [
+          {
+            sourceField: "Name",
+            existingColumnDefinitionId: "cd-name",
+            normalizedKey: "name",
+            format: null,
+            isPrimaryKey: false,
+            required: true,
+          },
+        ],
+      };
+
+      // upsertByKey returns a different entity id per call so importResults attach correctly
+      mockConnectorEntitiesUpsertByKey.mockImplementationOnce(async (data: unknown) => ({
+        ...(data as Record<string, unknown>), id: "ce-csv",
+        key: (data as Record<string, unknown>).key, label: (data as Record<string, unknown>).label,
+      })).mockImplementationOnce(async (data: unknown) => ({
+        ...(data as Record<string, unknown>), id: "ce-xlsx",
+        key: (data as Record<string, unknown>).key, label: (data as Record<string, unknown>).label,
+      }));
+
+      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, createConfirmBody({
+        entities: [csvEntity, xlsxEntity],
+      }));
+
+      expect(mockImportFromS3).toHaveBeenCalledTimes(1);
+      expect(mockImportFromS3).toHaveBeenCalledWith(
+        expect.objectContaining({ s3Key: "uploads/org-001/job-001/contacts.csv" }),
+      );
+      expect(mockXlsxImportFromS3).toHaveBeenCalledTimes(1);
+      expect(mockXlsxImportFromS3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          s3Key: "uploads/org-001/job-001/deals.xlsx",
+          sheetName: "Pipeline",
+        }),
+      );
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // extractSheetName()
+  // ──────────────────────────────────────────────────────────────────────
+
+  describe("extractSheetName()", () => {
+    it("returns sheet name from 'file.xlsx[Contacts]'", () => {
+      expect(extractSheetName("file.xlsx[Contacts]")).toEqual({
+        baseName: "file.xlsx",
+        sheetName: "Contacts",
+      });
+    });
+
+    it("returns null sheet for plain CSV", () => {
+      expect(extractSheetName("file.csv")).toEqual({
+        baseName: "file.csv",
+        sheetName: null,
+      });
+    });
+
+    it("handles sheet names containing spaces", () => {
+      expect(extractSheetName("crm.xlsx[Deal History]")).toEqual({
+        baseName: "crm.xlsx",
+        sheetName: "Deal History",
+      });
+    });
+
+    it("handles workbook names with multiple dots", () => {
+      expect(extractSheetName("a.b.c.xlsx[Sheet1]")).toEqual({
+        baseName: "a.b.c.xlsx",
+        sheetName: "Sheet1",
+      });
     });
   });
 });

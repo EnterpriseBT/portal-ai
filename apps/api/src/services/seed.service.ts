@@ -1,4 +1,4 @@
-import { ConnectorDefinition, ColumnDefinition, ColumnDefinitionModelFactory, CSVConnectorDefinitionModelFactory, SandboxConnectorDefinitionModelFactory } from "@portalai/core/models";
+import { ConnectorDefinition, ColumnDefinition, ColumnDefinitionModelFactory, FileUploadConnectorDefinitionModelFactory, SandboxConnectorDefinitionModelFactory } from "@portalai/core/models";
 import type { ColumnDataType } from "@portalai/core/models";
 import { DbClient } from "../db/index.js";
 import { DbService } from "./db.service.js";
@@ -311,12 +311,12 @@ export class SeedService {
             write: true,
           },
           version: "1.0.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1775089873/sandbox_ntatbt.png',
+          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1776276948/sandbox_zlwqke.png',
         }).parse(),
-      new CSVConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
+      new FileUploadConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
         .update({
-          slug: "csv",
-          display: "CSV Connector",
+          slug: "file-upload",
+          display: "File Upload",
           category: "File-based",
           authType: "none",
           isActive: true,
@@ -327,7 +327,7 @@ export class SeedService {
             write: true,
           },
           version: "1.0.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1773338114/CSV_Icons_oad8ko.png',
+          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1776277003/upload_rgefyq.png',
         }).parse(),
     ];
 

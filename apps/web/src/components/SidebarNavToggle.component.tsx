@@ -8,10 +8,12 @@ export interface SidebarNavToggleProps {
   collapsed: boolean;
   collapsedIcon?: IconName;
   expandedIcon?: IconName;
+  variant: 'full' | 'compact';
   onClick: () => void;
 }
 
 export const SidebarNavToggleUI = ({
+  variant,
   collapsed,
   collapsedIcon = IconName.KeyboardArrowRight,
   expandedIcon = IconName.KeyboardArrowLeft,
@@ -23,6 +25,11 @@ export const SidebarNavToggleUI = ({
       color="inherit"
       onClick={onClick}
       size="small"
+      sx={theme => ({
+        width: variant === 'full' ? theme.spacing(4) :
+          theme.spacing(2),
+        height: 32
+      })}
       icon={collapsed ? collapsedIcon : expandedIcon}
     />
   );
@@ -47,6 +54,7 @@ export const SidebarNavToggle = () => {
   return (
     <span onClick={stopClickAwayEvents} onTouchEnd={stopClickAwayEvents}>
       <SidebarNavToggleUI
+        variant={isMobile ? 'full' : 'compact'}
         collapsed={isCollapsed}
         collapsedIcon={isMobile ? IconName.Menu : undefined}
         expandedIcon={isMobile ? IconName.Close : undefined}

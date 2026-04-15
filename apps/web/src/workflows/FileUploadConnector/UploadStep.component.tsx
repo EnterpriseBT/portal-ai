@@ -45,7 +45,7 @@ function getPhaseLabel(
       return "Starting processing...";
     case "done":
       if (jobProgress <= 10) return "Verifying files...";
-      if (jobProgress < 30) return "Parsing CSV files...";
+      if (jobProgress < 30) return "Parsing files...";
       if (jobProgress < 70) return "Analyzing schema...";
       if (jobProgress < 80) return "Generating recommendations...";
       return "Finalizing...";
@@ -54,6 +54,17 @@ function getPhaseLabel(
     default:
       return "";
   }
+}
+
+/**
+ * Split an XLSX-style fileName into its workbook + sheet parts.
+ *   "data.xlsx[Contacts]" → { displayName: "data.xlsx", sheetName: "Contacts" }
+ *   "contacts.csv"        → { displayName: "contacts.csv", sheetName: null }
+ */
+function parseDisplayFileName(fileName: string): { displayName: string; sheetName: string | null } {
+  const match = fileName.match(/^(.+?)\[([^\]]+)\]$/);
+  if (match) return { displayName: match[1], sheetName: match[2] };
+  return { displayName: fileName, sheetName: null };
 }
 
 // --- Component ---
@@ -84,14 +95,14 @@ export const UploadStep: React.FC<UploadStepProps> = ({
     return (
       <Stack spacing={2}>
         <Typography variant="body1">
-          Select one or more CSV files to upload.
+          Select one or more files to upload.
         </Typography>
         <FileUploader
-          accept=".csv"
+          accept=".csv,.xlsx"
           multiple
           maxSizeMB={50}
           onChange={onFilesChange}
-          helperText="Accepted formats: .csv (max 50MB per file, up to 5 files)"
+          helperText="Accepted formats: .csv, .xlsx (max 50MB per file, up to 5 files)"
         />
         {error && (
           <StatusMessage message={error} variant="error" />
@@ -109,26 +120,35 @@ export const UploadStep: React.FC<UploadStepProps> = ({
           variant="success"
         />
         <Stack spacing={1.5}>
-          {parseResults.map((result) => (
-            <Box
-              key={result.fileName}
-              sx={{
-                p: 1.5,
-                borderRadius: 1,
-                bgcolor: "action.hover",
-              }}
-            >
-              <Typography variant="body2" fontWeight="medium">
-                {result.fileName}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {result.rowCount.toLocaleString()} rows
-                {" · "}delimiter: {formatDelimiter(result.delimiter)}
-                {" · "}encoding: {result.encoding}
-                {" · "}{result.headers.length} columns
-              </Typography>
-            </Box>
-          ))}
+          {parseResults.map((result) => {
+            const { displayName, sheetName } = parseDisplayFileName(result.fileName);
+            return (
+              <Box
+                key={result.fileName}
+                sx={{
+                  p: 1.5,
+                  borderRadius: 1,
+                  bgcolor: "action.hover",
+                }}
+              >
+                <Typography variant="body2" fontWeight="medium">
+                  {displayName}
+                  {sheetName && (
+                    <Typography component="span" variant="body2" color="text.secondary">
+                      {" — sheet: "}
+                      {sheetName}
+                    </Typography>
+                  )}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {result.rowCount.toLocaleString()} rows
+                  {" · "}delimiter: {formatDelimiter(result.delimiter)}
+                  {" · "}encoding: {result.encoding}
+                  {" · "}{result.headers.length} columns
+                </Typography>
+              </Box>
+            );
+          })}
         </Stack>
       </Stack>
     );
@@ -205,6 +225,7 @@ function formatDelimiter(d: string): string {
   if (d === "\t") return "tab";
   if (d === ";") return "semicolon";
   if (d === "|") return "pipe";
+  if (d === "xlsx") return "N/A";
   return `"${d}"`;
 }
 

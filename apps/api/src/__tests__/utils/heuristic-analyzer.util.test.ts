@@ -336,6 +336,69 @@ describe("heuristicAnalyze", () => {
 });
 
 // ---------------------------------------------------------------------------
+// heuristicAnalyze — XLSX sheet naming
+// ---------------------------------------------------------------------------
+
+describe("heuristicAnalyze — XLSX sheet naming", () => {
+  const seedColumns = makeSeedColumns();
+
+  it("derives entityKey from sheet name when fileName carries a [Sheet] suffix", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({ fileName: "workbook.xlsx[Contacts]" }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+    expect(result.entityKey).toBe("contacts");
+    expect(result.entityLabel).toBe("Contacts");
+  });
+
+  it("preserves full bracketed string in sourceFileName", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({ fileName: "workbook.xlsx[Contacts]" }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+    expect(result.sourceFileName).toBe("workbook.xlsx[Contacts]");
+  });
+
+  it("snake-cases multi-word sheet names", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({ fileName: "crm.xlsx[Deal History]" }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+    expect(result.entityKey).toBe("deal_history");
+    expect(result.entityLabel).toBe("Deal History");
+  });
+
+  it("falls back to filename derivation for plain CSV (no brackets)", () => {
+    const result = heuristicAnalyze({
+      parseResult: makeParseResult({ fileName: "User Profiles.csv" }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+    expect(result.entityKey).toBe("user_profiles");
+    expect(result.entityLabel).toBe("User Profiles");
+  });
+
+  it("derives distinct entity keys for two sheets from the same workbook", () => {
+    const a = heuristicAnalyze({
+      parseResult: makeParseResult({ fileName: "data.xlsx[Contacts]" }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+    const b = heuristicAnalyze({
+      parseResult: makeParseResult({ fileName: "data.xlsx[Deals]" }),
+      existingColumns: seedColumns,
+      priorRecommendations: [],
+    });
+    expect(a.entityKey).not.toBe(b.entityKey);
+    expect(a.entityKey).toBe("contacts");
+    expect(b.entityKey).toBe("deals");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // heuristicAnalyze — exact matching
 // ---------------------------------------------------------------------------
 

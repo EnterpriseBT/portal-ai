@@ -39,7 +39,7 @@ import {
   usePagination,
 } from "../components/PaginationToolbar.component";
 import { SyncTotal } from "../components/SyncTotal.component";
-import { CSVConnectorWorkflow } from "../workflows/CSVConnector";
+import { FileUploadConnectorWorkflow } from "../workflows/FileUploadConnector";
 import { SandboxConnectorWorkflow } from "../workflows/SandboxConnector";
 
 export interface ConnectorWorkflowProps {
@@ -53,7 +53,7 @@ const WORKFLOW_REGISTRY: Record<
   string,
   ComponentType<ConnectorWorkflowProps>
 > = {
-  csv: CSVConnectorWorkflow,
+  "file-upload": FileUploadConnectorWorkflow,
   sandbox: SandboxConnectorWorkflow,
 };
 

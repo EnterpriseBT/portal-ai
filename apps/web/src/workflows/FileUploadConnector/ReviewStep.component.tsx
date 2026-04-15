@@ -84,7 +84,7 @@ const CompletionSummary: React.FC<{
                     </Typography>
                     {entity.importResult.invalid > 0 && (
                       <Typography variant="body2" color="warning.main">
-                        {entity.importResult.invalid} row{entity.importResult.invalid !== 1 ? "s" : ""} skipped due to validation errors
+                        {entity.importResult.invalid} record{entity.importResult.invalid !== 1 ? "s" : ""} imported with validation errors (review and fix in the records view)
                       </Typography>
                     )}
                   </>

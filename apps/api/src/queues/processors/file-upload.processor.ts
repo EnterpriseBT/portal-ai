@@ -1,12 +1,9 @@
-import { Readable } from "node:stream";
-
-import { parse } from "csv-parse";
-import chardet from "chardet";
+import path from "node:path";
+import type { Readable } from "node:stream";
 
 import type {
   FileUploadFile,
   FileParseResult,
-  ColumnStat,
   FileUploadResult,
   FileUploadRecommendation,
   FileUploadRecommendationEntity,
@@ -17,111 +14,14 @@ import { S3Service } from "../../services/s3.service.js";
 import { DbService } from "../../services/db.service.js";
 import { FileAnalysisService, type ExistingColumnDefinition } from "../../services/file-analysis.service.js";
 import { createLogger } from "../../utils/logger.util.js";
+import { parseCsvStream } from "../../utils/csv-parser.util.js";
+import { parseXlsxStream } from "../../utils/xlsx-parser.util.js";
+import { ProcessorError } from "../../utils/processor-error.util.js";
 
 const logger = createLogger({ module: "file-upload-processor" });
 
 /** Maximum sample rows to capture per file. */
 const MAX_SAMPLE_ROWS = 50;
-
-/** Maximum unique values to track per column before marking as capped. */
-const MAX_UNIQUE_VALUES = 1_000;
-
-/** Maximum sample values to store per column stat. */
-const MAX_SAMPLE_VALUES_PER_COLUMN = 10;
-
-/** Bytes to read for delimiter/encoding detection. */
-const DETECTION_CHUNK_SIZE = 4096;
-
-// ---------------------------------------------------------------------------
-// Delimiter detection
-// ---------------------------------------------------------------------------
-
-const CANDIDATE_DELIMITERS = [",", "\t", ";", "|"];
-
-/**
- * Auto-detect the delimiter from a sample of the file.
- * Counts occurrences of each candidate in the first chunk and picks the most frequent.
- */
-function detectDelimiter(sample: string): string {
-  let best = ",";
-  let bestCount = 0;
-
-  for (const d of CANDIDATE_DELIMITERS) {
-    const count = sample.split(d).length - 1;
-    if (count > bestCount) {
-      bestCount = count;
-      best = d;
-    }
-  }
-  return best;
-}
-
-// ---------------------------------------------------------------------------
-// Column stat accumulator
-// ---------------------------------------------------------------------------
-
-interface ColumnAccumulator {
-  name: string;
-  nullCount: number;
-  totalCount: number;
-  uniqueValues: Set<string>;
-  uniqueCapped: boolean;
-  minLength: number;
-  maxLength: number;
-  sampleValues: string[];
-}
-
-function createAccumulator(name: string): ColumnAccumulator {
-  return {
-    name,
-    nullCount: 0,
-    totalCount: 0,
-    uniqueValues: new Set(),
-    uniqueCapped: false,
-    minLength: Infinity,
-    maxLength: 0,
-    sampleValues: [],
-  };
-}
-
-function updateAccumulator(acc: ColumnAccumulator, value: string): void {
-  acc.totalCount++;
-  const trimmed = value.trim();
-
-  if (trimmed === "") {
-    acc.nullCount++;
-    return;
-  }
-
-  const len = trimmed.length;
-  if (len < acc.minLength) acc.minLength = len;
-  if (len > acc.maxLength) acc.maxLength = len;
-
-  if (!acc.uniqueCapped) {
-    acc.uniqueValues.add(trimmed);
-    if (acc.uniqueValues.size > MAX_UNIQUE_VALUES) {
-      acc.uniqueCapped = true;
-    }
-  }
-
-  if (acc.sampleValues.length < MAX_SAMPLE_VALUES_PER_COLUMN) {
-    acc.sampleValues.push(trimmed);
-  }
-}
-
-function finalizeAccumulator(acc: ColumnAccumulator): ColumnStat {
-  return {
-    name: acc.name,
-    nullCount: acc.nullCount,
-    totalCount: acc.totalCount,
-    nullRate: acc.totalCount > 0 ? acc.nullCount / acc.totalCount : 0,
-    uniqueCount: acc.uniqueValues.size,
-    uniqueCapped: acc.uniqueCapped,
-    minLength: acc.minLength === Infinity ? 0 : acc.minLength,
-    maxLength: acc.maxLength,
-    sampleValues: acc.sampleValues,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // S3 verification phase
@@ -165,11 +65,15 @@ async function verifyFiles(
 }
 
 // ---------------------------------------------------------------------------
-// CSV parsing phase (single file)
+// File parsing phase (streaming, format-specific)
 // ---------------------------------------------------------------------------
 
-async function parseFile(file: FileUploadFile): Promise<FileParseResult> {
-  // Get stream from S3
+/**
+ * Stream a file from S3 and produce one or more FileParseResults.
+ * CSV files always yield a single element; XLSX files yield one element per
+ * non-empty sheet, with `fileName` encoded as `<originalName>[<SheetName>]`.
+ */
+async function parseFile(file: FileUploadFile): Promise<FileParseResult[]> {
   let s3Stream: Readable;
   try {
     const raw = await S3Service.getObjectStream(file.s3Key);
@@ -181,91 +85,49 @@ async function parseFile(file: FileUploadFile): Promise<FileParseResult> {
     );
   }
 
-  // Buffer the stream — we need the first chunk for detection, then full content for parsing
-  let detectionBuffer: Buffer | null = null;
-  let totalBytes = 0;
-  const allChunks: Buffer[] = [];
+  const extension = path.extname(file.originalName).toLowerCase();
 
-  for await (const chunk of s3Stream as AsyncIterable<Buffer>) {
-    allChunks.push(chunk);
-    totalBytes += chunk.length;
-
-    if (!detectionBuffer && totalBytes >= DETECTION_CHUNK_SIZE) {
-      detectionBuffer = Buffer.concat(allChunks);
-    }
-  }
-
-  const fullBuffer = Buffer.concat(allChunks);
-  if (fullBuffer.length === 0) {
-    throw new ProcessorError(
-      "UPLOAD_EMPTY_FILE",
-      `File "${file.originalName}" is empty after download`
-    );
-  }
-
-  detectionBuffer = detectionBuffer ?? fullBuffer;
-
-  // Detect encoding
-  let encoding: string;
-  try {
-    encoding = chardet.detect(detectionBuffer) ?? "utf-8";
-  } catch {
-    throw new ProcessorError(
-      "UPLOAD_ENCODING_ERROR",
-      `Failed to detect encoding for file "${file.originalName}"`
-    );
-  }
-
-  // Detect delimiter from first chunk
-  const sampleText = detectionBuffer.subarray(0, DETECTION_CHUNK_SIZE).toString("utf-8");
-  const delimiter = detectDelimiter(sampleText);
-
-  // Detect if first row is a header (heuristic: if all values in first row are non-numeric strings)
-  const firstLine = sampleText.split(/\r?\n/)[0] ?? "";
-  const firstRowValues = firstLine.split(delimiter);
-  const hasHeader = firstRowValues.length > 1 &&
-    firstRowValues.every((v) => v.trim() !== "" && isNaN(Number(v.trim())));
-
-  // Parse CSV
-  const sampleRows: string[][] = [];
-  const accumulators: ColumnAccumulator[] = [];
-  let headers: string[] = [];
-  let rowCount = 0;
-
-  try {
-    const records = await parseCSVBuffer(fullBuffer, delimiter);
-    for (const record of records) {
-      const values = record as string[];
-
-      if (rowCount === 0 && hasHeader) {
-        headers = values;
-        // Initialize accumulators
-        for (const h of headers) {
-          accumulators.push(createAccumulator(h));
-        }
-      } else {
-        // Ensure accumulators exist (for headerless files, init on first data row)
-        if (accumulators.length === 0) {
-          headers = values.map((_, i) => `column_${i + 1}`);
-          for (const h of headers) {
-            accumulators.push(createAccumulator(h));
-          }
-        }
-
-        // Update stats
-        for (let i = 0; i < values.length && i < accumulators.length; i++) {
-          updateAccumulator(accumulators[i], values[i]);
-        }
-
-        // Capture sample rows (excluding header row)
-        const dataRowIndex = hasHeader ? rowCount - 1 : rowCount;
-        if (dataRowIndex < MAX_SAMPLE_ROWS) {
-          sampleRows.push(values);
-        }
+  if (extension === ".xlsx") {
+    try {
+      const results: FileParseResult[] = [];
+      for await (const result of parseXlsxStream(s3Stream, {
+        fileName: file.originalName,
+        maxSampleRows: MAX_SAMPLE_ROWS,
+      })) {
+        results.push(result);
       }
-
-      rowCount++;
+      if (results.length === 0) {
+        throw new ProcessorError(
+          "XLSX_NO_DATA",
+          `XLSX file "${file.originalName}" contains no sheets with data`
+        );
+      }
+      return results;
+    } catch (err) {
+      if (err instanceof ProcessorError) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new ProcessorError(
+        "UPLOAD_PARSE_FAILED",
+        `Failed to parse XLSX file "${file.originalName}": ${message}`
+      );
     }
+  }
+
+  try {
+    const result = await parseCsvStream(s3Stream, {
+      fileName: file.originalName,
+      maxSampleRows: MAX_SAMPLE_ROWS,
+    });
+
+    // Defensive: S3 reported size>0 but stream yielded nothing
+    if (result.headers.length === 0 && result.rowCount === 0) {
+      throw new ProcessorError(
+        "UPLOAD_EMPTY_FILE",
+        `File "${file.originalName}" is empty after download`
+      );
+    }
+
+    return [result];
   } catch (err) {
     if (err instanceof ProcessorError) throw err;
     const message = err instanceof Error ? err.message : String(err);
@@ -273,62 +135,6 @@ async function parseFile(file: FileUploadFile): Promise<FileParseResult> {
       "UPLOAD_PARSE_FAILED",
       `Failed to parse CSV file "${file.originalName}": ${message}`
     );
-  }
-
-  const dataRowCount = hasHeader ? rowCount - 1 : rowCount;
-
-  return {
-    fileName: file.originalName,
-    delimiter,
-    hasHeader,
-    encoding,
-    rowCount: dataRowCount,
-    headers,
-    sampleRows,
-    columnStats: accumulators.map(finalizeAccumulator),
-  };
-}
-
-/**
- * Parse a CSV buffer into an array of row arrays.
- */
-async function parseCSVBuffer(
-  buffer: Buffer,
-  delimiter: string,
-): Promise<string[][]> {
-  return new Promise((resolve, reject) => {
-    const rows: string[][] = [];
-    const parser = parse({
-      delimiter,
-      relax_column_count: true,
-      skip_empty_lines: true,
-    });
-
-    parser.on("readable", () => {
-      let record: string[];
-      while ((record = parser.read()) !== null) {
-        rows.push(record);
-      }
-    });
-
-    parser.on("error", reject);
-    parser.on("end", () => resolve(rows));
-
-    const stream = Readable.from(buffer);
-    stream.pipe(parser);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Custom error class
-// ---------------------------------------------------------------------------
-
-class ProcessorError extends Error {
-  code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.code = code;
-    this.name = "ProcessorError";
   }
 }
 
@@ -348,25 +154,26 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
   await bullJob.updateProgress(10);
   logger.info({ jobId }, "Phase 1 complete: All files verified");
 
-  // Phase 2: CSV parsing (progress 10-30)
-  logger.info({ jobId }, "Phase 2: Parsing CSV files");
+  // Phase 2: File parsing (progress 10-30)
+  logger.info({ jobId }, "Phase 2: Parsing files");
   const parseResults: FileParseResult[] = [];
 
   for (let i = 0; i < fileCount; i++) {
     const file = files[i];
     logger.info({ jobId, fileName: file.originalName }, `Parsing file ${i + 1}/${fileCount}`);
 
-    const result = await parseFile(file);
-    parseResults.push(result);
+    const fileResults = await parseFile(file);
+    for (const result of fileResults) {
+      parseResults.push(result);
+      logger.info(
+        { jobId, fileName: result.fileName, rowCount: result.rowCount, delimiter: result.delimiter },
+        `Parsed ${result.fileName}`
+      );
+    }
 
     // Byte-based progress: 10 + ((i+1) / fileCount) * 20
     const progress = Math.round(10 + ((i + 1) / fileCount) * 20);
     await bullJob.updateProgress(progress);
-
-    logger.info(
-      { jobId, fileName: file.originalName, rowCount: result.rowCount, delimiter: result.delimiter },
-      `Parsed file ${i + 1}/${fileCount}`
-    );
   }
 
   logger.info({ jobId }, "Phase 2 complete: All files parsed");
@@ -406,8 +213,8 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
 
     entityRecommendations.push(recommendation);
 
-    // Progress: 30 + ((i+1) / fileCount) * 40 (maps to 30-70 range)
-    const progress = Math.round(30 + ((i + 1) / fileCount) * 40);
+    // Progress: 30 + ((i+1) / parseResults.length) * 40 (maps to 30-70 range)
+    const progress = Math.round(30 + ((i + 1) / parseResults.length) * 40);
     await bullJob.updateProgress(progress);
 
     logger.info(
@@ -421,10 +228,12 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
   // Phase 4: Assemble recommendations and persist (progress 70-80)
   logger.info({ jobId }, "Phase 4: Persisting recommendations");
 
-  // Derive a suggested connector instance name from file names
-  const connectorInstanceName = parseResults.length === 1
-    ? parseResults[0].fileName.replace(/\.[^.]+$/, "")
-    : `CSV Import (${parseResults.length} files)`;
+  // Derive a suggested connector instance name from the uploaded files.
+  // Use the file count (not parseResults.length) so a single XLSX with N sheets
+  // yields a workbook-based name rather than "(N files)".
+  const connectorInstanceName = fileCount === 1
+    ? files[0].originalName.replace(/\.[^.]+$/, "")
+    : `File Import (${fileCount} files)`;
 
   const recommendations: FileUploadRecommendation = {
     connectorInstanceName,

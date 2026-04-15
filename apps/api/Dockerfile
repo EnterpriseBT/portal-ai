@@ -69,4 +69,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD curl -f http://localhost:3001/api/health || exit 1
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "--max-old-space-size=3200", "dist/index.js"]

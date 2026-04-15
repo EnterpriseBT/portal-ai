@@ -145,7 +145,7 @@ function mockResponse(body: unknown, status = 200) {
 
 const PRESIGN_PARAMS = {
   organizationId: "org_123",
-  connectorDefinitionId: "cdef_csv01",
+  connectorDefinitionId: "cdef_fileupload01",
 };
 
 const PRESIGN_RESPONSE = {
@@ -272,7 +272,7 @@ describe("useFileUpload", () => {
     await waitFor(() => {
       expect(mockPresign).toHaveBeenCalledWith({
         organizationId: "org_123",
-        connectorDefinitionId: "cdef_csv01",
+        connectorDefinitionId: "cdef_fileupload01",
         files: [
           {
             fileName: "data.json",

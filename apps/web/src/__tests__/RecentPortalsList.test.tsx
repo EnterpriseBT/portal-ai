@@ -65,7 +65,11 @@ describe("RecentPortalsListUI", () => {
   it("should show empty state when no portals", () => {
     render(<RecentPortalsListUI {...defaultProps} portals={[]} />);
     expect(screen.getByTestId("empty-portals")).toBeInTheDocument();
-    expect(screen.getByText("No portals yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No portals yet — open a station to start your first conversation."
+      )
+    ).toBeInTheDocument();
   });
 
   it("should display lastOpened timestamp when available", () => {

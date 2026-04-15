@@ -39,7 +39,7 @@ beforeAll(() => {
   environment.UPLOAD_S3_PRESIGN_EXPIRY_SEC = 900;
   environment.UPLOAD_MAX_FILE_SIZE_MB = 50;
   environment.UPLOAD_MAX_FILES = 5;
-  environment.UPLOAD_ALLOWED_EXTENSIONS = [".csv"];
+  environment.UPLOAD_ALLOWED_EXTENSIONS = [".csv", ".xlsx"];
 });
 
 // Mock the auth middleware
@@ -119,7 +119,7 @@ function createJob(
         },
       ],
       organizationId,
-      connectorDefinitionId: "cdef_csv01",
+      connectorDefinitionId: "cdef_fileupload01",
     },
     result: null,
     error: null,
@@ -181,7 +181,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
           ],
@@ -205,7 +205,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "a.csv", contentType: "text/csv", sizeBytes: 100 },
             { fileName: "b.csv", contentType: "text/csv", sizeBytes: 200 },
@@ -225,7 +225,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
           ],
@@ -253,7 +253,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [],
         });
 
@@ -269,14 +269,36 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
-            { fileName: "data.xlsx", contentType: "application/vnd.openxmlformats", sizeBytes: 1024 },
+            { fileName: "data.pdf", contentType: "application/pdf", sizeBytes: 1024 },
           ],
         });
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.UPLOAD_INVALID_FILE_TYPE);
+    });
+
+    it("should accept .xlsx files (per default allowed extensions)", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const organizationId = "org_123";
+      mockCreatePresignedUpload.mockResolvedValue("https://s3.amazonaws.com/test-bucket/uploads/...");
+
+      const res = await request(app)
+        .post("/api/uploads/presign")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          organizationId,
+          connectorDefinitionId: "cdef_fileupload01",
+          files: [
+            { fileName: "workbook.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", sizeBytes: 4096 },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.uploads[0].fileName).toBe("workbook.xlsx");
+      expect(res.body.payload.uploads[0].s3Key).toContain("workbook.xlsx");
     });
 
     it("should return 400 for oversized files", async () => {
@@ -287,7 +309,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "huge.csv", contentType: "text/csv", sizeBytes: 100 * 1024 * 1024 },
           ],
@@ -311,7 +333,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files,
         });
 
@@ -340,7 +362,7 @@ describe("Uploads Router", () => {
         .set("Authorization", "Bearer test-token")
         .send({
           organizationId: "org_123",
-          connectorDefinitionId: "cdef_csv01",
+          connectorDefinitionId: "cdef_fileupload01",
           files: [
             { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
           ],
@@ -476,7 +498,7 @@ describe("Uploads Router", () => {
   // ── POST /api/uploads/:jobId/confirm ────────────────────────────
 
   describe("POST /api/uploads/:jobId/confirm", () => {
-    const CONNECTOR_DEF_ID = "cdef_csv01";
+    const CONNECTOR_DEF_ID = "cdef_fileupload01";
     const NAME_COL_DEF_ID = "coldef_name";
     const EMAIL_COL_DEF_ID = "coldef_email";
 

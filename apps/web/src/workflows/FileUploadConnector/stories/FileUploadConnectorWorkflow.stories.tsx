@@ -3,8 +3,8 @@ import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import type { CSVConnectorWorkflowUIProps } from "../CSVConnectorWorkflow.component";
-import { CSVConnectorWorkflowUI } from "../CSVConnectorWorkflow.component";
+import type { FileUploadConnectorWorkflowUIProps } from "../FileUploadConnectorWorkflow.component";
+import { FileUploadConnectorWorkflowUI } from "../FileUploadConnectorWorkflow.component";
 import type {
   Recommendations,
   RecommendedEntity,
@@ -113,9 +113,9 @@ const MOCK_RECOMMENDATIONS: Recommendations = {
 };
 
 const STEP_CONFIGS = [
-  { label: "Upload CSV", description: "Select and upload CSV files" },
+  { label: "Upload Files", description: "Select and upload files" },
   { label: "Confirm Entities", description: "Review detected entities" },
-  { label: "Map Columns", description: "Map CSV columns to definitions" },
+  { label: "Map Columns", description: "Map source columns to definitions" },
   { label: "Review & Import", description: "Review and confirm import" },
 ];
 
@@ -138,7 +138,7 @@ function makeFileProgress(
 // Base props factory
 // ---------------------------------------------------------------------------
 
-const baseArgs: CSVConnectorWorkflowUIProps = {
+const baseArgs: FileUploadConnectorWorkflowUIProps = {
   open: true,
   onClose: fn(),
   step: 0,
@@ -186,10 +186,10 @@ const baseArgs: CSVConnectorWorkflowUIProps = {
 
 const meta = {
   title: "Workflows/CSVConnector",
-  component: CSVConnectorWorkflowUI,
+  component: FileUploadConnectorWorkflowUI,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],
-} satisfies Meta<typeof CSVConnectorWorkflowUI>;
+} satisfies Meta<typeof FileUploadConnectorWorkflowUI>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -364,7 +364,7 @@ const InteractiveContent: React.FC = () => {
   const handleBack = () => setStep((s) => Math.max(s - 1, 0) as 0 | 1 | 2 | 3);
 
   return (
-    <CSVConnectorWorkflowUI
+    <FileUploadConnectorWorkflowUI
       {...baseArgs}
       step={step}
       files={MOCK_FILES}

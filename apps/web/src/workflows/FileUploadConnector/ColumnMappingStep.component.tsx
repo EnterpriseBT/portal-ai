@@ -25,7 +25,7 @@ import type {
   RecommendedColumnUpdate,
   RecommendedEntity,
 } from "./utils/upload-workflow.util";
-import type { ColumnStepErrors } from "./utils/csv-validation.util";
+import type { ColumnStepErrors } from "./utils/file-upload-validation.util";
 import type { FormErrors } from "../../utils/form-validation.util";
 
 // --- Types ---

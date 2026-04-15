@@ -13,18 +13,42 @@ import type {
 } from "@portalai/core/contracts";
 import type { FileUploadMetadata } from "@portalai/core/models";
 
+import path from "node:path";
+
 import { createLogger } from "../utils/logger.util.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { JobEventsService } from "./job-events.service.js";
 import { CsvImportService } from "./csv-import.service.js";
+import { XlsxImportService } from "./xlsx-import.service.js";
 import type { DbTransaction } from "../db/repositories/base.repository.js";
 import { SystemUtilities } from "../utils/system.util.js";
 
 const logger = createLogger({ module: "uploads-service" });
 
 const CONFIRM_TIMEOUT_MS = 30_000;
+
+/**
+ * Split an XLSX-style `sourceFileName` into the workbook name and sheet name.
+ *
+ * Examples:
+ *   "data.xlsx[Contacts]"  → { baseName: "data.xlsx", sheetName: "Contacts" }
+ *   "data.xlsx[Deal Hist]" → { baseName: "data.xlsx", sheetName: "Deal Hist" }
+ *   "contacts.csv"         → { baseName: "contacts.csv", sheetName: null }
+ *
+ * Used at confirm time to (a) match the bracketed `sourceFileName` from the
+ * recommendation back to the unbracketed S3 metadata entry, and (b) decide
+ * whether to route the import through the XLSX or CSV service.
+ */
+export function extractSheetName(sourceFileName: string): {
+  baseName: string;
+  sheetName: string | null;
+} {
+  const match = sourceFileName.match(/^(.+?)\[([^\]]+)\]$/);
+  if (match) return { baseName: match[1], sheetName: match[2] };
+  return { baseName: sourceFileName, sheetName: null };
+}
 
 export class UploadsService {
   /**
@@ -100,7 +124,7 @@ export class UploadsService {
       ),
     ]);
 
-    // Import CSV records for each confirmed entity
+    // Import records for each confirmed entity, routing CSV vs XLSX by extension
     for (const confirmedEntity of result.confirmedEntities) {
       // Find the matching request entity to get sourceFileName
       const requestEntity = body.entities.find(
@@ -108,10 +132,10 @@ export class UploadsService {
       );
       if (!requestEntity) continue;
 
-      // Find the S3 file matching the source file name
-      const s3File = metadata.files.find(
-        (f) => f.originalName === requestEntity.sourceFileName
-      );
+      // XLSX uploads carry "<workbook>.xlsx[<Sheet>]" in sourceFileName; the
+      // S3 metadata only knows the workbook name, so unwrap before matching.
+      const { baseName, sheetName } = extractSheetName(requestEntity.sourceFileName);
+      const s3File = metadata.files.find((f) => f.originalName === baseName);
       if (!s3File) {
         logger.warn(
           { entityKey: confirmedEntity.entityKey, sourceFileName: requestEntity.sourceFileName },
@@ -121,17 +145,26 @@ export class UploadsService {
       }
 
       try {
-        const importResult = await CsvImportService.importFromS3({
-          s3Key: s3File.s3Key,
-          connectorEntityId: confirmedEntity.connectorEntityId,
-          organizationId,
-          userId,
-        });
+        const extension = path.extname(s3File.originalName).toLowerCase();
+        const importResult = extension === ".xlsx"
+          ? await XlsxImportService.importFromS3({
+              s3Key: s3File.s3Key,
+              sheetName: sheetName ?? "",
+              connectorEntityId: confirmedEntity.connectorEntityId,
+              organizationId,
+              userId,
+            })
+          : await CsvImportService.importFromS3({
+              s3Key: s3File.s3Key,
+              connectorEntityId: confirmedEntity.connectorEntityId,
+              organizationId,
+              userId,
+            });
         (confirmedEntity as ConfirmResponseEntity).importResult = importResult;
       } catch (err) {
         logger.error(
           { error: err instanceof Error ? err.message : "Unknown error", entityKey: confirmedEntity.entityKey },
-          "Failed to import CSV records for entity"
+          "Failed to import records for entity"
         );
         // Set empty import result so the confirm still succeeds
         (confirmedEntity as ConfirmResponseEntity).importResult = { created: 0, updated: 0, unchanged: 0, invalid: 0 };
