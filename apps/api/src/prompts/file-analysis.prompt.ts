@@ -15,7 +15,9 @@ import type { AnalyzeFileInput } from "../services/file-analysis.service.js";
 export function buildFileAnalysisPrompt(input: AnalyzeFileInput): string {
   const { parseResult, existingColumns, priorRecommendations } = input;
 
-  let prompt = `You are a data schema analyst. Analyze the following CSV file and recommend a connector entity with column mappings.
+  let prompt = `You are a data schema analyst. Analyze the following file and recommend a connector entity with column mappings.
+
+XLSX uploads use the convention \`<workbook>.xlsx[<SheetName>]\` in \`File:\` below — when you see this format, treat each sheet as its own entity and derive \`entityKey\` and \`entityLabel\` from the sheet name (not the workbook name). Plain CSVs have no bracketed suffix.
 
 ## File: ${parseResult.fileName}
 - Rows: ${parseResult.rowCount}

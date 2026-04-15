@@ -84,7 +84,11 @@ export const createJobsWorker = (
         url: environment.REDIS_URL,
         maxRetriesPerRequest: null,
       },
-      concurrency: 5,
+      // Capped at 2 to bound concurrent memory pressure from streaming XLSX /
+      // CSV parsers (each holds an exceljs sharedStrings cache for the
+      // duration of a workbook). All job types share this worker; cranking
+      // back up requires separate workers per type.
+      concurrency: 2,
     }
   );
 

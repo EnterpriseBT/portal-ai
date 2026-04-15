@@ -243,9 +243,15 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
     };
   });
 
-  // Derive entity key from file name (strip extension)
-  const entityKey = toSnakeCase(parseResult.fileName.replace(/\.[^.]+$/, ""));
-  const entityLabel = parseResult.fileName.replace(/\.[^.]+$/, "");
+  // Derive entity key from file name. XLSX uploads carry a `<file>.xlsx[<Sheet>]`
+  // suffix on `fileName` (set by parseXlsxStream); when present, prefer the
+  // sheet name so two sheets from the same workbook produce distinct entity
+  // keys.  `sourceFileName` retains the full bracketed string so the confirm
+  // flow can recover the sheet via `extractSheetName()`.
+  const { base, sheet } = parseFileName(parseResult.fileName);
+  const stem = (sheet ?? base).replace(/\.[^.]+$/, "");
+  const entityKey = toSnakeCase(stem);
+  const entityLabel = stem;
 
   return {
     entityKey,
@@ -253,4 +259,15 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
     sourceFileName: parseResult.fileName,
     columns,
   };
+}
+
+/**
+ * Parse a file name into its workbook base and optional sheet suffix.
+ * Returns `{ base, sheet: null }` for plain CSVs and
+ * `{ base: "data.xlsx", sheet: "Contacts" }` for `data.xlsx[Contacts]`.
+ */
+function parseFileName(fileName: string): { base: string; sheet: string | null } {
+  const match = fileName.match(/^(.+?)\[([^\]]+)\]$/);
+  if (match) return { base: match[1], sheet: match[2] };
+  return { base: fileName, sheet: null };
 }

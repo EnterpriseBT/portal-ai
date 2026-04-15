@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Readable } from "node:stream";
 
 import type {
@@ -14,6 +15,8 @@ import { DbService } from "../../services/db.service.js";
 import { FileAnalysisService, type ExistingColumnDefinition } from "../../services/file-analysis.service.js";
 import { createLogger } from "../../utils/logger.util.js";
 import { parseCsvStream } from "../../utils/csv-parser.util.js";
+import { parseXlsxStream } from "../../utils/xlsx-parser.util.js";
+import { ProcessorError } from "../../utils/processor-error.util.js";
 
 const logger = createLogger({ module: "file-upload-processor" });
 
@@ -66,9 +69,9 @@ async function verifyFiles(
 // ---------------------------------------------------------------------------
 
 /**
- * Stream a file from S3 and produce one FileParseResult.
- * Returns an array to support multi-sheet formats (e.g. XLSX) in the future;
- * CSV always yields a single element.
+ * Stream a file from S3 and produce one or more FileParseResults.
+ * CSV files always yield a single element; XLSX files yield one element per
+ * non-empty sheet, with `fileName` encoded as `<originalName>[<SheetName>]`.
  */
 async function parseFile(file: FileUploadFile): Promise<FileParseResult[]> {
   let s3Stream: Readable;
@@ -80,6 +83,34 @@ async function parseFile(file: FileUploadFile): Promise<FileParseResult[]> {
       "UPLOAD_S3_READ_ERROR",
       `Failed to read file "${file.originalName}" from S3`
     );
+  }
+
+  const extension = path.extname(file.originalName).toLowerCase();
+
+  if (extension === ".xlsx") {
+    try {
+      const results: FileParseResult[] = [];
+      for await (const result of parseXlsxStream(s3Stream, {
+        fileName: file.originalName,
+        maxSampleRows: MAX_SAMPLE_ROWS,
+      })) {
+        results.push(result);
+      }
+      if (results.length === 0) {
+        throw new ProcessorError(
+          "XLSX_NO_DATA",
+          `XLSX file "${file.originalName}" contains no sheets with data`
+        );
+      }
+      return results;
+    } catch (err) {
+      if (err instanceof ProcessorError) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new ProcessorError(
+        "UPLOAD_PARSE_FAILED",
+        `Failed to parse XLSX file "${file.originalName}": ${message}`
+      );
+    }
   }
 
   try {
@@ -104,19 +135,6 @@ async function parseFile(file: FileUploadFile): Promise<FileParseResult[]> {
       "UPLOAD_PARSE_FAILED",
       `Failed to parse CSV file "${file.originalName}": ${message}`
     );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Custom error class
-// ---------------------------------------------------------------------------
-
-class ProcessorError extends Error {
-  code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.code = code;
-    this.name = "ProcessorError";
   }
 }
 
@@ -210,10 +228,12 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
   // Phase 4: Assemble recommendations and persist (progress 70-80)
   logger.info({ jobId }, "Phase 4: Persisting recommendations");
 
-  // Derive a suggested connector instance name from file names
-  const connectorInstanceName = parseResults.length === 1
-    ? parseResults[0].fileName.replace(/\.[^.]+$/, "")
-    : `File Import (${parseResults.length} files)`;
+  // Derive a suggested connector instance name from the uploaded files.
+  // Use the file count (not parseResults.length) so a single XLSX with N sheets
+  // yields a workbook-based name rather than "(N files)".
+  const connectorInstanceName = fileCount === 1
+    ? files[0].originalName.replace(/\.[^.]+$/, "")
+    : `File Import (${fileCount} files)`;
 
   const recommendations: FileUploadRecommendation = {
     connectorInstanceName,

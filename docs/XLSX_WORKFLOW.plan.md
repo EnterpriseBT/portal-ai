@@ -396,6 +396,60 @@ cd apps/api && npx jest --testPathPattern="file-upload.processor" --no-coverage
 
 ---
 
+## Step 9b — Sheet-aware heuristic + AI prompt convention (TDD)
+
+**Goal:** When XLSX rows reach the heuristic fallback path, derive a per-sheet `entityKey` instead of collapsing all sheets in a workbook to the same key. Also document the `[SheetName]` filename convention in the AI prompt so the LLM produces stable sheet-aware keys.
+
+### 9b.1 Update tests: `apps/api/src/__tests__/utils/heuristic-analyzer.util.test.ts`
+
+```
+describe("heuristicAnalyze — XLSX sheet naming")
+  - derives entityKey from sheet name when fileName matches "<file>.xlsx[<Sheet>]"
+  - derives entityLabel from sheet name when fileName matches "<file>.xlsx[<Sheet>]"
+  - sets sourceFileName to the full "<file>.xlsx[<Sheet>]" string (unchanged)
+  - falls back to filename-derivation for plain CSV (no brackets)
+  - handles sheet names with spaces ("Deal History" → "deal_history")
+```
+
+### 9b.2 Implement: `apps/api/src/utils/heuristic-analyzer.util.ts`
+
+Add a small helper at module scope:
+
+```ts
+function parseFileName(fileName: string): { base: string; sheet: string | null } {
+  const match = fileName.match(/^(.+?)\[([^\]]+)\]$/);
+  if (match) return { base: match[1], sheet: match[2] };
+  return { base: fileName, sheet: null };
+}
+```
+
+Rewrite the entityKey/entityLabel derivation around lines 247-248:
+
+```ts
+const { base, sheet } = parseFileName(parseResult.fileName);
+const stem = (sheet ?? base).replace(/\.[^.]+$/, "");
+const entityKey = toSnakeCase(stem);
+const entityLabel = stem;
+```
+
+`sourceFileName` stays as `parseResult.fileName` so the confirm-time `extractSheetName()` parser (Step 10) still finds the bracketed sheet.
+
+### 9b.3 Update AI prompt: `apps/api/src/prompts/file-analysis.prompt.ts`
+
+Add one sentence near the top of the file-context section:
+
+> XLSX files use the convention `<workbook>.xlsx[<SheetName>]` in `fileName`. When you see this format, derive `entityKey` and `entityLabel` from the sheet name, not the workbook name — each sheet is a distinct entity.
+
+If a prompt snapshot test exists, regenerate it.
+
+### 9b.4 Verify
+
+```bash
+cd apps/api && npx jest --testPathPattern="heuristic-analyzer|file-analysis" --no-coverage
+```
+
+---
+
 ## Step 10 — Update `uploads.service.ts` for XLSX import routing (TDD)
 
 **Goal:** During confirmation, route to CSV or XLSX import service based on file extension.
@@ -640,6 +694,8 @@ npm run lint
 | `apps/api/src/queues/processors/file-upload.processor.ts` | Remove `Buffer.concat`, stream S3 → `parseCsvStream` / `parseXlsxStream`, flatten results |
 | `apps/api/src/services/csv-import.service.ts` | Remove buffer loop, stream S3 → `csvRowIterator` → `importRows` |
 | `apps/api/src/services/uploads.service.ts` | Route to XLSX import service by extension; `extractSheetName()` helper |
+| `apps/api/src/utils/heuristic-analyzer.util.ts` | Strip `[SheetName]` suffix when deriving `entityKey` / `entityLabel` so XLSX sheets get distinct heuristic-fallback keys |
+| `apps/api/src/prompts/file-analysis.prompt.ts` | Document the `<file>.xlsx[<Sheet>]` convention so the LLM derives keys per-sheet |
 | `apps/api/src/routes/uploads.router.ts` | Default allowed extensions `.csv,.xlsx` |
 | `apps/api/src/queues/jobs.worker.ts` | Cap file-upload job concurrency at 2 |
 | `apps/api/Dockerfile` | Add `--max-old-space-size=3200` to node CMD |

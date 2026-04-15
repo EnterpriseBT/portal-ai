@@ -39,7 +39,7 @@ beforeAll(() => {
   environment.UPLOAD_S3_PRESIGN_EXPIRY_SEC = 900;
   environment.UPLOAD_MAX_FILE_SIZE_MB = 50;
   environment.UPLOAD_MAX_FILES = 5;
-  environment.UPLOAD_ALLOWED_EXTENSIONS = [".csv"];
+  environment.UPLOAD_ALLOWED_EXTENSIONS = [".csv", ".xlsx"];
 });
 
 // Mock the auth middleware
@@ -271,12 +271,34 @@ describe("Uploads Router", () => {
           organizationId: "org_123",
           connectorDefinitionId: "cdef_csv01",
           files: [
-            { fileName: "data.xlsx", contentType: "application/vnd.openxmlformats", sizeBytes: 1024 },
+            { fileName: "data.pdf", contentType: "application/pdf", sizeBytes: 1024 },
           ],
         });
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.UPLOAD_INVALID_FILE_TYPE);
+    });
+
+    it("should accept .xlsx files (per default allowed extensions)", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+      const organizationId = "org_123";
+      mockCreatePresignedUpload.mockResolvedValue("https://s3.amazonaws.com/test-bucket/uploads/...");
+
+      const res = await request(app)
+        .post("/api/uploads/presign")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          organizationId,
+          connectorDefinitionId: "cdef_csv01",
+          files: [
+            { fileName: "workbook.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", sizeBytes: 4096 },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.payload.uploads[0].fileName).toBe("workbook.xlsx");
+      expect(res.body.payload.uploads[0].s3Key).toContain("workbook.xlsx");
     });
 
     it("should return 400 for oversized files", async () => {
