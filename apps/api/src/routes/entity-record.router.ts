@@ -196,10 +196,10 @@ entityRecordRouter.get(
         orderByExpr = SORTABLE_COLUMNS[sortBy];
       } else {
         const colDef = columnDefs.find(
-          (c) => c.key === sortBy && SORTABLE_COLUMN_TYPES.has(c.type)
+          (c) => c.normalizedKey === sortBy && SORTABLE_COLUMN_TYPES.has(c.type)
         );
         orderByExpr = colDef
-          ? buildJsonbSortExpression(sortBy, colDef.type)
+          ? buildJsonbSortExpression(colDef.normalizedKey, colDef.type)
           : SORTABLE_COLUMNS.created;
       }
 

@@ -215,7 +215,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
     ) {
       return storedPagination;
     }
-    const validKeys = new Set(columnDefs.map((c) => c.key));
+    const validKeys = new Set(columnDefs.map((c) => c.normalizedKey));
     const [cleaned, removed] = stripInvalidColumns(
       storedPagination.advancedFilters,
       validKeys
