@@ -86,7 +86,7 @@ function createConnectorInstance(
     credentials: null,
     lastSyncAt: null,
     lastErrorMessage: null,
-    enabledCapabilityFlags: null,
+    enabledCapabilityFlags: { read: true, write: true },
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,

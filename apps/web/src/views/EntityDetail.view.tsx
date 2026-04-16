@@ -498,10 +498,6 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const instanceResult = sdk.connectorInstances.get(connectorInstanceId, {
     enabled: !!connectorInstanceId,
   });
-  const connectorDefinitionId = instanceResult.data?.connectorInstance?.connectorDefinitionId ?? "";
-  const definitionResult = sdk.connectorDefinitions.get(connectorDefinitionId, {
-    enabled: !!connectorDefinitionId,
-  });
 
   const countResult = sdk.entityRecords.count(entityId);
   const syncMutation = sdk.entityRecords.sync(entityId);
@@ -617,17 +613,9 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
           .map((fm) => ({ id: fm.id, sourceField: fm.sourceField }));
 
         const instance = instanceResult.data?.connectorInstance;
-        const definition = definitionResult.data?.connectorDefinition;
 
-        const isWriteEnabled = !!(
-          definition?.capabilityFlags?.write &&
-          (instance?.enabledCapabilityFlags?.write ?? true)
-        );
-
-        const canSync = !!(
-          definition?.capabilityFlags?.sync &&
-          (instance?.enabledCapabilityFlags?.sync ?? true)
-        );
+        const isWriteEnabled = instance?.enabledCapabilityFlags?.write === true;
+        const canSync = instance?.enabledCapabilityFlags?.sync === true;
 
         return (
           <EntityDetailViewUI

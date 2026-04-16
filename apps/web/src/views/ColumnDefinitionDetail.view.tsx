@@ -197,8 +197,8 @@ export const ColumnDefinitionDetailView: React.FC<
                       cd.system
                         ? []
                         : [
-                            { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
-                          ]
+                          { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
+                        ]
                     }
                   >
                     <MetadataList
@@ -463,9 +463,10 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
       render: (_value: unknown, row: Record<string, unknown>) => {
         const fm = fieldMappings.find((f) => f.id === row.id);
         if (!fm) return null;
+        const writeEnabled = fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags?.write === true;
         return (
           <Stack direction="row" spacing={0.5}>
-            {onEdit && (
+            {onEdit && writeEnabled && (
               <IconButton
                 size="small"
                 onClick={(e) => {
@@ -477,7 +478,7 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
                 <EditIcon fontSize="small" />
               </IconButton>
             )}
-            {onDelete && (
+            {onDelete && writeEnabled && (
               <IconButton
                 size="small"
                 color="error"

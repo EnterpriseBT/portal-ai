@@ -388,17 +388,8 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   const instanceResult = sdk.connectorInstances.get(connectorInstanceId, {
     enabled: !!connectorInstanceId,
   });
-  const connectorDefinitionId = instanceResult.data?.connectorInstance?.connectorDefinitionId ?? "";
-  const definitionResult = sdk.connectorDefinitions.get(connectorDefinitionId, {
-    enabled: !!connectorDefinitionId,
-  });
-
   const instance = instanceResult.data?.connectorInstance;
-  const definition = definitionResult.data?.connectorDefinition;
-  const isWriteEnabled = !!(
-    definition?.capabilityFlags?.write &&
-    (instance?.enabledCapabilityFlags?.write ?? true)
-  );
+  const isWriteEnabled = instance?.enabledCapabilityFlags?.write === true;
 
   const handleUpdate = useCallback(
     (body: EntityRecordPatchRequestBody) => {

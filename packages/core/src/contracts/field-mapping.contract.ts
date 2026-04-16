@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
+import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import { FieldMappingSchema } from "../models/field-mapping.model.js";
 import { FieldMappingWithColumnDefinitionSchema } from "./connector-entity.contract.js";
 import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
@@ -8,7 +9,9 @@ import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./
 // ── Enriched schemas ─────────────────────────────────────────────────
 
 export const FieldMappingWithConnectorEntitySchema = FieldMappingSchema.extend({
-  connectorEntity: ConnectorEntitySchema.nullable(),
+  connectorEntity: ConnectorEntitySchema.extend({
+    connectorInstance: ConnectorInstanceSchema.pick({ id: true, enabledCapabilityFlags: true }).optional(),
+  }).nullable(),
 });
 
 export type FieldMappingWithConnectorEntity = z.infer<typeof FieldMappingWithConnectorEntitySchema>;

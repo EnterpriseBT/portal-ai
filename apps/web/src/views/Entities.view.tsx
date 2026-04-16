@@ -7,7 +7,7 @@ import type {
 import type { EntityTag } from "@portalai/core/models";
 import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts";
 import { Box, Button, DetailCard, Icon, IconName, MetadataList, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
-import type { ActionSuiteItem, FetchPageParams, FetchPageResult } from "@portalai/core/ui";
+import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useQueryClient } from "@tanstack/react-query";
@@ -39,9 +39,11 @@ interface EntityCardProps {
 }
 
 const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick, onDelete }) => {
-  const actions: ActionSuiteItem[] = [
-    { label: "Delete", icon: <DeleteIcon />, onClick: onDelete, color: "error" as const },
-  ];
+  const isWriteEnabled = entity.connectorInstance?.enabledCapabilityFlags?.write === true;
+
+  const actions: ActionSuiteItem[] = isWriteEnabled
+    ? [{ label: "Delete", icon: <DeleteIcon />, onClick: onDelete, color: "error" as const }]
+    : [];
 
   return (
     <DetailCard title={entity.label} onClick={onClick} actions={actions}>
@@ -84,26 +86,23 @@ const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick, onDelete }) =>
   );
 };
 
-// ── Entities list view (pure UI) ────────────────────────────────────
+// ── Entities list view ──────────────────────────────────────────────
 
 export interface EntitiesViewUIProps {
-  connectorInstanceFetchPage: (params: FetchPageParams) => Promise<FetchPageResult>;
-  connectorInstanceLabelMap: Record<string, string>;
-  tagFetchPage: (params: FetchPageParams) => Promise<FetchPageResult>;
-  tagLabelMap: Record<string, string>;
   onDeleteEntity: (entity: EntityWithTags) => void;
   onCreate: () => void;
 }
 
 export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
-  connectorInstanceFetchPage,
-  connectorInstanceLabelMap,
-  tagFetchPage,
-  tagLabelMap,
   onDeleteEntity,
   onCreate,
 }) => {
   const navigate = useNavigate();
+
+  const { onSearch: searchConnectorInstances, labelMap: connectorInstanceLabelMap } =
+    sdk.connectorInstances.search();
+  const { onSearch: searchTags, labelMap: tagLabelMap } =
+    sdk.entityTags.search();
 
   const pagination = usePagination({
     sortFields: [
@@ -118,14 +117,14 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
         type: "multi-select",
         field: "connectorInstanceIds",
         label: "Connector Instance",
-        fetchPage: connectorInstanceFetchPage,
+        onSearch: searchConnectorInstances,
         labelMap: connectorInstanceLabelMap,
       },
       {
         type: "multi-select",
         field: "tagIds",
         label: "Tags",
-        fetchPage: tagFetchPage,
+        onSearch: searchTags,
         labelMap: tagLabelMap,
       },
     ],
@@ -212,10 +211,6 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
 
 export const EntitiesView: React.FC = () => {
   const queryClient = useQueryClient();
-  const { fetchPage: connectorInstanceFetchPage, labelMap: connectorInstanceLabelMap } =
-    sdk.connectorInstances.filter();
-  const { fetchPage: tagFetchPage, labelMap: tagLabelMap } =
-    sdk.entityTags.filter();
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.connectorEntities.create();
@@ -266,10 +261,6 @@ export const EntitiesView: React.FC = () => {
   return (
     <>
       <EntitiesViewUI
-        connectorInstanceFetchPage={connectorInstanceFetchPage}
-        connectorInstanceLabelMap={connectorInstanceLabelMap}
-        tagFetchPage={tagFetchPage}
-        tagLabelMap={tagLabelMap}
         onDeleteEntity={handleDeleteEntity}
         onCreate={() => setCreateOpen(true)}
       />

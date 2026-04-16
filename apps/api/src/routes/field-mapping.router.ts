@@ -19,11 +19,11 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { Repository } from "../db/repositories/base.repository.js";
 import { fieldMappings } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
+import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
 
 const logger = createLogger({ module: "field-mapping" });
 
@@ -314,6 +314,9 @@ fieldMappingRouter.post(
         );
       }
 
+      // Assert write capability on the parent connector instance
+      await assertWriteCapability(parsed.data.connectorEntityId);
+
       // Verify column definition exists
       const columnDefinition = await DbService.repository.columnDefinitions.findById(
         parsed.data.columnDefinitionId
@@ -475,6 +478,9 @@ fieldMappingRouter.patch(
           new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found")
         );
       }
+
+      // Assert write capability on the parent connector instance
+      await assertWriteCapability(existing.connectorEntityId);
 
       // Block if a revalidation job is active for this mapping's entity
       await RevalidationService.assertNoActiveJob(existing.connectorEntityId);
@@ -725,6 +731,9 @@ fieldMappingRouter.delete(
       // Block if a revalidation job is active for this mapping's entity
       const mappingToDelete = await DbService.repository.fieldMappings.findById(id);
       if (mappingToDelete) {
+        // Assert write capability on the parent connector instance
+        await assertWriteCapability(mappingToDelete.connectorEntityId);
+
         await RevalidationService.assertNoActiveJob(mappingToDelete.connectorEntityId);
       }
 

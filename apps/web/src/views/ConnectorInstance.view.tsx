@@ -143,6 +143,7 @@ export const ConnectorInstanceView = ({
               instance: ConnectorInstanceGetResponsePayload;
             }) => {
               const ci = instance.connectorInstance;
+              const isWriteEnabled = ci.enabledCapabilityFlags?.write === true;
               return (
                 <Stack spacing={4}>
                   <PageHeader
@@ -211,11 +212,13 @@ export const ConnectorInstanceView = ({
 
                             return (
                               <Stack direction="row" spacing={1} alignItems="center">
-                                <FormControlLabel
-                                  control={<Checkbox checked disabled size="small" />}
-                                  label="Read"
-                                />
-                                <Tooltip title={writeSupported ? "" : "This connector type does not support writes"}>
+                                <Tooltip title="Allow reading data from this connector">
+                                  <FormControlLabel
+                                    control={<Checkbox checked disabled size="small" />}
+                                    label="Read"
+                                  />
+                                </Tooltip>
+                                <Tooltip title={writeSupported ? "Allow creating, editing, and deleting entities, records, and field mappings" : "This connector type does not support writes"}>
                                   <FormControlLabel
                                     control={
                                       <Checkbox
@@ -228,7 +231,7 @@ export const ConnectorInstanceView = ({
                                     label="Write"
                                   />
                                 </Tooltip>
-                                <Tooltip title={syncSupported ? "" : "This connector type does not support sync"}>
+                                <Tooltip title={syncSupported ? "Allow data synchronization with the source" : "This connector type does not support sync"}>
                                   <FormControlLabel
                                     control={
                                       <Checkbox
@@ -241,7 +244,7 @@ export const ConnectorInstanceView = ({
                                     label="Sync"
                                   />
                                 </Tooltip>
-                                <Tooltip title={pushSupported ? "" : "This connector type does not support push"}>
+                                <Tooltip title={pushSupported ? "Allow pushing normalized data to external destinations" : "This connector type does not support push"}>
                                   <FormControlLabel
                                     control={
                                       <Checkbox
@@ -268,9 +271,9 @@ export const ConnectorInstanceView = ({
                     title="Entities"
                     icon={<Icon name={IconName.DataObject} />}
                     primaryAction={
-                      <Button variant="contained" size="small" onClick={() => setCreateEntityOpen(true)}>
+                      isWriteEnabled ? <Button variant="contained" size="small" onClick={() => setCreateEntityOpen(true)}>
                         Create Entity
-                      </Button>
+                      </Button> : null
                     }
                   >
                     <PaginationToolbar {...pagination.toolbarProps} />

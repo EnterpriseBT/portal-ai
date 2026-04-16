@@ -92,7 +92,7 @@ function createConnectorInstance(
     credentials: null,
     lastSyncAt: null,
     lastErrorMessage: null,
-    enabledCapabilityFlags: null,
+    enabledCapabilityFlags: { read: true, write: true },
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -1812,23 +1812,6 @@ describe("Entity Record Router — Write Capability Deletes", () => {
       expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
     });
 
-    it("should return 422 when definition does not support write even if instance tries to enable it", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: false,
-        enabledCapabilityFlags: { write: true },
-      });
-
-      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Bob" }, "src-1", userId);
-      await db.insert(entityRecords).values(row as never);
-
-      const res = await request(app)
-        .delete(singleRecordUrl(connectorEntityId, row.id))
-        .set("Authorization", "Bearer test-token");
-
-      expect(res.status).toBe(422);
-      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
-    });
-
     it("should soft-delete record when write capability is resolved to true", async () => {
       const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
         definitionWrite: true,
@@ -1860,7 +1843,7 @@ describe("Entity Record Router — Write Capability Deletes", () => {
       expect(res.body.code).toBe(ApiCode.ENTITY_RECORD_NOT_FOUND);
     });
 
-    it("should succeed when enabledCapabilityFlags is null and definition has write: true", async () => {
+    it("should return 422 when enabledCapabilityFlags is null even if definition has write: true", async () => {
       const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
         definitionWrite: true,
         enabledCapabilityFlags: null,
@@ -1873,8 +1856,8 @@ describe("Entity Record Router — Write Capability Deletes", () => {
         .delete(singleRecordUrl(connectorEntityId, row.id))
         .set("Authorization", "Bearer test-token");
 
-      expect(res.status).toBe(200);
-      expect(res.body.payload.id).toBe(row.id);
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
     });
 
     it("deleted record should no longer appear in GET records list", async () => {
