@@ -68,10 +68,11 @@ export function parseAndBuildFilterSQL(
     return { message: limitsError };
   }
 
-  // 4. Validate operator-type compatibility and field existence
+  // 4. Validate operator-type compatibility and field existence.
+  // `condition.field` holds the normalizedKey (the JSONB key in normalized_data).
   const columnTypes: Record<string, ColumnDataType> = {};
   for (const col of columnDefs) {
-    columnTypes[col.key] = col.type;
+    columnTypes[col.normalizedKey] = col.type;
   }
   const compatErrors = validateOperatorTypeCompat(expression, columnTypes);
   if (compatErrors.length > 0) {

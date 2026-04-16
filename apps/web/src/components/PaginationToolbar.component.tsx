@@ -935,8 +935,8 @@ export const PaginationToolbar = React.forwardRef<
         {advancedFilters && advancedFilterConditionCount > 0 && onAdvancedFiltersChange && (
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
             {collectConditions(advancedFilters).map((cond, idx) => {
-              const colDef = columnDefinitions?.find((c) => c.key === cond.field);
-              const label = colDef?.label ?? cond.field;
+              const colDef = columnDefinitions?.find((c) => c.normalizedKey === cond.field);
+              const label = colDef?.normalizedKey ?? cond.field;
               const opLabel = getOperatorLabel(cond.operator);
               const valueStr = cond.value == null
                 ? ""

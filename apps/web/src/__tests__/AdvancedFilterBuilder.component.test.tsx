@@ -94,9 +94,9 @@ describe("AdvancedFilterBuilderUI", () => {
           {...makeProps({ expression: multiConditionExpr })}
         />,
       );
-      // Each condition has a column select — check "Name" and "Age" are present as select values
-      expect(screen.getByText("Name")).toBeInTheDocument();
-      expect(screen.getByText("Age")).toBeInTheDocument();
+      // Each condition has a column select — check "name" and "age" (normalizedKey values)
+      expect(screen.getByText("name")).toBeInTheDocument();
+      expect(screen.getByText("age")).toBeInTheDocument();
     });
 
     it("should render operator selects with type-appropriate operators", () => {

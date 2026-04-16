@@ -130,7 +130,7 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
   };
 
   const handleAddCondition = () => {
-    const defaultField = columnDefinitions[0]?.key ?? "";
+    const defaultField = columnDefinitions[0]?.normalizedKey ?? "";
     onChange({
       ...group,
       conditions: [...group.conditions, createDefaultCondition(defaultField)],
@@ -138,7 +138,7 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
   };
 
   const handleAddGroup = () => {
-    const defaultField = columnDefinitions[0]?.key ?? "";
+    const defaultField = columnDefinitions[0]?.normalizedKey ?? "";
     const newGroup = createEmptyGroup();
     newGroup.conditions = [createDefaultCondition(defaultField)];
     onChange({
@@ -250,13 +250,13 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
   onRemove,
   columnDefinitions,
 }) => {
-  const colDef = columnDefinitions.find((c) => c.key === condition.field);
+  const colDef = columnDefinitions.find((c) => c.normalizedKey === condition.field);
   const colType: ColumnDataType = colDef?.type ?? "string";
   const operators = OPERATORS_BY_COLUMN_TYPE[colType] ?? OPERATORS_BY_COLUMN_TYPE.string;
 
   // Reset operator and value when field changes
   const handleFieldChange = (field: string) => {
-    const newColDef = columnDefinitions.find((c) => c.key === field);
+    const newColDef = columnDefinitions.find((c) => c.normalizedKey === field);
     const newType: ColumnDataType = newColDef?.type ?? "string";
     const newOperators = OPERATORS_BY_COLUMN_TYPE[newType];
     const newOp = newOperators.includes(condition.operator as FilterOperator)
@@ -284,8 +284,8 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
           displayEmpty
         >
           {columnDefinitions.map((col) => (
-            <MenuItem key={col.key} value={col.key}>
-              {col.label}
+            <MenuItem key={col.normalizedKey} value={col.normalizedKey}>
+              {col.normalizedKey}
             </MenuItem>
           ))}
         </Select>

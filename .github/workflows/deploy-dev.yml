@@ -94,6 +94,7 @@ jobs:
             --parameter-overrides \
               Environment=dev \
               HostedZoneId=${{ secrets.DEV_HOSTED_ZONE_ID }} \
+              FrontendOrigin=https://app-dev.portalsai.io \
               SecretArnDatabaseUrl=${{ secrets.DEV_SECRET_ARN_DATABASE_URL }} \
               SecretArnEncryptionKey=${{ secrets.DEV_SECRET_ARN_ENCRYPTION_KEY }} \
               SecretArnAuth0WebhookSecret=${{ secrets.DEV_SECRET_ARN_AUTH0_WEBHOOK_SECRET }} \
