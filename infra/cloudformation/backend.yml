@@ -14,6 +14,10 @@ Parameters:
     Default: portalsai.io
   HostedZoneId:
     Type: AWS::Route53::HostedZone::Id
+  FrontendOrigin:
+    Type: String
+    Default: https://app-dev.portalsai.io
+    Description: Origin allowed to PUT to the upload bucket (browser CORS)
   Cpu:
     Type: Number
     Default: 256
@@ -80,13 +84,56 @@ Resources:
         - Key: Name
           Value: !Sub "portalai-api-${Environment}"
 
+  # ── S3 Upload Access Logs Bucket ─────────────────────────
+  # Self-logging bucket that receives server-access logs for UploadBucket.
+  UploadAccessLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "portalai-${Environment}-uploads-access-logs"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        LogFilePrefix: self-logs/
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-uploads-access-logs"
+
   # ── S3 Upload Bucket ─────────────────────────────────────
   UploadBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "portalai-${Environment}-uploads"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LoggingConfiguration:
+        DestinationBucketName: !Ref UploadAccessLogsBucket
+        LogFilePrefix: s3-access/
       VersioningConfiguration:
         Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Ref FrontendOrigin
+            AllowedMethods: [PUT, GET, HEAD]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
       Tags:
         - Key: Name
           Value: !Sub "portalai-${Environment}-uploads"
