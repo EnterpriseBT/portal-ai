@@ -95,7 +95,7 @@ export interface EntityDetailViewUIProps {
   connectorInstanceName?: string;
   recordCount?: number;
   lastSyncAt?: number | null;
-  accessMode?: string;
+  canSync?: boolean;
   onSync?: () => void;
   isSyncing?: boolean;
   /** Field mappings of type reference-array that have a back-reference configured. */
@@ -151,7 +151,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   connectorInstanceName,
   recordCount,
   lastSyncAt,
-  accessMode,
+  canSync,
   onSync,
   isSyncing,
   bidirectionalFieldMappings,
@@ -186,7 +186,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
 }) => {
   const navigate = useNavigate();
 
-  const showSyncButton = accessMode === "import" || accessMode === "hybrid";
+  const showSyncButton = !!canSync;
 
   // Column definitions captured from the first successful API response.
   // Used to populate the advanced filter builder and validate persisted filters.
@@ -285,7 +285,6 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
             items={[
               { label: "Key", value: entity.key, variant: "mono" },
               { label: "Connector", value: connectorInstanceName ?? "", hidden: !connectorInstanceName },
-              { label: "Access mode", value: accessMode ?? "", hidden: !accessMode },
               { label: "Records", value: recordCount != null ? recordCount.toLocaleString() : "", hidden: recordCount == null },
               { label: "Last sync", value: lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "", hidden: !lastSyncAt },
             ]}
@@ -625,22 +624,17 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
           (instance?.enabledCapabilityFlags?.write ?? true)
         );
 
+        const canSync = !!(
+          definition?.capabilityFlags?.sync &&
+          (instance?.enabledCapabilityFlags?.sync ?? true)
+        );
+
         return (
           <EntityDetailViewUI
             entity={entity}
             connectorInstanceName={instance?.name}
             recordCount={countData?.total}
-            accessMode={
-              definition?.capabilityFlags
-                ? definition.capabilityFlags.sync && definition.capabilityFlags.read
-                  ? "hybrid"
-                  : definition.capabilityFlags.sync
-                    ? "import"
-                    : definition.capabilityFlags.read
-                      ? "live"
-                      : undefined
-                : undefined
-            }
+            canSync={canSync}
             onSync={() => syncMutation.mutate(undefined)}
             isSyncing={syncMutation.isPending}
             bidirectionalFieldMappings={

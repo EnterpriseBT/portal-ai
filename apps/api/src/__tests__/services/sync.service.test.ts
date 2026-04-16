@@ -95,7 +95,6 @@ function setupMocks() {
   mockUpdateInstance.mockResolvedValue(stubInstance);
   mockAdapterSyncEntity.mockResolvedValue(stubSyncResult);
   mockRegistryGet.mockReturnValue({
-    accessMode: "import",
     syncEntity: mockAdapterSyncEntity,
   });
 }

@@ -4,8 +4,8 @@ import type { ConnectorAdapter } from "./adapter.interface.js";
  * Maps connector definition slugs to their adapter implementations.
  *
  * Usage:
- *   ConnectorAdapterRegistry.register("csv", csvAdapter);
- *   const adapter = ConnectorAdapterRegistry.get("csv");
+ *   ConnectorAdapterRegistry.register("sandbox", sandboxAdapter);
+ *   const adapter = ConnectorAdapterRegistry.get("sandbox");
  */
 export class ConnectorAdapterRegistry {
   private static readonly adapters = new Map<string, ConnectorAdapter>();

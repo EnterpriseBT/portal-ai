@@ -142,7 +142,6 @@ export const MediumSize: Story = {
     size: "medium",
     items: [
       { label: "Connector", value: "Salesforce CRM" },
-      { label: "Access Mode", value: "Read/Write" },
       { label: "Records", value: "12,345" },
       { label: "Last Sync", value: "March 29, 2026 8:00 PM" },
     ],

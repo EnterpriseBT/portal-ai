@@ -25,7 +25,7 @@ A new `/help` route with a searchable, categorized glossary of all domain terms.
 
 | Category | Terms |
 |---|---|
-| **Data Sources** | Connector Definition, Connector Instance, Connector Entity, Entity Record, Sync, Access Mode (import/live/hybrid) |
+| **Data Sources** | Connector Definition, Connector Instance, Connector Entity, Entity Record, Sync |
 | **Data Modeling** | Column Definition, Field Mapping, Data Types, Validation Pattern, Canonical Format, Primary Key, Normalized Data |
 | **Organization** | Entity Group, Entity Group Member, Link Field, Entity Tag, Overlap Preview |
 | **Analytics** | Station, Tool Pack, Portal, Portal Message, Portal Result, Pinned Result |
@@ -62,7 +62,6 @@ Organized by user journey stage:
 - What's the difference between a connector and an entity?
 - What are column definitions and why do they matter?
 - What are field mappings?
-- What do the access modes (import, live, hybrid) mean?
 - How do I validate my data?
 - What happens when I sync an entity?
 
@@ -137,7 +136,6 @@ Organized by user journey stage:
 
 | Domain Concept | Currently Explained? | Improvement |
 |---|---|---|
-| Access Mode (import/live/hybrid) | No | Tooltip explaining each mode |
 | Sync button | No | Tooltip: "Pull the latest data from the connector into this entity" |
 | Re-validate button | No | Tooltip: "Re-run validation rules on all records" |
 | Field mapping warnings | No | Explain what bidirectional consistency means |

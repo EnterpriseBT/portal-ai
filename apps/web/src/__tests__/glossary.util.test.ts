@@ -55,7 +55,6 @@ describe("GLOSSARY_ENTRIES", () => {
     "Connector Entity",
     "Entity Record",
     "Sync",
-    "Access Mode",
     // Data Modeling
     "Column Definition",
     "Field Mapping",

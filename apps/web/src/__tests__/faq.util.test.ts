@@ -51,11 +51,10 @@ describe("FAQ_ENTRIES", () => {
     "How do I connect my first data source?",
     "What is a Station and why do I need one?",
     "How do I start asking questions about my data?",
-    // Working with Data (6)
+    // Working with Data (5)
     "What's the difference between a connector and an entity?",
     "What are column definitions and why do they matter?",
     "What are field mappings?",
-    "What do the access modes (import, live, hybrid) mean?",
     "How do I validate my data?",
     "What happens when I sync an entity?",
     // Organization & Grouping (3)
@@ -71,8 +70,8 @@ describe("FAQ_ENTRIES", () => {
     "Why did my job fail?",
   ];
 
-  it("includes every question listed in the audit doc (18 total)", () => {
-    expect(expectedQuestions).toHaveLength(18);
+  it("includes every question listed in the audit doc (17 total)", () => {
+    expect(expectedQuestions).toHaveLength(17);
     for (const question of expectedQuestions) {
       const match = FAQ_ENTRIES.find((e) => e.question === question);
       expect(match).toBeDefined();
