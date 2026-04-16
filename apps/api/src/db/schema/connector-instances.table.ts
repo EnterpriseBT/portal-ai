@@ -2,8 +2,10 @@ import { pgTable, text, bigint, jsonb, pgEnum } from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 
 export interface EnabledCapabilityFlags {
+  sync?: boolean;
   read?: boolean;
   write?: boolean;
+  push?: boolean;
 }
 
 export const connectorInstanceStatusEnum = pgEnum("connector_instance_status", [

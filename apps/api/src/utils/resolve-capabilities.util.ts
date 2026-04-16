@@ -10,6 +10,7 @@ import { ApiCode } from "../constants/api-codes.constants.js";
 export interface ResolvedCapabilities {
   read: boolean;
   write: boolean;
+  push: boolean;
 }
 
 /**
@@ -28,17 +29,20 @@ export function resolveCapabilities(
   const override = instance.enabledCapabilityFlags;
 
   return {
-    read: (ceil.query ?? false) && (override?.read ?? true),
+    read: (ceil.read ?? false) && (override?.read ?? true),
     write: (ceil.write ?? false) && (override?.write ?? true),
+    push: (ceil.push ?? false) && (override?.push ?? true),
   };
 }
 
 /**
  * Assert that the connector instance owning a connector entity has write
- * capability. Throws a 422 `CONNECTOR_INSTANCE_WRITE_DISABLED` ApiError
- * if writes are not permitted.
+ * capability enabled. Throws a 422 `CONNECTOR_INSTANCE_WRITE_DISABLED`
+ * ApiError if writes are not permitted.
  *
- * Resolves the chain: connectorEntityId → connectorInstance → connectorDefinition.
+ * `enabledCapabilityFlags` is the source of truth — the definition
+ * constrains what *can* be enabled, but the instance flags record what
+ * *is* enabled.
  */
 export async function assertWriteCapability(
   connectorEntityId: string,
@@ -63,20 +67,7 @@ export async function assertWriteCapability(
     );
   }
 
-  const definition = await connectorDefinitionsRepo.findById(
-    instance.connectorDefinitionId,
-  );
-  if (!definition) {
-    throw new ApiError(
-      404,
-      ApiCode.CONNECTOR_DEFINITION_NOT_FOUND,
-      "Connector definition not found.",
-    );
-  }
-
-  const capabilities = resolveCapabilities(definition, instance);
-
-  if (!capabilities.write) {
+  if (instance.enabledCapabilityFlags?.write !== true) {
     throw new ApiError(
       422,
       ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED,

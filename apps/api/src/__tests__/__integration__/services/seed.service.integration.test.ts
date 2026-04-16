@@ -72,8 +72,9 @@ describe("SeedService Integration Tests", () => {
       expect(fileUpload?.configSchema).toEqual({});
       expect(fileUpload?.capabilityFlags).toEqual({
         sync: false,
-        query: true,
+        read: true,
         write: true,
+        push: false,
       });
     });
 
@@ -92,8 +93,9 @@ describe("SeedService Integration Tests", () => {
       expect(sandbox?.configSchema).toEqual({});
       expect(sandbox?.capabilityFlags).toEqual({
         sync: false,
-        query: true,
+        read: true,
         write: true,
+        push: false,
       });
     });
 

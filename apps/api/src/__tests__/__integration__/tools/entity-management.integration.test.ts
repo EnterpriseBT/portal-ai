@@ -46,7 +46,7 @@ function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>)
     category: "crm",
     authType: "oauth2",
     configSchema: null,
-    capabilityFlags: { sync: true, query: true, write: true },
+    capabilityFlags: { sync: true, read: true, write: true },
     isActive: true,
     version: "1.0.0",
     iconUrl: null,
@@ -275,7 +275,7 @@ describe("Entity management tool integration", () => {
 
     it("rejects when write disabled on instance", async () => {
       const s = await seed(db, {
-        definitionOverrides: { capabilityFlags: { sync: true, query: true, write: false } },
+        instanceOverrides: { enabledCapabilityFlags: { write: false } },
       });
       const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
 

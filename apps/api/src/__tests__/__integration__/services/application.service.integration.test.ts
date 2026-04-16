@@ -184,6 +184,7 @@ describe("ApplicationService Integration Tests", () => {
         read: true,
         write: true,
         sync: false,
+        push: false
       });
 
       // Verify connectorDefinitionId matches the sandbox definition

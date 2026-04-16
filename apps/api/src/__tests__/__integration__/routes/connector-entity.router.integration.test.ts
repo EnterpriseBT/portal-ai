@@ -57,7 +57,7 @@ function createConnectorDefinition(
     category: "crm",
     authType: "oauth2",
     configSchema: null,
-    capabilityFlags: { sync: true, query: true, write: false },
+    capabilityFlags: { sync: true, read: true, write: false },
     isActive: true,
     version: "1.0.0",
     iconUrl: null,
@@ -86,7 +86,7 @@ function createConnectorInstance(
     credentials: null,
     lastSyncAt: null,
     lastErrorMessage: null,
-    enabledCapabilityFlags: null,
+    enabledCapabilityFlags: { read: true, write: true },
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -771,7 +771,7 @@ describe("Connector Entity Router", () => {
 
       // Use a write-enabled definition so the delete guard passes
       const def = createConnectorDefinition({
-        capabilityFlags: { sync: true, query: true, write: true },
+        capabilityFlags: { sync: true, read: true, write: true },
       });
       await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
       const inst = createConnectorInstance(def.id, organizationId);
@@ -829,7 +829,7 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
     const { userId, organizationId } = await seedUserAndOrg(db, AUTH0_ID);
 
     const def = createConnectorDefinition({
-      capabilityFlags: { sync: true, query: true, write: opts.definitionWrite },
+      capabilityFlags: { sync: true, read: true, write: opts.definitionWrite },
     });
     await db.insert(connectorDefinitions).values(def as never);
 

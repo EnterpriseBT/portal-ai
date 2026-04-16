@@ -56,9 +56,10 @@ export const ConnectorInstanceCreateRequestBodySchema = z.object({
   name: z.string().min(1),
   status: z.enum(["active", "inactive", "error", "pending"]),
   enabledCapabilityFlags: z.object({
+    sync: z.boolean().optional(),
     read: z.boolean().optional(),
     write: z.boolean().optional(),
-    sync: z.boolean().optional(),
+    push: z.boolean().optional(),
   }),
   config: z.record(z.string(), z.unknown()).nullable().optional(),
   credentials: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -77,9 +78,10 @@ export type ConnectorInstanceCreateResponsePayload = z.infer<
 export const ConnectorInstancePatchRequestBodySchema = z.object({
   name: z.string().min(1, "Name is required"),
   enabledCapabilityFlags: z.object({
+    sync: z.boolean().optional(),
     read: z.boolean().optional(),
     write: z.boolean().optional(),
-    sync: z.boolean().optional(),
+    push: z.boolean().optional(),
   }).nullable().optional(),
 });
 

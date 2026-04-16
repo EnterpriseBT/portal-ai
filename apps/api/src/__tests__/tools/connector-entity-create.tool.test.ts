@@ -8,7 +8,7 @@ const mockFindInstanceById = jest.fn<() => Promise<unknown>>().mockResolvedValue
   id: "ci-1", organizationId: "org-1", connectorDefinitionId: "cd-1", enabledCapabilityFlags: null,
 });
 const mockFindDefinitionById = jest.fn<() => Promise<unknown>>().mockResolvedValue({
-  id: "cd-1", capabilityFlags: { query: true, write: true },
+  id: "cd-1", capabilityFlags: { read: true, write: true },
 });
 const mockUpsertByKey = jest.fn<() => Promise<unknown>>().mockResolvedValue({ id: "ce-new" });
 const mockTransaction = jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
@@ -116,7 +116,7 @@ describe("ConnectorEntityCreateTool", () => {
 
   it("validation failure — write capability disabled", async () => {
     mockFindDefinitionById.mockResolvedValueOnce({
-      id: "cd-1", capabilityFlags: { query: true, write: false },
+      id: "cd-1", capabilityFlags: { read: true, write: false },
     });
 
     const result: any = await exec({

@@ -12,7 +12,6 @@ type ListQuery = UseQueryResult<FieldMappingListResponsePayload, ApiError>;
 
 let currentGetQuery: Partial<GetQuery> = {};
 let currentFieldMappingListQuery: Partial<ListQuery> = {};
-
 const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
 
 const noopSearch = () => ({ onSearch: jest.fn(() => Promise.resolve([])), onSearchPending: false, onSearchError: null, getById: jest.fn(() => Promise.resolve(null)), getByIdPending: false, getByIdError: null, labelMap: {} });
@@ -362,6 +361,67 @@ describe("ColumnDefinitionDetailView", () => {
       fireEvent.click(screen.getByRole("button", { name: /Create/ }));
       const cdField = screen.getByDisplayValue("First Name");
       expect(cdField).toBeDisabled();
+    });
+  });
+
+  describe("Write capability gating for field mappings", () => {
+    const setupWithCapability = (enabledCapabilityFlags: { write?: boolean } | null) => {
+      const cd = makeColumnDefinition();
+      const fm = {
+        ...makeFieldMapping({ id: "fm-1", sourceField: "email", connectorEntityId: "ce-1" }),
+        connectorEntity: {
+          id: "ce-1",
+          organizationId: "org-1",
+          connectorInstanceId: "inst-1",
+          key: "contacts",
+          label: "Contacts",
+          created: Date.now(),
+          createdBy: "system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+          connectorInstance: { id: "inst-1", enabledCapabilityFlags },
+        },
+      };
+
+      currentGetQuery = {
+        data: { columnDefinition: cd },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<GetQuery>;
+
+      currentFieldMappingListQuery = {
+        data: { fieldMappings: [fm], total: 1, limit: 10, offset: 0 },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      } as Partial<ListQuery>;
+    };
+
+    it("hides field mapping edit/delete buttons when write is explicitly disabled", () => {
+      setupWithCapability({ write: false });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.queryByLabelText("Edit field mapping")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Delete field mapping")).not.toBeInTheDocument();
+    });
+
+    it("shows field mapping edit/delete buttons when write is explicitly enabled", () => {
+      setupWithCapability({ write: true });
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.getByLabelText("Edit field mapping")).toBeInTheDocument();
+      expect(screen.getByLabelText("Delete field mapping")).toBeInTheDocument();
+    });
+
+    it("hides field mapping edit/delete when enabledCapabilityFlags is null", () => {
+      setupWithCapability(null);
+      render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
+
+      expect(screen.queryByLabelText("Edit field mapping")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Delete field mapping")).not.toBeInTheDocument();
     });
   });
 });

@@ -542,7 +542,7 @@ describe("Uploads Router", () => {
         category: "file",
         authType: "none",
         configSchema: {},
-        capabilityFlags: { sync: false, query: false, write: true },
+        capabilityFlags: { sync: false, read: false, write: true },
         isActive: true,
         version: "1.0.0",
         iconUrl: null,
@@ -766,7 +766,7 @@ describe("Uploads Router", () => {
       expect(ci).toBeDefined();
       expect(ci.name).toBe("My CSV Import");
       expect(ci.organizationId).toBe(organizationId);
-      expect(ci.enabledCapabilityFlags).toEqual({ read: true, write: true });
+      expect(ci.enabledCapabilityFlags).toEqual({ sync: false, read: true, write: true, push: false });
 
       // Verify connector entity in DB
       const ceRows = await (db as ReturnType<typeof drizzle>)

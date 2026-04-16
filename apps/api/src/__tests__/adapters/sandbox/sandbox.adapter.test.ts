@@ -250,12 +250,6 @@ describe("sandboxAdapter", () => {
     jest.clearAllMocks();
   });
 
-  // ── accessMode ──────────────────────────────────────────────────
-
-  it("has accessMode 'import'", () => {
-    expect(sandboxAdapter.accessMode).toBe("import");
-  });
-
   // ── queryRows ───────────────────────────────────────────────────
 
   describe("queryRows", () => {

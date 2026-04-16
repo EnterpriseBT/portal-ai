@@ -114,7 +114,7 @@ export class ApplicationService {
           credentials: null,
           lastSyncAt: null,
           lastErrorMessage: null,
-          enabledCapabilityFlags: { read: true, write: true, sync: false },
+          enabledCapabilityFlags: { sync: false, read: true, write: true, push: false },
         });
 
       const createdInstance =

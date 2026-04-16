@@ -137,7 +137,7 @@ describe("ConnectorDefinitionModelFactory", () => {
         category: "CRM",
         authType: "oauth2",
         configSchema: { clientId: "abc" },
-        capabilityFlags: { sync: true, query: true, write: false },
+        capabilityFlags: { sync: true, read: true, write: false },
         isActive: true,
         version: "1.0.0",
         iconUrl: "https://example.com/salesforce.png",
@@ -149,7 +149,7 @@ describe("ConnectorDefinitionModelFactory", () => {
       expect(json.category).toBe("CRM");
       expect(json.authType).toBe("oauth2");
       expect(json.configSchema).toEqual({ clientId: "abc" });
-      expect(json.capabilityFlags).toEqual({ sync: true, query: true, write: false });
+      expect(json.capabilityFlags).toEqual({ sync: true, read: true, write: false });
       expect(json.isActive).toBe(true);
       expect(json.version).toBe("1.0.0");
       expect(json.iconUrl).toBe("https://example.com/salesforce.png");
@@ -210,7 +210,7 @@ describe("ConnectorDefinitionModelFactory", () => {
         category: "integration",
         authType: "oauth2",
         configSchema: null,
-        capabilityFlags: { query: true },
+        capabilityFlags: { read: true },
         isActive: true,
         version: "1.0.0",
         iconUrl: "https://example.com/icon.svg",
@@ -223,7 +223,7 @@ describe("ConnectorDefinitionModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.capabilityFlags).toEqual({ query: true });
+        expect(result.data.capabilityFlags).toEqual({ read: true });
       }
     });
 

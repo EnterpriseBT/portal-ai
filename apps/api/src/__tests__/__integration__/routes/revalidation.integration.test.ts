@@ -68,7 +68,7 @@ function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>)
     category: "crm",
     authType: "oauth2",
     configSchema: null,
-    capabilityFlags: { sync: true, query: true, write: true },
+    capabilityFlags: { sync: true, read: true, write: true },
     isActive: true,
     version: "1.0.0",
     iconUrl: null,

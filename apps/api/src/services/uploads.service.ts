@@ -239,8 +239,13 @@ export class UploadsService {
           lastSyncAt: null,
           lastErrorMessage: null,
           enabledCapabilityFlags: defFlags
-            ? { read: true, write: defFlags.write ?? false }
-            : { read: true, write: false },
+            ? {
+                sync: defFlags.sync ?? false,
+                read: true,
+                write: defFlags.write ?? false,
+                push: defFlags.push ?? false,
+              }
+            : { sync: false, read: true, write: false, push: false },
           created: now,
           createdBy: userId,
           updated: null,

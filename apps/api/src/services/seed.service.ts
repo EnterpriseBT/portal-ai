@@ -307,8 +307,9 @@ export class SeedService {
           configSchema: {},
           capabilityFlags: {
             sync: false,
-            query: true,
+            read: true,
             write: true,
+            push: false,
           },
           version: "1.0.0",
           iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1776276948/sandbox_zlwqke.png',
@@ -323,8 +324,9 @@ export class SeedService {
           configSchema: {},
           capabilityFlags: {
             sync: false,
-            query: true,
+            read: true,
             write: true,
+            push: false,
           },
           version: "1.0.0",
           iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1776277003/upload_rgefyq.png',

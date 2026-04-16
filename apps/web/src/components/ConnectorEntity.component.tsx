@@ -7,18 +7,21 @@ import type {
   ConnectorEntityWithMappings,
   FieldMappingWithColumnDefinition,
 } from "@portalai/core/contracts";
-import { Box, Card, CardContent, Stack, Typography } from "@portalai/core/ui";
+import {
+  Box,
+  Card,
+  CardContent,
+  DataTable,
+  type DataTableColumn,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
+import CheckIcon from "@mui/icons-material/Check";
 import Chip from "@mui/material/Chip";
 import Collapse from "@mui/material/Collapse";
-import IconButton from "@mui/material/IconButton";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import IconButton from "@mui/material/IconButton";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { Link } from "@tanstack/react-router";
 
@@ -55,50 +58,40 @@ export interface FieldMappingTableUIProps {
   fieldMappings: FieldMappingWithColumnDefinition[];
 }
 
+const fieldMappingColumns: DataTableColumn[] = [
+  { key: "normalizedKey", label: "Key" },
+  { key: "type", label: "Type" },
+  {
+    key: "isPrimaryKey",
+    label: "Primary Key",
+    render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+  },
+  {
+    key: "required",
+    label: "Required",
+    render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+  },
+  { key: "sourceField", label: "Source Field" },
+];
+
 export const FieldMappingTableUI: React.FC<FieldMappingTableUIProps> = ({
   fieldMappings,
 }) => {
-  if (fieldMappings.length === 0) {
-    return (
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        sx={{ py: 2, textAlign: "center" }}
-      >
-        No field mappings
-      </Typography>
-    );
-  }
+  const rows = fieldMappings.map((fm) => ({
+    id: fm.id,
+    normalizedKey: fm.normalizedKey,
+    type: fm.columnDefinition?.type ?? null,
+    isPrimaryKey: fm.isPrimaryKey,
+    required: fm.required,
+    sourceField: fm.sourceField,
+  }));
 
   return (
-    <TableContainer>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>Source Field</TableCell>
-            <TableCell>Label</TableCell>
-            <TableCell>Key</TableCell>
-            <TableCell>Type</TableCell>
-            <TableCell>Primary Key</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {fieldMappings.map((fm) => (
-            <TableRow key={fm.id}>
-              <TableCell>{fm.sourceField}</TableCell>
-              <TableCell>{fm.columnDefinition?.label ?? "—"}</TableCell>
-              <TableCell>{fm.columnDefinition?.key ?? "—"}</TableCell>
-              <TableCell sx={{ typography: "monospace" }}>
-                {fm.columnDefinition?.type ?? "—"}
-              </TableCell>
-              <TableCell>
-                {fm.isPrimaryKey ? "Yes" : ""}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+    <DataTable
+      columns={fieldMappingColumns}
+      rows={rows}
+      emptyMessage="No field mappings"
+    />
   );
 };
 

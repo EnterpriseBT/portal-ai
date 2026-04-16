@@ -67,7 +67,7 @@ function createConnectorDefinition(
     category: "crm",
     authType: "oauth2",
     configSchema: null,
-    capabilityFlags: { sync: true, query: true, write: false },
+    capabilityFlags: { sync: true, read: true, write: true },
     isActive: true,
     version: "1.0.0",
     iconUrl: null,
@@ -96,7 +96,7 @@ function createConnectorInstance(
     credentials: null,
     lastSyncAt: null,
     lastErrorMessage: null,
-    enabledCapabilityFlags: null,
+    enabledCapabilityFlags: { read: true, write: true },
     created: now,
     createdBy: "SYSTEM_TEST",
     updated: null,
@@ -232,6 +232,41 @@ async function seedFullChain(db: ReturnType<typeof drizzle>) {
   await db.insert(connectorDefinitions).values(def as never);
 
   const instance = createConnectorInstance(def.id, organizationId);
+  await db.insert(connectorInstances).values(instance as never);
+
+  const entity = createConnEntity(organizationId, instance.id);
+  await db.insert(connectorEntities).values(entity as never);
+
+  const colDef = createColDef(organizationId);
+  await db.insert(columnDefinitions).values(colDef as never);
+
+  return {
+    organizationId,
+    userId,
+    connectorInstanceId: instance.id,
+    connectorEntityId: entity.id,
+    columnDefinitionId: colDef.id,
+  };
+}
+
+/** Seed a chain with explicit capability flag control for write-guard tests. */
+async function seedWithCapabilities(
+  db: ReturnType<typeof drizzle>,
+  opts: {
+    definitionWrite: boolean;
+    enabledCapabilityFlags?: { write?: boolean; read?: boolean } | null;
+  }
+) {
+  const { organizationId, userId } = await seedUserAndOrg(db, AUTH0_ID);
+
+  const def = createConnectorDefinition({
+    capabilityFlags: { sync: true, read: true, write: opts.definitionWrite },
+  });
+  await db.insert(connectorDefinitions).values(def as never);
+
+  const instance = createConnectorInstance(def.id, organizationId, {
+    enabledCapabilityFlags: opts.enabledCapabilityFlags ?? null,
+  });
   await db.insert(connectorInstances).values(instance as never);
 
   const entity = createConnEntity(organizationId, instance.id);
@@ -1349,6 +1384,97 @@ describe("Field Mapping Router", () => {
       expect(returned.defaultValue).toBe("default_val");
       expect(returned.format).toBe("uppercase");
       expect(returned.enumValues).toEqual(["A", "B"]);
+    });
+  });
+
+  // ── Write capability guards ─────────────────────────────────────────
+
+  describe("Write capability guards", () => {
+    describe("POST /api/field-mappings", () => {
+      it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when instance write is disabled", async () => {
+        const { connectorEntityId, columnDefinitionId } = await seedWithCapabilities(
+          db as ReturnType<typeof drizzle>,
+          { definitionWrite: true, enabledCapabilityFlags: { write: false } }
+        );
+
+        const res = await request(app)
+          .post("/api/field-mappings")
+          .set("Authorization", "Bearer test-token")
+          .send({
+            connectorEntityId,
+            columnDefinitionId,
+            sourceField: "blocked_field",
+            normalizedKey: "blocked_field",
+          });
+
+        expect(res.status).toBe(422);
+        expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+      });
+
+    });
+
+    describe("PATCH /api/field-mappings/:id", () => {
+      it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when instance write is disabled", async () => {
+        const { connectorEntityId, columnDefinitionId, organizationId } = await seedWithCapabilities(
+          db as ReturnType<typeof drizzle>,
+          { definitionWrite: true, enabledCapabilityFlags: { write: false } }
+        );
+
+        const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+        await (db as ReturnType<typeof drizzle>)
+          .insert(fieldMappings)
+          .values(mapping as never);
+
+        const res = await request(app)
+          .patch(`/api/field-mappings/${mapping.id}`)
+          .set("Authorization", "Bearer test-token")
+          .send({ sourceField: "updated", columnDefinitionId });
+
+        expect(res.status).toBe(422);
+        expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+      });
+
+      it("should return 422 when enabledCapabilityFlags is null", async () => {
+        const { connectorEntityId, columnDefinitionId, organizationId } = await seedWithCapabilities(
+          db as ReturnType<typeof drizzle>,
+          { definitionWrite: true, enabledCapabilityFlags: null }
+        );
+
+        const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+        await (db as ReturnType<typeof drizzle>)
+          .insert(fieldMappings)
+          .values(mapping as never);
+
+        const res = await request(app)
+          .patch(`/api/field-mappings/${mapping.id}`)
+          .set("Authorization", "Bearer test-token")
+          .send({ sourceField: "updated", columnDefinitionId });
+
+        expect(res.status).toBe(422);
+        expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+      });
+    });
+
+    describe("DELETE /api/field-mappings/:id", () => {
+      it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when instance write is disabled", async () => {
+        const { connectorEntityId, columnDefinitionId, organizationId } = await seedWithCapabilities(
+          db as ReturnType<typeof drizzle>,
+          { definitionWrite: true, enabledCapabilityFlags: { write: false } }
+        );
+
+        const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+        await (db as ReturnType<typeof drizzle>)
+          .insert(fieldMappings)
+          .values(mapping as never);
+
+        const res = await request(app)
+          .delete(`/api/field-mappings/${mapping.id}`)
+          .set("Authorization", "Bearer test-token");
+
+        expect(res.status).toBe(422);
+        expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
+      });
+
     });
   });
 });

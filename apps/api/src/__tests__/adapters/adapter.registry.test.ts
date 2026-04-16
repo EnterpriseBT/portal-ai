@@ -18,11 +18,8 @@ import type { ConnectorInstance } from "@portalai/core/models";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function createStubAdapter(
-  accessMode: ConnectorAdapter["accessMode"]
-): ConnectorAdapter {
+function createStubAdapter(): ConnectorAdapter {
   return {
-    accessMode,
     queryRows: async (
       _instance: ConnectorInstance,
       _query: EntityDataQuery
@@ -62,15 +59,15 @@ describe("ConnectorAdapterRegistry", () => {
 
   describe("get", () => {
     it("returns the correct adapter for a registered slug", () => {
-      const csvAdapter = createStubAdapter("import");
+      const csvAdapter = createStubAdapter();
       ConnectorAdapterRegistry.register("csv", csvAdapter);
 
       expect(ConnectorAdapterRegistry.get("csv")).toBe(csvAdapter);
     });
 
     it("returns different adapters for different slugs", () => {
-      const csvAdapter = createStubAdapter("import");
-      const airtableAdapter = createStubAdapter("hybrid");
+      const csvAdapter = createStubAdapter();
+      const airtableAdapter = createStubAdapter();
 
       ConnectorAdapterRegistry.register("csv", csvAdapter);
       ConnectorAdapterRegistry.register("airtable", airtableAdapter);
@@ -90,8 +87,8 @@ describe("ConnectorAdapterRegistry", () => {
 
   describe("register", () => {
     it("overwrites a previously registered adapter for the same slug", () => {
-      const first = createStubAdapter("import");
-      const second = createStubAdapter("import");
+      const first = createStubAdapter();
+      const second = createStubAdapter();
 
       ConnectorAdapterRegistry.register("csv", first);
       ConnectorAdapterRegistry.register("csv", second);
@@ -104,7 +101,7 @@ describe("ConnectorAdapterRegistry", () => {
 
   describe("has", () => {
     it("returns true for a registered slug", () => {
-      ConnectorAdapterRegistry.register("csv", createStubAdapter("import"));
+      ConnectorAdapterRegistry.register("csv", createStubAdapter());
       expect(ConnectorAdapterRegistry.has("csv")).toBe(true);
     });
 
@@ -117,9 +114,9 @@ describe("ConnectorAdapterRegistry", () => {
 
   describe("slugs", () => {
     it("returns all registered slugs", () => {
-      ConnectorAdapterRegistry.register("csv", createStubAdapter("import"));
-      ConnectorAdapterRegistry.register("airtable", createStubAdapter("hybrid"));
-      ConnectorAdapterRegistry.register("hubspot", createStubAdapter("hybrid"));
+      ConnectorAdapterRegistry.register("csv", createStubAdapter());
+      ConnectorAdapterRegistry.register("airtable", createStubAdapter());
+      ConnectorAdapterRegistry.register("hubspot", createStubAdapter());
 
       const slugs = ConnectorAdapterRegistry.slugs();
       expect(slugs).toHaveLength(3);
@@ -137,8 +134,8 @@ describe("ConnectorAdapterRegistry", () => {
 
   describe("clear", () => {
     it("removes all registrations", () => {
-      ConnectorAdapterRegistry.register("csv", createStubAdapter("import"));
-      ConnectorAdapterRegistry.register("airtable", createStubAdapter("hybrid"));
+      ConnectorAdapterRegistry.register("csv", createStubAdapter());
+      ConnectorAdapterRegistry.register("airtable", createStubAdapter());
 
       ConnectorAdapterRegistry.clear();
 
@@ -146,22 +143,5 @@ describe("ConnectorAdapterRegistry", () => {
       expect(ConnectorAdapterRegistry.has("airtable")).toBe(false);
       expect(ConnectorAdapterRegistry.slugs()).toEqual([]);
     });
-  });
-
-  // ── accessMode validation ───────────────────────────────────────
-
-  describe("accessMode", () => {
-    it.each<[string, ConnectorAdapter["accessMode"]]>([
-      ["csv", "import"],
-      ["airtable", "hybrid"],
-      ["realtime-api", "live"],
-    ])(
-      "adapter registered as %s exposes accessMode '%s'",
-      (slug, mode) => {
-        const adapter = createStubAdapter(mode);
-        ConnectorAdapterRegistry.register(slug, adapter);
-        expect(ConnectorAdapterRegistry.get(slug).accessMode).toBe(mode);
-      }
-    );
   });
 });

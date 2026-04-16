@@ -141,22 +141,20 @@ describe("EntityDetailViewUI", () => {
       <EntityDetailViewUI
         entity={stubEntity}
         connectorInstanceName="My CSV"
-        accessMode="import"
         recordCount={150}
         lastSyncAt={Date.now()}
       />
     );
     expect(screen.getByText("My CSV")).toBeInTheDocument();
-    expect(screen.getByText("import")).toBeInTheDocument();
     expect(screen.getByText("150")).toBeInTheDocument();
     expect(screen.getByText("Last sync")).toBeInTheDocument();
   });
 
-  it("renders sync button for import access mode", () => {
+  it("renders sync button when canSync is true", () => {
     render(
       <EntityDetailViewUI
         entity={stubEntity}
-        accessMode="import"
+        canSync={true}
         onSync={jest.fn()}
       />
     );
@@ -165,29 +163,16 @@ describe("EntityDetailViewUI", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders sync button for hybrid access mode", () => {
+  it("hides sync button when canSync is false", () => {
     render(
-      <EntityDetailViewUI
-        entity={stubEntity}
-        accessMode="hybrid"
-        onSync={jest.fn()}
-      />
-    );
-    expect(
-      screen.getByRole("button", { name: "Sync" })
-    ).toBeInTheDocument();
-  });
-
-  it("hides sync button for live access mode", () => {
-    render(
-      <EntityDetailViewUI entity={stubEntity} accessMode="live" />
+      <EntityDetailViewUI entity={stubEntity} canSync={false} />
     );
     expect(
       screen.queryByRole("button", { name: "Sync" })
     ).not.toBeInTheDocument();
   });
 
-  it("hides sync button when no access mode is set", () => {
+  it("hides sync button when canSync is not set", () => {
     render(<EntityDetailViewUI entity={stubEntity} />);
     expect(
       screen.queryByRole("button", { name: "Sync" })
@@ -199,7 +184,7 @@ describe("EntityDetailViewUI", () => {
     render(
       <EntityDetailViewUI
         entity={stubEntity}
-        accessMode="import"
+        canSync={true}
         onSync={onSync}
       />
     );
@@ -212,7 +197,7 @@ describe("EntityDetailViewUI", () => {
     render(
       <EntityDetailViewUI
         entity={stubEntity}
-        accessMode="import"
+        canSync={true}
         isSyncing={true}
         onSync={jest.fn()}
       />

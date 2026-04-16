@@ -18,8 +18,9 @@ export const ConnectorDefinitionSchema = CoreSchema.extend({
   configSchema: z.record(z.string(), z.unknown()).nullable(),
   capabilityFlags: z.object({
     sync: z.boolean().optional(),
-    query: z.boolean().optional(),
+    read: z.boolean().optional(),
     write: z.boolean().optional(),
+    push: z.boolean().optional(),
   }),
   isActive: z.boolean(),
   version: z.string(),

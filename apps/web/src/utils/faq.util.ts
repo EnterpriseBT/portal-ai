@@ -81,13 +81,6 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Field Mapping", "Column Definition", "Normalized Data"],
   },
   {
-    question: "What do the access modes (import, live, hybrid) mean?",
-    answer:
-      "Import mode pulls a copy of the data into Portals.ai and works against the cached copy. Live mode queries the source on demand, so the data is always current but slower to read. Hybrid mode caches the data but refreshes it from the source on a schedule.",
-    category: FAQCategory.Data,
-    relatedGlossaryTerms: ["Access Mode", "Connector Entity", "Sync"],
-  },
-  {
     question: "How do I validate my data?",
     answer:
       "Validation is driven by your column definitions: each one can declare a data type and a regex validation pattern. When records are synced or written, those rules run automatically — invalid records are flagged so you can fix them. Use \"Re-validate\" on an entity to re-run the rules across all records.",

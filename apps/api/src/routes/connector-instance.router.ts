@@ -110,7 +110,7 @@ connectorInstanceRouter.get(
       const { limit, offset, sortBy, sortOrder, connectorDefinitionId, status, search, include, capability } =
         ConnectorInstanceListRequestQuerySchema.parse(req.query);
 
-      const VALID_CAPABILITIES = ["read", "write", "sync"] as const;
+      const VALID_CAPABILITIES = ["sync", "read", "write", "push"] as const;
 
       const filters: SQL[] = [eq(connectorInstances.organizationId, req.application?.metadata.organizationId as string)];
 
@@ -651,6 +651,15 @@ connectorInstanceRouter.patch(
         );
         const defFlags = definition?.capabilityFlags;
 
+        if (parsed.data.enabledCapabilityFlags.read && !defFlags?.read) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.CONNECTOR_INSTANCE_CAPABILITY_NOT_SUPPORTED,
+              "This connector type does not support reads"
+            )
+          );
+        }
         if (parsed.data.enabledCapabilityFlags.write && !defFlags?.write) {
           return next(
             new ApiError(
@@ -666,6 +675,15 @@ connectorInstanceRouter.patch(
               400,
               ApiCode.CONNECTOR_INSTANCE_CAPABILITY_NOT_SUPPORTED,
               "This connector type does not support sync"
+            )
+          );
+        }
+        if (parsed.data.enabledCapabilityFlags.push && !defFlags?.push) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.CONNECTOR_INSTANCE_CAPABILITY_NOT_SUPPORTED,
+              "This connector type does not support push"
             )
           );
         }

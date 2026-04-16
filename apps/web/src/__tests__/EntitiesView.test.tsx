@@ -3,12 +3,8 @@ import { jest } from "@jest/globals";
 // ── Mocks ───────────────────────────────────────────────────────────
 
 const mockEntityList = jest.fn();
-const mockTagFetchPage = jest.fn(() =>
-  Promise.resolve({ options: [] as { value: string; label: string }[], hasMore: false })
-);
-const mockConnectorInstanceFetchPage = jest.fn(() =>
-  Promise.resolve({ options: [] as { value: string; label: string }[], hasMore: false })
-);
+const mockSearchConnectorInstances = jest.fn(() => Promise.resolve([]));
+const mockSearchTags = jest.fn(() => Promise.resolve([]));
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -25,14 +21,14 @@ jest.unstable_mockModule("../api/sdk", () => ({
       }),
     },
     entityTags: {
-      filter: () => ({
-        fetchPage: mockTagFetchPage,
+      search: () => ({
+        onSearch: mockSearchTags,
         labelMap: {},
       }),
     },
     connectorInstances: {
-      filter: () => ({
-        fetchPage: mockConnectorInstanceFetchPage,
+      search: () => ({
+        onSearch: mockSearchConnectorInstances,
         labelMap: {},
       }),
     },
@@ -109,10 +105,6 @@ describe("EntitiesView", () => {
   const mockOnDeleteEntity = jest.fn();
 
   const sharedProps = {
-    connectorInstanceFetchPage: mockConnectorInstanceFetchPage,
-    connectorInstanceLabelMap: {} as Record<string, string>,
-    tagFetchPage: mockTagFetchPage,
-    tagLabelMap: {} as Record<string, string>,
     onDeleteEntity: mockOnDeleteEntity,
     onCreate: jest.fn(),
   };
@@ -170,5 +162,52 @@ describe("EntitiesView", () => {
     render(<EntitiesViewUI {...sharedProps} />);
     await user.click(screen.getByText("Filter"));
     expect(screen.getByText("Tags")).toBeInTheDocument();
+  });
+
+  describe("write capability gating", () => {
+    it("hides delete action when enabledCapabilityFlags.write is false", () => {
+      mockEntityList.mockReturnValue({
+        ...twoEntities,
+        data: {
+          ...twoEntities.data,
+          connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
+            ...e,
+            connectorInstance: { ...e.connectorInstance, enabledCapabilityFlags: { write: false } },
+          })),
+        },
+      });
+      render(<EntitiesViewUI {...sharedProps} />);
+      expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    });
+
+    it("shows delete action when enabledCapabilityFlags.write is true", () => {
+      mockEntityList.mockReturnValue({
+        ...twoEntities,
+        data: {
+          ...twoEntities.data,
+          connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
+            ...e,
+            connectorInstance: { ...e.connectorInstance, enabledCapabilityFlags: { write: true } },
+          })),
+        },
+      });
+      render(<EntitiesViewUI {...sharedProps} />);
+      expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
+    });
+
+    it("hides delete action when enabledCapabilityFlags is null", () => {
+      mockEntityList.mockReturnValue({
+        ...twoEntities,
+        data: {
+          ...twoEntities.data,
+          connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
+            ...e,
+            connectorInstance: { ...e.connectorInstance, enabledCapabilityFlags: null },
+          })),
+        },
+      });
+      render(<EntitiesViewUI {...sharedProps} />);
+      expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    });
   });
 });

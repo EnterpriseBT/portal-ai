@@ -82,7 +82,7 @@ function createConnectorDefinition(
     category: "crm",
     authType: "oauth2",
     configSchema: null,
-    capabilityFlags: { sync: true, query: true, write: false },
+    capabilityFlags: { sync: true, read: true, write: false },
     isActive: true,
     version: "1.0.0",
     iconUrl: null,
@@ -983,7 +983,7 @@ describe("Connector Instance Router", () => {
 
     it("should update enabledCapabilityFlags", async () => {
       const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
-      const def = createConnectorDefinition({ capabilityFlags: { sync: true, query: true, write: true } });
+      const def = createConnectorDefinition({ capabilityFlags: { sync: true, read: true, write: true } });
       await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
       const instance = createConnectorInstance(def.id, orgId);
       await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);
@@ -999,7 +999,7 @@ describe("Connector Instance Router", () => {
 
     it("should reject write: true when definition does not support writes", async () => {
       const { organizationId: orgId } = await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
-      const def = createConnectorDefinition({ capabilityFlags: { sync: true, query: true, write: false } });
+      const def = createConnectorDefinition({ capabilityFlags: { sync: true, read: true, write: false } });
       await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
       const instance = createConnectorInstance(def.id, orgId);
       await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(instance as never);

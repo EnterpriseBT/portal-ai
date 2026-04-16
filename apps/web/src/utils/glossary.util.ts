@@ -83,17 +83,6 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     relatedTerms: ["Connector Instance", "Entity Record", "Job"],
     pageRoute: ApplicationRoute.Entities,
   },
-  {
-    term: "Access Mode",
-    category: GlossaryCategory.DataSources,
-    definition:
-      "How a connector entity stores and fetches data: import (cached locally), live (queried on demand), or hybrid (cached with live refreshes).",
-    example:
-      "A small CSV uses import mode; a frequently-changing database table uses live mode.",
-    relatedTerms: ["Connector Entity", "Sync"],
-    pageRoute: ApplicationRoute.Entities,
-  },
-
   // Data Modeling
   {
     term: "Column Definition",

@@ -3,8 +3,6 @@ import type { ResolvedColumn } from "@portalai/core/contracts";
 
 // ── Query / Result types ────────────────────────────────────────────
 
-export type AccessMode = "import" | "live" | "hybrid";
-
 export interface EntityDataQuery {
   entityKey: string;
   columns?: string[];
@@ -48,8 +46,6 @@ export interface DiscoveredColumn {
 // ── Adapter interface ───────────────────────────────────────────────
 
 export interface ConnectorAdapter {
-  readonly accessMode: AccessMode;
-
   queryRows(
     instance: ConnectorInstance,
     query: EntityDataQuery

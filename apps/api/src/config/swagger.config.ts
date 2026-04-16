@@ -298,8 +298,9 @@ const options: swaggerJsdoc.Options = {
               description: "Supported capabilities",
               properties: {
                 sync: { type: "boolean" },
-                query: { type: "boolean" },
+                read: { type: "boolean" },
                 write: { type: "boolean" },
+                push: { type: "boolean" },
               },
             },
             isActive: {

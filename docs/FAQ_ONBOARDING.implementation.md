@@ -39,7 +39,7 @@ File: `apps/web/src/utils/glossary.util.ts`
 Test: `apps/web/src/__tests__/glossary.util.test.ts`
 
 - [x] **RED** — Add test: `GLOSSARY_ENTRIES contains an entry for every term named in the audit doc`
-  - Build expected list from the audit table (Connector Definition, Connector Instance, Connector Entity, Entity Record, Sync, Access Mode, Column Definition, Field Mapping, Data Types, Validation Pattern, Canonical Format, Primary Key, Normalized Data, Entity Group, Entity Group Member, Link Field, Entity Tag, Overlap Preview, Station, Tool Pack, Portal, Portal Message, Portal Result, Pinned Result, Job, Job Status, Organization, Default Station)
+  - Build expected list from the audit table (Connector Definition, Connector Instance, Connector Entity, Entity Record, Sync, Column Definition, Field Mapping, Data Types, Validation Pattern, Canonical Format, Primary Key, Normalized Data, Entity Group, Entity Group Member, Link Field, Entity Tag, Overlap Preview, Station, Tool Pack, Portal, Portal Message, Portal Result, Pinned Result, Job, Job Status, Organization, Default Station)
   - Assert each term exists in the dataset (case-insensitive match on `entry.term`)
 - [x] **RED** — Add test: `every entry has a non-empty term, definition, and category`
   - Assert no falsy `term`, `definition`, or `category` values

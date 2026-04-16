@@ -8,7 +8,7 @@
 import { eq, and, not, asc, desc, getTableColumns, type SQL, inArray, isNull } from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { fieldMappings, connectorEntities, columnDefinitions } from "../schema/index.js";
+import { fieldMappings, connectorEntities, connectorInstances, columnDefinitions } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
 
@@ -103,7 +103,7 @@ export class FieldMappingsRepository extends Repository<
     opts: ListOptions = {},
     client: DbClient = db
   ): Promise<
-    (FieldMappingSelect & { connectorEntity: ConnectorEntitySelect | null })[]
+    (FieldMappingSelect & { connectorEntity: (ConnectorEntitySelect & { connectorInstance?: Record<string, unknown> | null }) | null })[]
   > {
     const conditions = this.withSoftDelete(where, opts.includeDeleted);
 
@@ -111,11 +111,19 @@ export class FieldMappingsRepository extends Repository<
       .select({
         fieldMapping: getTableColumns(fieldMappings),
         connectorEntity: getTableColumns(connectorEntities),
+        connectorInstance: {
+          id: connectorInstances.id,
+          enabledCapabilityFlags: connectorInstances.enabledCapabilityFlags,
+        },
       })
       .from(fieldMappings)
       .leftJoin(
         connectorEntities,
         eq(fieldMappings.connectorEntityId, connectorEntities.id)
+      )
+      .leftJoin(
+        connectorInstances,
+        eq(connectorEntities.connectorInstanceId, connectorInstances.id)
       )
       .where(conditions)
       .$dynamic();
@@ -131,7 +139,12 @@ export class FieldMappingsRepository extends Repository<
 
     return rows.map((row) => ({
       ...(row.fieldMapping as FieldMappingSelect),
-      connectorEntity: row.connectorEntity as ConnectorEntitySelect | null,
+      connectorEntity: row.connectorEntity
+        ? {
+            ...(row.connectorEntity as ConnectorEntitySelect),
+            connectorInstance: row.connectorInstance ?? null,
+          }
+        : null,
     }));
   }
 

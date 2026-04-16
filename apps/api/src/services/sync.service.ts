@@ -65,11 +65,7 @@ export class SyncService {
 
     // 5. Execute sync
     logger.info(
-      {
-        connectorEntityId,
-        slug: definition.slug,
-        accessMode: adapter.accessMode,
-      },
+      { connectorEntityId, slug: definition.slug },
       "Starting entity sync"
     );
 
