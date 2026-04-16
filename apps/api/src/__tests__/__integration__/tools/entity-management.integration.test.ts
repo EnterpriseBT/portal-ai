@@ -275,7 +275,7 @@ describe("Entity management tool integration", () => {
 
     it("rejects when write disabled on instance", async () => {
       const s = await seed(db, {
-        definitionOverrides: { capabilityFlags: { sync: true, read: true, write: false } },
+        instanceOverrides: { enabledCapabilityFlags: { write: false } },
       });
       const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
 
