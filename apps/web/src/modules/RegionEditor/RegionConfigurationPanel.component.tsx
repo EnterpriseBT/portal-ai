@@ -555,7 +555,7 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
           )}
         </Stack>
 
-        <SkipAndTerminatorEditorUI region={region} onUpdate={onUpdate} />
+        <SkipAndTerminatorEditorUI region={region} onUpdate={onUpdate} errors={errors} />
       </Stack>
 
       {band !== "none" && (

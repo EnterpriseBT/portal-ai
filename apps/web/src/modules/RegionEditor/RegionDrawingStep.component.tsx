@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Tabs, Button, Select } from "@portalai/core/ui";
 import MuiTab from "@mui/material/Tab";
+import MuiChip from "@mui/material/Chip";
 import type { SelectOption } from "@portalai/core/ui";
 
 import { SheetCanvasUI } from "./SheetCanvas.component";
@@ -15,7 +16,11 @@ import type {
   RegionDraft,
   Workbook,
 } from "./utils/region-editor.types";
-import type { RegionEditorErrors } from "./utils/region-editor-validation.util";
+import {
+  validateRegions,
+  type RegionEditorErrors,
+  type RegionErrors,
+} from "./utils/region-editor-validation.util";
 
 export interface RegionDrawingStepUIProps {
   workbook: Workbook;
@@ -60,6 +65,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   isInterpreting = false,
   errors,
 }) => {
+  const [attemptedInterpret, setAttemptedInterpret] = useState(false);
   const activeSheet = workbook.sheets.find((s) => s.id === activeSheetId) ?? workbook.sheets[0];
 
   const entityOrder = useMemo(() => {
@@ -98,24 +104,48 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     });
   }, [regions, entityOrder, entityOptions]);
 
+  const regionDisplayLabel = useCallback(
+    (region: RegionDraft): string => {
+      const sheet = workbook.sheets.find((s) => s.id === region.sheetId);
+      const sheetName = sheet?.name ?? region.sheetId;
+      const entityLabel =
+        region.targetEntityLabel ??
+        (region.targetEntityDefinitionId
+          ? entityOptions.find((o) => o.value === region.targetEntityDefinitionId)?.label ??
+            region.targetEntityDefinitionId
+          : "Unbound");
+      const labelPart = region.proposedLabel ?? formatBounds(region.bounds);
+      return `${labelPart} · ${sheetName} · ${entityLabel}`;
+    },
+    [workbook.sheets, entityOptions]
+  );
+
   const regionSelectOptions: SelectOption[] = useMemo(
     () =>
-      regions.map((region) => {
-        const sheet = workbook.sheets.find((s) => s.id === region.sheetId);
-        const sheetName = sheet?.name ?? region.sheetId;
-        const entityLabel =
-          region.targetEntityLabel ??
-          (region.targetEntityDefinitionId
-            ? entityOptions.find((o) => o.value === region.targetEntityDefinitionId)?.label ??
-              region.targetEntityDefinitionId
-            : "Unbound");
-        const labelPart = region.proposedLabel ?? formatBounds(region.bounds);
-        return {
-          value: region.id,
-          label: `${labelPart} · ${sheetName} · ${entityLabel}`,
-        };
-      }),
-    [regions, workbook.sheets, entityOptions]
+      regions.map((region) => ({
+        value: region.id,
+        label: regionDisplayLabel(region),
+      })),
+    [regions, regionDisplayLabel]
+  );
+
+  const computedErrors = useMemo<RegionEditorErrors>(
+    () => validateRegions(regions),
+    [regions]
+  );
+
+  const effectiveErrors = useMemo<RegionEditorErrors>(() => {
+    if (!errors) return computedErrors;
+    const merged: RegionEditorErrors = { ...computedErrors };
+    for (const [regionId, regionErrors] of Object.entries(errors)) {
+      merged[regionId] = { ...(merged[regionId] ?? {}), ...regionErrors };
+    }
+    return merged;
+  }, [computedErrors, errors]);
+
+  const invalidRegionIds = useMemo(
+    () => regions.map((r) => r.id).filter((id) => effectiveErrors[id] !== undefined),
+    [regions, effectiveErrors]
   );
 
   const handleJumpToRegion = (nextId: string) => {
@@ -129,6 +159,21 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       onActiveSheetChange(region.sheetId);
     }
     onSelectRegion(region.id);
+  };
+
+  const handleInterpret = () => {
+    setAttemptedInterpret(true);
+    if (invalidRegionIds.length > 0) {
+      const firstInvalid = regions.find((r) => r.id === invalidRegionIds[0]);
+      if (firstInvalid) {
+        if (firstInvalid.sheetId !== activeSheetId) {
+          onActiveSheetChange(firstInvalid.sheetId);
+        }
+        onSelectRegion(firstInvalid.id);
+      }
+      return;
+    }
+    onInterpret();
   };
 
   useEffect(() => {
@@ -163,6 +208,13 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         r.targetEntityDefinitionId === selectedRegion.targetEntityDefinitionId
     ).length
     : 0;
+
+  const showErrors = attemptedInterpret;
+  const panelErrors: RegionErrors | undefined = selectedRegion
+    ? showErrors
+      ? effectiveErrors[selectedRegion.id]
+      : errors?.[selectedRegion.id]
+    : undefined;
 
   if (!activeSheet) {
     return (
@@ -330,7 +382,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             entityOptions={entityOptions}
             entityOrder={entityOrder}
             siblingsInSameEntity={siblingsInSameEntity}
-            errors={selectedRegion ? errors?.[selectedRegion.id] : undefined}
+            errors={panelErrors}
             onUpdate={(updates) =>
               selectedRegion && onRegionUpdate(selectedRegion.id, updates)
             }
@@ -355,31 +407,55 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         </Box>
       </Stack>
 
+      {showErrors && invalidRegionIds.length > 0 && (
+        <Box
+          role="alert"
+          sx={{
+            p: 1.5,
+            borderRadius: 1,
+            border: "1px solid",
+            borderColor: "error.main",
+            backgroundColor: "error.lighter",
+          }}
+        >
+          <Typography variant="subtitle2" color="error.dark" sx={{ mb: 0.5 }}>
+            {invalidRegionIds.length === 1
+              ? "1 region has validation errors"
+              : `${invalidRegionIds.length} regions have validation errors`}{" "}
+            — fix them before interpreting.
+          </Typography>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+            {invalidRegionIds.map((id) => {
+              const region = regions.find((r) => r.id === id);
+              if (!region) return null;
+              return (
+                <MuiChip
+                  key={id}
+                  size="small"
+                  color="error"
+                  variant="outlined"
+                  clickable
+                  label={regionDisplayLabel(region)}
+                  onClick={() => handleJumpToRegion(id)}
+                />
+              );
+            })}
+          </Stack>
+        </Box>
+      )}
+
       <Stack
         direction="row"
-        justifyContent="space-between"
+        justifyContent="flex-end"
         alignItems="center"
         spacing={1}
         flexWrap="wrap"
         useFlexGap
       >
-        {errors && Object.keys(errors).length > 0 ? (
-          <Typography variant="caption" color="error">
-            {Object.keys(errors).length}{" "}
-            {Object.keys(errors).length === 1 ? "region has" : "regions have"} validation errors —
-            fix them to continue.
-          </Typography>
-        ) : (
-          <span />
-        )}
         <Button
           variant="contained"
-          onClick={onInterpret}
-          disabled={
-            isInterpreting ||
-            regions.length === 0 ||
-            (errors !== undefined && Object.keys(errors).length > 0)
-          }
+          onClick={handleInterpret}
+          disabled={isInterpreting || regions.length === 0}
         >
           {isInterpreting ? "Interpreting…" : "Interpret"}
         </Button>

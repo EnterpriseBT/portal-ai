@@ -15,15 +15,18 @@ import {
   type RegionDraft,
   type SkipRule,
 } from "./utils/region-editor.types";
+import type { RegionErrors } from "./utils/region-editor-validation.util";
 
 export interface SkipAndTerminatorEditorUIProps {
   region: RegionDraft;
   onUpdate: (updates: Partial<RegionDraft>) => void;
+  errors?: RegionErrors;
 }
 
 export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps> = ({
   region,
   onUpdate,
+  errors,
 }) => {
   const rules = region.skipRules ?? [];
   const hasBlankRule = rules.some((r) => r.kind === "blank");
@@ -67,6 +70,7 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
 
       {rules.map((rule, idx) => {
         if (rule.kind !== "cellMatches") return null;
+        const patternError = errors?.[`skipRules.${idx}.pattern`];
         return (
           <Stack
             key={idx}
@@ -119,7 +123,15 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
                 )
               }
               placeholder="e.g. ^— .* —$"
-              slotProps={{ htmlInput: { "aria-label": "Skip pattern" } }}
+              required
+              error={Boolean(patternError)}
+              helperText={patternError}
+              slotProps={{
+                htmlInput: {
+                  "aria-label": "Skip pattern",
+                  "aria-invalid": Boolean(patternError),
+                },
+              }}
             />
             <IconButton
               size="small"
@@ -171,7 +183,15 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
                 }
                 onUpdate({ untilEmptyTerminatorCount: n });
               }}
-              slotProps={{ htmlInput: { min: 1, "aria-label": "Terminator count" } }}
+              error={Boolean(errors?.untilEmptyTerminatorCount)}
+              helperText={errors?.untilEmptyTerminatorCount}
+              slotProps={{
+                htmlInput: {
+                  min: 1,
+                  "aria-label": "Terminator count",
+                  "aria-invalid": Boolean(errors?.untilEmptyTerminatorCount),
+                },
+              }}
             />
             <Typography variant="caption" color="text.secondary">
               consecutive unskippable blank {recordAxisLabel}s (default {DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT}).
