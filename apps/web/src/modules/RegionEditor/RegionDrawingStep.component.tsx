@@ -3,9 +3,9 @@ import { Box, Stack, Typography, Tabs, Button, Select } from "@portalai/core/ui"
 import MuiTab from "@mui/material/Tab";
 import type { SelectOption } from "@portalai/core/ui";
 
-import { SheetCanvas } from "./SheetCanvas.component";
-import { EntityLegend } from "./EntityLegend.component";
-import { RegionSidePanel } from "./RegionSidePanel.component";
+import { SheetCanvasUI } from "./SheetCanvas.component";
+import { EntityLegendUI } from "./EntityLegend.component";
+import { RegionConfigurationPanelUI } from "./RegionConfigurationPanel.component";
 import { formatBounds } from "./utils/a1-notation.util";
 import { colorForEntity } from "./utils/region-editor-colors.util";
 import type {
@@ -16,7 +16,7 @@ import type {
 } from "./utils/region-editor.types";
 import type { RegionEditorErrors } from "./utils/region-editor-validation.util";
 
-export interface RegionDrawingStepProps {
+export interface RegionDrawingStepUIProps {
   workbook: Workbook;
   regions: RegionDraft[];
   activeSheetId: string;
@@ -37,7 +37,7 @@ export interface RegionDrawingStepProps {
   errors?: RegionEditorErrors;
 }
 
-export const RegionDrawingStep: React.FC<RegionDrawingStepProps> = ({
+export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   workbook,
   regions,
   activeSheetId,
@@ -221,7 +221,7 @@ export const RegionDrawingStep: React.FC<RegionDrawingStepProps> = ({
         sx={{ width: "100%", minWidth: 0 }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <EntityLegend entries={legendEntries} />
+          <EntityLegendUI entries={legendEntries} />
         </Box>
         <Select
           label="Jump to region"
@@ -289,9 +289,9 @@ export const RegionDrawingStep: React.FC<RegionDrawingStepProps> = ({
       </Box>
 
       <Stack
-        direction={{ xs: "column", md: "row" }}
+        direction="column"
         spacing={2}
-        alignItems="flex-start"
+        alignItems="stretch"
         sx={{
           width: "100%",
           maxWidth: "100%",
@@ -301,7 +301,7 @@ export const RegionDrawingStep: React.FC<RegionDrawingStepProps> = ({
       >
         <Box
           sx={{
-            flex: { xs: "0 0 auto", md: 1 },
+            width: "100%",
             minWidth: 0,
             maxWidth: "100%",
             display: "grid",
@@ -309,7 +309,7 @@ export const RegionDrawingStep: React.FC<RegionDrawingStepProps> = ({
             overflow: "hidden",
           }}
         >
-          <SheetCanvas
+          <SheetCanvasUI
             sheet={activeSheet}
             regions={regions}
             entityOrder={entityOrder}
@@ -321,15 +321,8 @@ export const RegionDrawingStep: React.FC<RegionDrawingStepProps> = ({
             onRegionResize={onRegionResize}
           />
         </Box>
-        <Box
-          sx={{
-            width: { xs: "100%", md: 320 },
-            maxWidth: { xs: "100%", md: "40%" },
-            flexShrink: 0,
-            alignSelf: { xs: "stretch", md: "stretch" },
-          }}
-        >
-          <RegionSidePanel
+        <Box sx={{ width: "100%", minWidth: 0 }}>
+          <RegionConfigurationPanelUI
             region={selectedRegion}
             entityOptions={entityOptions}
             entityOrder={entityOrder}

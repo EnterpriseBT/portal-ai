@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import { RegionSidePanel } from "../RegionSidePanel.component";
+import { RegionConfigurationPanelUI } from "../RegionConfigurationPanel.component";
 import {
   ENTITY_OPTIONS,
   PROPOSED_REGIONS,
@@ -9,8 +9,8 @@ import {
 } from "../utils/region-editor-fixtures.util";
 
 const meta = {
-  title: "Modules/RegionEditor/RegionSidePanel",
-  component: RegionSidePanel,
+  title: "Modules/RegionEditor/RegionConfigurationPanelUI",
+  component: RegionConfigurationPanelUI,
   parameters: { layout: "padded" },
   tags: ["autodocs"],
   decorators: [
@@ -20,7 +20,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof RegionSidePanel>;
+} satisfies Meta<typeof RegionConfigurationPanelUI>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

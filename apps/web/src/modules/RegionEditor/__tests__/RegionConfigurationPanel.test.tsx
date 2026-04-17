@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 
-import { RegionSidePanel } from "../RegionSidePanel.component";
+import { RegionConfigurationPanelUI } from "../RegionConfigurationPanel.component";
 import type { RegionDraft } from "../utils/region-editor.types";
 
 const ENTITY_OPTIONS = [
@@ -23,10 +23,10 @@ function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
   };
 }
 
-describe("RegionSidePanel", () => {
+describe("RegionConfigurationPanelUI", () => {
   test("shows empty-state copy when no region is selected", () => {
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={null}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={[]}
@@ -40,7 +40,7 @@ describe("RegionSidePanel", () => {
 
   test("renders region label and bounds caption", () => {
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion({ proposedLabel: "Leads" })}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
@@ -57,7 +57,7 @@ describe("RegionSidePanel", () => {
 
   test("shows merge banner when siblings exist", () => {
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion()}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
@@ -72,7 +72,7 @@ describe("RegionSidePanel", () => {
   test("calls onDelete when the trash button is clicked", () => {
     const onDelete = jest.fn();
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion()}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
@@ -88,7 +88,7 @@ describe("RegionSidePanel", () => {
   test("updates proposedLabel on text input change", () => {
     const onUpdate = jest.fn();
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion()}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
@@ -104,7 +104,7 @@ describe("RegionSidePanel", () => {
 
   test("displays entity-required error passed in props", () => {
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion({ targetEntityDefinitionId: null })}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={[]}
@@ -119,7 +119,7 @@ describe("RegionSidePanel", () => {
 
   test("shows pivoted records-axis input when columns-as-records + headerAxis:row", () => {
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion({
           orientation: "columns-as-records",
           headerAxis: "row",
@@ -137,7 +137,7 @@ describe("RegionSidePanel", () => {
 
   test("crosstab orientation shows row/col axis and cell-value-name inputs", () => {
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion({
           orientation: "cells-as-records",
           headerAxis: "row",
@@ -160,7 +160,7 @@ describe("RegionSidePanel", () => {
       bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
     });
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={region}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
@@ -177,7 +177,7 @@ describe("RegionSidePanel", () => {
 
   test("stop-pattern input appears when boundsMode is matchesPattern", () => {
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion({ boundsMode: "matchesPattern" })}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
@@ -191,7 +191,7 @@ describe("RegionSidePanel", () => {
 
   test("terminator input appears only for untilEmpty bounds mode", () => {
     const { rerender } = render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion({ boundsMode: "absolute" })}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
@@ -203,7 +203,7 @@ describe("RegionSidePanel", () => {
     expect(screen.queryByLabelText(/Terminator count/i)).not.toBeInTheDocument();
 
     rerender(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion({ boundsMode: "untilEmpty" })}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
@@ -218,7 +218,7 @@ describe("RegionSidePanel", () => {
   test("toggling the blank skip rule adds and removes a rule", () => {
     const onUpdate = jest.fn();
     render(
-      <RegionSidePanel
+      <RegionConfigurationPanelUI
         region={baseRegion({ boundsMode: "untilEmpty" })}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}

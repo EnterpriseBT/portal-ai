@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import { ReviewStep } from "../ReviewStep.component";
+import { ReviewStepUI } from "../ReviewStep.component";
 import {
   PROPOSED_REGIONS,
   BLOCKER_REGIONS,
@@ -9,8 +9,8 @@ import {
 } from "../utils/region-editor-fixtures.util";
 
 const meta = {
-  title: "Modules/RegionEditor/ReviewStep",
-  component: ReviewStep,
+  title: "Modules/RegionEditor/ReviewStepUI",
+  component: ReviewStepUI,
   parameters: { layout: "padded" },
   tags: ["autodocs"],
   decorators: [
@@ -20,7 +20,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof ReviewStep>;
+} satisfies Meta<typeof ReviewStepUI>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

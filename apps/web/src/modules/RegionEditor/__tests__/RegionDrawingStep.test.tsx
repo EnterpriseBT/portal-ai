@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom";
+import React from "react";
 import { jest } from "@jest/globals";
 import { fireEvent, render } from "@testing-library/react";
 
-import { RegionDrawingStep } from "../RegionDrawingStep.component";
+import { RegionDrawingStepUI } from "../RegionDrawingStep.component";
 import type { RegionDraft, Workbook } from "../utils/region-editor.types";
 
 const SHEET = {
@@ -27,7 +28,7 @@ function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
   };
 }
 
-function baseProps(overrides: Partial<React.ComponentProps<typeof RegionDrawingStep>> = {}) {
+function baseProps(overrides: Partial<React.ComponentProps<typeof RegionDrawingStepUI>> = {}) {
   return {
     workbook: WORKBOOK,
     regions: [baseRegion()],
@@ -41,34 +42,34 @@ function baseProps(overrides: Partial<React.ComponentProps<typeof RegionDrawingS
     entityOptions: [{ value: "ent_a", label: "Contact" }],
     onInterpret: jest.fn(),
     ...overrides,
-  } as React.ComponentProps<typeof RegionDrawingStep>;
+  } as React.ComponentProps<typeof RegionDrawingStepUI>;
 }
 
-describe("RegionDrawingStep — keyboard delete", () => {
+describe("RegionDrawingStepUI — keyboard delete", () => {
   test("pressing Delete removes the selected region", () => {
     const onRegionDelete = jest.fn();
-    render(<RegionDrawingStep {...baseProps({ onRegionDelete })} />);
+    render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
     fireEvent.keyDown(document, { key: "Delete" });
     expect(onRegionDelete).toHaveBeenCalledWith("r1");
   });
 
   test("pressing Backspace removes the selected region", () => {
     const onRegionDelete = jest.fn();
-    render(<RegionDrawingStep {...baseProps({ onRegionDelete })} />);
+    render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
     fireEvent.keyDown(document, { key: "Backspace" });
     expect(onRegionDelete).toHaveBeenCalledWith("r1");
   });
 
   test("does nothing when no region is selected", () => {
     const onRegionDelete = jest.fn();
-    render(<RegionDrawingStep {...baseProps({ onRegionDelete, selectedRegionId: null })} />);
+    render(<RegionDrawingStepUI {...baseProps({ onRegionDelete, selectedRegionId: null })} />);
     fireEvent.keyDown(document, { key: "Delete" });
     expect(onRegionDelete).not.toHaveBeenCalled();
   });
 
   test("does nothing when the event originates from an input", () => {
     const onRegionDelete = jest.fn();
-    render(<RegionDrawingStep {...baseProps({ onRegionDelete })} />);
+    render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();
@@ -79,7 +80,7 @@ describe("RegionDrawingStep — keyboard delete", () => {
 
   test("does nothing for other keys", () => {
     const onRegionDelete = jest.fn();
-    render(<RegionDrawingStep {...baseProps({ onRegionDelete })} />);
+    render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
     fireEvent.keyDown(document, { key: "a" });
     fireEvent.keyDown(document, { key: "Enter" });
     expect(onRegionDelete).not.toHaveBeenCalled();
@@ -87,19 +88,19 @@ describe("RegionDrawingStep — keyboard delete", () => {
 
   test("cleans up the listener when selection is cleared", () => {
     const onRegionDelete = jest.fn();
-    const { rerender } = render(<RegionDrawingStep {...baseProps({ onRegionDelete })} />);
-    rerender(<RegionDrawingStep {...baseProps({ onRegionDelete, selectedRegionId: null })} />);
+    const { rerender } = render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
+    rerender(<RegionDrawingStepUI {...baseProps({ onRegionDelete, selectedRegionId: null })} />);
     fireEvent.keyDown(document, { key: "Delete" });
     expect(onRegionDelete).not.toHaveBeenCalled();
   });
 });
 
-describe("RegionDrawingStep — keyboard Escape", () => {
+describe("RegionDrawingStepUI — keyboard Escape", () => {
   test("pressing Escape unselects the region via onSelectRegion(null)", () => {
     const onSelectRegion = jest.fn();
     const onRegionDelete = jest.fn();
     render(
-      <RegionDrawingStep
+      <RegionDrawingStepUI
         {...baseProps({ onSelectRegion, onRegionDelete })}
       />
     );
@@ -111,7 +112,7 @@ describe("RegionDrawingStep — keyboard Escape", () => {
   test("Escape does nothing when no region is selected", () => {
     const onSelectRegion = jest.fn();
     render(
-      <RegionDrawingStep {...baseProps({ onSelectRegion, selectedRegionId: null })} />
+      <RegionDrawingStepUI {...baseProps({ onSelectRegion, selectedRegionId: null })} />
     );
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onSelectRegion).not.toHaveBeenCalled();
@@ -119,7 +120,7 @@ describe("RegionDrawingStep — keyboard Escape", () => {
 
   test("Escape is ignored while typing in an input", () => {
     const onSelectRegion = jest.fn();
-    render(<RegionDrawingStep {...baseProps({ onSelectRegion })} />);
+    render(<RegionDrawingStepUI {...baseProps({ onSelectRegion })} />);
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();

@@ -2,8 +2,9 @@ import React from "react";
 import { Box, Stack, Stepper, StepPanel } from "@portalai/core/ui";
 import type { StepConfig, SelectOption } from "@portalai/core/ui";
 
-import { RegionDrawingStep } from "./RegionDrawingStep.component";
-import { ReviewStep } from "./ReviewStep.component";
+import { DriftBannerUI } from "./DriftBanner.component";
+import { RegionDrawingStepUI } from "./RegionDrawingStep.component";
+import { ReviewStepUI } from "./ReviewStep.component";
 import type { CellBounds, DriftReportPreview, RegionDraft, Workbook } from "./utils/region-editor.types";
 import type { RegionEditorErrors } from "./utils/region-editor-validation.util";
 
@@ -91,10 +92,8 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
       <Stepper steps={stepConfigs} activeStep={step}>
         <StepPanel index={0} activeStep={step}>
           <Stack spacing={2}>
-            {driftReport && (
-              <DriftBanner report={driftReport} />
-            )}
-            <RegionDrawingStep
+            {driftReport && <DriftBannerUI report={driftReport} />}
+            <RegionDrawingStepUI
               workbook={workbook}
               regions={regions}
               activeSheetId={activeSheetId}
@@ -118,7 +117,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
         </StepPanel>
 
         <StepPanel index={1} activeStep={step}>
-          <ReviewStep
+          <ReviewStepUI
             regions={regions}
             overallConfidence={overallConfidence}
             onJumpToRegion={onJumpToRegion}
@@ -130,34 +129,6 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
           />
         </StepPanel>
       </Stepper>
-    </Box>
-  );
-};
-
-const DriftBanner: React.FC<{ report: DriftReportPreview }> = ({ report }) => {
-  const severityColor =
-    report.severity === "blocker"
-      ? "error.main"
-      : report.severity === "warn"
-        ? "warning.main"
-        : "info.main";
-  return (
-    <Box
-      sx={{
-        p: 1.5,
-        borderRadius: 1,
-        border: "1px solid",
-        borderColor: severityColor,
-        backgroundColor: `${report.severity === "blocker" ? "#fee2e2" : "#fef3c7"}`,
-      }}
-    >
-      <Box sx={{ fontWeight: 600, mb: 0.5 }}>
-        Drift halted sync {report.identityChanging ? "— identity changing" : ""}
-      </Box>
-      <Box sx={{ fontSize: 12, color: "text.secondary" }}>
-        Workbook pinned as of {report.fetchedAt}. Editing against the same data the sync saw.
-      </Box>
-      {report.notes && <Box sx={{ fontSize: 12, mt: 0.5 }}>{report.notes}</Box>}
     </Box>
   );
 };

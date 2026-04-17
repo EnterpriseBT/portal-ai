@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import { RegionDrawingStep } from "../RegionDrawingStep.component";
+import { RegionDrawingStepUI } from "../RegionDrawingStep.component";
 import {
   DEMO_WORKBOOK,
   ENTITY_OPTIONS,
@@ -13,8 +13,8 @@ import {
 import type { CellBounds, RegionDraft } from "../utils/region-editor.types";
 
 const meta = {
-  title: "Modules/RegionEditor/RegionDrawingStep",
-  component: RegionDrawingStep,
+  title: "Modules/RegionEditor/RegionDrawingStepUI",
+  component: RegionDrawingStepUI,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],
   decorators: [
@@ -26,7 +26,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof RegionDrawingStep>;
+} satisfies Meta<typeof RegionDrawingStepUI>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -185,7 +185,7 @@ const InteractiveContent: React.FC = () => {
   const entityOptions = useMemo(() => ENTITY_OPTIONS, []);
 
   return (
-    <RegionDrawingStep
+    <RegionDrawingStepUI
       workbook={DEMO_WORKBOOK}
       regions={regions}
       activeSheetId={activeSheetId}

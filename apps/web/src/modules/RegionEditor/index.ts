@@ -1,20 +1,23 @@
 export { RegionEditorUI } from "./RegionEditor.component";
 export type { RegionEditorUIProps, RegionEditorStep } from "./RegionEditor.component";
 
-export { RegionDrawingStep } from "./RegionDrawingStep.component";
-export type { RegionDrawingStepProps } from "./RegionDrawingStep.component";
+export { RegionDrawingStepUI } from "./RegionDrawingStep.component";
+export type { RegionDrawingStepUIProps } from "./RegionDrawingStep.component";
 
-export { ReviewStep } from "./ReviewStep.component";
-export type { ReviewStepProps } from "./ReviewStep.component";
+export { ReviewStepUI } from "./ReviewStep.component";
+export type { ReviewStepUIProps } from "./ReviewStep.component";
 
-export { SheetCanvas } from "./SheetCanvas.component";
-export type { SheetCanvasProps } from "./SheetCanvas.component";
+export { SheetCanvasUI } from "./SheetCanvas.component";
+export type { SheetCanvasUIProps } from "./SheetCanvas.component";
 
-export { RegionSidePanel } from "./RegionSidePanel.component";
-export type { RegionSidePanelProps } from "./RegionSidePanel.component";
+export { RegionConfigurationPanelUI } from "./RegionConfigurationPanel.component";
+export type { RegionConfigurationPanelUIProps } from "./RegionConfigurationPanel.component";
 
-export { EntityLegend } from "./EntityLegend.component";
-export type { EntityLegendProps } from "./EntityLegend.component";
+export { EntityLegendUI } from "./EntityLegend.component";
+export type { EntityLegendUIProps } from "./EntityLegend.component";
+
+export { DriftBannerUI } from "./DriftBanner.component";
+export type { DriftBannerUIProps } from "./DriftBanner.component";
 
 export type {
   CellCoord,

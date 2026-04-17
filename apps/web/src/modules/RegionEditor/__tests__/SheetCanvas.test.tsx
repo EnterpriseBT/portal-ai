@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react";
 
-import { SheetCanvas } from "../SheetCanvas.component";
+import { SheetCanvasUI } from "../SheetCanvas.component";
 import type { RegionDraft, SheetPreview } from "../utils/region-editor.types";
 
 function makeSheet(): SheetPreview {
@@ -14,10 +14,10 @@ function makeSheet(): SheetPreview {
   return { id: "s1", name: "Sheet 1", rowCount, colCount, cells };
 }
 
-describe("SheetCanvas", () => {
+describe("SheetCanvasUI", () => {
   test("renders a cell per row × col position", () => {
     render(
-      <SheetCanvas
+      <SheetCanvasUI
         sheet={makeSheet()}
         regions={[]}
         entityOrder={[]}
@@ -34,7 +34,7 @@ describe("SheetCanvas", () => {
     const onDraft = jest.fn();
     const onSelect = jest.fn();
     render(
-      <SheetCanvas
+      <SheetCanvasUI
         sheet={makeSheet()}
         regions={[]}
         entityOrder={[]}
@@ -62,7 +62,7 @@ describe("SheetCanvas", () => {
       targetEntityDefinitionId: "ent_a",
     };
     render(
-      <SheetCanvas
+      <SheetCanvasUI
         sheet={makeSheet()}
         regions={[region]}
         entityOrder={["ent_a"]}
@@ -79,7 +79,7 @@ describe("SheetCanvas", () => {
   test("readOnly suppresses drag-to-draw", () => {
     const onDraft = jest.fn();
     render(
-      <SheetCanvas
+      <SheetCanvasUI
         sheet={makeSheet()}
         regions={[]}
         entityOrder={[]}

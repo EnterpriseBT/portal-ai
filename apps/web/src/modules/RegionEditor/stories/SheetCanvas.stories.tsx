@@ -2,7 +2,7 @@ import React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import { SheetCanvas } from "../SheetCanvas.component";
+import { SheetCanvasUI } from "../SheetCanvas.component";
 import {
   DEMO_WORKBOOK,
   PROPOSED_REGIONS,
@@ -10,11 +10,11 @@ import {
 } from "../utils/region-editor-fixtures.util";
 
 const meta = {
-  title: "Modules/RegionEditor/SheetCanvas",
-  component: SheetCanvas,
+  title: "Modules/RegionEditor/SheetCanvasUI",
+  component: SheetCanvasUI,
   parameters: { layout: "padded" },
   tags: ["autodocs"],
-} satisfies Meta<typeof SheetCanvas>;
+} satisfies Meta<typeof SheetCanvasUI>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -171,7 +171,7 @@ const InteractiveContent: React.FC<InteractiveContentProps> = ({ initialRegions 
   );
 
   return (
-    <SheetCanvas
+    <SheetCanvasUI
       sheet={sheet}
       regions={regions}
       entityOrder={entityOrder}

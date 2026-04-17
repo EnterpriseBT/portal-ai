@@ -92,6 +92,29 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 };
 ```
 
+## Component File Policy (application-wide)
+
+This rule applies to **every** `*.component.tsx`, `*.view.tsx`, and `*.layout.tsx` file across the monorepo (`apps/web`, `packages/core`, anywhere else React components live). It generalizes — and supersedes — the "container + pure UI" bullet in the Workflow Module Pattern and Module Pattern sections below.
+
+### One or two components per file
+
+- A component file may define and export **at most two** components.
+- **Inline helper components are not allowed.** If a JSX fragment is worth naming, it is worth its own file. A new component always goes in a new file.
+- **Single-component file:** the component must be a **pure UI component** — it receives all data and callbacks via props and is free of data fetching, routing, context consumption, state machines, effects against external systems, or any other wiring. It renders from its props and nothing else.
+- **Two-component file:** the second export is allowed **only** when it is the implementation (container) of the pure UI component also exported from the same file. The container wires hooks/state/contexts, then delegates rendering to the UI component. No other pairing (e.g. "UI + another unrelated UI", "UI + small header", "container + container") is permitted.
+
+### Naming
+
+- Pure UI component: `<ComponentName>UI` — props type `<ComponentName>UIProps`.
+- Implementation component: `<ComponentName>` — props type `<ComponentName>Props`. Its render method is `<ComponentName>UI {...uiProps} />`.
+- The file is named after the implementation: `<ComponentName>.component.tsx`. A file containing only a pure UI component is still named `<ComponentName>.component.tsx` (not `<ComponentName>UI.component.tsx`).
+
+### Testing
+
+- Unit tests render the pure UI component (`<ComponentName>UI`) so they can drive behavior through props and need no SDK, router, or provider mocks.
+- Implementation components are exercised through higher-level integration tests (container/workflow/view level) where covering the wiring is genuinely the point.
+- Storybook stories also render the pure UI component so stories need no context setup.
+
 ## Form & Dialog Pattern (apps/web)
 
 Every data-submission dialog must follow this structure:
@@ -176,7 +199,7 @@ workflows/
 - **Hooks and helpers** (`*.util.ts`) go in the `utils/` subfolder — these are the data-fetching, state management, and business logic pieces
 - **Tests** (`*.test.tsx`) go in the `__tests__/` subfolder — co-located with the workflow, not in the top-level `src/__tests__/`
 - **Stories** (`*.stories.tsx`) go in the `stories/` subfolder — co-located with the workflow, not in the top-level `src/stories/`
-- **Container vs. UI**: Each workflow exports both a container component (wires hooks) and a pure `*UI` component (props-only, no hooks) for Storybook and testing
+- **Container vs. UI**: Each workflow exports both a container component (wires hooks) and a pure `*UI` component (props-only, no hooks) for Storybook and testing. Naming and file-shape follow the [Component File Policy](#component-file-policy-application-wide): the pair lives in one file, UI is suffixed `UI`, implementation is unsuffixed.
 - **Barrel export** (`index.ts`) re-exports the public API: container, UI component, UI props type, and hooks
 
 ### Stepper Validation

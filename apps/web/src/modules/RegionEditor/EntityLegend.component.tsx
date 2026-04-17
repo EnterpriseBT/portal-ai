@@ -3,13 +3,13 @@ import { Box, Stack, Typography } from "@portalai/core/ui";
 
 import type { EntityLegendEntry } from "./utils/region-editor.types";
 
-export interface EntityLegendProps {
+export interface EntityLegendUIProps {
   entries: EntityLegendEntry[];
   selectedEntityId?: string | null;
   onEntitySelect?: (entityId: string) => void;
 }
 
-export const EntityLegend: React.FC<EntityLegendProps> = ({
+export const EntityLegendUI: React.FC<EntityLegendUIProps> = ({
   entries,
   selectedEntityId,
   onEntitySelect,

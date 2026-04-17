@@ -179,6 +179,17 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 };
 ```
 
+### Component File Policy
+
+Every `*.component.tsx`, `*.view.tsx`, and `*.layout.tsx` file follows the application-wide rules spelled out in the top-level [`CLAUDE.md`](../../CLAUDE.md#component-file-policy-application-wide). In short:
+
+- **Max two components per file.** Inline helper components are not allowed; if it deserves a name, it deserves its own file.
+- **Single-component file → pure UI component.** No hooks, no contexts, no data fetching — purely props-driven.
+- **Two-component file → UI + implementation pair only.** The second export must be the container/implementation of the UI component in the same file.
+- **Naming.** Pure UI component `<ComponentName>UI` (`<ComponentName>UIProps`). Implementation component `<ComponentName>` (`<ComponentName>Props`) — it wires hooks/state and renders `<ComponentName>UI />`.
+- **Tests target the UI component** so they don't need SDK, router, or provider mocks. Container wiring is exercised by higher-level integration tests.
+- **Stories render the UI component** so they don't need context setup.
+
 ### Workflow Modules
 
 Multi-step user workflows (wizards, import flows, etc.) live in `src/workflows/<WorkflowName>/` as self-contained modules:

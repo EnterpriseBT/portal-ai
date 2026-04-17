@@ -2,7 +2,7 @@ import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 
-import { EntityLegend } from "../EntityLegend.component";
+import { EntityLegendUI } from "../EntityLegend.component";
 import type { EntityLegendEntry } from "../utils/region-editor.types";
 
 const ENTRIES: EntityLegendEntry[] = [
@@ -10,9 +10,9 @@ const ENTRIES: EntityLegendEntry[] = [
   { id: "ent_b", label: "Deal", color: "#db2777", regionCount: 1 },
 ];
 
-describe("EntityLegend", () => {
+describe("EntityLegendUI", () => {
   test("renders each entity entry with its count", () => {
-    render(<EntityLegend entries={ENTRIES} />);
+    render(<EntityLegendUI entries={ENTRIES} />);
     expect(screen.getByText("Contact")).toBeInTheDocument();
     expect(screen.getByText("Deal")).toBeInTheDocument();
     expect(screen.getByText("2 regions")).toBeInTheDocument();
@@ -20,13 +20,13 @@ describe("EntityLegend", () => {
   });
 
   test("renders empty-state message when no entries", () => {
-    render(<EntityLegend entries={[]} />);
+    render(<EntityLegendUI entries={[]} />);
     expect(screen.getByText(/no entities bound/i)).toBeInTheDocument();
   });
 
   test("invokes onEntitySelect when an entry is clicked", () => {
     const onSelect = jest.fn();
-    render(<EntityLegend entries={ENTRIES} onEntitySelect={onSelect} />);
+    render(<EntityLegendUI entries={ENTRIES} onEntitySelect={onSelect} />);
     fireEvent.click(screen.getByText("Contact"));
     expect(onSelect).toHaveBeenCalledWith("ent_a");
   });
