@@ -8,37 +8,50 @@ Read `SPREADSHEET_PARSING.architecture.spec.md` first for the conceptual model a
 
 The frontend lets a user visually define regions on an uploaded or linked spreadsheet, bind each region to an entity definition, configure orientation and pivoted-axis metadata, and review the interpreter's proposed plan (confidence + warnings) before committing. The same UI serves Mode A (snapshot upload) and Mode B (connector first-sync setup and drift review), with mode-specific entry and exit points.
 
-## Workflow module
+## Shared editor module
 
-Per the project's workflow pattern, the flow lives at:
+The region editor is a **module** in the `apps/web/src/modules/` sense (see `CLAUDE.md` §Module Pattern and `apps/web/README.md` §Modules): a large-scale, context-agnostic building block embedded by multiple connector workflows. It is not itself a user-facing workflow — it does not own an upload, source-connect, or commit step — and it knows nothing about connectors, auth, or routing.
 
 ```
-apps/web/src/workflows/SpreadsheetParser/
-  index.ts
-  SpreadsheetParser.component.tsx                # container + pure UI component
-  UploadStep.component.tsx                       # Mode A only; reused from CSVConnector pattern
+apps/web/src/modules/RegionEditor/
+  index.ts                                       # public barrel — the surface consumers embed
+  RegionEditor.component.tsx                     # container + pure UI component
   RegionDrawingStep.component.tsx                # the visual overlay + side panel
   ReviewStep.component.tsx                       # confidence + warnings + inline edits
-  DriftReviewStep.component.tsx                  # Mode B drift halt
+  DriftCoordinator.component.tsx                 # reads 409 drift payload, seeds plan state, delegates to RegionDrawingStep + ReviewStep
   utils/
-    plan-state.util.ts                           # client-side plan draft state
+    plan-state.util.ts                           # client-side plan draft state (seedable with empty / interpreter-proposed / prior+drift inputs)
     region-drawing.util.ts                       # hit-testing, selection, resize
     a1-notation.util.ts                          # parse/format A1 ↔ numeric
     sheet-renderer.util.ts                       # canvas rendering + cell lookups
-    spreadsheet-parser-validation.util.ts        # per-step Zod schemas
+    region-editor-validation.util.ts             # per-step Zod schemas
     use-plan-mutation.util.ts                    # React Query mutations
   __tests__/
-    SpreadsheetParser.test.tsx
+    RegionEditor.test.tsx
     RegionDrawingStep.test.tsx
     ReviewStep.test.tsx
-    DriftReviewStep.test.tsx
+    DriftCoordinator.test.tsx
   stories/
-    SpreadsheetParser.stories.tsx
+    RegionEditor.stories.tsx
     RegionDrawingStep.stories.tsx
     ReviewStep.stories.tsx
 ```
 
-The workflow exports a container component (wires hooks) and a pure `SpreadsheetParserUI` component (props-only) for Storybook.
+The module exports pure, props-only step components plus the plan-state hook via its `index.ts` barrel. Consumers seed it with inputs and read back emitted edits; the module itself issues no connector-specific API calls.
+
+### Consumers
+
+Each consumer is a separate workflow under `apps/web/src/workflows/` that embeds the editor's steps at the appropriate position:
+
+| Consumer workflow | Uses | When |
+|---|---|---|
+| `workflows/FileUploadConnector/` | `RegionDrawingStep`, `ReviewStep` | Mode A — after upload, before commit |
+| `workflows/GoogleSheetsConnector/` *(future)* | `RegionDrawingStep`, `ReviewStep`, `DriftCoordinator` | Mode B — first connection (initial); resync drift halt (re-entry) |
+| `workflows/ExcelOnlineConnector/` *(future)* | `RegionDrawingStep`, `ReviewStep`, `DriftCoordinator` | Mode B — first connection (initial); resync drift halt (re-entry) |
+
+Consumer workflows own their own `UploadStep` / `SourceConnectStep`, their own commit mutation call, and their own post-commit navigation. They do not fork the editor; they seed it with different inputs (`{ hints }`, `{ proposedPlan }`, or `{ priorPlan, driftReport, proposedPlan? }`) and route users into the same components.
+
+Each step exports a props-only pure component for Storybook.
 
 ## Region-drawing canvas
 
@@ -48,6 +61,13 @@ Primary UX. A rendered sheet preview with a grid overlay; the user click-drags (
 
 - **Renderer**: HTML-Canvas-based grid. Cell text is rendered by the canvas; frozen top-row header and left-column header display column letters (A, B, …) and row numbers (1, 2, …). Scroll virtualization required — real files often exceed 10k rows.
 - **Data source**: the parsed `Workbook` is the input. For large sheets, the backend returns a sampled preview (first ~200 rows + last ~50 rows + anchor cells) so the canvas can render without downloading the full workbook; the full workbook stays server-side.
+- **Freshness — the canvas always renders the workbook the edits will apply to.** This means the **latest** data from the source at the time the editor opens, not a snapshot cached when the plan was originally drawn. Per-consumer sourcing:
+  - Mode A (`FileUploadConnector`): the just-uploaded file — no freshness concern.
+  - Mode B initial setup: workbook fetched from the cloud source at the moment the user enters `RegionDrawingStep`.
+  - Mode B drift resolution (`DriftCoordinator`): the workbook is the same one the halting `replay()` ran against — the backend pins that fetch and returns it alongside the drift report, so the user sees the exact data that triggered the halt. The UI shows a timestamp (`"Data as of <fetched_at>"`) and a "Re-fetch latest" action; if the user re-fetches, the backend re-runs `replay()` and returns a refreshed drift report before the user resumes editing.
+  - Mid-session plan edits (e.g., tweaking the plan on a live Mode B connector): workbook re-fetched on entry; never read from a stale session snapshot.
+
+  Rationale: editing regions against stale grid content is silently wrong — cell coordinates and header labels the user sees may no longer exist in the data the next sync will extract. The editor must fail loud (pinned timestamp, explicit re-fetch) rather than silently diverge.
 - **Sheet tabs**: a tab strip at the top of the canvas lists each sheet. Switching tabs swaps the canvas content; drawn regions persist per-sheet. Tabs whose sheet has no drawn regions display a muted indicator.
 
 ### Selection and region creation
@@ -164,34 +184,48 @@ Per the project's form/dialog pattern, the review step accepts `serverError?: Se
 
 ## Mode A vs Mode B flow
 
-### Mode A (snapshot upload)
+The shared editor (`RegionDrawingStep`, `ReviewStep`, `DriftCoordinator`) is embedded by each connector workflow. The mode is determined by the hosting workflow and how it seeds editor state, not by the editor itself.
 
-Entry: file uploaded from the `FileUploadConnector` workflow. Steps:
+### Mode A — `FileUploadConnector` workflow (snapshot upload)
 
-1. Upload (reuses the existing upload step).
-2. Region drawing (this spec).
-3. Review (this spec).
+Entry: user uploads a file. Steps owned by the connector workflow:
+
+1. Upload (connector-owned; reuses the existing CSVConnector upload step).
+2. `RegionDrawingStep` — seeded empty (no hints, no prior plan).
+3. `ReviewStep`.
 4. Commit → navigate to connector detail.
 
 Every upload produces a fresh plan. The previous plan is not offered as a starting point (per architecture Mode A semantics).
 
-### Mode B (connector-backed sync — first connection)
+### Mode B — cloud-spreadsheet connector workflow, first connection
 
-Entry: user connects a Google Sheet or Excel Online workbook.
+Hosts: `GoogleSheetsConnector`, `ExcelOnlineConnector` (future). Entry: user connects a workbook.
 
-1. Source connect (connector-specific auth + workbook selection, not in this spec).
-2. Region drawing.
-3. Review.
+1. Source connect (connector-owned: OAuth, workbook selection; not in this spec).
+2. `RegionDrawingStep` — seeded empty.
+3. `ReviewStep`.
 4. Commit → schedule periodic sync.
 
-### Mode B — drift halt
+### Mode B — drift halt (resync)
 
-When a scheduled sync's `replay()` returns `DriftReport.severity >= "blocker"` or `identityChanging: true`, the backend halts and returns `409` with the drift report. The UI surfaces a banner on the connector detail view and routes the user into `DriftReviewStep`:
+**Drift resolution is not a separate UI.** When a scheduled sync's `replay()` returns `DriftReport.severity >= "blocker"` or `identityChanging: true`, the backend halts and returns `409` with the drift report. The hosting cloud-spreadsheet connector workflow surfaces a banner on the connector detail view and routes the user into the **same `RegionDrawingStep` + `ReviewStep` used during that connector's initial setup**, via `DriftCoordinator`, seeded with:
 
-- Shows side-by-side: prior plan's interpretation vs replay's drift findings, grouped by region.
-- For identity-changing drift, the user must explicitly confirm (buttons: "Keep old identity mapping" / "Accept new identity" / "Re-draw regions").
-- "Re-draw regions" re-enters the Region Drawing step seeded from the current plan.
-- After resolution, commit triggers a new plan version and resumes the sync.
+- The **current workbook** rendered on the canvas — specifically, the workbook the halting `replay()` ran against, pinned by the backend and returned alongside the drift report. The user is editing regions against the actual data the next sync will extract, not a snapshot from when the plan was first drawn. Timestamp and "Re-fetch latest" affordance per §Region-drawing canvas → Rendering → Freshness.
+- The **prior plan** as the editable starting state — regions, bindings, orientation, and identity strategies are all pre-drawn on the canvas. The user can edit any of them using the same affordances as during initial upload (drag to resize, side-panel to rebind, A1 fallback input, etc.).
+- **Drift-flagged regions highlighted** on the canvas with a drift badge. Clicking focuses the region and opens its side panel with a "Drift" section showing the prior value vs the replay's observation, keyed by warning code and locator.
+- The interpreter's **proposed revision** (when the consumer has called `interpret(workbook, priorPlan, driftReport)` to get one) rendered as a **per-region diff overlay** — acceptable via a "Use new" / "Keep old" toggle in the side panel, not a global accept/reject modal.
+
+Identity-changing drift is rendered **inside the editor**, not as a bespoke confirmation dialog. The affected region's side panel expands its identity section to show prior strategy, observed/proposed strategy, and the reason (warning code + locator). Resolution happens in place:
+
+- **Accept the proposed identity** — editor updates the region's `identityStrategy`; the side panel surfaces the `source_id` derivation change so the user sees what will break.
+- **Keep the prior identity** — editor leaves the region unchanged; replay will continue with the legacy mapping and the drift report is acknowledged without a plan revision.
+- **Re-draw or re-bind** — standard canvas edits on the region; same affordances as initial setup.
+
+Commit from the Review step follows the initial-setup commit path; on success the backend writes a new plan version, links the sync history entry to it, and resumes the sync.
+
+`DriftCoordinator.component.tsx` is therefore a **thin coordinator**: it reads the drift report from the `409` payload, seeds `plan-state.util.ts` with `{ workbook, priorPlan, driftReport, proposedPlan? }` (where `workbook` is the pinned fetch from the halting replay), and delegates rendering to the shared `RegionDrawingStep` + `ReviewStep`. It renders no region fields of its own and lives in the shared editor module, not in any single connector workflow.
+
+Consequence: any capability needed for drift resolution (e.g., side-by-side identity comparison, per-binding diff) must exist on the shared editor. If a drift class can't be expressed there, treat it as a plan-schema or editor gap and close it — do not fork a parallel UI per connector.
 
 ## Form/dialog pattern compliance
 
@@ -224,7 +258,7 @@ Per the project's dialog/form test checklist adapted to multi-step workflow step
 
 - **Region Drawing step**: renders canvas, creates/resizes/deletes regions, validates config panel, shows per-region errors.
 - **Review step**: renders confidence chips and warnings, disables commit on blocker, calls commit mutation.
-- **Drift Review step**: renders drift report, requires confirmation for identity-changing drift, routes to re-draw when selected.
+- **`DriftCoordinator`**: seeds shared editor state from a `409` drift-report payload and delegates to `RegionDrawingStep` + `ReviewStep`; verifies prior-plan regions are pre-drawn, drift-flagged regions carry the drift badge, and identity-change resolution updates `identityStrategy` in place rather than opening a modal.
 - `aria-invalid` set on invalid fields; `required` attribute present on required fields.
 - Server errors render `<FormAlert>`; absence of errors hides it.
 - Mutation success invalidates the documented query keys (verified via `jest.spyOn(queryClient, "invalidateQueries")` in `test-utils.tsx`).

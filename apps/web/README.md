@@ -97,6 +97,7 @@ src/
 ├── stories/            # Storybook stories (*.stories.tsx)
 ├── utils/              # Utility functions and hooks
 ├── views/              # Page view components (*.view.tsx)
+├── modules/            # Large-scale reusable modules, context-agnostic (see below)
 ├── workflows/          # Multi-step workflow modules (see below)
 ├── __tests__/          # Test files and setup
 ├── App.tsx             # Root app component with providers
@@ -207,6 +208,48 @@ workflows/
 - Stories (`*.stories.tsx`) in the `stories/` subfolder — co-located with the workflow
 - Each workflow exports a **container** (wires hooks) and a **pure UI component** (props-only, no hooks) for Storybook/testing
 - `index.ts` re-exports the public API
+
+### Modules
+
+Large-scale reusable building blocks live in `src/modules/<ModuleName>/`. A module is **structurally identical to a workflow** but is **context-agnostic** — it is intended to be embedded by multiple components and/or workflows rather than serving a single end-to-end user flow.
+
+Use a module (not a workflow) when:
+
+- The block is shared by two or more consumers (workflows, views, or other modules), or is planned to be.
+- The block has no single "owning" user flow — it's a surface, not a wizard.
+- The block knows nothing connector-, route-, or feature-specific; consumers seed it with inputs and read back emitted state.
+
+```
+modules/
+  RegionEditor/
+    index.ts                              # Barrel exports — public surface for consumers
+    RegionEditor.component.tsx            # Container + pure UI component
+    RegionDrawingStep.component.tsx       # Substep / panel (if multi-step)
+    ReviewStep.component.tsx              # Substep / panel
+    utils/
+      region-editor.util.ts               # State hooks, helpers
+    __tests__/
+      RegionEditor.test.tsx
+      RegionDrawingStep.test.tsx
+    stories/
+      RegionEditor.stories.tsx
+      RegionDrawingStep.stories.tsx
+```
+
+**Key conventions** (same as Workflow Modules):
+
+- Components (`*.component.tsx`) in the module root
+- Hooks and helpers (`*.util.ts`) in the `utils/` subfolder
+- Tests (`*.test.tsx`) in the `__tests__/` subfolder — co-located with the module
+- Stories (`*.stories.tsx`) in the `stories/` subfolder — co-located with the module
+- Each module exports a **container** (wires hooks) and a **pure UI component** (props-only, no hooks) for Storybook/testing
+- `index.ts` re-exports the public API
+
+**Module vs. Workflow vs. Component:**
+
+- **`components/`** — small, general-purpose UI primitives (a button variant, a form alert, a chip).
+- **`modules/`** — large, self-contained, reusable building blocks; may be multi-step internally, but do not own a user journey. Consumers embed them.
+- **`workflows/`** — end-to-end, context-specific user flows (e.g., `FileUploadConnector`). Own routing, entry/exit, commit actions. May embed one or more modules.
 
 ### Import Organization
 

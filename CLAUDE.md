@@ -190,6 +190,38 @@ workflows/
 
 `workflows/CSVConnector/` — CSV file upload workflow with 4-step stepper
 
+## Module Pattern (apps/web)
+
+Large-scale reusable building blocks live in `apps/web/src/modules/<ModuleName>/`. A module is **structurally identical to a workflow** but is **context-agnostic**: it is intended for reuse across multiple components and/or workflows rather than owning a single end-to-end user flow. Apply all the rules below from the Workflow Module Pattern — same folder layout, same container + pure-UI split, same test and story co-location, same barrel `index.ts` — substituting "module" for "workflow".
+
+```
+modules/
+  <ModuleName>/
+    index.ts                            # Barrel exports — the public surface consumers embed
+    <ModuleName>.component.tsx          # Container + pure UI component
+    <StepName>Step.component.tsx         # Sub-panels (if multi-step)
+    utils/
+      <feature>.util.ts                 # Hooks, state machines, helpers
+    __tests__/
+      <ModuleName>.test.tsx
+      <StepName>Step.test.tsx
+    stories/
+      <ModuleName>.stories.tsx
+      <StepName>Step.stories.tsx
+```
+
+### When to use a module vs. a workflow vs. a component
+
+- **`components/`** — small, general-purpose UI primitives (button variant, form alert, chip).
+- **`modules/`** — large, self-contained, reusable building blocks. Context-agnostic: no knowledge of connectors, routes, or specific features. Consumers seed them with inputs and read back emitted state. May be multi-step internally but do not own a user journey.
+- **`workflows/`** — end-to-end, context-specific user flows (e.g., `FileUploadConnector`). Own routing, entry/exit, commit actions. May embed one or more modules.
+
+**Promote to a module when**: the block is shared by two or more consumers (workflows, views, or other modules), or is planned to be; it has no single "owning" user flow; it knows nothing connector- or feature-specific.
+
+### Reference Implementation
+
+`modules/RegionEditor/` — spreadsheet region-drawing editor embedded by file-upload and cloud-spreadsheet connector workflows (see `docs/SPREADSHEET_PARSING.frontend.spec.md`).
+
 ## Database Schema Workflow (Dual-Schema)
 
 This project enforces a dual-schema approach — Zod models in `@portalai/core` and Drizzle tables in the API. Compile-time type assertions prevent drift.

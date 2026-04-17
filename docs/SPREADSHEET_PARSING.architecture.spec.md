@@ -78,6 +78,8 @@ Used by Google Sheets, Microsoft Excel Online, and any future connector where th
 - `interpret()` must work with or without a prior plan (Mode A never passes one; Mode B omits it only on first sync).
 - `replay()` must return a drift report even when the consumer intends to ignore it (Mode A), so both modes share the same code path.
 - The plan schema must not assume persistence or a connector instance; it is a pure value.
+- **The plan is the single surface the user edits.** Initial setup, post-interpret review, and Mode B drift resolution are all expressed as edits to a `LayoutPlan`. Consumers present these via one region-editor UX seeded with different inputs (empty, interpreter-proposed, or prior + drift report), not separate UIs per mode or per drift class. If drift resolution needs a capability the editor can't express — for example, visualizing *why* an identity strategy changed — that's a plan-schema gap to close, not a separate surface to build.
+- **The editor always operates on the workbook the plan will `replay()` against.** Any plan-editing session must render the current workbook from the source (the just-uploaded file in Mode A; a freshly fetched workbook in Mode B initial setup; the pinned workbook the halting replay ran against during drift resolution). Editing against a stale snapshot — e.g., the workbook as it existed when the plan was first drawn — is silently wrong: cell coordinates and header labels the user references may no longer match the data the next sync extracts. Consumers are responsible for supplying the fresh `Workbook` when they open the editor; the module treats it as an input, not something it refetches.
 
 ## The Layout Plan
 
@@ -240,7 +242,12 @@ Per-consumer responsibilities:
 
 - **Workbook adapter** — converts the native representation into the module's `Workbook` type. The only provider-specific code.
 - **Plan storage** — each connector persists the `LayoutPlan` where appropriate (likely a generic `connector_instance_layout_plans` table keyed by connector instance; a cloud connector may also cache against the remote file's `etag`/`revisionId`).
-- **Workflow UI** — presents interpretation results and collects confirmation. A shared generic component takes a `LayoutPlan` and emits edits; it does not know which connector it serves.
+- **Workflow UI** — a single region editor takes a `LayoutPlan` and emits edits. It is a shared building block, not a workflow of its own, and is embedded by every consumer workflow that needs to define or revise a plan:
+  - `FileUploadConnector` workflow (Mode A) — initial region drawing + review after upload.
+  - Cloud-spreadsheet connector workflows (Mode B, e.g. Google Sheets, Excel Online) — initial region drawing + review on first connection.
+  - The same cloud-spreadsheet workflows on **resync drift** — editor re-entered from a drift halt, seeded with prior plan + drift report (see `SPREADSHEET_PARSING.frontend.spec.md` §Mode B drift halt).
+
+  Consumers seed the editor with the appropriate inputs (empty hints, interpreter-proposed plan, or prior plan + drift report) and route users into it from different entry points, but do not fork the UI per mode, per connector, or per drift class. The editor does not know which connector it serves.
 - **Sync driver** — on `canSync`, fetches the latest workbook, calls `replay(plan, workbook)`, writes `entity_records`, and on drift decides whether to call `interpret()` and surface confirmation.
 - **Field mappings** — `columnBindings` in the plan resolve to the same `FieldMapping` rows used elsewhere. The plan is a *source of* field mappings, not a replacement for them. Shared, not per-connector.
 
