@@ -1,5 +1,4 @@
-import { useAuth0 } from "@auth0/auth0-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 import type {
   PresignRequestBody,
@@ -8,6 +7,7 @@ import type {
 } from "@portalai/core/contracts";
 
 import { sdk } from "../api/sdk";
+import { ApiError, type ServerError } from "./api.util";
 
 // --- Types ---
 
@@ -25,7 +25,13 @@ export interface UseFileUploadState {
   jobId: string | null;
   fileProgress: Map<string, FileUploadProgress>;
   overallPercent: number;
-  error: string | null;
+  /**
+   * Structured error surfaced on any failed phase. For API failures
+   * (presign, process), this preserves the `code` from `ApiError` so
+   * callers can branch on specific backend error codes. For S3 / client
+   * failures the code falls back to `UPLOAD_FAILED`.
+   */
+  error: ServerError | null;
 }
 
 export interface UseFileUploadReturn extends UseFileUploadState {
@@ -96,11 +102,9 @@ const INITIAL_STATE: UseFileUploadState = {
 
 export const useFileUpload = (): UseFileUploadReturn => {
   const [state, setState] = useState<UseFileUploadState>(INITIAL_STATE);
-  const { getAccessTokenSilently } = useAuth0();
-  const getTokenRef = useRef(getAccessTokenSilently);
-  getTokenRef.current = getAccessTokenSilently;
 
   const { mutateAsync: presign } = sdk.uploads.presign();
+  const { mutateAsync: process } = sdk.uploads.process();
 
   const startUpload = useCallback(
     async (
@@ -172,36 +176,24 @@ export const useFileUpload = (): UseFileUploadReturn => {
         // Phase 3: Signal that uploads are complete, trigger processing
         setState((prev) => ({ ...prev, phase: "processing" }));
 
-        const token = await getTokenRef.current({
-          authorizationParams: { audience: import.meta.env?.VITE_AUTH0_AUDIENCE },
-        });
-
-        const processResponse = await fetch(
-          `/api/uploads/${encodeURIComponent(jobId)}/process`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
-
-        if (!processResponse.ok) {
-          const errorBody = await processResponse.json();
-          throw new Error(errorBody.message || `Process failed: HTTP ${processResponse.status}`);
-        }
+        await process({ jobId });
 
         setState((prev) => ({ ...prev, phase: "done" }));
 
         return jobId;
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Upload failed";
-        setState((prev) => ({ ...prev, phase: "error", error: message }));
+        const error: ServerError =
+          err instanceof ApiError
+            ? { message: err.message, code: err.code || "UNKNOWN_CODE" }
+            : {
+                message: err instanceof Error ? err.message : "Upload failed",
+                code: "UPLOAD_FAILED",
+              };
+        setState((prev) => ({ ...prev, phase: "error", error }));
         throw err;
       }
     },
-    [presign],
+    [presign, process],
   );
 
   const reset = useCallback(() => {

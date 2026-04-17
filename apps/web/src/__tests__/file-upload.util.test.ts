@@ -88,41 +88,20 @@ Object.defineProperty(globalThis, "XMLHttpRequest", {
 });
 
 // ---------------------------------------------------------------------------
-// Mock Auth0
-// ---------------------------------------------------------------------------
-
-const mockGetAccessTokenSilently = jest.fn<(...args: unknown[]) => Promise<string>>();
-
-jest.unstable_mockModule("@auth0/auth0-react", () => ({
-  useAuth0: () => ({
-    getAccessTokenSilently: mockGetAccessTokenSilently,
-  }),
-}));
-
-// ---------------------------------------------------------------------------
 // Mock SDK
 // ---------------------------------------------------------------------------
 
 const mockPresign = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockProcess = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     uploads: {
       presign: () => ({ mutateAsync: mockPresign }),
+      process: () => ({ mutateAsync: mockProcess }),
     },
   },
 }));
-
-// ---------------------------------------------------------------------------
-// Mock fetch (for process endpoint)
-// ---------------------------------------------------------------------------
-
-const mockFetch = jest.fn<(...args: unknown[]) => Promise<Response>>();
-Object.defineProperty(globalThis, "fetch", {
-  value: mockFetch,
-  writable: true,
-  configurable: true,
-});
 
 // ---------------------------------------------------------------------------
 // Dynamic imports (after mocks)
@@ -134,14 +113,6 @@ const { useFileUpload } = await import("../utils/file-upload.util");
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function mockResponse(body: unknown, status = 200) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(typeof body === "string" ? JSON.parse(body) : body),
-  } as Response;
-}
 
 const PRESIGN_PARAMS = {
   organizationId: "org_123",
@@ -190,9 +161,9 @@ function createMockFile(name: string, size: number, type = "text/csv"): File {
 describe("useFileUpload", () => {
   beforeEach(() => {
     MockXMLHttpRequest.reset();
-    mockGetAccessTokenSilently.mockResolvedValue("test-token");
     mockPresign.mockReset();
-    mockFetch.mockReset();
+    mockProcess.mockReset();
+    mockProcess.mockResolvedValue({});
   });
 
   // --- Initial state ---
@@ -211,7 +182,6 @@ describe("useFileUpload", () => {
 
   it("should complete full presign → S3 upload → process flow", async () => {
     mockPresign.mockResolvedValue(PRESIGN_RESPONSE);
-    mockFetch.mockResolvedValue(mockResponse({ payload: {} }));
 
     const { result } = renderHook(() => useFileUpload());
     const file = createMockFile("contacts.csv", 1024);
@@ -240,15 +210,8 @@ describe("useFileUpload", () => {
 
     // Wait for process call
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalled();
+      expect(mockProcess).toHaveBeenCalledWith({ jobId: "job_abc" });
     });
-
-    const [fetchUrl, fetchOptions] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(fetchUrl).toBe("/api/uploads/job_abc/process");
-    expect(fetchOptions.method).toBe("POST");
-    expect(fetchOptions.headers).toEqual(
-      expect.objectContaining({ Authorization: "Bearer test-token" }),
-    );
 
     const jobId = await act(async () => uploadPromise!);
     expect(jobId).toBe("job_abc");
@@ -260,7 +223,6 @@ describe("useFileUpload", () => {
 
   it("should build presign body from files and params", async () => {
     mockPresign.mockResolvedValue(PRESIGN_RESPONSE);
-    mockFetch.mockResolvedValue(mockResponse({}));
 
     const { result } = renderHook(() => useFileUpload());
     const file = createMockFile("data.json", 2048, "application/json");
@@ -374,7 +336,6 @@ describe("useFileUpload", () => {
 
   it("should upload multiple files in parallel", async () => {
     mockPresign.mockResolvedValue(PRESIGN_RESPONSE_MULTI);
-    mockFetch.mockResolvedValue(mockResponse({}));
 
     const { result } = renderHook(() => useFileUpload());
     const file1 = createMockFile("contacts.csv", 1000);
@@ -434,8 +395,9 @@ describe("useFileUpload", () => {
       expect(result.current.phase).toBe("error");
     });
 
-    expect(result.current.error).toContain("S3 upload failed");
-    expect(result.current.error).toContain("403");
+    expect(result.current.error?.message).toContain("S3 upload failed");
+    expect(result.current.error?.message).toContain("403");
+    expect(result.current.error?.code).toBe("UPLOAD_FAILED");
     expect(rejected).toBe(true);
   });
 
@@ -461,7 +423,8 @@ describe("useFileUpload", () => {
       expect(result.current.phase).toBe("error");
     });
 
-    expect(result.current.error).toContain("Network error");
+    expect(result.current.error?.message).toContain("Network error");
+    expect(result.current.error?.code).toBe("UPLOAD_FAILED");
   });
 
   it("should set error phase on aborted S3 upload", async () => {
@@ -486,7 +449,8 @@ describe("useFileUpload", () => {
       expect(result.current.phase).toBe("error");
     });
 
-    expect(result.current.error).toContain("aborted");
+    expect(result.current.error?.message).toContain("aborted");
+    expect(result.current.error?.code).toBe("UPLOAD_FAILED");
   });
 
   // --- Presign errors ---
@@ -505,15 +469,35 @@ describe("useFileUpload", () => {
       expect(result.current.phase).toBe("error");
     });
 
-    expect(result.current.error).toBe("Presign failed: 400");
+    expect(result.current.error?.message).toBe("Presign failed: 400");
+    expect(result.current.error?.code).toBe("UPLOAD_FAILED");
     expect(MockXMLHttpRequest.instances).toHaveLength(0);
+  });
+
+  it("should preserve ApiError code when presign fails with ApiError", async () => {
+    const { ApiError } = await import("../utils/api.util");
+    mockPresign.mockRejectedValue(new ApiError("Too many files", "UPLOAD_TOO_MANY", 400));
+
+    const { result } = renderHook(() => useFileUpload());
+    const file = createMockFile("contacts.csv", 1024);
+
+    act(() => {
+      result.current.startUpload([file], PRESIGN_PARAMS).catch(() => {});
+    });
+
+    await waitFor(() => {
+      expect(result.current.phase).toBe("error");
+    });
+
+    expect(result.current.error?.message).toBe("Too many files");
+    expect(result.current.error?.code).toBe("UPLOAD_TOO_MANY");
   });
 
   // --- Process errors ---
 
   it("should set error phase when process endpoint fails", async () => {
     mockPresign.mockResolvedValue(PRESIGN_RESPONSE);
-    mockFetch.mockResolvedValue(mockResponse({ message: "Job not found" }, 404));
+    mockProcess.mockRejectedValue(new Error("Job not found"));
 
     const { result } = renderHook(() => useFileUpload());
     const file = createMockFile("contacts.csv", 1024);
@@ -534,14 +518,44 @@ describe("useFileUpload", () => {
       expect(result.current.phase).toBe("error");
     });
 
-    expect(result.current.error).toBe("Job not found");
+    expect(result.current.error?.message).toBe("Job not found");
+    expect(result.current.error?.code).toBe("UPLOAD_FAILED");
+  });
+
+  it("should preserve ApiError code when process endpoint fails with ApiError", async () => {
+    const { ApiError } = await import("../utils/api.util");
+    mockPresign.mockResolvedValue(PRESIGN_RESPONSE);
+    mockProcess.mockRejectedValue(
+      new ApiError("Job not found", "UPLOAD_JOB_NOT_FOUND", 404),
+    );
+
+    const { result } = renderHook(() => useFileUpload());
+    const file = createMockFile("contacts.csv", 1024);
+
+    act(() => {
+      result.current.startUpload([file], PRESIGN_PARAMS).catch(() => {});
+    });
+
+    await waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(1);
+    });
+
+    act(() => {
+      MockXMLHttpRequest.instances[0].__completeWith(200);
+    });
+
+    await waitFor(() => {
+      expect(result.current.phase).toBe("error");
+    });
+
+    expect(result.current.error?.message).toBe("Job not found");
+    expect(result.current.error?.code).toBe("UPLOAD_JOB_NOT_FOUND");
   });
 
   // --- Reset ---
 
   it("should reset state to initial values", async () => {
     mockPresign.mockResolvedValue(PRESIGN_RESPONSE);
-    mockFetch.mockResolvedValue(mockResponse({}));
 
     const { result } = renderHook(() => useFileUpload());
     const file = createMockFile("contacts.csv", 1024);
@@ -577,7 +591,6 @@ describe("useFileUpload", () => {
 
   it("should transition through phases in order: presigning → uploading → processing → done", async () => {
     mockPresign.mockResolvedValue(PRESIGN_RESPONSE);
-    mockFetch.mockResolvedValue(mockResponse({}));
 
     const phases: string[] = [];
     const { result } = renderHook(() => {

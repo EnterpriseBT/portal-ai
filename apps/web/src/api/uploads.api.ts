@@ -14,9 +14,10 @@ export const uploads = {
       url: "/api/uploads/presign",
     }),
 
-  process: (jobId: string) =>
-    useAuthMutation<ProcessResponsePayload, void>({
-      url: `/api/uploads/${encodeURIComponent(jobId)}/process`,
+  process: () =>
+    useAuthMutation<ProcessResponsePayload, { jobId: string }>({
+      url: ({ jobId }) => `/api/uploads/${encodeURIComponent(jobId)}/process`,
+      body: () => undefined,
     }),
 
   confirm: (jobId: string) =>

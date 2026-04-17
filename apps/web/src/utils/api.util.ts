@@ -127,7 +127,14 @@ export const useAuthQuery = <T>(
 };
 
 interface AuthMutationConfig<TData, TVariables> {
-  url: string;
+  url: string | ((variables: TVariables) => string);
+  /**
+   * Extracts the request body from the mutation variables. When omitted,
+   * the full `variables` object is sent as the body (preserving the
+   * original behavior). Return `undefined` to send no body — useful when
+   * the variables are only used to build the URL.
+   */
+  body?: (variables: TVariables) => unknown;
   method?: string;
   options?: Omit<RequestInit, "method" | "body">;
   mutationOptions?: Omit<
@@ -160,6 +167,7 @@ interface AuthMutationConfig<TData, TVariables> {
  */
 export const useAuthMutation = <TData, TVariables>({
   url,
+  body,
   method = "POST",
   options,
   mutationOptions,
@@ -168,11 +176,13 @@ export const useAuthMutation = <TData, TVariables>({
 
   return useMutation<TData, ApiError, TVariables>({
     mutationFn: async (variables) => {
-      const response = await fetchWithAuth<ApiSuccessResponse<TData>>(url, {
+      const resolvedUrl = typeof url === "function" ? url(variables) : url;
+      const bodyPayload = body ? body(variables) : variables;
+      const response = await fetchWithAuth<ApiSuccessResponse<TData>>(resolvedUrl, {
         ...options,
         method,
-        ...(variables !== undefined && variables !== null
-          ? { body: JSON.stringify(variables) }
+        ...(bodyPayload !== undefined && bodyPayload !== null
+          ? { body: JSON.stringify(bodyPayload) }
           : {}),
       });
       return response.payload;
