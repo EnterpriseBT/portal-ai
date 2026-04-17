@@ -7,6 +7,7 @@ import { webhookRouter } from "./routes/webhook.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
+import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
 import { ApiError, HttpService } from "./services/http.service.js";
 import { createLogger } from "./utils/logger.util.js";
 
@@ -21,6 +22,10 @@ registerAdapters();
 
 // HTTP request/response logging - logs all incoming requests
 app.use(httpLogger);
+
+// Propagate req.log into AsyncLocalStorage so service-layer loggers
+// inherit reqId/userId without needing to pass req through every call.
+app.use(requestContextMiddleware);
 
 // Webhook routes must be mounted before express.json() so the webhook's
 // custom JSON parser can capture the raw body for HMAC signature verification.
@@ -41,19 +46,18 @@ app.use("/api/sse", sseRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  const log = req.log ?? logger;
+
   if (err instanceof ApiError) {
-    logger.error(
+    log.error(
       { code: err.code, status: err.status, message: err.message },
       "ApiError caught by error handler"
     );
     return HttpService.error(res, err);
   }
 
-  logger.error(
-    { error: err.message, stack: err.stack },
-    "Unhandled error caught by error handler"
-  );
+  log.error({ err }, "Unhandled error caught by error handler");
   return res.status(500).json({
     success: false,
     message: "Internal server error",
