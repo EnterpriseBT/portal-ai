@@ -651,3 +651,65 @@ return next(new ApiError(404, ApiCode.USER_NOT_FOUND, "User not found"));
 ```
 
 This makes it possible to search logs and error tracking tools by code (e.g. `USER_NOT_FOUND`) to pinpoint the exact failure location without relying on ambiguous status codes or message strings.
+
+## Troubleshooting
+
+### Auth0 login bounces back to the app with `access_denied`
+
+**Symptom.** Users are redirected from Auth0 to `https://<app>/?error=access_denied&error_description=Request%20failed%20with%20status%20code%20500`. Auth0 tenant logs show an `actions_execution_failed` event on the `Handle Login` post-login action with `action_error.message = "Request failed with status code 500"`.
+
+The action calls `POST /api/webhooks/auth0/sync` on startup-sync. If that endpoint returns non-2xx, Auth0 aborts the login.
+
+**Check the API logs** for the matching request. The catch-all error handler will emit a line like:
+
+```
+{ code: "WEBHOOK_SYNC_FAILED", status: 500, msg: "ApiError caught by error handler" }
+```
+
+Look at the preceding log line from `module: "webhook"` — its `error.cause` field contains the real root cause. Common causes and fixes below.
+
+#### Postgres `28P01` — password authentication failed
+
+The app's `DATABASE_URL` secret is out of sync with the live DB password. Happens when the RDS master password rotates (or is reset) but the app-facing `portalai/<env>/database-url` secret isn't updated. Rotation is currently **disabled** on non-production environments, but the two secrets can still drift via snapshot restores, manual `ALTER USER`, or re-enabling rotation.
+
+**Fix — rewrite the app secret from the RDS-managed secret, then restart ECS tasks:**
+
+```bash
+ENV=dev  # or whichever environment
+
+# 1. Find the RDS-managed secret ARN for this env's DB
+MASTER_SECRET_ARN=$(aws rds describe-db-instances \
+  --db-instance-identifier "portalai-${ENV}" \
+  --query 'DBInstances[0].MasterUserSecret.SecretArn' --output text)
+
+# 2. Read the live password and build a fresh DATABASE_URL
+NEW_URL=$(python3 <<PY
+import json, subprocess, urllib.parse
+raw = subprocess.check_output([
+  "aws","secretsmanager","get-secret-value",
+  "--secret-id","$MASTER_SECRET_ARN",
+  "--query","SecretString","--output","text"
+]).decode()
+d = json.loads(raw)
+pw = urllib.parse.quote(d["password"], safe="")
+host = f"portalai-${ENV}.cg9sw0okylia.us-east-1.rds.amazonaws.com"
+print(f"postgresql://{d['username']}:{pw}@{host}:5432/portal_ai?sslmode=require")
+PY
+)
+
+# 3. Overwrite the app-facing secret
+aws secretsmanager put-secret-value \
+  --secret-id "portalai/${ENV}/database-url" \
+  --secret-string "$NEW_URL"
+
+# 4. Force ECS to pull the new value (secrets are only read at task start)
+aws ecs update-service \
+  --cluster "portalai-${ENV}" \
+  --service "portalai-api-${ENV}" \
+  --force-new-deployment
+```
+
+Rollout takes a few minutes — the ALB drains the old task (default 300s deregistration delay) while the new task comes up with fresh credentials.
+
+**Longer-term fix.** For any environment that enables password rotation, the above procedure is manual toil. The structural solution is RDS Proxy with IAM auth from the app: the proxy handles the DB password via Secrets Manager (rotation-safe), and the app authenticates to the proxy via short-lived IAM tokens (no static secret). Revisit when a production environment is provisioned.
+
