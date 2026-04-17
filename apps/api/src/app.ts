@@ -41,19 +41,18 @@ app.use("/api/sse", sseRouter);
 app.use("/api", protectedRouter);
 
 // Catch-all error handler — all ApiErrors passed to next() are handled here
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  const log = req.log ?? logger;
+
   if (err instanceof ApiError) {
-    logger.error(
+    log.error(
       { code: err.code, status: err.status, message: err.message },
       "ApiError caught by error handler"
     );
     return HttpService.error(res, err);
   }
 
-  logger.error(
-    { error: err.message, stack: err.stack },
-    "Unhandled error caught by error handler"
-  );
+  log.error({ err }, "Unhandled error caught by error handler");
   return res.status(500).json({
     success: false,
     message: "Internal server error",

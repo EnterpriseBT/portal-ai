@@ -13,6 +13,11 @@ import { environment } from "../environment.js";
  */
 export const logger = pino({
   level: environment.LOG_LEVEL,
+  base: {
+    service: "portalai-api",
+    env: environment.NODE_ENV,
+    version: environment.BUILD_SHA,
+  },
   transport:
     environment.LOG_FORMAT === "pretty"
       ? {
@@ -20,7 +25,7 @@ export const logger = pino({
           options: {
             colorize: true,
             translateTime: "HH:MM:ss Z",
-            ignore: "pid,hostname",
+            ignore: "pid,hostname,service,env,version",
           },
         }
       : undefined,
@@ -28,6 +33,28 @@ export const logger = pino({
     level: (label) => {
       return { level: label };
     },
+  },
+  serializers: {
+    err: pino.stdSerializers.err,
+    req: pino.stdSerializers.req,
+    res: pino.stdSerializers.res,
+  },
+  redact: {
+    paths: [
+      "*.password",
+      "*.token",
+      "*.accessToken",
+      "*.refreshToken",
+      "*.idToken",
+      "*.id_token",
+      "*.apiKey",
+      "*.api_key",
+      "*.clientSecret",
+      "*.client_secret",
+      "*.secret",
+      "*.authorization",
+    ],
+    censor: "[REDACTED]",
   },
 });
 
