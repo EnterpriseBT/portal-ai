@@ -7,6 +7,7 @@ import { webhookRouter } from "./routes/webhook.router.js";
 import { swaggerRouter } from "./routes/swagger.router.js";
 import { environment } from "./environment.js";
 import { httpLogger } from "./middleware/logger.middleware.js";
+import { requestContextMiddleware } from "./middleware/request-context.middleware.js";
 import { ApiError, HttpService } from "./services/http.service.js";
 import { createLogger } from "./utils/logger.util.js";
 
@@ -21,6 +22,10 @@ registerAdapters();
 
 // HTTP request/response logging - logs all incoming requests
 app.use(httpLogger);
+
+// Propagate req.log into AsyncLocalStorage so service-layer loggers
+// inherit reqId/userId without needing to pass req through every call.
+app.use(requestContextMiddleware);
 
 // Webhook routes must be mounted before express.json() so the webhook's
 // custom JSON parser can capture the raw body for HMAC signature verification.
