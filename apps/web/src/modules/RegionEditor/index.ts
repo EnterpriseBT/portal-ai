@@ -40,6 +40,7 @@ export type {
   RegionDraft,
   RegionDriftState,
   EntityLegendEntry,
+  EntityOption,
   DriftReportPreview,
 } from "./utils/region-editor.types";
 export { DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT } from "./utils/region-editor.types";

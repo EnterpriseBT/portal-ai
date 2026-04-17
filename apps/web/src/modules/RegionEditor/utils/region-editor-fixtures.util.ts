@@ -1,20 +1,21 @@
 import type {
+  EntityOption,
   RegionDraft,
   SheetPreview,
   Workbook,
 } from "./region-editor.types";
 
-export const ENTITY_OPTIONS = [
-  { value: "ent_contact", label: "Contact" },
-  { value: "ent_deal", label: "Deal" },
-  { value: "ent_revenue", label: "Revenue" },
-  { value: "ent_account", label: "Account" },
-  { value: "ent_headcount", label: "Headcount" },
-  { value: "ent_product", label: "Product" },
-  { value: "ent_invoice", label: "Invoice" },
-  { value: "ent_sales_rep", label: "Sales rep" },
-  { value: "ent_department", label: "Department" },
-  { value: "ent_note", label: "Note" },
+export const ENTITY_OPTIONS: EntityOption[] = [
+  { value: "ent_contact", label: "Contact", source: "db" },
+  { value: "ent_deal", label: "Deal", source: "db" },
+  { value: "ent_revenue", label: "Revenue", source: "db" },
+  { value: "ent_account", label: "Account", source: "db" },
+  { value: "ent_headcount", label: "Headcount", source: "db" },
+  { value: "ent_product", label: "Product", source: "db" },
+  { value: "ent_invoice", label: "Invoice", source: "db" },
+  { value: "ent_sales_rep", label: "Sales rep", source: "db" },
+  { value: "ent_department", label: "Department", source: "db" },
+  { value: "ent_note", label: "Note", source: "db" },
 ];
 
 type Cell = string | number | null;

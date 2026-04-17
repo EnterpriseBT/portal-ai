@@ -7,6 +7,13 @@ import {
   PROPOSED_REGIONS,
   DRIFT_REGIONS,
 } from "../utils/region-editor-fixtures.util";
+import type { EntityOption } from "../utils/region-editor.types";
+
+const ENTITY_OPTIONS_WITH_STAGED: EntityOption[] = [
+  ...ENTITY_OPTIONS,
+  { value: "lead", label: "Lead", source: "staged" },
+  { value: "campaign", label: "Campaign", source: "staged" },
+];
 
 const meta = {
   title: "Modules/RegionEditor/RegionConfigurationPanelUI",
@@ -123,5 +130,21 @@ export const DriftIdentityChanging: Story = {
     onAcceptProposedIdentity: fn(),
     onKeepPriorIdentity: fn(),
     driftProposedIdentityLabel: "long month names",
+  },
+};
+
+export const WithStagedAndCreate: Story = {
+  name: "With staged entities + create-new affordance",
+  args: {
+    region: PROPOSED_REGIONS[0],
+    entityOptions: ENTITY_OPTIONS_WITH_STAGED,
+    entityOrder: ["ent_contact", "lead"],
+    siblingsInSameEntity: 0,
+    onUpdate: fn(),
+    onDelete: fn(),
+    onCreateEntity: ((key: string) => key) as (
+      key: string,
+      label: string
+    ) => string,
   },
 };

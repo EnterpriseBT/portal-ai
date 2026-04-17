@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   Box,
   Stack,
@@ -13,6 +13,7 @@ import { IconName } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 
 import { FieldNameEditorUI } from "./FieldNameEditor.component";
+import { NewEntityDialogUI } from "./NewEntityDialog.component";
 import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
 import { ToggleRowUI } from "./ToggleRow.component";
 import { formatBounds } from "./utils/a1-notation.util";
@@ -24,6 +25,7 @@ import {
 } from "./utils/region-editor-decorations.util";
 import {
   type BoundsMode,
+  type EntityOption,
   type RegionDraft,
 } from "./utils/region-editor.types";
 import {
@@ -33,7 +35,7 @@ import {
 
 export interface RegionConfigurationPanelUIProps {
   region: RegionDraft | null;
-  entityOptions: SelectOption[];
+  entityOptions: EntityOption[];
   entityOrder: string[];
   siblingsInSameEntity: number;
   errors?: import("./utils/region-editor-validation.util").RegionErrors;
@@ -43,6 +45,14 @@ export interface RegionConfigurationPanelUIProps {
   onAcceptProposedIdentity?: () => void;
   onKeepPriorIdentity?: () => void;
   driftProposedIdentityLabel?: string;
+  /**
+   * When provided, the panel exposes a "Create new entity" affordance. The
+   * callback receives a user-chosen key + label and must return the value the
+   * panel should write back into `region.targetEntityDefinitionId` (typically
+   * the key itself). The consuming workflow is responsible for staging the
+   * entity in its local state and making it available via `entityOptions`.
+   */
+  onCreateEntity?: (key: string, label: string) => string;
 }
 
 const SECTION_HEADING_SX = {
@@ -63,7 +73,19 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
   driftProposedIdentityLabel,
+  onCreateEntity,
 }) => {
+  const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
+
+  const selectOptions = useMemo<SelectOption[]>(
+    () => buildSelectOptions(entityOptions),
+    [entityOptions]
+  );
+  const existingKeys = useMemo(
+    () => entityOptions.map((o) => o.value),
+    [entityOptions]
+  );
+
   if (!region) {
     return (
       <Stack
@@ -269,27 +291,38 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
             sx={{ flex: 1, minWidth: 0 }}
           />
 
-          <Select
-            label="Target entity"
-            size="small"
-            fullWidth
-            required
-            error={Boolean(errors.targetEntityDefinitionId)}
-            helperText={errors.targetEntityDefinitionId}
-            value={region.targetEntityDefinitionId ?? ""}
-            onChange={(e) => {
-              const id = (e.target.value as string) || null;
-              const option = entityOptions.find((o) => o.value === id);
-              onUpdate({
-                targetEntityDefinitionId: id,
-                targetEntityLabel: option?.label,
-              });
-            }}
-            options={entityOptions}
-            placeholder="Select entity…"
-            slotProps={{ htmlInput: { "aria-invalid": Boolean(errors.targetEntityDefinitionId) } }}
-            sx={{ flex: 1, minWidth: 0 }}
-          />
+          <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+            <Select
+              label="Target entity"
+              size="small"
+              fullWidth
+              required
+              error={Boolean(errors.targetEntityDefinitionId)}
+              helperText={errors.targetEntityDefinitionId}
+              value={region.targetEntityDefinitionId ?? ""}
+              onChange={(e) => {
+                const id = (e.target.value as string) || null;
+                const option = entityOptions.find((o) => o.value === id);
+                onUpdate({
+                  targetEntityDefinitionId: id,
+                  targetEntityLabel: option?.label,
+                });
+              }}
+              options={selectOptions}
+              placeholder="Select entity…"
+              slotProps={{ htmlInput: { "aria-invalid": Boolean(errors.targetEntityDefinitionId) } }}
+            />
+            {onCreateEntity && (
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => setNewEntityDialogOpen(true)}
+                sx={{ alignSelf: "flex-start", textTransform: "none" }}
+              >
+                + Create new entity
+              </Button>
+            )}
+          </Stack>
         </Stack>
 
         {siblingsInSameEntity > 0 && region.targetEntityDefinitionId && (
@@ -300,6 +333,22 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
           </Typography>
         )}
       </Stack>
+
+      {onCreateEntity && (
+        <NewEntityDialogUI
+          open={newEntityDialogOpen}
+          onClose={() => setNewEntityDialogOpen(false)}
+          existingKeys={existingKeys}
+          initialLabel={region.proposedLabel ?? ""}
+          onSubmit={(key, label) => {
+            const nextValue = onCreateEntity(key, label);
+            onUpdate({
+              targetEntityDefinitionId: nextValue,
+              targetEntityLabel: label,
+            });
+          }}
+        />
+      )}
 
       <Divider sx={{ gridColumn: "1 / -1" }} />
 
@@ -528,6 +577,13 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
     </Box>
   );
 };
+
+function buildSelectOptions(options: EntityOption[]): SelectOption[] {
+  return options.map((o) => ({
+    value: o.value,
+    label: o.source === "staged" ? `${o.label} — new` : o.label,
+  }));
+}
 
 function deriveLegendKinds(region: RegionDraft): DecorationKind[] {
   const kinds: DecorationKind[] = [];

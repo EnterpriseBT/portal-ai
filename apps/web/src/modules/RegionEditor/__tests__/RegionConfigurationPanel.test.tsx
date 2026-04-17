@@ -3,11 +3,11 @@ import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 import { RegionConfigurationPanelUI } from "../RegionConfigurationPanel.component";
-import type { RegionDraft } from "../utils/region-editor.types";
+import type { EntityOption, RegionDraft } from "../utils/region-editor.types";
 
-const ENTITY_OPTIONS = [
-  { value: "ent_a", label: "Contact" },
-  { value: "ent_b", label: "Deal" },
+const ENTITY_OPTIONS: EntityOption[] = [
+  { value: "ent_a", label: "Contact", source: "db" },
+  { value: "ent_b", label: "Deal", source: "db" },
 ];
 
 function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
@@ -232,5 +232,53 @@ describe("RegionConfigurationPanelUI", () => {
     expect(onUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ skipRules: [{ kind: "blank" }] })
     );
+  });
+
+  test("staged entities render with a '— new' suffix", () => {
+    const options: EntityOption[] = [
+      ...ENTITY_OPTIONS,
+      { value: "ent_draft", label: "Lead", source: "staged" },
+    ];
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion({ targetEntityDefinitionId: "ent_draft", targetEntityLabel: "Lead" })}
+        entityOptions={options}
+        entityOrder={["ent_draft"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    // The selected option is rendered inside the Select button.
+    expect(screen.getByText(/Lead\s+—\s+new/)).toBeInTheDocument();
+  });
+
+  test("hides '+ Create new entity' button when onCreateEntity is not provided", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.queryByRole("button", { name: /create new entity/i })).not.toBeInTheDocument();
+  });
+
+  test("shows '+ Create new entity' button when onCreateEntity is provided", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        onCreateEntity={jest.fn<(key: string, label: string) => string>()}
+      />
+    );
+    expect(screen.getByRole("button", { name: /create new entity/i })).toBeInTheDocument();
   });
 });

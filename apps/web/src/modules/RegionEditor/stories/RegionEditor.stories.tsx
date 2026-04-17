@@ -11,7 +11,7 @@ import {
   PROPOSED_REGIONS,
   DRIFT_REGIONS,
 } from "../utils/region-editor-fixtures.util";
-import type { CellBounds, RegionDraft } from "../utils/region-editor.types";
+import type { CellBounds, EntityOption, RegionDraft } from "../utils/region-editor.types";
 
 const STEP_CONFIGS: StepConfig[] = [
   { label: "Draw regions", description: "Outline the data on each sheet" },
@@ -119,6 +119,21 @@ const InteractiveContent: React.FC = () => {
   const [regions, setRegions] = useState<RegionDraft[]>([]);
   const [activeSheetId, setActiveSheetId] = useState(DEMO_WORKBOOK.sheets[0].id);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [stagedEntities, setStagedEntities] = useState<EntityOption[]>([]);
+
+  const entityOptions = useMemo<EntityOption[]>(
+    () => [...stagedEntities, ...ENTITY_OPTIONS],
+    [stagedEntities]
+  );
+
+  const handleCreateEntity = (key: string, label: string) => {
+    setStagedEntities((prev) =>
+      prev.some((e) => e.value === key)
+        ? prev
+        : [...prev, { value: key, label, source: "staged" }]
+    );
+    return key;
+  };
 
   const handleDraft = (draft: { sheetId: string; bounds: CellBounds }) => {
     const id = `region_${Date.now()}`;
@@ -175,7 +190,8 @@ const InteractiveContent: React.FC = () => {
       onRegionUpdate={handleUpdate}
       onRegionDelete={handleDelete}
       onRegionResize={handleResize}
-      entityOptions={ENTITY_OPTIONS}
+      entityOptions={entityOptions}
+      onCreateEntity={handleCreateEntity}
       onSuggestAxisName={(id) =>
         handleUpdate(id, {
           recordsAxisName: { name: "Month", source: "ai", confidence: 0.82 },

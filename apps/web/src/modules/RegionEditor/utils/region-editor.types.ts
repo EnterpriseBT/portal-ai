@@ -141,6 +141,21 @@ export type EntityLegendEntry = {
   regionCount: number;
 };
 
+/**
+ * An option for the region's target-entity picker.
+ *
+ * - `source: "db"` — an entity that already exists in the backend. `value` is the
+ *   persisted entity ID.
+ * - `source: "staged"` — an entity created inline by the user (either in this
+ *   region or from another region in the same session). `value` is the entity key
+ *   the user chose; persistence happens at commit.
+ */
+export type EntityOption = {
+  value: string;
+  label: string;
+  source: "db" | "staged";
+};
+
 export type DriftReportPreview = {
   severity: WarningSeverity;
   identityChanging: boolean;

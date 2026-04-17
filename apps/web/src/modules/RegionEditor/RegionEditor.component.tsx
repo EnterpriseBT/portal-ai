@@ -1,11 +1,17 @@
 import React from "react";
 import { Box, Stack, Stepper, StepPanel } from "@portalai/core/ui";
-import type { StepConfig, SelectOption } from "@portalai/core/ui";
+import type { StepConfig } from "@portalai/core/ui";
 
 import { DriftBannerUI } from "./DriftBanner.component";
 import { RegionDrawingStepUI } from "./RegionDrawingStep.component";
 import { ReviewStepUI } from "./ReviewStep.component";
-import type { CellBounds, DriftReportPreview, RegionDraft, Workbook } from "./utils/region-editor.types";
+import type {
+  CellBounds,
+  DriftReportPreview,
+  EntityOption,
+  RegionDraft,
+  Workbook,
+} from "./utils/region-editor.types";
 import type { RegionEditorErrors } from "./utils/region-editor-validation.util";
 
 export type RegionEditorStep = 0 | 1;
@@ -26,11 +32,12 @@ export interface RegionEditorUIProps {
   onRegionDelete: (regionId: string) => void;
   onRegionResize?: (regionId: string, nextBounds: CellBounds) => void;
 
-  entityOptions: SelectOption[];
+  entityOptions: EntityOption[];
 
   onSuggestAxisName?: (regionId: string) => void;
   onAcceptProposedIdentity?: (regionId: string) => void;
   onKeepPriorIdentity?: (regionId: string) => void;
+  onCreateEntity?: (key: string, label: string) => string;
 
   onInterpret: () => void;
   isInterpreting?: boolean;
@@ -65,6 +72,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
   onSuggestAxisName,
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
+  onCreateEntity,
   onInterpret,
   isInterpreting,
   onRefetchWorkbook,
@@ -108,6 +116,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
               onSuggestAxisName={onSuggestAxisName}
               onAcceptProposedIdentity={onAcceptProposedIdentity}
               onKeepPriorIdentity={onKeepPriorIdentity}
+              onCreateEntity={onCreateEntity}
               onInterpret={onInterpret}
               onRefetchWorkbook={onRefetchWorkbook}
               isInterpreting={isInterpreting}

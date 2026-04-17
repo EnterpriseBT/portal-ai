@@ -11,6 +11,7 @@ import { colorForEntity } from "./utils/region-editor-colors.util";
 import type {
   CellBounds,
   EntityLegendEntry,
+  EntityOption,
   RegionDraft,
   Workbook,
 } from "./utils/region-editor.types";
@@ -27,10 +28,11 @@ export interface RegionDrawingStepUIProps {
   onRegionUpdate: (regionId: string, updates: Partial<RegionDraft>) => void;
   onRegionDelete: (regionId: string) => void;
   onRegionResize?: (regionId: string, nextBounds: CellBounds) => void;
-  entityOptions: SelectOption[];
+  entityOptions: EntityOption[];
   onSuggestAxisName?: (regionId: string) => void;
   onAcceptProposedIdentity?: (regionId: string) => void;
   onKeepPriorIdentity?: (regionId: string) => void;
+  onCreateEntity?: (key: string, label: string) => string;
   onInterpret: () => void;
   onRefetchWorkbook?: () => void;
   isInterpreting?: boolean;
@@ -52,6 +54,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   onSuggestAxisName,
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
+  onCreateEntity,
   onInterpret,
   onRefetchWorkbook,
   isInterpreting = false,
@@ -347,6 +350,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                 ? () => onKeepPriorIdentity(selectedRegion.id)
                 : undefined
             }
+            onCreateEntity={onCreateEntity}
           />
         </Box>
       </Stack>
