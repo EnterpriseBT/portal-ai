@@ -549,7 +549,9 @@ describe("useUploadWorkflow", () => {
     });
 
     it("falls back to fileUpload error when stream error is null", () => {
-      mockFileUploadState = createMockFileUploadState({ error: "Upload error" });
+      mockFileUploadState = createMockFileUploadState({
+        error: { message: "Upload error", code: "UPLOAD_FAILED" },
+      });
 
       const { result } = renderHook(() => useUploadWorkflow());
       expect(result.current.jobError).toBe("Upload error");
