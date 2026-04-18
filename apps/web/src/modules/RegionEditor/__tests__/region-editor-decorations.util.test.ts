@@ -98,6 +98,110 @@ describe("computeRegionDecorations — crosstab", () => {
   });
 });
 
+describe("computeRegionDecorations — axisNameAnchor", () => {
+  test("rows-as-records + headerAxis:column emits a single-cell anchor and carves the corner from the header column", () => {
+    const region = baseRegion({
+      orientation: "rows-as-records",
+      headerAxis: "column",
+      recordsAxisName: { name: "Region", source: "user" },
+    });
+    const s = sheet(Array.from({ length: 5 }, () => Array(4).fill("x")));
+    const decos = computeRegionDecorations(region, s);
+
+    const anchor = decos.filter((d) => d.kind === "axisNameAnchor");
+    expect(anchor).toHaveLength(1);
+    expect(anchor[0].bounds).toEqual({
+      startRow: 0,
+      endRow: 0,
+      startCol: 0,
+      endCol: 0,
+    });
+    expect(anchor[0].label).toBe("Region");
+
+    const header = decos.filter((d) => d.kind === "header");
+    expect(header).toHaveLength(1);
+    expect(header[0].bounds).toEqual({
+      startRow: 1, // corner carved out
+      endRow: 4,
+      startCol: 0,
+      endCol: 0,
+    });
+  });
+
+  test("columns-as-records + headerAxis:row emits a single-cell anchor and carves the corner from the header row", () => {
+    const region = baseRegion({
+      orientation: "columns-as-records",
+      headerAxis: "row",
+      recordsAxisName: { name: "Region", source: "ai", confidence: 0.8 },
+    });
+    const s = sheet(Array.from({ length: 5 }, () => Array(4).fill("x")));
+    const decos = computeRegionDecorations(region, s);
+
+    const anchor = decos.filter((d) => d.kind === "axisNameAnchor");
+    expect(anchor).toHaveLength(1);
+    expect(anchor[0].bounds).toEqual({
+      startRow: 0,
+      endRow: 0,
+      startCol: 0,
+      endCol: 0,
+    });
+
+    const header = decos.filter((d) => d.kind === "header");
+    expect(header).toHaveLength(1);
+    expect(header[0].bounds).toEqual({
+      startRow: 0,
+      endRow: 0,
+      startCol: 1, // corner carved out
+      endCol: 3,
+    });
+  });
+
+  test("cells-as-records emits an anchor at the corner with both axis names", () => {
+    const region = baseRegion({
+      orientation: "cells-as-records",
+      headerAxis: "row",
+      recordsAxisName: { name: "Region", source: "user" },
+      secondaryRecordsAxisName: { name: "Quarter", source: "user" },
+    });
+    const s = sheet(Array.from({ length: 5 }, () => Array(4).fill("x")));
+    const decos = computeRegionDecorations(region, s);
+
+    const anchor = decos.filter((d) => d.kind === "axisNameAnchor");
+    expect(anchor).toHaveLength(1);
+    expect(anchor[0].bounds).toEqual({
+      startRow: 0,
+      endRow: 0,
+      startCol: 0,
+      endCol: 0,
+    });
+    expect(anchor[0].label).toBe("Region × Quarter");
+  });
+
+  test("non-pivoted shapes emit no anchor", () => {
+    const rowsRow = computeRegionDecorations(
+      baseRegion({ orientation: "rows-as-records", headerAxis: "row" }),
+      sheet(Array.from({ length: 5 }, () => Array(4).fill("x")))
+    );
+    const colsCol = computeRegionDecorations(
+      baseRegion({ orientation: "columns-as-records", headerAxis: "column" }),
+      sheet(Array.from({ length: 5 }, () => Array(4).fill("x")))
+    );
+    expect(rowsRow.filter((d) => d.kind === "axisNameAnchor")).toHaveLength(0);
+    expect(colsCol.filter((d) => d.kind === "axisNameAnchor")).toHaveLength(0);
+  });
+
+  test("anchor falls back to placeholder label when recordsAxisName is unset", () => {
+    const region = baseRegion({
+      orientation: "rows-as-records",
+      headerAxis: "column",
+    });
+    const s = sheet(Array.from({ length: 5 }, () => Array(4).fill("x")));
+    const decos = computeRegionDecorations(region, s);
+    const anchor = decos.find((d) => d.kind === "axisNameAnchor");
+    expect(anchor?.label).toBe("Axis name goes here");
+  });
+});
+
 describe("computeRegionDecorations — skipped rows", () => {
   test("blank rule marks fully empty data rows as skipped", () => {
     // rows 0 = header; 1-2 data; 3 blank; 4 data.

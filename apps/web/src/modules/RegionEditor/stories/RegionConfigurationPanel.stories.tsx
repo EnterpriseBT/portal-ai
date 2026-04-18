@@ -59,7 +59,7 @@ export const StandardRegion: Story = {
 export const PivotedRegion: Story = {
   name: "Pivoted (columns-as-records) — axis name required",
   args: {
-    region: PROPOSED_REGIONS.find((r) => r.id === "region_columns_top_labeled")!,
+    region: PROPOSED_REGIONS.find((r) => r.id === "region_attrs_cols_as_regions")!,
     entityOptions: ENTITY_OPTIONS,
     entityOrder: ["ent_department"],
     siblingsInSameEntity: 0,

@@ -1,4 +1,5 @@
 import type {
+  CellValue,
   EntityOption,
   RegionDraft,
   SheetPreview,
@@ -31,153 +32,161 @@ function write(cells: Cell[][], r: number, c: number, values: Cell[]): void {
 }
 
 // ----------------------------------------------------------------------------
-// Sheet 1: "Row tables" — rows-as-records + headerAxis: row (standard tables)
+// Unified demo dataset — the same quarterly revenue numbers are reshaped across
+// sheets 1–4 so a demo can compare how each orientation/headerAxis combination
+// interprets the same underlying observations.
+// ----------------------------------------------------------------------------
+
+const UNIFIED_REGION_NAMES = ["North America", "EMEA", "APAC", "LATAM"];
+const UNIFIED_QUARTERS = ["Q1 2025", "Q2 2025", "Q3 2025", "Q4 2025"];
+const UNIFIED_REVENUE: number[][] = [
+  [120000, 135000, 148000, 152000], // North America
+  [82000, 89000, 91000, 95000],     // EMEA
+  [45000, 52000, 61000, 68000],     // APAC
+  [22000, 28000, 31000, 35000],     // LATAM
+];
+
+// ----------------------------------------------------------------------------
+// Sheet 1: "Row tables" — rows-as-records + headerAxis: row
+//   Flat fact table: one row per (region, quarter) observation, headers on top.
 // ----------------------------------------------------------------------------
 
 function buildRowTablesSheet(): SheetPreview {
-  const cells = blank(28, 8);
+  const cells = blank(22, 5);
 
-  cells[0][0] = "Row-oriented tables — headers in the top row of each region";
+  cells[0][0] =
+    "Same data as Column tables, Mixed axes, Crosstab — rows-as-records, header row";
+  cells[2][0] = "Quarterly revenue (flat fact, one row per observation)";
+  write(cells, 3, 0, ["Region", "Quarter", "Revenue"]);
 
-  // Region 1: absolute — fixed-bounds Leads table at A3:E8
-  cells[2][0] = "Leads (fixed 5 rows)";
-  write(cells, 3, 0, ["First", "Last", "Email", "Company", "Deal"]);
-  write(cells, 4, 0, ["Alice", "Johnson", "alice@beta.io", "Beta", 12500]);
-  write(cells, 5, 0, ["Bob", "Singh", "bob@chai.co", "Chai", 8200]);
-  write(cells, 6, 0, ["Carol", "Wu", "carol@delta.ai", "Delta", 45000]);
-  write(cells, 7, 0, ["Dev", "Patel", "dev@epsilon.io", "Epsilon", 3300]);
-  write(cells, 8, 0, ["Ellie", "Mbeki", "ellie@foxtrot.co", "Foxtrot", 17800]);
+  let r = 4;
+  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
+    for (let q = 0; q < UNIFIED_QUARTERS.length; q++) {
+      write(cells, r, 0, [
+        UNIFIED_REGION_NAMES[i],
+        UNIFIED_QUARTERS[q],
+        UNIFIED_REVENUE[i][q],
+      ]);
+      r++;
+    }
+  }
 
-  // Region 2: untilEmpty — Opportunities at A11 extending until blank at row 19
-  cells[10][0] = "Opportunities (extends until empty row)";
-  write(cells, 11, 0, ["Name", "Stage", "Amount", "Close Date"]);
-  write(cells, 12, 0, ["Acme upgrade", "Negotiation", 48000, "2026-04-30"]);
-  write(cells, 13, 0, ["Gamma expansion", "Proposal", 12000, "2026-05-10"]);
-  write(cells, 14, 0, ["Delta renewal", "Closed Won", 35000, "2026-04-02"]);
-  write(cells, 15, 0, ["Foxtrot pilot", "Discovery", 8000, "2026-06-15"]);
-  // Row 16 deliberately empty so extent stops there.
-
-  // Region 3: matchesPattern — Invoices at A18 ending at "Total" row 25
-  cells[17][0] = "Invoices (ends at Total row)";
-  write(cells, 18, 0, ["Invoice #", "Customer", "Amount", "Paid"]);
-  write(cells, 19, 0, ["INV-001", "Acme", 4200, "Yes"]);
-  write(cells, 20, 0, ["INV-002", "Beta", 1800, "Yes"]);
-  write(cells, 21, 0, ["INV-003", "Chai", 6500, "No"]);
-  write(cells, 22, 0, ["INV-004", "Delta", 12000, "No"]);
-  write(cells, 23, 0, ["INV-005", "Epsilon", 3300, "Yes"]);
-  write(cells, 24, 0, ["Total", "", 27800, ""]);
-
-  return { id: "sheet_row_tables", name: "Row tables", rowCount: 28, colCount: 8, cells };
+  return { id: "sheet_row_tables", name: "Row tables", rowCount: 22, colCount: 5, cells };
 }
 
 // ----------------------------------------------------------------------------
-// Sheet 2: "Column tables" — columns-as-records + headerAxis: column (transposed)
-// Each column = a record; first column carries field labels.
+// Sheet 2: "Column tables" — columns-as-records + headerAxis: column
+//   Same observations, transposed: one column per observation, field labels in
+//   column A.
 // ----------------------------------------------------------------------------
 
 function buildColumnTablesSheet(): SheetPreview {
-  const cells = blank(20, 12);
+  const cells = blank(10, 18);
 
-  cells[0][0] = "Column-oriented tables — field labels in the first column of each region";
+  cells[0][0] =
+    "Same data as Row tables — columns-as-records, header column (transposed flat fact)";
+  cells[2][0] = "Quarterly revenue (one column per observation)";
+  cells[3][0] = "Region";
+  cells[4][0] = "Quarter";
+  cells[5][0] = "Revenue";
 
-  // Region 4: absolute — Products at A3:E7 (4 products as columns)
-  cells[2][0] = "Products (fixed 4 columns)";
-  write(cells, 3, 0, ["Name", "Widget A", "Widget B", "Gadget", "Gizmo"]);
-  write(cells, 4, 0, ["SKU", "SKU-001", "SKU-002", "SKU-010", "SKU-011"]);
-  write(cells, 5, 0, ["Price", 19.99, 24.5, 99.0, 149.0]);
-  write(cells, 6, 0, ["Stock", 120, 80, 35, 12]);
-  write(cells, 7, 0, ["Category", "Basic", "Basic", "Premium", "Premium"]);
+  let c = 1;
+  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
+    for (let q = 0; q < UNIFIED_QUARTERS.length; q++) {
+      cells[3][c] = UNIFIED_REGION_NAMES[i];
+      cells[4][c] = UNIFIED_QUARTERS[q];
+      cells[5][c] = UNIFIED_REVENUE[i][q];
+      c++;
+    }
+  }
 
-  // Region 5: untilEmpty — Departments at A10 extending right until empty column
-  cells[9][0] = "Departments (extends until empty column)";
-  write(cells, 10, 0, ["Field", "Eng", "Sales", "Marketing", "Support", "Ops"]);
-  // Column 6 is empty for all rows -> extent stops at col 5.
-  write(cells, 11, 0, ["Head", "Priya", "Marco", "Sara", "Ollie", "Jin"]);
-  write(cells, 12, 0, ["Headcount", 42, 28, 14, 9, 7]);
-  write(cells, 13, 0, ["Budget", 6.2, 3.1, 1.85, 0.72, 0.9]);
-
-  // Region 6: matchesPattern — Sales reps ending at "Total" column
-  cells[15][0] = "Sales reps (ends at Total column)";
-  write(cells, 16, 0, ["Name", "Rep A", "Rep B", "Rep C", "Rep D", "Total"]);
-  write(cells, 17, 0, ["Deals", 12, 8, 15, 9, 44]);
-  write(cells, 18, 0, ["Revenue", 120000, 85000, 175000, 98000, 478000]);
-
-  return { id: "sheet_column_tables", name: "Column tables", rowCount: 20, colCount: 12, cells };
+  return {
+    id: "sheet_column_tables",
+    name: "Column tables",
+    rowCount: 10,
+    colCount: 18,
+    cells,
+  };
 }
 
 // ----------------------------------------------------------------------------
-// Sheet 3: "Mixed axes" — less-common orientation/headerAxis combinations
+// Sheet 3: "Mixed axes" — the two less-common orientation/headerAxis combos.
+//   Same four regions as elsewhere, but the fields are heterogeneous region
+//   attributes (Manager / Headcount / HQ / Currency). Heterogeneous fields
+//   make the pivoted shape visually distinct from a crosstab, because the
+//   rows/columns label *named attributes* rather than values of an axis.
 // ----------------------------------------------------------------------------
+
+const UNIFIED_REGION_FIELDS = ["Manager", "Headcount", "HQ", "Currency"];
+const UNIFIED_REGION_ATTRS: Cell[][] = [
+  ["Priya", 120, "New York", "USD"],   // North America
+  ["Hans", 82, "London", "EUR"],       // EMEA
+  ["Yuki", 45, "Singapore", "SGD"],    // APAC
+  ["Diego", 22, "São Paulo", "BRL"],   // LATAM
+];
 
 function buildMixedAxesSheet(): SheetPreview {
-  const cells = blank(32, 10);
+  const cells = blank(20, 7);
 
-  cells[0][0] = "Mixed axes — the less-common orientation/header combinations";
+  cells[0][0] = "Same regions, heterogeneous attributes — two pivot permutations";
 
-  // Region 7: rows-as-records + headerAxis: column (label column labels the row)
-  // Layout: each row = a contact record, col A is the "field label column"
-  // (e.g., tags like "lead", "opp", "cust") and cols B-E carry the data.
-  cells[2][0] = "Rows-as-records with header column (left column labels each row)";
-  write(cells, 3, 0, ["Type", "Name", "Amount", "Stage"]);
-  write(cells, 4, 0, ["lead", "Acme", 0, "Cold"]);
-  write(cells, 5, 0, ["opp", "Beta", 12000, "Proposal"]);
-  write(cells, 6, 0, ["cust", "Chai", 45000, "Closed Won"]);
-  write(cells, 7, 0, ["lead", "Delta", 0, "Cold"]);
-  write(cells, 8, 0, ["opp", "Epsilon", 8000, "Discovery"]);
+  // Variant A: rows-as-records + headerAxis: column
+  //   Col A identifies each record (region); row 3 labels the attribute columns.
+  //   The header cell above col A is left blank — the identity axis has no
+  //   built-in name, the user supplies one via recordsAxisName.
+  cells[2][0] =
+    "rows-as-records + headerAxis: column — col A = region identity (unlabeled); row 3 = attribute labels";
+  for (let f = 0; f < UNIFIED_REGION_FIELDS.length; f++) {
+    cells[3][1 + f] = UNIFIED_REGION_FIELDS[f];
+  }
+  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
+    cells[4 + i][0] = UNIFIED_REGION_NAMES[i];
+    for (let f = 0; f < UNIFIED_REGION_FIELDS.length; f++) {
+      cells[4 + i][1 + f] = UNIFIED_REGION_ATTRS[i][f];
+    }
+  }
 
-  // Region 8: columns-as-records + headerAxis: row (top row labels each column record)
-  // Layout: top row = record labels (dept names), column 0 = field value rows.
-  cells[11][0] = "Columns-as-records with header row (top row labels each column)";
-  write(cells, 12, 0, ["", "Engineering", "Sales", "Marketing", "Support"]);
-  write(cells, 13, 0, ["Manager", "Priya", "Marco", "Sara", "Ollie"]);
-  write(cells, 14, 0, ["Headcount", 42, 28, 14, 9]);
-  write(cells, 15, 0, ["Budget ($M)", 6.2, 3.1, 1.85, 0.72]);
-  write(cells, 16, 0, ["Tier", "Core", "GTM", "GTM", "Ops"]);
-  // Empty col 5 so an untilEmpty region stops there.
+  // Variant B: columns-as-records + headerAxis: row
+  //   Row 12 identifies each record (region); col A labels the attribute rows.
+  //   The leftmost cell of row 12 is left blank — the identity axis has no
+  //   built-in name, the user supplies one via recordsAxisName.
+  cells[10][0] =
+    "columns-as-records + headerAxis: row — row 12 = region identity (unlabeled); col A = attribute labels";
+  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
+    cells[12][1 + i] = UNIFIED_REGION_NAMES[i];
+  }
+  for (let f = 0; f < UNIFIED_REGION_FIELDS.length; f++) {
+    cells[13 + f][0] = UNIFIED_REGION_FIELDS[f];
+    for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
+      cells[13 + f][1 + i] = UNIFIED_REGION_ATTRS[i][f];
+    }
+  }
 
-  // Region 9: rows-as-records + headerAxis: column — ideal pivoted layout.
-  // No header row; column A carries the record identity (salesperson) and the
-  // remaining columns carry field values (quota, region, segment, account count).
-  cells[19][0] =
-    "Rows-as-records with header column — col A identifies each record (no header row)";
-  write(cells, 21, 0, ["Alex",    42000, "AMER",  "Enterprise", 18]);
-  write(cells, 22, 0, ["Bianca",  58000, "EMEA",  "Mid-Market", 24]);
-  write(cells, 23, 0, ["Casey",   36000, "APAC",  "SMB",        31]);
-  write(cells, 24, 0, ["Diego",   71000, "LATAM", "Enterprise",  9]);
-  write(cells, 25, 0, ["Elena",   49000, "EMEA",  "Mid-Market", 22]);
-  write(cells, 26, 0, ["Farouk",  63000, "AMER",  "Enterprise", 14]);
-  write(cells, 27, 0, ["Gemma",   31000, "APAC",  "SMB",        27]);
-  // Empty row 28 so an untilEmpty region stops there.
-
-  return { id: "sheet_mixed_axes", name: "Mixed axes", rowCount: 32, colCount: 10, cells };
+  return { id: "sheet_mixed_axes", name: "Mixed axes", rowCount: 20, colCount: 7, cells };
 }
 
 // ----------------------------------------------------------------------------
-// Sheet 4: "Crosstab" — cells-as-records with row AND column labels
+// Sheet 4: "Crosstab" — cells-as-records.
+//   Same observations laid out as a 2D pivot: regions down, quarters across.
 // ----------------------------------------------------------------------------
 
 function buildCrosstabSheet(): SheetPreview {
-  const cells = blank(22, 10);
+  const cells = blank(10, 7);
 
-  cells[0][0] = "Crosstabs — both axes label records (cells-as-records)";
+  cells[0][0] = "Same data — cells-as-records (2D crosstab)";
+  cells[2][0] = "Revenue by region × quarter (fixed 4×4)";
 
-  // Region 9: absolute crosstab — Revenue by Region × Month (fixed bounds)
-  cells[2][0] = "Revenue by region × month (fixed 3×4)";
-  write(cells, 3, 0, ["", "JAN", "FEB", "MAR", "APR"]);
-  write(cells, 4, 0, ["North America", 120000, 135000, 148000, 152000]);
-  write(cells, 5, 0, ["EMEA", 82000, 89000, 91000, 95000]);
-  write(cells, 6, 0, ["APAC", 45000, 52000, 61000, 68000]);
+  for (let q = 0; q < UNIFIED_QUARTERS.length; q++) {
+    cells[3][1 + q] = UNIFIED_QUARTERS[q];
+  }
+  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
+    cells[4 + i][0] = UNIFIED_REGION_NAMES[i];
+    for (let q = 0; q < UNIFIED_QUARTERS.length; q++) {
+      cells[4 + i][1 + q] = UNIFIED_REVENUE[i][q];
+    }
+  }
 
-  // Region 10: untilEmpty crosstab — Headcount by Quarter × Department (both axes extend)
-  cells[9][0] = "Headcount by quarter × department (extends both directions until empty)";
-  write(cells, 10, 0, ["", "Eng", "Sales", "Marketing", "Support"]);
-  write(cells, 11, 0, ["Q1 2025", 38, 24, 12, 8]);
-  write(cells, 12, 0, ["Q2 2025", 40, 26, 13, 9]);
-  write(cells, 13, 0, ["Q3 2025", 41, 27, 14, 9]);
-  write(cells, 14, 0, ["Q4 2025", 42, 28, 14, 9]);
-  // Row 15 empty, col 5 empty — untilEmpty stops there in both directions.
-
-  return { id: "sheet_crosstab", name: "Crosstab", rowCount: 22, colCount: 10, cells };
+  return { id: "sheet_crosstab", name: "Crosstab", rowCount: 10, colCount: 7, cells };
 }
 
 // ----------------------------------------------------------------------------
@@ -300,11 +309,47 @@ function buildHeaderlessSheet(): SheetPreview {
   return { id: "sheet_headerless", name: "Headerless", rowCount: 22, colCount: 10, cells };
 }
 
-function buildNotesSheet(): SheetPreview {
-  const cells = blank(4, 4);
-  cells[0][0] = "Internal notes — not for extraction";
-  cells[2][0] = "TODO: verify Q2 figures before committing the plan";
-  return { id: "sheet_notes", name: "Notes", rowCount: 4, colCount: 4, cells };
+// ----------------------------------------------------------------------------
+// Sheet 8: Large GL fact — exercises edge-scroll while drawing
+// ----------------------------------------------------------------------------
+
+function buildLargeFactSheet(): SheetPreview {
+  const rowCount = 480;
+  const colCount = 36;
+  const cells: CellValue[][] = Array.from({ length: rowCount }, () =>
+    Array<CellValue>(colCount).fill("")
+  );
+
+  cells[0][0] = "Raw GL export — Jan 2024 – Dec 2026 (scroll to draw across full range)";
+
+  const monthHeaders = Array.from({ length: 36 }, (_, i) => {
+    const year = 2024 + Math.floor(i / 12);
+    const month = (i % 12) + 1;
+    return `${year}-${String(month).padStart(2, "0")}`;
+  });
+  const staticHeaders = ["Account", "Cost Center", "Region", "Product", "Segment"];
+  const headers = [...staticHeaders, ...monthHeaders.slice(0, colCount - staticHeaders.length)];
+  for (let c = 0; c < colCount; c++) cells[2][c] = headers[c];
+
+  const accounts = ["4000 Revenue", "4100 Services", "4200 Licenses", "5000 COGS", "6000 Opex"];
+  const centers = ["AMER-East", "AMER-West", "EMEA", "APAC", "LATAM"];
+  const regions = ["US", "CA", "UK", "DE", "FR", "JP", "AU", "BR"];
+  const products = ["Portal", "Pulse", "Prism", "Pilot", "Pivot"];
+  const segments = ["Enterprise", "Mid-market", "SMB", "Startup"];
+
+  for (let r = 3; r < rowCount; r++) {
+    cells[r][0] = accounts[r % accounts.length];
+    cells[r][1] = centers[r % centers.length];
+    cells[r][2] = regions[r % regions.length];
+    cells[r][3] = products[r % products.length];
+    cells[r][4] = segments[r % segments.length];
+    for (let c = 5; c < colCount; c++) {
+      const base = ((r * 37) ^ (c * 13)) & 0xffff;
+      cells[r][c] = Math.round(1000 + (base % 95000));
+    }
+  }
+
+  return { id: "sheet_large_fact", name: "GL fact (large)", rowCount, colCount, cells };
 }
 
 export const DEMO_WORKBOOK: Workbook = {
@@ -318,7 +363,7 @@ export const DEMO_WORKBOOK: Workbook = {
     buildMessyPipelineSheet(),
     buildMessyQuartersSheet(),
     buildHeaderlessSheet(),
-    buildNotesSheet(),
+    buildLargeFactSheet(),
   ],
 };
 
@@ -327,154 +372,83 @@ export const EMPTY_REGIONS: RegionDraft[] = [];
 // Region definitions covering every permutation.
 export const PROPOSED_REGIONS: RegionDraft[] = [
   // ---- Sheet 1: Row tables (rows-as-records + headerAxis: row) ----
+  // Flat fact table: one row per (region, quarter) observation.
   {
-    id: "region_leads_absolute",
+    id: "region_revenue_rows_as_obs",
     sheetId: "sheet_row_tables",
-    bounds: { startRow: 3, endRow: 8, startCol: 0, endCol: 4 },
-    proposedLabel: "Leads (fixed)",
-    targetEntityDefinitionId: "ent_contact",
-    targetEntityLabel: "Contact",
+    bounds: { startRow: 3, endRow: 19, startCol: 0, endCol: 2 },
+    proposedLabel: "Revenue (rows-as-records, header row)",
+    targetEntityDefinitionId: "ent_revenue",
+    targetEntityLabel: "Revenue",
     orientation: "rows-as-records",
     headerAxis: "row",
     boundsMode: "absolute",
-    confidence: 0.94,
-  },
-  {
-    id: "region_opps_untilEmpty",
-    sheetId: "sheet_row_tables",
-    bounds: { startRow: 11, endRow: 15, startCol: 0, endCol: 3 },
-    proposedLabel: "Opportunities (until empty, terminator=2)",
-    targetEntityDefinitionId: "ent_deal",
-    targetEntityLabel: "Deal",
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    boundsMode: "untilEmpty",
-    skipRules: [
-      { kind: "blank" },
-      // Skip any row that starts with "— ... —" section separators (column A).
-      { kind: "cellMatches", crossAxisIndex: 0, pattern: "^—.*—$" },
-    ],
-    untilEmptyTerminatorCount: 2,
-    confidence: 0.88,
-  },
-  {
-    id: "region_invoices_pattern",
-    sheetId: "sheet_row_tables",
-    bounds: { startRow: 18, endRow: 23, startCol: 0, endCol: 3 },
-    proposedLabel: "Invoices (stops at Total)",
-    targetEntityDefinitionId: "ent_invoice",
-    targetEntityLabel: "Invoice",
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    boundsMode: "matchesPattern",
-    boundsPattern: "^Total$",
-    confidence: 0.82,
+    confidence: 0.93,
   },
 
   // ---- Sheet 2: Column tables (columns-as-records + headerAxis: column) ----
+  // Same observations, transposed: one column per observation.
   {
-    id: "region_products_absolute",
+    id: "region_revenue_cols_as_obs",
     sheetId: "sheet_column_tables",
-    bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
-    proposedLabel: "Products (fixed)",
-    targetEntityDefinitionId: "ent_product",
-    targetEntityLabel: "Product",
+    bounds: { startRow: 3, endRow: 5, startCol: 0, endCol: 16 },
+    proposedLabel: "Revenue (columns-as-records, header column)",
+    targetEntityDefinitionId: "ent_revenue",
+    targetEntityLabel: "Revenue",
     orientation: "columns-as-records",
     headerAxis: "column",
     boundsMode: "absolute",
-    confidence: 0.91,
-  },
-  {
-    id: "region_depts_untilEmpty",
-    sheetId: "sheet_column_tables",
-    bounds: { startRow: 10, endRow: 13, startCol: 0, endCol: 5 },
-    proposedLabel: "Departments (until empty, terminator=2)",
-    targetEntityDefinitionId: "ent_department",
-    targetEntityLabel: "Department",
-    orientation: "columns-as-records",
-    headerAxis: "column",
-    boundsMode: "untilEmpty",
-    skipRules: [
-      { kind: "blank" },
-      // For columns-as-records, cross-axis is the row index.
-      // Skip any column whose row 10 (label row) matches "— Subtotal —".
-      { kind: "cellMatches", crossAxisIndex: 10, pattern: "^—.*—$", axis: "row" },
-    ],
-    untilEmptyTerminatorCount: 2,
-    confidence: 0.86,
-  },
-  {
-    id: "region_salesreps_pattern",
-    sheetId: "sheet_column_tables",
-    bounds: { startRow: 16, endRow: 18, startCol: 0, endCol: 5 },
-    proposedLabel: "Sales reps (stops at Total)",
-    targetEntityDefinitionId: "ent_sales_rep",
-    targetEntityLabel: "Sales rep",
-    orientation: "columns-as-records",
-    headerAxis: "column",
-    boundsMode: "matchesPattern",
-    boundsPattern: "^Total$",
-    confidence: 0.79,
+    confidence: 0.9,
   },
 
-  // ---- Sheet 3: Mixed axes (uncommon orientation/headerAxis pairs) ----
+  // ---- Sheet 3: Mixed axes — two uncommon pivot permutations ----
+  // Variant A: rows-as-records + headerAxis: column.
+  //   Each row is a region; col A = identity, row 3 = attribute labels.
   {
-    id: "region_labeled_rows",
+    id: "region_attrs_rows_as_regions",
     sheetId: "sheet_mixed_axes",
-    bounds: { startRow: 3, endRow: 8, startCol: 0, endCol: 3 },
-    proposedLabel: "Records with label column",
-    targetEntityDefinitionId: "ent_contact",
-    targetEntityLabel: "Contact",
+    bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
+    proposedLabel: "Region attributes (rows-as-records, header column)",
+    targetEntityDefinitionId: "ent_department",
+    targetEntityLabel: "Department",
     orientation: "rows-as-records",
     headerAxis: "column",
-    recordsAxisName: { name: "Type", source: "user" },
-    boundsMode: "untilEmpty",
-    confidence: 0.71,
+    recordsAxisName: { name: "Region", source: "user" },
+    boundsMode: "absolute",
+    confidence: 0.75,
   },
+  // Variant B: columns-as-records + headerAxis: row.
+  //   Each column is a region; row 12 = identity, col A = attribute labels.
   {
-    id: "region_columns_top_labeled",
+    id: "region_attrs_cols_as_regions",
     sheetId: "sheet_mixed_axes",
     bounds: { startRow: 12, endRow: 16, startCol: 0, endCol: 4 },
-    proposedLabel: "Columns labeled by top row",
+    proposedLabel: "Region attributes (columns-as-records, header row)",
     targetEntityDefinitionId: "ent_department",
     targetEntityLabel: "Department",
     orientation: "columns-as-records",
     headerAxis: "row",
-    recordsAxisName: { name: "Department", source: "ai", confidence: 0.76 },
-    boundsMode: "untilEmpty",
-    confidence: 0.68,
+    recordsAxisName: { name: "Region", source: "ai", confidence: 0.78 },
+    boundsMode: "absolute",
+    confidence: 0.72,
   },
 
   // ---- Sheet 4: Crosstab (cells-as-records) ----
+  // Same observations laid out as a 2D pivot.
   {
     id: "region_revenue_crosstab_absolute",
     sheetId: "sheet_crosstab",
-    bounds: { startRow: 3, endRow: 6, startCol: 0, endCol: 4 },
-    proposedLabel: "Revenue crosstab (fixed)",
+    bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
+    proposedLabel: "Revenue (cells-as-records, 2D crosstab)",
     targetEntityDefinitionId: "ent_revenue",
     targetEntityLabel: "Revenue",
     orientation: "cells-as-records",
     headerAxis: "row",
     recordsAxisName: { name: "Region", source: "user" },
-    secondaryRecordsAxisName: { name: "Month", source: "ai", confidence: 0.82 },
+    secondaryRecordsAxisName: { name: "Quarter", source: "ai", confidence: 0.82 },
     cellValueName: { name: "Revenue", source: "ai", confidence: 0.79 },
     boundsMode: "absolute",
-    confidence: 0.81,
-  },
-  {
-    id: "region_headcount_crosstab_untilEmpty",
-    sheetId: "sheet_crosstab",
-    bounds: { startRow: 10, endRow: 14, startCol: 0, endCol: 4 },
-    proposedLabel: "Headcount crosstab (until empty)",
-    targetEntityDefinitionId: "ent_headcount",
-    targetEntityLabel: "Headcount",
-    orientation: "cells-as-records",
-    headerAxis: "row",
-    recordsAxisName: { name: "Quarter", source: "user" },
-    secondaryRecordsAxisName: { name: "Department", source: "user" },
-    cellValueName: { name: "Headcount", source: "user" },
-    boundsMode: "untilEmpty",
-    confidence: 0.77,
+    confidence: 0.83,
   },
 
   // ---- Sheet 5a: Messy pipeline (row-oriented skip rules) ----
@@ -570,20 +544,20 @@ export const PROPOSED_REGIONS: RegionDraft[] = [
 ];
 
 export const DRIFT_REGIONS: RegionDraft[] = PROPOSED_REGIONS.map((r) => {
-  if (r.id === "region_opps_untilEmpty") {
+  if (r.id === "region_revenue_rows_as_obs") {
     return {
       ...r,
       drift: {
         flagged: true,
         kind: "columns",
-        priorSummary: "Columns: Name · Stage · Amount · Close Date",
-        observedSummary: "New column observed: 'Owner' between Stage and Amount",
+        priorSummary: "Columns: Region · Quarter · Revenue",
+        observedSummary: "New column observed: 'Source' between Quarter and Revenue",
       },
       warnings: [
         {
           code: "UNRECOGNIZED_COLUMN",
           severity: "warn",
-          message: "New column 'Owner' added since last sync.",
+          message: "New column 'Source' added since last sync.",
           suggestedFix: "Accept the new column to include it in the mapping.",
         },
       ],
@@ -596,8 +570,9 @@ export const DRIFT_REGIONS: RegionDraft[] = PROPOSED_REGIONS.map((r) => {
         flagged: true,
         kind: "identity",
         identityChanging: true,
-        priorSummary: "Column-axis values: JAN, FEB, MAR, APR",
-        observedSummary: "Column-axis values renamed to January, February, March, April",
+        priorSummary: "Column-axis values: Q1 2025, Q2 2025, Q3 2025, Q4 2025",
+        observedSummary:
+          "Column-axis values renamed to 2025-Q1, 2025-Q2, 2025-Q3, 2025-Q4",
       },
       warnings: [
         {
@@ -619,7 +594,7 @@ export const BLOCKER_REGIONS: RegionDraft[] = [
       {
         code: "IDENTITY_COLUMN_HAS_BLANKS",
         severity: "blocker",
-        message: "Identity column 'Email' has 2 blank rows.",
+        message: "Identity column 'Region' has 2 blank rows.",
         suggestedFix: "Fill the blanks in the source file or choose a different identity column.",
       },
     ],

@@ -56,7 +56,7 @@ export const WithProposedRegions: Story = {
     regions: PROPOSED_REGIONS,
     activeSheetId: DEMO_WORKBOOK.sheets[0].id,
     onActiveSheetChange: fn(),
-    selectedRegionId: "region_leads_absolute",
+    selectedRegionId: "region_revenue_rows_as_obs",
     onSelectRegion: fn(),
     onRegionDraft: fn(),
     onRegionUpdate: fn(),
