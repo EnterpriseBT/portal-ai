@@ -15,6 +15,7 @@ export interface CellPositionInputUIProps {
   onChange: (nextIndex: number) => void;
   error?: boolean;
   helperText?: string;
+  label?: string;
 }
 
 function labelFor(axis: "column" | "row", index: number): string {
@@ -29,6 +30,7 @@ export const CellPositionInputUI: React.FC<CellPositionInputUIProps> = ({
   onChange,
   error,
   helperText,
+  label,
 }) => {
   const options: SelectOption[] = useMemo(() => {
     const lo = Math.min(startIndex, endIndex);
@@ -43,7 +45,8 @@ export const CellPositionInputUI: React.FC<CellPositionInputUIProps> = ({
   return (
     <Select
       size="small"
-      sx={{ width: 96 }}
+      label={label}
+      sx={{ minWidth: 80 }}
       value={index === undefined ? "" : String(index)}
       onChange={(e) => {
         const raw = e.target.value as string;

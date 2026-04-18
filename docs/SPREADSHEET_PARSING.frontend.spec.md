@@ -15,29 +15,53 @@ The region editor is a **module** in the `apps/web/src/modules/` sense (see `CLA
 ```
 apps/web/src/modules/RegionEditor/
   index.ts                                       # public barrel — the surface consumers embed
-  RegionEditor.component.tsx                     # container + pure UI component
-  RegionDrawingStep.component.tsx                # the visual overlay + side panel
-  ReviewStep.component.tsx                       # confidence + warnings + inline edits
-  DriftCoordinator.component.tsx                 # reads 409 drift payload, seeds plan state, delegates to RegionDrawingStep + ReviewStep
+  RegionEditor.component.tsx                     # Stepper shell — renders drawing step and review step
+  RegionDrawingStep.component.tsx                # canvas + side panel; runs click-time validation on Interpret
+  ReviewStep.component.tsx                       # post-interpret confidence/warnings review
+  SheetCanvas.component.tsx                      # rendered grid with click-drag drawing, selection, and resize
+  RegionOverlay.component.tsx                    # per-region selection + resize handles rendered over the grid
+  RegionConfigurationPanel.component.tsx         # side-panel — Identity / Shape / Extent sections
+  SkipAndTerminatorEditor.component.tsx          # skip-rule list + until-empty terminator count
+  FieldNameEditor.component.tsx                  # headerless override editor (auto-generated field names)
+  CellPositionInput.component.tsx                # row/column picker used by skip rules
+  NewEntityDialog.component.tsx                  # inline entity-creation dialog ("+ Create new entity")
+  EntityLegend.component.tsx                     # color-legend chips above the canvas
+  DriftBanner.component.tsx                      # drift-halt banner rendered above the drawing step
+  RegionReviewCard.component.tsx                 # per-region card rendered inside the review step
+  WarningRow.component.tsx                       # single-warning row used by review cards
+  ConfidenceChip.component.tsx                   # green/yellow/red confidence pill
+  ToggleRow.component.tsx                        # labelled toggle-button-group wrapper
+  SectionHelp.component.tsx                      # help-icon-with-tooltip primitive reused across section headings
   utils/
-    plan-state.util.ts                           # client-side plan draft state (seedable with empty / interpreter-proposed / prior+drift inputs)
-    region-drawing.util.ts                       # hit-testing, selection, resize
     a1-notation.util.ts                          # parse/format A1 ↔ numeric
-    sheet-renderer.util.ts                       # canvas rendering + cell lookups
-    region-editor-validation.util.ts             # per-step Zod schemas
-    use-plan-mutation.util.ts                    # React Query mutations
+    region-editor.types.ts                       # `RegionDraft`, `SkipRule`, `Workbook`, `EntityOption`, etc.
+    region-editor-validation.util.ts             # Zod-backed `validateRegion` / `validateRegions` / `RegionEditorErrors`
+    region-editor-colors.util.ts                 # deterministic entity-color palette and confidence bands
+    region-editor-decorations.util.ts            # header / axis-label / skipped-row overlay computation
+    region-editor-fixtures.util.ts               # fixture workbook and regions used by tests + stories
+    region-orientation.util.ts                   # arrow glyphs / aria text derived from orientation
   __tests__/
-    RegionEditor.test.tsx
+    a1-notation.util.test.ts
+    region-editor-colors.util.test.ts
+    region-editor-decorations.util.test.ts
+    region-editor-validation.util.test.ts
+    EntityLegend.test.tsx
+    NewEntityDialog.test.tsx
+    RegionConfigurationPanel.test.tsx
     RegionDrawingStep.test.tsx
-    ReviewStep.test.tsx
-    DriftCoordinator.test.tsx
+    SectionHelp.test.tsx
+    SheetCanvas.test.tsx
   stories/
     RegionEditor.stories.tsx
     RegionDrawingStep.stories.tsx
+    RegionConfigurationPanel.stories.tsx
     ReviewStep.stories.tsx
+    SheetCanvas.stories.tsx
 ```
 
-The module exports pure, props-only step components plus the plan-state hook via its `index.ts` barrel. Consumers seed it with inputs and read back emitted edits; the module itself issues no connector-specific API calls.
+The module exports pure, props-only (`*UI`) components via its `index.ts` barrel, along with type contracts, validation helpers, and decoration/color utilities. Consumers seed the components with inputs and read back emitted edits; the module itself issues no connector-specific API calls and owns no plan-state hook — region-list state lives in the consuming workflow (see `workflows/FileUploadConnector` for the current implementation).
+
+There is no dedicated `DriftCoordinator` component: drift is surfaced by the embedding workflow via the `DriftBannerUI` above the drawing step and by per-region `drift` state on each `RegionDraft`. The drawing step's config panel renders inline drift affordances ("Accept proposed identity" / "Keep prior") when `region.drift.flagged` is true.
 
 ### Consumers
 
@@ -94,48 +118,93 @@ Colors are assigned deterministically from a fixed palette (MUI theme tokens) ba
 
 The visual overlay is the primary path but must be keyboard-accessible:
 
-- Tab cycles through existing regions. `Enter` opens the side panel for the focused region.
-- Arrow keys move the focused region; `Shift+Arrow` resizes.
-- `N` starts a new-region selection mode: arrow keys move the anchor, `Space` commits the first corner, arrow keys extend, `Enter` commits the region.
-- All keyboard actions are mirrored by screen-reader announcements via `aria-live="polite"` region labels.
+- `Delete` / `Backspace` on the selected region removes it (v1 — already implemented). Key events originating from `INPUT`, `TEXTAREA`, `SELECT`, or `contenteditable` targets are ignored so deletes never fire while the user is typing in a side-panel field.
+- `Escape` with a region selected clears the selection (`onSelectRegion(null)`), mirroring the drawing step's "deselect" affordance.
+- A **Jump to region** `Select` above the canvas lists every region as `${label} · ${sheet} · ${entity}` and switches the active sheet + selection on change; this is the current accessible equivalent of tab-cycling through regions and works for both mouse and keyboard users.
+- All icon-only controls (delete, close skip rule, resize handles, help icons) carry descriptive `aria-label`s.
+- Validated fields set `aria-invalid` via the MUI pattern documented in `CLAUDE.md` §Accessibility Requirements.
+
+Additional keyboard affordances (Tab-cycle between regions, arrow-key move/resize, N-to-draw) are documented but not yet implemented in v1.
 
 ### A1 / numeric fallback input
 
-A secondary "Enter bounds manually" form is always available:
+A secondary "Enter bounds manually" form is not yet implemented in v1. The **Jump to region** select and the config panel's numeric `CellPositionInputUI` (used inside skip rules) cover accessibility for reading bounds and for picking absolute row/column indices; explicit A1 entry remains a planned addition.
 
-- `Sheet` dropdown, `Range` input accepting A1 notation (`B2:N4`) or numeric (`startRow, startCol, endRow, endCol`).
-- Same side-panel config as visual regions.
-- This path is required for accessibility and for users who prefer typed input; it is not a legacy or degraded mode.
-
-Utility: `a1-notation.util.ts` exports `parseA1(input): {start, end}` and `formatA1({start, end}): string`.
+Utility: `a1-notation.util.ts` already exports `colIndexToLetter`, `letterToColIndex`, `formatCell`, `formatBounds`, `normalizeBounds`, and `coordInBounds` so the A1 form — once added — can wire directly into the existing helpers.
 
 ## Per-region configuration side panel
 
-When a region is selected (by click, keyboard, or creation), a side panel opens to the right of the canvas. Fields:
+When a region is selected (by click, keyboard, or creation), `RegionConfigurationPanelUI` renders the side panel. On `lg` viewports (≥1200px) the panel sits to the right of the grid in a fixed-width (~440px) side rail with its own `overflowY: auto`; on smaller viewports it stacks below the grid and uses a two-column internal grid. The panel is organised into three sections with horizontal dividers: **Identity**, **Shape**, and **Extent & skip rules**.
+
+### Identity
 
 | Field | Control | Required | Notes |
 |---|---|---|---|
-| `proposedLabel` | `TextField` | no | User-friendly region name, shown as a badge on the canvas |
-| `targetEntityDefinitionId` | `AsyncSearchableSelect` | yes | Queries `EntityDefinition`s via existing SDK; shared across regions that merge |
-| `orientation` | `ToggleButtonGroup` | yes | `rows-as-records` / `columns-as-records` |
-| `headerAxis` | `ToggleButtonGroup` | yes | `row` / `column` |
-| `recordsAxisName` | `TextField` with AI suggestion | conditional | Required when orientation's record axis differs from the header axis (pivoted region) |
-| `drift` knobs | collapsible advanced panel | no | `headerShiftRows`, `addedColumns` (halt/auto-apply), `removedColumns` max + action |
+| `proposedLabel` | `TextInput` | no | User-friendly region name; also appears as the region badge on the canvas and in the invalid-region list |
+| `targetEntityDefinitionId` | `Select` (searchable) + **+ Create new entity** button | yes | Opens `NewEntityDialog` to stage a new `EntityOption` with `source: "staged"`; staged options render with a "— new" suffix until the consuming workflow persists them |
+| Merge banner | inline caption | — | Rendered when another selected region already targets the same entity; explains that AI field mapping runs once across the merged regions |
+
+### Shape
+
+| Field | Control | Required | Notes |
+|---|---|---|---|
+| `orientation` | `ToggleRowUI` | yes | `rows-as-records` / `columns-as-records` / `cells-as-records`. A `SectionHelpUI` icon next to the heading explains each option |
+| `headerAxis` | `ToggleRowUI` | yes, when not crosstab | `row` / `column` / `none`. Hidden when orientation is `cells-as-records` (a crosstab has two header axes by definition). A `SectionHelpUI` icon explains each option |
+| Field names (`columnOverrides`) | `FieldNameEditorUI` | no | Rendered when `headerAxis === "none"` and orientation is not crosstab. Auto-generates names from position (`columnA`, `columnB`, …); user may override any |
+| `recordsAxisName` | `TextInput` + **Suggest** button | conditional | Required for pivoted regions (`headerAxis` opposite the record axis) and for crosstab. Copy flips to **Row-axis name** for crosstab. Suggest button calls `onSuggestAxisName` (consumer-wired) |
+| `secondaryRecordsAxisName` | `TextInput` | yes, crosstab only | Names the column dimension of a crosstab (e.g. `Region`). Validation enforces presence. Has a `SectionHelpUI` tooltip |
+| `cellValueName` | `TextInput` | yes, crosstab only | Names the field that holds each cell's value (e.g. `Revenue`). Helper text previews the resulting record shape once all three names are filled |
+
+### Extent & skip rules
+
+| Field | Control | Required | Notes |
+|---|---|---|---|
+| `boundsMode` | `ToggleRowUI` | yes (defaults to `absolute`) | `absolute` (the drawn rectangle), `untilEmpty` (expand until a terminator), `matchesPattern` (stop at the first row/column whose identity cell matches a regex) |
+| `boundsPattern` | `TextInput` | required when `boundsMode === "matchesPattern"` | Validated as a regular expression; empty or invalid values are blocked at Interpret time |
+| `skipRules` | `SkipAndTerminatorEditorUI` (checkbox + repeatable rows) | no | See below |
+| `untilEmptyTerminatorCount` | numeric `TextInput` | defaults to 2 | Only rendered when `boundsMode === "untilEmpty"`; must be ≥1 |
+
+#### Skip rules
+
+Each row in the editor is one of:
+
+- **Blank** (`kind: "blank"`) — a single checkbox: "Skip blank rows/columns". Wording mirrors the orientation's record axis.
+- **Cell matches** (`kind: "cellMatches"`) — a repeatable rule with:
+  - `crossAxisIndex` — row or column picker (`CellPositionInputUI`). Starts unselected; Interpret blocks until the user picks a row or column. Range is limited to the region's own bounds.
+  - `pattern` — regex `TextInput`. Kept as a non-deferred text input (not a debounced/deferred field) because the canvas decoration for the rule updates live on every keystroke.
+  - `axis` (optional) — only meaningful for crosstab regions, where the rule can target row labels or column labels.
 
 ### Validation
 
-`spreadsheet-parser-validation.util.ts` exports per-step Zod schemas matching backend `RegionHint`. Each region must pass validation before the user can advance from the drawing step. Errors display inline on the side panel; invalid regions are outlined red on the canvas.
+`region-editor-validation.util.ts` exposes `validateRegion(region): RegionErrors` and `validateRegions(regions): RegionEditorErrors` (keyed by region id). The drawing step computes both on every render:
+
+- `computedErrors = validateRegions(regions)` — always current.
+- `effectiveErrors = merge(computedErrors, props.errors?)` — optional prop lets consumers layer server-side errors.
+
+Per-field error keys use dot-notation (`bounds.endRow`, `recordsAxisName`, `skipRules.{i}.pattern`, `skipRules.{i}.crossAxisIndex`, `untilEmptyTerminatorCount`). The panel only surfaces the keys it knows about via `error` / `helperText` / `aria-invalid` on each field.
+
+**Progressive disclosure.** The panel pre-emptively flags axis-name requirements inline the moment a region becomes pivoted, but field-level validation errors from `effectiveErrors` (skip-rule patterns, missing skip-rule position, bounds patterns, etc.) only surface after the user first clicks Interpret — tracked via `attemptedInterpret` state inside the drawing step.
+
+### Interpret guard
+
+`RegionDrawingStepUI` owns click-time enforcement. The Interpret button stays enabled whenever there is at least one region (it is only disabled while interpreting is pending). On click:
+
+1. `attemptedInterpret` is set to `true`.
+2. If `invalidRegionIds.length > 0`:
+   - The step auto-switches to the first invalid region's sheet and selects it.
+   - An `role="alert"` banner renders above the button: "`N` region(s) have validation errors — fix them before interpreting." The banner lists every invalid region as a clickable chip (`${label} · ${sheet} · ${entity}`). Clicking a chip jumps to that region.
+   - `onInterpret` is not called.
+3. If no errors: `onInterpret()` fires and the stepper advances.
+
+The consuming workflow's `onInterpret` is responsible for the actual backend call and the step transition.
 
 ### AI-suggested records-axis name
 
-When `orientation` + `headerAxis` indicate a pivoted region and the user has left `recordsAxisName` blank, the side panel displays a call-to-action: **"Suggest a name."** Clicking triggers a backend call (`POST /api/spreadsheet-parsing/recommend-records-axis-name` with the axis labels). Response: `{ name, confidence }`. The suggestion populates the field with a badge reading "AI suggestion — confirm" and a high-contrast border. The user edits or confirms before the region is valid.
-
-- `recordsAxisName.source` is set to `"ai"` on the plan if the user accepted the suggestion without editing, `"user"` if the user typed or edited the value.
-- If the user leaves the field blank and confidence is low, validation blocks advancing and displays the `PIVOTED_REGION_MISSING_AXIS_NAME` blocker copy.
+When a pivoted region has no `recordsAxisName`, the side panel surfaces a **Suggest** button next to the TextInput. The module does not call the backend itself; it fires `onSuggestAxisName(regionId)` and expects the consumer to populate `recordsAxisName: { name, source: "ai", confidence }` (rendered with a warning-colored "AI suggestion — confirm before continuing" caption until the user edits or confirms the field).
 
 ### Merge affordances
 
-When the user sets `targetEntityDefinitionId` on a second region to match an existing region, the side panel shows a confirmation banner: "This region will merge into entity `<Name>` (N other regions contribute to it). AI field mapping runs once across all merged regions." This makes the merge model explicit at the point of decision. The banner includes a link to the legend.
+When the user binds a region to an entity that another region already targets, the side panel shows a caption under the entity select: "Merges into entity with `N` other regions. AI field mapping runs once across all merged regions." The `EntityLegendUI` above the canvas lists every bound entity with its color and region count — clicking a legend entry is the consumer's hook for "jump to one of these regions".
 
 ## Review step
 
@@ -208,24 +277,22 @@ Hosts: `GoogleSheetsConnector`, `ExcelOnlineConnector` (future). Entry: user con
 
 ### Mode B — drift halt (resync)
 
-**Drift resolution is not a separate UI.** When a scheduled sync's `replay()` returns `DriftReport.severity >= "blocker"` or `identityChanging: true`, the backend halts and returns `409` with the drift report. The hosting cloud-spreadsheet connector workflow surfaces a banner on the connector detail view and routes the user into the **same `RegionDrawingStep` + `ReviewStep` used during that connector's initial setup**, via `DriftCoordinator`, seeded with:
+**Drift resolution is not a separate UI.** When a scheduled sync's `replay()` returns `DriftReport.severity >= "blocker"` or `identityChanging: true`, the backend halts and returns `409` with the drift report. The hosting cloud-spreadsheet connector workflow surfaces a banner on the connector detail view and routes the user into the **same `RegionDrawingStepUI` + `ReviewStepUI` used during that connector's initial setup**, seeded with:
 
-- The **current workbook** rendered on the canvas — specifically, the workbook the halting `replay()` ran against, pinned by the backend and returned alongside the drift report. The user is editing regions against the actual data the next sync will extract, not a snapshot from when the plan was first drawn. Timestamp and "Re-fetch latest" affordance per §Region-drawing canvas → Rendering → Freshness.
-- The **prior plan** as the editable starting state — regions, bindings, orientation, and identity strategies are all pre-drawn on the canvas. The user can edit any of them using the same affordances as during initial upload (drag to resize, side-panel to rebind, A1 fallback input, etc.).
-- **Drift-flagged regions highlighted** on the canvas with a drift badge. Clicking focuses the region and opens its side panel with a "Drift" section showing the prior value vs the replay's observation, keyed by warning code and locator.
-- The interpreter's **proposed revision** (when the consumer has called `interpret(workbook, priorPlan, driftReport)` to get one) rendered as a **per-region diff overlay** — acceptable via a "Use new" / "Keep old" toggle in the side panel, not a global accept/reject modal.
+- The **current workbook** rendered on the canvas — specifically, the workbook the halting `replay()` ran against, pinned by the backend and returned alongside the drift report. Timestamp and "Re-fetch latest" affordance per §Region-drawing canvas → Rendering → Freshness. `RegionDrawingStepUI` already renders the workbook's `fetchedAt` / `sourceLabel` and wires a `Re-fetch latest` button when the consumer supplies `onRefetchWorkbook`.
+- The **prior plan** as the editable starting state — regions, bindings, orientation, and identity strategies are pre-drawn on the canvas and editable with the same affordances as during initial upload.
+- **Drift-flagged regions highlighted** on the canvas with a drift border via `RegionDraft.drift.flagged`. The side panel renders a warning-styled drift card showing `prior` vs `observed` summaries; for identity-changing drift the card also shows "Accept `<proposed identity>`" and "Keep prior" buttons that fire `onAcceptProposedIdentity(regionId)` / `onKeepPriorIdentity(regionId)` on the consuming workflow.
+- A **drift-report banner** rendered above the drawing step via `DriftBannerUI` — severity, `fetchedAt`, and optional notes come from `DriftReportPreview`.
 
-Identity-changing drift is rendered **inside the editor**, not as a bespoke confirmation dialog. The affected region's side panel expands its identity section to show prior strategy, observed/proposed strategy, and the reason (warning code + locator). Resolution happens in place:
+Identity-changing drift is therefore resolved **inside the editor**, not via a bespoke confirmation dialog. The drift card in the side panel offers:
 
-- **Accept the proposed identity** — editor updates the region's `identityStrategy`; the side panel surfaces the `source_id` derivation change so the user sees what will break.
-- **Keep the prior identity** — editor leaves the region unchanged; replay will continue with the legacy mapping and the drift report is acknowledged without a plan revision.
+- **Accept the proposed identity** — consumer updates the region's `identityStrategy` in response to `onAcceptProposedIdentity`.
+- **Keep the prior identity** — consumer marks the drift acknowledged via `onKeepPriorIdentity`; replay continues with the legacy mapping.
 - **Re-draw or re-bind** — standard canvas edits on the region; same affordances as initial setup.
 
 Commit from the Review step follows the initial-setup commit path; on success the backend writes a new plan version, links the sync history entry to it, and resumes the sync.
 
-`DriftCoordinator.component.tsx` is therefore a **thin coordinator**: it reads the drift report from the `409` payload, seeds `plan-state.util.ts` with `{ workbook, priorPlan, driftReport, proposedPlan? }` (where `workbook` is the pinned fetch from the halting replay), and delegates rendering to the shared `RegionDrawingStep` + `ReviewStep`. It renders no region fields of its own and lives in the shared editor module, not in any single connector workflow.
-
-Consequence: any capability needed for drift resolution (e.g., side-by-side identity comparison, per-binding diff) must exist on the shared editor. If a drift class can't be expressed there, treat it as a plan-schema or editor gap and close it — do not fork a parallel UI per connector.
+There is no `DriftCoordinator` component in v1. The consuming cloud-spreadsheet workflow reads the `409` payload, seeds its own region state (see `FileUploadConnector` for the current template), and supplies `driftReport` + `regions[].drift` + the drift callbacks to `RegionEditorUI`. The shared editor stays connector-agnostic; any capability needed for drift resolution (side-by-side identity comparison, per-binding diff) must live on the shared components. If a drift class can't be expressed there, treat it as a plan-schema or editor gap and close it — do not fork a parallel UI per connector.
 
 ## Form/dialog pattern compliance
 
@@ -254,24 +321,25 @@ New query keys added to `api/keys.ts` and re-exported from `api/sdk.ts`:
 
 ## Testing
 
-Per the project's dialog/form test checklist adapted to multi-step workflow steps:
+Every `*UI` pure component is tested in isolation so the consuming workflow's SDK, router, and providers are irrelevant. Current coverage:
 
-- **Region Drawing step**: renders canvas, creates/resizes/deletes regions, validates config panel, shows per-region errors.
-- **Review step**: renders confidence chips and warnings, disables commit on blocker, calls commit mutation.
-- **`DriftCoordinator`**: seeds shared editor state from a `409` drift-report payload and delegates to `RegionDrawingStep` + `ReviewStep`; verifies prior-plan regions are pre-drawn, drift-flagged regions carry the drift badge, and identity-change resolution updates `identityStrategy` in place rather than opening a modal.
-- `aria-invalid` set on invalid fields; `required` attribute present on required fields.
-- Server errors render `<FormAlert>`; absence of errors hides it.
-- Mutation success invalidates the documented query keys (verified via `jest.spyOn(queryClient, "invalidateQueries")` in `test-utils.tsx`).
+- `a1-notation.util.test.ts` — round-trip between A1 notation and numeric indices.
+- `region-editor-colors.util.test.ts` — deterministic color assignment + confidence-band cutoffs.
+- `region-editor-decorations.util.test.ts` — header / axis-label / skipped-row overlay computation, including the `cellMatches` rule with an unset `crossAxisIndex` (must produce no decoration).
+- `region-editor-validation.util.test.ts` — every per-field error, including: bounds inversion, missing target entity, pivoted records-axis requirement, crosstab row/column/cell-value axis requirements, `matchesPattern` regex, `untilEmpty` terminator ≥1, and skip-rule position + pattern errors surfaced simultaneously on the same rule.
+- `EntityLegend.test.tsx`, `NewEntityDialog.test.tsx`, `SheetCanvas.test.tsx`, `SectionHelp.test.tsx` — per-component behavior.
+- `RegionConfigurationPanel.test.tsx` — empty-state copy, label + bounds caption, merge banner, entity-required error plumbing, crosstab + pivoted field visibility, create-entity affordance, blank skip rule toggle.
+- `RegionDrawingStep.test.tsx` — keyboard delete/backspace/escape (including "never hijack keys while editing text"), plus click-time validation: Interpret with a valid region calls `onInterpret`; Interpret with invalid regions blocks, shows the `role="alert"` banner with the correct count, auto-selects the first invalid region, and lets the user jump to any invalid region by clicking its chip.
+
+Server-error plumbing, mutation cache invalidation, and commit-button enablement live on the **consuming workflow** (not the shared module) — e.g., `workflows/FileUploadConnector/__tests__/`.
 
 Stories cover:
 
-- Empty sheet (no regions drawn yet).
-- Single region, well-formed.
-- Multiple regions bound to the same entity (merge demo).
-- Pivoted region with AI-suggested axis name.
-- Review with mixed confidence (green / yellow / red).
-- Blocker in review preventing commit.
-- Drift review: identity-changing drift halt.
+- `RegionEditor.stories.tsx` — Mode A empty, Mode A post-interpret review, Mode B drift halt, and an Interactive harness (draw → interpret → review → commit) that on commit shows the final `regions` + `stagedEntities` payload as pretty-printed JSON in a modal.
+- `RegionDrawingStep.stories.tsx` — isolated drawing-step variants.
+- `RegionConfigurationPanel.stories.tsx` — every panel variant (crosstab, pivoted, headerless, drift).
+- `ReviewStep.stories.tsx` — mixed confidence and blocker-in-review variants.
+- `SheetCanvas.stories.tsx` — canvas without surrounding chrome.
 
 ## Open questions (frontend-owned)
 

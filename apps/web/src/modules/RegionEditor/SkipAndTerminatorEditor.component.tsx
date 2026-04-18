@@ -75,15 +75,11 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
             key={idx}
             direction="row"
             spacing={1}
-            alignItems="flex-start"
-            flexWrap="wrap"
-            useFlexGap
+            alignItems="center"
           >
-            <Typography variant="caption" sx={{ minWidth: 0, alignSelf: "center" }}>
-              {crossAxisLabel === "column" ? "Column" : "Row"}
-            </Typography>
             <CellPositionInputUI
               axis={crossAxisLabel}
+              label={crossAxisLabel === "column" ? "Column" : "Row"}
               index={rule.crossAxisIndex}
               startIndex={
                 crossAxisLabel === "column"
@@ -107,12 +103,10 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
               error={Boolean(positionError)}
               helperText={positionError}
             />
-            <Typography variant="caption" sx={{ alignSelf: "center" }}>
-              matches
-            </Typography>
             <TextInput
               size="small"
-              sx={{ flex: 1 }}
+              label="Matches"
+              sx={{ flex: 1, minWidth: 0 }}
               value={rule.pattern}
               onChange={(e) =>
                 setRules(
@@ -139,7 +133,7 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
               aria-label="Remove skip rule"
               icon={IconName.Close}
               onClick={() => setRules(rules.filter((_, i) => i !== idx))}
-              sx={{ alignSelf: "center", flexShrink: 0 }}
+              sx={{ flexShrink: 0 }}
             />
           </Stack>
         );

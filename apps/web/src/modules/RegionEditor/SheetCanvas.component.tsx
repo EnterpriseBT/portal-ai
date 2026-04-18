@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Box, Stack, Typography } from "@portalai/core/ui";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Box } from "@portalai/core/ui";
 
 import {
   COL_HEADER_HEIGHT,
@@ -31,6 +31,8 @@ export interface SheetCanvasUIProps {
 
 const DEFAULT_CELL_WIDTH = 96;
 const DEFAULT_CELL_HEIGHT = 28;
+const EDGE_SCROLL_ZONE = 36;
+const MAX_EDGE_SCROLL_SPEED = 18;
 
 type ActiveOp =
   | { kind: "draw"; start: CellCoord; end: CellCoord }
@@ -59,6 +61,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
 
   const gridRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const autoScrollVelocityRef = useRef<{ vx: number; vy: number }>({ vx: 0, vy: 0 });
   const [activeOp, setActiveOp] = useState<ActiveOp | null>(null);
 
   const clientToCell = useCallback(
@@ -83,14 +88,116 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     }
   }, []);
 
-  const handleCellPointerDown = useCallback(
-    (coord: CellCoord, e: React.PointerEvent) => {
+  const applyPointerCoord = useCallback(
+    (coord: CellCoord) => {
+      setActiveOp((op) => {
+        if (!op) return op;
+        if (op.kind === "draw") {
+          if (op.end.row === coord.row && op.end.col === coord.col) return op;
+          return { ...op, end: coord };
+        }
+        if (op.kind === "resize") {
+          if (op.current.row === coord.row && op.current.col === coord.col) return op;
+          return { ...op, current: coord };
+        }
+        return op;
+      });
+    },
+    []
+  );
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollFrameRef.current != null) {
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+    autoScrollVelocityRef.current = { vx: 0, vy: 0 };
+  }, []);
+
+  const runAutoScrollTickRef = useRef<() => void>(() => {});
+  runAutoScrollTickRef.current = () => {
+    const el = scrollRef.current;
+    const { vx, vy } = autoScrollVelocityRef.current;
+    if (!el || (vx === 0 && vy === 0)) {
+      autoScrollFrameRef.current = null;
+      return;
+    }
+    if (vx !== 0) el.scrollLeft += vx;
+    if (vy !== 0) el.scrollTop += vy;
+    const last = lastPointerRef.current;
+    if (last) {
+      const coord = clientToCell(last.x, last.y);
+      if (coord) applyPointerCoord(coord);
+    }
+    autoScrollFrameRef.current = requestAnimationFrame(() =>
+      runAutoScrollTickRef.current()
+    );
+  };
+
+  const updateAutoScroll = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const canScrollLeft = el.scrollLeft > 0;
+      const canScrollRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 1;
+      const canScrollUp = el.scrollTop > 0;
+      const canScrollDown = el.scrollTop < el.scrollHeight - el.clientHeight - 1;
+
+      const fromLeft = clientX - rect.left;
+      const fromRight = rect.right - clientX;
+      const fromTop = clientY - rect.top;
+      const fromBottom = rect.bottom - clientY;
+
+      let vx = 0;
+      let vy = 0;
+      if (fromLeft < EDGE_SCROLL_ZONE && canScrollLeft) {
+        vx = -Math.ceil(((EDGE_SCROLL_ZONE - fromLeft) / EDGE_SCROLL_ZONE) * MAX_EDGE_SCROLL_SPEED);
+      } else if (fromRight < EDGE_SCROLL_ZONE && canScrollRight) {
+        vx = Math.ceil(((EDGE_SCROLL_ZONE - fromRight) / EDGE_SCROLL_ZONE) * MAX_EDGE_SCROLL_SPEED);
+      }
+      if (fromTop < EDGE_SCROLL_ZONE && canScrollUp) {
+        vy = -Math.ceil(((EDGE_SCROLL_ZONE - fromTop) / EDGE_SCROLL_ZONE) * MAX_EDGE_SCROLL_SPEED);
+      } else if (fromBottom < EDGE_SCROLL_ZONE && canScrollDown) {
+        vy = Math.ceil(((EDGE_SCROLL_ZONE - fromBottom) / EDGE_SCROLL_ZONE) * MAX_EDGE_SCROLL_SPEED);
+      }
+      autoScrollVelocityRef.current = { vx, vy };
+      if ((vx !== 0 || vy !== 0) && autoScrollFrameRef.current == null) {
+        autoScrollFrameRef.current = requestAnimationFrame(() =>
+          runAutoScrollTickRef.current()
+        );
+      } else if (vx === 0 && vy === 0 && autoScrollFrameRef.current != null) {
+        stopAutoScroll();
+      }
+    },
+    [stopAutoScroll]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (autoScrollFrameRef.current != null) {
+        cancelAnimationFrame(autoScrollFrameRef.current);
+        autoScrollFrameRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleGridPointerDown = useCallback(
+    (e: React.PointerEvent) => {
       if (readOnly) return;
+      const grid = gridRef.current;
+      if (!grid) return;
+      const rect = grid.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      if (x < ROW_HEADER_WIDTH || y < COL_HEADER_HEIGHT) return;
+      const coord = clientToCell(e.clientX, e.clientY);
+      if (!coord) return;
       e.preventDefault();
       capturePointer(e);
       setActiveOp({ kind: "draw", start: coord, end: coord });
     },
-    [readOnly, capturePointer]
+    [readOnly, capturePointer, clientToCell]
   );
 
   const handleResizeStart = useCallback(
@@ -112,25 +219,17 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!activeOp) return;
+      lastPointerRef.current = { x: e.clientX, y: e.clientY };
       const coord = clientToCell(e.clientX, e.clientY);
-      if (!coord) return;
-      setActiveOp((op) => {
-        if (!op) return null;
-        if (op.kind === "draw") {
-          if (op.end.row === coord.row && op.end.col === coord.col) return op;
-          return { ...op, end: coord };
-        }
-        if (op.kind === "resize") {
-          if (op.current.row === coord.row && op.current.col === coord.col) return op;
-          return { ...op, current: coord };
-        }
-        return op;
-      });
+      if (coord) applyPointerCoord(coord);
+      updateAutoScroll(e.clientX, e.clientY);
     },
-    [activeOp, clientToCell]
+    [activeOp, clientToCell, applyPointerCoord, updateAutoScroll]
   );
 
   const handlePointerUp = useCallback(() => {
+    stopAutoScroll();
+    lastPointerRef.current = null;
     if (!activeOp) return;
     if (activeOp.kind === "draw") {
       const bounds = normalizeBounds(activeOp.start, activeOp.end);
@@ -153,7 +252,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       onRegionResize?.(activeOp.regionId, next);
     }
     setActiveOp(null);
-  }, [activeOp, onRegionDraft, onRegionResize, onRegionSelect, regions, sheet.id]);
+  }, [activeOp, onRegionDraft, onRegionResize, onRegionSelect, regions, sheet.id, stopAutoScroll]);
 
   const pendingBounds: CellBounds | null = useMemo(() => {
     if (!activeOp || activeOp.kind !== "draw") return null;
@@ -166,6 +265,125 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   );
 
   const gridWidth = ROW_HEADER_WIDTH + cellWidth * sheet.colCount;
+
+  const gridBody = useMemo(() => {
+    const colHeaderStyle: React.CSSProperties = {
+      width: cellWidth,
+      height: COL_HEADER_HEIGHT,
+      borderRight: "1px solid #e5e7eb",
+      borderBottom: "1px solid #e5e7eb",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flex: "0 0 auto",
+      fontSize: 11,
+      fontWeight: 600,
+      color: "rgba(0,0,0,0.6)",
+      boxSizing: "border-box",
+    };
+    const rowHeaderStyle: React.CSSProperties = {
+      width: ROW_HEADER_WIDTH,
+      height: cellHeight,
+      position: "sticky",
+      left: 0,
+      zIndex: 2,
+      background: "#f3f4f6",
+      borderRight: "1px solid #e5e7eb",
+      borderBottom: "1px solid #e5e7eb",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flex: "0 0 auto",
+      fontSize: 11,
+      fontWeight: 600,
+      color: "rgba(0,0,0,0.6)",
+      boxSizing: "border-box",
+    };
+    const cellStyle: React.CSSProperties = {
+      width: cellWidth,
+      height: cellHeight,
+      borderRight: "1px solid #e5e7eb",
+      borderBottom: "1px solid #e5e7eb",
+      display: "flex",
+      alignItems: "center",
+      paddingLeft: 6,
+      paddingRight: 6,
+      overflow: "hidden",
+      whiteSpace: "nowrap",
+      textOverflow: "ellipsis",
+      flex: "0 0 auto",
+      cursor: readOnly ? "default" : "crosshair",
+      fontSize: 12,
+      fontFamily: "monospace",
+      boxSizing: "border-box",
+    };
+    const rowStyle: React.CSSProperties = {
+      display: "flex",
+      flexDirection: "row",
+    };
+
+    const colHeaderCells: React.ReactElement[] = [];
+    for (let col = 0; col < sheet.colCount; col++) {
+      colHeaderCells.push(
+        <div key={col} style={colHeaderStyle}>
+          {colIndexToLetter(col)}
+        </div>
+      );
+    }
+
+    const dataRows: React.ReactElement[] = [];
+    for (let row = 0; row < sheet.rowCount; row++) {
+      const rowCells = sheet.cells[row];
+      const cellEls: React.ReactElement[] = [];
+      for (let col = 0; col < sheet.colCount; col++) {
+        const raw = rowCells?.[col];
+        const value = raw === null || raw === undefined || raw === "" ? "" : String(raw);
+        cellEls.push(
+          <div
+            key={col}
+            data-testid={`cell-${row}-${col}`}
+            style={cellStyle}
+          >
+            {value}
+          </div>
+        );
+      }
+      dataRows.push(
+        <div key={row} style={rowStyle}>
+          <div style={rowHeaderStyle}>{row + 1}</div>
+          {cellEls}
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            position: "sticky",
+            top: 0,
+            zIndex: 3,
+            background: "#f3f4f6",
+          }}
+        >
+          <div
+            style={{
+              width: ROW_HEADER_WIDTH,
+              height: COL_HEADER_HEIGHT,
+              borderRight: "1px solid #e5e7eb",
+              borderBottom: "1px solid #e5e7eb",
+              flex: "0 0 auto",
+              boxSizing: "border-box",
+            }}
+          />
+          {colHeaderCells}
+        </div>
+        {dataRows}
+      </>
+    );
+  }, [sheet, cellWidth, cellHeight, readOnly]);
 
   return (
     <Box
@@ -198,110 +416,17 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        <Box
+        <div
           ref={gridRef}
-          sx={{
+          onPointerDown={handleGridPointerDown}
+          style={{
             position: "relative",
             width: gridWidth,
             minWidth: "100%",
             display: "block",
           }}
         >
-        <Stack
-          direction="row"
-          sx={{
-            position: "sticky",
-            top: 0,
-            zIndex: 3,
-            backgroundColor: "grey.100",
-          }}
-        >
-          <Box
-            sx={{
-              width: ROW_HEADER_WIDTH,
-              height: COL_HEADER_HEIGHT,
-              borderRight: "1px solid",
-              borderBottom: "1px solid",
-              borderColor: "divider",
-              flex: "0 0 auto",
-            }}
-          />
-          {Array.from({ length: sheet.colCount }).map((_, col) => (
-            <Box
-              key={col}
-              sx={{
-                width: cellWidth,
-                height: COL_HEADER_HEIGHT,
-                borderRight: "1px solid",
-                borderBottom: "1px solid",
-                borderColor: "divider",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: "0 0 auto",
-              }}
-            >
-              <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary" }}>
-                {colIndexToLetter(col)}
-              </Typography>
-            </Box>
-          ))}
-        </Stack>
-
-        {Array.from({ length: sheet.rowCount }).map((_, row) => (
-          <Stack direction="row" key={row}>
-            <Box
-              sx={{
-                width: ROW_HEADER_WIDTH,
-                height: cellHeight,
-                position: "sticky",
-                left: 0,
-                zIndex: 2,
-                backgroundColor: "grey.100",
-                borderRight: "1px solid",
-                borderBottom: "1px solid",
-                borderColor: "divider",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: "0 0 auto",
-              }}
-            >
-              <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary" }}>
-                {row + 1}
-              </Typography>
-            </Box>
-            {Array.from({ length: sheet.colCount }).map((_, col) => {
-              const value = sheet.cells[row]?.[col] ?? "";
-              return (
-                <Box
-                  key={col}
-                  data-testid={`cell-${row}-${col}`}
-                  onPointerDown={(e) => handleCellPointerDown({ row, col }, e)}
-                  sx={{
-                    width: cellWidth,
-                    height: cellHeight,
-                    borderRight: "1px solid",
-                    borderBottom: "1px solid",
-                    borderColor: "divider",
-                    display: "flex",
-                    alignItems: "center",
-                    px: 0.75,
-                    overflow: "hidden",
-                    whiteSpace: "nowrap",
-                    textOverflow: "ellipsis",
-                    flex: "0 0 auto",
-                    cursor: readOnly ? "default" : "crosshair",
-                    fontSize: 12,
-                    fontFamily: "monospace",
-                  }}
-                >
-                  {value === null || value === "" ? "" : String(value)}
-                </Box>
-              );
-            })}
-          </Stack>
-        ))}
+        {gridBody}
 
         {(() => {
           const selectedRegion = visibleRegions.find((r) => r.id === selectedRegionId);
@@ -369,7 +494,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             }}
           />
         )}
-        </Box>
+        </div>
       </Box>
     </Box>
   );

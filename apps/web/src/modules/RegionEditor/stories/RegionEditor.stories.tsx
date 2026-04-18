@@ -17,7 +17,59 @@ import {
   PROPOSED_REGIONS,
   DRIFT_REGIONS,
 } from "../utils/region-editor-fixtures.util";
-import type { CellBounds, EntityOption, RegionDraft } from "../utils/region-editor.types";
+import type {
+  CellBounds,
+  CellValue,
+  EntityOption,
+  RegionDraft,
+  SheetPreview,
+  Workbook,
+} from "../utils/region-editor.types";
+
+function buildLargeFactSheet(): SheetPreview {
+  const rowCount = 480;
+  const colCount = 36;
+  const cells: CellValue[][] = Array.from({ length: rowCount }, () =>
+    Array<CellValue>(colCount).fill("")
+  );
+
+  cells[0][0] = "Raw GL export — Jan 2024 – Dec 2026 (scroll to draw across full range)";
+
+  const monthHeaders = Array.from({ length: 36 }, (_, i) => {
+    const year = 2024 + Math.floor(i / 12);
+    const month = (i % 12) + 1;
+    return `${year}-${String(month).padStart(2, "0")}`;
+  });
+  const staticHeaders = ["Account", "Cost Center", "Region", "Product", "Segment"];
+  const headers = [...staticHeaders, ...monthHeaders.slice(0, colCount - staticHeaders.length)];
+  for (let c = 0; c < colCount; c++) cells[2][c] = headers[c];
+
+  const accounts = ["4000 Revenue", "4100 Services", "4200 Licenses", "5000 COGS", "6000 Opex"];
+  const centers = ["AMER-East", "AMER-West", "EMEA", "APAC", "LATAM"];
+  const regions = ["US", "CA", "UK", "DE", "FR", "JP", "AU", "BR"];
+  const products = ["Portal", "Pulse", "Prism", "Pilot", "Pivot"];
+  const segments = ["Enterprise", "Mid-market", "SMB", "Startup"];
+
+  for (let r = 3; r < rowCount; r++) {
+    cells[r][0] = accounts[r % accounts.length];
+    cells[r][1] = centers[r % centers.length];
+    cells[r][2] = regions[r % regions.length];
+    cells[r][3] = products[r % products.length];
+    cells[r][4] = segments[r % segments.length];
+    for (let c = 5; c < colCount; c++) {
+      const base = ((r * 37) ^ (c * 13)) & 0xffff;
+      cells[r][c] = Math.round(1000 + (base % 95000));
+    }
+  }
+
+  return { id: "sheet_large_fact", name: "GL fact (large)", rowCount, colCount, cells };
+}
+
+const LARGE_WORKBOOK: Workbook = {
+  fetchedAt: "2026-04-17 09:12 UTC",
+  sourceLabel: "gl-export-large.xlsx",
+  sheets: [buildLargeFactSheet(), ...DEMO_WORKBOOK.sheets],
+};
 
 const STEP_CONFIGS: StepConfig[] = [
   { label: "Draw regions", description: "Outline the data on each sheet" },
@@ -120,10 +172,14 @@ export const ModeB_DriftHalt: Story = {
   },
 };
 
-const InteractiveContent: React.FC = () => {
+interface InteractiveContentProps {
+  workbook: Workbook;
+}
+
+const InteractiveContent: React.FC<InteractiveContentProps> = ({ workbook }) => {
   const [step, setStep] = useState<RegionEditorStep>(0);
   const [regions, setRegions] = useState<RegionDraft[]>([]);
-  const [activeSheetId, setActiveSheetId] = useState(DEMO_WORKBOOK.sheets[0].id);
+  const [activeSheetId, setActiveSheetId] = useState(workbook.sheets[0].id);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [stagedEntities, setStagedEntities] = useState<EntityOption[]>([]);
   const [committedPlan, setCommittedPlan] = useState<{
@@ -191,7 +247,7 @@ const InteractiveContent: React.FC = () => {
       <RegionEditorUI
         step={step}
         stepConfigs={STEP_CONFIGS}
-        workbook={DEMO_WORKBOOK}
+        workbook={workbook}
         regions={regions}
         activeSheetId={activeSheetId}
         onActiveSheetChange={setActiveSheetId}
@@ -281,5 +337,29 @@ export const Interactive: Story = {
     onCommit: fn(),
     onBack: fn(),
   },
-  render: () => <InteractiveContent />,
+  render: () => <InteractiveContent workbook={DEMO_WORKBOOK} />,
+};
+
+export const InteractiveLargeDataset: Story = {
+  name: "Interactive — large dataset (edge-scroll while drawing)",
+  args: {
+    step: 0,
+    stepConfigs: STEP_CONFIGS,
+    workbook: LARGE_WORKBOOK,
+    regions: [],
+    activeSheetId: LARGE_WORKBOOK.sheets[0].id,
+    onActiveSheetChange: fn(),
+    selectedRegionId: null,
+    onSelectRegion: fn(),
+    onRegionDraft: fn(),
+    onRegionUpdate: fn(),
+    onRegionDelete: fn(),
+    entityOptions: ENTITY_OPTIONS,
+    onInterpret: fn(),
+    onJumpToRegion: fn(),
+    onEditBinding: fn(),
+    onCommit: fn(),
+    onBack: fn(),
+  },
+  render: () => <InteractiveContent workbook={LARGE_WORKBOOK} />,
 };

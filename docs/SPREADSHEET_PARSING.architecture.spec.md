@@ -145,6 +145,16 @@ A region is *pivoted* when records run across one axis while field names run alo
 - If the user does not supply a name, the interpreter may propose one via an `recommendRecordsAxisName` AI sub-call that inspects the records-axis labels. The plan marks `recordsAxisName.source` as `"user"` or `"ai"` so the UI can flag AI suggestions for confirmation.
 - If no name can be proposed with high confidence and the user hasn't supplied one, the plan emits a `PIVOTED_REGION_MISSING_AXIS_NAME` blocker.
 
+### Crosstabs (cells-as-records)
+
+When `orientation === "cells-as-records"`, both axes carry dimension labels and every cell is a record. A crosstab region requires **three** user-facing names:
+
+- `recordsAxisName` — names the row dimension (e.g. `Quarter`).
+- `secondaryRecordsAxisName` — names the column dimension (e.g. `Region`).
+- `cellValueName` — names the field that holds each cell's value (e.g. `Revenue`).
+
+Each extracted record has three fields whose keys are the three names above and whose values are `(row-label, col-label, cell-value)` respectively. Validation treats all three as blockers when missing; the same `PIVOTED_REGION_MISSING_AXIS_NAME` warning code is reused, with the `locator` distinguishing which axis is missing.
+
 ## v1 declarative surface
 
 Surface variants kept and deferred in v1. The interpreter must recognize deferred shapes and emit `blocker` warnings rather than half-supporting them.
@@ -152,11 +162,11 @@ Surface variants kept and deferred in v1. The interpreter must recognize deferre
 | Group | v1 keeps | v1 defers |
 |---|---|---|
 | Locator | `cell`, `range`, `column`, `row` | `headerRelative`, `pattern` |
-| Bounds | `absolute` (from hints), `wholeSheet` (auto-detect fallback) | `anchoredTo`, `untilBlank`, `untilPattern` |
-| Orientation | `rows-as-records`, `columns-as-records` | — |
-| Header strategy | `row`, `column`, `rowLabels` | `composite`, `none` |
+| Bounds | `absolute` (from hints), `untilEmpty` (with configurable terminator count), `matchesPattern` (regex stop rule) | `anchoredTo`, `wholeSheet` auto-detect |
+| Orientation | `rows-as-records`, `columns-as-records`, `cells-as-records` (crosstab) | — |
+| Header strategy / axis | `headerAxis: "row" \| "column" \| "none"`; `headerStrategy.kind: "row" \| "column" \| "rowLabels"` | `composite` header strategy |
 | Identity strategy | `column`, `composite`, `rowPosition` (warn) | `derived` |
-| Skip predicates | `blank`, `columnMatches` | `allSameValue`, `cellMatches`, `marker` |
+| Skip predicates | `blank`, `cellMatches` (row or column target) | `allSameValue`, `marker`, `columnMatches` by header name |
 | Transforms | none (belong in `ColumnDefinition`) | none |
 | Binding source locator | `byHeaderName`, `byColumnIndex` (fallback) | `byHeaderMatch` |
 | Drift tolerance knobs | `headerShiftRows`, `addedColumns`, `removedColumns` | `columnReorder`, `renamedHeaders` |
@@ -164,8 +174,13 @@ Surface variants kept and deferred in v1. The interpreter must recognize deferre
 New v1 region fields from the primary (hinted-region) design:
 
 - `targetEntityDefinitionId: string`
-- `headerAxis: "row" | "column"` (explicit rather than implicit in header strategy)
-- `recordsAxisName?: { name, source: "user" | "ai", confidence }`
+- `headerAxis: "row" | "column" | "none"` (explicit rather than implicit in header strategy; `"none"` enables headerless regions with auto-generated `columnOverrides`)
+- `recordsAxisName?: { name, source: "user" | "ai", confidence }` — required on pivoted and crosstab regions
+- `secondaryRecordsAxisName?: { name, source, confidence }` — required on crosstab regions (column dimension)
+- `cellValueName?: { name, source, confidence }` — required on crosstab regions (the field holding each cell's value)
+- `boundsMode: "absolute" | "untilEmpty" | "matchesPattern"` with companion `boundsPattern` and `untilEmptyTerminatorCount`
+- `skipRules: SkipRule[]` — union of `{ kind: "blank" }` and `{ kind: "cellMatches", crossAxisIndex, pattern, axis? }`
+- `columnOverrides?: Record<string, string>` — per-field user overrides when `headerAxis === "none"`
 
 Transforms are deliberately omitted: value coercion is `ColumnDefinition`'s job. The plan describes *structure only*.
 

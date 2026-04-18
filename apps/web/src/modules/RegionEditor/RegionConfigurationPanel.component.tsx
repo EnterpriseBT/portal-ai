@@ -318,7 +318,7 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                 size="small"
                 variant="text"
                 onClick={() => setNewEntityDialogOpen(true)}
-                sx={{ alignSelf: "flex-start", textTransform: "none" }}
+                sx={{ textTransform: "none" }}
               >
                 + Create new entity
               </Button>

@@ -96,23 +96,31 @@ const LayoutPlanSchema = z.object({
   }),
 });
 
+const AxisNameSchema = z.object({
+  name: z.string(),
+  source: z.enum(["user", "ai"]),
+  confidence: z.number().min(0).max(1).optional(),
+});
+
 const RegionSchema = z.object({
   id: z.string().uuid(),
   sheet: z.string(),
   bounds: z.object({
     startRow: z.number().int().min(1),
-    endRow: z.union([z.number().int().min(1), z.literal("dynamic")]),
+    endRow: z.number().int().min(1),
     startCol: z.number().int().min(1),
     endCol: z.number().int().min(1),
   }),
+  boundsMode: z.enum(["absolute", "untilEmpty", "matchesPattern"]).default("absolute"),
+  boundsPattern: z.string().optional(),                  // required when boundsMode === "matchesPattern"
+  untilEmptyTerminatorCount: z.number().int().min(1).optional(), // defaults to 2 for untilEmpty
   targetEntityDefinitionId: z.string(),
-  orientation: z.enum(["rows-as-records", "columns-as-records"]),
-  headerAxis: z.enum(["row", "column"]),
-  recordsAxisName: z.object({
-    name: z.string(),
-    source: z.enum(["user", "ai"]),
-    confidence: z.number().min(0).max(1),
-  }).optional(),
+  orientation: z.enum(["rows-as-records", "columns-as-records", "cells-as-records"]),
+  headerAxis: z.enum(["row", "column", "none"]),
+  recordsAxisName: AxisNameSchema.optional(),             // required for pivoted + crosstab
+  secondaryRecordsAxisName: AxisNameSchema.optional(),    // required for crosstab (column dim)
+  cellValueName: AxisNameSchema.optional(),               // required for crosstab (cell value field)
+  columnOverrides: z.record(z.string(), z.string()).optional(), // headerAxis === "none" field-name overrides
   headerStrategy: HeaderStrategySchema,
   identityStrategy: IdentityStrategySchema,
   columnBindings: z.array(ColumnBindingSchema),
@@ -155,7 +163,12 @@ const BindingSourceLocatorSchema = z.discriminatedUnion("kind", [
 
 const SkipRuleSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("blank") }),
-  z.object({ kind: z.literal("columnMatches"), colLocator: LocatorSchema, regex: z.string() }),
+  z.object({
+    kind: z.literal("cellMatches"),
+    crossAxisIndex: z.number().int().nonnegative(),      // 0-based absolute sheet index; column for rows-as-records, row for columns-as-records
+    pattern: z.string(),                                  // regex; interpreter emits blocker if invalid
+    axis: z.enum(["row", "column"]).optional(),          // crosstab only — which axis the rule targets
+  }),
 ]);
 
 const DriftKnobsSchema = z.object({
