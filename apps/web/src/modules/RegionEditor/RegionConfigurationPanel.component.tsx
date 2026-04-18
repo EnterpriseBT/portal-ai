@@ -270,7 +270,6 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
         sx={{
           gridColumn: "1 / -1",
           width: "100%",
-          maxWidth: { sm: "66.6667%", lg: "100%" },
         }}
       >
         <Typography variant="caption" sx={SECTION_HEADING_SX}>
@@ -279,8 +278,8 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
 
         <Stack
           direction={{ xs: "column", sm: "row", lg: "column" }}
-          spacing={2}
-          alignItems="flex-start"
+          spacing={1}
+          alignItems="center"
           sx={{ width: "100%", minWidth: 0 }}
         >
           <TextInput
@@ -293,7 +292,7 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
             sx={{ flex: 1, minWidth: 0 }}
           />
 
-          <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+          <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0, width: '100%', flexDirection: 'row', alignItems: 'center' }}>
             <Select
               label="Target entity"
               size="small"
