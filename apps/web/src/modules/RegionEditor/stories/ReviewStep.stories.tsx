@@ -6,7 +6,7 @@ import {
   PROPOSED_REGIONS,
   BLOCKER_REGIONS,
   DRIFT_REGIONS,
-} from "../utils/region-editor-fixtures.util";
+} from "./utils/region-editor-fixtures.util";
 
 const meta = {
   title: "Modules/RegionEditor/ReviewStepUI",

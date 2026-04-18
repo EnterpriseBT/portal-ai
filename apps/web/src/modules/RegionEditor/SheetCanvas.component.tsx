@@ -36,13 +36,57 @@ const MAX_EDGE_SCROLL_SPEED = 18;
 
 type ActiveOp =
   | { kind: "draw"; start: CellCoord; end: CellCoord }
+  | { kind: "drawColumns"; startCol: number; endCol: number }
+  | { kind: "drawRows"; startRow: number; endRow: number }
   | {
       kind: "resize";
       regionId: string;
       handle: ResizeHandleKind;
       originalBounds: CellBounds;
       current: CellCoord;
+    }
+  | {
+      kind: "move";
+      regionId: string;
+      originalBounds: CellBounds;
+      pointerStart: CellCoord;
+      current: CellCoord;
     };
+
+function clampStart(start: number, span: number, max: number): number {
+  if (start < 0) return 0;
+  if (start + span > max) return max - span;
+  return start;
+}
+
+function computeMovedBounds(
+  original: CellBounds,
+  pointerStart: CellCoord,
+  current: CellCoord,
+  rowCount: number,
+  colCount: number
+): CellBounds {
+  const deltaRow = current.row - pointerStart.row;
+  const deltaCol = current.col - pointerStart.col;
+  const heightMinusOne = original.endRow - original.startRow;
+  const widthMinusOne = original.endCol - original.startCol;
+  const startRow = clampStart(
+    original.startRow + deltaRow,
+    heightMinusOne + 1,
+    rowCount
+  );
+  const startCol = clampStart(
+    original.startCol + deltaCol,
+    widthMinusOne + 1,
+    colCount
+  );
+  return {
+    startRow,
+    startCol,
+    endRow: startRow + heightMinusOne,
+    endCol: startCol + widthMinusOne,
+  };
+}
 
 export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   sheet,
@@ -96,7 +140,19 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           if (op.end.row === coord.row && op.end.col === coord.col) return op;
           return { ...op, end: coord };
         }
+        if (op.kind === "drawColumns") {
+          if (op.endCol === coord.col) return op;
+          return { ...op, endCol: coord.col };
+        }
+        if (op.kind === "drawRows") {
+          if (op.endRow === coord.row) return op;
+          return { ...op, endRow: coord.row };
+        }
         if (op.kind === "resize") {
+          if (op.current.row === coord.row && op.current.col === coord.col) return op;
+          return { ...op, current: coord };
+        }
+        if (op.kind === "move") {
           if (op.current.row === coord.row && op.current.col === coord.col) return op;
           return { ...op, current: coord };
         }
@@ -185,19 +241,67 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   const handleGridPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (readOnly) return;
-      const grid = gridRef.current;
-      if (!grid) return;
-      const rect = grid.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      if (x < ROW_HEADER_WIDTH || y < COL_HEADER_HEIGHT) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-corner-header]")) {
+        e.preventDefault();
+        onRegionDraft({
+          startRow: 0,
+          endRow: sheet.rowCount - 1,
+          startCol: 0,
+          endCol: sheet.colCount - 1,
+        });
+        return;
+      }
+      const colHdr = target?.closest<HTMLElement>("[data-col-header]");
+      if (colHdr) {
+        const col = Number(colHdr.getAttribute("data-col-header"));
+        if (!Number.isNaN(col)) {
+          e.preventDefault();
+          capturePointer(e);
+          setActiveOp({ kind: "drawColumns", startCol: col, endCol: col });
+        }
+        return;
+      }
+      const rowHdr = target?.closest<HTMLElement>("[data-row-header]");
+      if (rowHdr) {
+        const row = Number(rowHdr.getAttribute("data-row-header"));
+        if (!Number.isNaN(row)) {
+          e.preventDefault();
+          capturePointer(e);
+          setActiveOp({ kind: "drawRows", startRow: row, endRow: row });
+        }
+        return;
+      }
       const coord = clientToCell(e.clientX, e.clientY);
       if (!coord) return;
       e.preventDefault();
       capturePointer(e);
       setActiveOp({ kind: "draw", start: coord, end: coord });
     },
-    [readOnly, capturePointer, clientToCell]
+    [readOnly, capturePointer, clientToCell, onRegionDraft, sheet.rowCount, sheet.colCount]
+  );
+
+  const handleRegionBodyPointerDown = useCallback(
+    (regionId: string, originalBounds: CellBounds) =>
+      (e: React.PointerEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onRegionSelect(regionId);
+        if (readOnly || !onRegionResize) return;
+        capturePointer(e);
+        const coord = clientToCell(e.clientX, e.clientY) ?? {
+          row: originalBounds.startRow,
+          col: originalBounds.startCol,
+        };
+        setActiveOp({
+          kind: "move",
+          regionId,
+          originalBounds,
+          pointerStart: coord,
+          current: coord,
+        });
+      },
+    [readOnly, onRegionResize, onRegionSelect, capturePointer, clientToCell]
   );
 
   const handleResizeStart = useCallback(
@@ -243,6 +347,24 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         );
         onRegionSelect(hit?.id ?? null);
       }
+    } else if (activeOp.kind === "drawColumns") {
+      const lo = Math.min(activeOp.startCol, activeOp.endCol);
+      const hi = Math.max(activeOp.startCol, activeOp.endCol);
+      onRegionDraft({
+        startRow: 0,
+        endRow: sheet.rowCount - 1,
+        startCol: lo,
+        endCol: hi,
+      });
+    } else if (activeOp.kind === "drawRows") {
+      const lo = Math.min(activeOp.startRow, activeOp.endRow);
+      const hi = Math.max(activeOp.startRow, activeOp.endRow);
+      onRegionDraft({
+        startRow: lo,
+        endRow: hi,
+        startCol: 0,
+        endCol: sheet.colCount - 1,
+      });
     } else if (activeOp.kind === "resize") {
       const next = computeResizedBounds(
         activeOp.handle,
@@ -250,14 +372,47 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         activeOp.current
       );
       onRegionResize?.(activeOp.regionId, next);
+    } else if (activeOp.kind === "move") {
+      const moved =
+        activeOp.current.row !== activeOp.pointerStart.row ||
+        activeOp.current.col !== activeOp.pointerStart.col;
+      if (moved) {
+        const next = computeMovedBounds(
+          activeOp.originalBounds,
+          activeOp.pointerStart,
+          activeOp.current,
+          sheet.rowCount,
+          sheet.colCount
+        );
+        onRegionResize?.(activeOp.regionId, next);
+      }
     }
     setActiveOp(null);
-  }, [activeOp, onRegionDraft, onRegionResize, onRegionSelect, regions, sheet.id, stopAutoScroll]);
+  }, [activeOp, onRegionDraft, onRegionResize, onRegionSelect, regions, sheet.id, sheet.rowCount, sheet.colCount, stopAutoScroll]);
 
   const pendingBounds: CellBounds | null = useMemo(() => {
-    if (!activeOp || activeOp.kind !== "draw") return null;
-    return normalizeBounds(activeOp.start, activeOp.end);
-  }, [activeOp]);
+    if (!activeOp) return null;
+    if (activeOp.kind === "draw") {
+      return normalizeBounds(activeOp.start, activeOp.end);
+    }
+    if (activeOp.kind === "drawColumns") {
+      return {
+        startRow: 0,
+        endRow: sheet.rowCount - 1,
+        startCol: Math.min(activeOp.startCol, activeOp.endCol),
+        endCol: Math.max(activeOp.startCol, activeOp.endCol),
+      };
+    }
+    if (activeOp.kind === "drawRows") {
+      return {
+        startRow: Math.min(activeOp.startRow, activeOp.endRow),
+        endRow: Math.max(activeOp.startRow, activeOp.endRow),
+        startCol: 0,
+        endCol: sheet.colCount - 1,
+      };
+    }
+    return null;
+  }, [activeOp, sheet.rowCount, sheet.colCount]);
 
   const visibleRegions = useMemo(
     () => regions.filter((r) => r.sheetId === sheet.id),
@@ -267,6 +422,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   const gridWidth = ROW_HEADER_WIDTH + cellWidth * sheet.colCount;
 
   const gridBody = useMemo(() => {
+    const headerCursor = readOnly ? "default" : "pointer";
     const colHeaderStyle: React.CSSProperties = {
       width: cellWidth,
       height: COL_HEADER_HEIGHT,
@@ -280,6 +436,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       fontWeight: 600,
       color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
+      cursor: headerCursor,
     };
     const rowHeaderStyle: React.CSSProperties = {
       width: ROW_HEADER_WIDTH,
@@ -298,6 +455,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       fontWeight: 600,
       color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
+      cursor: headerCursor,
     };
     const cellStyle: React.CSSProperties = {
       width: cellWidth,
@@ -325,7 +483,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     const colHeaderCells: React.ReactElement[] = [];
     for (let col = 0; col < sheet.colCount; col++) {
       colHeaderCells.push(
-        <div key={col} style={colHeaderStyle}>
+        <div
+          key={col}
+          data-col-header={col}
+          style={colHeaderStyle}
+        >
           {colIndexToLetter(col)}
         </div>
       );
@@ -350,7 +512,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       }
       dataRows.push(
         <div key={row} style={rowStyle}>
-          <div style={rowHeaderStyle}>{row + 1}</div>
+          <div data-row-header={row} style={rowHeaderStyle}>
+            {row + 1}
+          </div>
           {cellEls}
         </div>
       );
@@ -369,6 +533,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           }}
         >
           <div
+            data-corner-header=""
             style={{
               width: ROW_HEADER_WIDTH,
               height: COL_HEADER_HEIGHT,
@@ -376,7 +541,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               borderBottom: "1px solid #e5e7eb",
               flex: "0 0 auto",
               boxSizing: "border-box",
+              cursor: headerCursor,
             }}
+            aria-label="Select entire sheet"
           />
           {colHeaderCells}
         </div>
@@ -458,10 +625,22 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         })()}
 
         {visibleRegions.map((region) => {
-          const previewBounds =
-            activeOp?.kind === "resize" && activeOp.regionId === region.id
-              ? computeResizedBounds(activeOp.handle, activeOp.originalBounds, activeOp.current)
-              : region.bounds;
+          let previewBounds = region.bounds;
+          if (activeOp?.kind === "resize" && activeOp.regionId === region.id) {
+            previewBounds = computeResizedBounds(
+              activeOp.handle,
+              activeOp.originalBounds,
+              activeOp.current
+            );
+          } else if (activeOp?.kind === "move" && activeOp.regionId === region.id) {
+            previewBounds = computeMovedBounds(
+              activeOp.originalBounds,
+              activeOp.pointerStart,
+              activeOp.current,
+              sheet.rowCount,
+              sheet.colCount
+            );
+          }
           return (
             <RegionOverlayUI
               key={region.id}
@@ -470,9 +649,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               entityOrder={entityOrder}
               selected={region.id === selectedRegionId}
               resizable={!readOnly && Boolean(onRegionResize)}
+              movable={!readOnly && Boolean(onRegionResize)}
               cellWidth={cellWidth}
               cellHeight={cellHeight}
-              onClick={() => onRegionSelect(region.id)}
+              onBodyPointerDown={handleRegionBodyPointerDown}
               onResizeStart={handleResizeStart}
             />
           );

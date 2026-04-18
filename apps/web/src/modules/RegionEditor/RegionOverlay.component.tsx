@@ -68,9 +68,13 @@ export interface RegionOverlayUIProps {
   entityOrder: string[];
   selected: boolean;
   resizable: boolean;
+  movable?: boolean;
   cellWidth: number;
   cellHeight: number;
-  onClick: () => void;
+  onBodyPointerDown: (
+    regionId: string,
+    originalBounds: CellBounds
+  ) => (e: React.PointerEvent) => void;
   onResizeStart: (
     regionId: string,
     handle: ResizeHandleKind,
@@ -84,9 +88,10 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   entityOrder,
   selected,
   resizable,
+  movable = false,
   cellWidth,
   cellHeight,
-  onClick,
+  onBodyPointerDown,
   onResizeStart,
 }) => {
   const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
@@ -111,11 +116,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   return (
     <>
       <Box
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          onClick();
-        }}
+        onPointerDown={onBodyPointerDown(region.id, bounds)}
         sx={{
           position: "absolute",
           left,
@@ -125,7 +126,7 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           border: "2px solid",
           borderColor: color,
           backgroundColor: `${color}1A`,
-          cursor: "pointer",
+          cursor: movable && selected ? "move" : "pointer",
           zIndex: selected ? 6 : 5,
           boxShadow: selected ? `0 0 0 2px ${color}80` : undefined,
           borderBottomStyle: extendsDown ? "dashed" : "solid",

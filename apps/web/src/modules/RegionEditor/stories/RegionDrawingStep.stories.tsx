@@ -9,7 +9,7 @@ import {
   EMPTY_REGIONS,
   PROPOSED_REGIONS,
   DRIFT_REGIONS,
-} from "../utils/region-editor-fixtures.util";
+} from "./utils/region-editor-fixtures.util";
 import type { CellBounds, RegionDraft } from "../utils/region-editor.types";
 
 const meta = {

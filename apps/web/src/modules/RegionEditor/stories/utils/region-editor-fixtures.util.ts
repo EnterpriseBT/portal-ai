@@ -3,7 +3,7 @@ import type {
   RegionDraft,
   SheetPreview,
   Workbook,
-} from "./region-editor.types";
+} from "../../utils/region-editor.types";
 
 export const ENTITY_OPTIONS: EntityOption[] = [
   { value: "ent_contact", label: "Contact", source: "db" },
@@ -82,7 +82,7 @@ function buildColumnTablesSheet(): SheetPreview {
 
   // Region 4: absolute — Products at A3:E7 (4 products as columns)
   cells[2][0] = "Products (fixed 4 columns)";
-  write(cells, 3, 0, ["Field", "Widget A", "Widget B", "Gadget", "Gizmo"]);
+  write(cells, 3, 0, ["Name", "Widget A", "Widget B", "Gadget", "Gizmo"]);
   write(cells, 4, 0, ["SKU", "SKU-001", "SKU-002", "SKU-010", "SKU-011"]);
   write(cells, 5, 0, ["Price", 19.99, 24.5, 99.0, 149.0]);
   write(cells, 6, 0, ["Stock", 120, 80, 35, 12]);
@@ -98,7 +98,7 @@ function buildColumnTablesSheet(): SheetPreview {
 
   // Region 6: matchesPattern — Sales reps ending at "Total" column
   cells[15][0] = "Sales reps (ends at Total column)";
-  write(cells, 16, 0, ["Field", "Rep A", "Rep B", "Rep C", "Rep D", "Total"]);
+  write(cells, 16, 0, ["Name", "Rep A", "Rep B", "Rep C", "Rep D", "Total"]);
   write(cells, 17, 0, ["Deals", 12, 8, 15, 9, 44]);
   write(cells, 18, 0, ["Revenue", 120000, 85000, 175000, 98000, 478000]);
 
@@ -110,7 +110,7 @@ function buildColumnTablesSheet(): SheetPreview {
 // ----------------------------------------------------------------------------
 
 function buildMixedAxesSheet(): SheetPreview {
-  const cells = blank(22, 10);
+  const cells = blank(32, 10);
 
   cells[0][0] = "Mixed axes — the less-common orientation/header combinations";
 
@@ -135,7 +135,21 @@ function buildMixedAxesSheet(): SheetPreview {
   write(cells, 16, 0, ["Tier", "Core", "GTM", "GTM", "Ops"]);
   // Empty col 5 so an untilEmpty region stops there.
 
-  return { id: "sheet_mixed_axes", name: "Mixed axes", rowCount: 22, colCount: 10, cells };
+  // Region 9: rows-as-records + headerAxis: column — ideal pivoted layout.
+  // No header row; column A carries the record identity (salesperson) and the
+  // remaining columns carry field values (quota, region, segment, account count).
+  cells[19][0] =
+    "Rows-as-records with header column — col A identifies each record (no header row)";
+  write(cells, 21, 0, ["Alex",    42000, "AMER",  "Enterprise", 18]);
+  write(cells, 22, 0, ["Bianca",  58000, "EMEA",  "Mid-Market", 24]);
+  write(cells, 23, 0, ["Casey",   36000, "APAC",  "SMB",        31]);
+  write(cells, 24, 0, ["Diego",   71000, "LATAM", "Enterprise",  9]);
+  write(cells, 25, 0, ["Elena",   49000, "EMEA",  "Mid-Market", 22]);
+  write(cells, 26, 0, ["Farouk",  63000, "AMER",  "Enterprise", 14]);
+  write(cells, 27, 0, ["Gemma",   31000, "APAC",  "SMB",        27]);
+  // Empty row 28 so an untilEmpty region stops there.
+
+  return { id: "sheet_mixed_axes", name: "Mixed axes", rowCount: 32, colCount: 10, cells };
 }
 
 // ----------------------------------------------------------------------------

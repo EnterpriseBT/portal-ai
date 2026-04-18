@@ -16,7 +16,7 @@ import {
   ENTITY_OPTIONS,
   PROPOSED_REGIONS,
   DRIFT_REGIONS,
-} from "../utils/region-editor-fixtures.util";
+} from "./utils/region-editor-fixtures.util";
 import type {
   CellBounds,
   CellValue,

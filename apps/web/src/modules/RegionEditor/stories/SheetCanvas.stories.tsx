@@ -7,7 +7,7 @@ import {
   DEMO_WORKBOOK,
   PROPOSED_REGIONS,
   DRIFT_REGIONS,
-} from "../utils/region-editor-fixtures.util";
+} from "./utils/region-editor-fixtures.util";
 
 const meta = {
   title: "Modules/RegionEditor/SheetCanvasUI",

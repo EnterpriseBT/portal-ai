@@ -6,7 +6,7 @@ import {
   ENTITY_OPTIONS,
   PROPOSED_REGIONS,
   DRIFT_REGIONS,
-} from "../utils/region-editor-fixtures.util";
+} from "./utils/region-editor-fixtures.util";
 import type { EntityOption } from "../utils/region-editor.types";
 
 const ENTITY_OPTIONS_WITH_STAGED: EntityOption[] = [
