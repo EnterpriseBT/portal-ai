@@ -3,6 +3,7 @@ import {
   Stack,
   Typography,
   TextInput,
+  DeferredTextInput,
   Button,
   IconButton,
   Checkbox,
@@ -109,9 +110,9 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
             <Typography variant="caption" sx={{ alignSelf: "center" }}>
               matches
             </Typography>
-            <TextInput
+            <DeferredTextInput
               size="small"
-              sx={{ flex: 1, minWidth: 120 }}
+              sx={{ flex: 1 }}
               value={rule.pattern}
               onChange={(e) =>
                 setRules(

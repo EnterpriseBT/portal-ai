@@ -138,6 +138,7 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
         gridTemplateColumns: {
           xs: "minmax(0, 1fr)",
           sm: "minmax(0, 1fr) auto minmax(0, 1fr)",
+          lg: "minmax(0, 1fr)",
         },
       }}
     >
@@ -268,7 +269,7 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
         sx={{
           gridColumn: "1 / -1",
           width: "100%",
-          maxWidth: { sm: "66.6667%" },
+          maxWidth: { sm: "66.6667%", lg: "100%" },
         }}
       >
         <Typography variant="caption" sx={SECTION_HEADING_SX}>
@@ -276,7 +277,7 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
         </Typography>
 
         <Stack
-          direction={{ xs: "column", sm: "row" }}
+          direction={{ xs: "column", sm: "row", lg: "column" }}
           spacing={2}
           alignItems="flex-start"
           sx={{ width: "100%", minWidth: 0 }}
@@ -507,8 +508,9 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
       <Divider
         orientation="vertical"
         flexItem
-        sx={{ display: { xs: "none", sm: "block" } }}
+        sx={{ display: { xs: "none", sm: "block", lg: "none" } }}
       />
+      <Divider sx={{ gridColumn: "1 / -1", display: { xs: "none", lg: "block" } }} />
 
       <Stack spacing={2}>
         <Typography variant="caption" sx={SECTION_HEADING_SX}>

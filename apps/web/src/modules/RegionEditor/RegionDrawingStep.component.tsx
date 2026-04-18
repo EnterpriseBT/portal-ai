@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Stack, Typography, Tabs, Button, Select } from "@portalai/core/ui";
 import MuiTab from "@mui/material/Tab";
 import MuiChip from "@mui/material/Chip";
+import { useTheme } from "@mui/material/styles";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import type { SelectOption } from "@portalai/core/ui";
 
 import { SheetCanvasUI } from "./SheetCanvas.component";
@@ -66,6 +68,8 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   errors,
 }) => {
   const [attemptedInterpret, setAttemptedInterpret] = useState(false);
+  const theme = useTheme();
+  const isLargeScreen = useMediaQuery(theme.breakpoints.up("lg"));
   const activeSheet = workbook.sheets.find((s) => s.id === activeSheetId) ?? workbook.sheets[0];
 
   const entityOrder = useMemo(() => {
@@ -344,7 +348,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       </Box>
 
       <Stack
-        direction="column"
+        direction={{ xs: "column", lg: "row" }}
         spacing={2}
         alignItems="stretch"
         sx={{
@@ -356,6 +360,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       >
         <Box
           sx={{
+            flex: { xs: "none", lg: 1 },
             width: "100%",
             minWidth: 0,
             maxWidth: "100%",
@@ -374,9 +379,18 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
               onRegionDraft({ sheetId: activeSheet.id, bounds })
             }
             onRegionResize={onRegionResize}
+            maxHeight={isLargeScreen ? "calc(100vh - 420px)" : 420}
           />
         </Box>
-        <Box sx={{ width: "100%", minWidth: 0 }}>
+        <Box
+          sx={{
+            width: { xs: "100%", lg: 440 },
+            minWidth: 0,
+            flexShrink: 0,
+            maxHeight: { xs: "none", lg: "calc(100vh - 420px)" },
+            overflowY: { xs: "visible", lg: "auto" },
+          }}
+        >
           <RegionConfigurationPanelUI
             region={selectedRegion}
             entityOptions={entityOptions}

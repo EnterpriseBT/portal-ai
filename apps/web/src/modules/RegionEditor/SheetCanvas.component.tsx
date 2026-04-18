@@ -26,7 +26,7 @@ export interface SheetCanvasUIProps {
   onRegionResize?: (regionId: string, nextBounds: CellBounds) => void;
   readOnly?: boolean;
   cellSize?: { width: number; height: number };
-  maxHeight?: number;
+  maxHeight?: number | string;
 }
 
 const DEFAULT_CELL_WIDTH = 96;
