@@ -1,6 +1,12 @@
 import React, { useMemo, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import MuiButton from "@mui/material/Button";
+import Box from "@mui/material/Box";
 import type { StepConfig } from "@portalai/core/ui";
 
 import { RegionEditorUI } from "../RegionEditor.component";
@@ -120,6 +126,10 @@ const InteractiveContent: React.FC = () => {
   const [activeSheetId, setActiveSheetId] = useState(DEMO_WORKBOOK.sheets[0].id);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [stagedEntities, setStagedEntities] = useState<EntityOption[]>([]);
+  const [committedPlan, setCommittedPlan] = useState<{
+    regions: RegionDraft[];
+    stagedEntities: EntityOption[];
+  } | null>(null);
 
   const entityOptions = useMemo<EntityOption[]>(
     () => [...stagedEntities, ...ENTITY_OPTIONS],
@@ -177,44 +187,76 @@ const InteractiveContent: React.FC = () => {
   }, [regions]);
 
   return (
-    <RegionEditorUI
-      step={step}
-      stepConfigs={STEP_CONFIGS}
-      workbook={DEMO_WORKBOOK}
-      regions={regions}
-      activeSheetId={activeSheetId}
-      onActiveSheetChange={setActiveSheetId}
-      selectedRegionId={selectedRegionId}
-      onSelectRegion={setSelectedRegionId}
-      onRegionDraft={handleDraft}
-      onRegionUpdate={handleUpdate}
-      onRegionDelete={handleDelete}
-      onRegionResize={handleResize}
-      entityOptions={entityOptions}
-      onCreateEntity={handleCreateEntity}
-      onSuggestAxisName={(id) =>
-        handleUpdate(id, {
-          recordsAxisName: { name: "Month", source: "ai", confidence: 0.82 },
-        })
-      }
-      onInterpret={() => {
-        setRegions((prev) =>
-          prev.map((r, i) => ({
-            ...r,
-            confidence: r.confidence ?? 0.7 + (i * 0.07),
-          }))
-        );
-        setStep(1);
-      }}
-      overallConfidence={overallConfidence}
-      onJumpToRegion={(id) => {
-        setSelectedRegionId(id);
-        setStep(0);
-      }}
-      onEditBinding={fn()}
-      onCommit={fn()}
-      onBack={() => setStep(0)}
-    />
+    <>
+      <RegionEditorUI
+        step={step}
+        stepConfigs={STEP_CONFIGS}
+        workbook={DEMO_WORKBOOK}
+        regions={regions}
+        activeSheetId={activeSheetId}
+        onActiveSheetChange={setActiveSheetId}
+        selectedRegionId={selectedRegionId}
+        onSelectRegion={setSelectedRegionId}
+        onRegionDraft={handleDraft}
+        onRegionUpdate={handleUpdate}
+        onRegionDelete={handleDelete}
+        onRegionResize={handleResize}
+        entityOptions={entityOptions}
+        onCreateEntity={handleCreateEntity}
+        onSuggestAxisName={(id) =>
+          handleUpdate(id, {
+            recordsAxisName: { name: "Month", source: "ai", confidence: 0.82 },
+          })
+        }
+        onInterpret={() => {
+          setRegions((prev) =>
+            prev.map((r, i) => ({
+              ...r,
+              confidence: r.confidence ?? 0.7 + (i * 0.07),
+            }))
+          );
+          setStep(1);
+        }}
+        overallConfidence={overallConfidence}
+        onJumpToRegion={(id) => {
+          setSelectedRegionId(id);
+          setStep(0);
+        }}
+        onEditBinding={fn()}
+        onCommit={() => setCommittedPlan({ regions, stagedEntities })}
+        onBack={() => setStep(0)}
+      />
+      <Dialog
+        open={committedPlan !== null}
+        onClose={() => setCommittedPlan(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Region editor output</DialogTitle>
+        <DialogContent dividers>
+          <Box
+            component="pre"
+            sx={{
+              m: 0,
+              p: 2,
+              maxHeight: "60vh",
+              overflow: "auto",
+              fontSize: 12,
+              fontFamily: "monospace",
+              backgroundColor: "grey.100",
+              borderRadius: 1,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {committedPlan ? JSON.stringify(committedPlan, null, 2) : ""}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <MuiButton onClick={() => setCommittedPlan(null)}>Close</MuiButton>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 
