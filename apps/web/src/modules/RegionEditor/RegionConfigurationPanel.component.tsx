@@ -14,6 +14,7 @@ import type { SelectOption } from "@portalai/core/ui";
 
 import { FieldNameEditorUI } from "./FieldNameEditor.component";
 import { NewEntityDialogUI } from "./NewEntityDialog.component";
+import { SectionHelpUI } from "./SectionHelp.component";
 import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
 import { ToggleRowUI } from "./ToggleRow.component";
 import { formatBounds } from "./utils/a1-notation.util";
@@ -359,9 +360,25 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
         </Typography>
 
         <Stack spacing={1}>
-          <Typography variant="caption" sx={SECTION_HEADING_SX}>
-            Orientation
-          </Typography>
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <Typography variant="caption" sx={SECTION_HEADING_SX}>
+              Orientation
+            </Typography>
+            <SectionHelpUI
+              ariaLabel="What is orientation?"
+              title={
+                <>
+                  <strong>Rows:</strong> each row is a record — the most common table shape.
+                  <br />
+                  <strong>Columns:</strong> each column is a record — use when the data is
+                  pivoted sideways (field names down the left).
+                  <br />
+                  <strong>Cells (crosstab):</strong> every cell in the region is a record,
+                  indexed by its row and column label (e.g. revenue by month × region).
+                </>
+              }
+            />
+          </Stack>
           <ToggleRowUI
             value={region.orientation}
             onChange={(v) => onUpdate({ orientation: v })}
@@ -375,9 +392,26 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
 
         {!crosstab && (
           <Stack spacing={1}>
-            <Typography variant="caption" sx={SECTION_HEADING_SX}>
-              Header axis
-            </Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Typography variant="caption" sx={SECTION_HEADING_SX}>
+                Header axis
+              </Typography>
+              <SectionHelpUI
+                ariaLabel="What is the header axis?"
+                title={
+                  <>
+                    <strong>Row:</strong> the top row of the region holds the field names
+                    (headers along the top).
+                    <br />
+                    <strong>Column:</strong> the left-most column of the region holds the
+                    field names (headers down the left).
+                    <br />
+                    <strong>None:</strong> the region has no header — field names are
+                    auto-generated from position and can be overridden below.
+                  </>
+                }
+              />
+            </Stack>
             <ToggleRowUI
               value={region.headerAxis}
               onChange={(v) => onUpdate({ headerAxis: v })}
@@ -409,9 +443,33 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
 
         {pivoted && (
           <Stack spacing={1}>
-            <Typography variant="caption" sx={SECTION_HEADING_SX}>
-              {crosstab ? "Row-axis name" : "Records-axis name"}
-            </Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Typography variant="caption" sx={SECTION_HEADING_SX}>
+                {crosstab ? "Row-axis name" : "Records-axis name"}
+              </Typography>
+              <SectionHelpUI
+                ariaLabel={
+                  crosstab ? "What is the row-axis name?" : "What is the records-axis name?"
+                }
+                title={
+                  crosstab ? (
+                    <>
+                      Name the dimension whose <em>values</em> run down the rows of the
+                      crosstab (e.g. <em>Month</em> when months label the rows). It becomes
+                      a field on every extracted record.
+                    </>
+                  ) : (
+                    <>
+                      When a region is pivoted (field names run along the header axis
+                      rather than the record axis), the record-axis labels themselves
+                      become the values of a field — this name labels that field. For
+                      example, if each column is a record and years label the columns,
+                      the records-axis name might be <em>Year</em>.
+                    </>
+                  )
+                }
+              />
+            </Stack>
             <Stack direction="row" spacing={1} alignItems="flex-start">
               <TextInput
                 size="small"
@@ -452,9 +510,21 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
 
         {crosstab && (
           <Stack spacing={1}>
-            <Typography variant="caption" sx={SECTION_HEADING_SX}>
-              Column-axis name
-            </Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Typography variant="caption" sx={SECTION_HEADING_SX}>
+                Column-axis name
+              </Typography>
+              <SectionHelpUI
+                ariaLabel="What is the column-axis name?"
+                title={
+                  <>
+                    Name the dimension whose <em>values</em> run across the columns of the
+                    crosstab (e.g. <em>Region</em> when regions label the columns). It
+                    becomes a field on every extracted record.
+                  </>
+                }
+              />
+            </Stack>
             <TextInput
               size="small"
               fullWidth
@@ -477,9 +547,22 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
 
         {crosstab && (
           <Stack spacing={1}>
-            <Typography variant="caption" sx={SECTION_HEADING_SX}>
-              Cell value name
-            </Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Typography variant="caption" sx={SECTION_HEADING_SX}>
+                Cell value name
+              </Typography>
+              <SectionHelpUI
+                ariaLabel="What is the cell value name?"
+                title={
+                  <>
+                    Name the field that holds each cell&apos;s <em>value</em> in the crosstab
+                    (e.g. <em>Revenue</em> when cells contain dollar amounts). Every
+                    extracted record has this field alongside the row- and column-axis
+                    fields.
+                  </>
+                }
+              />
+            </Stack>
             <TextInput
               size="small"
               fullWidth

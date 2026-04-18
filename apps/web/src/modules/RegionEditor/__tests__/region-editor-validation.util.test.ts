@@ -178,6 +178,29 @@ describe("validateRegion — skip rules", () => {
     expect(errors["skipRules.0.pattern"]).toMatch(/valid regular expression/i);
   });
 
+  test("flags cellMatches rule with no row/column selected", () => {
+    const errors = validateRegion(
+      baseRegion({
+        skipRules: [
+          { kind: "cellMatches", crossAxisIndex: undefined, pattern: "^x$" },
+        ],
+      })
+    );
+    expect(errors["skipRules.0.crossAxisIndex"]).toMatch(/required/i);
+  });
+
+  test("reports both missing position and empty pattern on the same rule", () => {
+    const errors = validateRegion(
+      baseRegion({
+        skipRules: [
+          { kind: "cellMatches", crossAxisIndex: undefined, pattern: "" },
+        ],
+      })
+    );
+    expect(errors["skipRules.0.crossAxisIndex"]).toMatch(/required/i);
+    expect(errors["skipRules.0.pattern"]).toMatch(/required/i);
+  });
+
   test("accepts multiple valid skip rules", () => {
     const errors = validateRegion(
       baseRegion({

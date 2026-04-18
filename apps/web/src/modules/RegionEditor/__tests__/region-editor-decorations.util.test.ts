@@ -118,6 +118,21 @@ describe("computeRegionDecorations — skipped rows", () => {
     expect(skipped[0].bounds.startRow).toBe(3);
   });
 
+  test("cellMatches rule with undefined crossAxisIndex produces no skip decoration", () => {
+    const cells = [
+      ["H1", "H2"],
+      ["a", "b"],
+      ["c", "d"],
+    ];
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 1 },
+      skipRules: [{ kind: "cellMatches", crossAxisIndex: undefined, pattern: ".*" }],
+    });
+    const s = sheet(cells);
+    const skipped = computeRegionDecorations(region, s).filter((d) => d.kind === "skipped");
+    expect(skipped).toHaveLength(0);
+  });
+
   test("cellMatches rule marks rows whose identity-column cell matches the pattern", () => {
     const cells = [
       ["First", "Last", "Email"],

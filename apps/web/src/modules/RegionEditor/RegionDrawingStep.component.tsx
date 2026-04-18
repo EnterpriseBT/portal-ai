@@ -116,7 +116,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         region.targetEntityLabel ??
         (region.targetEntityDefinitionId
           ? entityOptions.find((o) => o.value === region.targetEntityDefinitionId)?.label ??
-            region.targetEntityDefinitionId
+          region.targetEntityDefinitionId
           : "Unbound");
       const labelPart = region.proposedLabel ?? formatBounds(region.bounds);
       return `${labelPart} · ${sheetName} · ${entityLabel}`;
@@ -314,36 +314,36 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
           allowScrollButtonsMobile
           sx={{ width: "100%", maxWidth: "100%", minWidth: 0, minHeight: 0 }}
         >
-        {workbook.sheets.map((sheet) => {
-          const count = regionCountBySheet(sheet.id);
-          return (
-            <MuiTab
-              key={sheet.id}
-              value={sheet.id}
-              label={
-                <Stack direction="row" spacing={0.75} alignItems="center">
-                  <span>{sheet.name}</span>
-                  <Box
-                    component="span"
-                    sx={{
-                      display: "inline-block",
-                      minWidth: 18,
-                      textAlign: "center",
-                      px: 0.5,
-                      borderRadius: 9,
-                      fontSize: 10,
-                      fontWeight: 700,
-                      backgroundColor: count > 0 ? "primary.main" : "grey.300",
-                      color: count > 0 ? "primary.contrastText" : "text.secondary",
-                    }}
-                  >
-                    {count}
-                  </Box>
-                </Stack>
-              }
-            />
-          );
-        })}
+          {workbook.sheets.map((sheet) => {
+            const count = regionCountBySheet(sheet.id);
+            return (
+              <MuiTab
+                key={sheet.id}
+                value={sheet.id}
+                label={
+                  <Stack direction="row" spacing={0.75} alignItems="center">
+                    <span>{sheet.name}</span>
+                    <Box
+                      component="span"
+                      sx={{
+                        display: "inline-block",
+                        minWidth: 18,
+                        textAlign: "center",
+                        px: 0.5,
+                        borderRadius: 9,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        backgroundColor: count > 0 ? "primary.main" : "grey.300",
+                        color: count > 0 ? "primary.contrastText" : "text.secondary",
+                      }}
+                    >
+                      {count}
+                    </Box>
+                  </Stack>
+                }
+              />
+            );
+          })}
         </Tabs>
       </Box>
 
@@ -379,7 +379,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
               onRegionDraft({ sheetId: activeSheet.id, bounds })
             }
             onRegionResize={onRegionResize}
-            maxHeight={isLargeScreen ? "calc(100vh - 420px)" : 420}
+            maxHeight={isLargeScreen ? "calc(100vh - 400px)" : 420}
           />
         </Box>
         <Box
@@ -387,7 +387,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             width: { xs: "100%", lg: 440 },
             minWidth: 0,
             flexShrink: 0,
-            maxHeight: { xs: "none", lg: "calc(100vh - 420px)" },
+            maxHeight: { xs: "none", lg: "calc(100vh - 400px)" },
             overflowY: { xs: "visible", lg: "auto" },
           }}
         >

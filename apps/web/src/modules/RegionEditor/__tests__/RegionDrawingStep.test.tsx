@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
 import React from "react";
 import { jest } from "@jest/globals";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { RegionDrawingStepUI } from "../RegionDrawingStep.component";
 import type { RegionDraft, Workbook } from "../utils/region-editor.types";
@@ -127,5 +127,94 @@ describe("RegionDrawingStepUI — keyboard Escape", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(onSelectRegion).not.toHaveBeenCalled();
     document.body.removeChild(input);
+  });
+});
+
+describe("RegionDrawingStepUI — interpret validation", () => {
+  test("clicking Interpret with a valid region calls onInterpret", () => {
+    const onInterpret = jest.fn();
+    render(<RegionDrawingStepUI {...baseProps({ onInterpret })} />);
+    fireEvent.click(screen.getByRole("button", { name: /interpret/i }));
+    expect(onInterpret).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  test("clicking Interpret with invalid regions blocks navigation and shows a summary", () => {
+    const onInterpret = jest.fn();
+    const onSelectRegion = jest.fn();
+    const onActiveSheetChange = jest.fn();
+    const invalid = baseRegion({
+      id: "r_bad",
+      targetEntityDefinitionId: null,
+    });
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          onInterpret,
+          onSelectRegion,
+          onActiveSheetChange,
+          regions: [invalid],
+          selectedRegionId: null,
+        })}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /interpret/i }));
+    expect(onInterpret).not.toHaveBeenCalled();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/1 region has validation errors/i);
+    expect(onSelectRegion).toHaveBeenCalledWith("r_bad");
+  });
+
+  test("clicking Interpret with two invalid regions reports the count and listed labels", () => {
+    const first = baseRegion({
+      id: "r_one",
+      proposedLabel: "First region",
+      targetEntityDefinitionId: null,
+    });
+    const second = baseRegion({
+      id: "r_two",
+      proposedLabel: "Second region",
+      targetEntityDefinitionId: null,
+    });
+    render(
+      <RegionDrawingStepUI {...baseProps({ regions: [first, second], selectedRegionId: null })} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /interpret/i }));
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/2 regions have validation errors/i);
+    expect(alert).toHaveTextContent(/First region/);
+    expect(alert).toHaveTextContent(/Second region/);
+  });
+
+  test("invalid-region chip jumps selection to that region", () => {
+    const onSelectRegion = jest.fn();
+    const first = baseRegion({
+      id: "r_one",
+      proposedLabel: "First region",
+      targetEntityDefinitionId: null,
+    });
+    const second = baseRegion({
+      id: "r_two",
+      proposedLabel: "Second region",
+      targetEntityDefinitionId: null,
+    });
+    const { getByRole } = render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          onSelectRegion,
+          regions: [first, second],
+          selectedRegionId: null,
+        })}
+      />
+    );
+    fireEvent.click(getByRole("button", { name: /interpret/i }));
+    onSelectRegion.mockClear();
+    const alert = getByRole("alert");
+    const chip = Array.from(alert.querySelectorAll(".MuiChip-root")).find((el) =>
+      el.textContent?.includes("Second region")
+    );
+    expect(chip).toBeDefined();
+    fireEvent.click(chip!);
+    expect(onSelectRegion).toHaveBeenCalledWith("r_two");
   });
 });
