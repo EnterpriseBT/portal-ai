@@ -3,7 +3,6 @@ import {
   Stack,
   Typography,
   TextInput,
-  DeferredTextInput,
   Button,
   IconButton,
   Checkbox,
@@ -72,6 +71,7 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
       {rules.map((rule, idx) => {
         if (rule.kind !== "cellMatches") return null;
         const patternError = errors?.[`skipRules.${idx}.pattern`];
+        const positionError = errors?.[`skipRules.${idx}.crossAxisIndex`];
         return (
           <Stack
             key={idx}
@@ -106,11 +106,13 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
                   )
                 )
               }
+              error={Boolean(positionError)}
+              helperText={positionError}
             />
             <Typography variant="caption" sx={{ alignSelf: "center" }}>
               matches
             </Typography>
-            <DeferredTextInput
+            <TextInput
               size="small"
               sx={{ flex: 1 }}
               value={rule.pattern}
@@ -151,7 +153,7 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
         onClick={() =>
           setRules([
             ...rules,
-            { kind: "cellMatches", crossAxisIndex: region.bounds.startCol, pattern: "" },
+            { kind: "cellMatches", crossAxisIndex: undefined, pattern: "" },
           ])
         }
         sx={{ alignSelf: "flex-start" }}

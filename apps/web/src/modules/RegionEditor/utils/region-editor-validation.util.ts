@@ -40,7 +40,7 @@ const RecordsAxisNameSchema = z.object({
 
 const CellMatchesSkipRuleSchema = z.object({
   kind: z.literal("cellMatches"),
-  crossAxisIndex: z.number().int().nonnegative(),
+  crossAxisIndex: z.number({ message: "Position is required" }).int().nonnegative(),
   pattern: z.string().trim().min(1, "Pattern is required"),
   axis: z.enum(["row", "column"]).optional(),
 });
@@ -139,9 +139,10 @@ export function validateRegion(region: RegionDraft): RegionErrors {
       const rule = region.skipRules[i];
       const result = SkipRuleSchema.safeParse(rule);
       if (!result.success) {
-        const issue = result.error.issues[0];
-        const key = `skipRules.${i}.${issue?.path.join(".") ?? "rule"}`;
-        errors[key] = issue?.message ?? "Invalid skip rule";
+        for (const issue of result.error.issues) {
+          const key = `skipRules.${i}.${issue.path.join(".") || "rule"}`;
+          if (!errors[key]) errors[key] = issue.message;
+        }
       } else if (result.data.kind === "cellMatches") {
         try {
           new RegExp(result.data.pattern);

@@ -84,6 +84,7 @@ function ruleMatchesRow(
   if (rule.kind === "blank") {
     return rowIsBlank(cells, row, bounds.startCol, bounds.endCol);
   }
+  if (rule.crossAxisIndex === undefined) return false;
   const cell = cells[row]?.[rule.crossAxisIndex];
   const rx = regexSafe(rule.pattern);
   return Boolean(rx && cell != null && rx.test(String(cell)));
@@ -98,6 +99,7 @@ function ruleMatchesCol(
   if (rule.kind === "blank") {
     return colIsBlank(cells, col, bounds.startRow, bounds.endRow);
   }
+  if (rule.crossAxisIndex === undefined) return false;
   const cell = cells[rule.crossAxisIndex]?.[col];
   const rx = regexSafe(rule.pattern);
   return Boolean(rx && cell != null && rx.test(String(cell)));

@@ -88,7 +88,8 @@ export type SkipRule =
   | { kind: "blank" }
   | {
       kind: "cellMatches";
-      crossAxisIndex: number;
+      /** Absolute sheet-level index; `undefined` means the user has not selected one yet. */
+      crossAxisIndex: number | undefined;
       pattern: string;
       axis?: "row" | "column";
     };
