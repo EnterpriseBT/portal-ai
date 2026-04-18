@@ -54,19 +54,17 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
           : "Records matching a skip rule are omitted from the extracted output."}
       </Typography>
 
-      <Stack direction="row" spacing={1} alignItems="center">
-        <Checkbox
-          size="small"
-          checked={hasBlankRule}
-          onChange={(checked) => {
-            const next = checked
-              ? [...rules.filter((r) => r.kind !== "blank"), { kind: "blank" as const }]
-              : rules.filter((r) => r.kind !== "blank");
-            setRules(next);
-          }}
-        />
-        <Typography variant="body2">Skip blank {recordAxisLabel}s</Typography>
-      </Stack>
+      <Checkbox
+        size="small"
+        checked={hasBlankRule}
+        onChange={(checked) => {
+          const next = checked
+            ? [...rules.filter((r) => r.kind !== "blank"), { kind: "blank" as const }]
+            : rules.filter((r) => r.kind !== "blank");
+          setRules(next);
+        }}
+        label={`Skip blank ${recordAxisLabel}s`}
+      />
 
       {rules.map((rule, idx) => {
         if (rule.kind !== "cellMatches") return null;
