@@ -6,8 +6,10 @@ import {
   Button,
   IconButton,
   Checkbox,
+  Select,
 } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
+import type { SelectOption } from "@portalai/core/ui";
 
 import { CellPositionInputUI } from "./CellPositionInput.component";
 import {
@@ -30,12 +32,18 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
 }) => {
   const rules = region.skipRules ?? [];
   const hasBlankRule = rules.some((r) => r.kind === "blank");
+  const isCrosstab = region.orientation === "cells-as-records";
   const recordAxisLabel =
     region.orientation === "columns-as-records" ? "column" : "row";
   const crossAxisLabel =
     region.orientation === "columns-as-records" ? "row" : "column";
   const terminatorCount =
     region.untilEmptyTerminatorCount ?? DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT;
+
+  const axisOptions: SelectOption[] = [
+    { value: "row", label: "Row" },
+    { value: "column", label: "Column" },
+  ];
 
   const setRules = (next: SkipRule[]) =>
     onUpdate({ skipRules: next.length > 0 ? next : undefined });
@@ -63,31 +71,64 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
             : rules.filter((r) => r.kind !== "blank");
           setRules(next);
         }}
-        label={`Skip blank ${recordAxisLabel}s`}
+        label={isCrosstab ? "Skip blank rows and columns" : `Skip blank ${recordAxisLabel}s`}
       />
 
-      {rules.map((rule, idx) => {
-        if (rule.kind !== "cellMatches") return null;
-        const patternError = errors?.[`skipRules.${idx}.pattern`];
-        const positionError = errors?.[`skipRules.${idx}.crossAxisIndex`];
-        return (
-          <Stack
-            key={idx}
-            direction="row"
-            spacing={1}
-            alignItems="center"
-          >
+      <Stack spacing={2}>
+        {rules.map((rule, idx) => {
+          if (rule.kind !== "cellMatches") return null;
+          const patternError = errors?.[`skipRules.${idx}.pattern`];
+          const positionError = errors?.[`skipRules.${idx}.crossAxisIndex`];
+          // For crosstab the rule's axis determines which dimension the position
+          // picker addresses; for non-crosstab orientations use the fixed cross axis.
+          const ruleAxis: "row" | "column" = isCrosstab
+            ? (rule.axis === "column" ? "column" : "row")
+            : crossAxisLabel;
+          const positionAxis: "row" | "column" = isCrosstab
+            ? (ruleAxis === "row" ? "column" : "row")
+            : crossAxisLabel;
+          return (
+            <Stack
+              key={idx}
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              flexWrap="wrap"
+              useFlexGap
+            >
+            {isCrosstab && (
+              <Select
+                size="small"
+                label="Axis"
+                sx={{ minWidth: 104 }}
+                value={rule.axis ?? "row"}
+                onChange={(e) => {
+                  const nextAxis = e.target.value as "row" | "column";
+                  setRules(
+                    rules.map((r, i) =>
+                      i === idx && r.kind === "cellMatches"
+                        ? { ...r, axis: nextAxis, crossAxisIndex: undefined }
+                        : r
+                    )
+                  );
+                }}
+                options={axisOptions}
+                slotProps={{
+                  htmlInput: { "aria-label": "Skip rule axis" },
+                }}
+              />
+            )}
             <CellPositionInputUI
-              axis={crossAxisLabel}
-              label={crossAxisLabel === "column" ? "Column" : "Row"}
+              axis={positionAxis}
+              label={positionAxis === "column" ? "Column" : "Row"}
               index={rule.crossAxisIndex}
               startIndex={
-                crossAxisLabel === "column"
+                positionAxis === "column"
                   ? region.bounds.startCol
                   : region.bounds.startRow
               }
               endIndex={
-                crossAxisLabel === "column"
+                positionAxis === "column"
                   ? region.bounds.endCol
                   : region.bounds.endRow
               }
@@ -106,7 +147,7 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
             <TextInput
               size="small"
               label="Matches"
-              sx={{ flex: 1, minWidth: 0 }}
+              sx={{ flex: 1, minWidth: 120 }}
               value={rule.pattern}
               onChange={(e) =>
                 setRules(
@@ -136,8 +177,9 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
               sx={{ flexShrink: 0 }}
             />
           </Stack>
-        );
-      })}
+          );
+        })}
+      </Stack>
 
       <Button
         size="small"
@@ -189,7 +231,7 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
               }}
             />
             <Typography variant="caption" color="text.secondary">
-              consecutive unskippable blank {recordAxisLabel}s (default {DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT}).
+              consecutive unskippable blank {isCrosstab ? "rows and columns" : `${recordAxisLabel}s`} (default {DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT}).
             </Typography>
           </Stack>
         </Stack>
