@@ -12,6 +12,7 @@ import { IconName } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 
 import { CellPositionInputUI } from "./CellPositionInput.component";
+import { SectionHelpUI } from "./SectionHelp.component";
 import {
   DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT,
   type RegionDraft,
@@ -50,12 +51,31 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
 
   return (
     <Stack spacing={1}>
-      <Typography
-        variant="caption"
-        sx={{ fontWeight: 600, textTransform: "uppercase", color: "text.secondary" }}
-      >
-        Skip rules
-      </Typography>
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <Typography
+          variant="caption"
+          sx={{ fontWeight: 600, textTransform: "uppercase", color: "text.secondary" }}
+        >
+          Skip rules
+        </Typography>
+        <SectionHelpUI
+          ariaLabel="How do orientation and pivots affect skip rules?"
+          title={
+            <>
+              <strong>Rows orientation:</strong> skip rules target entire rows —
+              a &ldquo;cell matches&rdquo; rule checks a specific column in each row.
+              <br />
+              <strong>Columns orientation:</strong> skip rules target entire columns —
+              a &ldquo;cell matches&rdquo; rule checks a specific row in each column.
+              <br />
+              <strong>Cells (crosstab):</strong> each rule can independently target
+              rows <em>or</em> columns via the axis selector. A row-axis rule checks a
+              column position in each row; a column-axis rule checks a row position in
+              each column.
+            </>
+          }
+        />
+      </Stack>
       <Typography variant="caption" color="text.secondary">
         {region.boundsMode === "untilEmpty"
           ? "Records matching a skip rule are omitted and do not count toward the terminator."
