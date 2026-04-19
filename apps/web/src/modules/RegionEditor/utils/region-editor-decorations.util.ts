@@ -1,16 +1,44 @@
 import type {
   CellBounds,
+  CellCoord,
   CellValue,
   RegionDraft,
   SheetPreview,
   SkipRule,
 } from "./region-editor.types";
 
+/** Resolve the region's axis-name anchor cell, defaulting to the top-left of bounds. */
+export function resolveAnchorCell(region: RegionDraft): CellCoord {
+  return (
+    region.axisAnchorCell ?? {
+      row: region.bounds.startRow,
+      col: region.bounds.startCol,
+    }
+  );
+}
+
+/**
+ * Read the non-blank string value (if any) at the region's anchor cell. Used to
+ * propose a default `recordsAxisName` when the user hasn't supplied one.
+ * Numeric or blank anchors return `null` — we don't auto-default numeric axis names.
+ */
+export function anchorCellValue(
+  region: RegionDraft,
+  sheet: SheetPreview
+): string | null {
+  const anchor = resolveAnchorCell(region);
+  const v = sheet.cells?.[anchor.row]?.[anchor.col];
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  return trimmed ? trimmed : null;
+}
+
 export type DecorationKind =
   | "header"
   | "rowAxisLabel"
   | "colAxisLabel"
   | "axisNameAnchor"
+  | "cellValue"
   | "skipped";
 
 export interface RegionDecoration {
@@ -25,6 +53,7 @@ export const DECORATION_COLOR: Record<DecorationKind, string> = {
   rowAxisLabel: "rgba(147, 51, 234, 0.22)",
   colAxisLabel: "rgba(219, 39, 119, 0.22)",
   axisNameAnchor: "rgba(234, 88, 12, 0.38)",
+  cellValue: "rgba(13, 148, 136, 0.12)",
   skipped: "rgba(100, 116, 139, 0.18)",
 };
 
@@ -39,6 +68,7 @@ export const DECORATION_LABEL: Record<DecorationKind, string> = {
   rowAxisLabel: "Row axis labels",
   colAxisLabel: "Column axis labels",
   axisNameAnchor: "Axis name",
+  cellValue: "Cell values",
   skipped: "Skipped",
 };
 
@@ -118,14 +148,21 @@ export function computeRegionDecorations(
 
   // A region is "pivoted" when the axis of record identity is unlabeled by the
   // data itself and the user must supply a name via recordsAxisName. In those
-  // cases the (startRow, startCol) corner cell is the anchor for that name.
+  // cases a single anchor cell — defaulting to the top-left corner but
+  // user-overridable — is the location of the axis-name label.
   const pivotedRows = orientation === "rows-as-records" && headerAxis === "column";
   const pivotedCols = orientation === "columns-as-records" && headerAxis === "row";
   const crosstab = orientation === "cells-as-records";
+  const anchor = resolveAnchorCell(region);
+  const anchorAtCorner =
+    anchor.row === bounds.startRow && anchor.col === bounds.startCol;
+  const anchorValue = anchorCellValue(region, sheet);
 
   // Header row/column (skipped for crosstab and for headerAxis: "none").
-  // For pivoted shapes the corner cell is carved out so the axis-name anchor
-  // can decorate it distinctly.
+  // For pivoted shapes the corner cell is carved out of the header band only
+  // when the anchor sits at the default corner; when the user has overridden
+  // the anchor elsewhere, the header renders as a full band and the anchor
+  // decoration layers on top.
   if (orientation !== "cells-as-records") {
     if (headerAxis === "row") {
       decorations.push({
@@ -133,7 +170,8 @@ export function computeRegionDecorations(
         bounds: {
           startRow: bounds.startRow,
           endRow: bounds.startRow,
-          startCol: pivotedCols ? bounds.startCol + 1 : bounds.startCol,
+          startCol:
+            pivotedCols && anchorAtCorner ? bounds.startCol + 1 : bounds.startCol,
           endCol: bounds.endCol,
         },
         label: "Header row",
@@ -142,7 +180,8 @@ export function computeRegionDecorations(
       decorations.push({
         kind: "header",
         bounds: {
-          startRow: pivotedRows ? bounds.startRow + 1 : bounds.startRow,
+          startRow:
+            pivotedRows && anchorAtCorner ? bounds.startRow + 1 : bounds.startRow,
           endRow: bounds.endRow,
           startCol: bounds.startCol,
           endCol: bounds.startCol,
@@ -152,46 +191,63 @@ export function computeRegionDecorations(
     }
   }
 
-  // Crosstab: row-axis labels (leftmost column minus the corner cell) and
-  // column-axis labels (top row minus the corner cell).
+  // Crosstab: row-axis labels (leftmost column) and column-axis labels (top row).
+  // Corner is carved out only when the anchor sits at the default corner.
+  const primaryName =
+    region.recordsAxisName?.name ?? (anchorValue ?? undefined);
+  const secondaryName = region.secondaryRecordsAxisName?.name;
   if (crosstab) {
     decorations.push({
       kind: "rowAxisLabel",
       bounds: {
-        startRow: bounds.startRow + 1,
+        startRow: anchorAtCorner ? bounds.startRow + 1 : bounds.startRow,
         endRow: bounds.endRow,
         startCol: bounds.startCol,
         endCol: bounds.startCol,
       },
-      label: region.recordsAxisName?.name ?? "Row axis labels",
+      label: primaryName ?? "Row axis labels",
     });
     decorations.push({
       kind: "colAxisLabel",
       bounds: {
         startRow: bounds.startRow,
         endRow: bounds.startRow,
-        startCol: bounds.startCol + 1,
+        startCol: anchorAtCorner ? bounds.startCol + 1 : bounds.startCol,
         endCol: bounds.endCol,
       },
-      label: region.secondaryRecordsAxisName?.name ?? "Column axis labels",
+      label: secondaryName ?? "Column axis labels",
     });
+    // Inner data rectangle — each cell is an extracted record's value under
+    // `cellValueName`. Guarded on the region being at least 2×2 so we don't
+    // emit a zero-area decoration when bounds collapse to the label bands.
+    if (bounds.endRow > bounds.startRow && bounds.endCol > bounds.startCol) {
+      decorations.push({
+        kind: "cellValue",
+        bounds: {
+          startRow: bounds.startRow + 1,
+          endRow: bounds.endRow,
+          startCol: bounds.startCol + 1,
+          endCol: bounds.endCol,
+        },
+        label: region.cellValueName?.name ?? "Cell values",
+      });
+    }
   }
 
-  // Axis-name anchor — the blank corner where the user-provided axis name(s)
-  // apply. Single cell at (startRow, startCol) for any pivoted shape.
+  // Axis-name anchor — the cell where the user-provided axis name(s) apply.
+  // Default position is (startRow, startCol); the user may override via
+  // region.axisAnchorCell.
   if (pivotedRows || pivotedCols || crosstab) {
     const names = crosstab
-      ? [region.recordsAxisName?.name, region.secondaryRecordsAxisName?.name]
-          .filter(Boolean)
-          .join(" × ")
-      : (region.recordsAxisName?.name ?? "");
+      ? [primaryName, secondaryName].filter(Boolean).join(" × ")
+      : (primaryName ?? "");
     decorations.push({
       kind: "axisNameAnchor",
       bounds: {
-        startRow: bounds.startRow,
-        endRow: bounds.startRow,
-        startCol: bounds.startCol,
-        endCol: bounds.startCol,
+        startRow: anchor.row,
+        endRow: anchor.row,
+        startCol: anchor.col,
+        endCol: anchor.col,
       },
       label: names || "Axis name goes here",
     });

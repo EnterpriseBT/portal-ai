@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Stack,
@@ -12,6 +12,7 @@ import {
 import { IconName } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 
+import { CellPositionInputUI } from "./CellPositionInput.component";
 import { FieldNameEditorUI } from "./FieldNameEditor.component";
 import { NewEntityDialogUI } from "./NewEntityDialog.component";
 import { SectionHelpUI } from "./SectionHelp.component";
@@ -22,12 +23,14 @@ import { colorForEntity, confidenceBand, CONFIDENCE_BAND_COLOR } from "./utils/r
 import {
   DECORATION_COLOR,
   DECORATION_LABEL,
+  anchorCellValue,
   type DecorationKind,
 } from "./utils/region-editor-decorations.util";
 import {
   type BoundsMode,
   type EntityOption,
   type RegionDraft,
+  type SheetPreview,
 } from "./utils/region-editor.types";
 import {
   orientationArrow,
@@ -36,6 +39,12 @@ import {
 
 export interface RegionConfigurationPanelUIProps {
   region: RegionDraft | null;
+  /**
+   * The sheet the region is drawn on. When provided, a pivoted region with a
+   * non-blank string at its axis-anchor cell auto-populates `recordsAxisName`
+   * with `source: "anchor-cell"` so the user doesn't have to retype it.
+   */
+  sheet?: SheetPreview;
   entityOptions: EntityOption[];
   entityOrder: string[];
   siblingsInSameEntity: number;
@@ -64,6 +73,7 @@ const SECTION_HEADING_SX = {
 
 export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProps> = ({
   region,
+  sheet,
   entityOptions,
   entityOrder,
   siblingsInSameEntity,
@@ -86,6 +96,34 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
     () => entityOptions.map((o) => o.value),
     [entityOptions]
   );
+
+  // Auto-propose `recordsAxisName` from the anchor cell when:
+  //   - the region is pivoted, AND
+  //   - the user hasn't supplied a name (or an existing `anchor-cell` source is
+  //     now stale because the anchor cell changed), AND
+  //   - the anchor cell has a non-blank string value.
+  // Keeps `source: "user"` / `source: "ai"` names untouched — users stay in control.
+  const proposedFromAnchor =
+    region && sheet ? anchorCellValue(region, sheet) : null;
+  const regionIsPivoted =
+    !!region &&
+    (region.orientation === "cells-as-records" ||
+      (region.orientation === "columns-as-records" && region.headerAxis === "row") ||
+      (region.orientation === "rows-as-records" && region.headerAxis === "column"));
+  const existingAxisName = region?.recordsAxisName;
+  useEffect(() => {
+    if (!region || !regionIsPivoted || !proposedFromAnchor) return;
+    const current = existingAxisName;
+    if (!current) {
+      onUpdate({
+        recordsAxisName: { name: proposedFromAnchor, source: "anchor-cell" },
+      });
+    } else if (current.source === "anchor-cell" && current.name !== proposedFromAnchor) {
+      onUpdate({
+        recordsAxisName: { name: proposedFromAnchor, source: "anchor-cell" },
+      });
+    }
+  }, [region, regionIsPivoted, proposedFromAnchor, existingAxisName, onUpdate]);
 
   if (!region) {
     return (
@@ -504,6 +542,11 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                 AI suggestion — confirm before continuing.
               </Typography>
             )}
+            {region.recordsAxisName?.source === "anchor-cell" && (
+              <Typography variant="caption" color="text.secondary">
+                Read from anchor cell — edit to override.
+              </Typography>
+            )}
           </Stack>
         )}
 
@@ -583,6 +626,72 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
               }
               slotProps={{ htmlInput: { "aria-invalid": needsCellValueName } }}
             />
+          </Stack>
+        )}
+
+        {pivoted && (
+          <Stack spacing={1}>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Typography variant="caption" sx={SECTION_HEADING_SX}>
+                Axis-name anchor cell
+              </Typography>
+              <SectionHelpUI
+                ariaLabel="What is the axis-name anchor cell?"
+                title={
+                  <>
+                    The cell whose value names the unlabeled axis (or axes, for a
+                    crosstab). Defaults to the top-left of the region. Override it
+                    only when the axis label lives in a different cell — e.g. a
+                    legend row at the bottom of the block.
+                  </>
+                }
+              />
+            </Stack>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+              <CellPositionInputUI
+                axis="row"
+                label="Row"
+                index={region.axisAnchorCell?.row ?? region.bounds.startRow}
+                startIndex={region.bounds.startRow}
+                endIndex={region.bounds.endRow}
+                onChange={(nextRow) =>
+                  onUpdate({
+                    axisAnchorCell: {
+                      row: nextRow,
+                      col: region.axisAnchorCell?.col ?? region.bounds.startCol,
+                    },
+                  })
+                }
+                error={Boolean(errors.axisAnchorCell)}
+                helperText={errors.axisAnchorCell}
+              />
+              <CellPositionInputUI
+                axis="column"
+                label="Column"
+                index={region.axisAnchorCell?.col ?? region.bounds.startCol}
+                startIndex={region.bounds.startCol}
+                endIndex={region.bounds.endCol}
+                onChange={(nextCol) =>
+                  onUpdate({
+                    axisAnchorCell: {
+                      row: region.axisAnchorCell?.row ?? region.bounds.startRow,
+                      col: nextCol,
+                    },
+                  })
+                }
+                error={Boolean(errors.axisAnchorCell)}
+              />
+              {region.axisAnchorCell && (
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => onUpdate({ axisAnchorCell: undefined })}
+                  sx={{ textTransform: "none" }}
+                >
+                  Reset to top-left
+                </Button>
+              )}
+            </Stack>
           </Stack>
         )}
       </Stack>

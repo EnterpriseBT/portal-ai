@@ -63,7 +63,13 @@ export type ColumnBindingDraft = {
 
 export type RecordsAxisName = {
   name: string;
-  source: "user" | "ai";
+  /**
+   * Where the name came from.
+   * - "user" — the user typed it.
+   * - "ai" — the interpreter LLM inferred it.
+   * - "anchor-cell" — auto-populated from the region's axis-anchor cell value.
+   */
+  source: "user" | "ai" | "anchor-cell";
   confidence?: number;
 };
 
@@ -111,6 +117,13 @@ export type RegionDraft = {
   recordsAxisName?: RecordsAxisName;
   secondaryRecordsAxisName?: RecordsAxisName;
   cellValueName?: RecordsAxisName;
+  /**
+   * Optional override for the axis-name anchor cell. When unset, the anchor
+   * defaults to the top-left of the region — `(bounds.startRow, bounds.startCol)`.
+   * Only meaningful for pivoted shapes (crosstabs, rows-as-records +
+   * headerAxis:column, columns-as-records + headerAxis:row). Must be within bounds.
+   */
+  axisAnchorCell?: CellCoord;
   /**
    * User-supplied overrides for auto-generated field names (when headerAxis === "none").
    * Keyed by the default name (e.g. "columnA"), mapped to the override (e.g. "customerName").

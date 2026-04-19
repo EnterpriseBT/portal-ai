@@ -170,25 +170,30 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     autoScrollVelocityRef.current = { vx: 0, vy: 0 };
   }, []);
 
+  // Always-current tick callback — the ref is only invoked inside
+  // `requestAnimationFrame` handlers, so writing it in a layout-less effect
+  // (which runs after commit) is safe and avoids a ref-during-render lint error.
   const runAutoScrollTickRef = useRef<() => void>(() => {});
-  runAutoScrollTickRef.current = () => {
-    const el = scrollRef.current;
-    const { vx, vy } = autoScrollVelocityRef.current;
-    if (!el || (vx === 0 && vy === 0)) {
-      autoScrollFrameRef.current = null;
-      return;
-    }
-    if (vx !== 0) el.scrollLeft += vx;
-    if (vy !== 0) el.scrollTop += vy;
-    const last = lastPointerRef.current;
-    if (last) {
-      const coord = clientToCell(last.x, last.y);
-      if (coord) applyPointerCoord(coord);
-    }
-    autoScrollFrameRef.current = requestAnimationFrame(() =>
-      runAutoScrollTickRef.current()
-    );
-  };
+  useEffect(() => {
+    runAutoScrollTickRef.current = () => {
+      const el = scrollRef.current;
+      const { vx, vy } = autoScrollVelocityRef.current;
+      if (!el || (vx === 0 && vy === 0)) {
+        autoScrollFrameRef.current = null;
+        return;
+      }
+      if (vx !== 0) el.scrollLeft += vx;
+      if (vy !== 0) el.scrollTop += vy;
+      const last = lastPointerRef.current;
+      if (last) {
+        const coord = clientToCell(last.x, last.y);
+        if (coord) applyPointerCoord(coord);
+      }
+      autoScrollFrameRef.current = requestAnimationFrame(() =>
+        runAutoScrollTickRef.current()
+      );
+    };
+  });
 
   const updateAutoScroll = useCallback(
     (clientX: number, clientY: number) => {
@@ -604,6 +609,14 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             const dTop = COL_HEADER_HEIGHT + d.bounds.startRow * cellHeight;
             const dWidth = (d.bounds.endCol - d.bounds.startCol + 1) * cellWidth;
             const dHeight = (d.bounds.endRow - d.bounds.startRow + 1) * cellHeight;
+            // Show the decoration's label as inline text for axis-related
+            // kinds — gives the user a live view of how the axis labels bind.
+            const showInlineLabel =
+              d.label !== undefined &&
+              (d.kind === "axisNameAnchor" ||
+                d.kind === "rowAxisLabel" ||
+                d.kind === "colAxisLabel" ||
+                d.kind === "cellValue");
             return (
               <Box
                 key={`deco-${i}`}
@@ -618,8 +631,41 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   backgroundImage: DECORATION_BACKGROUND_IMAGE[d.kind],
                   pointerEvents: "none",
                   zIndex: 4,
+                  display: showInlineLabel ? "flex" : "block",
+                  // Anchor the chip to the top-left of its band so that on large
+                  // regions all overlay labels cluster near the region's corner
+                  // instead of drifting apart in the middle of each band.
+                  alignItems: "flex-start",
+                  justifyContent: "flex-start",
+                  pt: showInlineLabel ? "2px" : 0,
+                  pl: showInlineLabel ? "2px" : 0,
+                  overflow: "hidden",
                 }}
-              />
+              >
+                {showInlineLabel && (
+                  <Box
+                    component="span"
+                    sx={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      lineHeight: 1,
+                      px: 0.5,
+                      py: 0.25,
+                      borderRadius: 0.5,
+                      backgroundColor: "rgba(255,255,255,0.85)",
+                      color: "text.primary",
+                      whiteSpace: "nowrap",
+                      textOverflow: "ellipsis",
+                      overflow: "hidden",
+                      maxWidth: "95%",
+                      fontStyle: d.kind === "axisNameAnchor" ? "normal" : "italic",
+                    }}
+                  >
+                    {d.kind === "axisNameAnchor" ? "↖ " : ""}
+                    {d.label}
+                  </Box>
+                )}
+              </Box>
             );
           });
         })()}

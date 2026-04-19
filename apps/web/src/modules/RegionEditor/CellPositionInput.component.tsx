@@ -46,7 +46,7 @@ export const CellPositionInputUI: React.FC<CellPositionInputUIProps> = ({
     <Select
       size="small"
       label={label}
-      sx={{ minWidth: 98 }}
+      sx={{ minWidth: 104 }}
       value={index === undefined ? "" : String(index)}
       onChange={(e) => {
         const raw = e.target.value as string;

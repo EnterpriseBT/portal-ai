@@ -1,5 +1,4 @@
 import "@testing-library/jest-dom";
-import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { SectionHelpUI } from "../SectionHelp.component";

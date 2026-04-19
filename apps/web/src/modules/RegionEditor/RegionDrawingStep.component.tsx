@@ -205,6 +205,9 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   }, [selectedRegionId, onRegionDelete, onSelectRegion]);
 
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
+  const selectedRegionSheet = selectedRegion
+    ? workbook.sheets.find((s) => s.id === selectedRegion.sheetId)
+    : undefined;
   const siblingsInSameEntity = selectedRegion?.targetEntityDefinitionId
     ? regions.filter(
       (r) =>
@@ -393,6 +396,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         >
           <RegionConfigurationPanelUI
             region={selectedRegion}
+            sheet={selectedRegionSheet}
             entityOptions={entityOptions}
             entityOrder={entityOrder}
             siblingsInSameEntity={siblingsInSameEntity}

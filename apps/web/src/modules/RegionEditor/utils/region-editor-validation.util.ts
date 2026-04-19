@@ -34,7 +34,7 @@ const BoundsSchema = z
 
 const RecordsAxisNameSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  source: z.enum(["user", "ai"]),
+  source: z.enum(["user", "ai", "anchor-cell"]),
   confidence: z.number().min(0).max(1).optional(),
 });
 
@@ -107,6 +107,23 @@ export function validateRegion(region: RegionDraft): RegionErrors {
     }
     if (!region.cellValueName?.name || !region.cellValueName.name.trim()) {
       errors.cellValueName = "Cell value name is required for crosstab regions";
+    }
+  }
+
+  // --- Axis-anchor-cell override (optional; only meaningful for pivoted shapes) ---
+  if (region.axisAnchorCell) {
+    const { row, col } = region.axisAnchorCell;
+    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || col < 0) {
+      errors.axisAnchorCell = "Anchor cell row and column must be non-negative integers";
+    } else if (
+      row < region.bounds.startRow ||
+      row > region.bounds.endRow ||
+      col < region.bounds.startCol ||
+      col > region.bounds.endCol
+    ) {
+      errors.axisAnchorCell = "Anchor cell must be within the region's bounds";
+    } else if (!pivoted) {
+      errors.axisAnchorCell = "Anchor cell only applies to pivoted regions";
     }
   }
 

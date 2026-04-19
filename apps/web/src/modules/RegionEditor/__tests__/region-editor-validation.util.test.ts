@@ -214,6 +214,47 @@ describe("validateRegion — skip rules", () => {
   });
 });
 
+describe("validateRegion — axisAnchorCell override", () => {
+  const pivotedBase = baseRegion({
+    orientation: "rows-as-records",
+    headerAxis: "column",
+    bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
+    recordsAxisName: { name: "Region", source: "user" },
+  });
+
+  test("accepts an anchor within bounds on a pivoted region", () => {
+    const errors = validateRegion({
+      ...pivotedBase,
+      axisAnchorCell: { row: 7, col: 0 },
+    });
+    expect(errors.axisAnchorCell).toBeUndefined();
+  });
+
+  test("flags an anchor outside bounds", () => {
+    const errors = validateRegion({
+      ...pivotedBase,
+      axisAnchorCell: { row: 2, col: 0 },
+    });
+    expect(errors.axisAnchorCell).toMatch(/within the region's bounds/);
+  });
+
+  test("flags an anchor with negative coordinates", () => {
+    const errors = validateRegion({
+      ...pivotedBase,
+      axisAnchorCell: { row: -1, col: 0 },
+    });
+    expect(errors.axisAnchorCell).toMatch(/non-negative integers/);
+  });
+
+  test("flags an anchor set on a non-pivoted region", () => {
+    const errors = validateRegion({
+      ...baseRegion(),
+      axisAnchorCell: { row: 0, col: 0 },
+    });
+    expect(errors.axisAnchorCell).toMatch(/only applies to pivoted regions/);
+  });
+});
+
 describe("validateRegions — multi-region", () => {
   const good = baseRegion({ id: "ok" });
   const bad = baseRegion({ id: "bad", targetEntityDefinitionId: null });
