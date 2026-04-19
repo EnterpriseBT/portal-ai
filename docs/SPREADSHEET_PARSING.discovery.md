@@ -258,6 +258,7 @@ Used by bounds, headers, identity, skip rules, and bindings.
 
 - `rows-as-records`
 - `columns-as-records`
+- `cells-as-records` (crosstab — every cell is a record indexed by row and column labels)
 
 ### Header strategy
 
@@ -319,21 +320,21 @@ That is a lot for a v1. Most of it is unavoidable if we want to cover the full *
 
 ### Proposed v1 minimum
 
-Drop or defer the least-necessary variants. The interpreter may still recognize the dropped cases and reject them via `blocker` warnings ("this sheet uses a composite header, which isn't supported yet") — that's cheaper than building half-support.
+Drop or defer the least-necessary variants. The interpreter may still recognize the dropped cases and reject them via `blocker` warnings ("this sheet uses a composite header, which isn't supported yet") — that's cheaper than building half-support. The table below reflects what was actually built (see the "Updated v1 declarative surface" table in the Primary design section and the architecture spec for the normative definitions):
 
 | Group | v1 keeps | v1 defers |
 |---|---|---|
 | Locator | `cell`, `range`, `column`, `row` | `headerRelative`, `pattern` |
-| Bounds | `absolute`, `untilBlank`, `wholeSheet` | `anchoredTo`, `untilPattern` |
-| Orientation | both | — |
-| Header strategy | `row`, `column`, `none` | `composite`, `rowLabels` |
+| Bounds | `absolute`, `untilEmpty` (configurable terminator count), `matchesPattern` (regex stop rule) | `anchoredTo`, `wholeSheet` auto-detect |
+| Orientation | `rows-as-records`, `columns-as-records`, `cells-as-records` (crosstab) | — |
+| Header strategy / axis | `headerAxis: "row" \| "column" \| "none"`; `headerStrategy.kind: "row" \| "column" \| "rowLabels"` | `composite` header strategy |
 | Identity strategy | `column`, `composite`, `rowPosition` (with warn) | `derived` |
-| Skip predicates | `blank`, `columnMatches` | `allSameValue`, `cellMatches`, `marker` |
+| Skip predicates | `blank`, `cellMatches` (with optional `axis` for crosstab row/column targeting) | `allSameValue`, `marker`, `columnMatches` by header name |
 | Transforms | none | none |
 | Binding source locator | `byHeaderName`, `byColumnIndex` (fallback) | `byHeaderMatch` |
 | Drift tolerance knobs | `headerShiftRows`, `addedColumns`, `removedColumns` | `columnReorder`, `renamedHeaders` |
 
-That gives a v1 surface of roughly **~17 discriminated cases + 3 knobs** — still substantial, but much more tractable. It covers: title rows above data, empty-row separators, multiple stacked datasets, simple pivoted layouts (via `columns-as-records` + `column` header strategy), and deterministic replay with bounded drift. It does **not** cover: multi-row merged headers, row-label-driven pivoted regions, pattern-anchored bounds, composite fuzzy header matching.
+That gives a v1 surface that covers: title rows above data, empty-row separators, multiple stacked datasets, simple and complex pivoted layouts (via orientation + header-axis selection), crosstab / cells-as-records regions, headerless regions with auto-generated field names, configurable extent with until-empty and pattern-match modes, and deterministic replay with bounded drift. It does **not** cover: multi-row merged headers, pattern-anchored bounds, composite fuzzy header matching.
 
 ### Implications
 
@@ -350,10 +351,11 @@ v1 makes **user-drawn region hints the primary way to describe a sheet**, not a 
 
 Regions are the unit of interpretation. Each region is:
 
-- **Bounded** — user draws or types a rectangular range on a single sheet (A1 notation or numeric offsets).
+- **Bounded** — user draws or types a rectangular range on a single sheet (A1 notation or numeric offsets). Bounds mode can be `absolute` (the drawn rectangle), `untilEmpty` (expand until a configurable number of consecutive blank records), or `matchesPattern` (stop at a regex-matching record).
 - **Bound to a target entity** — each region targets exactly one entity definition. Different regions may target different entities; multiple regions may target the same entity (records appended).
-- **Oriented** — user declares whether records run down the rows (`rows-as-records`) or across the columns (`columns-as-records`).
-- **Labeled on one or both axes** — one axis holds field names (the "header axis"); the other axis holds record-varying values (the "records axis"). For non-pivoted regions, the records axis is anonymous (each row is just a record). For pivoted regions, the user supplies a **semantic name for the records axis** — e.g., `Month` — which becomes a field on every extracted record alongside the fields from the header axis.
+- **Oriented** — user declares how records are laid out: down the rows (`rows-as-records`), across the columns (`columns-as-records`), or as individual cells in a crosstab (`cells-as-records`).
+- **Labeled on one or both axes** — one axis holds field names (the "header axis"); the other axis holds record-varying values (the "records axis"). For non-pivoted regions, the records axis is anonymous (each row is just a record). For pivoted regions, the user supplies a **semantic name for the records axis** — e.g., `Month` — which becomes a field on every extracted record alongside the fields from the header axis. For crosstab regions, **three** names are required: a row-axis name, a column-axis name, and a cell-value name.
+- **Anchored** — an optional axis-name anchor cell (defaulting to the region's top-left corner) whose non-blank string value auto-populates the records-axis name. The anchor is overridable when the axis label lives in a different cell (e.g., a legend row at the bottom of the block).
 
 ### Pivoted example
 
@@ -369,6 +371,22 @@ User config:
 
 Parser emits 12 records, each shaped `{ amount, source, month: "JAN" | "FEB" | ... }`. The same principle holds symmetrically when columns carry field names and rows carry the varying dimension.
 
+### Crosstab example
+
+Region `A1:E5` — a Revenue block with column headers `Q1…Q4` in `B1:E1`, row labels `North`, `South`, `East`, `West` in `A2:A5`, and a corner cell `A1` containing `"Revenue"`.
+
+User config:
+
+- `bounds` = `A1:E5`
+- `orientation` = `cells-as-records`
+- `recordsAxisName` = `Region` (row axis — auto-populated from anchor cell value `"Revenue"` is overridden by user)
+- `secondaryRecordsAxisName` = `Quarter` (column axis)
+- `cellValueName` = `Revenue`
+- `axisAnchorCell` = `A1` (default — top-left corner, value `"Revenue"`)
+- `targetEntityDefinitionId` = `QuarterlyRevenue`
+
+Parser emits 16 records (4 rows × 4 cols), each shaped `{ region: "North" | ..., quarter: "Q1" | ..., revenue: <cell-value> }`.
+
 ### Input shape
 
 ```
@@ -378,9 +396,12 @@ InterpretInput {
     sheet: string
     bounds: { startRow, endRow, startCol, endCol }            // 1-based, inclusive
     targetEntityDefinitionId: string
-    orientation: "rows-as-records" | "columns-as-records"
-    headerAxis: "row" | "column"                              // which axis holds field names
-    recordsAxisName?: string                                   // required for pivoted regions
+    orientation: "rows-as-records" | "columns-as-records" | "cells-as-records"
+    headerAxis: "row" | "column" | "none"                     // which axis holds field names
+    recordsAxisName?: string                                   // required for pivoted + crosstab regions
+    secondaryRecordsAxisName?: string                          // required for crosstab (column dimension)
+    cellValueName?: string                                     // required for crosstab (cell value field)
+    axisAnchorCell?: { row, col }                              // override for axis-name anchor; default = top-left
     proposedLabel?: string                                     // user-facing name for this region
   }>
   priorPlan?: LayoutPlan
@@ -395,11 +416,15 @@ Semantics:
 - Everything downstream — header detection within bounds, identity strategy, column classification, confidence, warnings — still runs per region.
 - If `regionHints` is omitted, the interpreter runs auto-detection on the workbook as a best-effort fallback.
 
-### AI recommends the records-axis name
+### Records-axis name — anchor-cell auto-population and AI recommendation
 
-Users shouldn't have to invent `Month` from a blank field. Once the region is drawn and orientation + headerAxis are declared, the interpreter inspects the values along the records axis and proposes a name. Seeing `JAN, FEB, MAR, …, DEC` yields a high-confidence suggestion of `Month`; seeing `2021, 2022, 2023` yields `Year`; seeing `North, South, East, West` yields `Region`. The user accepts, edits, or overrides.
+Users shouldn't have to invent `Month` from a blank field. Two auto-population paths exist, in priority order:
 
-This is a narrow AI task: input is one axis's labels, output is a single string plus a confidence score. It fits inside the existing AI stage decomposition as an optional `recommendRecordsAxisName` sub-stage gated on pivoted orientation; no new top-level stage is required. The plan records `recordsAxisName.source` as `"user"` or `"ai"` so the UI can mark AI-suggested names as needing confirmation.
+1. **Anchor-cell auto-population** — the region's axis-name anchor cell (default: top-left of bounds, overridable via `axisAnchorCell`) is read for a non-blank string value. If one exists, `recordsAxisName` is set with `source: "anchor-cell"` so the UI shows it pre-filled but editable. Moving the anchor cell updates the name in real time. Anchor-cell names are never written over user-typed (`source: "user"`) or AI-suggested (`source: "ai"`) names.
+
+2. **AI recommendation** — once the region is drawn and orientation + headerAxis are declared, the interpreter inspects the values along the records axis and proposes a name. Seeing `JAN, FEB, MAR, …, DEC` yields a high-confidence suggestion of `Month`; seeing `2021, 2022, 2023` yields `Year`; seeing `North, South, East, West` yields `Region`. The user accepts, edits, or overrides.
+
+The AI path is a narrow task: input is one axis's labels, output is a single string plus a confidence score. It fits inside the existing AI stage decomposition as an optional `recommendRecordsAxisName` sub-stage gated on pivoted orientation; no new top-level stage is required. The plan records `recordsAxisName.source` as `"user"`, `"ai"`, or `"anchor-cell"` so the UI can mark non-user names as needing confirmation.
 
 When no name can be proposed with high confidence and the user hasn't supplied one, the plan emits a `blocker` warning (`PIVOTED_REGION_MISSING_AXIS_NAME`) — records can't be uniquely identified without that field.
 
@@ -418,16 +443,16 @@ This breaks the prior `FileUploadConnector` convention of "one entity per sheet 
 
 ### Updated v1 declarative surface
 
-With user-drawn regions as the primary path, the surface shrinks:
+With user-drawn regions as the primary path, the surface shrinks. The table below reflects what was actually built (see architecture and backend specs for the normative definitions):
 
 | Group | v1 keeps | v1 defers |
 |---|---|---|
 | Locator | `cell`, `range`, `column`, `row` | `headerRelative`, `pattern` |
-| Bounds | `absolute` (from hints), `wholeSheet` (auto-detect fallback) | `anchoredTo`, `untilBlank`, `untilPattern` |
-| Orientation | both | — |
-| Header strategy | `row`, `column`, `rowLabels` (now first-class for pivoted regions) | `composite`, `none` |
+| Bounds | `absolute` (from hints), `untilEmpty` (configurable terminator count), `matchesPattern` (regex stop rule) | `anchoredTo`, `wholeSheet` auto-detect |
+| Orientation | `rows-as-records`, `columns-as-records`, `cells-as-records` (crosstab) | — |
+| Header strategy / axis | `headerAxis: "row" \| "column" \| "none"`; `headerStrategy.kind: "row" \| "column" \| "rowLabels"` | `composite` header strategy |
 | Identity strategy | `column`, `composite`, `rowPosition` (warn) | `derived` |
-| Skip predicates | `blank`, `columnMatches` | `allSameValue`, `cellMatches`, `marker` |
+| Skip predicates | `blank`, `cellMatches` (with optional `axis` for crosstab row/column targeting) | `allSameValue`, `marker`, `columnMatches` by header name |
 | Transforms | none | none |
 | Binding source locator | `byHeaderName`, `byColumnIndex` | `byHeaderMatch` |
 | Drift tolerance knobs | `headerShiftRows`, `addedColumns`, `removedColumns` | `columnReorder`, `renamedHeaders` |
@@ -435,8 +460,14 @@ With user-drawn regions as the primary path, the surface shrinks:
 New v1 region fields (from this design):
 
 - `targetEntityDefinitionId: string`
-- `headerAxis: "row" | "column"` (explicit rather than implicit in header strategy)
-- `recordsAxisName?: { name, source: "user" | "ai", confidence }`
+- `headerAxis: "row" | "column" | "none"` (explicit rather than implicit in header strategy; `"none"` enables headerless regions with auto-generated `columnOverrides`)
+- `recordsAxisName?: { name, source: "user" | "ai" | "anchor-cell", confidence }` — required on pivoted and crosstab regions
+- `secondaryRecordsAxisName?: { name, source, confidence }` — required on crosstab regions (column dimension)
+- `cellValueName?: { name, source, confidence }` — required on crosstab regions (the field holding each cell's value)
+- `axisAnchorCell?: { row, col }` — optional override for the cell whose value auto-populates axis names; defaults to the region's top-left corner; must be within bounds; only meaningful for pivoted and crosstab shapes
+- `boundsMode: "absolute" | "untilEmpty" | "matchesPattern"` with companion `boundsPattern` and `untilEmptyTerminatorCount`
+- `skipRules: SkipRule[]` — union of `{ kind: "blank" }` and `{ kind: "cellMatches", crossAxisIndex, pattern, axis? }`
+- `columnOverrides?: Record<string, string>` — per-field user overrides when `headerAxis === "none"`
 
 Note: `rowLabels` header strategy is promoted into v1 because it's now the default shape for pivoted regions, not a deferred edge case.
 

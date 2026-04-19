@@ -154,6 +154,7 @@ When a region is selected (by click, keyboard, or creation), `RegionConfiguratio
 | `recordsAxisName` | `TextInput` + **Suggest** button | conditional | Required for pivoted regions (`headerAxis` opposite the record axis) and for crosstab. Copy flips to **Row-axis name** for crosstab. Suggest button calls `onSuggestAxisName` (consumer-wired) |
 | `secondaryRecordsAxisName` | `TextInput` | yes, crosstab only | Names the column dimension of a crosstab (e.g. `Region`). Validation enforces presence. Has a `SectionHelpUI` tooltip |
 | `cellValueName` | `TextInput` | yes, crosstab only | Names the field that holds each cell's value (e.g. `Revenue`). Helper text previews the resulting record shape once all three names are filled |
+| `axisAnchorCell` | Two `CellPositionInputUI` (row + column) + **Reset to top-left** button | no | Only rendered for pivoted and crosstab regions. Defaults to the top-left of bounds. The cell's string value auto-populates `recordsAxisName` with `source: "anchor-cell"` — updated live as the anchor moves. User-typed or AI-suggested names (`source: "user"` / `"ai"`) are never overwritten by the anchor. A `SectionHelpUI` tooltip explains the purpose |
 
 ### Extent & skip rules
 
@@ -166,12 +167,14 @@ When a region is selected (by click, keyboard, or creation), `RegionConfiguratio
 
 #### Skip rules
 
+A `SectionHelpUI` tooltip next to the "Skip rules" heading explains how orientation and pivots affect rule application: rows-orientation rules target rows, columns-orientation rules target columns, and crosstab rules can independently target either axis via the axis selector.
+
 Each row in the editor is one of:
 
-- **Blank** (`kind: "blank"`) — a single checkbox: "Skip blank rows/columns". Wording mirrors the orientation's record axis.
+- **Blank** (`kind: "blank"`) — a single checkbox: "Skip blank rows/columns". Wording mirrors the orientation's record axis. For crosstab: "Skip blank rows and columns".
 - **Cell matches** (`kind: "cellMatches"`) — a repeatable rule with:
   - `crossAxisIndex` — row or column picker (`CellPositionInputUI`). Starts unselected; Interpret blocks until the user picks a row or column. Range is limited to the region's own bounds.
-  - `pattern` — regex `TextInput`. Kept as a non-deferred text input (not a debounced/deferred field) because the canvas decoration for the rule updates live on every keystroke.
+  - `pattern` — regex `TextInput`. Null and undefined cells are coerced to `""` before testing, so `^$` matches both empty-string and null/missing cells. The placeholder and helper text clarify this to the user. Kept as a non-deferred text input (not a debounced/deferred field) because the canvas decoration for the rule updates live on every keystroke.
   - `axis` (optional) — only meaningful for crosstab regions, where the rule can target row labels or column labels.
 
 ### Validation
@@ -198,9 +201,14 @@ Per-field error keys use dot-notation (`bounds.endRow`, `recordsAxisName`, `skip
 
 The consuming workflow's `onInterpret` is responsible for the actual backend call and the step transition.
 
-### AI-suggested records-axis name
+### Axis-name auto-population and AI suggestion
 
-When a pivoted region has no `recordsAxisName`, the side panel surfaces a **Suggest** button next to the TextInput. The module does not call the backend itself; it fires `onSuggestAxisName(regionId)` and expects the consumer to populate `recordsAxisName: { name, source: "ai", confidence }` (rendered with a warning-colored "AI suggestion — confirm before continuing" caption until the user edits or confirms the field).
+When a pivoted or crosstab region has no `recordsAxisName`, two auto-population paths exist:
+
+1. **Anchor-cell auto-population** — the config panel reads the non-blank string value (if any) at the region's axis-anchor cell (default: top-left of bounds; overridable via `axisAnchorCell`). If present, it sets `recordsAxisName: { name, source: "anchor-cell" }` automatically. Moving the anchor cell updates the name in real time. Anchor-cell names are never written over a user-typed (`source: "user"`) or AI-suggested (`source: "ai"`) name — the user stays in control.
+2. **AI suggestion** — the side panel surfaces a **Suggest** button next to the TextInput. The module does not call the backend itself; it fires `onSuggestAxisName(regionId)` and expects the consumer to populate `recordsAxisName: { name, source: "ai", confidence }`.
+
+Both `"anchor-cell"` and `"ai"` sources render with a warning-colored "AI suggestion — confirm before continuing" caption until the user edits or confirms the field.
 
 ### Merge affordances
 

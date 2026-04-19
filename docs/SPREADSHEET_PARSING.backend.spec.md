@@ -98,7 +98,7 @@ const LayoutPlanSchema = z.object({
 
 const AxisNameSchema = z.object({
   name: z.string(),
-  source: z.enum(["user", "ai"]),
+  source: z.enum(["user", "ai", "anchor-cell"]),
   confidence: z.number().min(0).max(1).optional(),
 });
 
@@ -121,6 +121,7 @@ const RegionSchema = z.object({
   secondaryRecordsAxisName: AxisNameSchema.optional(),    // required for crosstab (column dim)
   cellValueName: AxisNameSchema.optional(),               // required for crosstab (cell value field)
   columnOverrides: z.record(z.string(), z.string()).optional(), // headerAxis === "none" field-name overrides
+  axisAnchorCell: z.object({ row: z.number().int().nonnegative(), col: z.number().int().nonnegative() }).optional(), // override for axis-name anchor; must be within bounds; default = top-left
   headerStrategy: HeaderStrategySchema,
   identityStrategy: IdentityStrategySchema,
   columnBindings: z.array(ColumnBindingSchema),
@@ -166,7 +167,7 @@ const SkipRuleSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("cellMatches"),
     crossAxisIndex: z.number().int().nonnegative(),      // 0-based absolute sheet index; column for rows-as-records, row for columns-as-records
-    pattern: z.string(),                                  // regex; interpreter emits blocker if invalid
+    pattern: z.string(),                                  // regex; null/undefined cells coerced to "" before testing (^$ matches empty cells)
     axis: z.enum(["row", "column"]).optional(),          // crosstab only — which axis the rule targets
   }),
 ]);
@@ -201,9 +202,12 @@ interface RegionHint {
   sheet: string;
   bounds: { startRow: number; startCol: number; endRow: number; endCol: number }; // 1-based, inclusive
   targetEntityDefinitionId: string;
-  orientation: "rows-as-records" | "columns-as-records";
-  headerAxis: "row" | "column";
-  recordsAxisName?: string;          // required for pivoted regions (headerAxis differs from records direction)
+  orientation: "rows-as-records" | "columns-as-records" | "cells-as-records";
+  headerAxis: "row" | "column" | "none";
+  recordsAxisName?: string;          // required for pivoted + crosstab regions
+  secondaryRecordsAxisName?: string; // required for crosstab (column dimension)
+  cellValueName?: string;            // required for crosstab (cell value field)
+  axisAnchorCell?: { row: number; col: number }; // override for axis-name anchor; default = top-left of bounds
   proposedLabel?: string;            // user-facing name for this region
 }
 ```
@@ -297,14 +301,19 @@ No LLM call. Pure function of `(plan, workbook)`.
 
 For each region:
 
-1. Resolve `bounds` against the workbook (literal range, or `dynamic` end-row expands until terminator per skip rules).
-2. Resolve `headerStrategy` → map from header-axis labels to `ColumnDefinition` ids via `columnBindings`.
-3. Walk records along the records axis (rows for `rows-as-records`, columns for `columns-as-records`).
-4. Apply `skipRules` to exclude non-data rows.
-5. For each record, compute `source_id` via `identityStrategy`.
-6. For pivoted regions, attach `{ [recordsAxisName.name]: axisLabel }` to every record.
-7. Compute `checksum` over the record's field values (stable, order-independent).
-8. Emit `ExtractedRecord`.
+1. Resolve `bounds` against the workbook (literal range for `absolute`; expand until terminator for `untilEmpty` per skip rules and `untilEmptyTerminatorCount`; expand until regex match for `matchesPattern`).
+2. Resolve `axisAnchorCell` — use the override if present, otherwise default to the top-left of the resolved bounds.
+3. Resolve `headerStrategy` → map from header-axis labels to `ColumnDefinition` ids via `columnBindings`.
+4. Walk records along the records axis:
+   - `rows-as-records`: each row is a record.
+   - `columns-as-records`: each column is a record.
+   - `cells-as-records` (crosstab): every cell in the interior data rectangle is a record, indexed by its row-axis label and column-axis label. The interior excludes the header row (top), header column (left), and the anchor cell (top-left corner).
+5. Apply `skipRules` to exclude non-data records. For `cells-as-records`, a rule's `axis` property determines whether it targets rows or columns; `blank` rules target both.
+6. For each record, compute `source_id` via `identityStrategy`.
+7. For pivoted regions, attach `{ [recordsAxisName.name]: axisLabel }` to every record.
+8. For crosstab regions, attach `{ [recordsAxisName.name]: rowLabel, [secondaryRecordsAxisName.name]: colLabel, [cellValueName.name]: cellValue }` to every record.
+9. Compute `checksum` over the record's field values (stable, order-independent).
+10. Emit `ExtractedRecord`.
 
 While walking, collect drift signals:
 

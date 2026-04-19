@@ -120,7 +120,8 @@ function ruleMatchesRow(
   if (rule.crossAxisIndex === undefined) return false;
   const cell = cells[row]?.[rule.crossAxisIndex];
   const rx = regexSafe(rule.pattern);
-  return Boolean(rx && cell != null && rx.test(String(cell)));
+  // Coerce null/undefined to "" so patterns like ^$ can match empty cells.
+  return Boolean(rx && rx.test(cell == null ? "" : String(cell)));
 }
 
 function ruleMatchesCol(
@@ -135,7 +136,8 @@ function ruleMatchesCol(
   if (rule.crossAxisIndex === undefined) return false;
   const cell = cells[rule.crossAxisIndex]?.[col];
   const rx = regexSafe(rule.pattern);
-  return Boolean(rx && cell != null && rx.test(String(cell)));
+  // Coerce null/undefined to "" so patterns like ^$ can match empty cells.
+  return Boolean(rx && rx.test(cell == null ? "" : String(cell)));
 }
 
 export function computeRegionDecorations(

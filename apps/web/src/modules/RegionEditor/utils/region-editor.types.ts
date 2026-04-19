@@ -83,6 +83,8 @@ export type BoundsMode = "absolute" | "untilEmpty" | "matchesPattern";
  *   `crossAxisIndex` is an absolute sheet-level index (column for rows-as-records,
  *   row for columns-as-records). For `cells-as-records`, the rule applies to rows by default;
  *   set `axis: "column"` to target columns instead.
+ *   Null and undefined cells are coerced to `""` before regex testing, so `^$`
+ *   matches both empty-string and null/missing cells.
  *
  * Skip rules serve two purposes in `untilEmpty` regions:
  *   1. Records matching any skip rule are omitted from the extracted output.

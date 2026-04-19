@@ -99,9 +99,13 @@ LayoutPlan v1
       sheet: string
       bounds: { startRow, endRow | dynamic, startCol, endCol }
       targetEntityDefinitionId: string
-      orientation: "rows-as-records" | "columns-as-records"
-      headerAxis: "row" | "column"
-      recordsAxisName?: { name, source: "user" | "ai", confidence }
+      orientation: "rows-as-records" | "columns-as-records" | "cells-as-records"
+      headerAxis: "row" | "column" | "none"
+      recordsAxisName?: { name, source: "user" | "ai" | "anchor-cell", confidence }
+      secondaryRecordsAxisName?: { ... }       // crosstab column dimension
+      cellValueName?: { ... }                   // crosstab cell value field
+      axisAnchorCell?: { row, col }            // override for axis-name anchor; default = top-left
+      columnOverrides?: Record<string, string>  // field-name overrides when headerAxis === "none"
       headerStrategy: { kind, locator, confidence }
       identityStrategy: { kind, spec, confidence }
       columnBindings: [ { sourceLocator, columnDefinitionId, confidence, rationale? } ]
@@ -142,7 +146,10 @@ A region is *pivoted* when records run across one axis while field names run alo
 - `orientation` declares which axis carries records (`columns-as-records` or `rows-as-records`).
 - `headerAxis` declares which axis carries field names.
 - `recordsAxisName` is **required** — it is a user-facing name for the records dimension (e.g., `Month`, `Year`, `Region`). Each extracted record gets a field named `recordsAxisName.name` whose value is the axis label.
-- If the user does not supply a name, the interpreter may propose one via an `recommendRecordsAxisName` AI sub-call that inspects the records-axis labels. The plan marks `recordsAxisName.source` as `"user"` or `"ai"` so the UI can flag AI suggestions for confirmation.
+- If the user does not supply a name, two auto-population paths exist:
+  1. **Anchor-cell auto-population** — the region's axis-name anchor cell (defaulting to the top-left of bounds, overridable via `axisAnchorCell`) is read for a non-blank string value. If present, the plan sets `recordsAxisName` with `source: "anchor-cell"` so the UI shows it pre-filled but editable. Moving or overriding the anchor cell updates the proposed name in real time.
+  2. **AI recommendation** — the interpreter may propose a name via a `recommendRecordsAxisName` AI sub-call that inspects the records-axis labels. The plan marks `recordsAxisName.source` as `"ai"` so the UI can flag AI suggestions for confirmation.
+- `recordsAxisName.source` is one of `"user"` (typed by the user), `"ai"` (LLM-proposed), or `"anchor-cell"` (auto-populated from the anchor cell value). Only `"user"` names are treated as confirmed; `"ai"` and `"anchor-cell"` names are shown with a confirmation prompt.
 - If no name can be proposed with high confidence and the user hasn't supplied one, the plan emits a `PIVOTED_REGION_MISSING_AXIS_NAME` blocker.
 
 ### Crosstabs (cells-as-records)
@@ -175,9 +182,10 @@ New v1 region fields from the primary (hinted-region) design:
 
 - `targetEntityDefinitionId: string`
 - `headerAxis: "row" | "column" | "none"` (explicit rather than implicit in header strategy; `"none"` enables headerless regions with auto-generated `columnOverrides`)
-- `recordsAxisName?: { name, source: "user" | "ai", confidence }` — required on pivoted and crosstab regions
+- `recordsAxisName?: { name, source: "user" | "ai" | "anchor-cell", confidence }` — required on pivoted and crosstab regions
 - `secondaryRecordsAxisName?: { name, source, confidence }` — required on crosstab regions (column dimension)
 - `cellValueName?: { name, source, confidence }` — required on crosstab regions (the field holding each cell's value)
+- `axisAnchorCell?: { row, col }` — optional override for the cell whose value auto-populates axis names; defaults to the region's top-left corner; must be within bounds; only meaningful for pivoted and crosstab shapes
 - `boundsMode: "absolute" | "untilEmpty" | "matchesPattern"` with companion `boundsPattern` and `untilEmptyTerminatorCount`
 - `skipRules: SkipRule[]` — union of `{ kind: "blank" }` and `{ kind: "cellMatches", crossAxisIndex, pattern, axis? }`
 - `columnOverrides?: Record<string, string>` — per-field user overrides when `headerAxis === "none"`

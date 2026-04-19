@@ -80,6 +80,7 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
         {region.boundsMode === "untilEmpty"
           ? "Records matching a skip rule are omitted and do not count toward the terminator."
           : "Records matching a skip rule are omitted from the extracted output."}
+        {" "}Use ^$ in a cell-match pattern to match empty or null cells.
       </Typography>
 
       <Checkbox
@@ -178,7 +179,7 @@ export const SkipAndTerminatorEditorUI: React.FC<SkipAndTerminatorEditorUIProps>
                   )
                 )
               }
-              placeholder="e.g. ^— .* —$"
+              placeholder="e.g. ^$ for empty, ^— .* —$"
               required
               error={Boolean(patternError)}
               helperText={patternError}

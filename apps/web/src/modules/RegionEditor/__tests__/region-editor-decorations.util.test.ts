@@ -414,6 +414,81 @@ describe("computeRegionDecorations — skipped rows", () => {
   });
 });
 
+describe("computeRegionDecorations — cellMatches null/empty cell coercion", () => {
+  test("cellMatches with ^$ matches null cells", () => {
+    const cells: (string | number | null)[][] = [
+      ["H1", "H2"],
+      ["a", null],
+      [null, "b"],
+      ["c", "d"],
+    ];
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 1 },
+      skipRules: [{ kind: "cellMatches", crossAxisIndex: 1, pattern: "^$" }],
+    });
+    const s = sheet(cells);
+    const skipped = computeRegionDecorations(region, s)
+      .filter((d) => d.kind === "skipped")
+      .map((d) => d.bounds.startRow);
+    expect(skipped).toEqual([1]);
+  });
+
+  test("cellMatches with ^$ matches empty-string cells", () => {
+    const cells: (string | number | null)[][] = [
+      ["H1", "H2"],
+      ["a", ""],
+      ["b", "x"],
+    ];
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 1 },
+      skipRules: [{ kind: "cellMatches", crossAxisIndex: 1, pattern: "^$" }],
+    });
+    const s = sheet(cells);
+    const skipped = computeRegionDecorations(region, s)
+      .filter((d) => d.kind === "skipped")
+      .map((d) => d.bounds.startRow);
+    expect(skipped).toEqual([1]);
+  });
+
+  test("cellMatches with .* matches null cells", () => {
+    const cells: (string | number | null)[][] = [
+      ["H1", "H2"],
+      ["a", null],
+      ["b", "x"],
+    ];
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 1 },
+      skipRules: [{ kind: "cellMatches", crossAxisIndex: 1, pattern: ".*" }],
+    });
+    const s = sheet(cells);
+    const skipped = computeRegionDecorations(region, s)
+      .filter((d) => d.kind === "skipped")
+      .map((d) => d.bounds.startRow);
+    // Both data rows match — null coerces to "" which matches .*
+    expect(skipped).toEqual([1, 2]);
+  });
+
+  test("cellMatches null coercion works for column-axis rules", () => {
+    const cells: (string | number | null)[][] = [
+      ["Field", "Q1", "Q2"],
+      ["Eng", 1, null],
+      ["Sales", 2, 3],
+    ];
+    const region = baseRegion({
+      orientation: "columns-as-records",
+      headerAxis: "column",
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+      skipRules: [{ kind: "cellMatches", crossAxisIndex: 1, pattern: "^$" }],
+    });
+    const s = sheet(cells);
+    const skipped = computeRegionDecorations(region, s)
+      .filter((d) => d.kind === "skipped")
+      .map((d) => d.bounds.startCol);
+    // Col 2 has null at row 1 → coerced to "" → matches ^$
+    expect(skipped).toEqual([2]);
+  });
+});
+
 describe("computeRegionDecorations — skipped columns (columns-as-records)", () => {
   test("cellMatches rule with axis:'row' marks columns whose row-n cell matches", () => {
     // Row 0: header "Field" in col 0; q1, subtotal, q2 in cols 1-3.
