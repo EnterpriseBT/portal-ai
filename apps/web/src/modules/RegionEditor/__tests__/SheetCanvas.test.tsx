@@ -76,6 +76,30 @@ describe("SheetCanvasUI", () => {
     expect(onSelect).toHaveBeenCalledWith("r1");
   });
 
+  test("selected pivoted region renders the anchor icon on the axis-name anchor decoration", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 4, startCol: 1, endCol: 3 },
+      orientation: "rows-as-records",
+      headerAxis: "column",
+      targetEntityDefinitionId: "ent_a",
+      recordsAxisName: { name: "Category", source: "user" },
+    };
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[region]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+      />
+    );
+    expect(screen.getByTestId("AnchorIcon")).toBeInTheDocument();
+    expect(screen.queryByText(/↖/)).not.toBeInTheDocument();
+  });
+
   test("readOnly suppresses drag-to-draw", () => {
     const onDraft = jest.fn();
     render(

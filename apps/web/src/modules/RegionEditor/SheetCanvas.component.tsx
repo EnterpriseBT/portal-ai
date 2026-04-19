@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AnchorIcon from "@mui/icons-material/Anchor";
 import { Box } from "@portalai/core/ui";
 
 import {
@@ -646,6 +647,9 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                   <Box
                     component="span"
                     sx={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "3px",
                       fontSize: 10,
                       fontWeight: 600,
                       lineHeight: 1,
@@ -661,7 +665,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                       fontStyle: d.kind === "axisNameAnchor" ? "normal" : "italic",
                     }}
                   >
-                    {d.kind === "axisNameAnchor" ? "↖ " : ""}
+                    {d.kind === "axisNameAnchor" && (
+                      <AnchorIcon
+                        sx={{ fontSize: 11, color: "rgba(194, 65, 12, 1)" }}
+                      />
+                    )}
                     {d.label}
                   </Box>
                 )}
