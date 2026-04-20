@@ -73,13 +73,24 @@ entityGroupMemberRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { entityGroupId } = req.params;
-      logger.info({ entityGroupId }, "GET /entity-groups/:entityGroupId/members called");
+      logger.info(
+        { entityGroupId },
+        "GET /entity-groups/:entityGroupId/members called"
+      );
 
       const enrichedMembers = await DbService.repository.entityGroupMembers
-        .findByEntityGroupId(entityGroupId, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] })
+        .findByEntityGroupId(entityGroupId, {
+          include: ["connectorEntity", "fieldMapping", "columnDefinition"],
+        })
         .catch((error) => {
           if (error instanceof ApiError) throw error;
-          throw new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity group members");
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to list entity group members"
+          );
         });
 
       const members = enrichedMembers.map((m) => ({
@@ -96,7 +107,17 @@ entityGroupMemberRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list entity group members"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity group members"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list entity group members"
+            )
+      );
     }
   }
 );
@@ -181,38 +202,83 @@ entityGroupMemberRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { entityGroupId } = req.params;
-      const parsed = EntityGroupMemberCreateRequestBodySchema.safeParse(req.body);
+      const parsed = EntityGroupMemberCreateRequestBodySchema.safeParse(
+        req.body
+      );
       if (!parsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED, "Invalid entity group member payload"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED,
+            "Invalid entity group member payload"
+          )
+        );
       }
 
       const { organizationId, userId } = req.application!.metadata;
 
       // Verify entity group exists
-      const group = await DbService.repository.entityGroups.findById(entityGroupId);
+      const group =
+        await DbService.repository.entityGroups.findById(entityGroupId);
       if (!group) {
-        return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
       }
 
       // Verify connector entity exists and belongs to same org
-      const connectorEntity = await DbService.repository.connectorEntities.findById(parsed.data.connectorEntityId);
-      if (!connectorEntity || connectorEntity.organizationId !== organizationId) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED, "Connector entity not found or does not belong to this organization"));
+      const connectorEntity =
+        await DbService.repository.connectorEntities.findById(
+          parsed.data.connectorEntityId
+        );
+      if (
+        !connectorEntity ||
+        connectorEntity.organizationId !== organizationId
+      ) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED,
+            "Connector entity not found or does not belong to this organization"
+          )
+        );
       }
 
       // Verify link field mapping exists and belongs to the connector entity
-      const fieldMapping = await DbService.repository.fieldMappings.findById(parsed.data.linkFieldMappingId);
-      if (!fieldMapping || fieldMapping.connectorEntityId !== parsed.data.connectorEntityId) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID, "Link field mapping not found or does not belong to the specified connector entity"));
+      const fieldMapping = await DbService.repository.fieldMappings.findById(
+        parsed.data.linkFieldMappingId
+      );
+      if (
+        !fieldMapping ||
+        fieldMapping.connectorEntityId !== parsed.data.connectorEntityId
+      ) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID,
+            "Link field mapping not found or does not belong to the specified connector entity"
+          )
+        );
       }
 
       // Check for duplicate membership
-      const existing = await DbService.repository.entityGroupMembers.findExisting(
-        entityGroupId,
-        parsed.data.connectorEntityId
-      );
+      const existing =
+        await DbService.repository.entityGroupMembers.findExisting(
+          entityGroupId,
+          parsed.data.connectorEntityId
+        );
       if (existing) {
-        return next(new ApiError(409, ApiCode.ENTITY_GROUP_MEMBER_ALREADY_EXISTS, "This entity is already a member of this group"));
+        return next(
+          new ApiError(
+            409,
+            ApiCode.ENTITY_GROUP_MEMBER_ALREADY_EXISTS,
+            "This entity is already a member of this group"
+          )
+        );
       }
 
       const factory = new EntityGroupMemberModelFactory();
@@ -229,22 +295,41 @@ entityGroupMemberRouter.post(
 
       if (parsed.data.isPrimary) {
         entityGroupMember = await DbService.transaction(async (tx) => {
-          await DbService.repository.entityGroupMembers.clearPrimary(entityGroupId, tx);
-          return DbService.repository.entityGroupMembers.create(model.parse(), tx);
+          await DbService.repository.entityGroupMembers.clearPrimary(
+            entityGroupId,
+            tx
+          );
+          return DbService.repository.entityGroupMembers.create(
+            model.parse(),
+            tx
+          );
         });
       } else {
-        entityGroupMember = await DbService.repository.entityGroupMembers.create(model.parse());
+        entityGroupMember =
+          await DbService.repository.entityGroupMembers.create(model.parse());
       }
 
       if (!entityGroupMember) {
-        return next(new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED, "Failed to create entity group member"));
+        return next(
+          new ApiError(
+            500,
+            ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED,
+            "Failed to create entity group member"
+          )
+        );
       }
 
-      logger.info({ id: entityGroupMember.id, entityGroupId }, "Entity group member created");
+      logger.info(
+        { id: entityGroupMember.id, entityGroupId },
+        "Entity group member created"
+      );
 
       return HttpService.success<EntityGroupMemberCreateResponsePayload>(
         res,
-        { entityGroupMember: entityGroupMember as unknown as EntityGroupMemberCreateResponsePayload["entityGroupMember"] },
+        {
+          entityGroupMember:
+            entityGroupMember as unknown as EntityGroupMemberCreateResponsePayload["entityGroupMember"],
+        },
         201
       );
     } catch (error) {
@@ -252,7 +337,17 @@ entityGroupMemberRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create entity group member"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity group member"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_MEMBER_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create entity group member"
+            )
+      );
     }
   }
 );
@@ -329,21 +424,50 @@ entityGroupMemberRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { entityGroupId, memberId } = req.params;
-      const parsed = EntityGroupMemberUpdateRequestBodySchema.safeParse(req.body);
+      const parsed = EntityGroupMemberUpdateRequestBodySchema.safeParse(
+        req.body
+      );
       if (!parsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_UPDATE_FAILED, "Invalid entity group member payload"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_MEMBER_UPDATE_FAILED,
+            "Invalid entity group member payload"
+          )
+        );
       }
 
-      const existing = await DbService.repository.entityGroupMembers.findById(memberId);
+      const existing =
+        await DbService.repository.entityGroupMembers.findById(memberId);
       if (!existing) {
-        return next(new ApiError(404, ApiCode.ENTITY_GROUP_MEMBER_NOT_FOUND, "Entity group member not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_MEMBER_NOT_FOUND,
+            "Entity group member not found"
+          )
+        );
       }
 
       // If linkFieldMappingId is changing, verify the new field mapping belongs to the member's connector entity
-      if (parsed.data.linkFieldMappingId && parsed.data.linkFieldMappingId !== existing.linkFieldMappingId) {
-        const fieldMapping = await DbService.repository.fieldMappings.findById(parsed.data.linkFieldMappingId);
-        if (!fieldMapping || fieldMapping.connectorEntityId !== existing.connectorEntityId) {
-          return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID, "Link field mapping not found or does not belong to the member's connector entity"));
+      if (
+        parsed.data.linkFieldMappingId &&
+        parsed.data.linkFieldMappingId !== existing.linkFieldMappingId
+      ) {
+        const fieldMapping = await DbService.repository.fieldMappings.findById(
+          parsed.data.linkFieldMappingId
+        );
+        if (
+          !fieldMapping ||
+          fieldMapping.connectorEntityId !== existing.connectorEntityId
+        ) {
+          return next(
+            new ApiError(
+              400,
+              ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID,
+              "Link field mapping not found or does not belong to the member's connector entity"
+            )
+          );
         }
       }
 
@@ -357,24 +481,46 @@ entityGroupMemberRouter.patch(
       let entityGroupMember;
       if (parsed.data.isPrimary === true) {
         entityGroupMember = await DbService.transaction(async (tx) => {
-          await DbService.repository.entityGroupMembers.clearPrimary(entityGroupId, tx);
-          return DbService.repository.entityGroupMembers.update(memberId, updateData as never, tx);
+          await DbService.repository.entityGroupMembers.clearPrimary(
+            entityGroupId,
+            tx
+          );
+          return DbService.repository.entityGroupMembers.update(
+            memberId,
+            updateData as never,
+            tx
+          );
         });
       } else {
-        entityGroupMember = await DbService.repository.entityGroupMembers.update(memberId, updateData as never);
+        entityGroupMember =
+          await DbService.repository.entityGroupMembers.update(
+            memberId,
+            updateData as never
+          );
       }
 
       logger.info({ memberId, entityGroupId }, "Entity group member updated");
 
       return HttpService.success<EntityGroupMemberUpdateResponsePayload>(res, {
-        entityGroupMember: entityGroupMember as unknown as EntityGroupMemberUpdateResponsePayload["entityGroupMember"],
+        entityGroupMember:
+          entityGroupMember as unknown as EntityGroupMemberUpdateResponsePayload["entityGroupMember"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to update entity group member"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update entity group member"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_MEMBER_UPDATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to update entity group member"
+            )
+      );
     }
   }
 );
@@ -435,17 +581,32 @@ entityGroupMemberRouter.delete(
     try {
       const { memberId } = req.params;
 
-      const existing = await DbService.repository.entityGroupMembers.findById(memberId);
+      const existing =
+        await DbService.repository.entityGroupMembers.findById(memberId);
       if (!existing) {
-        return next(new ApiError(404, ApiCode.ENTITY_GROUP_MEMBER_NOT_FOUND, "Entity group member not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_MEMBER_NOT_FOUND,
+            "Entity group member not found"
+          )
+        );
       }
 
       const { userId } = req.application!.metadata;
 
-      await DbService.repository.entityGroupMembers.softDelete(memberId, userId).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity group member");
-      });
+      await DbService.repository.entityGroupMembers
+        .softDelete(memberId, userId)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_GROUP_MEMBER_DELETE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to delete entity group member"
+          );
+        });
 
       logger.info({ memberId }, "Entity group member soft-deleted");
 
@@ -455,7 +616,17 @@ entityGroupMemberRouter.delete(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to delete entity group member"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity group member"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_MEMBER_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete entity group member"
+            )
+      );
     }
   }
 );
@@ -518,21 +689,47 @@ entityGroupMemberRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { entityGroupId } = req.params;
-      const queryParsed = EntityGroupMemberOverlapRequestQuerySchema.safeParse(req.query);
+      const queryParsed = EntityGroupMemberOverlapRequestQuerySchema.safeParse(
+        req.query
+      );
       if (!queryParsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED, "targetConnectorEntityId and targetLinkFieldMappingId query parameters are required"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED,
+            "targetConnectorEntityId and targetLinkFieldMappingId query parameters are required"
+          )
+        );
       }
 
-      const { targetConnectorEntityId, targetLinkFieldMappingId } = queryParsed.data;
+      const { targetConnectorEntityId, targetLinkFieldMappingId } =
+        queryParsed.data;
 
       // Look up target field mapping and its column definition to get the normalizedData key
-      const targetMapping = await DbService.repository.fieldMappings.findById(targetLinkFieldMappingId);
+      const targetMapping = await DbService.repository.fieldMappings.findById(
+        targetLinkFieldMappingId
+      );
       if (!targetMapping) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID, "Target link field mapping not found"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID,
+            "Target link field mapping not found"
+          )
+        );
       }
-      const targetColDef = await DbService.repository.columnDefinitions.findById(targetMapping.columnDefinitionId);
+      const targetColDef =
+        await DbService.repository.columnDefinitions.findById(
+          targetMapping.columnDefinitionId
+        );
       if (!targetColDef) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID, "Target column definition not found"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID,
+            "Target column definition not found"
+          )
+        );
       }
 
       // Get target entity's distinct link field values (keyed by column definition key, not source field)
@@ -543,14 +740,20 @@ entityGroupMemberRouter.get(
       const targetSet = new Set(
         targetValues
           .map((r) => {
-            const val = (r.normalizedData as Record<string, unknown>)[targetFieldKey];
+            const val = (r.normalizedData as Record<string, unknown>)[
+              targetFieldKey
+            ];
             return val != null ? String(val) : null;
           })
           .filter((v): v is string => v !== null)
       );
 
       // Get existing members of the group
-      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(entityGroupId, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] });
+      const enrichedMembers =
+        await DbService.repository.entityGroupMembers.findByEntityGroupId(
+          entityGroupId,
+          { include: ["connectorEntity", "fieldMapping", "columnDefinition"] }
+        );
 
       let sourceRecordCount = 0;
       const sourceValueSet = new Set<string>();
@@ -561,7 +764,9 @@ entityGroupMemberRouter.get(
           eq(entityRecords.connectorEntityId, member.connectorEntityId)
         );
         for (const r of records) {
-          const val = (r.normalizedData as Record<string, unknown>)[sourceFieldKey];
+          const val = (r.normalizedData as Record<string, unknown>)[
+            sourceFieldKey
+          ];
           if (val != null) {
             sourceValueSet.add(String(val));
           }
@@ -576,9 +781,14 @@ entityGroupMemberRouter.get(
       }
 
       const totalUnique = sourceValueSet.size + targetSet.size;
-      const overlapPercentage = totalUnique === 0
-        ? 0
-        : Math.round((matchingRecordCount / Math.max(sourceValueSet.size, targetSet.size)) * 10000) / 100;
+      const overlapPercentage =
+        totalUnique === 0
+          ? 0
+          : Math.round(
+              (matchingRecordCount /
+                Math.max(sourceValueSet.size, targetSet.size)) *
+                10000
+            ) / 100;
 
       return HttpService.success<EntityGroupMemberOverlapResponsePayload>(res, {
         overlapPercentage: Math.min(overlapPercentage, 100),
@@ -591,7 +801,17 @@ entityGroupMemberRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to compute overlap"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED, error instanceof Error ? error.message : "Failed to compute overlap"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_MEMBER_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to compute overlap"
+            )
+      );
     }
   }
 );

@@ -6,7 +6,7 @@ describe("PublicLayout Component", () => {
     const { container } = render(
       <PublicLayout>
         <div>Test Content</div>
-      </PublicLayout>,
+      </PublicLayout>
     );
 
     expect(container.firstChild).toMatchSnapshot();

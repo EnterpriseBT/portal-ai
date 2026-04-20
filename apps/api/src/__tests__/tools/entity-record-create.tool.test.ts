@@ -1,18 +1,27 @@
 /* global AbortController */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
-const mockAssertStationScope = jest.fn<(...a: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
-const mockAssertWriteCapability = jest.fn<(...a: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
-const mockNormalizeMany = jest.fn<(...a: unknown[]) => Promise<unknown[]>>().mockResolvedValue([
-  { normalizedData: { name: "Jane" }, validationErrors: null, isValid: true },
-]);
-const mockCreateMany = jest.fn<(...a: unknown[]) => Promise<unknown[]>>().mockImplementation(
-  (...args: unknown[]) => {
+const mockAssertStationScope = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+const mockAssertWriteCapability = jest
+  .fn<(...a: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
+const mockNormalizeMany = jest
+  .fn<(...a: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([
+    { normalizedData: { name: "Jane" }, validationErrors: null, isValid: true },
+  ]);
+const mockCreateMany = jest
+  .fn<(...a: unknown[]) => Promise<unknown[]>>()
+  .mockImplementation((...args: unknown[]) => {
     const items = args[0] as any[];
-    return Promise.resolve(items.map((_: unknown, i: number) => ({ id: `rec-${i + 1}` })));
-  },
-);
-const mockTransaction = jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+    return Promise.resolve(
+      items.map((_: unknown, i: number) => ({ id: `rec-${i + 1}` }))
+    );
+  });
+const mockTransaction = jest
+  .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
   .mockImplementation((fn) => fn("mock-tx"));
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
@@ -22,7 +31,9 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 jest.unstable_mockModule("../../services/normalization.service.js", () => ({
   NormalizationService: { normalizeMany: mockNormalizeMany },
 }));
-const mockFindEntityById = jest.fn<(...a: unknown[]) => Promise<unknown>>().mockResolvedValue({ id: "ce-1", key: "customers", label: "My Entity" });
+const mockFindEntityById = jest
+  .fn<(...a: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue({ id: "ce-1", key: "customers", label: "My Entity" });
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -41,26 +52,43 @@ jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
 
-const { EntityRecordCreateTool } = await import("../../tools/entity-record-create.tool.js");
+const { EntityRecordCreateTool } =
+  await import("../../tools/entity-record-create.tool.js");
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
-type ItemInput = { connectorEntityId: string; sourceId?: string; data: Record<string, unknown> };
+type ItemInput = {
+  connectorEntityId: string;
+  sourceId?: string;
+  data: Record<string, unknown>;
+};
 const exec = (input: { items: ItemInput[] }) =>
-  new EntityRecordCreateTool().build("station-1", "org-1", "user-1")
-    .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
+  new EntityRecordCreateTool().build("station-1", "org-1", "user-1").execute!(
+    input,
+    { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+  );
 
 describe("EntityRecordCreateTool", () => {
   it("single-item regression — { items: [single] } produces same result", async () => {
-    const result: any = await exec({ items: [{ connectorEntityId: "ce-1", data: { Name: "Jane" } }] });
+    const result: any = await exec({
+      items: [{ connectorEntityId: "ce-1", data: { Name: "Jane" } }],
+    });
     expect(result.success).toBe(true);
     expect(result.count).toBe(1);
     expect(result.items).toHaveLength(1);
     expect(result.items[0].entityId).toBe("rec-1");
     expect(mockNormalizeMany).toHaveBeenCalledWith("ce-1", [{ Name: "Jane" }]);
     expect(mockCreateMany).toHaveBeenCalledWith(
-      [expect.objectContaining({ connectorEntityId: "ce-1", origin: "portal", checksum: "manual" })],
-      "mock-tx",
+      [
+        expect.objectContaining({
+          connectorEntityId: "ce-1",
+          origin: "portal",
+          checksum: "manual",
+        }),
+      ],
+      "mock-tx"
     );
   });
 
@@ -70,7 +98,11 @@ describe("EntityRecordCreateTool", () => {
       { normalizedData: { name: "B" }, validationErrors: null, isValid: true },
       { normalizedData: { name: "C" }, validationErrors: null, isValid: true },
     ]);
-    mockCreateMany.mockResolvedValueOnce([{ id: "r-1" }, { id: "r-2" }, { id: "r-3" }]);
+    mockCreateMany.mockResolvedValueOnce([
+      { id: "r-1" },
+      { id: "r-2" },
+      { id: "r-3" },
+    ]);
 
     const result: any = await exec({
       items: [
@@ -86,7 +118,11 @@ describe("EntityRecordCreateTool", () => {
     expect(mockAssertStationScope).toHaveBeenCalledTimes(1);
     expect(mockAssertWriteCapability).toHaveBeenCalledTimes(1);
     expect(mockNormalizeMany).toHaveBeenCalledTimes(1);
-    expect(mockNormalizeMany).toHaveBeenCalledWith("ce-1", [{ Name: "A" }, { Name: "B" }, { Name: "C" }]);
+    expect(mockNormalizeMany).toHaveBeenCalledWith("ce-1", [
+      { Name: "A" },
+      { Name: "B" },
+      { Name: "C" },
+    ]);
     expect(mockCreateMany).toHaveBeenCalledTimes(1);
     expect((mockCreateMany.mock.calls[0] as unknown[])[0]).toHaveLength(3);
   });
@@ -94,16 +130,36 @@ describe("EntityRecordCreateTool", () => {
   it("bulk create — mixed connectorEntityIds groups correctly", async () => {
     mockNormalizeMany
       .mockResolvedValueOnce([
-        { normalizedData: { name: "A" }, validationErrors: null, isValid: true },
-        { normalizedData: { name: "B" }, validationErrors: null, isValid: true },
+        {
+          normalizedData: { name: "A" },
+          validationErrors: null,
+          isValid: true,
+        },
+        {
+          normalizedData: { name: "B" },
+          validationErrors: null,
+          isValid: true,
+        },
       ])
       .mockResolvedValueOnce([
-        { normalizedData: { name: "C" }, validationErrors: null, isValid: true },
+        {
+          normalizedData: { name: "C" },
+          validationErrors: null,
+          isValid: true,
+        },
       ]);
     mockFindEntityById
-      .mockResolvedValueOnce({ id: "ce-1", key: "customers", label: "Customers" })
+      .mockResolvedValueOnce({
+        id: "ce-1",
+        key: "customers",
+        label: "Customers",
+      })
       .mockResolvedValueOnce({ id: "ce-2", key: "orders", label: "Orders" });
-    mockCreateMany.mockResolvedValueOnce([{ id: "r-1" }, { id: "r-2" }, { id: "r-3" }]);
+    mockCreateMany.mockResolvedValueOnce([
+      { id: "r-1" },
+      { id: "r-2" },
+      { id: "r-3" },
+    ]);
 
     const result: any = await exec({
       items: [
@@ -156,7 +212,9 @@ describe("EntityRecordCreateTool", () => {
   });
 
   it("uses provided sourceId when given", async () => {
-    await exec({ items: [{ connectorEntityId: "ce-1", data: {}, sourceId: "custom-id" }] });
+    await exec({
+      items: [{ connectorEntityId: "ce-1", data: {}, sourceId: "custom-id" }],
+    });
     const models = (mockCreateMany.mock.calls[0] as unknown[])[0] as any[];
     expect(models[0].sourceId).toBe("custom-id");
   });

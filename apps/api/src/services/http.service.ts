@@ -7,7 +7,12 @@ export class ApiError extends Error {
   code: ApiCode;
   details?: Record<string, unknown>;
 
-  constructor(status: number, code: ApiCode, message: string, details?: Record<string, unknown>) {
+  constructor(
+    status: number,
+    code: ApiCode,
+    message: string,
+    details?: Record<string, unknown>
+  ) {
     super(message);
     this.status = status;
     this.code = code;

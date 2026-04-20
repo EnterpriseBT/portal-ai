@@ -11,7 +11,12 @@ jest.unstable_mockModule("../../utils/api.util", () => ({
 const { entityRecords } = await import("../../api/entity-records.api");
 const { queryKeys } = await import("../../api/keys");
 
-const basePagination = { limit: 20, offset: 0, sortBy: "created", sortOrder: "asc" as const };
+const basePagination = {
+  limit: 20,
+  offset: 0,
+  sortBy: "created",
+  sortOrder: "asc" as const,
+};
 
 describe("entity-records.api", () => {
   beforeEach(() => {

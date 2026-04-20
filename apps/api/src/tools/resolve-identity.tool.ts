@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type EntityGroupContext } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type EntityGroupContext,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 
 const InputSchema = z.object({

@@ -60,8 +60,16 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 // Mock S3Service to avoid real AWS calls
-const mockCreatePresignedUpload = jest.fn<(s3Key: string, contentType: string, expiresIn: number) => Promise<string>>();
-const mockHeadObject = jest.fn<(s3Key: string) => Promise<{ contentLength: number; contentType: string } | null>>();
+const mockCreatePresignedUpload =
+  jest.fn<
+    (s3Key: string, contentType: string, expiresIn: number) => Promise<string>
+  >();
+const mockHeadObject =
+  jest.fn<
+    (
+      s3Key: string
+    ) => Promise<{ contentLength: number; contentType: string } | null>
+  >();
 
 jest.unstable_mockModule("../../../services/s3.service.js", () => ({
   S3Service: {
@@ -71,7 +79,9 @@ jest.unstable_mockModule("../../../services/s3.service.js", () => ({
 }));
 
 // Mock BullMQ queue
-const mockQueueAdd = jest.fn<() => Promise<{ id: string }>>().mockResolvedValue({ id: "bull-job-1" });
+const mockQueueAdd = jest
+  .fn<() => Promise<{ id: string }>>()
+  .mockResolvedValue({ id: "bull-job-1" });
 jest.unstable_mockModule("../../../queues/jobs.queue.js", () => ({
   jobsQueue: {
     add: mockQueueAdd,
@@ -80,9 +90,15 @@ jest.unstable_mockModule("../../../queues/jobs.queue.js", () => ({
 }));
 
 // Mock JobEventsService to avoid Redis dependency
-const mockTransition = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-const mockPublishCustomEvent = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-const mockUpdateProgress = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockTransition = jest
+  .fn<() => Promise<void>>()
+  .mockResolvedValue(undefined);
+const mockPublishCustomEvent = jest
+  .fn<() => Promise<void>>()
+  .mockResolvedValue(undefined);
+const mockUpdateProgress = jest
+  .fn<() => Promise<void>>()
+  .mockResolvedValue(undefined);
 
 jest.unstable_mockModule("../../../services/job-events.service.js", () => ({
   JobEventsService: {
@@ -94,7 +110,14 @@ jest.unstable_mockModule("../../../services/job-events.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 
-const { jobs, connectorDefinitions, connectorInstances, connectorEntities, columnDefinitions, fieldMappings } = schema;
+const {
+  jobs,
+  connectorDefinitions,
+  connectorInstances,
+  connectorEntities,
+  columnDefinitions,
+  fieldMappings,
+} = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -161,8 +184,13 @@ describe("Uploads Router", () => {
     mockPublishCustomEvent.mockReset().mockResolvedValue(undefined);
 
     // Default mock implementations
-    mockCreatePresignedUpload.mockResolvedValue("https://s3.amazonaws.com/test-presigned-url");
-    mockHeadObject.mockResolvedValue({ contentLength: 1024, contentType: "text/csv" });
+    mockCreatePresignedUpload.mockResolvedValue(
+      "https://s3.amazonaws.com/test-presigned-url"
+    );
+    mockHeadObject.mockResolvedValue({
+      contentLength: 1024,
+      contentType: "text/csv",
+    });
     mockQueueAdd.mockResolvedValue({ id: "bull-job-1" });
   });
 
@@ -183,7 +211,11 @@ describe("Uploads Router", () => {
           organizationId: "org_123",
           connectorDefinitionId: "cdef_fileupload01",
           files: [
-            { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
+            {
+              fileName: "contacts.csv",
+              contentType: "text/csv",
+              sizeBytes: 1024,
+            },
           ],
         });
 
@@ -193,7 +225,9 @@ describe("Uploads Router", () => {
       expect(res.body.payload.uploads).toHaveLength(1);
       expect(res.body.payload.uploads[0].fileName).toBe("contacts.csv");
       expect(res.body.payload.uploads[0].s3Key).toContain("contacts.csv");
-      expect(res.body.payload.uploads[0].presignedUrl).toBe("https://s3.amazonaws.com/test-presigned-url");
+      expect(res.body.payload.uploads[0].presignedUrl).toBe(
+        "https://s3.amazonaws.com/test-presigned-url"
+      );
       expect(res.body.payload.uploads[0].expiresIn).toBe(900);
     });
 
@@ -227,7 +261,11 @@ describe("Uploads Router", () => {
           organizationId: "org_123",
           connectorDefinitionId: "cdef_fileupload01",
           files: [
-            { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
+            {
+              fileName: "contacts.csv",
+              contentType: "text/csv",
+              sizeBytes: 1024,
+            },
           ],
         });
 
@@ -271,7 +309,11 @@ describe("Uploads Router", () => {
           organizationId: "org_123",
           connectorDefinitionId: "cdef_fileupload01",
           files: [
-            { fileName: "data.pdf", contentType: "application/pdf", sizeBytes: 1024 },
+            {
+              fileName: "data.pdf",
+              contentType: "application/pdf",
+              sizeBytes: 1024,
+            },
           ],
         });
 
@@ -282,7 +324,9 @@ describe("Uploads Router", () => {
     it("should accept .xlsx files (per default allowed extensions)", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
       const organizationId = "org_123";
-      mockCreatePresignedUpload.mockResolvedValue("https://s3.amazonaws.com/test-bucket/uploads/...");
+      mockCreatePresignedUpload.mockResolvedValue(
+        "https://s3.amazonaws.com/test-bucket/uploads/..."
+      );
 
       const res = await request(app)
         .post("/api/uploads/presign")
@@ -291,7 +335,12 @@ describe("Uploads Router", () => {
           organizationId,
           connectorDefinitionId: "cdef_fileupload01",
           files: [
-            { fileName: "workbook.xlsx", contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", sizeBytes: 4096 },
+            {
+              fileName: "workbook.xlsx",
+              contentType:
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              sizeBytes: 4096,
+            },
           ],
         });
 
@@ -311,7 +360,11 @@ describe("Uploads Router", () => {
           organizationId: "org_123",
           connectorDefinitionId: "cdef_fileupload01",
           files: [
-            { fileName: "huge.csv", contentType: "text/csv", sizeBytes: 100 * 1024 * 1024 },
+            {
+              fileName: "huge.csv",
+              contentType: "text/csv",
+              sizeBytes: 100 * 1024 * 1024,
+            },
           ],
         });
 
@@ -364,7 +417,11 @@ describe("Uploads Router", () => {
           organizationId: "org_123",
           connectorDefinitionId: "cdef_fileupload01",
           files: [
-            { fileName: "contacts.csv", contentType: "text/csv", sizeBytes: 1024 },
+            {
+              fileName: "contacts.csv",
+              contentType: "text/csv",
+              sizeBytes: 1024,
+            },
           ],
         });
 
@@ -555,7 +612,10 @@ describe("Uploads Router", () => {
       } as never);
     }
 
-    async function seedColumnDefs(db: ReturnType<typeof drizzle>, organizationId: string) {
+    async function seedColumnDefs(
+      db: ReturnType<typeof drizzle>,
+      organizationId: string
+    ) {
       const base = {
         organizationId,
         description: null,
@@ -569,10 +629,24 @@ describe("Uploads Router", () => {
         deleted: null,
         deletedBy: null,
       };
-      await db.insert(columnDefinitions).values([
-        { ...base, id: NAME_COL_DEF_ID, key: "name", label: "Name", type: "string" } as never,
-        { ...base, id: EMAIL_COL_DEF_ID, key: "email", label: "Email", type: "string" } as never,
-      ]);
+      await db
+        .insert(columnDefinitions)
+        .values([
+          {
+            ...base,
+            id: NAME_COL_DEF_ID,
+            key: "name",
+            label: "Name",
+            type: "string",
+          } as never,
+          {
+            ...base,
+            id: EMAIL_COL_DEF_ID,
+            key: "email",
+            label: "Email",
+            type: "string",
+          } as never,
+        ]);
     }
 
     function createAwaitingJob(
@@ -766,7 +840,12 @@ describe("Uploads Router", () => {
       expect(ci).toBeDefined();
       expect(ci.name).toBe("My CSV Import");
       expect(ci.organizationId).toBe(organizationId);
-      expect(ci.enabledCapabilityFlags).toEqual({ sync: false, read: true, write: true, push: false });
+      expect(ci.enabledCapabilityFlags).toEqual({
+        sync: false,
+        read: true,
+        write: true,
+        push: false,
+      });
 
       // Verify connector entity in DB
       const ceRows = await (db as ReturnType<typeof drizzle>)
@@ -835,9 +914,7 @@ describe("Uploads Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .update(jobs)
         .set({ status: "awaiting_confirmation" } as never)
-        .where(
-          (await import("drizzle-orm")).eq(jobs.id, job.id)
-        );
+        .where((await import("drizzle-orm")).eq(jobs.id, job.id));
 
       // Second confirm (idempotent)
       const res2 = await request(app)
@@ -895,7 +972,13 @@ describe("Uploads Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values([
-          { ...base, id: roleIdColDefId, key: "role_id", label: "Role ID", type: "reference" } as never,
+          {
+            ...base,
+            id: roleIdColDefId,
+            key: "role_id",
+            label: "Role ID",
+            type: "reference",
+          } as never,
         ]);
 
       const job = createAwaitingJob(organizationId);
@@ -969,8 +1052,20 @@ describe("Uploads Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values([
-          { ...base, id: rolePkColDefId, key: "role_pk", label: "Role PK", type: "string" } as never,
-          { ...base, id: userRoleIdColDefId, key: "user_role_id", label: "User Role ID", type: "reference" } as never,
+          {
+            ...base,
+            id: rolePkColDefId,
+            key: "role_pk",
+            label: "Role PK",
+            type: "string",
+          } as never,
+          {
+            ...base,
+            id: userRoleIdColDefId,
+            key: "user_role_id",
+            label: "User Role ID",
+            type: "reference",
+          } as never,
         ]);
 
       const job = createAwaitingJob(organizationId);
@@ -1112,8 +1207,10 @@ describe("Uploads Router", () => {
       expect(res.body.payload.confirmedEntities).toHaveLength(2);
 
       // Both entities should reference the same column definition
-      const entity1ColDefId = res.body.payload.confirmedEntities[0].columnDefinitions[0].id;
-      const entity2ColDefId = res.body.payload.confirmedEntities[1].columnDefinitions[0].id;
+      const entity1ColDefId =
+        res.body.payload.confirmedEntities[0].columnDefinitions[0].id;
+      const entity2ColDefId =
+        res.body.payload.confirmedEntities[1].columnDefinitions[0].id;
       expect(entity1ColDefId).toBe(entity2ColDefId);
       expect(entity1ColDefId).toBe(fullNameColDefId);
     });

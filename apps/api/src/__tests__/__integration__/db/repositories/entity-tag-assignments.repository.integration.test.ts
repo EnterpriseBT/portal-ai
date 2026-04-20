@@ -12,7 +12,11 @@ import { EntityTagsRepository } from "../../../../db/repositories/entity-tags.re
 import { EntityTagAssignmentsRepository } from "../../../../db/repositories/entity-tag-assignments.repository.js";
 import type { DbClient } from "../../../../db/repositories/base.repository.js";
 import * as schema from "../../../../db/schema/index.js";
-import type { EntityTagInsert, EntityTagAssignmentInsert, ConnectorEntityInsert } from "../../../../db/schema/zod.js";
+import type {
+  EntityTagInsert,
+  EntityTagAssignmentInsert,
+  ConnectorEntityInsert,
+} from "../../../../db/schema/zod.js";
 import {
   generateId,
   teardownOrg,
@@ -119,7 +123,9 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
     } as EntityTagInsert;
   }
 
-  function makeEntity(overrides?: Partial<ConnectorEntityInsert>): ConnectorEntityInsert {
+  function makeEntity(
+    overrides?: Partial<ConnectorEntityInsert>
+  ): ConnectorEntityInsert {
     const now = Date.now();
     return {
       id: generateId(),
@@ -179,7 +185,11 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
       const tagId = await seedTag();
       await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
 
-      const results = await assignmentsRepo.findByConnectorEntityId(entityId, { include: ["entityTag"] }, db);
+      const results = await assignmentsRepo.findByConnectorEntityId(
+        entityId,
+        { include: ["entityTag"] },
+        db
+      );
       expect(results).toHaveLength(1);
       expect(results[0].connectorEntityId).toBe(entityId);
       expect(results[0].entityTagId).toBe(tagId);
@@ -192,7 +202,11 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
       const tagId = await seedTag();
       await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
 
-      const results = await assignmentsRepo.findByConnectorEntityId(entityId, {}, db);
+      const results = await assignmentsRepo.findByConnectorEntityId(
+        entityId,
+        {},
+        db
+      );
       expect(results).toHaveLength(1);
       expect(results[0].connectorEntityId).toBe(entityId);
       expect(results[0].tag).toBeUndefined();
@@ -200,17 +214,28 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
 
     it("should return empty array when entity has no assignments", async () => {
       const entityId = await seedEntity();
-      const results = await assignmentsRepo.findByConnectorEntityId(entityId, {}, db);
+      const results = await assignmentsRepo.findByConnectorEntityId(
+        entityId,
+        {},
+        db
+      );
       expect(results).toHaveLength(0);
     });
 
     it("should exclude soft-deleted assignments", async () => {
       const entityId = await seedEntity();
       const tagId = await seedTag();
-      const assignment = await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
+      const assignment = await assignmentsRepo.create(
+        makeAssignment(entityId, tagId),
+        db
+      );
       await assignmentsRepo.softDelete(assignment.id, "test-system", db);
 
-      const results = await assignmentsRepo.findByConnectorEntityId(entityId, { include: ["entityTag"] }, db);
+      const results = await assignmentsRepo.findByConnectorEntityId(
+        entityId,
+        { include: ["entityTag"] },
+        db
+      );
       expect(results).toHaveLength(0);
     });
   });
@@ -227,7 +252,10 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
       await assignmentsRepo.create(makeAssignment(entityId1, tagId1), db);
       await assignmentsRepo.create(makeAssignment(entityId2, tagId2), db);
 
-      const map = await assignmentsRepo.findByConnectorEntityIds([entityId1, entityId2], db);
+      const map = await assignmentsRepo.findByConnectorEntityIds(
+        [entityId1, entityId2],
+        db
+      );
 
       expect(map.get(entityId1)).toHaveLength(1);
       expect(map.get(entityId1)![0].id).toBe(tagId1);
@@ -282,7 +310,10 @@ describe("EntityTagAssignmentsRepository Integration Tests", () => {
     it("should return undefined for a soft-deleted assignment", async () => {
       const entityId = await seedEntity();
       const tagId = await seedTag();
-      const assignment = await assignmentsRepo.create(makeAssignment(entityId, tagId), db);
+      const assignment = await assignmentsRepo.create(
+        makeAssignment(entityId, tagId),
+        db
+      );
       await assignmentsRepo.softDelete(assignment.id, "test-system", db);
 
       const found = await assignmentsRepo.findExisting(entityId, tagId, db);

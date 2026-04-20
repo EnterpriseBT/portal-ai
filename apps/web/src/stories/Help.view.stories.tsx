@@ -3,7 +3,11 @@ import { fn } from "@storybook/test";
 
 import { HelpViewUI, type HelpViewUIProps } from "../views/Help.view";
 import { GETTING_STARTED_STEPS } from "../utils/getting-started.util";
-import { GLOSSARY_ENTRIES, filterGlossary, GlossaryCategory } from "../utils/glossary.util";
+import {
+  GLOSSARY_ENTRIES,
+  filterGlossary,
+  GlossaryCategory,
+} from "../utils/glossary.util";
 import { FAQ_ENTRIES } from "../utils/faq.util";
 
 const meta = {

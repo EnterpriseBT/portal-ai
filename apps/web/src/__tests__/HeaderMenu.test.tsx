@@ -7,7 +7,12 @@ import { MenuItem, ListItemText } from "@portalai/core/ui";
 jest.mock("../api/sdk", () => ({
   sdk: {
     auth: {
-      session: () => ({ user: undefined, isAuthenticated: false, isLoading: false, error: undefined }),
+      session: () => ({
+        user: undefined,
+        isAuthenticated: false,
+        isLoading: false,
+        error: undefined,
+      }),
       logout: () => ({ logout: jest.fn() }),
     },
     organizations: {

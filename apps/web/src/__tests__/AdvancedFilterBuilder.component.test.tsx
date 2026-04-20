@@ -1,21 +1,77 @@
 import { jest } from "@jest/globals";
 import { render, screen } from "./test-utils";
 import userEvent from "@testing-library/user-event";
-import {
-  AdvancedFilterBuilderUI,
-} from "../components/AdvancedFilterBuilder.component";
+import { AdvancedFilterBuilderUI } from "../components/AdvancedFilterBuilder.component";
 
 import type { AdvancedFilterBuilderProps } from "../components/AdvancedFilterBuilder.component";
-import type { FilterExpression, ResolvedColumn } from "@portalai/core/contracts";
+import type {
+  FilterExpression,
+  ResolvedColumn,
+} from "@portalai/core/contracts";
 
 // ── Test data ───────────────────────────────────────────────────────
 
 const columnDefs: ResolvedColumn[] = [
-  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "created_at", normalizedKey: "created_at", label: "Created At", type: "date", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "status", normalizedKey: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  {
+    key: "name",
+    normalizedKey: "name",
+    label: "Name",
+    type: "string",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "age",
+    normalizedKey: "age",
+    label: "Age",
+    type: "number",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "active",
+    normalizedKey: "active",
+    label: "Active",
+    type: "boolean",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "created_at",
+    normalizedKey: "created_at",
+    label: "Created At",
+    type: "date",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "status",
+    normalizedKey: "status",
+    label: "Status",
+    type: "enum",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
 ];
 
 const emptyExpression: FilterExpression = {
@@ -51,7 +107,7 @@ const nestedExpr: FilterExpression = {
 };
 
 function makeProps(
-  overrides: Partial<AdvancedFilterBuilderProps> = {},
+  overrides: Partial<AdvancedFilterBuilderProps> = {}
 ): AdvancedFilterBuilderProps {
   return {
     expression: emptyExpression,
@@ -79,9 +135,7 @@ describe("AdvancedFilterBuilderUI", () => {
 
     it("should show message when no column definitions", () => {
       render(
-        <AdvancedFilterBuilderUI
-          {...makeProps({ columnDefinitions: [] })}
-        />,
+        <AdvancedFilterBuilderUI {...makeProps({ columnDefinitions: [] })} />
       );
       expect(screen.getByText(/no columns available/i)).toBeInTheDocument();
     });
@@ -92,7 +146,7 @@ describe("AdvancedFilterBuilderUI", () => {
       render(
         <AdvancedFilterBuilderUI
           {...makeProps({ expression: multiConditionExpr })}
-        />,
+        />
       );
       // Each condition has a column select — check "name" and "age" (normalizedKey values)
       expect(screen.getByText("name")).toBeInTheDocument();
@@ -108,7 +162,7 @@ describe("AdvancedFilterBuilderUI", () => {
               conditions: [{ field: "active", operator: "eq", value: true }],
             },
           })}
-        />,
+        />
       );
       // Boolean only has "is" and "is not"
       expect(screen.getByText("is")).toBeInTheDocument();
@@ -116,9 +170,7 @@ describe("AdvancedFilterBuilderUI", () => {
 
     it("should render nested groups", () => {
       render(
-        <AdvancedFilterBuilderUI
-          {...makeProps({ expression: nestedExpr })}
-        />,
+        <AdvancedFilterBuilderUI {...makeProps({ expression: nestedExpr })} />
       );
       // Should have multiple AND/OR toggles (root + nested)
       const andButtons = screen.getAllByText("AND");
@@ -130,11 +182,7 @@ describe("AdvancedFilterBuilderUI", () => {
     it("should call onChange with a new condition when add condition is clicked", async () => {
       const user = userEvent.setup();
       const onChange = jest.fn();
-      render(
-        <AdvancedFilterBuilderUI
-          {...makeProps({ onChange })}
-        />,
-      );
+      render(<AdvancedFilterBuilderUI {...makeProps({ onChange })} />);
 
       await user.click(screen.getByText("Condition"));
 
@@ -150,11 +198,7 @@ describe("AdvancedFilterBuilderUI", () => {
     it("should call onChange with a new nested group when add group is clicked", async () => {
       const user = userEvent.setup();
       const onChange = jest.fn();
-      render(
-        <AdvancedFilterBuilderUI
-          {...makeProps({ onChange })}
-        />,
-      );
+      render(<AdvancedFilterBuilderUI {...makeProps({ onChange })} />);
 
       await user.click(screen.getByText("Group"));
 
@@ -173,13 +217,15 @@ describe("AdvancedFilterBuilderUI", () => {
       render(
         <AdvancedFilterBuilderUI
           {...makeProps({ expression: singleConditionExpr, onChange })}
-        />,
+        />
       );
 
       // The delete button for the condition row
-      const deleteButtons = screen.getAllByRole("button").filter(
-        (btn) => btn.querySelector('[data-testid="DeleteOutlineIcon"]'),
-      );
+      const deleteButtons = screen
+        .getAllByRole("button")
+        .filter((btn) =>
+          btn.querySelector('[data-testid="DeleteOutlineIcon"]')
+        );
       expect(deleteButtons.length).toBeGreaterThanOrEqual(1);
 
       await user.click(deleteButtons[0]);
@@ -200,7 +246,7 @@ describe("AdvancedFilterBuilderUI", () => {
             expression: singleConditionExpr,
             onChange,
           })}
-        />,
+        />
       );
 
       await user.click(screen.getAllByText("OR")[0]);
@@ -225,9 +271,7 @@ describe("AdvancedFilterBuilderUI", () => {
                 conditions: [
                   {
                     combinator: "or",
-                    conditions: [
-                      { field: "name", operator: "eq", value: "x" },
-                    ],
+                    conditions: [{ field: "name", operator: "eq", value: "x" }],
                   },
                 ],
               },
@@ -237,9 +281,7 @@ describe("AdvancedFilterBuilderUI", () => {
       };
 
       render(
-        <AdvancedFilterBuilderUI
-          {...makeProps({ expression: deepExpr })}
-        />,
+        <AdvancedFilterBuilderUI {...makeProps({ expression: deepExpr })} />
       );
 
       // The innermost "Group" button should be disabled
@@ -262,9 +304,7 @@ describe("AdvancedFilterBuilderUI", () => {
       };
 
       render(
-        <AdvancedFilterBuilderUI
-          {...makeProps({ expression: maxExpr })}
-        />,
+        <AdvancedFilterBuilderUI {...makeProps({ expression: maxExpr })} />
       );
 
       const conditionButtons = screen.getAllByText("Condition");
@@ -279,7 +319,7 @@ describe("AdvancedFilterBuilderUI", () => {
       render(
         <AdvancedFilterBuilderUI
           {...makeProps({ expression: singleConditionExpr })}
-        />,
+        />
       );
       // There should be a text input with the value "Alice"
       const input = screen.getByDisplayValue("Alice");
@@ -296,7 +336,7 @@ describe("AdvancedFilterBuilderUI", () => {
               conditions: [{ field: "age", operator: "gt", value: 25 }],
             },
           })}
-        />,
+        />
       );
       const input = screen.getByDisplayValue("25");
       expect(input).toBeInTheDocument();
@@ -312,7 +352,7 @@ describe("AdvancedFilterBuilderUI", () => {
               conditions: [{ field: "active", operator: "eq", value: true }],
             },
           })}
-        />,
+        />
       );
       expect(screen.getByText("True")).toBeInTheDocument();
     });
@@ -323,10 +363,12 @@ describe("AdvancedFilterBuilderUI", () => {
           {...makeProps({
             expression: {
               combinator: "and",
-              conditions: [{ field: "created_at", operator: "eq", value: "2024-01-15" }],
+              conditions: [
+                { field: "created_at", operator: "eq", value: "2024-01-15" },
+              ],
             },
           })}
-        />,
+        />
       );
       const input = screen.getByDisplayValue("2024-01-15");
       expect(input).toBeInTheDocument();
@@ -339,10 +381,12 @@ describe("AdvancedFilterBuilderUI", () => {
           {...makeProps({
             expression: {
               combinator: "and",
-              conditions: [{ field: "name", operator: "is_empty", value: null }],
+              conditions: [
+                { field: "name", operator: "is_empty", value: null },
+              ],
             },
           })}
-        />,
+        />
       );
       // No text input should be rendered for the value
       expect(screen.queryByPlaceholderText("Value")).not.toBeInTheDocument();
@@ -354,10 +398,12 @@ describe("AdvancedFilterBuilderUI", () => {
           {...makeProps({
             expression: {
               combinator: "and",
-              conditions: [{ field: "age", operator: "between", value: ["10", "50"] }],
+              conditions: [
+                { field: "age", operator: "between", value: ["10", "50"] },
+              ],
             },
           })}
-        />,
+        />
       );
       expect(screen.getByPlaceholderText("Min")).toBeInTheDocument();
       expect(screen.getByPlaceholderText("Max")).toBeInTheDocument();

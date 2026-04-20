@@ -2,13 +2,21 @@ import { useEffect, useRef, useState } from "react";
 
 import { JobModel } from "@portalai/core/models";
 import type { JobStatus } from "@portalai/core/models";
-import type { JobSnapshotEvent, JobUpdateEvent } from "@portalai/core/contracts";
+import type {
+  JobSnapshotEvent,
+  JobUpdateEvent,
+} from "@portalai/core/contracts";
 
 import { sse } from "../api/sse.api";
 
 // --- Types ---
 
-type ConnectionStatus = "idle" | "connecting" | "connected" | "error" | "closed";
+type ConnectionStatus =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "error"
+  | "closed";
 
 export interface JobStreamState {
   jobId: string | null;
@@ -20,7 +28,6 @@ export interface JobStreamState {
   completedAt: number | null;
   connectionStatus: ConnectionStatus;
 }
-
 
 const INITIAL_STATE: JobStreamState = {
   jobId: null,
@@ -48,7 +55,9 @@ const RECONNECT_DELAY_MS = 3000;
  *
  * Pass `null` or `undefined` as `jobId` to disable the stream.
  */
-export const useJobStream = (jobId: string | null | undefined): JobStreamState => {
+export const useJobStream = (
+  jobId: string | null | undefined
+): JobStreamState => {
   const createSSEConnection = sse.create();
   const [state, setState] = useState<JobStreamState>(INITIAL_STATE);
 
@@ -135,7 +144,8 @@ export const useJobStream = (jobId: string | null | undefined): JobStreamState =
           return {
             ...prev,
             status,
-            progress: data.progress > prev.progress ? data.progress : prev.progress,
+            progress:
+              data.progress > prev.progress ? data.progress : prev.progress,
             error: data.error ?? prev.error,
             result: data.result ?? prev.result,
             connectionStatus: "connected",

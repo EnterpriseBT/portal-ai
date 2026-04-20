@@ -54,7 +54,10 @@ export const entityGroups = {
       options
     ),
 
-  impact: (id: string, options?: QueryOptions<EntityGroupImpactResponsePayload>) =>
+  impact: (
+    id: string,
+    options?: QueryOptions<EntityGroupImpactResponsePayload>
+  ) =>
     useAuthQuery<EntityGroupImpactResponsePayload>(
       queryKeys.entityGroups.impact(id),
       buildUrl(`${ENTITY_GROUPS_URL}/${encodeURIComponent(id)}/impact`),

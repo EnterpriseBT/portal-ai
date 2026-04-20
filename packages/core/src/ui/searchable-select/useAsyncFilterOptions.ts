@@ -79,7 +79,10 @@ export function useAsyncFilterOptions<
     return async (id: string): Promise<TOption | null> => {
       const option = await loader(id);
       if (option) {
-        setLabelMap((prev) => ({ ...prev, [String(option.value)]: option.label }));
+        setLabelMap((prev) => ({
+          ...prev,
+          [String(option.value)]: option.label,
+        }));
       }
       return option;
     };

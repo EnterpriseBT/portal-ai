@@ -147,3 +147,19 @@ Custom fonts:
 - **Noto Sans**: Primary body font
 - **Playfair Display**: Heading font
 - **Cutive Mono**: Monospace font
+
+## Contracts
+
+`@portalai/core/contracts` is the single entry for API-layer Zod schemas. It re-exports from upstream modules — consumers should never import those modules directly.
+
+### Spreadsheet-parsing re-exports
+
+Schemas + types originate in [`@portalai/spreadsheet-parsing`](../spreadsheet-parsing/README.md) and are re-exported here so API + web share one import site:
+
+- **Shapes**: `LayoutPlanSchema`, `RegionSchema`, `ColumnBindingSchema`, `SkipRuleSchema`, `HeaderStrategySchema`, `IdentityStrategySchema`, `WarningSchema`, `DriftReportSchema`, `WorkbookSchema`, `InterpretInputSchema`, `RegionHintSchema`
+- **Enums / constants**: `ORIENTATIONS`, `HEADER_AXES`, `BOUNDS_MODES`, `WARNING_CODES`, `WarningCode`, `DEFAULT_WARNING_SEVERITY`, `DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT`
+- **Runtime**: `interpret`, `computeWorkbookFingerprint`, `makeWorkbook`, `makeSheetAccessor`
+- **LLM content**: `LlmBridge` namespace (prompt templates + response schemas + sampling helpers for api-side DI)
+- **Endpoint contracts**: `InterpretRequestBodySchema`, `InterpretResponsePayloadSchema`, `PatchLayoutPlanBodySchema`, `LayoutPlanResponsePayloadSchema`, `CommitLayoutPlanRequestBodySchema`, `LayoutPlanCommitResultSchema`
+
+Not re-exported: `replay()` — it uses `node:crypto` and only works in Node, so it lives behind the parser package's Node-only `/replay` subpath. Import directly from `@portalai/spreadsheet-parsing/replay` on the server.

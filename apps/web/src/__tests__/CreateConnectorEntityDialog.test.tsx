@@ -35,9 +35,8 @@ jest.unstable_mockModule("../utils/api.util", () => ({
 }));
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { CreateConnectorEntityDialog } = await import(
-  "../components/CreateConnectorEntityDialog.component"
-);
+const { CreateConnectorEntityDialog } =
+  await import("../components/CreateConnectorEntityDialog.component");
 
 const defaultProps = {
   open: true,
@@ -76,7 +75,9 @@ describe("CreateConnectorEntityDialog", () => {
     expect(screen.getByText("New Entity")).toBeInTheDocument();
     expect(screen.getByLabelText(/Label/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Key/)).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Connector Instance" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Connector Instance" })
+    ).toBeInTheDocument();
   });
 
   it("should not render dialog content when open is false", () => {
@@ -88,7 +89,9 @@ describe("CreateConnectorEntityDialog", () => {
 
   it("should call onSubmit with correct payload on Create button click", async () => {
     const onSubmit = jest.fn();
-    render(<CreateConnectorEntityDialog {...lockedProps} onSubmit={onSubmit} />);
+    render(
+      <CreateConnectorEntityDialog {...lockedProps} onSubmit={onSubmit} />
+    );
     fireEvent.change(screen.getByLabelText(/Label/), {
       target: { value: "Contacts" },
     });
@@ -107,7 +110,9 @@ describe("CreateConnectorEntityDialog", () => {
 
   it("should call onSubmit on Enter key (form submit)", async () => {
     const onSubmit = jest.fn();
-    render(<CreateConnectorEntityDialog {...lockedProps} onSubmit={onSubmit} />);
+    render(
+      <CreateConnectorEntityDialog {...lockedProps} onSubmit={onSubmit} />
+    );
     fireEvent.change(screen.getByLabelText(/Label/), {
       target: { value: "Deals" },
     });
@@ -163,11 +168,15 @@ describe("CreateConnectorEntityDialog", () => {
       />
     );
     expect(screen.getByText(/Duplicate entity key/)).toBeInTheDocument();
-    expect(screen.getByText(/CONNECTOR_ENTITY_DUPLICATE_KEY/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/CONNECTOR_ENTITY_DUPLICATE_KEY/)
+    ).toBeInTheDocument();
   });
 
   it("should not render FormAlert when serverError is null", () => {
-    render(<CreateConnectorEntityDialog {...defaultProps} serverError={null} />);
+    render(
+      <CreateConnectorEntityDialog {...defaultProps} serverError={null} />
+    );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -210,7 +219,9 @@ describe("CreateConnectorEntityDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => {
-      expect(screen.getByText("Connector instance is required")).toBeInTheDocument();
+      expect(
+        screen.getByText("Connector instance is required")
+      ).toBeInTheDocument();
     });
   });
 
@@ -218,8 +229,14 @@ describe("CreateConnectorEntityDialog", () => {
     render(<CreateConnectorEntityDialog {...lockedProps} />);
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/Label/)).toHaveAttribute("aria-invalid", "true");
-      expect(screen.getByLabelText(/Key/)).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByLabelText(/Label/)).toHaveAttribute(
+        "aria-invalid",
+        "true"
+      );
+      expect(screen.getByLabelText(/Key/)).toHaveAttribute(
+        "aria-invalid",
+        "true"
+      );
     });
   });
 
@@ -239,7 +256,9 @@ describe("CreateConnectorEntityDialog", () => {
 
   it("should use locked connector instance ID in onSubmit payload", async () => {
     const onSubmit = jest.fn();
-    render(<CreateConnectorEntityDialog {...lockedProps} onSubmit={onSubmit} />);
+    render(
+      <CreateConnectorEntityDialog {...lockedProps} onSubmit={onSubmit} />
+    );
     fireEvent.change(screen.getByLabelText(/Label/), {
       target: { value: "Users" },
     });
@@ -256,6 +275,8 @@ describe("CreateConnectorEntityDialog", () => {
 
   it("should render connector instance as a searchable select when unlocked", () => {
     render(<CreateConnectorEntityDialog {...defaultProps} />);
-    expect(screen.getByRole("combobox", { name: "Connector Instance" })).toBeEnabled();
+    expect(
+      screen.getByRole("combobox", { name: "Connector Instance" })
+    ).toBeEnabled();
   });
 });

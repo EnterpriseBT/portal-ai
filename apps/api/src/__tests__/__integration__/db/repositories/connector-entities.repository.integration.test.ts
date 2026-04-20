@@ -233,12 +233,18 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
     it("should attach connectorInstance when include contains connectorInstance", async () => {
       await repo.create(makeEntity(), db);
 
-      const results = await repo.findMany(undefined, { include: ["connectorInstance"] }, db);
+      const results = await repo.findMany(
+        undefined,
+        { include: ["connectorInstance"] },
+        db
+      );
 
       expect(results).toHaveLength(1);
       const entity = results[0] as Record<string, unknown>;
       expect(entity.connectorInstance).toBeDefined();
-      expect((entity.connectorInstance as { id: string }).id).toBe(connectorInstanceId);
+      expect((entity.connectorInstance as { id: string }).id).toBe(
+        connectorInstanceId
+      );
     });
 
     it("should attach fieldMappings when include contains fieldMappings", async () => {
@@ -286,18 +292,29 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
         deletedBy: null,
       } as never);
 
-      const results = await repo.findMany(undefined, { include: ["fieldMappings"] }, db);
+      const results = await repo.findMany(
+        undefined,
+        { include: ["fieldMappings"] },
+        db
+      );
 
       expect(results).toHaveLength(1);
       const enriched = results[0] as Record<string, unknown>;
       expect(enriched.fieldMappings as unknown[]).toHaveLength(1);
-      expect(((enriched.fieldMappings as unknown[])[0] as { sourceField: string }).sourceField).toBe("name");
+      expect(
+        ((enriched.fieldMappings as unknown[])[0] as { sourceField: string })
+          .sourceField
+      ).toBe("name");
     });
 
     it("should return empty arrays for includes with no matching data", async () => {
       await repo.create(makeEntity(), db);
 
-      const results = await repo.findMany(undefined, { include: ["fieldMappings", "tags"] }, db);
+      const results = await repo.findMany(
+        undefined,
+        { include: ["fieldMappings", "tags"] },
+        db
+      );
 
       expect(results).toHaveLength(1);
       const enriched = results[0] as Record<string, unknown>;

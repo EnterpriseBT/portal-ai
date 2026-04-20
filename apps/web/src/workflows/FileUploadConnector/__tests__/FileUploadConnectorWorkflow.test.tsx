@@ -98,7 +98,9 @@ describe("FileUploadConnectorWorkflowUI — step routing", () => {
     );
     // "Draw regions" appears twice when step 1 is active — stepper label +
     // inner panel heading. Both rendered ⇒ the region-drawing panel is live.
-    expect(screen.getAllByText("Draw regions").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Draw regions").length).toBeGreaterThanOrEqual(
+      2
+    );
   });
 
   test("step 1 shows a loading fallback when the workbook is not yet populated", () => {
@@ -133,7 +135,7 @@ describe("FileUploadConnectorWorkflowUI — step routing", () => {
 });
 
 describe("FileUploadConnectorWorkflowUI — footer navigation", () => {
-  test('step 0 Cancel button calls onClose', async () => {
+  test("step 0 Cancel button calls onClose", async () => {
     const user = userEvent.setup();
     const onClose = jest.fn();
     render(<FileUploadConnectorWorkflowUI {...makeProps({ onClose })} />);
@@ -141,13 +143,11 @@ describe("FileUploadConnectorWorkflowUI — footer navigation", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test('step 0 Upload button fires onStartParse and is disabled with no files', async () => {
+  test("step 0 Upload button fires onStartParse and is disabled with no files", async () => {
     const user = userEvent.setup();
     const onStartParse = jest.fn();
     const { rerender } = render(
-      <FileUploadConnectorWorkflowUI
-        {...makeProps({ onStartParse })}
-      />
+      <FileUploadConnectorWorkflowUI {...makeProps({ onStartParse })} />
     );
     const uploadBtn = screen.getByRole("button", { name: /^upload$/i });
     expect(uploadBtn).toBeDisabled();
@@ -161,7 +161,7 @@ describe("FileUploadConnectorWorkflowUI — footer navigation", () => {
     expect(onStartParse).toHaveBeenCalledTimes(1);
   });
 
-  test('step 0 Upload button is disabled while uploading', () => {
+  test("step 0 Upload button is disabled while uploading", () => {
     render(
       <FileUploadConnectorWorkflowUI
         {...makeProps({
@@ -170,9 +170,7 @@ describe("FileUploadConnectorWorkflowUI — footer navigation", () => {
         })}
       />
     );
-    expect(
-      screen.getByRole("button", { name: /^upload$/i })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^upload$/i })).toBeDisabled();
   });
 
   test("step 1 Back button calls onBack", async () => {
@@ -235,9 +233,7 @@ describe("FileUploadConnectorWorkflowUI — server error", () => {
     );
     const alerts = screen.getAllByRole("alert");
     expect(
-      alerts.some((el) =>
-        el.textContent?.includes("Upload rejected by server")
-      )
+      alerts.some((el) => el.textContent?.includes("Upload rejected by server"))
     ).toBe(true);
   });
 
@@ -283,9 +279,9 @@ describe("FileUploadConnectorWorkflowUI — server error", () => {
       />
     );
     const alerts = screen.getAllByRole("alert");
-    expect(
-      alerts.some((el) => el.textContent?.includes("Commit failed"))
-    ).toBe(true);
+    expect(alerts.some((el) => el.textContent?.includes("Commit failed"))).toBe(
+      true
+    );
   });
 });
 
@@ -324,8 +320,6 @@ describe("FileUploadConnectorWorkflowUI — pending flags", () => {
         })}
       />
     );
-    expect(
-      screen.getByRole("button", { name: /committing/i })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: /committing/i })).toBeDisabled();
   });
 });

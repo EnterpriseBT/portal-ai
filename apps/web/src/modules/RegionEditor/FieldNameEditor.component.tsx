@@ -9,13 +9,24 @@ export interface FieldNameEditorUIProps {
   onUpdate: (updates: Partial<RegionDraft>) => void;
 }
 
-export const FieldNameEditorUI: React.FC<FieldNameEditorUIProps> = ({ region, onUpdate }) => {
-  const defaults = defaultFieldNamesForRegion(region.bounds, region.orientation);
+export const FieldNameEditorUI: React.FC<FieldNameEditorUIProps> = ({
+  region,
+  onUpdate,
+}) => {
+  const defaults = defaultFieldNamesForRegion(
+    region.bounds,
+    region.orientation
+  );
   const overrides = region.columnOverrides ?? {};
   return (
     <Stack spacing={0.75}>
       {defaults.map((defaultName) => (
-        <Stack key={defaultName} direction="row" spacing={1} alignItems="center">
+        <Stack
+          key={defaultName}
+          direction="row"
+          spacing={1}
+          alignItems="center"
+        >
           <Box
             sx={{
               width: 88,
@@ -40,7 +51,9 @@ export const FieldNameEditorUI: React.FC<FieldNameEditorUIProps> = ({ region, on
               }
               onUpdate({
                 columnOverrides:
-                  Object.keys(nextOverrides).length > 0 ? nextOverrides : undefined,
+                  Object.keys(nextOverrides).length > 0
+                    ? nextOverrides
+                    : undefined,
               });
             }}
             placeholder={defaultName}

@@ -26,7 +26,7 @@ export const DEFAULT_COLOR_SAMPLES: ColorSample[] = [
   { color: "#8b5cf6", label: "Purple" },
   { color: "#ec4899", label: "Pink" },
   { color: "#64748b", label: "Slate" },
-]
+];
 
 export interface ColorPickerProps {
   /** Current hex color value (e.g. "#ff0000") */
@@ -108,7 +108,7 @@ function hexToHsl(hex: string): [number, number, number] {
 function drawColorWheel(
   ctx: CanvasRenderingContext2D,
   size: number,
-  lightness: number,
+  lightness: number
 ) {
   const center = size / 2;
   const radius = center - 2;
@@ -144,7 +144,7 @@ function drawColorWheel(
 function drawIndicator(
   ctx: CanvasRenderingContext2D,
   size: number,
-  hex: string,
+  hex: string
 ) {
   const [h, s] = hexToHsl(hex);
   const center = size / 2;
@@ -193,7 +193,11 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   }
 
   const redraw = useCallback(
-    (canvas: HTMLCanvasElement, currentValue: string, currentLightness: number) => {
+    (
+      canvas: HTMLCanvasElement,
+      currentValue: string,
+      currentLightness: number
+    ) => {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
@@ -203,7 +207,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         drawIndicator(ctx, wheelSize, currentValue);
       }
     },
-    [wheelSize],
+    [wheelSize]
   );
 
   const canvasCallbackRef = useCallback(
@@ -213,7 +217,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         redraw(node, value, lightness);
       }
     },
-    [redraw, value, lightness],
+    [redraw, value, lightness]
   );
 
   useEffect(() => {
@@ -254,7 +258,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       setInputValue(hex);
       onChange?.(hex);
     },
-    [wheelSize, lightness, onChange, disabled],
+    [wheelSize, lightness, onChange, disabled]
   );
 
   const handleMouseDown = useCallback(
@@ -263,7 +267,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       isDragging.current = true;
       pickColorFromCanvas(e.clientX, e.clientY);
     },
-    [pickColorFromCanvas, disabled],
+    [pickColorFromCanvas, disabled]
   );
 
   const handleMouseMove = useCallback(
@@ -271,7 +275,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       if (!isDragging.current || disabled) return;
       pickColorFromCanvas(e.clientX, e.clientY);
     },
-    [pickColorFromCanvas, disabled],
+    [pickColorFromCanvas, disabled]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -290,7 +294,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         onChange?.(newValue);
       }
     },
-    [onChange],
+    [onChange]
   );
 
   const handleLightnessChange = useCallback(
@@ -306,7 +310,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
         onChange?.(newHex);
       }
     },
-    [inputValue, onChange, disabled],
+    [inputValue, onChange, disabled]
   );
 
   const handleSampleClick = useCallback(
@@ -317,7 +321,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       setLightness(l);
       onChange?.(color);
     },
-    [onChange, disabled],
+    [onChange, disabled]
   );
 
   return (
@@ -425,7 +429,6 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
                   data-testid="lightness-slider"
                 />
               </Box>
-
             </Stack>
           </Paper>
         </ClickAwayListener>
@@ -463,9 +466,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
                       value === sample.color ? "primary.main" : "divider",
                     cursor: disabled ? "default" : "pointer",
                     transition: "border-color 0.15s",
-                    "&:hover": disabled
-                      ? {}
-                      : { borderColor: "primary.light" },
+                    "&:hover": disabled ? {} : { borderColor: "primary.light" },
                     "&:focus-visible": {
                       outline: "2px solid",
                       outlineColor: "primary.main",

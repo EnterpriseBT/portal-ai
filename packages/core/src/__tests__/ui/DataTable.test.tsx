@@ -276,7 +276,9 @@ describe("DataTable", () => {
   describe("row and cell click handlers", () => {
     it("onRowClick fires with correct row and index on row click", () => {
       const onRowClick = jest.fn();
-      render(<DataTable columns={columns} rows={rows} onRowClick={onRowClick} />);
+      render(
+        <DataTable columns={columns} rows={rows} onRowClick={onRowClick} />
+      );
       fireEvent.click(screen.getByText("Alice"));
       expect(onRowClick).toHaveBeenCalledWith(rows[0], 0);
       fireEvent.click(screen.getByText("Bob"));
@@ -303,13 +305,7 @@ describe("DataTable", () => {
         { key: "email", label: "Email", sortable: true },
         { key: "age", label: "Age", sortable: true, format: (v) => `${v} yrs` },
       ];
-      render(
-        <DataTable
-          columns={cols}
-          rows={rows}
-          onRowClick={onRowClick}
-        />
-      );
+      render(<DataTable columns={cols} rows={rows} onRowClick={onRowClick} />);
       fireEvent.click(screen.getByText("Alice"));
       expect(onCellClick).toHaveBeenCalledTimes(1);
       expect(onRowClick).not.toHaveBeenCalled();

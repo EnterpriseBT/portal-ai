@@ -4,45 +4,65 @@ import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import { FieldMappingSchema } from "../models/field-mapping.model.js";
 import { FieldMappingWithColumnDefinitionSchema } from "./connector-entity.contract.js";
-import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
+import {
+  PaginatedResponsePayloadSchema,
+  PaginationRequestQuerySchema,
+} from "./pagination.contract.js";
 
 // ── Enriched schemas ─────────────────────────────────────────────────
 
 export const FieldMappingWithConnectorEntitySchema = FieldMappingSchema.extend({
   connectorEntity: ConnectorEntitySchema.extend({
-    connectorInstance: ConnectorInstanceSchema.pick({ id: true, enabledCapabilityFlags: true }).optional(),
+    connectorInstance: ConnectorInstanceSchema.pick({
+      id: true,
+      enabledCapabilityFlags: true,
+    }).optional(),
   }).nullable(),
 });
 
-export type FieldMappingWithConnectorEntity = z.infer<typeof FieldMappingWithConnectorEntitySchema>;
+export type FieldMappingWithConnectorEntity = z.infer<
+  typeof FieldMappingWithConnectorEntitySchema
+>;
 
 // ── List ──────────────────────────────────────────────────────────────
 
-export const FieldMappingListRequestQuerySchema = PaginationRequestQuerySchema.extend({
-  connectorEntityId: z.string().optional(),
-  columnDefinitionId: z.string().optional(),
-  include: z.string().optional(),
-});
+export const FieldMappingListRequestQuerySchema =
+  PaginationRequestQuerySchema.extend({
+    connectorEntityId: z.string().optional(),
+    columnDefinitionId: z.string().optional(),
+    include: z.string().optional(),
+  });
 
-export type FieldMappingListRequestQuery = z.infer<typeof FieldMappingListRequestQuerySchema>;
+export type FieldMappingListRequestQuery = z.infer<
+  typeof FieldMappingListRequestQuerySchema
+>;
 
-export const FieldMappingListResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  fieldMappings: z.array(FieldMappingSchema),
-});
+export const FieldMappingListResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    fieldMappings: z.array(FieldMappingSchema),
+  });
 
-export type FieldMappingListResponsePayload = z.infer<typeof FieldMappingListResponsePayloadSchema>;
+export type FieldMappingListResponsePayload = z.infer<
+  typeof FieldMappingListResponsePayloadSchema
+>;
 
-export const FieldMappingListWithConnectorEntityResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  fieldMappings: z.array(FieldMappingWithConnectorEntitySchema),
-});
+export const FieldMappingListWithConnectorEntityResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    fieldMappings: z.array(FieldMappingWithConnectorEntitySchema),
+  });
 
-export type FieldMappingListWithConnectorEntityResponsePayload = z.infer<typeof FieldMappingListWithConnectorEntityResponsePayloadSchema>;
+export type FieldMappingListWithConnectorEntityResponsePayload = z.infer<
+  typeof FieldMappingListWithConnectorEntityResponsePayloadSchema
+>;
 
-export const FieldMappingListWithColumnDefinitionResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  fieldMappings: z.array(FieldMappingWithColumnDefinitionSchema),
-});
+export const FieldMappingListWithColumnDefinitionResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    fieldMappings: z.array(FieldMappingWithColumnDefinitionSchema),
+  });
 
-export type FieldMappingListWithColumnDefinitionResponsePayload = z.infer<typeof FieldMappingListWithColumnDefinitionResponsePayloadSchema>;
+export type FieldMappingListWithColumnDefinitionResponsePayload = z.infer<
+  typeof FieldMappingListWithColumnDefinitionResponsePayloadSchema
+>;
 
 // ── Get ───────────────────────────────────────────────────────────────
 
@@ -50,7 +70,9 @@ export const FieldMappingGetResponsePayloadSchema = z.object({
   fieldMapping: FieldMappingSchema,
 });
 
-export type FieldMappingGetResponsePayload = z.infer<typeof FieldMappingGetResponsePayloadSchema>;
+export type FieldMappingGetResponsePayload = z.infer<
+  typeof FieldMappingGetResponsePayloadSchema
+>;
 
 // ── Create ────────────────────────────────────────────────────────────
 
@@ -73,13 +95,17 @@ export const FieldMappingCreateRequestBodySchema = z.object({
   refEntityKey: nullableString.optional().default(null),
 });
 
-export type FieldMappingCreateRequestBody = z.infer<typeof FieldMappingCreateRequestBodySchema>;
+export type FieldMappingCreateRequestBody = z.infer<
+  typeof FieldMappingCreateRequestBodySchema
+>;
 
 export const FieldMappingCreateResponsePayloadSchema = z.object({
   fieldMapping: FieldMappingSchema,
 });
 
-export type FieldMappingCreateResponsePayload = z.infer<typeof FieldMappingCreateResponsePayloadSchema>;
+export type FieldMappingCreateResponsePayload = z.infer<
+  typeof FieldMappingCreateResponsePayloadSchema
+>;
 
 // ── Update ────────────────────────────────────────────────────────────
 
@@ -87,7 +113,10 @@ export const FieldMappingUpdateRequestBodySchema = z.object({
   sourceField: z.string().min(1),
   isPrimaryKey: z.boolean().optional(),
   columnDefinitionId: z.string(),
-  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
+  normalizedKey: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]*$/)
+    .optional(),
   required: z.boolean().optional(),
   defaultValue: nullableString.optional(),
   format: nullableString.optional(),
@@ -96,13 +125,17 @@ export const FieldMappingUpdateRequestBodySchema = z.object({
   refEntityKey: nullableString.optional(),
 });
 
-export type FieldMappingUpdateRequestBody = z.infer<typeof FieldMappingUpdateRequestBodySchema>;
+export type FieldMappingUpdateRequestBody = z.infer<
+  typeof FieldMappingUpdateRequestBodySchema
+>;
 
 export const FieldMappingUpdateResponsePayloadSchema = z.object({
   fieldMapping: FieldMappingSchema,
 });
 
-export type FieldMappingUpdateResponsePayload = z.infer<typeof FieldMappingUpdateResponsePayloadSchema>;
+export type FieldMappingUpdateResponsePayload = z.infer<
+  typeof FieldMappingUpdateResponsePayloadSchema
+>;
 
 // ── Delete ───────────────────────────────────────────────────────────
 
@@ -114,7 +147,9 @@ export const FieldMappingDeleteResponsePayloadSchema = z.object({
   }),
 });
 
-export type FieldMappingDeleteResponsePayload = z.infer<typeof FieldMappingDeleteResponsePayloadSchema>;
+export type FieldMappingDeleteResponsePayload = z.infer<
+  typeof FieldMappingDeleteResponsePayloadSchema
+>;
 
 // ── Impact ───────────────────────────────────────────────────────────
 
@@ -130,15 +165,20 @@ export const FieldMappingImpactResponsePayloadSchema = z.object({
     .nullable(),
 });
 
-export type FieldMappingImpactResponsePayload = z.infer<typeof FieldMappingImpactResponsePayloadSchema>;
+export type FieldMappingImpactResponsePayload = z.infer<
+  typeof FieldMappingImpactResponsePayloadSchema
+>;
 
 // ── Bidirectional Validation ──────────────────────────────────────────
 
-export const FieldMappingBidirectionalValidationResponsePayloadSchema = z.object({
-  isConsistent: z.boolean().nullable(),
-  inconsistentRecordIds: z.array(z.string()),
-  totalChecked: z.number(),
-  reason: z.string().optional(),
-});
+export const FieldMappingBidirectionalValidationResponsePayloadSchema =
+  z.object({
+    isConsistent: z.boolean().nullable(),
+    inconsistentRecordIds: z.array(z.string()),
+    totalChecked: z.number(),
+    reason: z.string().optional(),
+  });
 
-export type FieldMappingBidirectionalValidationResponsePayload = z.infer<typeof FieldMappingBidirectionalValidationResponsePayloadSchema>;
+export type FieldMappingBidirectionalValidationResponsePayload = z.infer<
+  typeof FieldMappingBidirectionalValidationResponsePayloadSchema
+>;

@@ -21,7 +21,7 @@ type CellValue = string | number | boolean | Date | null;
  */
 export async function buildSingleSheetXlsx(
   sheetName: string,
-  rows: CellValue[][],
+  rows: CellValue[][]
 ): Promise<Buffer> {
   return buildMultiSheetXlsx({ [sheetName]: rows });
 }
@@ -32,7 +32,7 @@ export async function buildSingleSheetXlsx(
  * to create a header-less / row-less sheet.
  */
 export async function buildMultiSheetXlsx(
-  sheets: Record<string, CellValue[][]>,
+  sheets: Record<string, CellValue[][]>
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
 

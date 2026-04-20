@@ -1,16 +1,19 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { CreateFieldMappingDialog } = await import(
-  "../components/CreateFieldMappingDialog.component"
-);
+const { CreateFieldMappingDialog } =
+  await import("../components/CreateFieldMappingDialog.component");
 
 const defaultProps = {
   open: true,
   onClose: jest.fn(),
   onSubmit: jest.fn(),
-  onSearchConnectorEntities: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
-  onSearchConnectorEntitiesForRefKey: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
+  onSearchConnectorEntities: jest
+    .fn<(q: string) => Promise<{ value: string; label: string }[]>>()
+    .mockResolvedValue([]),
+  onSearchConnectorEntitiesForRefKey: jest
+    .fn<(q: string) => Promise<{ value: string; label: string }[]>>()
+    .mockResolvedValue([]),
   isPending: false,
   serverError: null,
   columnDefinitionId: "cd-1",
@@ -28,24 +31,44 @@ describe("CreateFieldMappingDialog", () => {
     expect(screen.getByText("New Field Mapping")).toBeInTheDocument();
     expect(screen.getByLabelText(/Source Field/)).toBeInTheDocument();
     expect(screen.getByText("Primary Key")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Connector Entity" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Connector Entity" })
+    ).toBeInTheDocument();
     // Ref fields hidden for non-reference types
-    expect(screen.queryByRole("combobox", { name: "Ref Entity Key" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Ref Normalized Key")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Ref Entity Key" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Ref Normalized Key")
+    ).not.toBeInTheDocument();
     // Locked column definition field
     const cdField = screen.getByDisplayValue("First Name");
     expect(cdField).toBeDisabled();
   });
 
   it("should show ref fields when column definition type is reference", () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference" />);
-    expect(screen.getByRole("combobox", { name: "Ref Entity Key" })).toBeInTheDocument();
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        columnDefinitionType="reference"
+      />
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Ref Entity Key" })
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Ref Normalized Key")).toBeInTheDocument();
   });
 
   it("should show ref fields when column definition type is reference-array", () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference-array" />);
-    expect(screen.getByRole("combobox", { name: "Ref Entity Key" })).toBeInTheDocument();
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        columnDefinitionType="reference-array"
+      />
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Ref Entity Key" })
+    ).toBeInTheDocument();
   });
 
   it("should not render when open is false", () => {
@@ -111,7 +134,10 @@ describe("CreateFieldMappingDialog", () => {
     render(
       <CreateFieldMappingDialog
         {...defaultProps}
-        serverError={{ message: "Duplicate mapping", code: "FIELD_MAPPING_DUPLICATE" }}
+        serverError={{
+          message: "Duplicate mapping",
+          code: "FIELD_MAPPING_DUPLICATE",
+        }}
       />
     );
     expect(screen.getByText(/Duplicate mapping/)).toBeInTheDocument();
@@ -141,9 +167,9 @@ describe("CreateFieldMappingDialog", () => {
   });
 
   it("should submit form on Enter key press", async () => {
-    const onSearchConnectorEntities = jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([
-      { value: "ce-1", label: "Contacts" },
-    ]);
+    const onSearchConnectorEntities = jest
+      .fn<(q: string) => Promise<{ value: string; label: string }[]>>()
+      .mockResolvedValue([{ value: "ce-1", label: "Contacts" }]);
     const onSubmit = jest.fn();
     render(
       <CreateFieldMappingDialog
@@ -159,7 +185,9 @@ describe("CreateFieldMappingDialog", () => {
     });
 
     // Select connector entity via search
-    const connectorEntityInput = screen.getByRole("combobox", { name: "Connector Entity" });
+    const connectorEntityInput = screen.getByRole("combobox", {
+      name: "Connector Entity",
+    });
     fireEvent.change(connectorEntityInput, { target: { value: "Contacts" } });
     await waitFor(() => expect(onSearchConnectorEntities).toHaveBeenCalled());
     await waitFor(() => {
@@ -182,9 +210,9 @@ describe("CreateFieldMappingDialog", () => {
   });
 
   it("should call onSubmit with correct body including null ref fields", async () => {
-    const onSearchConnectorEntities = jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([
-      { value: "ce-1", label: "Contacts" },
-    ]);
+    const onSearchConnectorEntities = jest
+      .fn<(q: string) => Promise<{ value: string; label: string }[]>>()
+      .mockResolvedValue([{ value: "ce-1", label: "Contacts" }]);
     const onSubmit = jest.fn();
     render(
       <CreateFieldMappingDialog
@@ -200,7 +228,9 @@ describe("CreateFieldMappingDialog", () => {
     });
 
     // Select connector entity
-    const connectorEntityInput = screen.getByRole("combobox", { name: "Connector Entity" });
+    const connectorEntityInput = screen.getByRole("combobox", {
+      name: "Connector Entity",
+    });
     fireEvent.change(connectorEntityInput, { target: { value: "Contacts" } });
     await waitFor(() => expect(onSearchConnectorEntities).toHaveBeenCalled());
     await waitFor(() => {
@@ -253,7 +283,9 @@ describe("CreateFieldMappingDialog", () => {
 
   it("should call onSearchConnectorEntities when typing in connector entity select", async () => {
     render(<CreateFieldMappingDialog {...defaultProps} />);
-    const connectorEntityInput = screen.getByRole("combobox", { name: "Connector Entity" });
+    const connectorEntityInput = screen.getByRole("combobox", {
+      name: "Connector Entity",
+    });
     fireEvent.change(connectorEntityInput, { target: { value: "test" } });
     await waitFor(() => {
       expect(defaultProps.onSearchConnectorEntities).toHaveBeenCalled();
@@ -261,7 +293,12 @@ describe("CreateFieldMappingDialog", () => {
   });
 
   it("should render Ref Normalized Key text field for reference type", () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="reference" />);
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        columnDefinitionType="reference"
+      />
+    );
     expect(screen.getByLabelText("Ref Normalized Key")).toBeInTheDocument();
   });
 
@@ -287,12 +324,19 @@ describe("CreateFieldMappingDialog", () => {
   });
 
   it("should NOT render Enum Values when column type is string", () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="string" />);
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        columnDefinitionType="string"
+      />
+    );
     expect(screen.queryByLabelText(/Enum Values/)).not.toBeInTheDocument();
   });
 
   it("should render Enum Values when column type is enum", () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="enum" />);
+    render(
+      <CreateFieldMappingDialog {...defaultProps} columnDefinitionType="enum" />
+    );
     expect(screen.getByLabelText(/Enum Values/)).toBeInTheDocument();
   });
 
@@ -330,26 +374,40 @@ describe("CreateFieldMappingDialog", () => {
     });
     fireEvent.blur(screen.getByLabelText(/Normalized Key/));
     await waitFor(() => {
-      expect(screen.getByText(/Must be lowercase alphanumeric/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Must be lowercase alphanumeric/)
+      ).toBeInTheDocument();
     });
   });
 
   // ── Type-aware Format field ──────────────────────────────────────────
 
   it("should disable Format field when column type does not support it", () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="string" />);
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        columnDefinitionType="string"
+      />
+    );
     expect(screen.getByLabelText(/^Format/)).toBeDisabled();
     expect(screen.getByText("Not used for string columns")).toBeInTheDocument();
   });
 
   it("should enable Format field with type-specific helper text for date type", () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="date" />);
+    render(
+      <CreateFieldMappingDialog {...defaultProps} columnDefinitionType="date" />
+    );
     expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
     expect(screen.getByText(/Date format for parsing/)).toBeInTheDocument();
   });
 
   it("should enable Format field with type-specific helper text for boolean type", () => {
-    render(<CreateFieldMappingDialog {...defaultProps} columnDefinitionType="boolean" />);
+    render(
+      <CreateFieldMappingDialog
+        {...defaultProps}
+        columnDefinitionType="boolean"
+      />
+    );
     expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
     expect(screen.getByText(/Custom true\/false labels/)).toBeInTheDocument();
   });
@@ -365,7 +423,10 @@ describe("CreateFieldMappingDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/Normalized Key/)).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByLabelText(/Normalized Key/)).toHaveAttribute(
+        "aria-invalid",
+        "true"
+      );
     });
   });
 });

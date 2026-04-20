@@ -10,7 +10,11 @@ const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
-    connectorEntities: { get: jest.fn(() => ({ data: { connectorEntity: { connectorInstanceId: "" } } })) },
+    connectorEntities: {
+      get: jest.fn(() => ({
+        data: { connectorEntity: { connectorInstanceId: "" } },
+      })),
+    },
     entityRecords: { get: jest.fn(), delete: () => noopMutation },
     entityGroups: {
       listByEntity: mockListByEntity,
@@ -26,13 +30,16 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
-const { EntityRecordDetailViewUI, RelatedRecordsSection } = await import(
-  "../views/EntityRecordDetail.view"
-);
+const { EntityRecordDetailViewUI, RelatedRecordsSection } =
+  await import("../views/EntityRecordDetail.view");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
-import type { ConnectorEntity, EntityRecord, EntityGroup } from "@portalai/core/models";
+import type {
+  ConnectorEntity,
+  EntityRecord,
+  EntityGroup,
+} from "@portalai/core/models";
 import type { ResolvedColumn } from "@portalai/core/contracts";
 
 const stubEntity: ConnectorEntity = {
@@ -79,11 +86,66 @@ const stubRecord: EntityRecord = {
 const stubColumns: ResolvedColumn[] = [
   // normalizedKey differs from key/label to mirror real per-source mappings
   // (e.g. an XLSX "First Name" column mapped to the "name" column definition)
-  { key: "name", normalizedKey: "first_name", label: "Full Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "meta", normalizedKey: "meta", label: "Meta", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "tags", normalizedKey: "tags", label: "Tags", type: "array", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  {
+    key: "name",
+    normalizedKey: "first_name",
+    label: "Full Name",
+    type: "string",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "age",
+    normalizedKey: "age",
+    label: "Age",
+    type: "number",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "active",
+    normalizedKey: "active",
+    label: "Active",
+    type: "boolean",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "meta",
+    normalizedKey: "meta",
+    label: "Meta",
+    type: "json",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "tags",
+    normalizedKey: "tags",
+    label: "Tags",
+    type: "array",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
 ];
 
 const stubGroup: EntityGroup = {
@@ -272,7 +334,9 @@ describe("EntityRecordDetailViewUI", () => {
         groups={[]}
       />
     );
-    expect(screen.queryByTestId("entity-groups-metadata")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("entity-groups-metadata")
+    ).not.toBeInTheDocument();
   });
 
   it("hides Related Records section when entity has no group memberships", () => {
@@ -284,7 +348,9 @@ describe("EntityRecordDetailViewUI", () => {
         groups={[]}
       />
     );
-    expect(screen.queryByTestId("related-records-section")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("related-records-section")
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Related Records")).not.toBeInTheDocument();
   });
 
@@ -296,7 +362,9 @@ describe("EntityRecordDetailViewUI", () => {
         columns={stubColumns}
       />
     );
-    expect(screen.queryByTestId("related-records-section")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("related-records-section")
+    ).not.toBeInTheDocument();
   });
 });
 

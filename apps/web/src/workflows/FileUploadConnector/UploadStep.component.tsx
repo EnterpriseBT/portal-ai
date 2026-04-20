@@ -94,8 +94,8 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
   const borderColor = hasFieldError
     ? "error.main"
     : dragActive
-    ? "primary.main"
-    : "divider";
+      ? "primary.main"
+      : "divider";
 
   return (
     <Stack spacing={2}>
@@ -173,7 +173,8 @@ export const UploadStep: React.FC<UploadStepUIProps> = ({
                     {file.name}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {formatBytes(progress?.loaded ?? 0)} / {formatBytes(file.size)}
+                    {formatBytes(progress?.loaded ?? 0)} /{" "}
+                    {formatBytes(file.size)}
                   </Typography>
                 </Stack>
                 <Progress

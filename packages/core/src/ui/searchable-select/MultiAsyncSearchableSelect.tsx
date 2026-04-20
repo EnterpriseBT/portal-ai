@@ -12,7 +12,9 @@ export interface MultiAsyncSearchableSelectProps extends SelectBaseProps {
   debounceMs?: number;
 }
 
-export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProps> = ({
+export const MultiAsyncSearchableSelect: React.FC<
+  MultiAsyncSearchableSelectProps
+> = ({
   onSearch,
   debounceMs = 300,
   value,
@@ -47,12 +49,16 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    onSearch("").then((results) => {
-      if (!cancelled) setOptions(results);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => { cancelled = true; };
+    onSearch("")
+      .then((results) => {
+        if (!cancelled) setOptions(results);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced search on input change
@@ -114,7 +120,9 @@ export const MultiAsyncSearchableSelect: React.FC<MultiAsyncSearchableSelectProp
               ...params.InputProps,
               endAdornment: (
                 <>
-                  {loading ? <CircularProgress color="inherit" size={16} /> : null}
+                  {loading ? (
+                    <CircularProgress color="inherit" size={16} />
+                  ) : null}
                   {params.InputProps.endAdornment}
                 </>
               ),

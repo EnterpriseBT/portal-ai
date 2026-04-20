@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import AnchorIcon from "@mui/icons-material/Anchor";
 import { Box } from "@portalai/core/ui";
 
@@ -9,13 +15,22 @@ import {
   computeResizedBounds,
   type ResizeHandleKind,
 } from "./RegionOverlay.component";
-import { colIndexToLetter, coordInBounds, normalizeBounds } from "./utils/a1-notation.util";
+import {
+  colIndexToLetter,
+  coordInBounds,
+  normalizeBounds,
+} from "./utils/a1-notation.util";
 import {
   DECORATION_BACKGROUND_IMAGE,
   DECORATION_COLOR,
   computeRegionDecorations,
 } from "./utils/region-editor-decorations.util";
-import type { CellBounds, CellCoord, RegionDraft, SheetPreview } from "./utils/region-editor.types";
+import type {
+  CellBounds,
+  CellCoord,
+  RegionDraft,
+  SheetPreview,
+} from "./utils/region-editor.types";
 
 export interface SheetCanvasUIProps {
   sheet: SheetPreview;
@@ -108,7 +123,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
-  const autoScrollVelocityRef = useRef<{ vx: number; vy: number }>({ vx: 0, vy: 0 });
+  const autoScrollVelocityRef = useRef<{ vx: number; vy: number }>({
+    vx: 0,
+    vy: 0,
+  });
   const [activeOp, setActiveOp] = useState<ActiveOp | null>(null);
 
   const clientToCell = useCallback(
@@ -118,8 +136,14 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       const rect = grid.getBoundingClientRect();
       const x = clientX - rect.left - ROW_HEADER_WIDTH;
       const y = clientY - rect.top - COL_HEADER_HEIGHT;
-      const col = Math.max(0, Math.min(sheet.colCount - 1, Math.floor(x / cellWidth)));
-      const row = Math.max(0, Math.min(sheet.rowCount - 1, Math.floor(y / cellHeight)));
+      const col = Math.max(
+        0,
+        Math.min(sheet.colCount - 1, Math.floor(x / cellWidth))
+      );
+      const row = Math.max(
+        0,
+        Math.min(sheet.rowCount - 1, Math.floor(y / cellHeight))
+      );
       return { row, col };
     },
     [cellWidth, cellHeight, sheet.colCount, sheet.rowCount]
@@ -133,35 +157,34 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     }
   }, []);
 
-  const applyPointerCoord = useCallback(
-    (coord: CellCoord) => {
-      setActiveOp((op) => {
-        if (!op) return op;
-        if (op.kind === "draw") {
-          if (op.end.row === coord.row && op.end.col === coord.col) return op;
-          return { ...op, end: coord };
-        }
-        if (op.kind === "drawColumns") {
-          if (op.endCol === coord.col) return op;
-          return { ...op, endCol: coord.col };
-        }
-        if (op.kind === "drawRows") {
-          if (op.endRow === coord.row) return op;
-          return { ...op, endRow: coord.row };
-        }
-        if (op.kind === "resize") {
-          if (op.current.row === coord.row && op.current.col === coord.col) return op;
-          return { ...op, current: coord };
-        }
-        if (op.kind === "move") {
-          if (op.current.row === coord.row && op.current.col === coord.col) return op;
-          return { ...op, current: coord };
-        }
-        return op;
-      });
-    },
-    []
-  );
+  const applyPointerCoord = useCallback((coord: CellCoord) => {
+    setActiveOp((op) => {
+      if (!op) return op;
+      if (op.kind === "draw") {
+        if (op.end.row === coord.row && op.end.col === coord.col) return op;
+        return { ...op, end: coord };
+      }
+      if (op.kind === "drawColumns") {
+        if (op.endCol === coord.col) return op;
+        return { ...op, endCol: coord.col };
+      }
+      if (op.kind === "drawRows") {
+        if (op.endRow === coord.row) return op;
+        return { ...op, endRow: coord.row };
+      }
+      if (op.kind === "resize") {
+        if (op.current.row === coord.row && op.current.col === coord.col)
+          return op;
+        return { ...op, current: coord };
+      }
+      if (op.kind === "move") {
+        if (op.current.row === coord.row && op.current.col === coord.col)
+          return op;
+        return { ...op, current: coord };
+      }
+      return op;
+    });
+  }, []);
 
   const stopAutoScroll = useCallback(() => {
     if (autoScrollFrameRef.current != null) {
@@ -202,9 +225,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const canScrollLeft = el.scrollLeft > 0;
-      const canScrollRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 1;
+      const canScrollRight =
+        el.scrollLeft < el.scrollWidth - el.clientWidth - 1;
       const canScrollUp = el.scrollTop > 0;
-      const canScrollDown = el.scrollTop < el.scrollHeight - el.clientHeight - 1;
+      const canScrollDown =
+        el.scrollTop < el.scrollHeight - el.clientHeight - 1;
 
       const fromLeft = clientX - rect.left;
       const fromRight = rect.right - clientX;
@@ -214,14 +239,26 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       let vx = 0;
       let vy = 0;
       if (fromLeft < EDGE_SCROLL_ZONE && canScrollLeft) {
-        vx = -Math.ceil(((EDGE_SCROLL_ZONE - fromLeft) / EDGE_SCROLL_ZONE) * MAX_EDGE_SCROLL_SPEED);
+        vx = -Math.ceil(
+          ((EDGE_SCROLL_ZONE - fromLeft) / EDGE_SCROLL_ZONE) *
+            MAX_EDGE_SCROLL_SPEED
+        );
       } else if (fromRight < EDGE_SCROLL_ZONE && canScrollRight) {
-        vx = Math.ceil(((EDGE_SCROLL_ZONE - fromRight) / EDGE_SCROLL_ZONE) * MAX_EDGE_SCROLL_SPEED);
+        vx = Math.ceil(
+          ((EDGE_SCROLL_ZONE - fromRight) / EDGE_SCROLL_ZONE) *
+            MAX_EDGE_SCROLL_SPEED
+        );
       }
       if (fromTop < EDGE_SCROLL_ZONE && canScrollUp) {
-        vy = -Math.ceil(((EDGE_SCROLL_ZONE - fromTop) / EDGE_SCROLL_ZONE) * MAX_EDGE_SCROLL_SPEED);
+        vy = -Math.ceil(
+          ((EDGE_SCROLL_ZONE - fromTop) / EDGE_SCROLL_ZONE) *
+            MAX_EDGE_SCROLL_SPEED
+        );
       } else if (fromBottom < EDGE_SCROLL_ZONE && canScrollDown) {
-        vy = Math.ceil(((EDGE_SCROLL_ZONE - fromBottom) / EDGE_SCROLL_ZONE) * MAX_EDGE_SCROLL_SPEED);
+        vy = Math.ceil(
+          ((EDGE_SCROLL_ZONE - fromBottom) / EDGE_SCROLL_ZONE) *
+            MAX_EDGE_SCROLL_SPEED
+        );
       }
       autoScrollVelocityRef.current = { vx, vy };
       if ((vx !== 0 || vy !== 0) && autoScrollFrameRef.current == null) {
@@ -284,7 +321,14 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       capturePointer(e);
       setActiveOp({ kind: "draw", start: coord, end: coord });
     },
-    [readOnly, capturePointer, clientToCell, onRegionDraft, sheet.rowCount, sheet.colCount]
+    [
+      readOnly,
+      capturePointer,
+      clientToCell,
+      onRegionDraft,
+      sheet.rowCount,
+      sheet.colCount,
+    ]
   );
 
   const handleRegionBodyPointerDown = useCallback(
@@ -321,7 +365,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           row: originalBounds.startRow,
           col: originalBounds.startCol,
         };
-        setActiveOp({ kind: "resize", regionId, handle, originalBounds, current: coord });
+        setActiveOp({
+          kind: "resize",
+          regionId,
+          handle,
+          originalBounds,
+          current: coord,
+        });
       },
     [readOnly, clientToCell, capturePointer]
   );
@@ -349,7 +399,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         onRegionDraft(bounds);
       } else {
         const hit = regions.find(
-          (r) => r.sheetId === sheet.id && coordInBounds(activeOp.start, r.bounds)
+          (r) =>
+            r.sheetId === sheet.id && coordInBounds(activeOp.start, r.bounds)
         );
         onRegionSelect(hit?.id ?? null);
       }
@@ -394,7 +445,17 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       }
     }
     setActiveOp(null);
-  }, [activeOp, onRegionDraft, onRegionResize, onRegionSelect, regions, sheet.id, sheet.rowCount, sheet.colCount, stopAutoScroll]);
+  }, [
+    activeOp,
+    onRegionDraft,
+    onRegionResize,
+    onRegionSelect,
+    regions,
+    sheet.id,
+    sheet.rowCount,
+    sheet.colCount,
+    stopAutoScroll,
+  ]);
 
   const pendingBounds: CellBounds | null = useMemo(() => {
     if (!activeOp) return null;
@@ -489,11 +550,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     const colHeaderCells: React.ReactElement[] = [];
     for (let col = 0; col < sheet.colCount; col++) {
       colHeaderCells.push(
-        <div
-          key={col}
-          data-col-header={col}
-          style={colHeaderStyle}
-        >
+        <div key={col} data-col-header={col} style={colHeaderStyle}>
           {colIndexToLetter(col)}
         </div>
       );
@@ -505,13 +562,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       const cellEls: React.ReactElement[] = [];
       for (let col = 0; col < sheet.colCount; col++) {
         const raw = rowCells?.[col];
-        const value = raw === null || raw === undefined || raw === "" ? "" : String(raw);
+        const value =
+          raw === null || raw === undefined || raw === "" ? "" : String(raw);
         cellEls.push(
-          <div
-            key={col}
-            data-testid={`cell-${row}-${col}`}
-            style={cellStyle}
-          >
+          <div key={col} data-testid={`cell-${row}-${col}`} style={cellStyle}>
             {value}
           </div>
         );
@@ -599,135 +653,150 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             display: "block",
           }}
         >
-        {gridBody}
+          {gridBody}
 
-        {(() => {
-          const selectedRegion = visibleRegions.find((r) => r.id === selectedRegionId);
-          if (!selectedRegion) return null;
-          const decorations = computeRegionDecorations(selectedRegion, sheet);
-          return decorations.map((d, i) => {
-            const dLeft = ROW_HEADER_WIDTH + d.bounds.startCol * cellWidth;
-            const dTop = COL_HEADER_HEIGHT + d.bounds.startRow * cellHeight;
-            const dWidth = (d.bounds.endCol - d.bounds.startCol + 1) * cellWidth;
-            const dHeight = (d.bounds.endRow - d.bounds.startRow + 1) * cellHeight;
-            // Show the decoration's label as inline text for axis-related
-            // kinds — gives the user a live view of how the axis labels bind.
-            const showInlineLabel =
-              d.label !== undefined &&
-              (d.kind === "axisNameAnchor" ||
-                d.kind === "rowAxisLabel" ||
-                d.kind === "colAxisLabel" ||
-                d.kind === "cellValue");
+          {(() => {
+            const selectedRegion = visibleRegions.find(
+              (r) => r.id === selectedRegionId
+            );
+            if (!selectedRegion) return null;
+            const decorations = computeRegionDecorations(selectedRegion, sheet);
+            return decorations.map((d, i) => {
+              const dLeft = ROW_HEADER_WIDTH + d.bounds.startCol * cellWidth;
+              const dTop = COL_HEADER_HEIGHT + d.bounds.startRow * cellHeight;
+              const dWidth =
+                (d.bounds.endCol - d.bounds.startCol + 1) * cellWidth;
+              const dHeight =
+                (d.bounds.endRow - d.bounds.startRow + 1) * cellHeight;
+              // Show the decoration's label as inline text for axis-related
+              // kinds — gives the user a live view of how the axis labels bind.
+              const showInlineLabel =
+                d.label !== undefined &&
+                (d.kind === "axisNameAnchor" ||
+                  d.kind === "rowAxisLabel" ||
+                  d.kind === "colAxisLabel" ||
+                  d.kind === "cellValue");
+              return (
+                <Box
+                  key={`deco-${i}`}
+                  title={d.label}
+                  sx={{
+                    position: "absolute",
+                    left: dLeft,
+                    top: dTop,
+                    width: dWidth,
+                    height: dHeight,
+                    backgroundColor: DECORATION_COLOR[d.kind],
+                    backgroundImage: DECORATION_BACKGROUND_IMAGE[d.kind],
+                    pointerEvents: "none",
+                    zIndex: 4,
+                    display: showInlineLabel ? "flex" : "block",
+                    // Anchor the chip to the top-left of its band so that on large
+                    // regions all overlay labels cluster near the region's corner
+                    // instead of drifting apart in the middle of each band.
+                    alignItems: "flex-start",
+                    justifyContent: "flex-start",
+                    pt: showInlineLabel ? "2px" : 0,
+                    pl: showInlineLabel ? "2px" : 0,
+                    overflow: "hidden",
+                  }}
+                >
+                  {showInlineLabel && (
+                    <Box
+                      component="span"
+                      sx={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "3px",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        lineHeight: 1,
+                        px: 0.5,
+                        py: 0.25,
+                        borderRadius: 0.5,
+                        backgroundColor: "rgba(255,255,255,0.85)",
+                        color: "text.primary",
+                        whiteSpace: "nowrap",
+                        textOverflow: "ellipsis",
+                        overflow: "hidden",
+                        maxWidth: "95%",
+                        fontStyle:
+                          d.kind === "axisNameAnchor" ? "normal" : "italic",
+                      }}
+                    >
+                      {d.kind === "axisNameAnchor" && (
+                        <AnchorIcon
+                          sx={{ fontSize: 11, color: "rgba(194, 65, 12, 1)" }}
+                        />
+                      )}
+                      {d.label}
+                    </Box>
+                  )}
+                </Box>
+              );
+            });
+          })()}
+
+          {visibleRegions.map((region) => {
+            let previewBounds = region.bounds;
+            if (
+              activeOp?.kind === "resize" &&
+              activeOp.regionId === region.id
+            ) {
+              previewBounds = computeResizedBounds(
+                activeOp.handle,
+                activeOp.originalBounds,
+                activeOp.current
+              );
+            } else if (
+              activeOp?.kind === "move" &&
+              activeOp.regionId === region.id
+            ) {
+              previewBounds = computeMovedBounds(
+                activeOp.originalBounds,
+                activeOp.pointerStart,
+                activeOp.current,
+                sheet.rowCount,
+                sheet.colCount
+              );
+            }
             return (
-              <Box
-                key={`deco-${i}`}
-                title={d.label}
-                sx={{
-                  position: "absolute",
-                  left: dLeft,
-                  top: dTop,
-                  width: dWidth,
-                  height: dHeight,
-                  backgroundColor: DECORATION_COLOR[d.kind],
-                  backgroundImage: DECORATION_BACKGROUND_IMAGE[d.kind],
-                  pointerEvents: "none",
-                  zIndex: 4,
-                  display: showInlineLabel ? "flex" : "block",
-                  // Anchor the chip to the top-left of its band so that on large
-                  // regions all overlay labels cluster near the region's corner
-                  // instead of drifting apart in the middle of each band.
-                  alignItems: "flex-start",
-                  justifyContent: "flex-start",
-                  pt: showInlineLabel ? "2px" : 0,
-                  pl: showInlineLabel ? "2px" : 0,
-                  overflow: "hidden",
-                }}
-              >
-                {showInlineLabel && (
-                  <Box
-                    component="span"
-                    sx={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "3px",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      lineHeight: 1,
-                      px: 0.5,
-                      py: 0.25,
-                      borderRadius: 0.5,
-                      backgroundColor: "rgba(255,255,255,0.85)",
-                      color: "text.primary",
-                      whiteSpace: "nowrap",
-                      textOverflow: "ellipsis",
-                      overflow: "hidden",
-                      maxWidth: "95%",
-                      fontStyle: d.kind === "axisNameAnchor" ? "normal" : "italic",
-                    }}
-                  >
-                    {d.kind === "axisNameAnchor" && (
-                      <AnchorIcon
-                        sx={{ fontSize: 11, color: "rgba(194, 65, 12, 1)" }}
-                      />
-                    )}
-                    {d.label}
-                  </Box>
-                )}
-              </Box>
+              <RegionOverlayUI
+                key={region.id}
+                region={region}
+                bounds={previewBounds}
+                entityOrder={entityOrder}
+                selected={region.id === selectedRegionId}
+                resizable={!readOnly && Boolean(onRegionResize)}
+                movable={!readOnly && Boolean(onRegionResize)}
+                cellWidth={cellWidth}
+                cellHeight={cellHeight}
+                onBodyPointerDown={handleRegionBodyPointerDown}
+                onResizeStart={handleResizeStart}
+              />
             );
-          });
-        })()}
+          })}
 
-        {visibleRegions.map((region) => {
-          let previewBounds = region.bounds;
-          if (activeOp?.kind === "resize" && activeOp.regionId === region.id) {
-            previewBounds = computeResizedBounds(
-              activeOp.handle,
-              activeOp.originalBounds,
-              activeOp.current
-            );
-          } else if (activeOp?.kind === "move" && activeOp.regionId === region.id) {
-            previewBounds = computeMovedBounds(
-              activeOp.originalBounds,
-              activeOp.pointerStart,
-              activeOp.current,
-              sheet.rowCount,
-              sheet.colCount
-            );
-          }
-          return (
-            <RegionOverlayUI
-              key={region.id}
-              region={region}
-              bounds={previewBounds}
-              entityOrder={entityOrder}
-              selected={region.id === selectedRegionId}
-              resizable={!readOnly && Boolean(onRegionResize)}
-              movable={!readOnly && Boolean(onRegionResize)}
-              cellWidth={cellWidth}
-              cellHeight={cellHeight}
-              onBodyPointerDown={handleRegionBodyPointerDown}
-              onResizeStart={handleResizeStart}
+          {pendingBounds && (
+            <Box
+              sx={{
+                position: "absolute",
+                left: ROW_HEADER_WIDTH + pendingBounds.startCol * cellWidth,
+                top: COL_HEADER_HEIGHT + pendingBounds.startRow * cellHeight,
+                width:
+                  (pendingBounds.endCol - pendingBounds.startCol + 1) *
+                  cellWidth,
+                height:
+                  (pendingBounds.endRow - pendingBounds.startRow + 1) *
+                  cellHeight,
+                border: "2px dashed",
+                borderColor: "primary.main",
+                backgroundColor: "rgba(37,99,235,0.08)",
+                pointerEvents: "none",
+                zIndex: 4,
+              }}
             />
-          );
-        })}
-
-        {pendingBounds && (
-          <Box
-            sx={{
-              position: "absolute",
-              left: ROW_HEADER_WIDTH + pendingBounds.startCol * cellWidth,
-              top: COL_HEADER_HEIGHT + pendingBounds.startRow * cellHeight,
-              width: (pendingBounds.endCol - pendingBounds.startCol + 1) * cellWidth,
-              height: (pendingBounds.endRow - pendingBounds.startRow + 1) * cellHeight,
-              border: "2px dashed",
-              borderColor: "primary.main",
-              backgroundColor: "rgba(37,99,235,0.08)",
-              pointerEvents: "none",
-              zIndex: 4,
-            }}
-          />
-        )}
+          )}
         </div>
       </Box>
     </Box>

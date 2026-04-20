@@ -15,7 +15,9 @@ const TOTAL_TICKS = TOTAL_DURATION_MS / TICK_INTERVAL_MS;
  * Runs a 10-second timer, updating progress every second (10% per tick).
  * Returns a summary of the check upon completion.
  */
-export const systemCheckProcessor: TypedJobProcessor<"system_check"> = async (bullJob) => {
+export const systemCheckProcessor: TypedJobProcessor<"system_check"> = async (
+  bullJob
+) => {
   const { jobId } = bullJob.data;
   logger.info({ jobId }, "System check started");
 

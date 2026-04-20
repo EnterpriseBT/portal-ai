@@ -128,8 +128,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
     uploadPhase === "uploading" ||
     uploadPhase === "parsing";
 
-  const resolvedActiveSheetId =
-    activeSheetId ?? workbook?.sheets[0]?.id ?? "";
+  const resolvedActiveSheetId = activeSheetId ?? workbook?.sheets[0]?.id ?? "";
 
   return (
     <Modal
@@ -195,11 +194,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
         </Stepper>
 
         {step === 0 && (
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            sx={{ pt: 1 }}
-          >
+          <Stack direction="row" justifyContent="space-between" sx={{ pt: 1 }}>
             <Button variant="text" onClick={onClose}>
               Cancel
             </Button>
@@ -258,7 +253,9 @@ interface FileUploadConnectorWorkflowProps {
  *   in-memory by the region editor; it is never cached in TanStack Query.
  */
 function stubParseFile(_files: File[]): Promise<Workbook> {
-  return new Promise((resolve) => setTimeout(() => resolve(DEMO_WORKBOOK), 300));
+  return new Promise((resolve) =>
+    setTimeout(() => resolve(DEMO_WORKBOOK), 300)
+  );
 }
 
 /**
@@ -285,7 +282,8 @@ function stubRunInterpret(
 ): Promise<{ regions: RegionDraft[]; overallConfidence: number }> {
   return new Promise((resolve) =>
     setTimeout(
-      () => resolve({ regions: POST_INTERPRET_REGIONS, overallConfidence: 0.86 }),
+      () =>
+        resolve({ regions: POST_INTERPRET_REGIONS, overallConfidence: 0.86 }),
       300
     )
   );

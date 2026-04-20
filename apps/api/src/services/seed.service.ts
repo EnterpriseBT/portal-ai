@@ -1,4 +1,10 @@
-import { ConnectorDefinition, ColumnDefinition, ColumnDefinitionModelFactory, FileUploadConnectorDefinitionModelFactory, SandboxConnectorDefinitionModelFactory } from "@portalai/core/models";
+import {
+  ConnectorDefinition,
+  ColumnDefinition,
+  ColumnDefinitionModelFactory,
+  FileUploadConnectorDefinitionModelFactory,
+  SandboxConnectorDefinitionModelFactory,
+} from "@portalai/core/models";
 import type { ColumnDataType } from "@portalai/core/models";
 import { DbClient } from "../db/index.js";
 import { DbService } from "./db.service.js";
@@ -21,7 +27,8 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     label: "UUID",
     type: "string",
     description: "Universally unique identifier",
-    validationPattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    validationPattern:
+      "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     validationMessage: "Must be a valid UUID",
     canonicalFormat: "lowercase",
     system: true,
@@ -32,7 +39,8 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
     type: "string",
     description: "Alphanumeric string identifier",
     validationPattern: "^[A-Za-z0-9_\\-]+$",
-    validationMessage: "Must contain only letters, numbers, hyphens, and underscores",
+    validationMessage:
+      "Must contain only letters, numbers, hyphens, and underscores",
     canonicalFormat: "trim",
     system: true,
   },
@@ -279,15 +287,13 @@ export const SYSTEM_COLUMN_DEFINITIONS: SystemColumnDefinitionSpec[] = [
 ];
 
 export class SeedService {
-
   async seed() {
     const { tx, commit, rollback } = await DbService.createTransactionClient();
     try {
-      await this.seedConnectorDefinitions(tx)
-        .catch((error) => {
-          console.error("Error seeding connector definitions:", error);
-          throw error; // Rethrow to trigger rollback
-        });
+      await this.seedConnectorDefinitions(tx).catch((error) => {
+        console.error("Error seeding connector definitions:", error);
+        throw error; // Rethrow to trigger rollback
+      });
       await commit();
     } catch (error) {
       console.error("Error during seeding:", error);
@@ -297,7 +303,8 @@ export class SeedService {
 
   async seedConnectorDefinitions(db: DbClient) {
     const connectors: ConnectorDefinition[] = [
-      new SandboxConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
+      new SandboxConnectorDefinitionModelFactory()
+        .create(SystemUtilities.id.system)
         .update({
           slug: "sandbox",
           display: "Sandbox",
@@ -312,9 +319,12 @@ export class SeedService {
             push: false,
           },
           version: "1.0.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1776276948/sandbox_zlwqke.png',
-        }).parse(),
-      new FileUploadConnectorDefinitionModelFactory().create(SystemUtilities.id.system)
+          iconUrl:
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1776276948/sandbox_zlwqke.png",
+        })
+        .parse(),
+      new FileUploadConnectorDefinitionModelFactory()
+        .create(SystemUtilities.id.system)
         .update({
           slug: "file-upload",
           display: "File Upload",
@@ -329,11 +339,14 @@ export class SeedService {
             push: false,
           },
           version: "1.0.0",
-          iconUrl: 'https://res.cloudinary.com/dvloutv7e/image/upload/v1776277003/upload_rgefyq.png',
-        }).parse(),
+          iconUrl:
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1776277003/upload_rgefyq.png",
+        })
+        .parse(),
     ];
 
-    await DbService.repository.connectorDefinitions.upsertManyBySlug(connectors, db)
+    await DbService.repository.connectorDefinitions
+      .upsertManyBySlug(connectors, db)
       .catch((error) => {
         console.error("Error upserting connector definitions:", error);
         throw error; // Rethrow to trigger rollback
@@ -347,15 +360,18 @@ export class SeedService {
   async seedSystemColumnDefinitions(organizationId: string, db: DbClient) {
     const factory = new ColumnDefinitionModelFactory();
 
-    const definitions: ColumnDefinition[] = SYSTEM_COLUMN_DEFINITIONS.map((spec) => {
-      return factory.create(SystemUtilities.id.system)
-        .update({
-          id: SystemUtilities.id.v4.generate(),
-          organizationId,
-          ...spec,
-        })
-        .parse();
-    });
+    const definitions: ColumnDefinition[] = SYSTEM_COLUMN_DEFINITIONS.map(
+      (spec) => {
+        return factory
+          .create(SystemUtilities.id.system)
+          .update({
+            id: SystemUtilities.id.v4.generate(),
+            organizationId,
+            ...spec,
+          })
+          .parse();
+      }
+    );
 
     for (const def of definitions) {
       await DbService.repository.columnDefinitions.upsertByKey(def, db);

@@ -149,7 +149,11 @@ describe("ConnectorDefinitionModelFactory", () => {
       expect(json.category).toBe("CRM");
       expect(json.authType).toBe("oauth2");
       expect(json.configSchema).toEqual({ clientId: "abc" });
-      expect(json.capabilityFlags).toEqual({ sync: true, read: true, write: false });
+      expect(json.capabilityFlags).toEqual({
+        sync: true,
+        read: true,
+        write: false,
+      });
       expect(json.isActive).toBe(true);
       expect(json.version).toBe("1.0.0");
       expect(json.iconUrl).toBe("https://example.com/salesforce.png");
@@ -240,7 +244,9 @@ describe("ConnectorDefinitionModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(false);
       if (!result.success) {
-        const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
         expect(paths).toContain("slug");
         expect(paths).toContain("display");
         expect(paths).toContain("category");
@@ -326,7 +332,9 @@ describe("FileUploadConnectorDefinitionModel", () => {
     const result = model.validate();
     expect(result.success).toBe(false);
     if (!result.success) {
-      const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+      const paths = result.error.issues.map(
+        (i: { path: unknown[] }) => i.path[0]
+      );
       expect(paths).toContain("slug");
     }
   });

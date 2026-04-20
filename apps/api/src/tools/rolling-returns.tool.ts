@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type StationData } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type StationData,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 import { getRecords } from "../utils/tools.util.js";
 
@@ -15,8 +18,7 @@ const InputSchema = z.object({
 export class RollingReturnsTool extends Tool<typeof InputSchema> {
   slug = "rolling_returns";
   name = "Rolling Returns";
-  description =
-    "Compute period-over-period returns within a rolling window.";
+  description = "Compute period-over-period returns within a rolling window.";
 
   get schema() {
     return InputSchema;
@@ -27,7 +29,12 @@ export class RollingReturnsTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, dateColumn, valueColumn, window: w } = this.validate(input);
+        const {
+          entity,
+          dateColumn,
+          valueColumn,
+          window: w,
+        } = this.validate(input);
         const records = getRecords(stationData, entity);
         return AnalyticsService.rollingReturns({
           records,

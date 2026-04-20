@@ -36,7 +36,7 @@ export const httpLogger = pinoHttp({
   customLogLevel: (
     _req: IncomingMessage,
     res: ServerResponse,
-    err?: Error,
+    err?: Error
   ): pino.LevelWithSilent => {
     if (res.statusCode >= 500 || err) {
       return "error";
@@ -49,16 +49,13 @@ export const httpLogger = pinoHttp({
     }
     return "info";
   },
-  customSuccessMessage: (
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): string => {
+  customSuccessMessage: (req: IncomingMessage, res: ServerResponse): string => {
     return `${req.method} ${req.url} ${res.statusCode}`;
   },
   customErrorMessage: (
     req: IncomingMessage,
     res: ServerResponse,
-    err: Error,
+    err: Error
   ): string => {
     return `${req.method} ${req.url} ${res.statusCode} - ${err.message}`;
   },

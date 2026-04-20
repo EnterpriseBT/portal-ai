@@ -1,6 +1,9 @@
 import { jest } from "@jest/globals";
 import { render, screen, fireEvent } from "./test-utils";
-import { ChatWindowUI, CHAT_INPUT_PLACEHOLDER } from "../components/ChatWindow.component";
+import {
+  ChatWindowUI,
+  CHAT_INPUT_PLACEHOLDER,
+} from "../components/ChatWindow.component";
 
 const mockBreakpoint = (breakpoint: "mobile" | "desktop") => {
   Object.defineProperty(window, "matchMedia", {
@@ -8,11 +11,9 @@ const mockBreakpoint = (breakpoint: "mobile" | "desktop") => {
     value: (query: string) => {
       let matches = false;
       if (breakpoint === "mobile") {
-        matches =
-          query.includes("max-width") && !query.includes("min-width");
+        matches = query.includes("max-width") && !query.includes("min-width");
       } else if (breakpoint === "desktop") {
-        matches =
-          query.includes("min-width") && !query.includes("max-width");
+        matches = query.includes("min-width") && !query.includes("max-width");
       }
       return {
         matches,
@@ -71,9 +72,15 @@ describe("ChatWindowUI", () => {
 
     it("renders Submit, Reset, Cancel, and Exit buttons", () => {
       render(<ChatWindowUI {...createProps()} />);
-      expect(screen.getByRole("button", { name: /submit/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /reset/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /submit/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /reset/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /cancel/i })
+      ).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /exit/i })).toBeInTheDocument();
     });
 
@@ -128,7 +135,9 @@ describe("ChatWindowUI", () => {
   describe("Disabled State", () => {
     it("disables the text field when disabled", () => {
       render(<ChatWindowUI {...createProps({ disabled: true })} />);
-      expect(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)).toBeDisabled();
+      expect(
+        screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)
+      ).toBeDisabled();
     });
 
     it("disables Submit when disabled is true", () => {
@@ -205,7 +214,9 @@ describe("ChatWindowUI", () => {
     it("calls onReset on mobile reset icon click", () => {
       const props = createProps();
       const { container } = render(<ChatWindowUI {...props} />);
-      const refreshIcon = container.querySelector("[data-testid='RefreshIcon']")!;
+      const refreshIcon = container.querySelector(
+        "[data-testid='RefreshIcon']"
+      )!;
       fireEvent.click(refreshIcon.closest("button")!);
       expect(props.onReset).toHaveBeenCalledTimes(1);
     });
@@ -213,7 +224,9 @@ describe("ChatWindowUI", () => {
     it("calls onExit on mobile exit icon click", () => {
       const props = createProps();
       const { container } = render(<ChatWindowUI {...props} />);
-      const backIcon = container.querySelector("[data-testid='ArrowBackIcon']")!;
+      const backIcon = container.querySelector(
+        "[data-testid='ArrowBackIcon']"
+      )!;
       fireEvent.click(backIcon.closest("button")!);
       expect(props.onExit).toHaveBeenCalledTimes(1);
     });

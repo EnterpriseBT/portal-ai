@@ -238,10 +238,7 @@ describe("DataResult Component", () => {
   describe("Custom Props", () => {
     it("should pass className to StatusMessage when loading", () => {
       const { container } = render(
-        <DataResult
-          results={{ item: loadingQuery() }}
-          className="custom-class"
-        >
+        <DataResult results={{ item: loadingQuery() }} className="custom-class">
           {() => <div />}
         </DataResult>
       );

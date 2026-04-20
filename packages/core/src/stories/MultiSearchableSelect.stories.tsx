@@ -37,7 +37,10 @@ const FRUITS: SelectOption[] = [
   { value: "pomegranate", label: "Pomegranate" },
 ];
 
-function simulateSearch(query: string, dataset: SelectOption[]): Promise<SelectOption[]> {
+function simulateSearch(
+  query: string,
+  dataset: SelectOption[]
+): Promise<SelectOption[]> {
   return new Promise((resolve) => {
     setTimeout(() => {
       const lower = query.toLowerCase();

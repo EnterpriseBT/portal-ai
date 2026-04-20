@@ -15,14 +15,20 @@ import {
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockHeadObject = jest.fn<
-  (key: string) => Promise<{ contentLength: number; contentType: string } | null>
->();
-const mockGetObjectStream = jest.fn<
-  (key: string) => Promise<{ stream: Readable; contentLength: number }>
->();
+const mockHeadObject =
+  jest.fn<
+    (
+      key: string
+    ) => Promise<{ contentLength: number; contentType: string } | null>
+  >();
+const mockGetObjectStream =
+  jest.fn<
+    (key: string) => Promise<{ stream: Readable; contentLength: number }>
+  >();
 
-const mockFindByOrganizationId = jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]);
+const mockFindByOrganizationId = jest
+  .fn<() => Promise<unknown[]>>()
+  .mockResolvedValue([]);
 
 const mockGetRecommendations = jest.fn<(input: unknown) => Promise<unknown>>();
 
@@ -49,9 +55,8 @@ jest.unstable_mockModule("../../../services/file-analysis.service.js", () => ({
   },
 }));
 
-const { fileUploadProcessor } = await import(
-  "../../../queues/processors/file-upload.processor.js"
-);
+const { fileUploadProcessor } =
+  await import("../../../queues/processors/file-upload.processor.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,16 +126,27 @@ function setupS3ForBinaryFiles(
 ): void {
   const map = new Map<string, { buf: Buffer; contentType: string }>();
   for (const { file, buffer, contentType } of entries) {
-    map.set(file.s3Key, { buf: buffer, contentType: contentType ?? "application/octet-stream" });
+    map.set(file.s3Key, {
+      buf: buffer,
+      contentType: contentType ?? "application/octet-stream",
+    });
   }
   mockHeadObject.mockImplementation(async (key: string) => {
     const entry = map.get(key);
-    if (entry) return { contentLength: entry.buf.length, contentType: entry.contentType };
+    if (entry)
+      return {
+        contentLength: entry.buf.length,
+        contentType: entry.contentType,
+      };
     return null;
   });
   mockGetObjectStream.mockImplementation(async (key: string) => {
     const entry = map.get(key);
-    if (entry) return { stream: Readable.from(entry.buf), contentLength: entry.buf.length };
+    if (entry)
+      return {
+        stream: Readable.from(entry.buf),
+        contentLength: entry.buf.length,
+      };
     throw new Error("Not found");
   });
 }
@@ -144,27 +160,38 @@ describe("fileUploadProcessor", () => {
     mockHeadObject.mockReset();
     mockGetObjectStream.mockReset();
     mockFindByOrganizationId.mockReset().mockResolvedValue([]);
-    mockGetRecommendations.mockReset().mockImplementation(async (raw: unknown) => {
-      const input = raw as { parseResult: { fileName: string; columnStats: Array<{ name: string; sampleValues: string[] }> } };
-      return {
-        entityKey: input.parseResult.fileName.replace(/\.[^.]+$/, "").toLowerCase(),
-        entityLabel: input.parseResult.fileName.replace(/\.[^.]+$/, ""),
-        sourceFileName: input.parseResult.fileName,
-        columns: input.parseResult.columnStats.map((s: { name: string; sampleValues: string[] }) => ({
-          sourceField: s.name,
-          existingColumnDefinitionId: "cd-text",
-          existingColumnDefinitionKey: "text",
-          confidence: 0.5,
-          sampleValues: s.sampleValues,
-          format: null,
-          isPrimaryKey: false,
-          required: false,
-          normalizedKey: s.name.toLowerCase(),
-          defaultValue: null,
-          enumValues: null,
-        })),
-      };
-    });
+    mockGetRecommendations
+      .mockReset()
+      .mockImplementation(async (raw: unknown) => {
+        const input = raw as {
+          parseResult: {
+            fileName: string;
+            columnStats: Array<{ name: string; sampleValues: string[] }>;
+          };
+        };
+        return {
+          entityKey: input.parseResult.fileName
+            .replace(/\.[^.]+$/, "")
+            .toLowerCase(),
+          entityLabel: input.parseResult.fileName.replace(/\.[^.]+$/, ""),
+          sourceFileName: input.parseResult.fileName,
+          columns: input.parseResult.columnStats.map(
+            (s: { name: string; sampleValues: string[] }) => ({
+              sourceField: s.name,
+              existingColumnDefinitionId: "cd-text",
+              existingColumnDefinitionKey: "text",
+              confidence: 0.5,
+              sampleValues: s.sampleValues,
+              format: null,
+              isPrimaryKey: false,
+              required: false,
+              normalizedKey: s.name.toLowerCase(),
+              defaultValue: null,
+              enumValues: null,
+            })
+          ),
+        };
+      });
   });
 
   // ── S3 verification phase ───────────────────────────────────────────────
@@ -174,8 +201,14 @@ describe("fileUploadProcessor", () => {
       const files = [makeFile("a.csv", 10), makeFile("b.csv", 20)];
       const csvContent = "name,email\nAlice,alice@test.com\n";
       setupS3ForMultipleFiles([
-        { file: { ...files[0], sizeBytes: Buffer.byteLength(csvContent) }, content: csvContent },
-        { file: { ...files[1], sizeBytes: Buffer.byteLength(csvContent) }, content: csvContent },
+        {
+          file: { ...files[0], sizeBytes: Buffer.byteLength(csvContent) },
+          content: csvContent,
+        },
+        {
+          file: { ...files[1], sizeBytes: Buffer.byteLength(csvContent) },
+          content: csvContent,
+        },
       ]);
       // Override file sizes to match actual content
       files[0].sizeBytes = Buffer.byteLength(csvContent);
@@ -200,7 +233,10 @@ describe("fileUploadProcessor", () => {
 
     it("throws UPLOAD_EMPTY_FILE when file has 0 bytes", async () => {
       const files = [makeFile("empty.csv")];
-      mockHeadObject.mockResolvedValue({ contentLength: 0, contentType: "text/csv" });
+      mockHeadObject.mockResolvedValue({
+        contentLength: 0,
+        contentType: "text/csv",
+      });
 
       const bullJob = createMockBullJob(files);
       await expect(fileUploadProcessor(bullJob)).rejects.toThrow(/empty/);
@@ -208,7 +244,10 @@ describe("fileUploadProcessor", () => {
 
     it("throws UPLOAD_FILE_SIZE_MISMATCH when S3 size differs from expected", async () => {
       const files = [makeFile("mismatch.csv", 500)];
-      mockHeadObject.mockResolvedValue({ contentLength: 999, contentType: "text/csv" });
+      mockHeadObject.mockResolvedValue({
+        contentLength: 999,
+        contentType: "text/csv",
+      });
 
       const bullJob = createMockBullJob(files);
       await expect(fileUploadProcessor(bullJob)).rejects.toThrow(
@@ -303,7 +342,11 @@ describe("fileUploadProcessor", () => {
       const bullJob = createMockBullJob([file]);
       const result = await fileUploadProcessor(bullJob);
       expect(result.parseResults![0].hasHeader).toBe(true);
-      expect(result.parseResults![0].headers).toEqual(["name", "email", "phone"]);
+      expect(result.parseResults![0].headers).toEqual([
+        "name",
+        "email",
+        "phone",
+      ]);
     });
 
     it("does not detect header when first row has numeric values", async () => {
@@ -528,7 +571,10 @@ describe("fileUploadProcessor", () => {
     it("throws UPLOAD_EMPTY_FILE when S3 stream yields no data", async () => {
       const file = makeFile("stream-empty.csv");
       // headObject returns non-zero size but stream is empty
-      mockHeadObject.mockResolvedValue({ contentLength: 100, contentType: "text/csv" });
+      mockHeadObject.mockResolvedValue({
+        contentLength: 100,
+        contentType: "text/csv",
+      });
       // sizeBytes=0 so size check is skipped
       file.sizeBytes = 0;
       mockGetObjectStream.mockResolvedValue({
@@ -545,7 +591,10 @@ describe("fileUploadProcessor", () => {
     it("throws UPLOAD_S3_READ_ERROR when getObjectStream fails", async () => {
       const file = makeFile("s3-error.csv");
       file.sizeBytes = 100;
-      mockHeadObject.mockResolvedValue({ contentLength: 100, contentType: "text/csv" });
+      mockHeadObject.mockResolvedValue({
+        contentLength: 100,
+        contentType: "text/csv",
+      });
       mockGetObjectStream.mockRejectedValue(new Error("S3 connection reset"));
 
       const bullJob = createMockBullJob([file]);
@@ -560,7 +609,8 @@ describe("fileUploadProcessor", () => {
   describe("Multi-file processing", () => {
     it("produces per-file parse results sequentially", async () => {
       const files = [makeFile("contacts.csv"), makeFile("products.csv")];
-      const contactsCsv = "name,email\nAlice,alice@test.com\nBob,bob@test.com\n";
+      const contactsCsv =
+        "name,email\nAlice,alice@test.com\nBob,bob@test.com\n";
       const productsCsv = "id\tname\tprice\n1\tWidget\t9.99\n";
       files[0].sizeBytes = Buffer.byteLength(contactsCsv);
       files[1].sizeBytes = Buffer.byteLength(productsCsv);
@@ -654,7 +704,9 @@ describe("fileUploadProcessor", () => {
       const bullJob = createMockBullJob([file]);
       const result = await fileUploadProcessor(bullJob);
 
-      expect(result.recommendations!.connectorInstanceName).toBe("contacts-and-deals");
+      expect(result.recommendations!.connectorInstanceName).toBe(
+        "contacts-and-deals"
+      );
     });
 
     it("handles mixed upload: one .csv + one .xlsx with 2 sheets → 3 parseResults", async () => {
@@ -669,11 +721,19 @@ describe("fileUploadProcessor", () => {
       xlsxFile.sizeBytes = xlsxBuf.length;
 
       const map = new Map<string, { buf: Buffer; contentType: string }>();
-      map.set(csvFile.s3Key, { buf: Buffer.from(csvContent), contentType: "text/csv" });
-      map.set(xlsxFile.s3Key, { buf: xlsxBuf, contentType: "application/octet-stream" });
+      map.set(csvFile.s3Key, {
+        buf: Buffer.from(csvContent),
+        contentType: "text/csv",
+      });
+      map.set(xlsxFile.s3Key, {
+        buf: xlsxBuf,
+        contentType: "application/octet-stream",
+      });
       mockHeadObject.mockImplementation(async (key) => {
         const e = map.get(key);
-        return e ? { contentLength: e.buf.length, contentType: e.contentType } : null;
+        return e
+          ? { contentLength: e.buf.length, contentType: e.contentType }
+          : null;
       });
       mockGetObjectStream.mockImplementation(async (key) => {
         const e = map.get(key);
@@ -690,7 +750,9 @@ describe("fileUploadProcessor", () => {
         "book.xlsx[S1]",
         "book.xlsx[S2]",
       ]);
-      expect(result.recommendations!.connectorInstanceName).toBe("File Import (2 files)");
+      expect(result.recommendations!.connectorInstanceName).toBe(
+        "File Import (2 files)"
+      );
     });
 
     it("rejects corrupt XLSX with UPLOAD_PARSE_FAILED wrapping", async () => {
@@ -701,7 +763,7 @@ describe("fileUploadProcessor", () => {
 
       const bullJob = createMockBullJob([file]);
       await expect(fileUploadProcessor(bullJob)).rejects.toThrow(
-        /Failed to parse XLSX file/,
+        /Failed to parse XLSX file/
       );
     });
 

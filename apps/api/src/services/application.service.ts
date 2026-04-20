@@ -114,7 +114,12 @@ export class ApplicationService {
           credentials: null,
           lastSyncAt: null,
           lastErrorMessage: null,
-          enabledCapabilityFlags: { sync: false, read: true, write: true, push: false },
+          enabledCapabilityFlags: {
+            sync: false,
+            read: true,
+            write: true,
+            push: false,
+          },
         });
 
       const createdInstance =
@@ -124,14 +129,12 @@ export class ApplicationService {
         );
 
       // Create default station
-      const stationModel = new StationModelFactory()
-        .create(systemId)
-        .update({
-          organizationId: createdOrg.id,
-          name: "My Station",
-          description: "Default organization sandbox station",
-          toolPacks: ["data_query"],
-        });
+      const stationModel = new StationModelFactory().create(systemId).update({
+        organizationId: createdOrg.id,
+        name: "My Station",
+        description: "Default organization sandbox station",
+        toolPacks: ["data_query"],
+      });
 
       const createdStation = await DbService.repository.stations.create(
         stationModel.parse(),

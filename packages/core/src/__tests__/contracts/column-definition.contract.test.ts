@@ -83,16 +83,19 @@ describe("ColumnDefinitionListRequestQuerySchema", () => {
 
   it("should accept a system filter of 'true' or 'false'", () => {
     expect(
-      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "true" }).success
+      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "true" })
+        .success
     ).toBe(true);
     expect(
-      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "false" }).success
+      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "false" })
+        .success
     ).toBe(true);
   });
 
   it("should reject a system filter with any other value", () => {
     expect(
-      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "yes" }).success
+      ColumnDefinitionListRequestQuerySchema.safeParse({ system: "yes" })
+        .success
     ).toBe(false);
     expect(
       ColumnDefinitionListRequestQuerySchema.safeParse({ system: "1" }).success

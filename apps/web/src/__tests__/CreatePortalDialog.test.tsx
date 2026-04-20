@@ -76,9 +76,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 // Re-import after mocking
-const { CreatePortalDialog: MockedCreatePortalDialog } = await import(
-  "../components/CreatePortalDialog.component"
-);
+const { CreatePortalDialog: MockedCreatePortalDialog } =
+  await import("../components/CreatePortalDialog.component");
 
 const defaultProps = {
   open: true,
@@ -105,9 +104,7 @@ describe("CreatePortalDialog", () => {
 
   it("should show 'Creating...' and disable buttons when pending", () => {
     render(<MockedCreatePortalDialog {...defaultProps} isPending={true} />);
-    expect(
-      screen.getByRole("button", { name: "Creating..." })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
@@ -121,12 +118,8 @@ describe("CreatePortalDialog", () => {
         }}
       />
     );
-    expect(
-      screen.getByText(/Failed to create portal/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/PORTAL_CREATE_FAILED/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Failed to create portal/)).toBeInTheDocument();
+    expect(screen.getByText(/PORTAL_CREATE_FAILED/)).toBeInTheDocument();
   });
 
   it("should call onClose when Cancel is clicked", () => {

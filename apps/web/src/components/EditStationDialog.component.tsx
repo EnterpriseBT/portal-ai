@@ -11,7 +11,11 @@ import TextField from "@mui/material/TextField";
 import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
-import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
+import {
+  validateWithSchema,
+  focusFirstInvalidField,
+  type FormErrors,
+} from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackIconUtil } from "../utils/tool-pack-icons.util";
 import { ToolPackUtil } from "../utils/tool-packs.util";
@@ -26,7 +30,6 @@ const TOOL_PACK_OPTIONS: SelectOption[] = StationToolPackSchema.options.map(
     };
   }
 );
-
 
 interface FormState {
   name: string;
@@ -138,7 +141,12 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -161,7 +169,9 @@ export const EditStationDialog: React.FC<EditStationDialogProps> = ({
           onBlur={() => handleBlur("name")}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
-          slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched.name && !!errors.name },
+          }}
           required
           fullWidth
         />

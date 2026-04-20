@@ -4,7 +4,8 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockFindByColumnDefId = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockFindByColumnDefId =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -16,9 +17,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { ColumnDefinitionValidationService } = await import(
-  "../../services/column-definition-validation.service.js"
-);
+const { ColumnDefinitionValidationService } =
+  await import("../../services/column-definition-validation.service.js");
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -85,7 +85,7 @@ describe("ColumnDefinitionValidationService.validateDelete", () => {
     mockFindByColumnDefId.mockResolvedValue([]);
 
     await expect(
-      ColumnDefinitionValidationService.validateDelete("cd-1"),
+      ColumnDefinitionValidationService.validateDelete("cd-1")
     ).resolves.toBeUndefined();
   });
 
@@ -93,7 +93,7 @@ describe("ColumnDefinitionValidationService.validateDelete", () => {
     mockFindByColumnDefId.mockResolvedValue([{ id: "fm-1" }]);
 
     await expect(
-      ColumnDefinitionValidationService.validateDelete("cd-1"),
+      ColumnDefinitionValidationService.validateDelete("cd-1")
     ).rejects.toMatchObject({
       code: "COLUMN_DEFINITION_HAS_DEPENDENCIES",
     });

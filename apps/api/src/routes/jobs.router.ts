@@ -86,11 +86,7 @@ jobsRouter.post(
       const parsed = JobCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(
-            400,
-            ApiCode.JOB_INVALID_PAYLOAD,
-            "Invalid job payload"
-          )
+          new ApiError(400, ApiCode.JOB_INVALID_PAYLOAD, "Invalid job payload")
         );
       }
 
@@ -99,22 +95,30 @@ jobsRouter.post(
         parsed.data
       ).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.JOB_ENQUEUE_FAILED, error instanceof Error ? error.message : "Failed to create job");
+        throw new ApiError(
+          500,
+          ApiCode.JOB_ENQUEUE_FAILED,
+          error instanceof Error ? error.message : "Failed to create job"
+        );
       });
 
       logger.info({ jobId: job.id, type: parsed.data.type }, "Job created");
 
-      return HttpService.success<JobCreateResponsePayload>(
-        res,
-        { job },
-        201
-      );
+      return HttpService.success<JobCreateResponsePayload>(res, { job }, 201);
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create job"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_ENQUEUE_FAILED, error instanceof Error ? error.message : "Failed to create job"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.JOB_ENQUEUE_FAILED,
+              error instanceof Error ? error.message : "Failed to create job"
+            )
+      );
     }
   }
 );
@@ -181,10 +185,18 @@ jobsRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const query = JobListRequestQuerySchema.parse(req.query);
-      const filters: SQL[] = [eq(jobs.organizationId, req.application?.metadata.organizationId as string)];
+      const filters: SQL[] = [
+        eq(
+          jobs.organizationId,
+          req.application?.metadata.organizationId as string
+        ),
+      ];
 
       if (query.status) {
-        const statuses = query.status.split(",").map((s) => s.trim()).filter(Boolean);
+        const statuses = query.status
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
         if (statuses.length === 1) {
           filters.push(eq(jobs.status, statuses[0] as never));
         } else if (statuses.length > 1) {
@@ -192,7 +204,10 @@ jobsRouter.get(
         }
       }
       if (query.type) {
-        const types = query.type.split(",").map((t) => t.trim()).filter(Boolean);
+        const types = query.type
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
         if (types.length === 1) {
           filters.push(eq(jobs.type, types[0] as never));
         } else if (types.length > 1) {
@@ -220,7 +235,11 @@ jobsRouter.get(
         DbService.repository.jobs.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list jobs");
+        throw new ApiError(
+          500,
+          ApiCode.JOB_FETCH_FAILED,
+          error instanceof Error ? error.message : "Failed to list jobs"
+        );
       });
 
       const result: JobListResponsePayload = {
@@ -236,7 +255,15 @@ jobsRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list jobs"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list jobs"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.JOB_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to list jobs"
+            )
+      );
     }
   }
 );
@@ -291,7 +318,11 @@ jobsRouter.get(
 
       const job = await JobsService.findById(id).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch job");
+        throw new ApiError(
+          500,
+          ApiCode.JOB_FETCH_FAILED,
+          error instanceof Error ? error.message : "Failed to fetch job"
+        );
       });
 
       return HttpService.success<JobGetResponsePayload>(res, { job });
@@ -300,7 +331,15 @@ jobsRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch job"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch job"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.JOB_FETCH_FAILED,
+              error instanceof Error ? error.message : "Failed to fetch job"
+            )
+      );
     }
   }
 );
@@ -361,7 +400,11 @@ jobsRouter.post(
 
       const job = await JobsService.cancel(id).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.JOB_CANCEL_FAILED, error instanceof Error ? error.message : "Failed to cancel job");
+        throw new ApiError(
+          500,
+          ApiCode.JOB_CANCEL_FAILED,
+          error instanceof Error ? error.message : "Failed to cancel job"
+        );
       });
 
       return HttpService.success<JobCancelResponsePayload>(res, { job });
@@ -370,7 +413,15 @@ jobsRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to cancel job"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_CANCEL_FAILED, error instanceof Error ? error.message : "Failed to cancel job"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.JOB_CANCEL_FAILED,
+              error instanceof Error ? error.message : "Failed to cancel job"
+            )
+      );
     }
   }
 );

@@ -34,16 +34,11 @@ export const getApplicationMetadata = async (
     const user = await DbService.repository.users.findByAuth0Id(auth0Id);
     if (!user) {
       return next(
-        new ApiError(
-          404,
-          ApiCode.METADATA_USER_NOT_FOUND,
-          "User not found"
-        )
+        new ApiError(404, ApiCode.METADATA_USER_NOT_FOUND, "User not found")
       );
     }
 
-    const orgResult =
-      await ApplicationService.getCurrentOrganization(user.id);
+    const orgResult = await ApplicationService.getCurrentOrganization(user.id);
     if (!orgResult) {
       return next(
         new ApiError(

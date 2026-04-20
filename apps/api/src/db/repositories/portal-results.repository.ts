@@ -9,7 +9,11 @@ import { eq, asc, desc, getTableColumns, type SQL } from "drizzle-orm";
 
 import { portalResults, portals } from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+import {
+  Repository,
+  type DbClient,
+  type ListOptions,
+} from "./base.repository.js";
 import type { PortalResultSelect, PortalResultInsert } from "../schema/zod.js";
 
 export class PortalResultsRepository extends Repository<
@@ -29,7 +33,11 @@ export class PortalResultsRepository extends Repository<
     client: DbClient = db
   ): Promise<PortalResultSelect[]> {
     if (opts.include?.includes("portal")) {
-      return this.findManyWithPortal(where, opts, client) as unknown as PortalResultSelect[];
+      return this.findManyWithPortal(
+        where,
+        opts,
+        client
+      ) as unknown as PortalResultSelect[];
     }
     return super.findMany(where, opts, client);
   }

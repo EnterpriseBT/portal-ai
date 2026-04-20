@@ -32,107 +32,95 @@ function col(
 
 describe("serializeRecordFields", () => {
   it("serializes string field", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("name", "string")],
-      { name: "Alice" }
-    );
+    const { data, errors } = serializeRecordFields([col("name", "string")], {
+      name: "Alice",
+    });
     expect(data.name).toBe("Alice");
     expect(errors).toEqual({});
   });
 
   it("serializes empty string to null", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("name", "string")],
-      { name: "" }
-    );
+    const { data, errors } = serializeRecordFields([col("name", "string")], {
+      name: "",
+    });
     expect(data.name).toBeNull();
     expect(errors).toEqual({});
   });
 
   it("serializes number field", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("age", "number")],
-      { age: "25" }
-    );
+    const { data, errors } = serializeRecordFields([col("age", "number")], {
+      age: "25",
+    });
     expect(data.age).toBe(25);
     expect(errors).toEqual({});
   });
 
   it("returns error for non-numeric number field", () => {
-    const { errors } = serializeRecordFields(
-      [col("age", "number")],
-      { age: "abc" }
-    );
+    const { errors } = serializeRecordFields([col("age", "number")], {
+      age: "abc",
+    });
     expect(errors.age).toBe("Must be a valid number");
   });
 
   it("serializes empty number to null", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("age", "number")],
-      { age: "" }
-    );
+    const { data, errors } = serializeRecordFields([col("age", "number")], {
+      age: "",
+    });
     expect(data.age).toBeNull();
     expect(errors).toEqual({});
   });
 
   it("serializes boolean true", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("active", "boolean")],
-      { active: true }
-    );
+    const { data, errors } = serializeRecordFields([col("active", "boolean")], {
+      active: true,
+    });
     expect(data.active).toBe(true);
     expect(errors).toEqual({});
   });
 
   it("serializes boolean false", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("active", "boolean")],
-      { active: false }
-    );
+    const { data, errors } = serializeRecordFields([col("active", "boolean")], {
+      active: false,
+    });
     expect(data.active).toBe(false);
     expect(errors).toEqual({});
   });
 
   it("serializes date field as string", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("dob", "date")],
-      { dob: "2024-01-15" }
-    );
+    const { data, errors } = serializeRecordFields([col("dob", "date")], {
+      dob: "2024-01-15",
+    });
     expect(data.dob).toBe("2024-01-15");
     expect(errors).toEqual({});
   });
 
   it("serializes json field", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("meta", "json")],
-      { meta: '{"a":1}' }
-    );
+    const { data, errors } = serializeRecordFields([col("meta", "json")], {
+      meta: '{"a":1}',
+    });
     expect(data.meta).toEqual({ a: 1 });
     expect(errors).toEqual({});
   });
 
   it("returns error for invalid json", () => {
-    const { errors } = serializeRecordFields(
-      [col("meta", "json")],
-      { meta: "{bad" }
-    );
+    const { errors } = serializeRecordFields([col("meta", "json")], {
+      meta: "{bad",
+    });
     expect(errors.meta).toMatch(/Invalid JSON:/);
   });
 
   it("serializes array field", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("tags", "array")],
-      { tags: '["a","b"]' }
-    );
+    const { data, errors } = serializeRecordFields([col("tags", "array")], {
+      tags: '["a","b"]',
+    });
     expect(data.tags).toEqual(["a", "b"]);
     expect(errors).toEqual({});
   });
 
   it("returns error for non-array json in array field", () => {
-    const { errors } = serializeRecordFields(
-      [col("tags", "array")],
-      { tags: '{"a":1}' }
-    );
+    const { errors } = serializeRecordFields([col("tags", "array")], {
+      tags: '{"a":1}',
+    });
     expect(errors.tags).toBe("Value must be a JSON array");
   });
 
@@ -155,19 +143,17 @@ describe("serializeRecordFields", () => {
   });
 
   it("serializes enum field as string", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("status", "enum")],
-      { status: "active" }
-    );
+    const { data, errors } = serializeRecordFields([col("status", "enum")], {
+      status: "active",
+    });
     expect(data.status).toBe("active");
     expect(errors).toEqual({});
   });
 
   it("serializes empty enum to null", () => {
-    const { data, errors } = serializeRecordFields(
-      [col("status", "enum")],
-      { status: "" }
-    );
+    const { data, errors } = serializeRecordFields([col("status", "enum")], {
+      status: "",
+    });
     expect(data.status).toBeNull();
     expect(errors).toEqual({});
   });
@@ -243,34 +229,28 @@ describe("initializeRecordFields", () => {
   });
 
   it("deserializes existing json object to pretty-printed string", () => {
-    const values = initializeRecordFields(
-      [col("meta", "json")],
-      { meta: { a: 1 } }
-    );
+    const values = initializeRecordFields([col("meta", "json")], {
+      meta: { a: 1 },
+    });
     expect(values.meta).toBe('{\n  "a": 1\n}');
   });
 
   it("deserializes existing number to string", () => {
-    const values = initializeRecordFields(
-      [col("age", "number")],
-      { age: 25 }
-    );
+    const values = initializeRecordFields([col("age", "number")], { age: 25 });
     expect(values.age).toBe("25");
   });
 
   it("deserializes existing boolean — pass through", () => {
-    const values = initializeRecordFields(
-      [col("active", "boolean")],
-      { active: true }
-    );
+    const values = initializeRecordFields([col("active", "boolean")], {
+      active: true,
+    });
     expect(values.active).toBe(true);
   });
 
   it("passes through existing string", () => {
-    const values = initializeRecordFields(
-      [col("name", "string")],
-      { name: "Alice" }
-    );
+    const values = initializeRecordFields([col("name", "string")], {
+      name: "Alice",
+    });
     expect(values.name).toBe("Alice");
   });
 });
@@ -287,14 +267,20 @@ describe("normalizedKey used as data key (not col.key)", () => {
   });
 
   it("validateRequiredFields uses normalizedKey for value lookup and error keys", () => {
-    const c = col("first_name", "string", { normalizedKey: "fname", required: true });
+    const c = col("first_name", "string", {
+      normalizedKey: "fname",
+      required: true,
+    });
     const errors = validateRequiredFields([c], { fname: "" });
     expect(errors.fname).toBe("First_name is required");
     expect(errors).not.toHaveProperty("first_name");
   });
 
   it("initializeRecordFields uses normalizedKey for output keys", () => {
-    const c = col("first_name", "string", { normalizedKey: "fname", defaultValue: "hello" });
+    const c = col("first_name", "string", {
+      normalizedKey: "fname",
+      defaultValue: "hello",
+    });
     const values = initializeRecordFields([c]);
     expect(values.fname).toBe("hello");
     expect(values).not.toHaveProperty("first_name");

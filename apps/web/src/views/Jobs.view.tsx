@@ -1,4 +1,10 @@
-import { Icon, IconName, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
+import {
+  Icon,
+  IconName,
+  PageEmptyState,
+  PageHeader,
+  Stack,
+} from "@portalai/core/ui";
 import type { JobListRequestQuery } from "@portalai/core/contracts";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -52,10 +58,7 @@ export const JobsView = () => {
   return (
     <Stack spacing={4}>
       <PageHeader
-        breadcrumbs={[
-          { label: "Dashboard", href: "/" },
-          { label: "Jobs" },
-        ]}
+        breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Jobs" }]}
         onNavigate={(href) => navigate({ to: href })}
         title="Jobs"
         icon={<Icon name={IconName.Work} />}
@@ -71,7 +74,10 @@ export const JobsView = () => {
               <DataResult results={{ jobs: response }}>
                 {({ jobs }) =>
                   jobs.total === 0 ? (
-                    (pagination.search || Object.values(pagination.filters).some(v => v.length > 0)) ? (
+                    pagination.search ||
+                    Object.values(pagination.filters).some(
+                      (v) => v.length > 0
+                    ) ? (
                       <EmptyResults />
                     ) : (
                       <PageEmptyState

@@ -178,13 +178,16 @@ export const useAuthMutation = <TData, TVariables>({
     mutationFn: async (variables) => {
       const resolvedUrl = typeof url === "function" ? url(variables) : url;
       const bodyPayload = body ? body(variables) : variables;
-      const response = await fetchWithAuth<ApiSuccessResponse<TData>>(resolvedUrl, {
-        ...options,
-        method,
-        ...(bodyPayload !== undefined && bodyPayload !== null
-          ? { body: JSON.stringify(bodyPayload) }
-          : {}),
-      });
+      const response = await fetchWithAuth<ApiSuccessResponse<TData>>(
+        resolvedUrl,
+        {
+          ...options,
+          method,
+          ...(bodyPayload !== undefined && bodyPayload !== null
+            ? { body: JSON.stringify(bodyPayload) }
+            : {}),
+        }
+      );
       return response.payload;
     },
     ...mutationOptions,

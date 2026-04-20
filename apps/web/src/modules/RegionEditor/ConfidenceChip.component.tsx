@@ -1,14 +1,20 @@
 import React from "react";
 import { Box, Typography } from "@portalai/core/ui";
 
-import { confidenceBand, CONFIDENCE_BAND_COLOR } from "./utils/region-editor-colors.util";
+import {
+  confidenceBand,
+  CONFIDENCE_BAND_COLOR,
+} from "./utils/region-editor-colors.util";
 
 export interface ConfidenceChipUIProps {
   label: string;
   score?: number;
 }
 
-export const ConfidenceChipUI: React.FC<ConfidenceChipUIProps> = ({ label, score }) => {
+export const ConfidenceChipUI: React.FC<ConfidenceChipUIProps> = ({
+  label,
+  score,
+}) => {
   const band = confidenceBand(score);
   if (band === "none") return null;
   return (

@@ -4,7 +4,10 @@ import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { fieldMappings } from "../db/schema/index.js";
-import { Repository, type DbClient } from "../db/repositories/base.repository.js";
+import {
+  Repository,
+  type DbClient,
+} from "../db/repositories/base.repository.js";
 
 const NORMALIZED_KEY_REGEX = /^[a-z][a-z0-9_]*$/;
 const BOOLEAN_FORMAT_REGEX = /^.+\/.+$/;
@@ -45,7 +48,7 @@ export class FieldMappingValidationService {
     const existing = await DbService.repository.fieldMappings.findMany(
       and(
         eq(fieldMappings.connectorEntityId, connectorEntityId),
-        eq(fieldMappings.normalizedKey, normalizedKey),
+        eq(fieldMappings.normalizedKey, normalizedKey)
       )
     );
 
@@ -89,7 +92,10 @@ export class FieldMappingValidationService {
    * Validate that `format` is compatible with the column definition type.
    * - For `boolean` type: format must follow `"trueLabel/falseLabel"` pattern.
    */
-  static validateFormat(format: string | null | undefined, columnType: string): void {
+  static validateFormat(
+    format: string | null | undefined,
+    columnType: string
+  ): void {
     if (format == null) return;
     if (columnType === "boolean" && !BOOLEAN_FORMAT_REGEX.test(format)) {
       throw new ApiError(
@@ -111,19 +117,19 @@ export class FieldMappingValidationService {
       throw new ApiError(
         404,
         ApiCode.FIELD_MAPPING_NOT_FOUND,
-        "Field mapping not found",
+        "Field mapping not found"
       );
     }
 
     const recordCount =
       await DbService.repository.entityRecords.countByConnectorEntityId(
-        mapping.connectorEntityId,
+        mapping.connectorEntityId
       );
     if (recordCount > 0) {
       throw new ApiError(
         409,
         ApiCode.FIELD_MAPPING_DELETE_HAS_RECORDS,
-        `Cannot delete field mapping: the connector entity has ${recordCount} record${recordCount !== 1 ? "s" : ""}. Delete the records first.`,
+        `Cannot delete field mapping: the connector entity has ${recordCount} record${recordCount !== 1 ? "s" : ""}. Delete the records first.`
       );
     }
   }
@@ -139,7 +145,7 @@ export class FieldMappingValidationService {
   static async executeDelete(
     fieldMappingId: string,
     userId: string,
-    client?: DbClient,
+    client?: DbClient
   ): Promise<FieldMappingCascadeResult> {
     const mapping =
       await DbService.repository.fieldMappings.findById(fieldMappingId);
@@ -147,7 +153,7 @@ export class FieldMappingValidationService {
       throw new ApiError(
         404,
         ApiCode.FIELD_MAPPING_NOT_FOUND,
-        "Field mapping not found",
+        "Field mapping not found"
       );
     }
 
@@ -155,29 +161,31 @@ export class FieldMappingValidationService {
       await DbService.repository.fieldMappings.softDelete(
         fieldMappingId,
         userId,
-        tx,
+        tx
       );
       const cascadedEntityGroupMembers =
         await DbService.repository.entityGroupMembers.softDeleteByLinkFieldMappingId(
           fieldMappingId,
           userId,
-          tx,
+          tx
         );
 
       let counterpartCleared = false;
       if (mapping.refEntityKey && mapping.refNormalizedKey) {
         // Look up the entity key for the mapping's connector entity
         const entity = await DbService.repository.connectorEntities.findById(
-          mapping.connectorEntityId, tx,
+          mapping.connectorEntityId,
+          tx
         );
         if (entity) {
-          const counterpart = await DbService.repository.fieldMappings.findCounterpart(
-            mapping.organizationId,
-            entity.key,
-            mapping.refEntityKey,
-            mapping.refNormalizedKey,
-            tx,
-          );
+          const counterpart =
+            await DbService.repository.fieldMappings.findCounterpart(
+              mapping.organizationId,
+              entity.key,
+              mapping.refEntityKey,
+              mapping.refNormalizedKey,
+              tx
+            );
           if (counterpart) {
             await DbService.repository.fieldMappings.update(
               counterpart.id,
@@ -187,7 +195,7 @@ export class FieldMappingValidationService {
                 updated: Date.now(),
                 updatedBy: userId,
               },
-              tx,
+              tx
             );
             counterpartCleared = true;
           }

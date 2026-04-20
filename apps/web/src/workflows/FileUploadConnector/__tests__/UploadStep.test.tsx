@@ -40,9 +40,7 @@ describe("UploadStep — drop zone", () => {
 
   test("shows the empty-state prompt when no files are selected", () => {
     render(<UploadStep {...makeProps()} />);
-    expect(
-      screen.getByText(/select.*spreadsheet/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/select.*spreadsheet/i)).toBeInTheDocument();
   });
 
   test("lists selected files with upload progress rows", () => {
@@ -153,9 +151,7 @@ describe("UploadStep — server error", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Parse failed — unknown format"
     );
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "UPLOAD_PARSE_ERROR"
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent("UPLOAD_PARSE_ERROR");
   });
 
   test("does not render FormAlert when serverError is null", () => {
@@ -180,7 +176,7 @@ describe("UploadStep — validation errors", () => {
     ).toBeInTheDocument();
   });
 
-  test('does not set aria-invalid when errors.files is absent', () => {
+  test("does not set aria-invalid when errors.files is absent", () => {
     render(<UploadStep {...makeProps()} />);
     const input = screen.getByTestId("file-input") as HTMLInputElement;
     expect(input.getAttribute("aria-invalid")).not.toBe("true");

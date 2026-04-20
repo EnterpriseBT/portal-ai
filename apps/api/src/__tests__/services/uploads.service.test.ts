@@ -7,22 +7,37 @@ import type { ConfirmRequestBody } from "@portalai/core/contracts";
 // ---------------------------------------------------------------------------
 
 const mockJobsFindById = jest.fn<(id: string) => Promise<unknown>>();
-const mockJobsUpdate = jest.fn<(id: string, data: unknown) => Promise<unknown>>();
+const mockJobsUpdate =
+  jest.fn<(id: string, data: unknown) => Promise<unknown>>();
 
-const mockConnectorInstancesFindByOrgDefinitionAndName = jest.fn<() => Promise<unknown>>();
-const mockConnectorInstancesCreate = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
-const mockConnectorInstancesUpdate = jest.fn<(id: string, data: unknown, tx?: unknown) => Promise<unknown>>();
+const mockConnectorInstancesFindByOrgDefinitionAndName =
+  jest.fn<() => Promise<unknown>>();
+const mockConnectorInstancesCreate =
+  jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
+const mockConnectorInstancesUpdate =
+  jest.fn<(id: string, data: unknown, tx?: unknown) => Promise<unknown>>();
 
-const mockConnectorEntitiesUpsertByKey = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
+const mockConnectorEntitiesUpsertByKey =
+  jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
 
-const mockColumnDefinitionsFindById = jest.fn<(id: string, tx?: unknown) => Promise<unknown>>();
+const mockColumnDefinitionsFindById =
+  jest.fn<(id: string, tx?: unknown) => Promise<unknown>>();
 
-const mockFieldMappingsUpsertByEntityAndNormalizedKey = jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
-const mockFieldMappingsFindByConnectorEntityId = jest.fn<(id: string, tx?: unknown) => Promise<unknown[]>>();
-const mockFieldMappingsSoftDeleteMany = jest.fn<(ids: string[], deletedBy: string, tx?: unknown) => Promise<number>>();
+const mockFieldMappingsUpsertByEntityAndNormalizedKey =
+  jest.fn<(data: unknown, tx?: unknown) => Promise<unknown>>();
+const mockFieldMappingsFindByConnectorEntityId =
+  jest.fn<(id: string, tx?: unknown) => Promise<unknown[]>>();
+const mockFieldMappingsSoftDeleteMany =
+  jest.fn<
+    (ids: string[], deletedBy: string, tx?: unknown) => Promise<number>
+  >();
 
-const mockTransition = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-const mockPublishCustomEvent = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockTransition = jest
+  .fn<() => Promise<void>>()
+  .mockResolvedValue(undefined);
+const mockPublishCustomEvent = jest
+  .fn<() => Promise<void>>()
+  .mockResolvedValue(undefined);
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -32,10 +47,15 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         update: mockJobsUpdate,
       },
       connectorDefinitions: {
-        findById: jest.fn<() => Promise<unknown>>().mockResolvedValue({ capabilityFlags: { sync: false, read: false, write: true } }),
+        findById: jest
+          .fn<() => Promise<unknown>>()
+          .mockResolvedValue({
+            capabilityFlags: { sync: false, read: false, write: true },
+          }),
       },
       connectorInstances: {
-        findByOrgDefinitionAndName: mockConnectorInstancesFindByOrgDefinitionAndName,
+        findByOrgDefinitionAndName:
+          mockConnectorInstancesFindByOrgDefinitionAndName,
         create: mockConnectorInstancesCreate,
         update: mockConnectorInstancesUpdate,
       },
@@ -46,12 +66,14 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         findById: mockColumnDefinitionsFindById,
       },
       fieldMappings: {
-        upsertByEntityAndNormalizedKey: mockFieldMappingsUpsertByEntityAndNormalizedKey,
+        upsertByEntityAndNormalizedKey:
+          mockFieldMappingsUpsertByEntityAndNormalizedKey,
         findByConnectorEntityId: mockFieldMappingsFindByConnectorEntityId,
         softDeleteMany: mockFieldMappingsSoftDeleteMany,
       },
     },
-    transaction: jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+    transaction: jest
+      .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
       .mockImplementation(async (fn) => fn("mock-tx")),
   },
 }));
@@ -63,7 +85,15 @@ jest.unstable_mockModule("../../services/job-events.service.js", () => ({
   },
 }));
 
-const mockImportFromS3 = jest.fn<() => Promise<{ created: number; updated: number; unchanged: number; invalid: number }>>()
+const mockImportFromS3 = jest
+  .fn<
+    () => Promise<{
+      created: number;
+      updated: number;
+      unchanged: number;
+      invalid: number;
+    }>
+  >()
   .mockResolvedValue({ created: 10, updated: 0, unchanged: 0, invalid: 0 });
 
 jest.unstable_mockModule("../../services/csv-import.service.js", () => ({
@@ -72,13 +102,21 @@ jest.unstable_mockModule("../../services/csv-import.service.js", () => ({
   },
 }));
 
-const mockXlsxImportFromS3 = jest.fn<(params: {
-  s3Key: string;
-  sheetName: string;
-  connectorEntityId: string;
-  organizationId: string;
-  userId: string;
-}) => Promise<{ created: number; updated: number; unchanged: number; invalid: number }>>()
+const mockXlsxImportFromS3 = jest
+  .fn<
+    (params: {
+      s3Key: string;
+      sheetName: string;
+      connectorEntityId: string;
+      organizationId: string;
+      userId: string;
+    }) => Promise<{
+      created: number;
+      updated: number;
+      unchanged: number;
+      invalid: number;
+    }>
+  >()
   .mockResolvedValue({ created: 7, updated: 0, unchanged: 0, invalid: 0 });
 
 jest.unstable_mockModule("../../services/xlsx-import.service.js", () => ({
@@ -87,7 +125,8 @@ jest.unstable_mockModule("../../services/xlsx-import.service.js", () => ({
   },
 }));
 
-const { UploadsService, extractSheetName } = await import("../../services/uploads.service.js");
+const { UploadsService, extractSheetName } =
+  await import("../../services/uploads.service.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,10 +136,34 @@ const JOB_ID = "job-001";
 const ORG_ID = "org-001";
 const USER_ID = "user-001";
 
-const COLDEF_NAME = { id: "cd-name", organizationId: ORG_ID, key: "name", label: "Name", type: "string" };
-const COLDEF_EMAIL = { id: "cd-email", organizationId: ORG_ID, key: "email", label: "Email", type: "string" };
-const COLDEF_INTEGER = { id: "cd-integer", organizationId: ORG_ID, key: "integer", label: "Integer", type: "number" };
-const COLDEF_REFERENCE = { id: "cd-reference", organizationId: ORG_ID, key: "reference", label: "Reference", type: "reference" };
+const COLDEF_NAME = {
+  id: "cd-name",
+  organizationId: ORG_ID,
+  key: "name",
+  label: "Name",
+  type: "string",
+};
+const COLDEF_EMAIL = {
+  id: "cd-email",
+  organizationId: ORG_ID,
+  key: "email",
+  label: "Email",
+  type: "string",
+};
+const COLDEF_INTEGER = {
+  id: "cd-integer",
+  organizationId: ORG_ID,
+  key: "integer",
+  label: "Integer",
+  type: "number",
+};
+const COLDEF_REFERENCE = {
+  id: "cd-reference",
+  organizationId: ORG_ID,
+  key: "reference",
+  label: "Reference",
+  type: "reference",
+};
 
 function createAwaitingJob(overrides?: Partial<Record<string, unknown>>) {
   return {
@@ -110,7 +173,13 @@ function createAwaitingJob(overrides?: Partial<Record<string, unknown>>) {
     status: "awaiting_confirmation",
     progress: 80,
     metadata: {
-      files: [{ originalName: "contacts.csv", s3Key: "uploads/org-001/job-001/contacts.csv", sizeBytes: 1024 }],
+      files: [
+        {
+          originalName: "contacts.csv",
+          s3Key: "uploads/org-001/job-001/contacts.csv",
+          sizeBytes: 1024,
+        },
+      ],
       organizationId: ORG_ID,
       connectorDefinitionId: "cdef_fileupload01",
     },
@@ -128,7 +197,9 @@ function createAwaitingJob(overrides?: Partial<Record<string, unknown>>) {
   };
 }
 
-function createConfirmBody(overrides?: Partial<ConfirmRequestBody>): ConfirmRequestBody {
+function createConfirmBody(
+  overrides?: Partial<ConfirmRequestBody>
+): ConfirmRequestBody {
   return {
     connectorInstanceName: "My CSV Import",
     entities: [
@@ -178,12 +249,14 @@ describe("UploadsService", () => {
       name: "My CSV Import",
     }));
 
-    mockConnectorEntitiesUpsertByKey.mockImplementation(async (data: unknown) => ({
-      ...(data as Record<string, unknown>),
-      id: "ce-001",
-      key: (data as Record<string, unknown>).key,
-      label: (data as Record<string, unknown>).label,
-    }));
+    mockConnectorEntitiesUpsertByKey.mockImplementation(
+      async (data: unknown) => ({
+        ...(data as Record<string, unknown>),
+        id: "ce-001",
+        key: (data as Record<string, unknown>).key,
+        label: (data as Record<string, unknown>).label,
+      })
+    );
 
     // findById resolves the correct column definition based on id
     mockColumnDefinitionsFindById.mockImplementation(async (id: string) => {
@@ -196,14 +269,17 @@ describe("UploadsService", () => {
       return defs[id] ?? undefined;
     });
 
-    mockFieldMappingsUpsertByEntityAndNormalizedKey.mockImplementation(async (data: unknown) => ({
-      ...(data as Record<string, unknown>),
-      id: `fm-${(data as Record<string, unknown>).sourceField}`,
-      sourceField: (data as Record<string, unknown>).sourceField,
-      columnDefinitionId: (data as Record<string, unknown>).columnDefinitionId,
-      isPrimaryKey: (data as Record<string, unknown>).isPrimaryKey,
-      normalizedKey: (data as Record<string, unknown>).normalizedKey,
-    }));
+    mockFieldMappingsUpsertByEntityAndNormalizedKey.mockImplementation(
+      async (data: unknown) => ({
+        ...(data as Record<string, unknown>),
+        id: `fm-${(data as Record<string, unknown>).sourceField}`,
+        sourceField: (data as Record<string, unknown>).sourceField,
+        columnDefinitionId: (data as Record<string, unknown>)
+          .columnDefinitionId,
+        isPrimaryKey: (data as Record<string, unknown>).isPrimaryKey,
+        normalizedKey: (data as Record<string, unknown>).normalizedKey,
+      })
+    );
 
     mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([]);
     mockFieldMappingsSoftDeleteMany.mockResolvedValue(0);
@@ -212,7 +288,12 @@ describe("UploadsService", () => {
   describe("confirm()", () => {
     it("should confirm with valid existingColumnDefinitionId for every column", async () => {
       const body = createConfirmBody();
-      const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+      const result = await UploadsService.confirm(
+        JOB_ID,
+        ORG_ID,
+        USER_ID,
+        body
+      );
 
       expect(result.connectorInstanceId).toBe("ci-001");
       expect(result.connectorInstanceName).toBe("My CSV Import");
@@ -229,7 +310,9 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Name",
           columnDefinitionId: "cd-name",
@@ -237,7 +320,9 @@ describe("UploadsService", () => {
         }),
         "mock-tx"
       );
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Email",
           columnDefinitionId: "cd-email",
@@ -252,8 +337,14 @@ describe("UploadsService", () => {
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
       // upsertByKey is not even in the mock — verify findById was used instead
-      expect(mockColumnDefinitionsFindById).toHaveBeenCalledWith("cd-name", "mock-tx");
-      expect(mockColumnDefinitionsFindById).toHaveBeenCalledWith("cd-email", "mock-tx");
+      expect(mockColumnDefinitionsFindById).toHaveBeenCalledWith(
+        "cd-name",
+        "mock-tx"
+      );
+      expect(mockColumnDefinitionsFindById).toHaveBeenCalledWith(
+        "cd-email",
+        "mock-tx"
+      );
     });
 
     it("should reuse existing connector instance if found", async () => {
@@ -269,7 +360,12 @@ describe("UploadsService", () => {
       });
 
       const body = createConfirmBody();
-      const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+      const result = await UploadsService.confirm(
+        JOB_ID,
+        ORG_ID,
+        USER_ID,
+        body
+      );
 
       expect(result.connectorInstanceId).toBe("ci-existing");
       expect(mockConnectorInstancesCreate).not.toHaveBeenCalled();
@@ -282,7 +378,12 @@ describe("UploadsService", () => {
 
     it("should import CSV records from S3 after confirmation", async () => {
       const body = createConfirmBody();
-      const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+      const result = await UploadsService.confirm(
+        JOB_ID,
+        ORG_ID,
+        USER_ID,
+        body
+      );
 
       expect(mockImportFromS3).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -305,7 +406,12 @@ describe("UploadsService", () => {
       mockImportFromS3.mockRejectedValueOnce(new Error("S3 read error"));
 
       const body = createConfirmBody();
-      const result = await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
+      const result = await UploadsService.confirm(
+        JOB_ID,
+        ORG_ID,
+        USER_ID,
+        body
+      );
 
       expect(result.confirmedEntities[0].importResult).toEqual({
         created: 0,
@@ -348,7 +454,9 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Name",
           normalizedKey: "name",
@@ -382,7 +490,9 @@ describe("UploadsService", () => {
 
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           required: true,
           defaultValue: "active",
@@ -397,7 +507,9 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Name",
           defaultValue: null,
@@ -411,7 +523,11 @@ describe("UploadsService", () => {
   describe("confirm() — stale mapping cleanup", () => {
     it("should soft-delete stale field mappings whose normalizedKey is not in the incoming set", async () => {
       mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([
-        { id: "fm-old", columnDefinitionId: "cd-integer", normalizedKey: "age" },
+        {
+          id: "fm-old",
+          columnDefinitionId: "cd-integer",
+          normalizedKey: "age",
+        },
         { id: "fm-name", columnDefinitionId: "cd-name", normalizedKey: "name" },
       ]);
 
@@ -429,7 +545,11 @@ describe("UploadsService", () => {
     it("should not soft-delete any mappings when all existing normalizedKeys are in the incoming set", async () => {
       mockFieldMappingsFindByConnectorEntityId.mockResolvedValue([
         { id: "fm-name", columnDefinitionId: "cd-name", normalizedKey: "name" },
-        { id: "fm-email", columnDefinitionId: "cd-email", normalizedKey: "email" },
+        {
+          id: "fm-email",
+          columnDefinitionId: "cd-email",
+          normalizedKey: "email",
+        },
       ]);
 
       const body = createConfirmBody();
@@ -474,7 +594,9 @@ describe("UploadsService", () => {
 
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           refNormalizedKey: "role_key",
           refEntityKey: "roles",
@@ -484,7 +606,13 @@ describe("UploadsService", () => {
     });
 
     it("passes refNormalizedKey even when column definition type is not 'reference'", async () => {
-      const COLDEF_TEXT = { id: "cd-text", organizationId: ORG_ID, key: "owner", label: "Owner", type: "text" };
+      const COLDEF_TEXT = {
+        id: "cd-text",
+        organizationId: ORG_ID,
+        key: "owner",
+        label: "Owner",
+        type: "text",
+      };
 
       mockColumnDefinitionsFindById.mockImplementation(async (id: string) => {
         if (id === "cd-text") return COLDEF_TEXT;
@@ -515,7 +643,9 @@ describe("UploadsService", () => {
 
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           refNormalizedKey: "user_id",
           refEntityKey: "users",
@@ -528,7 +658,9 @@ describe("UploadsService", () => {
       const body = createConfirmBody();
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Name",
           refNormalizedKey: null,
@@ -568,8 +700,12 @@ describe("UploadsService", () => {
 
       await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, body);
 
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledTimes(2);
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledTimes(2);
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "First Name",
           columnDefinitionId: "cd-name",
@@ -577,7 +713,9 @@ describe("UploadsService", () => {
         }),
         "mock-tx"
       );
-      expect(mockFieldMappingsUpsertByEntityAndNormalizedKey).toHaveBeenCalledWith(
+      expect(
+        mockFieldMappingsUpsertByEntityAndNormalizedKey
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceField: "Last Name",
           columnDefinitionId: "cd-name",
@@ -695,7 +833,9 @@ describe("UploadsService", () => {
 
     it("should roll back transaction on DB error — job stays awaiting_confirmation", async () => {
       const { DbService } = await import("../../services/db.service.js");
-      (DbService.transaction as jest.Mock<() => Promise<unknown>>).mockRejectedValueOnce(new Error("DB connection lost"));
+      (
+        DbService.transaction as jest.Mock<() => Promise<unknown>>
+      ).mockRejectedValueOnce(new Error("DB connection lost"));
 
       await expect(
         UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, createConfirmBody())
@@ -714,11 +854,13 @@ describe("UploadsService", () => {
     function createXlsxJob() {
       return createAwaitingJob({
         metadata: {
-          files: [{
-            originalName: "data.xlsx",
-            s3Key: "uploads/org-001/job-001/data.xlsx",
-            sizeBytes: 4096,
-          }],
+          files: [
+            {
+              originalName: "data.xlsx",
+              s3Key: "uploads/org-001/job-001/data.xlsx",
+              sizeBytes: 4096,
+            },
+          ],
           organizationId: ORG_ID,
           connectorDefinitionId: "cdef_fileupload01",
         },
@@ -755,8 +897,10 @@ describe("UploadsService", () => {
       mockJobsFindById.mockResolvedValue(createXlsxJob());
 
       await UploadsService.confirm(
-        JOB_ID, ORG_ID, USER_ID,
-        createXlsxConfirmBody("data.xlsx[Contacts]"),
+        JOB_ID,
+        ORG_ID,
+        USER_ID,
+        createXlsxConfirmBody("data.xlsx[Contacts]")
       );
 
       expect(mockXlsxImportFromS3).toHaveBeenCalledTimes(1);
@@ -767,7 +911,7 @@ describe("UploadsService", () => {
           connectorEntityId: "ce-001",
           organizationId: ORG_ID,
           userId: USER_ID,
-        }),
+        })
       );
       expect(mockImportFromS3).not.toHaveBeenCalled();
     });
@@ -781,16 +925,26 @@ describe("UploadsService", () => {
     });
 
     it("handles mixed confirm with both .csv and .xlsx entities", async () => {
-      mockJobsFindById.mockResolvedValue(createAwaitingJob({
-        metadata: {
-          files: [
-            { originalName: "contacts.csv", s3Key: "uploads/org-001/job-001/contacts.csv", sizeBytes: 1024 },
-            { originalName: "deals.xlsx", s3Key: "uploads/org-001/job-001/deals.xlsx", sizeBytes: 4096 },
-          ],
-          organizationId: ORG_ID,
-          connectorDefinitionId: "cdef_fileupload01",
-        },
-      }));
+      mockJobsFindById.mockResolvedValue(
+        createAwaitingJob({
+          metadata: {
+            files: [
+              {
+                originalName: "contacts.csv",
+                s3Key: "uploads/org-001/job-001/contacts.csv",
+                sizeBytes: 1024,
+              },
+              {
+                originalName: "deals.xlsx",
+                s3Key: "uploads/org-001/job-001/deals.xlsx",
+                sizeBytes: 4096,
+              },
+            ],
+            organizationId: ORG_ID,
+            connectorDefinitionId: "cdef_fileupload01",
+          },
+        })
+      );
 
       // Two confirmedEntities keyed by "contacts" and "deals_pipe"
       const csvEntity = {
@@ -825,28 +979,41 @@ describe("UploadsService", () => {
       };
 
       // upsertByKey returns a different entity id per call so importResults attach correctly
-      mockConnectorEntitiesUpsertByKey.mockImplementationOnce(async (data: unknown) => ({
-        ...(data as Record<string, unknown>), id: "ce-csv",
-        key: (data as Record<string, unknown>).key, label: (data as Record<string, unknown>).label,
-      })).mockImplementationOnce(async (data: unknown) => ({
-        ...(data as Record<string, unknown>), id: "ce-xlsx",
-        key: (data as Record<string, unknown>).key, label: (data as Record<string, unknown>).label,
-      }));
+      mockConnectorEntitiesUpsertByKey
+        .mockImplementationOnce(async (data: unknown) => ({
+          ...(data as Record<string, unknown>),
+          id: "ce-csv",
+          key: (data as Record<string, unknown>).key,
+          label: (data as Record<string, unknown>).label,
+        }))
+        .mockImplementationOnce(async (data: unknown) => ({
+          ...(data as Record<string, unknown>),
+          id: "ce-xlsx",
+          key: (data as Record<string, unknown>).key,
+          label: (data as Record<string, unknown>).label,
+        }));
 
-      await UploadsService.confirm(JOB_ID, ORG_ID, USER_ID, createConfirmBody({
-        entities: [csvEntity, xlsxEntity],
-      }));
+      await UploadsService.confirm(
+        JOB_ID,
+        ORG_ID,
+        USER_ID,
+        createConfirmBody({
+          entities: [csvEntity, xlsxEntity],
+        })
+      );
 
       expect(mockImportFromS3).toHaveBeenCalledTimes(1);
       expect(mockImportFromS3).toHaveBeenCalledWith(
-        expect.objectContaining({ s3Key: "uploads/org-001/job-001/contacts.csv" }),
+        expect.objectContaining({
+          s3Key: "uploads/org-001/job-001/contacts.csv",
+        })
       );
       expect(mockXlsxImportFromS3).toHaveBeenCalledTimes(1);
       expect(mockXlsxImportFromS3).toHaveBeenCalledWith(
         expect.objectContaining({
           s3Key: "uploads/org-001/job-001/deals.xlsx",
           sheetName: "Pipeline",
-        }),
+        })
       );
     });
   });

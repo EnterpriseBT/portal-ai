@@ -18,7 +18,11 @@ import Typography from "@mui/material/Typography";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
-import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
+import {
+  validateWithSchema,
+  focusFirstInvalidField,
+  type FormErrors,
+} from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Form types ──────────────────────────────────────────────────────
@@ -31,15 +35,17 @@ interface TagFormState {
 
 const TagFormSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  color: z
-    .string()
-    .refine((v) => !v || /^#[\dA-Fa-f]{6}$/.test(v), {
-      message: "Color must be a valid hex code (e.g. #FF0000)",
-    }),
+  color: z.string().refine((v) => !v || /^#[\dA-Fa-f]{6}$/.test(v), {
+    message: "Color must be a valid hex code (e.g. #FF0000)",
+  }),
 });
 
 const DEFAULT_TAG_COLOR = "#3b82f6";
-const INITIAL_FORM: TagFormState = { name: "", color: DEFAULT_TAG_COLOR, description: "" };
+const INITIAL_FORM: TagFormState = {
+  name: "",
+  color: DEFAULT_TAG_COLOR,
+  description: "",
+};
 
 function validateTagForm(form: TagFormState): FormErrors {
   const result = validateWithSchema(TagFormSchema, form);
@@ -143,7 +149,12 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -166,7 +177,9 @@ export const TagFormModal: React.FC<TagFormModalProps> = ({
           onBlur={() => handleBlur("name")}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
-          slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched.name && !!errors.name },
+          }}
           required
           fullWidth
         />

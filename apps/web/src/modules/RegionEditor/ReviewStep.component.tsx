@@ -29,7 +29,11 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   commitDisabledReason,
 }) => {
   const entityOrder = Array.from(
-    new Set(regions.map((r) => r.targetEntityDefinitionId).filter((id): id is string => Boolean(id)))
+    new Set(
+      regions
+        .map((r) => r.targetEntityDefinitionId)
+        .filter((id): id is string => Boolean(id))
+    )
   );
 
   const entityGroups = entityOrder.map((entityId) => {
@@ -41,7 +45,9 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   const allWarnings = regions.flatMap((r) =>
     (r.warnings ?? []).map((w) => ({ regionId: r.id, warning: w }))
   );
-  const blockers = allWarnings.filter(({ warning }) => warning.severity === "blocker");
+  const blockers = allWarnings.filter(
+    ({ warning }) => warning.severity === "blocker"
+  );
   const hasBlockers = blockers.length > 0;
 
   return (
@@ -54,7 +60,13 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
         flexWrap="wrap"
         useFlexGap
       >
-        <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="baseline"
+          flexWrap="wrap"
+          useFlexGap
+        >
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             Review interpretation
           </Typography>
@@ -69,7 +81,9 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
           <Button
             variant="contained"
             onClick={onCommit}
-            disabled={isCommitting || hasBlockers || Boolean(commitDisabledReason)}
+            disabled={
+              isCommitting || hasBlockers || Boolean(commitDisabledReason)
+            }
           >
             {isCommitting ? "Committing…" : "Commit plan"}
           </Button>
@@ -94,7 +108,12 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
               p: 2,
             }}
           >
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{ mb: 1 }}
+            >
               <Box
                 sx={{
                   width: 12,
@@ -105,7 +124,8 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
               />
               <Typography variant="subtitle2">{group.label}</Typography>
               <Typography variant="caption" color="text.secondary">
-                {group.regions.length} {group.regions.length === 1 ? "region" : "regions"}
+                {group.regions.length}{" "}
+                {group.regions.length === 1 ? "region" : "regions"}
               </Typography>
             </Stack>
 
@@ -115,7 +135,9 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
                   key={region.id}
                   region={region}
                   onJump={() => onJumpToRegion(region.id)}
-                  onEditBinding={(sourceLocator) => onEditBinding(region.id, sourceLocator)}
+                  onEditBinding={(sourceLocator) =>
+                    onEditBinding(region.id, sourceLocator)
+                  }
                 />
               ))}
             </Stack>

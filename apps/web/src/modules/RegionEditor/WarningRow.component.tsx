@@ -9,8 +9,14 @@ export interface WarningRowUIProps {
   onJump: () => void;
 }
 
-export const WarningRowUI: React.FC<WarningRowUIProps> = ({ warning, onJump }) => {
-  const severityMap: Record<RegionWarning["severity"], "info" | "warning" | "error"> = {
+export const WarningRowUI: React.FC<WarningRowUIProps> = ({
+  warning,
+  onJump,
+}) => {
+  const severityMap: Record<
+    RegionWarning["severity"],
+    "info" | "warning" | "error"
+  > = {
     info: "info",
     warn: "warning",
     blocker: "error",
@@ -31,7 +37,10 @@ export const WarningRowUI: React.FC<WarningRowUIProps> = ({ warning, onJump }) =
         {warning.message}
       </Typography>
       {warning.suggestedFix && (
-        <Typography variant="caption" sx={{ display: "block", fontStyle: "italic" }}>
+        <Typography
+          variant="caption"
+          sx={{ display: "block", fontStyle: "italic" }}
+        >
           Suggested fix: {warning.suggestedFix}
         </Typography>
       )}

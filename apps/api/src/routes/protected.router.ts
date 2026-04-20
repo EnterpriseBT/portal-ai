@@ -16,6 +16,7 @@ import { portalRouter } from "./portal.router.js";
 import { portalResultsRouter } from "./portal-results.router.js";
 import { organizationToolsRouter } from "./organization-tools.router.js";
 import { stationToolsRouter } from "./station-tools.router.js";
+import { connectorInstanceLayoutPlansRouter } from "./connector-instance-layout-plans.router.js";
 
 export const protectedRouter = Router();
 
@@ -27,6 +28,7 @@ protectedRouter.use("/profile", profileRouter);
 protectedRouter.use("/organization", organizationRouter);
 protectedRouter.use("/connector-definitions", connectorDefinitionRouter);
 protectedRouter.use("/connector-instances", connectorInstanceRouter);
+protectedRouter.use("/connector-instances", connectorInstanceLayoutPlansRouter);
 protectedRouter.use("/jobs", jobsRouter);
 protectedRouter.use("/column-definitions", columnDefinitionRouter);
 protectedRouter.use("/connector-entities", connectorEntityRouter);

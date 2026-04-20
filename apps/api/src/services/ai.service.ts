@@ -13,14 +13,13 @@ export interface AiStreamResult {
 }
 
 export class AiService {
-
   static get DEFAULT_MODEL() {
     return DEFAULT_MODEL;
   }
 
   static get providers() {
     return {
-      anthropic
-    }
+      anthropic,
+    };
   }
 }

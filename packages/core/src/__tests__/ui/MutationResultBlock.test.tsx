@@ -73,7 +73,11 @@ describe("MutationResultBlock", () => {
         operation: "deleted",
         entity: "field mapping",
         count: 3,
-        items: [{ entityId: "fm-1" }, { entityId: "fm-2" }, { entityId: "fm-3" }],
+        items: [
+          { entityId: "fm-1" },
+          { entityId: "fm-2" },
+          { entityId: "fm-3" },
+        ],
       };
       render(<MutationResultBlock content={content} />);
 

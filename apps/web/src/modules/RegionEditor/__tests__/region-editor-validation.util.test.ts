@@ -40,7 +40,9 @@ describe("validateRegion — bounds", () => {
 
   test("flags negative coordinates", () => {
     const errors = validateRegion(
-      baseRegion({ bounds: { startRow: -1, endRow: 4, startCol: 0, endCol: 3 } })
+      baseRegion({
+        bounds: { startRow: -1, endRow: 4, startCol: 0, endCol: 3 },
+      })
     );
     expect(Object.keys(errors).some((k) => k.startsWith("bounds."))).toBe(true);
   });
@@ -48,7 +50,9 @@ describe("validateRegion — bounds", () => {
 
 describe("validateRegion — target entity", () => {
   test("flags missing target entity", () => {
-    const errors = validateRegion(baseRegion({ targetEntityDefinitionId: null }));
+    const errors = validateRegion(
+      baseRegion({ targetEntityDefinitionId: null })
+    );
     expect(errors.targetEntityDefinitionId).toMatch(/required/i);
   });
 });
@@ -117,9 +121,7 @@ describe("validateRegion — crosstab requires three axis fields", () => {
 
 describe("validateRegion — extent", () => {
   test("matchesPattern requires a stop pattern", () => {
-    const errors = validateRegion(
-      baseRegion({ boundsMode: "matchesPattern" })
-    );
+    const errors = validateRegion(baseRegion({ boundsMode: "matchesPattern" }));
     expect(errors.boundsPattern).toMatch(/required/i);
   });
 
@@ -145,9 +147,7 @@ describe("validateRegion — extent", () => {
   });
 
   test("untilEmpty accepts undefined terminator count (uses default)", () => {
-    const errors = validateRegion(
-      baseRegion({ boundsMode: "untilEmpty" })
-    );
+    const errors = validateRegion(baseRegion({ boundsMode: "untilEmpty" }));
     expect(errors.untilEmptyTerminatorCount).toBeUndefined();
   });
 });
@@ -172,7 +172,9 @@ describe("validateRegion — skip rules", () => {
   test("flags cellMatches rule with invalid regex", () => {
     const errors = validateRegion(
       baseRegion({
-        skipRules: [{ kind: "cellMatches", crossAxisIndex: 0, pattern: "([oops" }],
+        skipRules: [
+          { kind: "cellMatches", crossAxisIndex: 0, pattern: "([oops" },
+        ],
       })
     );
     expect(errors["skipRules.0.pattern"]).toMatch(/valid regular expression/i);

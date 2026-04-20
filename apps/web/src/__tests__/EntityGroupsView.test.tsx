@@ -100,19 +100,34 @@ describe("EntityGroupsView", () => {
   });
 
   it("renders the page title", () => {
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     expect(
       screen.getByRole("heading", { name: "Entity Groups" })
     ).toBeInTheDocument();
   });
 
   it("renders breadcrumbs with Dashboard link", () => {
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
   });
 
   it("renders group cards with name and description", () => {
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     expect(screen.getByText("Customer Identity")).toBeInTheDocument();
     expect(
       screen.getByText("Groups customer entities across connectors")
@@ -123,17 +138,32 @@ describe("EntityGroupsView", () => {
   it("renders empty state when no groups", () => {
     mockEntityGroupList.mockReturnValue(emptyGroups);
 
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     expect(screen.getByText("No entity groups found")).toBeInTheDocument();
   });
 
   it("renders search bar in pagination toolbar", () => {
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     expect(screen.getByPlaceholderText("Search...")).toBeInTheDocument();
   });
 
   it("renders Create Group button", () => {
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     expect(
       screen.getByRole("button", { name: /Create Group/i })
     ).toBeInTheDocument();
@@ -141,19 +171,34 @@ describe("EntityGroupsView", () => {
 
   it("calls onCreateGroup when Create Group button is clicked", async () => {
     const user = userEvent.setup();
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     await user.click(screen.getByRole("button", { name: /Create Group/i }));
     expect(mockOnCreateGroup).toHaveBeenCalledTimes(1);
   });
 
   it("renders member count on cards", () => {
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     expect(screen.getByText("3 members")).toBeInTheDocument();
     expect(screen.getByText("0 members")).toBeInTheDocument();
   });
 
   it("does not render description for group with null description", () => {
-    render(<EntityGroupsViewUI onCreateGroup={mockOnCreateGroup} onDeleteGroup={mockOnDeleteGroup} />);
+    render(
+      <EntityGroupsViewUI
+        onCreateGroup={mockOnCreateGroup}
+        onDeleteGroup={mockOnDeleteGroup}
+      />
+    );
     // Product Catalog has null description — only name should appear in its card
     expect(screen.getByText("Product Catalog")).toBeInTheDocument();
     // The description for Customer Identity should still render

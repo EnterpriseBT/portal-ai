@@ -18,7 +18,8 @@ export class WebSearchTool extends Tool<typeof InputSchema> {
   }
 
   build() {
-    if (!environment.TAVILY_API_KEY) throw new Error("Tavily API key not configured");
+    if (!environment.TAVILY_API_KEY)
+      throw new Error("Tavily API key not configured");
     const client = tavily({ apiKey: environment.TAVILY_API_KEY });
 
     return tool({
@@ -32,11 +33,13 @@ export class WebSearchTool extends Tool<typeof InputSchema> {
         });
         return {
           answer: response.answer,
-          results: response.results.map((r: { title: string; url: string; content: string }) => ({
-            title: r.title,
-            url: r.url,
-            content: r.content,
-          })),
+          results: response.results.map(
+            (r: { title: string; url: string; content: string }) => ({
+              title: r.title,
+              url: r.url,
+              content: r.content,
+            })
+          ),
         };
       },
     });

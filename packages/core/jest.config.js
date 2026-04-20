@@ -33,6 +33,8 @@ export default {
     "^(\\.{1,2}/.*)\\.js$": "$1",
     "\\.svg$": "<rootDir>/src/__tests__/__mocks__/svgMock.ts",
     "^uuid$": "<rootDir>/../../node_modules/uuid/dist/index.js",
+    "^@portalai/spreadsheet-parsing$":
+      "<rootDir>/../spreadsheet-parsing/src/index.ts",
   },
 
   // Setup files to run after Jest is initialized

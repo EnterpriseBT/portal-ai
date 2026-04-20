@@ -15,7 +15,12 @@ import type {
 } from "@portalai/core/contracts";
 import type { ConnectorEntity } from "@portalai/core/models";
 import type { SelectOption } from "@portalai/core/ui";
-import { useAuthQuery, useAuthMutation, useAuthFetch, type ApiError } from "../utils/api.util";
+import {
+  useAuthQuery,
+  useAuthMutation,
+  useAuthFetch,
+  type ApiError,
+} from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions, SearchHookOptions, SearchResult } from "./types";
@@ -30,9 +35,15 @@ const defaultMapItem = (entity: ConnectorEntity): SelectOption => ({
 export const connectorEntities = {
   list: (
     params?: ConnectorEntityListRequestQuery,
-    options?: QueryOptions<ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload>
+    options?: QueryOptions<
+      | ConnectorEntityListResponsePayload
+      | ConnectorEntityListWithMappingsResponsePayload
+    >
   ) =>
-    useAuthQuery<ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload>(
+    useAuthQuery<
+      | ConnectorEntityListResponsePayload
+      | ConnectorEntityListWithMappingsResponsePayload
+    >(
       queryKeys.connectorEntities.list(params),
       buildUrl(CONNECTOR_ENTITIES_URL, params),
       undefined,
@@ -62,13 +73,19 @@ export const connectorEntities = {
     ),
 
   update: (id: string) =>
-    useAuthMutation<ConnectorEntityPatchResponsePayload, ConnectorEntityPatchRequestBody>({
+    useAuthMutation<
+      ConnectorEntityPatchResponsePayload,
+      ConnectorEntityPatchRequestBody
+    >({
       url: `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),
 
   create: () =>
-    useAuthMutation<ConnectorEntityCreateResponsePayload, ConnectorEntityCreateRequestBody>({
+    useAuthMutation<
+      ConnectorEntityCreateResponsePayload,
+      ConnectorEntityCreateRequestBody
+    >({
       url: CONNECTOR_ENTITIES_URL,
       method: "POST",
     }),
@@ -83,16 +100,18 @@ export const connectorEntities = {
     options?: SearchHookOptions<ConnectorEntity, TOption>
   ): SearchResult<TOption> => {
     const { fetchWithAuth } = useAuthFetch();
-    const mapFn = (options?.mapItem ?? defaultMapItem) as (item: ConnectorEntity) => TOption;
+    const mapFn = (options?.mapItem ?? defaultMapItem) as (
+      item: ConnectorEntity
+    ) => TOption;
     const [labelMap, setLabelMap] = useState<Record<string, string>>({});
 
     const searchMutation = useMutation<TOption[], ApiError, string>({
       mutationFn: async (query: string) => {
         const params: Record<string, string> = { ...options?.defaultParams };
         if (query) params.search = query;
-        const res = await fetchWithAuth<ApiSuccessResponse<ConnectorEntityListResponsePayload>>(
-          buildUrl(CONNECTOR_ENTITIES_URL, params)
-        );
+        const res = await fetchWithAuth<
+          ApiSuccessResponse<ConnectorEntityListResponsePayload>
+        >(buildUrl(CONNECTOR_ENTITIES_URL, params));
         const mapped = res.payload.connectorEntities.map(mapFn);
         setLabelMap((prev) => {
           const next = { ...prev };
@@ -105,11 +124,14 @@ export const connectorEntities = {
 
     const getByIdMutation = useMutation<TOption | null, ApiError, string>({
       mutationFn: async (id: string) => {
-        const res = await fetchWithAuth<ApiSuccessResponse<ConnectorEntityGetResponsePayload>>(
-          `${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`
-        );
+        const res = await fetchWithAuth<
+          ApiSuccessResponse<ConnectorEntityGetResponsePayload>
+        >(`${CONNECTOR_ENTITIES_URL}/${encodeURIComponent(id)}`);
         const option = mapFn(res.payload.connectorEntity);
-        setLabelMap((prev) => ({ ...prev, [String(option.value)]: option.label }));
+        setLabelMap((prev) => ({
+          ...prev,
+          [String(option.value)]: option.label,
+        }));
         return option;
       },
     });

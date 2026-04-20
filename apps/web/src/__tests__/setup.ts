@@ -1,5 +1,5 @@
-import '@testing-library/jest-dom';
-import { TextEncoder, TextDecoder } from 'util';
+import "@testing-library/jest-dom";
+import { TextEncoder, TextDecoder } from "util";
 
 // Polyfill for TextEncoder/TextDecoder (needed for Auth0)
 global.TextEncoder = TextEncoder;
@@ -9,7 +9,7 @@ global.TextDecoder = TextDecoder as typeof global.TextDecoder;
 // This provides matchers like toBeInTheDocument(), toHaveClass(), etc.
 
 // Mock window.matchMedia for Material-UI components
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({
     matches: false,

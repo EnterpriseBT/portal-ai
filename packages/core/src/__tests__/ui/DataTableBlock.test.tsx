@@ -128,9 +128,7 @@ describe("DataTableBlock", () => {
   it("filters rows by search term", () => {
     render(<DataTableBlock columns={columns} rows={rows} />);
 
-    const input = screen
-      .getByTestId("table-search")
-      .querySelector("input")!;
+    const input = screen.getByTestId("table-search").querySelector("input")!;
     fireEvent.change(input, { target: { value: "ali" } });
 
     expect(screen.getByText("Alice")).toBeInTheDocument();
@@ -141,9 +139,7 @@ describe("DataTableBlock", () => {
   it("filters by numeric value via coercion", () => {
     render(<DataTableBlock columns={columns} rows={rows} />);
 
-    const input = screen
-      .getByTestId("table-search")
-      .querySelector("input")!;
+    const input = screen.getByTestId("table-search").querySelector("input")!;
     fireEvent.change(input, { target: { value: "200" } });
 
     expect(screen.getByText("Bob")).toBeInTheDocument();
@@ -162,9 +158,7 @@ describe("DataTableBlock", () => {
     expect(screen.queryByText("Row 0")).not.toBeInTheDocument();
 
     // Search resets to page 0
-    const input = screen
-      .getByTestId("table-search")
-      .querySelector("input")!;
+    const input = screen.getByTestId("table-search").querySelector("input")!;
     fireEvent.change(input, { target: { value: "Row 1" } });
 
     expect(screen.getByText("Row 1")).toBeInTheDocument();

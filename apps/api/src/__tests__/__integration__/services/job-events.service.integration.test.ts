@@ -24,7 +24,9 @@ const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
 
 // ── Mock DbService to isolate Redis Pub/Sub behaviour ────────────────────
 
-const mockJobsUpdate = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockJobsUpdate = jest
+  .fn<() => Promise<void>>()
+  .mockResolvedValue(undefined);
 
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
   DbService: {
@@ -162,7 +164,9 @@ describe("JobEventsService Integration Tests", () => {
 
       // Spy on publish to track ordering
       const origPublish = publisherClient.publish.bind(publisherClient);
-      publisherClient.publish = async (...args: Parameters<typeof origPublish>) => {
+      publisherClient.publish = async (
+        ...args: Parameters<typeof origPublish>
+      ) => {
         callOrder.push("redis_publish");
         return origPublish(...args);
       };
@@ -172,7 +176,10 @@ describe("JobEventsService Integration Tests", () => {
       expect(callOrder).toEqual(["db_update", "redis_publish"]);
       expect(mockJobsUpdate).toHaveBeenCalledWith(
         jobId,
-        expect.objectContaining({ status: "active", startedAt: expect.any(Number) })
+        expect.objectContaining({
+          status: "active",
+          startedAt: expect.any(Number),
+        })
       );
     });
 
@@ -183,7 +190,10 @@ describe("JobEventsService Integration Tests", () => {
 
       expect(mockJobsUpdate).toHaveBeenCalledWith(
         jobId,
-        expect.objectContaining({ status: "active", startedAt: expect.any(Number) })
+        expect.objectContaining({
+          status: "active",
+          startedAt: expect.any(Number),
+        })
       );
     });
 
@@ -194,7 +204,10 @@ describe("JobEventsService Integration Tests", () => {
 
       expect(mockJobsUpdate).toHaveBeenCalledWith(
         jobId,
-        expect.objectContaining({ status: "completed", completedAt: expect.any(Number) })
+        expect.objectContaining({
+          status: "completed",
+          completedAt: expect.any(Number),
+        })
       );
     });
 
@@ -281,7 +294,11 @@ describe("JobEventsService Integration Tests", () => {
       await new Promise((r) => setTimeout(r, 200));
 
       expect(received).toHaveLength(1);
-      expect(received[0]).toMatchObject({ jobId, status: "active", progress: 25 });
+      expect(received[0]).toMatchObject({
+        jobId,
+        status: "active",
+        progress: 25,
+      });
 
       cleanup();
     });

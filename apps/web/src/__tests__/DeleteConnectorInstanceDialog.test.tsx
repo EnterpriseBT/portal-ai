@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { ConnectorInstanceImpact } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeleteConnectorInstanceDialog } = await import(
-  "../components/DeleteConnectorInstanceDialog.component"
-);
+const { DeleteConnectorInstanceDialog } =
+  await import("../components/DeleteConnectorInstanceDialog.component");
 
 const fullImpact: ConnectorInstanceImpact = {
   connectorEntities: 3,
@@ -41,9 +40,7 @@ describe("DeleteConnectorInstanceDialog", () => {
 
   it("should render dialog when open is true", () => {
     render(<DeleteConnectorInstanceDialog {...defaultProps} />);
-    expect(
-      screen.getByText("Delete Connector Instance")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Delete Connector Instance")).toBeInTheDocument();
   });
 
   it("should not render content when open is false", () => {
@@ -65,9 +62,7 @@ describe("DeleteConnectorInstanceDialog", () => {
     expect(screen.getByText("12 field mappings")).toBeInTheDocument();
     expect(screen.getByText("5 tag assignments")).toBeInTheDocument();
     expect(screen.getByText("2 group memberships")).toBeInTheDocument();
-    expect(
-      screen.getByText("1 stations will be unlinked")
-    ).toBeInTheDocument();
+    expect(screen.getByText("1 stations will be unlinked")).toBeInTheDocument();
   });
 
   it("should omit items with zero count from impact summary", () => {
@@ -77,10 +72,7 @@ describe("DeleteConnectorInstanceDialog", () => {
       entityRecords: 10,
     };
     render(
-      <DeleteConnectorInstanceDialog
-        {...defaultProps}
-        impact={partialImpact}
-      />
+      <DeleteConnectorInstanceDialog {...defaultProps} impact={partialImpact} />
     );
     expect(screen.getByText("2 connector entities")).toBeInTheDocument();
     expect(screen.getByText("10 entity records")).toBeInTheDocument();
@@ -98,21 +90,14 @@ describe("DeleteConnectorInstanceDialog", () => {
         isLoadingImpact={true}
       />
     );
-    expect(
-      screen.getByText("Checking associated data...")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Checking associated data...")).toBeInTheDocument();
   });
 
   it("should show 'No associated data found' when all counts are zero", () => {
     render(
-      <DeleteConnectorInstanceDialog
-        {...defaultProps}
-        impact={zeroImpact}
-      />
+      <DeleteConnectorInstanceDialog {...defaultProps} impact={zeroImpact} />
     );
-    expect(
-      screen.getByText("No associated data found.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("No associated data found.")).toBeInTheDocument();
   });
 
   it("should call onConfirm when Delete button is clicked", () => {
@@ -129,7 +114,9 @@ describe("DeleteConnectorInstanceDialog", () => {
     render(
       <DeleteConnectorInstanceDialog {...defaultProps} onConfirm={onConfirm} />
     );
-    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    const form = screen
+      .getByRole("button", { name: "Delete" })
+      .closest("form")!;
     fireEvent.submit(form);
     expect(onConfirm).toHaveBeenCalled();
   });
@@ -147,9 +134,7 @@ describe("DeleteConnectorInstanceDialog", () => {
     render(
       <DeleteConnectorInstanceDialog {...defaultProps} isPending={true} />
     );
-    expect(
-      screen.getByRole("button", { name: "Deleting..." })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
   });
 
   it("should disable Delete button when isLoadingImpact is true", () => {
@@ -167,7 +152,10 @@ describe("DeleteConnectorInstanceDialog", () => {
     render(
       <DeleteConnectorInstanceDialog
         {...defaultProps}
-        serverError={{ message: "Delete failed", code: "CONNECTOR_DELETE_FAILED" }}
+        serverError={{
+          message: "Delete failed",
+          code: "CONNECTOR_DELETE_FAILED",
+        }}
       />
     );
     expect(screen.getByText(/Delete failed/)).toBeInTheDocument();

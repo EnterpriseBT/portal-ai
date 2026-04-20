@@ -37,7 +37,10 @@ const SAMPLE_FILES: SampleFile[] = [
 
 export const SampleFiles: React.FC = () => {
   return (
-    <Stack spacing={0.5} aria-label="Sample files illustrating the recommended upload format">
+    <Stack
+      spacing={0.5}
+      aria-label="Sample files illustrating the recommended upload format"
+    >
       <Typography variant="caption" color="text.secondary">
         Need a template? Download a sample illustrating the recommended layout:
       </Typography>

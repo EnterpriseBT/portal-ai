@@ -23,14 +23,16 @@ export class RevalidationService {
     const activeJobs = await DbService.repository.jobs.findMany(
       and(
         eq(jobs.type, "revalidation"),
-        inArray(jobs.status, [...ACTIVE_STATUSES]),
-      ),
+        inArray(jobs.status, [...ACTIVE_STATUSES])
+      )
     );
 
-    return activeJobs.find((j) => {
-      const meta = j.metadata as Record<string, unknown>;
-      return meta.connectorEntityId === connectorEntityId;
-    }) ?? null;
+    return (
+      activeJobs.find((j) => {
+        const meta = j.metadata as Record<string, unknown>;
+        return meta.connectorEntityId === connectorEntityId;
+      }) ?? null
+    );
   }
 
   /**
@@ -39,12 +41,13 @@ export class RevalidationService {
    * that belong to the given connector entity.
    */
   static async assertNoActiveJob(connectorEntityId: string) {
-    const activeJob = await RevalidationService.findActiveJob(connectorEntityId);
+    const activeJob =
+      await RevalidationService.findActiveJob(connectorEntityId);
     if (activeJob) {
       throw new ApiError(
         409,
         ApiCode.REVALIDATION_ACTIVE,
-        `A revalidation job is currently active for this entity (job ${activeJob.id}). Wait for it to complete before making changes.`,
+        `A revalidation job is currently active for this entity (job ${activeJob.id}). Wait for it to complete before making changes.`
       );
     }
   }
@@ -53,8 +56,13 @@ export class RevalidationService {
    * Assert no active revalidation job exists for any entity that uses
    * the given column definition. Used to guard column definition mutations.
    */
-  static async assertNoActiveJobForColumnDefinition(columnDefinitionId: string) {
-    const mappings = await DbService.repository.fieldMappings.findByColumnDefinitionId(columnDefinitionId);
+  static async assertNoActiveJobForColumnDefinition(
+    columnDefinitionId: string
+  ) {
+    const mappings =
+      await DbService.repository.fieldMappings.findByColumnDefinitionId(
+        columnDefinitionId
+      );
     const entityIds = [...new Set(mappings.map((m) => m.connectorEntityId))];
 
     for (const entityId of entityIds) {
@@ -66,17 +74,24 @@ export class RevalidationService {
    * Enqueue a revalidation job for the given connector entity.
    * If a revalidation job is already active, this is a no-op (returns the existing job).
    */
-  static async enqueue(connectorEntityId: string, organizationId: string, userId: string) {
+  static async enqueue(
+    connectorEntityId: string,
+    organizationId: string,
+    userId: string
+  ) {
     const existing = await RevalidationService.findActiveJob(connectorEntityId);
     if (existing) {
       logger.info(
         { connectorEntityId, jobId: existing.id },
-        "Revalidation job already active, skipping enqueue",
+        "Revalidation job already active, skipping enqueue"
       );
       return existing;
     }
 
-    const metadata: RevalidationMetadata = { connectorEntityId, organizationId };
+    const metadata: RevalidationMetadata = {
+      connectorEntityId,
+      organizationId,
+    };
 
     const job = await JobsService.create(userId, {
       type: "revalidation",
@@ -86,7 +101,7 @@ export class RevalidationService {
 
     logger.info(
       { connectorEntityId, jobId: job.id },
-      "Revalidation job enqueued",
+      "Revalidation job enqueued"
     );
 
     return job;

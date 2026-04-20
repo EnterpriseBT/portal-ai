@@ -17,7 +17,11 @@ import { Queue, Worker, Job as BullJob } from "bullmq";
 
 import type { JobProcessor } from "../../../queues/jobs.worker.js";
 import { systemCheckProcessor } from "../../../queues/processors/system-check.processor.js";
-import { connectionOpts, uniqueQueueName, waitForJobState } from "./queue.util.js";
+import {
+  connectionOpts,
+  uniqueQueueName,
+  waitForJobState,
+} from "./queue.util.js";
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
@@ -30,7 +34,11 @@ describe("system_check Processor Integration Tests", () => {
   // BullMQ internals (< 500ms) are left untouched.
   const originalSetTimeout = globalThis.setTimeout;
   beforeAll(() => {
-    globalThis.setTimeout = ((fn: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+    globalThis.setTimeout = ((
+      fn: (...args: unknown[]) => void,
+      ms?: number,
+      ...args: unknown[]
+    ) => {
       const adjusted = ms != null && ms >= 500 ? Math.ceil(ms / 10) : ms;
       return originalSetTimeout(fn, adjusted, ...args);
     }) as typeof globalThis.setTimeout;

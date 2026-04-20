@@ -5,18 +5,13 @@ import {
   useFileUploadWorkflow,
   FILE_UPLOAD_WORKFLOW_STEPS,
 } from "../utils/file-upload-workflow.util";
-import type {
-  FileUploadWorkflowCallbacks,
-} from "../utils/file-upload-workflow.util";
+import type { FileUploadWorkflowCallbacks } from "../utils/file-upload-workflow.util";
 import {
   DEMO_WORKBOOK,
   SAMPLE_REGIONS,
   POST_INTERPRET_REGIONS,
 } from "../utils/file-upload-fixtures.util";
-import type {
-  RegionDraft,
-  Workbook,
-} from "../../../modules/RegionEditor";
+import type { RegionDraft, Workbook } from "../../../modules/RegionEditor";
 
 const SAMPLE_FILE = new File(
   [new Uint8Array([1, 2, 3])],
@@ -25,26 +20,25 @@ const SAMPLE_FILE = new File(
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   }
 );
-const SECOND_FILE = new File(
-  [new Uint8Array([1, 2])],
-  "sales.xlsx",
-  {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  }
-);
+const SECOND_FILE = new File([new Uint8Array([1, 2])], "sales.xlsx", {
+  type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+});
 
 function makeCallbacks(
   overrides: Partial<FileUploadWorkflowCallbacks> = {}
 ): FileUploadWorkflowCallbacks {
   return {
-    parseFile: jest.fn<FileUploadWorkflowCallbacks["parseFile"]>()
+    parseFile: jest
+      .fn<FileUploadWorkflowCallbacks["parseFile"]>()
       .mockResolvedValue(DEMO_WORKBOOK),
-    runInterpret: jest.fn<FileUploadWorkflowCallbacks["runInterpret"]>()
+    runInterpret: jest
+      .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
       .mockResolvedValue({
         regions: POST_INTERPRET_REGIONS,
         overallConfidence: 0.86,
       }),
-    runCommit: jest.fn<FileUploadWorkflowCallbacks["runCommit"]>()
+    runCommit: jest
+      .fn<FileUploadWorkflowCallbacks["runCommit"]>()
       .mockResolvedValue({ connectorInstanceId: "ci_123" }),
     onCommitSuccess: jest.fn(),
     ...overrides,
@@ -169,7 +163,12 @@ describe("useFileUploadWorkflow — region editing", () => {
     expect(result.current.regions.length).toBe(1);
     const [draft] = result.current.regions;
     expect(draft.sheetId).toBe(sheetId);
-    expect(draft.bounds).toEqual({ startRow: 0, endRow: 4, startCol: 0, endCol: 2 });
+    expect(draft.bounds).toEqual({
+      startRow: 0,
+      endRow: 4,
+      startCol: 0,
+      endCol: 2,
+    });
     expect(draft.id).toBeTruthy();
     expect(result.current.selectedRegionId).toBe(draft.id);
   });
@@ -179,13 +178,19 @@ describe("useFileUploadWorkflow — region editing", () => {
     const { result } = renderHook(() =>
       useFileUploadWorkflow(
         makeCallbacks({
-          parseFile: jest.fn<FileUploadWorkflowCallbacks["parseFile"]>()
+          parseFile: jest
+            .fn<FileUploadWorkflowCallbacks["parseFile"]>()
             .mockResolvedValue(DEMO_WORKBOOK),
         })
       )
     );
     act(() => result.current.addFiles([SAMPLE_FILE]));
-    act(() => result.current.onRegionDraft({ sheetId: region.sheetId, bounds: region.bounds }));
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: region.sheetId,
+        bounds: region.bounds,
+      })
+    );
     const draftId = result.current.regions[0].id;
 
     act(() =>
@@ -197,7 +202,12 @@ describe("useFileUploadWorkflow — region editing", () => {
   test("onRegionUpdate is a no-op for a missing id", () => {
     const region = SAMPLE_REGIONS[0];
     const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
-    act(() => result.current.onRegionDraft({ sheetId: region.sheetId, bounds: region.bounds }));
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: region.sheetId,
+        bounds: region.bounds,
+      })
+    );
     const draftId = result.current.regions[0].id;
 
     act(() =>
@@ -210,7 +220,12 @@ describe("useFileUploadWorkflow — region editing", () => {
   test("onRegionDelete removes and clears selection when the deleted region was selected", () => {
     const region = SAMPLE_REGIONS[0];
     const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
-    act(() => result.current.onRegionDraft({ sheetId: region.sheetId, bounds: region.bounds }));
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: region.sheetId,
+        bounds: region.bounds,
+      })
+    );
     const draftId = result.current.regions[0].id;
     expect(result.current.selectedRegionId).toBe(draftId);
 
@@ -293,7 +308,10 @@ describe("useFileUploadWorkflow — onInterpret", () => {
   });
 
   test("isInterpreting is true while runInterpret is in flight", async () => {
-    let resolveInterpret: (payload: { regions: RegionDraft[]; overallConfidence: number }) => void = () => {};
+    let resolveInterpret: (payload: {
+      regions: RegionDraft[];
+      overallConfidence: number;
+    }) => void = () => {};
     const runInterpret = jest
       .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
       .mockImplementation(

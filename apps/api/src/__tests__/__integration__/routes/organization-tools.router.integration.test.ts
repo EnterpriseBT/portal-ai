@@ -104,9 +104,7 @@ describe("Organization Tools Router", () => {
         .insert(organizationTools)
         .values(tool as never);
 
-      const res = await request(app)
-        .get("/api/organization-tools")
-        .expect(200);
+      const res = await request(app).get("/api/organization-tools").expect(200);
 
       expect(res.body.success).toBe(true);
       expect(res.body.payload.organizationTools).toHaveLength(1);

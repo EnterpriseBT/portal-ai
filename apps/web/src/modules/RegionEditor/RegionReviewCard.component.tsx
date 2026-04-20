@@ -4,7 +4,10 @@ import { Box, Stack, Typography, Button, Divider } from "@portalai/core/ui";
 import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import { WarningRowUI } from "./WarningRow.component";
 import { formatBounds } from "./utils/a1-notation.util";
-import { confidenceBand, CONFIDENCE_BAND_COLOR } from "./utils/region-editor-colors.util";
+import {
+  confidenceBand,
+  CONFIDENCE_BAND_COLOR,
+} from "./utils/region-editor-colors.util";
 import type { RegionDraft } from "./utils/region-editor.types";
 
 export interface RegionReviewCardUIProps {
@@ -37,7 +40,13 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
         useFlexGap
         sx={{ mb: 0.5 }}
       >
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          flexWrap="wrap"
+          useFlexGap
+        >
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
             {region.proposedLabel ?? formatBounds(region.bounds)}
           </Typography>
@@ -80,7 +89,9 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                   </Typography>
                   <span>→</span>
                   <Typography variant="caption">
-                    {binding.columnDefinitionLabel ?? binding.columnDefinitionId ?? "—"}
+                    {binding.columnDefinitionLabel ??
+                      binding.columnDefinitionId ??
+                      "—"}
                   </Typography>
                   <Box
                     sx={{

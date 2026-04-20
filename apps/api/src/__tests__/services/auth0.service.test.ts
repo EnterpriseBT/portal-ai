@@ -112,9 +112,9 @@ describe("Auth0Service", () => {
         text: () => Promise.resolve("Auth0 is down"),
       } as globalThis.Response);
 
-      await expect(Auth0Service.getAuth0UserProfile("some-token")).rejects.toThrow(
-        ApiError
-      );
+      await expect(
+        Auth0Service.getAuth0UserProfile("some-token")
+      ).rejects.toThrow(ApiError);
 
       try {
         await Auth0Service.getAuth0UserProfile("some-token");

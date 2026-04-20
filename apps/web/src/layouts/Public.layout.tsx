@@ -1,6 +1,12 @@
 import React from "react";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
-import { AppBar, Box, ButtonGroup, Toolbar, Typography } from "@portalai/core/ui";
+import {
+  AppBar,
+  Box,
+  ButtonGroup,
+  Toolbar,
+  Typography,
+} from "@portalai/core/ui";
 import { Link } from "@tanstack/react-router";
 
 export const PublicLayout = ({ children }: { children: React.ReactNode }) => {

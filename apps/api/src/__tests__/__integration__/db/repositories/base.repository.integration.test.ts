@@ -14,7 +14,12 @@ import {
   type DbClient,
 } from "../../../../db/repositories/base.repository.js";
 import * as schema from "../../../../db/schema/index.js";
-import type { UserInsert, UserSelect, JobInsert, JobSelect } from "../../../../db/schema/zod.js";
+import type {
+  UserInsert,
+  UserSelect,
+  JobInsert,
+  JobSelect,
+} from "../../../../db/schema/zod.js";
 import { generateId, teardownOrg } from "../../utils/application.util.js";
 
 const { users, jobs } = schema;
@@ -393,10 +398,7 @@ describe("Repository Integration Tests", () => {
 
       const newUser = createTestUser();
       const results = await usersRepo.upsertMany(
-        [
-          { ...existing, name: "Updated Existing" },
-          newUser,
-        ],
+        [{ ...existing, name: "Updated Existing" }, newUser],
         db
       );
 

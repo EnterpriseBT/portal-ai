@@ -51,37 +51,33 @@ describe("PortalMessagesRepository Integration Tests", () => {
     orgId = org.id;
 
     const stationId = generateId();
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.stations)
-      .values({
-        id: stationId,
-        organizationId: orgId,
-        name: "Test Station",
-        description: null,
-        toolPacks: ["data_query"],
-        created: now,
-        createdBy: "SYSTEM_TEST",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
+    await (db as ReturnType<typeof drizzle>).insert(schema.stations).values({
+      id: stationId,
+      organizationId: orgId,
+      name: "Test Station",
+      description: null,
+      toolPacks: ["data_query"],
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
 
     portalId = generateId();
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.portals)
-      .values({
-        id: portalId,
-        organizationId: orgId,
-        stationId,
-        name: "Test Portal",
-        created: now,
-        createdBy: "SYSTEM_TEST",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
+    await (db as ReturnType<typeof drizzle>).insert(schema.portals).values({
+      id: portalId,
+      organizationId: orgId,
+      stationId,
+      name: "Test Portal",
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
   });
 
   afterEach(async () => {
@@ -114,9 +110,7 @@ describe("PortalMessagesRepository Integration Tests", () => {
 
   describe("create", () => {
     it("should insert a message with blocks and return the full row", async () => {
-      const blocks = [
-        { type: "text", text: "What are my top customers?" },
-      ];
+      const blocks = [{ type: "text", text: "What are my top customers?" }];
       const data = makeMessage({ role: "user", blocks });
       const created = await repo.create(data, db);
 
@@ -193,31 +187,26 @@ describe("PortalMessagesRepository Integration Tests", () => {
     it("should not delete messages from other portals", async () => {
       // Create a second portal
       const otherPortalId = generateId();
-      await (db as ReturnType<typeof drizzle>)
-        .insert(schema.portals)
-        .values({
-          id: otherPortalId,
-          organizationId: orgId,
-          stationId: (
-            await (db as ReturnType<typeof drizzle>)
-              .select()
-              .from(schema.portals)
-              .where(eq(schema.portals.id, portalId))
-          )[0].stationId,
-          name: "Other Portal",
-          created: Date.now(),
-          createdBy: "SYSTEM_TEST",
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        } as never);
+      await (db as ReturnType<typeof drizzle>).insert(schema.portals).values({
+        id: otherPortalId,
+        organizationId: orgId,
+        stationId: (
+          await (db as ReturnType<typeof drizzle>)
+            .select()
+            .from(schema.portals)
+            .where(eq(schema.portals.id, portalId))
+        )[0].stationId,
+        name: "Other Portal",
+        created: Date.now(),
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
 
       await repo.create(makeMessage(), db);
-      await repo.create(
-        makeMessage({ portalId: otherPortalId }),
-        db
-      );
+      await repo.create(makeMessage({ portalId: otherPortalId }), db);
 
       await repo.deleteByPortal(portalId, db);
 

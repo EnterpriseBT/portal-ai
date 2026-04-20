@@ -43,7 +43,7 @@ export interface FilterValidationError {
  */
 export function parseAndBuildFilterSQL(
   encodedFilters: string,
-  columnDefs: ResolvedColumn[],
+  columnDefs: ResolvedColumn[]
 ): FilterSQLResult | FilterValidationError {
   // 1. Decode base64
   let parsed: unknown;
@@ -57,7 +57,9 @@ export function parseAndBuildFilterSQL(
   // 2. Validate schema
   const schemaResult = FilterExpressionSchema.safeParse(parsed);
   if (!schemaResult.success) {
-    return { message: `Invalid filter structure: ${schemaResult.error.issues[0]?.message ?? "unknown error"}` };
+    return {
+      message: `Invalid filter structure: ${schemaResult.error.issues[0]?.message ?? "unknown error"}`,
+    };
   }
 
   const expression = schemaResult.data;
@@ -88,7 +90,7 @@ export function parseAndBuildFilterSQL(
  * Type guard to distinguish result types.
  */
 export function isFilterError(
-  result: FilterSQLResult | FilterValidationError,
+  result: FilterSQLResult | FilterValidationError
 ): result is FilterValidationError {
   return "message" in result;
 }
@@ -98,7 +100,7 @@ export function isFilterError(
 function buildGroupSQL(
   group: FilterGroup,
   columnTypes: Record<string, ColumnDataType>,
-  depth: number = 1,
+  depth: number = 1
 ): SQL {
   const parts = group.conditions.map((item) => {
     if ("combinator" in item) {
@@ -112,18 +114,18 @@ function buildGroupSQL(
   if (group.combinator === "and") {
     return sql.join(
       parts.map((p) => sql`(${p})`),
-      sql` AND `,
+      sql` AND `
     );
   }
   return sql`(${sql.join(
     parts.map((p) => sql`(${p})`),
-    sql` OR `,
+    sql` OR `
   )})`;
 }
 
 function buildConditionSQL(
   condition: FilterCondition,
-  dataType: ColumnDataType,
+  dataType: ColumnDataType
 ): SQL {
   const { field, operator, value } = condition;
 
@@ -161,7 +163,11 @@ function buildConditionSQL(
 
 // ── Type-specific SQL builders ──────────────────────────────────────
 
-function buildStringCondition(jsonbText: SQL, operator: FilterOperator, value: unknown): SQL {
+function buildStringCondition(
+  jsonbText: SQL,
+  operator: FilterOperator,
+  value: unknown
+): SQL {
   const val = String(value ?? "");
 
   switch (operator) {
@@ -182,7 +188,11 @@ function buildStringCondition(jsonbText: SQL, operator: FilterOperator, value: u
   }
 }
 
-function buildNumericCondition(jsonbText: SQL, operator: FilterOperator, value: unknown): SQL {
+function buildNumericCondition(
+  jsonbText: SQL,
+  operator: FilterOperator,
+  value: unknown
+): SQL {
   // Cast with regex guard (same pattern as buildJsonbSortExpression)
   const numericExpr = sql`CASE WHEN ${jsonbText} ~ '^-?[0-9]*\\.?[0-9]+([eE][+-]?[0-9]+)?$' THEN (NULLIF(${jsonbText}, ''))::numeric ELSE NULL END`;
 
@@ -210,7 +220,11 @@ function buildNumericCondition(jsonbText: SQL, operator: FilterOperator, value: 
   }
 }
 
-function buildBooleanCondition(jsonbText: SQL, operator: FilterOperator, value: unknown): SQL {
+function buildBooleanCondition(
+  jsonbText: SQL,
+  operator: FilterOperator,
+  value: unknown
+): SQL {
   const boolStr = String(value) === "true" ? "true" : "false";
 
   switch (operator) {
@@ -223,7 +237,11 @@ function buildBooleanCondition(jsonbText: SQL, operator: FilterOperator, value: 
   }
 }
 
-function buildDateCondition(jsonbText: SQL, operator: FilterOperator, value: unknown): SQL {
+function buildDateCondition(
+  jsonbText: SQL,
+  operator: FilterOperator,
+  value: unknown
+): SQL {
   // ISO dates/datetimes are lexicographically sortable as text
   const val = sql`NULLIF(${jsonbText}, '')`;
   const dateStr = String(value ?? "");
@@ -250,7 +268,11 @@ function buildDateCondition(jsonbText: SQL, operator: FilterOperator, value: unk
   }
 }
 
-function buildEnumCondition(jsonbText: SQL, operator: FilterOperator, value: unknown): SQL {
+function buildEnumCondition(
+  jsonbText: SQL,
+  operator: FilterOperator,
+  value: unknown
+): SQL {
   switch (operator) {
     case "eq":
       return sql`${jsonbText} = ${String(value)}`;
@@ -269,7 +291,12 @@ function buildEnumCondition(jsonbText: SQL, operator: FilterOperator, value: unk
   }
 }
 
-function buildArrayCondition(jsonbText: SQL, field: string, operator: FilterOperator, value: unknown): SQL {
+function buildArrayCondition(
+  jsonbText: SQL,
+  field: string,
+  operator: FilterOperator,
+  value: unknown
+): SQL {
   // For array columns, use JSONB containment operators on the raw JSONB value (not text extraction)
   const jsonbVal = sql`${entityRecords.normalizedData}->${sql.raw(`'${escapeSqlIdentifier(field)}'`)}`;
   const val = String(value ?? "");

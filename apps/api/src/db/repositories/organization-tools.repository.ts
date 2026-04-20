@@ -9,8 +9,15 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { organizationTools } from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
-import type { OrganizationToolSelect, OrganizationToolInsert } from "../schema/zod.js";
+import {
+  Repository,
+  type DbClient,
+  type ListOptions,
+} from "./base.repository.js";
+import type {
+  OrganizationToolSelect,
+  OrganizationToolInsert,
+} from "../schema/zod.js";
 
 export class OrganizationToolsRepository extends Repository<
   typeof organizationTools,
@@ -27,7 +34,11 @@ export class OrganizationToolsRepository extends Repository<
     opts: ListOptions = {},
     client: DbClient = db
   ): Promise<OrganizationToolSelect[]> {
-    return this.findMany(eq(organizationTools.organizationId, organizationId), opts, client);
+    return this.findMany(
+      eq(organizationTools.organizationId, organizationId),
+      opts,
+      client
+    );
   }
 
   /** Find a single tool by exact name within an organization (used for duplicate detection). */

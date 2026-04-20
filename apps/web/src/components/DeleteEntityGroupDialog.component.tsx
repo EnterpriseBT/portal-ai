@@ -96,14 +96,21 @@ export const DeleteEntityGroupDialog: React.FC<
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
             type="button"
             variant="contained"
             color="error"
-            onClick={() => { if (!deleteDisabled) onConfirm(); }}
+            onClick={() => {
+              if (!deleteDisabled) onConfirm();
+            }}
             disabled={deleteDisabled}
           >
             {isPending ? "Deleting..." : "Delete"}
@@ -113,8 +120,7 @@ export const DeleteEntityGroupDialog: React.FC<
     >
       <Stack spacing={2} sx={{ pt: 1 }}>
         <Typography variant="body1">
-          Are you sure you want to delete{" "}
-          <strong>{entityGroupName}</strong>?
+          Are you sure you want to delete <strong>{entityGroupName}</strong>?
         </Typography>
 
         <ImpactSummary impact={impact} isLoading={isLoadingImpact} />

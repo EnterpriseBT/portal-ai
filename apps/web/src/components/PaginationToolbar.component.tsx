@@ -34,9 +34,16 @@ import {
   MultiAsyncSearchableSelect,
   MultiInfiniteScrollSelect,
 } from "@portalai/core/ui";
-import type { FetchPageParams, FetchPageResult, SelectOption } from "@portalai/core/ui";
+import type {
+  FetchPageParams,
+  FetchPageResult,
+  SelectOption,
+} from "@portalai/core/ui";
 
-import type { FilterExpression, ResolvedColumn } from "@portalai/core/contracts";
+import type {
+  FilterExpression,
+  ResolvedColumn,
+} from "@portalai/core/contracts";
 import {
   serializeFilterExpression,
   isFilterExpressionEmpty,
@@ -46,8 +53,10 @@ import {
   removeConditionByIndex,
   getOperatorLabel,
 } from "../utils/advanced-filter-builder.util";
-const AdvancedFilterBuilderLazy = React.lazy(
-  () => import("./AdvancedFilterBuilder.component").then((m) => ({ default: m.AdvancedFilterBuilder }))
+const AdvancedFilterBuilderLazy = React.lazy(() =>
+  import("./AdvancedFilterBuilder.component").then((m) => ({
+    default: m.AdvancedFilterBuilder,
+  }))
 );
 
 // --- Configuration Types ---
@@ -208,11 +217,19 @@ export function usePagination(
     initialValue?.limit ?? defaultLimit
   );
   const [total, setTotal] = React.useState(0);
-  const [advancedFilters, setAdvancedFiltersRaw] = React.useState<FilterExpression>(
-    () => initialValue?.advancedFilters ?? createEmptyExpression()
-  );
+  const [advancedFilters, setAdvancedFiltersRaw] =
+    React.useState<FilterExpression>(
+      () => initialValue?.advancedFilters ?? createEmptyExpression()
+    );
 
-  const persistRef = React.useRef({ search, filters, sortBy, sortOrder, limit, advancedFilters });
+  const persistRef = React.useRef({
+    search,
+    filters,
+    sortBy,
+    sortOrder,
+    limit,
+    advancedFilters,
+  });
 
   const persist = React.useCallback(
     (patch: Partial<PaginationPersistedState>) => {
@@ -327,7 +344,16 @@ export function usePagination(
       params.filters = serializeFilterExpression(advancedFilters);
     }
     return params;
-  }, [search, filters, filterConfigs, advancedFilters, sortBy, sortOrder, offset, limit]);
+  }, [
+    search,
+    filters,
+    filterConfigs,
+    advancedFilters,
+    sortBy,
+    sortOrder,
+    offset,
+    limit,
+  ]);
 
   const activeFilterCount = Object.values(filters).reduce(
     (count, values) => count + values.length,
@@ -501,15 +527,15 @@ export const PaginationToolbar = React.forwardRef<
     const [sortAnchor, setSortAnchor] = React.useState<HTMLElement | null>(
       null
     );
-    const [advFilterAnchor, setAdvFilterAnchor] = React.useState<HTMLElement | null>(
-      null
-    );
+    const [advFilterAnchor, setAdvFilterAnchor] =
+      React.useState<HTMLElement | null>(null);
 
     const filterOpen = Boolean(filterAnchor);
     const sortOpen = Boolean(sortAnchor);
     const advFilterOpen = Boolean(advFilterAnchor);
 
-    const showAdvancedFilters = columnDefinitions && columnDefinitions.length > 0;
+    const showAdvancedFilters =
+      columnDefinitions && columnDefinitions.length > 0;
 
     return (
       <Box ref={ref} sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -549,7 +575,10 @@ export const PaginationToolbar = React.forwardRef<
                 ) : undefined,
               },
             }}
-            sx={{ minWidth: { xs: 120, sm: 200 }, flex: { xs: 1, sm: "unset" } }}
+            sx={{
+              minWidth: { xs: 120, sm: 200 },
+              flex: { xs: 1, sm: "unset" },
+            }}
           />
 
           {/* Filter Button */}
@@ -654,37 +683,71 @@ export const PaginationToolbar = React.forwardRef<
                         />
                       )}
 
-                      {config.type === "searchable-select" && (() => {
-                        const singleProps = {
-                          value: (filters[config.field] ?? [])[0] ?? null,
-                          onChange: (val: string | null) => onFilterValueChange(config.field, val ?? ""),
-                          placeholder: `Select ${config.label.toLowerCase()}...`,
-                          size: "small" as const,
-                        };
-                        if (config.fetchPage) {
-                          return <InfiniteScrollSelect fetchPage={config.fetchPage} {...singleProps} />;
-                        }
-                        if (config.onSearch) {
-                          return <AsyncSearchableSelect onSearch={config.onSearch} {...singleProps} />;
-                        }
-                        return <SearchableSelect options={config.options ?? []} {...singleProps} />;
-                      })()}
+                      {config.type === "searchable-select" &&
+                        (() => {
+                          const singleProps = {
+                            value: (filters[config.field] ?? [])[0] ?? null,
+                            onChange: (val: string | null) =>
+                              onFilterValueChange(config.field, val ?? ""),
+                            placeholder: `Select ${config.label.toLowerCase()}...`,
+                            size: "small" as const,
+                          };
+                          if (config.fetchPage) {
+                            return (
+                              <InfiniteScrollSelect
+                                fetchPage={config.fetchPage}
+                                {...singleProps}
+                              />
+                            );
+                          }
+                          if (config.onSearch) {
+                            return (
+                              <AsyncSearchableSelect
+                                onSearch={config.onSearch}
+                                {...singleProps}
+                              />
+                            );
+                          }
+                          return (
+                            <SearchableSelect
+                              options={config.options ?? []}
+                              {...singleProps}
+                            />
+                          );
+                        })()}
 
-                      {config.type === "multi-select" && (() => {
-                        const multiProps = {
-                          value: filters[config.field] ?? [],
-                          onChange: (values: string[]) => onFilterChange(config.field, values),
-                          placeholder: `Select ${config.label.toLowerCase()}...`,
-                          size: "small" as const,
-                        };
-                        if (config.fetchPage) {
-                          return <MultiInfiniteScrollSelect fetchPage={config.fetchPage} {...multiProps} />;
-                        }
-                        if (config.onSearch) {
-                          return <MultiAsyncSearchableSelect onSearch={config.onSearch} {...multiProps} />;
-                        }
-                        return <MultiSearchableSelect options={config.options ?? []} {...multiProps} />;
-                      })()}
+                      {config.type === "multi-select" &&
+                        (() => {
+                          const multiProps = {
+                            value: filters[config.field] ?? [],
+                            onChange: (values: string[]) =>
+                              onFilterChange(config.field, values),
+                            placeholder: `Select ${config.label.toLowerCase()}...`,
+                            size: "small" as const,
+                          };
+                          if (config.fetchPage) {
+                            return (
+                              <MultiInfiniteScrollSelect
+                                fetchPage={config.fetchPage}
+                                {...multiProps}
+                              />
+                            );
+                          }
+                          if (config.onSearch) {
+                            return (
+                              <MultiAsyncSearchableSelect
+                                onSearch={config.onSearch}
+                                {...multiProps}
+                              />
+                            );
+                          }
+                          return (
+                            <MultiSearchableSelect
+                              options={config.options ?? []}
+                              {...multiProps}
+                            />
+                          );
+                        })()}
                     </Box>
                   ))}
                 </Box>
@@ -760,7 +823,10 @@ export const PaginationToolbar = React.forwardRef<
           {/* Advanced Filters Button */}
           {showAdvancedFilters && (
             <>
-              <Badge badgeContent={advancedFilterConditionCount} color="secondary">
+              <Badge
+                badgeContent={advancedFilterConditionCount}
+                color="secondary"
+              >
                 <Button
                   variant="outlined"
                   size="small"
@@ -777,10 +843,18 @@ export const PaginationToolbar = React.forwardRef<
                 onClose={() => setAdvFilterAnchor(null)}
                 anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                 transformOrigin={{ vertical: "top", horizontal: "left" }}
-                slotProps={{ paper: { sx: { maxHeight: "70vh", overflow: "auto" } } }}
+                slotProps={{
+                  paper: { sx: { maxHeight: "70vh", overflow: "auto" } },
+                }}
               >
                 {advancedFilters && onAdvancedFiltersChange && (
-                  <React.Suspense fallback={<Box sx={{ p: 2 }}><Typography variant="body2">Loading...</Typography></Box>}>
+                  <React.Suspense
+                    fallback={
+                      <Box sx={{ p: 2 }}>
+                        <Typography variant="body2">Loading...</Typography>
+                      </Box>
+                    }
+                  >
                     <AdvancedFilterBuilderLazy
                       expression={advancedFilters}
                       onChange={onAdvancedFiltersChange}
@@ -796,7 +870,15 @@ export const PaginationToolbar = React.forwardRef<
           <Box sx={{ flex: 1, display: { xs: "none", sm: "block" } }} />
 
           {/* Pagination */}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexWrap: "wrap", ml: { xs: 0, sm: "auto" } }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              flexWrap: "wrap",
+              ml: { xs: 0, sm: "auto" },
+            }}
+          >
             <Select
               size="small"
               value={limit}
@@ -932,47 +1014,62 @@ export const PaginationToolbar = React.forwardRef<
         )}
 
         {/* Advanced filter chips */}
-        {advancedFilters && advancedFilterConditionCount > 0 && onAdvancedFiltersChange && (
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
-            {collectConditions(advancedFilters).map((cond, idx) => {
-              const colDef = columnDefinitions?.find((c) => c.normalizedKey === cond.field);
-              const label = colDef?.normalizedKey ?? cond.field;
-              const opLabel = getOperatorLabel(cond.operator);
-              const valueStr = cond.value == null
-                ? ""
-                : Array.isArray(cond.value)
-                  ? cond.value.join(", ")
-                  : String(cond.value);
-              const chipLabel = valueStr
-                ? `${label} ${opLabel} ${valueStr}`
-                : `${label} ${opLabel}`;
+        {advancedFilters &&
+          advancedFilterConditionCount > 0 &&
+          onAdvancedFiltersChange && (
+            <Box
+              sx={{
+                display: "flex",
+                gap: 1,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              {collectConditions(advancedFilters).map((cond, idx) => {
+                const colDef = columnDefinitions?.find(
+                  (c) => c.normalizedKey === cond.field
+                );
+                const label = colDef?.normalizedKey ?? cond.field;
+                const opLabel = getOperatorLabel(cond.operator);
+                const valueStr =
+                  cond.value == null
+                    ? ""
+                    : Array.isArray(cond.value)
+                      ? cond.value.join(", ")
+                      : String(cond.value);
+                const chipLabel = valueStr
+                  ? `${label} ${opLabel} ${valueStr}`
+                  : `${label} ${opLabel}`;
 
-              return (
+                return (
+                  <Chip
+                    key={`adv-${idx}`}
+                    label={chipLabel}
+                    size="small"
+                    color="secondary"
+                    variant="outlined"
+                    onDelete={() => {
+                      const updated = removeConditionByIndex(
+                        advancedFilters,
+                        idx
+                      );
+                      onAdvancedFiltersChange(updated);
+                    }}
+                  />
+                );
+              })}
+              {onAdvancedFiltersClear && (
                 <Chip
-                  key={`adv-${idx}`}
-                  label={chipLabel}
+                  label="Clear all"
                   size="small"
-                  color="secondary"
                   variant="outlined"
-                  onDelete={() => {
-                    const updated = removeConditionByIndex(advancedFilters, idx);
-                    onAdvancedFiltersChange(updated);
-                  }}
+                  onClick={onAdvancedFiltersClear}
+                  onDelete={onAdvancedFiltersClear}
+                  deleteIcon={<CloseIcon />}
                 />
-              );
-            })}
-            {onAdvancedFiltersClear && (
-              <Chip
-                label="Clear all"
-                size="small"
-                variant="outlined"
-                onClick={onAdvancedFiltersClear}
-                onDelete={onAdvancedFiltersClear}
-                deleteIcon={<CloseIcon />}
-              />
-            )}
-          </Box>
-        )}
+              )}
+            </Box>
+          )}
       </Box>
     );
   }

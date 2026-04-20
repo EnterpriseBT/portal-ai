@@ -8,7 +8,10 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { eq, and, sql, type SQL } from "drizzle-orm";
 
-import { EntityRecordModelFactory, SORTABLE_COLUMN_TYPES } from "@portalai/core/models";
+import {
+  EntityRecordModelFactory,
+  SORTABLE_COLUMN_TYPES,
+} from "@portalai/core/models";
 import { UUIDv4Factory } from "@portalai/core/utils";
 import {
   EntityRecordListRequestQuerySchema,
@@ -26,7 +29,10 @@ import {
   type EntityRecordDeleteResponsePayload,
 } from "@portalai/core/contracts";
 import { createLogger } from "../utils/logger.util.js";
-import { parseAndBuildFilterSQL, isFilterError } from "../utils/filter-sql.util.js";
+import {
+  parseAndBuildFilterSQL,
+  isFilterError,
+} from "../utils/filter-sql.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
@@ -58,10 +64,7 @@ const SORTABLE_COLUMNS: Record<string, Column> = {
  * casting.  Values that cannot be cast to the target type resolve to NULL
  * rather than raising a query error.
  */
-function buildJsonbSortExpression(
-  key: string,
-  dataType: ColumnDataType
-): SQL {
+function buildJsonbSortExpression(key: string, dataType: ColumnDataType): SQL {
   const raw = sql`${entityRecords.normalizedData}->>${sql.raw(`'${key}'`)}`;
   const val = sql`NULLIF(${raw}, '')`;
 
@@ -149,8 +152,16 @@ entityRecordRouter.get(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      const { limit, offset, sortBy, sortOrder, columns, search, filters, isValid } =
-        EntityRecordListRequestQuerySchema.parse(req.query);
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        columns,
+        search,
+        filters,
+        isValid,
+      } = EntityRecordListRequestQuerySchema.parse(req.query);
 
       // Resolve column definitions early — needed for JSONB sorting and filter validation
       const columnDefs = await resolveColumns(connectorEntityId);
@@ -181,7 +192,7 @@ entityRecordRouter.get(
             new ApiError(
               400,
               ApiCode.ENTITY_RECORD_INVALID_FILTER,
-              filterResult.message,
+              filterResult.message
             )
           );
         }
@@ -279,10 +290,7 @@ entityRecordRouter.get(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      const where = eq(
-        entityRecords.connectorEntityId,
-        connectorEntityId
-      );
+      const where = eq(entityRecords.connectorEntityId, connectorEntityId);
       const total = await DbService.repository.entityRecords
         .count(where)
         .catch((error) => {
@@ -328,10 +336,15 @@ entityRecordRouter.get(
       const entity = await resolveEntityOrThrow(connectorEntityId, next);
       if (!entity) return;
 
-      const record = await DbService.repository.entityRecords.findById(recordId);
+      const record =
+        await DbService.repository.entityRecords.findById(recordId);
       if (!record || record.connectorEntityId !== connectorEntityId) {
         return next(
-          new ApiError(404, ApiCode.ENTITY_RECORD_NOT_FOUND, "Entity record not found")
+          new ApiError(
+            404,
+            ApiCode.ENTITY_RECORD_NOT_FOUND,
+            "Entity record not found"
+          )
         );
       }
 
@@ -352,7 +365,9 @@ entityRecordRouter.get(
           : new ApiError(
               500,
               ApiCode.ENTITY_RECORD_FETCH_FAILED,
-              error instanceof Error ? error.message : "Failed to get entity record"
+              error instanceof Error
+                ? error.message
+                : "Failed to get entity record"
             )
       );
     }
@@ -488,11 +503,17 @@ entityRecordRouter.post(
           );
         });
 
-      logger.info({ connectorEntityId, recordId: record.id }, "Entity record created");
+      logger.info(
+        { connectorEntityId, recordId: record.id },
+        "Entity record created"
+      );
 
       return HttpService.success<EntityRecordCreateResponsePayload>(
         res,
-        { record: record as unknown as EntityRecordCreateResponsePayload["record"] },
+        {
+          record:
+            record as unknown as EntityRecordCreateResponsePayload["record"],
+        },
         201
       );
     } catch (error) {
@@ -545,11 +566,10 @@ entityRecordRouter.post(
 
       // Look up existing records by sourceId for change detection
       const sourceIds = parsed.data.records.map((r) => r.sourceId);
-      const existing =
-        await DbService.repository.entityRecords.findBySourceIds(
-          connectorEntityId,
-          sourceIds
-        );
+      const existing = await DbService.repository.entityRecords.findBySourceIds(
+        connectorEntityId,
+        sourceIds
+      );
       const existingMap = new Map(existing.map((r) => [r.sourceId, r]));
 
       let created = 0;
@@ -648,10 +668,7 @@ entityRecordRouter.post(
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const { userId } = req.application!.metadata;
-      const result = await SyncService.syncEntity(
-        connectorEntityId,
-        userId
-      );
+      const result = await SyncService.syncEntity(connectorEntityId, userId);
 
       return HttpService.success<EntityRecordSyncResponsePayload>(res, result);
     } catch (error) {
@@ -691,10 +708,13 @@ entityRecordRouter.post(
       const job = await RevalidationService.enqueue(
         connectorEntityId,
         organizationId,
-        userId,
+        userId
       );
 
-      logger.info({ connectorEntityId, jobId: job.id }, "Revalidation job enqueued");
+      logger.info(
+        { connectorEntityId, jobId: job.id },
+        "Revalidation job enqueued"
+      );
 
       return HttpService.success(res, { job }, 202);
     } catch (error) {
@@ -809,20 +829,33 @@ entityRecordRouter.patch(
       const parsed = EntityRecordPatchRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.ENTITY_RECORD_INVALID_PAYLOAD, "Invalid entity record payload")
+          new ApiError(
+            400,
+            ApiCode.ENTITY_RECORD_INVALID_PAYLOAD,
+            "Invalid entity record payload"
+          )
         );
       }
 
       if (!parsed.data.data && !parsed.data.normalizedData) {
         return next(
-          new ApiError(400, ApiCode.ENTITY_RECORD_INVALID_PAYLOAD, "At least one of data or normalizedData must be provided")
+          new ApiError(
+            400,
+            ApiCode.ENTITY_RECORD_INVALID_PAYLOAD,
+            "At least one of data or normalizedData must be provided"
+          )
         );
       }
 
-      const record = await DbService.repository.entityRecords.findById(recordId);
+      const record =
+        await DbService.repository.entityRecords.findById(recordId);
       if (!record || record.connectorEntityId !== connectorEntityId) {
         return next(
-          new ApiError(404, ApiCode.ENTITY_RECORD_NOT_FOUND, "Entity record not found")
+          new ApiError(
+            404,
+            ApiCode.ENTITY_RECORD_NOT_FOUND,
+            "Entity record not found"
+          )
         );
       }
 
@@ -831,7 +864,9 @@ entityRecordRouter.patch(
       const updated = await DbService.repository.entityRecords
         .update(recordId, {
           ...(parsed.data.data && { data: parsed.data.data }),
-          ...(parsed.data.normalizedData && { normalizedData: parsed.data.normalizedData }),
+          ...(parsed.data.normalizedData && {
+            normalizedData: parsed.data.normalizedData,
+          }),
           updatedBy: userId,
         })
         .catch((error) => {
@@ -846,7 +881,8 @@ entityRecordRouter.patch(
       logger.info({ connectorEntityId, recordId }, "Entity record updated");
 
       return HttpService.success<EntityRecordPatchResponsePayload>(res, {
-        record: updated as unknown as EntityRecordPatchResponsePayload["record"],
+        record:
+          updated as unknown as EntityRecordPatchResponsePayload["record"],
       });
     } catch (error) {
       logger.error(
@@ -859,7 +895,9 @@ entityRecordRouter.patch(
           : new ApiError(
               500,
               ApiCode.ENTITY_RECORD_UPDATE_FAILED,
-              error instanceof Error ? error.message : "Failed to update entity record"
+              error instanceof Error
+                ? error.message
+                : "Failed to update entity record"
             )
       );
     }
@@ -938,27 +976,39 @@ entityRecordRouter.delete(
       await assertWriteCapability(connectorEntityId);
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
-      const record = await DbService.repository.entityRecords.findById(recordId);
+      const record =
+        await DbService.repository.entityRecords.findById(recordId);
       if (!record || record.connectorEntityId !== connectorEntityId) {
         return next(
-          new ApiError(404, ApiCode.ENTITY_RECORD_NOT_FOUND, "Entity record not found")
+          new ApiError(
+            404,
+            ApiCode.ENTITY_RECORD_NOT_FOUND,
+            "Entity record not found"
+          )
         );
       }
 
       const { userId } = req.application!.metadata;
 
-      await DbService.repository.entityRecords.softDelete(recordId, userId).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(
-          500,
-          ApiCode.ENTITY_RECORD_DELETE_FAILED,
-          error instanceof Error ? error.message : "Failed to delete record"
-        );
+      await DbService.repository.entityRecords
+        .softDelete(recordId, userId)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_RECORD_DELETE_FAILED,
+            error instanceof Error ? error.message : "Failed to delete record"
+          );
+        });
+
+      logger.info(
+        { connectorEntityId, recordId },
+        "Entity record soft-deleted"
+      );
+
+      return HttpService.success<EntityRecordDeleteOneResponsePayload>(res, {
+        id: recordId,
       });
-
-      logger.info({ connectorEntityId, recordId }, "Entity record soft-deleted");
-
-      return HttpService.success<EntityRecordDeleteOneResponsePayload>(res, { id: recordId });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
@@ -970,7 +1020,9 @@ entityRecordRouter.delete(
           : new ApiError(
               500,
               ApiCode.ENTITY_RECORD_DELETE_FAILED,
-              error instanceof Error ? error.message : "Failed to delete entity record"
+              error instanceof Error
+                ? error.message
+                : "Failed to delete entity record"
             )
       );
     }
@@ -1039,19 +1091,16 @@ entityRecordRouter.delete(
       await RevalidationService.assertNoActiveJob(connectorEntityId);
 
       const { userId } = req.application!.metadata;
-      const deleted =
-        await DbService.repository.entityRecords
-          .softDeleteByConnectorEntityId(connectorEntityId, userId)
-          .catch((error) => {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(
-              500,
-              ApiCode.ENTITY_RECORD_DELETE_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to delete records"
-            );
-          });
+      const deleted = await DbService.repository.entityRecords
+        .softDeleteByConnectorEntityId(connectorEntityId, userId)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_RECORD_DELETE_FAILED,
+            error instanceof Error ? error.message : "Failed to delete records"
+          );
+        });
 
       logger.info(
         { connectorEntityId, deleted },

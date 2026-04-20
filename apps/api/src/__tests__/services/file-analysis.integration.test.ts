@@ -11,9 +11,12 @@ import {
 // ---------------------------------------------------------------------------
 
 const mockGenerateText = jest.fn<() => Promise<{ output: unknown }>>();
+const mockGenerateObject =
+  jest.fn<() => Promise<{ object: unknown; usage: unknown }>>();
 
 jest.unstable_mockModule("ai", () => ({
   generateText: mockGenerateText,
+  generateObject: mockGenerateObject,
   Output: {
     object: ({ schema }: { schema: unknown }) => ({ type: "object", schema }),
   },
@@ -28,16 +31,18 @@ jest.unstable_mockModule("../../services/ai.service.js", () => ({
   },
 }));
 
-const { FileAnalysisService } = await import(
-  "../../services/file-analysis.service.js"
-);
-type ExistingColumnDefinition = import("../../services/file-analysis.service.js").ExistingColumnDefinition;
+const { FileAnalysisService } =
+  await import("../../services/file-analysis.service.js");
+type ExistingColumnDefinition =
+  import("../../services/file-analysis.service.js").ExistingColumnDefinition;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeColumnStat(overrides: Partial<ColumnStat> & { name: string }): ColumnStat {
+function makeColumnStat(
+  overrides: Partial<ColumnStat> & { name: string }
+): ColumnStat {
   return {
     nullCount: 0,
     totalCount: 10,
@@ -51,7 +56,9 @@ function makeColumnStat(overrides: Partial<ColumnStat> & { name: string }): Colu
   };
 }
 
-function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseResult {
+function makeParseResult(
+  overrides: Partial<FileParseResult> = {}
+): FileParseResult {
   return {
     fileName: "contacts.csv",
     delimiter: ",",
@@ -65,7 +72,10 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
     ],
     columnStats: [
       makeColumnStat({ name: "name", sampleValues: ["Alice", "Bob", "Carol"] }),
-      makeColumnStat({ name: "email", sampleValues: ["alice@test.com", "bob@test.com", "carol@test.com"] }),
+      makeColumnStat({
+        name: "email",
+        sampleValues: ["alice@test.com", "bob@test.com", "carol@test.com"],
+      }),
       makeColumnStat({ name: "age", sampleValues: ["30", "25", "35"] }),
     ],
     ...overrides,
@@ -75,17 +85,105 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
 /** Standard seed column definitions covering all types. */
 function makeSeedColumns(): ExistingColumnDefinition[] {
   return [
-    { id: "cd-uuid", key: "uuid", label: "UUID", type: "string", description: "Universally unique identifier", validationPattern: null, canonicalFormat: "lowercase" },
-    { id: "cd-email", key: "email", label: "Email", type: "string", description: "Email address", validationPattern: null, canonicalFormat: "lowercase" },
-    { id: "cd-phone", key: "phone", label: "Phone", type: "string", description: "Phone number", validationPattern: null, canonicalFormat: "phone" },
-    { id: "cd-name", key: "name", label: "Name", type: "string", description: "Person or entity name", validationPattern: null, canonicalFormat: "trim" },
-    { id: "cd-text", key: "text", label: "Text", type: "string", description: "General-purpose text content", validationPattern: null, canonicalFormat: "trim" },
-    { id: "cd-integer", key: "integer", label: "Integer", type: "number", description: "Whole number", validationPattern: null, canonicalFormat: "#,##0" },
-    { id: "cd-decimal", key: "decimal", label: "Decimal", type: "number", description: "Decimal number", validationPattern: null, canonicalFormat: "#,##0.00" },
-    { id: "cd-boolean", key: "boolean", label: "Boolean", type: "boolean", description: "True or false", validationPattern: null, canonicalFormat: null },
-    { id: "cd-date", key: "date", label: "Date", type: "date", description: "Calendar date", validationPattern: null, canonicalFormat: null },
-    { id: "cd-datetime", key: "datetime", label: "Date & Time", type: "datetime", description: "Date and time", validationPattern: null, canonicalFormat: null },
-    { id: "cd-url", key: "url", label: "Website", type: "string", description: "Website URL", validationPattern: null, canonicalFormat: "lowercase" },
+    {
+      id: "cd-uuid",
+      key: "uuid",
+      label: "UUID",
+      type: "string",
+      description: "Universally unique identifier",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
+    {
+      id: "cd-email",
+      key: "email",
+      label: "Email",
+      type: "string",
+      description: "Email address",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
+    {
+      id: "cd-phone",
+      key: "phone",
+      label: "Phone",
+      type: "string",
+      description: "Phone number",
+      validationPattern: null,
+      canonicalFormat: "phone",
+    },
+    {
+      id: "cd-name",
+      key: "name",
+      label: "Name",
+      type: "string",
+      description: "Person or entity name",
+      validationPattern: null,
+      canonicalFormat: "trim",
+    },
+    {
+      id: "cd-text",
+      key: "text",
+      label: "Text",
+      type: "string",
+      description: "General-purpose text content",
+      validationPattern: null,
+      canonicalFormat: "trim",
+    },
+    {
+      id: "cd-integer",
+      key: "integer",
+      label: "Integer",
+      type: "number",
+      description: "Whole number",
+      validationPattern: null,
+      canonicalFormat: "#,##0",
+    },
+    {
+      id: "cd-decimal",
+      key: "decimal",
+      label: "Decimal",
+      type: "number",
+      description: "Decimal number",
+      validationPattern: null,
+      canonicalFormat: "#,##0.00",
+    },
+    {
+      id: "cd-boolean",
+      key: "boolean",
+      label: "Boolean",
+      type: "boolean",
+      description: "True or false",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-date",
+      key: "date",
+      label: "Date",
+      type: "date",
+      description: "Calendar date",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-datetime",
+      key: "datetime",
+      label: "Date & Time",
+      type: "datetime",
+      description: "Date and time",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-url",
+      key: "url",
+      label: "Website",
+      type: "string",
+      description: "Website URL",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
   ];
 }
 
@@ -123,13 +221,38 @@ describe("FileAnalysisService — Integration", () => {
     it("AI service returns valid recommendations for a realistic CSV parse result", async () => {
       const parseResult = makeParseResult({
         fileName: "customers.csv",
-        headers: ["customer_id", "email", "created_at", "is_active", "total_spent"],
+        headers: [
+          "customer_id",
+          "email",
+          "created_at",
+          "is_active",
+          "total_spent",
+        ],
         columnStats: [
-          makeColumnStat({ name: "customer_id", sampleValues: ["CUS001", "CUS002", "CUS003"] }),
-          makeColumnStat({ name: "email", sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"] }),
-          makeColumnStat({ name: "created_at", sampleValues: ["2024-01-15", "2024-02-20", "2024-03-10"] }),
-          makeColumnStat({ name: "is_active", sampleValues: ["true", "false", "true"] }),
-          makeColumnStat({ name: "total_spent", sampleValues: ["150.00", "299.99", "45.50"] }),
+          makeColumnStat({
+            name: "customer_id",
+            sampleValues: ["CUS001", "CUS002", "CUS003"],
+          }),
+          makeColumnStat({
+            name: "email",
+            sampleValues: [
+              "alice@example.com",
+              "bob@test.org",
+              "carol@acme.io",
+            ],
+          }),
+          makeColumnStat({
+            name: "created_at",
+            sampleValues: ["2024-01-15", "2024-02-20", "2024-03-10"],
+          }),
+          makeColumnStat({
+            name: "is_active",
+            sampleValues: ["true", "false", "true"],
+          }),
+          makeColumnStat({
+            name: "total_spent",
+            sampleValues: ["150.00", "299.99", "45.50"],
+          }),
         ],
       });
 
@@ -140,43 +263,72 @@ describe("FileAnalysisService — Integration", () => {
         columns: [
           {
             sourceField: "customer_id",
-            existingColumnDefinitionId: "cd-text", existingColumnDefinitionKey: "text",
+            existingColumnDefinitionId: "cd-text",
+            existingColumnDefinitionKey: "text",
             confidence: 0.9,
             sampleValues: ["CUS001", "CUS002", "CUS003"],
-            format: null, isPrimaryKey: true, required: true,
-            normalizedKey: "customer_id", defaultValue: null, enumValues: null,
+            format: null,
+            isPrimaryKey: true,
+            required: true,
+            normalizedKey: "customer_id",
+            defaultValue: null,
+            enumValues: null,
           },
           {
             sourceField: "email",
-            existingColumnDefinitionId: "cd-email", existingColumnDefinitionKey: "email",
+            existingColumnDefinitionId: "cd-email",
+            existingColumnDefinitionKey: "email",
             confidence: 0.95,
-            sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
-            format: "email", isPrimaryKey: false, required: true,
-            normalizedKey: "email", defaultValue: null, enumValues: null,
+            sampleValues: [
+              "alice@example.com",
+              "bob@test.org",
+              "carol@acme.io",
+            ],
+            format: "email",
+            isPrimaryKey: false,
+            required: true,
+            normalizedKey: "email",
+            defaultValue: null,
+            enumValues: null,
           },
           {
             sourceField: "created_at",
-            existingColumnDefinitionId: "cd-date", existingColumnDefinitionKey: "date",
+            existingColumnDefinitionId: "cd-date",
+            existingColumnDefinitionKey: "date",
             confidence: 0.88,
             sampleValues: ["2024-01-15", "2024-02-20", "2024-03-10"],
-            format: null, isPrimaryKey: false, required: false,
-            normalizedKey: "created_at", defaultValue: null, enumValues: null,
+            format: null,
+            isPrimaryKey: false,
+            required: false,
+            normalizedKey: "created_at",
+            defaultValue: null,
+            enumValues: null,
           },
           {
             sourceField: "is_active",
-            existingColumnDefinitionId: "cd-boolean", existingColumnDefinitionKey: "boolean",
+            existingColumnDefinitionId: "cd-boolean",
+            existingColumnDefinitionKey: "boolean",
             confidence: 0.92,
             sampleValues: ["true", "false", "true"],
-            format: null, isPrimaryKey: false, required: false,
-            normalizedKey: "is_active", defaultValue: null, enumValues: null,
+            format: null,
+            isPrimaryKey: false,
+            required: false,
+            normalizedKey: "is_active",
+            defaultValue: null,
+            enumValues: null,
           },
           {
             sourceField: "total_spent",
-            existingColumnDefinitionId: "cd-decimal", existingColumnDefinitionKey: "decimal",
+            existingColumnDefinitionId: "cd-decimal",
+            existingColumnDefinitionKey: "decimal",
             confidence: 0.87,
             sampleValues: ["150.00", "299.99", "45.50"],
-            format: null, isPrimaryKey: false, required: false,
-            normalizedKey: "total_spent", defaultValue: null, enumValues: null,
+            format: null,
+            isPrimaryKey: false,
+            required: false,
+            normalizedKey: "total_spent",
+            defaultValue: null,
+            enumValues: null,
           },
         ],
       };
@@ -198,8 +350,24 @@ describe("FileAnalysisService — Integration", () => {
     it("AI result with existing column matches preserves existingColumnDefinitionId", async () => {
       const existingColumns: ExistingColumnDefinition[] = [
         ...makeSeedColumns(),
-        { id: "col_email", key: "email", label: "Email Address", type: "string", description: "Email", validationPattern: null, canonicalFormat: "lowercase" },
-        { id: "col_name", key: "name", label: "Full Name", type: "string", description: "Name", validationPattern: null, canonicalFormat: "trim" },
+        {
+          id: "col_email",
+          key: "email",
+          label: "Email Address",
+          type: "string",
+          description: "Email",
+          validationPattern: null,
+          canonicalFormat: "lowercase",
+        },
+        {
+          id: "col_name",
+          key: "name",
+          label: "Full Name",
+          type: "string",
+          description: "Name",
+          validationPattern: null,
+          canonicalFormat: "trim",
+        },
       ];
 
       const parseResult = makeParseResult({
@@ -218,27 +386,42 @@ describe("FileAnalysisService — Integration", () => {
         columns: [
           {
             sourceField: "email",
-            existingColumnDefinitionId: "col_email", existingColumnDefinitionKey: "email",
+            existingColumnDefinitionId: "col_email",
+            existingColumnDefinitionKey: "email",
             confidence: 0.98,
             sampleValues: ["alice@test.com"],
-            format: "email", isPrimaryKey: false, required: true,
-            normalizedKey: "email", defaultValue: null, enumValues: null,
+            format: "email",
+            isPrimaryKey: false,
+            required: true,
+            normalizedKey: "email",
+            defaultValue: null,
+            enumValues: null,
           },
           {
             sourceField: "name",
-            existingColumnDefinitionId: "col_name", existingColumnDefinitionKey: "name",
+            existingColumnDefinitionId: "col_name",
+            existingColumnDefinitionKey: "name",
             confidence: 0.95,
             sampleValues: ["Alice"],
-            format: null, isPrimaryKey: false, required: true,
-            normalizedKey: "name", defaultValue: null, enumValues: null,
+            format: null,
+            isPrimaryKey: false,
+            required: true,
+            normalizedKey: "name",
+            defaultValue: null,
+            enumValues: null,
           },
           {
             sourceField: "phone",
-            existingColumnDefinitionId: "cd-phone", existingColumnDefinitionKey: "phone",
+            existingColumnDefinitionId: "cd-phone",
+            existingColumnDefinitionKey: "phone",
             confidence: 0.7,
             sampleValues: ["+1-555-0100"],
-            format: null, isPrimaryKey: false, required: false,
-            normalizedKey: "phone", defaultValue: null, enumValues: null,
+            format: null,
+            isPrimaryKey: false,
+            required: false,
+            normalizedKey: "phone",
+            defaultValue: null,
+            enumValues: null,
           },
         ],
       };
@@ -269,10 +452,22 @@ describe("FileAnalysisService — Integration", () => {
       const parseResult = makeParseResult({
         headers: ["email", "created_date", "amount", "is_verified"],
         columnStats: [
-          makeColumnStat({ name: "email", sampleValues: ["alice@test.com", "bob@example.org"] }),
-          makeColumnStat({ name: "created_date", sampleValues: ["2024-01-15", "2024-02-20"] }),
-          makeColumnStat({ name: "amount", sampleValues: ["99.99", "150.00", "200.50"] }),
-          makeColumnStat({ name: "is_verified", sampleValues: ["true", "false", "true"] }),
+          makeColumnStat({
+            name: "email",
+            sampleValues: ["alice@test.com", "bob@example.org"],
+          }),
+          makeColumnStat({
+            name: "created_date",
+            sampleValues: ["2024-01-15", "2024-02-20"],
+          }),
+          makeColumnStat({
+            name: "amount",
+            sampleValues: ["99.99", "150.00", "200.50"],
+          }),
+          makeColumnStat({
+            name: "is_verified",
+            sampleValues: ["true", "false", "true"],
+          }),
         ],
       });
 
@@ -291,13 +486,17 @@ describe("FileAnalysisService — Integration", () => {
       expect(emailCol.format).toBe("email");
       expect(emailCol.existingColumnDefinitionId).toBe("cd-email");
 
-      const dateCol = result.columns.find((c) => c.sourceField === "created_date")!;
+      const dateCol = result.columns.find(
+        (c) => c.sourceField === "created_date"
+      )!;
       expect(dateCol.existingColumnDefinitionId).toBe("cd-date");
 
       const amountCol = result.columns.find((c) => c.sourceField === "amount")!;
       expect(amountCol.existingColumnDefinitionId).toBe("cd-decimal");
 
-      const boolCol = result.columns.find((c) => c.sourceField === "is_verified")!;
+      const boolCol = result.columns.find(
+        (c) => c.sourceField === "is_verified"
+      )!;
       expect(boolCol.existingColumnDefinitionId).toBe("cd-boolean");
     });
 
@@ -357,8 +556,14 @@ describe("FileAnalysisService — Integration", () => {
         fileName: "orders.csv",
         headers: ["email", "order_id", "total"],
         columnStats: [
-          makeColumnStat({ name: "email", sampleValues: ["alice@test.com", "bob@test.com"] }),
-          makeColumnStat({ name: "order_id", sampleValues: ["ORD001", "ORD002"] }),
+          makeColumnStat({
+            name: "email",
+            sampleValues: ["alice@test.com", "bob@test.com"],
+          }),
+          makeColumnStat({
+            name: "order_id",
+            sampleValues: ["ORD001", "ORD002"],
+          }),
           makeColumnStat({ name: "total", sampleValues: ["99.99", "150.00"] }),
         ],
       });
@@ -378,7 +583,9 @@ describe("FileAnalysisService — Integration", () => {
       expect(emailCol.confidence).toBe(1);
 
       // order_id should fall back to text via type-based fallback
-      const orderCol = result2.columns.find((c) => c.sourceField === "order_id")!;
+      const orderCol = result2.columns.find(
+        (c) => c.sourceField === "order_id"
+      )!;
       expect(orderCol.existingColumnDefinitionId).toBe("cd-text");
     });
 
@@ -387,7 +594,15 @@ describe("FileAnalysisService — Integration", () => {
 
       const existingColumns: ExistingColumnDefinition[] = [
         ...makeSeedColumns(),
-        { id: "col_email_org", key: "org_email", label: "Org Email", type: "string", description: "Org email", validationPattern: null, canonicalFormat: "lowercase" },
+        {
+          id: "col_email_org",
+          key: "org_email",
+          label: "Org Email",
+          type: "string",
+          description: "Org email",
+          validationPattern: null,
+          canonicalFormat: "lowercase",
+        },
       ];
 
       const priorRecommendation = {
@@ -438,9 +653,13 @@ describe("FileAnalysisService — Integration", () => {
       const parseResult1 = makeParseResult({
         fileName: "file1.csv",
         headers: ["email"],
-        columnStats: [makeColumnStat({ name: "email", sampleValues: ["a@test.com"] })],
+        columnStats: [
+          makeColumnStat({ name: "email", sampleValues: ["a@test.com"] }),
+        ],
       });
-      mockGenerateText.mockResolvedValueOnce({ output: makeAiRecommendation(parseResult1) });
+      mockGenerateText.mockResolvedValueOnce({
+        output: makeAiRecommendation(parseResult1),
+      });
       const result1 = await FileAnalysisService.getRecommendations({
         parseResult: parseResult1,
         existingColumns: seedColumns,
@@ -456,7 +675,9 @@ describe("FileAnalysisService — Integration", () => {
           makeColumnStat({ name: "phone", sampleValues: ["+1-555"] }),
         ],
       });
-      mockGenerateText.mockResolvedValueOnce({ output: makeAiRecommendation(parseResult2) });
+      mockGenerateText.mockResolvedValueOnce({
+        output: makeAiRecommendation(parseResult2),
+      });
       const result2 = await FileAnalysisService.getRecommendations({
         parseResult: parseResult2,
         existingColumns: seedColumns,
@@ -493,7 +714,9 @@ describe("FileAnalysisService — Integration", () => {
       expect(phoneCol.existingColumnDefinitionId).toBe("cd-phone");
 
       // address should fall back to text via type-based fallback
-      const addressCol = result3.columns.find((c) => c.sourceField === "address")!;
+      const addressCol = result3.columns.find(
+        (c) => c.sourceField === "address"
+      )!;
       expect(addressCol.existingColumnDefinitionId).toBe("cd-text");
     });
   });

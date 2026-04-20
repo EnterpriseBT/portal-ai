@@ -16,9 +16,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
-const { FieldMappingDataList } = await import(
-  "../components/FieldMapping.component"
-);
+const { FieldMappingDataList } =
+  await import("../components/FieldMapping.component");
 type FieldMappingDataListProps =
   import("../components/FieldMapping.component").FieldMappingDataListProps;
 

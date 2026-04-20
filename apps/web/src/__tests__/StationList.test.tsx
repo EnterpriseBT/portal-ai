@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { Station } from "@portalai/core/models";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { StationListUI, StationCardUI } = await import(
-  "../components/StationList.component"
-);
+const { StationListUI, StationCardUI } =
+  await import("../components/StationList.component");
 
 const makeStation = (overrides: Partial<Station> = {}): Station => ({
   id: "station-1",
@@ -41,9 +40,7 @@ describe("StationCardUI", () => {
   it("should render station name and description", () => {
     render(<StationCardUI {...defaultCardProps} />);
     expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
-    expect(
-      screen.getByText("Sales data analysis station")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Sales data analysis station")).toBeInTheDocument();
   });
 
   it("should render tool packs as chips", () => {

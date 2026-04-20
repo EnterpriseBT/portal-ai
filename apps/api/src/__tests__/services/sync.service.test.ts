@@ -158,27 +158,27 @@ describe("SyncService", () => {
       setupMocks();
       mockFindEntityById.mockResolvedValue(undefined);
 
-      await expect(
-        SyncService.syncEntity("missing", "user-1")
-      ).rejects.toThrow("Connector entity not found: missing");
+      await expect(SyncService.syncEntity("missing", "user-1")).rejects.toThrow(
+        "Connector entity not found: missing"
+      );
     });
 
     it("throws when connector instance is not found", async () => {
       setupMocks();
       mockFindInstanceById.mockResolvedValue(undefined);
 
-      await expect(
-        SyncService.syncEntity("ent-1", "user-1")
-      ).rejects.toThrow("Connector instance not found: inst-1");
+      await expect(SyncService.syncEntity("ent-1", "user-1")).rejects.toThrow(
+        "Connector instance not found: inst-1"
+      );
     });
 
     it("throws when connector definition is not found", async () => {
       setupMocks();
       mockFindDefinitionById.mockResolvedValue(undefined);
 
-      await expect(
-        SyncService.syncEntity("ent-1", "user-1")
-      ).rejects.toThrow("Connector definition not found: def-1");
+      await expect(SyncService.syncEntity("ent-1", "user-1")).rejects.toThrow(
+        "Connector definition not found: def-1"
+      );
     });
 
     it("propagates adapter errors without masking them", async () => {
@@ -186,18 +186,16 @@ describe("SyncService", () => {
       const adapterError = new Error("External API failed");
       mockAdapterSyncEntity.mockRejectedValue(adapterError);
 
-      await expect(
-        SyncService.syncEntity("ent-1", "user-1")
-      ).rejects.toThrow("External API failed");
+      await expect(SyncService.syncEntity("ent-1", "user-1")).rejects.toThrow(
+        "External API failed"
+      );
     });
 
     it("does not update lastSyncAt when adapter throws", async () => {
       setupMocks();
       mockAdapterSyncEntity.mockRejectedValue(new Error("fail"));
 
-      await expect(
-        SyncService.syncEntity("ent-1", "user-1")
-      ).rejects.toThrow();
+      await expect(SyncService.syncEntity("ent-1", "user-1")).rejects.toThrow();
 
       expect(mockUpdateInstance).not.toHaveBeenCalled();
     });

@@ -38,7 +38,10 @@ const FRUITS: SelectOption[] = [
 ];
 
 /** Simulate a server-side search with a 400ms delay. */
-function simulateSearch(query: string, dataset: SelectOption[]): Promise<SelectOption[]> {
+function simulateSearch(
+  query: string,
+  dataset: SelectOption[]
+): Promise<SelectOption[]> {
   return new Promise((resolve) => {
     setTimeout(() => {
       const lower = query.toLowerCase();
@@ -80,7 +83,9 @@ export const Synchronous: Story = {
         value={value}
         onChange={setValue}
         size="small"
-        helperText={value ? `Selected: ${value}` : "Start typing to filter 25 fruits"}
+        helperText={
+          value ? `Selected: ${value}` : "Start typing to filter 25 fruits"
+        }
       />
     );
   },

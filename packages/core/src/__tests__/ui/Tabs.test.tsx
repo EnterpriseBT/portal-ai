@@ -9,7 +9,7 @@ describe("Tabs Components", () => {
         <Tabs value={0}>
           <Tab label="Tab One" />
           <Tab label="Tab Two" />
-        </Tabs>,
+        </Tabs>
       );
 
       expect(screen.getByText("Tab One")).toBeInTheDocument();
@@ -25,13 +25,11 @@ describe("Tabs Components", () => {
           <TabPanel value={0} index={1}>
             Panel Two Content
           </TabPanel>
-        </>,
+        </>
       );
 
       expect(screen.getByText("Panel One Content")).toBeInTheDocument();
-      expect(
-        screen.queryByText("Panel Two Content"),
-      ).not.toBeVisible();
+      expect(screen.queryByText("Panel Two Content")).not.toBeVisible();
     });
   });
 
@@ -80,7 +78,7 @@ describe("Tabs Components", () => {
           <TabPanel value={1} index={2}>
             Also Hidden
           </TabPanel>
-        </>,
+        </>
       );
 
       expect(screen.queryByText("Hidden")).not.toBeVisible();
@@ -92,7 +90,7 @@ describe("Tabs Components", () => {
       render(
         <TabPanel value={0} index={0}>
           Content
-        </TabPanel>,
+        </TabPanel>
       );
 
       const panel = screen.getByRole("tabpanel");
@@ -104,7 +102,7 @@ describe("Tabs Components", () => {
       render(
         <TabPanel value={0} index={0} className="custom-panel">
           Content
-        </TabPanel>,
+        </TabPanel>
       );
 
       const panel = screen.getByRole("tabpanel");
@@ -115,7 +113,7 @@ describe("Tabs Components", () => {
       render(
         <TabPanel value={0} index={0} data-testid="custom-panel">
           Content
-        </TabPanel>,
+        </TabPanel>
       );
 
       expect(screen.getByTestId("custom-panel")).toBeInTheDocument();
@@ -128,7 +126,7 @@ describe("Tabs Components", () => {
       render(
         <Tabs ref={ref} value={0}>
           <Tab label="Tab" />
-        </Tabs>,
+        </Tabs>
       );
 
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
@@ -139,7 +137,7 @@ describe("Tabs Components", () => {
       render(
         <TabPanel ref={ref} value={0} index={0}>
           Content
-        </TabPanel>,
+        </TabPanel>
       );
 
       expect(ref.current).toBeInstanceOf(HTMLDivElement);

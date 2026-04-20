@@ -29,20 +29,15 @@ export class SyncService {
   ): Promise<SyncResult> {
     // 1. Load entity
     const entity =
-      await DbService.repository.connectorEntities.findById(
-        connectorEntityId
-      );
+      await DbService.repository.connectorEntities.findById(connectorEntityId);
     if (!entity) {
-      throw new Error(
-        `Connector entity not found: ${connectorEntityId}`
-      );
+      throw new Error(`Connector entity not found: ${connectorEntityId}`);
     }
 
     // 2. Load instance
-    const instance =
-      await DbService.repository.connectorInstances.findById(
-        entity.connectorInstanceId
-      );
+    const instance = await DbService.repository.connectorInstances.findById(
+      entity.connectorInstanceId
+    );
     if (!instance) {
       throw new Error(
         `Connector instance not found: ${entity.connectorInstanceId}`
@@ -50,10 +45,9 @@ export class SyncService {
     }
 
     // 3. Load definition
-    const definition =
-      await DbService.repository.connectorDefinitions.findById(
-        instance.connectorDefinitionId
-      );
+    const definition = await DbService.repository.connectorDefinitions.findById(
+      instance.connectorDefinitionId
+    );
     if (!definition) {
       throw new Error(
         `Connector definition not found: ${instance.connectorDefinitionId}`

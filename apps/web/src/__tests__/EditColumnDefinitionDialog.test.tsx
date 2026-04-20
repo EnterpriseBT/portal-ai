@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { ColumnDefinition } from "@portalai/core/models";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { EditColumnDefinitionDialog } = await import(
-  "../components/EditColumnDefinitionDialog.component"
-);
+const { EditColumnDefinitionDialog } =
+  await import("../components/EditColumnDefinitionDialog.component");
 
 const makeColumnDefinition = (
   overrides: Partial<ColumnDefinition> = {}
@@ -52,7 +51,9 @@ describe("EditColumnDefinitionDialog", () => {
 
   it("should not render when open is false", () => {
     render(<EditColumnDefinitionDialog {...defaultProps} open={false} />);
-    expect(screen.queryByText("Edit Column Definition")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Edit Column Definition")
+    ).not.toBeInTheDocument();
   });
 
   it("should pre-fill form with column definition values", () => {
@@ -64,13 +65,19 @@ describe("EditColumnDefinitionDialog", () => {
       validationMessage: "Must be valid",
       canonicalFormat: "lowercase",
     });
-    render(<EditColumnDefinitionDialog {...defaultProps} columnDefinition={cd} />);
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} columnDefinition={cd} />
+    );
     expect(screen.getByLabelText(/^Label/)).toHaveValue("Email");
     expect(screen.getByLabelText(/^Description/)).toHaveValue("Primary email");
     expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^.+@.+$");
-    expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("Must be valid");
+    expect(screen.getByLabelText(/^Validation Message/)).toHaveValue(
+      "Must be valid"
+    );
     // Canonical Format is a Select — check the displayed text content
-    expect(screen.getByLabelText(/^Canonical Format/)).toHaveTextContent(/Lowercase/);
+    expect(screen.getByLabelText(/^Canonical Format/)).toHaveTextContent(
+      /Lowercase/
+    );
   });
 
   it("should show Key as a disabled field", () => {
@@ -96,7 +103,9 @@ describe("EditColumnDefinitionDialog", () => {
   it("should not include 'currency' in type select options", () => {
     render(<EditColumnDefinitionDialog {...defaultProps} />);
     fireEvent.mouseDown(screen.getByLabelText(/^Type/));
-    expect(screen.queryByRole("option", { name: "currency" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "currency" })
+    ).not.toBeInTheDocument();
   });
 
   it("should disable types not in ALLOWED_TYPE_TRANSITIONS", () => {
@@ -114,7 +123,9 @@ describe("EditColumnDefinitionDialog", () => {
 
   it("should submit only changed fields", async () => {
     const onSubmit = jest.fn();
-    render(<EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />);
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />
+    );
     fireEvent.change(screen.getByLabelText(/^Label/), {
       target: { value: "Updated Name" },
     });
@@ -127,7 +138,13 @@ describe("EditColumnDefinitionDialog", () => {
   it("should call onClose without onSubmit when no changes are made", async () => {
     const onClose = jest.fn();
     const onSubmit = jest.fn();
-    render(<EditColumnDefinitionDialog {...defaultProps} onClose={onClose} onSubmit={onSubmit} />);
+    render(
+      <EditColumnDefinitionDialog
+        {...defaultProps}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(onClose).toHaveBeenCalled();
@@ -139,7 +156,9 @@ describe("EditColumnDefinitionDialog", () => {
 
   it("should show revalidation warning when validationPattern is changed", async () => {
     const onSubmit = jest.fn();
-    render(<EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />);
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />
+    );
     fireEvent.change(screen.getByLabelText(/^Validation Pattern/), {
       target: { value: "^.+@.+$" },
     });
@@ -152,7 +171,9 @@ describe("EditColumnDefinitionDialog", () => {
 
   it("should show revalidation warning when canonicalFormat is changed", async () => {
     const onSubmit = jest.fn();
-    render(<EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />);
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />
+    );
     // Canonical Format is a Select dropdown
     fireEvent.mouseDown(screen.getByLabelText(/^Canonical Format/));
     fireEvent.click(screen.getByRole("option", { name: /Lowercase/ }));
@@ -165,7 +186,9 @@ describe("EditColumnDefinitionDialog", () => {
 
   it("should NOT show revalidation warning when only label is changed", async () => {
     const onSubmit = jest.fn();
-    render(<EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />);
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />
+    );
     fireEvent.change(screen.getByLabelText(/^Label/), {
       target: { value: "New Label" },
     });
@@ -178,7 +201,9 @@ describe("EditColumnDefinitionDialog", () => {
 
   it("should call onSubmit when Confirm & Save is clicked after revalidation warning", async () => {
     const onSubmit = jest.fn();
-    render(<EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />);
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />
+    );
     fireEvent.change(screen.getByLabelText(/^Validation Pattern/), {
       target: { value: "^test$" },
     });
@@ -250,7 +275,10 @@ describe("EditColumnDefinitionDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Label/)).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByLabelText(/^Label/)).toHaveAttribute(
+        "aria-invalid",
+        "true"
+      );
     });
   });
 
@@ -263,41 +291,66 @@ describe("EditColumnDefinitionDialog", () => {
 
   it("should disable validation fields when type does not support validation", () => {
     const cd = makeColumnDefinition({ type: "boolean" });
-    render(<EditColumnDefinitionDialog {...defaultProps} columnDefinition={cd} />);
-    expect(screen.getByLabelText(/^Validation Preset/)).toHaveAttribute("aria-disabled", "true");
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} columnDefinition={cd} />
+    );
+    expect(screen.getByLabelText(/^Validation Preset/)).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     expect(screen.getByLabelText(/^Validation Pattern/)).toBeDisabled();
     expect(screen.getByLabelText(/^Validation Message/)).toBeDisabled();
   });
 
   it("should disable canonical format when type does not support it", () => {
     const cd = makeColumnDefinition({ type: "boolean" });
-    render(<EditColumnDefinitionDialog {...defaultProps} columnDefinition={cd} />);
-    expect(screen.getByLabelText(/^Canonical Format/)).toHaveAttribute("aria-disabled", "true");
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} columnDefinition={cd} />
+    );
+    expect(screen.getByLabelText(/^Canonical Format/)).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
   });
 
   it("should show 'Not applicable' helper text for disabled fields", () => {
     const cd = makeColumnDefinition({ type: "boolean" });
-    render(<EditColumnDefinitionDialog {...defaultProps} columnDefinition={cd} />);
-    expect(screen.getAllByText(/Not applicable for this column type/).length).toBeGreaterThanOrEqual(1);
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} columnDefinition={cd} />
+    );
+    expect(
+      screen.getAllByText(/Not applicable for this column type/).length
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("should show error for invalid regex in validation pattern", async () => {
     const onSubmit = jest.fn();
-    render(<EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />);
-    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), { target: { value: "[invalid(" } });
+    render(
+      <EditColumnDefinitionDialog {...defaultProps} onSubmit={onSubmit} />
+    );
+    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), {
+      target: { value: "[invalid(" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(screen.getByText("Invalid regular expression")).toBeInTheDocument();
+      expect(
+        screen.getByText("Invalid regular expression")
+      ).toBeInTheDocument();
     });
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("should set aria-invalid on validation pattern field for invalid regex", async () => {
     render(<EditColumnDefinitionDialog {...defaultProps} />);
-    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), { target: { value: "[invalid(" } });
+    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), {
+      target: { value: "[invalid(" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveAttribute(
+        "aria-invalid",
+        "true"
+      );
     });
   });
 
@@ -311,8 +364,12 @@ describe("EditColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
     fireEvent.click(screen.getByRole("option", { name: "Email" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
-      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("Must be a valid email address");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue(
+        "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+      );
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue(
+        "Must be a valid email address"
+      );
     });
   });
 });

@@ -9,7 +9,21 @@ import type {
   FieldMappingWithConnectorEntity,
   FieldMappingUpdateRequestBody,
 } from "@portalai/core/contracts";
-import { Box, Button, DataTable, Icon, IconName, MetadataList, PageEmptyState, PageGrid, PageGridItem, PageHeader, PageSection, Stack, useColumnConfig } from "@portalai/core/ui";
+import {
+  Box,
+  Button,
+  DataTable,
+  Icon,
+  IconName,
+  MetadataList,
+  PageEmptyState,
+  PageGrid,
+  PageGridItem,
+  PageHeader,
+  PageSection,
+  Stack,
+  useColumnConfig,
+} from "@portalai/core/ui";
 import type { ColumnConfig, DataTableColumn } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
@@ -67,18 +81,27 @@ export const ColumnDefinitionDetailView: React.FC<
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [updateWarnings, setUpdateWarnings] = useState<string[]>([]);
-  const [editingFieldMapping, setEditingFieldMapping] = useState<FieldMappingWithConnectorEntity | null>(null);
-  const [deletingFieldMapping, setDeletingFieldMapping] = useState<FieldMappingWithConnectorEntity | null>(null);
+  const [editingFieldMapping, setEditingFieldMapping] =
+    useState<FieldMappingWithConnectorEntity | null>(null);
+  const [deletingFieldMapping, setDeletingFieldMapping] =
+    useState<FieldMappingWithConnectorEntity | null>(null);
   const [createFieldMappingOpen, setCreateFieldMappingOpen] = useState(false);
 
   const deleteMutation = sdk.columnDefinitions.delete(columnDefinitionId);
   const updateMutation = sdk.columnDefinitions.update(columnDefinitionId);
   const fmCreateMutation = sdk.fieldMappings.create();
-  const fmUpdateMutation = sdk.fieldMappings.update(editingFieldMapping?.id ?? "");
-  const fmDeleteMutation = sdk.fieldMappings.delete(deletingFieldMapping?.id ?? "");
-  const fmImpactQuery = sdk.fieldMappings.impact(deletingFieldMapping?.id ?? "", {
-    enabled: !!deletingFieldMapping,
-  });
+  const fmUpdateMutation = sdk.fieldMappings.update(
+    editingFieldMapping?.id ?? ""
+  );
+  const fmDeleteMutation = sdk.fieldMappings.delete(
+    deletingFieldMapping?.id ?? ""
+  );
+  const fmImpactQuery = sdk.fieldMappings.impact(
+    deletingFieldMapping?.id ?? "",
+    {
+      enabled: !!deletingFieldMapping,
+    }
+  );
   const impactQuery = sdk.columnDefinitions.impact(columnDefinitionId, {
     enabled: deleteDialogOpen,
   });
@@ -87,7 +110,9 @@ export const ColumnDefinitionDetailView: React.FC<
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.columnDefinitions.root,
+        });
         navigate({ to: "/column-definitions" });
       },
     });
@@ -101,26 +126,36 @@ export const ColumnDefinitionDetailView: React.FC<
           if (!data.warnings?.length) {
             setEditDialogOpen(false);
           }
-          queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
-          queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.get(columnDefinitionId) });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.columnDefinitions.root,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.columnDefinitions.get(columnDefinitionId),
+          });
         },
       });
     },
     [updateMutation, queryClient, columnDefinitionId]
   );
 
-  const { onSearch: handleSearchConnectorEntities } = sdk.connectorEntities.search();
-  const { onSearch: handleSearchConnectorEntitiesForRefKey } = sdk.connectorEntities.search({
-    mapItem: (ce) => ({ value: ce.key, label: `${ce.label} (${ce.key})` }),
-  });
+  const { onSearch: handleSearchConnectorEntities } =
+    sdk.connectorEntities.search();
+  const { onSearch: handleSearchConnectorEntitiesForRefKey } =
+    sdk.connectorEntities.search({
+      mapItem: (ce) => ({ value: ce.key, label: `${ce.label} (${ce.key})` }),
+    });
 
   const handleFieldMappingCreate = useCallback(
     (body: FieldMappingCreateRequestBody) => {
       fmCreateMutation.mutate(body, {
         onSuccess: () => {
           setCreateFieldMappingOpen(false);
-          queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
-          queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.fieldMappings.root,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.columnDefinitions.root,
+          });
         },
       });
     },
@@ -132,9 +167,13 @@ export const ColumnDefinitionDetailView: React.FC<
       fmUpdateMutation.mutate(body, {
         onSuccess: () => {
           setEditingFieldMapping(null);
-          queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.fieldMappings.root,
+          });
           if (body.columnDefinitionId) {
-            queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.columnDefinitions.root,
+            });
           }
         },
       });
@@ -146,8 +185,12 @@ export const ColumnDefinitionDetailView: React.FC<
     fmDeleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeletingFieldMapping(null);
-        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.fieldMappings.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.columnDefinitions.root,
+        });
       },
     });
   }, [fmDeleteMutation, queryClient]);
@@ -188,7 +231,11 @@ export const ColumnDefinitionDetailView: React.FC<
                         startIcon={<EditIcon />}
                         onClick={() => setEditDialogOpen(true)}
                         disabled={cd.system}
-                        title={cd.system ? "System column definitions are read-only" : undefined}
+                        title={
+                          cd.system
+                            ? "System column definitions are read-only"
+                            : undefined
+                        }
                       >
                         Edit
                       </Button>
@@ -197,8 +244,13 @@ export const ColumnDefinitionDetailView: React.FC<
                       cd.system
                         ? []
                         : [
-                          { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
-                        ]
+                            {
+                              label: "Delete",
+                              icon: <DeleteIcon />,
+                              onClick: () => setDeleteDialogOpen(true),
+                              color: "error",
+                            },
+                          ]
                     }
                   >
                     <MetadataList
@@ -231,8 +283,6 @@ export const ColumnDefinitionDetailView: React.FC<
                     />
                   </PageHeader>
 
-
-
                   <PageGrid columns={{ xs: 1, lg: 2 }}>
                     {/* Details Section */}
                     <PageGridItem>
@@ -240,11 +290,32 @@ export const ColumnDefinitionDetailView: React.FC<
                         <MetadataList
                           items={[
                             { label: "Key", value: cd.key, variant: "mono" },
-                            { label: "Description", value: cd.description ?? "", hidden: !cd.description },
-                            { label: "Validation Pattern", value: cd.validationPattern ?? "", hidden: !cd.validationPattern, variant: "mono" },
-                            { label: "Validation Message", value: cd.validationMessage ?? "", hidden: !cd.validationMessage },
-                            { label: "Canonical Format", value: cd.canonicalFormat ?? "", hidden: !cd.canonicalFormat, variant: "mono" },
-                            { label: "Created", value: new Date(cd.created).toLocaleString() },
+                            {
+                              label: "Description",
+                              value: cd.description ?? "",
+                              hidden: !cd.description,
+                            },
+                            {
+                              label: "Validation Pattern",
+                              value: cd.validationPattern ?? "",
+                              hidden: !cd.validationPattern,
+                              variant: "mono",
+                            },
+                            {
+                              label: "Validation Message",
+                              value: cd.validationMessage ?? "",
+                              hidden: !cd.validationMessage,
+                            },
+                            {
+                              label: "Canonical Format",
+                              value: cd.canonicalFormat ?? "",
+                              hidden: !cd.canonicalFormat,
+                              variant: "mono",
+                            },
+                            {
+                              label: "Created",
+                              value: new Date(cd.created).toLocaleString(),
+                            },
                           ]}
                         />
                       </PageSection>
@@ -266,7 +337,9 @@ export const ColumnDefinitionDetailView: React.FC<
                           </Button>
                         }
                       >
-                        <PaginationToolbar {...mappingsPagination.toolbarProps} />
+                        <PaginationToolbar
+                          {...mappingsPagination.toolbarProps}
+                        />
 
                         <Box sx={{ mt: 2 }}>
                           <FieldMappingDataList<FieldMappingListWithConnectorEntityResponsePayload>
@@ -283,7 +356,9 @@ export const ColumnDefinitionDetailView: React.FC<
                                 total={mappingsResult.data?.total}
                                 setTotal={mappingsPagination.setTotal}
                               >
-                                <DataResult results={{ mappings: mappingsResult }}>
+                                <DataResult
+                                  results={{ mappings: mappingsResult }}
+                                >
                                   {({
                                     mappings,
                                   }: {
@@ -301,8 +376,12 @@ export const ColumnDefinitionDetailView: React.FC<
                                     return (
                                       <FieldMappingTable
                                         fieldMappings={mappings.fieldMappings}
-                                        onEdit={(fm) => setEditingFieldMapping(fm)}
-                                        onDelete={(fm) => setDeletingFieldMapping(fm)}
+                                        onEdit={(fm) =>
+                                          setEditingFieldMapping(fm)
+                                        }
+                                        onDelete={(fm) =>
+                                          setDeletingFieldMapping(fm)
+                                        }
                                       />
                                     );
                                   }}
@@ -319,7 +398,9 @@ export const ColumnDefinitionDetailView: React.FC<
                     onClose={() => setCreateFieldMappingOpen(false)}
                     onSubmit={handleFieldMappingCreate}
                     onSearchConnectorEntities={handleSearchConnectorEntities}
-                    onSearchConnectorEntitiesForRefKey={handleSearchConnectorEntitiesForRefKey}
+                    onSearchConnectorEntitiesForRefKey={
+                      handleSearchConnectorEntitiesForRefKey
+                    }
                     isPending={fmCreateMutation.isPending}
                     serverError={toServerError(fmCreateMutation.error)}
                     columnDefinitionId={columnDefinitionId}
@@ -329,29 +410,33 @@ export const ColumnDefinitionDetailView: React.FC<
                   <EditFieldMappingDialog
                     open={!!editingFieldMapping}
                     onClose={() => setEditingFieldMapping(null)}
-                    fieldMapping={editingFieldMapping
-                      ? {
-                        ...editingFieldMapping,
-                        columnDefinitionLabel: cd.label,
-                        connectorEntityLabel: editingFieldMapping.connectorEntity?.label,
-                      }
-                      : {
-                        sourceField: "",
-                        normalizedKey: "",
-                        isPrimaryKey: false,
-                        required: false,
-                        defaultValue: null,
-                        format: null,
-                        enumValues: null,
-                        columnDefinitionId: "",
-                        columnDefinitionLabel: "",
-                        connectorEntityLabel: "",
-                        refNormalizedKey: null,
-                        refEntityKey: null,
-                      }
+                    fieldMapping={
+                      editingFieldMapping
+                        ? {
+                            ...editingFieldMapping,
+                            columnDefinitionLabel: cd.label,
+                            connectorEntityLabel:
+                              editingFieldMapping.connectorEntity?.label,
+                          }
+                        : {
+                            sourceField: "",
+                            normalizedKey: "",
+                            isPrimaryKey: false,
+                            required: false,
+                            defaultValue: null,
+                            format: null,
+                            enumValues: null,
+                            columnDefinitionId: "",
+                            columnDefinitionLabel: "",
+                            connectorEntityLabel: "",
+                            refNormalizedKey: null,
+                            refEntityKey: null,
+                          }
                     }
                     onSubmit={handleFieldMappingUpdate}
-                    onSearchConnectorEntitiesForRefKey={handleSearchConnectorEntitiesForRefKey}
+                    onSearchConnectorEntitiesForRefKey={
+                      handleSearchConnectorEntitiesForRefKey
+                    }
                     isPending={fmUpdateMutation.isPending}
                     serverError={toServerError(fmUpdateMutation.error)}
                     columnDefinitionType={cd.type}
@@ -359,16 +444,23 @@ export const ColumnDefinitionDetailView: React.FC<
                   <DeleteFieldMappingDialog
                     open={!!deletingFieldMapping}
                     onClose={() => setDeletingFieldMapping(null)}
-                    fieldMappingSourceField={deletingFieldMapping?.sourceField ?? ""}
+                    fieldMappingSourceField={
+                      deletingFieldMapping?.sourceField ?? ""
+                    }
                     onConfirm={handleFieldMappingDelete}
                     isPending={fmDeleteMutation.isPending}
                     impact={fmImpactQuery.data ?? null}
-                    isLoadingImpact={fmImpactQuery.isLoading && !!deletingFieldMapping}
+                    isLoadingImpact={
+                      fmImpactQuery.isLoading && !!deletingFieldMapping
+                    }
                     serverError={toServerError(fmDeleteMutation.error)}
                   />
                   <EditColumnDefinitionDialog
                     open={editDialogOpen}
-                    onClose={() => { setEditDialogOpen(false); setUpdateWarnings([]); }}
+                    onClose={() => {
+                      setEditDialogOpen(false);
+                      setUpdateWarnings([]);
+                    }}
                     columnDefinition={cd}
                     onSubmit={handleUpdate}
                     isPending={updateMutation.isPending}
@@ -417,85 +509,97 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
     defaultValue: [],
   });
 
-  const dataColumns: DataTableColumn[] = useMemo(() => [
-    { key: "sourceField", label: "Source Field" },
-    {
-      key: "connectorEntity",
-      label: "Connector Entity",
-      render: (_value, row) => {
-        const fm = fieldMappings.find((f) => f.id === row.id) ?? null;
-        if (fm?.connectorEntity) {
-          return fm.connectorEntity.label;
-        }
-        return row.connectorEntityId as string;
+  const dataColumns: DataTableColumn[] = useMemo(
+    () => [
+      { key: "sourceField", label: "Source Field" },
+      {
+        key: "connectorEntity",
+        label: "Connector Entity",
+        render: (_value, row) => {
+          const fm = fieldMappings.find((f) => f.id === row.id) ?? null;
+          if (fm?.connectorEntity) {
+            return fm.connectorEntity.label;
+          }
+          return row.connectorEntityId as string;
+        },
+        onCellClick: (_value, _col, row) => {
+          const fm = fieldMappings.find((f) => f.id === row.id);
+          if (fm?.connectorEntity) {
+            navigate({
+              to: "/entities/$entityId",
+              params: { entityId: fm.connectorEntity.id },
+            });
+          }
+        },
       },
-      onCellClick: (_value, _col, row) => {
-        const fm = fieldMappings.find((f) => f.id === row.id);
-        if (fm?.connectorEntity) {
-          navigate({ to: "/entities/$entityId", params: { entityId: fm.connectorEntity.id } });
-        }
+      { key: "normalizedKey", label: "Normalized Key" },
+      {
+        key: "isPrimaryKey",
+        label: "Primary Key",
+        render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
       },
-    },
-    { key: "normalizedKey", label: "Normalized Key" },
-    {
-      key: "isPrimaryKey",
-      label: "Primary Key",
-      render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
-    },
-    {
-      key: "required",
-      label: "Required",
-      render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
-    },
-    { key: "defaultValue", label: "Default Value" },
-    { key: "format", label: "Format" },
-    {
-      key: "enumValues",
-      label: "Enum Values",
-      render: (value) => (Array.isArray(value) ? value.join(", ") : null),
-    },
-  ], [fieldMappings, navigate]);
+      {
+        key: "required",
+        label: "Required",
+        render: (value) => (value ? <CheckIcon fontSize="small" /> : null),
+      },
+      { key: "defaultValue", label: "Default Value" },
+      { key: "format", label: "Format" },
+      {
+        key: "enumValues",
+        label: "Enum Values",
+        render: (value) => (Array.isArray(value) ? value.join(", ") : null),
+      },
+    ],
+    [fieldMappings, navigate]
+  );
 
-  const actionsColumn: DataTableColumn | null = useMemo(() => (onEdit || onDelete)
-    ? {
-      key: "actions",
-      label: "Actions",
-      render: (_value: unknown, row: Record<string, unknown>) => {
-        const fm = fieldMappings.find((f) => f.id === row.id);
-        if (!fm) return null;
-        const writeEnabled = fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags?.write === true;
-        return (
-          <Stack direction="row" spacing={0.5}>
-            {onEdit && writeEnabled && (
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(fm);
-                }}
-                aria-label="Edit field mapping"
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            )}
-            {onDelete && writeEnabled && (
-              <IconButton
-                size="small"
-                color="error"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(fm);
-                }}
-                aria-label="Delete field mapping"
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            )}
-          </Stack>
-        );
-      },
-    }
-    : null, [onEdit, onDelete, fieldMappings]);
+  const actionsColumn: DataTableColumn | null = useMemo(
+    () =>
+      onEdit || onDelete
+        ? {
+            key: "actions",
+            label: "Actions",
+            render: (_value: unknown, row: Record<string, unknown>) => {
+              const fm = fieldMappings.find((f) => f.id === row.id);
+              if (!fm) return null;
+              const writeEnabled =
+                fm.connectorEntity?.connectorInstance?.enabledCapabilityFlags
+                  ?.write === true;
+              return (
+                <Stack direction="row" spacing={0.5}>
+                  {onEdit && writeEnabled && (
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(fm);
+                      }}
+                      aria-label="Edit field mapping"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                  {onDelete && writeEnabled && (
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(fm);
+                      }}
+                      aria-label="Delete field mapping"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </Stack>
+              );
+            },
+          }
+        : null,
+    [onEdit, onDelete, fieldMappings]
+  );
 
   const [columnConfig, setColumnConfig] = useColumnConfig(dataColumns, {
     initialValue: storedConfig.length > 0 ? storedConfig : undefined,
@@ -503,16 +607,20 @@ const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
   });
 
   const allColumns = useMemo(
-    () => actionsColumn ? [...dataColumns, actionsColumn] : dataColumns,
-    [dataColumns, actionsColumn],
+    () => (actionsColumn ? [...dataColumns, actionsColumn] : dataColumns),
+    [dataColumns, actionsColumn]
   );
   const fullConfig = useMemo(
-    () => actionsColumn ? [...columnConfig, { key: "actions", visible: true }] : columnConfig,
-    [columnConfig, actionsColumn],
+    () =>
+      actionsColumn
+        ? [...columnConfig, { key: "actions", visible: true }]
+        : columnConfig,
+    [columnConfig, actionsColumn]
   );
   const handleColumnConfigChange = useCallback(
-    (config: ColumnConfig[]) => setColumnConfig(config.filter((c) => c.key !== "actions")),
-    [setColumnConfig],
+    (config: ColumnConfig[]) =>
+      setColumnConfig(config.filter((c) => c.key !== "actions")),
+    [setColumnConfig]
   );
 
   return (

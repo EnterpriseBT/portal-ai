@@ -35,7 +35,9 @@ describe("RegionConfigurationPanelUI", () => {
         onDelete={jest.fn()}
       />
     );
-    expect(screen.getByText(/Draw a region on the canvas/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Draw a region on the canvas/i)
+    ).toBeInTheDocument();
   });
 
   test("renders region label and bounds caption", () => {
@@ -66,7 +68,9 @@ describe("RegionConfigurationPanelUI", () => {
         onDelete={jest.fn()}
       />
     );
-    expect(screen.getByText(/merges into entity with 2 other regions/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/merges into entity with 2 other regions/i)
+    ).toBeInTheDocument();
   });
 
   test("calls onDelete when the trash button is clicked", () => {
@@ -99,7 +103,9 @@ describe("RegionConfigurationPanelUI", () => {
     );
     const input = screen.getByPlaceholderText(/Optional region label/i);
     fireEvent.change(input, { target: { value: "Pipeline" } });
-    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ proposedLabel: "Pipeline" }));
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ proposedLabel: "Pipeline" })
+    );
   });
 
   test("displays entity-required error passed in props", () => {
@@ -132,7 +138,9 @@ describe("RegionConfigurationPanelUI", () => {
       />
     );
     expect(screen.getByText(/Records-axis name/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Month, Region, Year/i)).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(/Month, Region, Year/i)
+    ).toBeInTheDocument();
   });
 
   test("crosstab orientation shows row/col axis and cell-value-name inputs", () => {
@@ -200,7 +208,9 @@ describe("RegionConfigurationPanelUI", () => {
         onDelete={jest.fn()}
       />
     );
-    expect(screen.queryByLabelText(/Terminator count/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/Terminator count/i)
+    ).not.toBeInTheDocument();
 
     rerender(
       <RegionConfigurationPanelUI
@@ -241,7 +251,10 @@ describe("RegionConfigurationPanelUI", () => {
     ];
     render(
       <RegionConfigurationPanelUI
-        region={baseRegion({ targetEntityDefinitionId: "ent_draft", targetEntityLabel: "Lead" })}
+        region={baseRegion({
+          targetEntityDefinitionId: "ent_draft",
+          targetEntityLabel: "Lead",
+        })}
         entityOptions={options}
         entityOrder={["ent_draft"]}
         siblingsInSameEntity={0}
@@ -264,7 +277,9 @@ describe("RegionConfigurationPanelUI", () => {
         onDelete={jest.fn()}
       />
     );
-    expect(screen.queryByRole("button", { name: /create new entity/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /create new entity/i })
+    ).not.toBeInTheDocument();
   });
 
   test("shows '+ Create new entity' button when onCreateEntity is provided", () => {
@@ -279,6 +294,8 @@ describe("RegionConfigurationPanelUI", () => {
         onCreateEntity={jest.fn<(key: string, label: string) => string>()}
       />
     );
-    expect(screen.getByRole("button", { name: /create new entity/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /create new entity/i })
+    ).toBeInTheDocument();
   });
 });

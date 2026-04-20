@@ -196,9 +196,7 @@ describe("Connector Definition Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.connectorDefinitions).toHaveLength(1);
-      expect(res.body.payload.connectorDefinitions[0].authType).toBe(
-        "api_key"
-      );
+      expect(res.body.payload.connectorDefinitions[0].authType).toBe("api_key");
     });
 
     it("should filter by isActive", async () => {
@@ -261,9 +259,7 @@ describe("Connector Definition Router", () => {
         .values(defs as never);
 
       const res = await request(app)
-        .get(
-          "/api/connector-definitions?category=database&isActive=true"
-        )
+        .get("/api/connector-definitions?category=database&isActive=true")
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
@@ -400,9 +396,7 @@ describe("Connector Definition Router", () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.payload.connectorDefinition.id).toBe(def.id);
-      expect(res.body.payload.connectorDefinition.display).toBe(
-        "My Connector"
-      );
+      expect(res.body.payload.connectorDefinition.display).toBe("My Connector");
       expect(res.body.payload.connectorDefinition.slug).toBe(def.slug);
       expect(res.body.payload.connectorDefinition.category).toBe("database");
     });

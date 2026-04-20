@@ -23,12 +23,7 @@ export const SPREADSHEET_FILE_EXTENSIONS = [
   ".tsv",
 ] as const;
 
-export type UploadPhase =
-  | "idle"
-  | "uploading"
-  | "parsing"
-  | "parsed"
-  | "error";
+export type UploadPhase = "idle" | "uploading" | "parsing" | "parsed" | "error";
 
 export interface FileUploadWorkflowState {
   step: 0 | 1 | 2;

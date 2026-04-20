@@ -6,9 +6,7 @@ import { Tool } from "../types/tools.js";
 
 const InputSchema = z.object({
   principal: z.number().describe("Loan principal amount"),
-  annualRate: z
-    .number()
-    .describe("Annual interest rate (e.g. 0.06 for 6%)"),
+  annualRate: z.number().describe("Annual interest rate (e.g. 0.06 for 6%)"),
   periods: z.number().int().describe("Number of payment periods"),
 });
 

@@ -46,9 +46,7 @@ describe("Select Component", () => {
       const { container } = render(
         <Select label="Choice" options={options} value="a" disabled />
       );
-      expect(
-        container.querySelector(".Mui-disabled")
-      ).toBeInTheDocument();
+      expect(container.querySelector(".Mui-disabled")).toBeInTheDocument();
     });
 
     it("should display the selected value", () => {
@@ -95,7 +93,10 @@ describe("Select Component", () => {
       const selectButton = screen.getByRole("combobox");
       await userEvent.click(selectButton);
       const placeholder = screen.getByText("Select...");
-      expect(placeholder.closest("li")).toHaveAttribute("aria-disabled", "true");
+      expect(placeholder.closest("li")).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
     });
   });
 

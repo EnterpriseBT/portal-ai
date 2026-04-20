@@ -26,7 +26,9 @@ const slugifyQuestion = (question: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-const groupEntries = (entries: FAQEntry[]): Array<[FAQCategory, FAQEntry[]]> => {
+const groupEntries = (
+  entries: FAQEntry[]
+): Array<[FAQCategory, FAQEntry[]]> => {
   const seenOrder: FAQCategory[] = [];
   const buckets = new Map<FAQCategory, FAQEntry[]>();
   for (const entry of entries) {

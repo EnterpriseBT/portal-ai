@@ -1,5 +1,13 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, or, ilike, inArray, type SQL, type Column } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  ilike,
+  inArray,
+  type SQL,
+  type Column,
+} from "drizzle-orm";
 
 import { ColumnDefinitionModelFactory } from "@portalai/core/models";
 import {
@@ -14,7 +22,10 @@ import {
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
-import { ALLOWED_TYPE_TRANSITIONS, BLOCKED_TYPES } from "../constants/column-definition-transitions.constants.js";
+import {
+  ALLOWED_TYPE_TRANSITIONS,
+  BLOCKED_TYPES,
+} from "../constants/column-definition-transitions.constants.js";
 import { DbService } from "../services/db.service.js";
 import { columnDefinitions } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
@@ -99,18 +110,23 @@ columnDefinitionRouter.get(
         ColumnDefinitionListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
-      const filters: SQL[] = [eq(columnDefinitions.organizationId, organizationId)];
+      const filters: SQL[] = [
+        eq(columnDefinitions.organizationId, organizationId),
+      ];
 
       if (search) {
         filters.push(
           or(
             ilike(columnDefinitions.label, `%${search}%`),
-            ilike(columnDefinitions.key, `%${search}%`),
+            ilike(columnDefinitions.key, `%${search}%`)
           )!
         );
       }
       if (type) {
-        const types = type.split(",").map((t) => t.trim()).filter(Boolean);
+        const types = type
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
         if (types.length === 1) {
           filters.push(eq(columnDefinitions.type, types[0] as never));
         } else if (types.length > 1) {
@@ -132,11 +148,18 @@ columnDefinitionRouter.get(
         DbService.repository.columnDefinitions.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.COLUMN_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list column definitions");
+        throw new ApiError(
+          500,
+          ApiCode.COLUMN_DEFINITION_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to list column definitions"
+        );
       });
 
       return HttpService.success<ColumnDefinitionListResponsePayload>(res, {
-        columnDefinitions: data as unknown as ColumnDefinitionListResponsePayload["columnDefinitions"],
+        columnDefinitions:
+          data as unknown as ColumnDefinitionListResponsePayload["columnDefinitions"],
         total,
         limit,
         offset,
@@ -146,7 +169,17 @@ columnDefinitionRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list column definitions"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.COLUMN_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list column definitions"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.COLUMN_DEFINITION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list column definitions"
+            )
+      );
     }
   }
 );
@@ -201,26 +234,49 @@ columnDefinitionRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/column-definitions/:id called");
 
-      const columnDefinition = await DbService.repository.columnDefinitions.findById(id).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.COLUMN_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch column definition");
-      });
+      const columnDefinition = await DbService.repository.columnDefinitions
+        .findById(id)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.COLUMN_DEFINITION_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch column definition"
+          );
+        });
 
       if (!columnDefinition) {
         return next(
-          new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+          new ApiError(
+            404,
+            ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+            "Column definition not found"
+          )
         );
       }
 
       return HttpService.success<ColumnDefinitionGetResponsePayload>(res, {
-        columnDefinition: columnDefinition as unknown as ColumnDefinitionGetResponsePayload["columnDefinition"],
+        columnDefinition:
+          columnDefinition as unknown as ColumnDefinitionGetResponsePayload["columnDefinition"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch column definition"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.COLUMN_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch column definition"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.COLUMN_DEFINITION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch column definition"
+            )
+      );
     }
   }
 );
@@ -300,15 +356,23 @@ columnDefinitionRouter.post(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = ColumnDefinitionCreateRequestBodySchema.safeParse(req.body);
+      const parsed = ColumnDefinitionCreateRequestBodySchema.safeParse(
+        req.body
+      );
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD, "Invalid column definition payload")
+          new ApiError(
+            400,
+            ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD,
+            "Invalid column definition payload"
+          )
         );
       }
 
       // Validate regex pattern if provided
-      ColumnDefinitionValidationService.validatePattern(parsed.data.validationPattern);
+      ColumnDefinitionValidationService.validatePattern(
+        parsed.data.validationPattern
+      );
 
       const { organizationId, userId } = req.application!.metadata;
 
@@ -326,12 +390,18 @@ columnDefinitionRouter.post(
         system: false,
       });
 
-      const columnDefinition = await DbService.repository.columnDefinitions.create(
-        model.parse()
-      ).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.COLUMN_DEFINITION_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create column definition");
-      });
+      const columnDefinition = await DbService.repository.columnDefinitions
+        .create(model.parse())
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.COLUMN_DEFINITION_CREATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to create column definition"
+          );
+        });
 
       logger.info(
         { id: columnDefinition.id, organizationId },
@@ -340,7 +410,10 @@ columnDefinitionRouter.post(
 
       return HttpService.success<ColumnDefinitionCreateResponsePayload>(
         res,
-        { columnDefinition: columnDefinition as unknown as ColumnDefinitionCreateResponsePayload["columnDefinition"] },
+        {
+          columnDefinition:
+            columnDefinition as unknown as ColumnDefinitionCreateResponsePayload["columnDefinition"],
+        },
         201
       );
     } catch (error) {
@@ -348,7 +421,17 @@ columnDefinitionRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create column definition"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.COLUMN_DEFINITION_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create column definition"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.COLUMN_DEFINITION_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create column definition"
+            )
+      );
     }
   }
 );
@@ -450,27 +533,44 @@ columnDefinitionRouter.patch(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const parsed = ColumnDefinitionUpdateRequestBodySchema.safeParse(req.body);
+      const parsed = ColumnDefinitionUpdateRequestBodySchema.safeParse(
+        req.body
+      );
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD, "Invalid column definition payload")
+          new ApiError(
+            400,
+            ApiCode.COLUMN_DEFINITION_INVALID_PAYLOAD,
+            "Invalid column definition payload"
+          )
         );
       }
 
       // Rule 2: reject key changes — key is immutable
       if ("key" in req.body) {
         return next(
-          new ApiError(422, ApiCode.COLUMN_DEFINITION_KEY_IMMUTABLE, "Column definition key cannot be changed after creation")
+          new ApiError(
+            422,
+            ApiCode.COLUMN_DEFINITION_KEY_IMMUTABLE,
+            "Column definition key cannot be changed after creation"
+          )
         );
       }
 
       // Validate regex pattern if provided
-      ColumnDefinitionValidationService.validatePattern(parsed.data.validationPattern);
+      ColumnDefinitionValidationService.validatePattern(
+        parsed.data.validationPattern
+      );
 
-      const existing = await DbService.repository.columnDefinitions.findById(id);
+      const existing =
+        await DbService.repository.columnDefinitions.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+          new ApiError(
+            404,
+            ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+            "Column definition not found"
+          )
         );
       }
 
@@ -497,59 +597,102 @@ columnDefinitionRouter.patch(
           (BLOCKED_TYPES as readonly string[]).includes(newType)
         ) {
           return next(
-            new ApiError(422, ApiCode.COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED, `Type transitions to or from '${oldType}' and '${newType}' are not allowed`)
+            new ApiError(
+              422,
+              ApiCode.COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED,
+              `Type transitions to or from '${oldType}' and '${newType}' are not allowed`
+            )
           );
         }
 
         const allowed = ALLOWED_TYPE_TRANSITIONS[oldType];
         if (!allowed || !allowed.includes(newType)) {
           return next(
-            new ApiError(422, ApiCode.COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED, `Type transition from '${oldType}' to '${newType}' is not allowed`)
+            new ApiError(
+              422,
+              ApiCode.COLUMN_DEFINITION_TYPE_CHANGE_BLOCKED,
+              `Type transition from '${oldType}' to '${newType}' is not allowed`
+            )
           );
         }
       }
 
       const { userId } = req.application!.metadata;
 
-      const columnDefinition = await DbService.repository.columnDefinitions.update(id, {
-        ...parsed.data,
-        updated: Date.now(),
-        updatedBy: userId,
-      } as never).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.COLUMN_DEFINITION_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update column definition");
-      });
+      const columnDefinition = await DbService.repository.columnDefinitions
+        .update(id, {
+          ...parsed.data,
+          updated: Date.now(),
+          updatedBy: userId,
+        } as never)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.COLUMN_DEFINITION_UPDATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to update column definition"
+          );
+        });
 
       logger.info({ id }, "Column definition updated");
 
       // Trigger revalidation if normalization-affecting fields changed
-      const REVALIDATION_FIELDS = ["validationPattern", "canonicalFormat"] as const;
-      const needsRevalidation = REVALIDATION_FIELDS.some((field) =>
-        field in parsed.data && (parsed.data as Record<string, unknown>)[field] !== (existing as Record<string, unknown>)[field]
+      const REVALIDATION_FIELDS = [
+        "validationPattern",
+        "canonicalFormat",
+      ] as const;
+      const needsRevalidation = REVALIDATION_FIELDS.some(
+        (field) =>
+          field in parsed.data &&
+          (parsed.data as Record<string, unknown>)[field] !==
+            (existing as Record<string, unknown>)[field]
       );
 
       if (needsRevalidation) {
         const { organizationId } = req.application!.metadata;
         // Enqueue revalidation for all entities that have mappings pointing to this column definition
-        const affectedMappings = await DbService.repository.fieldMappings.findByColumnDefinitionId(id);
-        const affectedEntityIds = [...new Set(affectedMappings.map((m) => m.connectorEntityId))];
+        const affectedMappings =
+          await DbService.repository.fieldMappings.findByColumnDefinitionId(id);
+        const affectedEntityIds = [
+          ...new Set(affectedMappings.map((m) => m.connectorEntityId)),
+        ];
 
         for (const entityId of affectedEntityIds) {
-          await RevalidationService.enqueue(entityId, organizationId, userId).catch((err) => {
-            logger.warn({ id, entityId, err }, "Failed to enqueue revalidation after column definition update");
+          await RevalidationService.enqueue(
+            entityId,
+            organizationId,
+            userId
+          ).catch((err) => {
+            logger.warn(
+              { id, entityId, err },
+              "Failed to enqueue revalidation after column definition update"
+            );
           });
         }
       }
 
       return HttpService.success<ColumnDefinitionUpdateResponsePayload>(res, {
-        columnDefinition: columnDefinition as unknown as ColumnDefinitionUpdateResponsePayload["columnDefinition"],
+        columnDefinition:
+          columnDefinition as unknown as ColumnDefinitionUpdateResponsePayload["columnDefinition"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to update column definition"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.COLUMN_DEFINITION_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update column definition"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.COLUMN_DEFINITION_UPDATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to update column definition"
+            )
+      );
     }
   }
 );
@@ -612,10 +755,15 @@ columnDefinitionRouter.get(
     try {
       const { id } = req.params;
 
-      const existing = await DbService.repository.columnDefinitions.findById(id);
+      const existing =
+        await DbService.repository.columnDefinitions.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+          new ApiError(
+            404,
+            ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+            "Column definition not found"
+          )
         );
       }
 
@@ -625,10 +773,15 @@ columnDefinitionRouter.get(
       ]);
 
       // Count entity records across all entities that use this column definition
-      const entityIds = [...new Set(fieldMappingsForRecords.map((fm) => fm.connectorEntityId))];
-      const entityRecords = entityIds.length > 0
-        ? await DbService.repository.entityRecords.countByConnectorEntityIds(entityIds)
-        : 0;
+      const entityIds = [
+        ...new Set(fieldMappingsForRecords.map((fm) => fm.connectorEntityId)),
+      ];
+      const entityRecords =
+        entityIds.length > 0
+          ? await DbService.repository.entityRecords.countByConnectorEntityIds(
+              entityIds
+            )
+          : 0;
 
       return HttpService.success(res, {
         fieldMappings: fieldMappingCount,
@@ -642,7 +795,13 @@ columnDefinitionRouter.get(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.COLUMN_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch column definition impact")
+          : new ApiError(
+              500,
+              ApiCode.COLUMN_DEFINITION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch column definition impact"
+            )
       );
     }
   }
@@ -710,10 +869,15 @@ columnDefinitionRouter.delete(
     try {
       const { id } = req.params;
 
-      const existing = await DbService.repository.columnDefinitions.findById(id);
+      const existing =
+        await DbService.repository.columnDefinitions.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+          new ApiError(
+            404,
+            ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+            "Column definition not found"
+          )
         );
       }
 
@@ -734,10 +898,18 @@ columnDefinitionRouter.delete(
 
       const { userId } = req.application!.metadata;
 
-      await DbService.repository.columnDefinitions.softDelete(id, userId).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.COLUMN_DEFINITION_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete column definition");
-      });
+      await DbService.repository.columnDefinitions
+        .softDelete(id, userId)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.COLUMN_DEFINITION_DELETE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to delete column definition"
+          );
+        });
 
       logger.info({ id }, "Column definition soft-deleted");
 
@@ -747,7 +919,17 @@ columnDefinitionRouter.delete(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to delete column definition"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.COLUMN_DEFINITION_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete column definition"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.COLUMN_DEFINITION_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete column definition"
+            )
+      );
     }
   }
 );

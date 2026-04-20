@@ -29,7 +29,9 @@ describe("NewEntityDialogUI", () => {
     expect(screen.getByLabelText(/label/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/key/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^create$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^create$/i })
+    ).toBeInTheDocument();
   });
 
   test("does not render when open is false", () => {
@@ -59,7 +61,9 @@ describe("NewEntityDialogUI", () => {
 
   test("submits (key, label) on valid input and closes", () => {
     const { onSubmit, onClose } = setup();
-    fireEvent.change(screen.getByLabelText(/label/i), { target: { value: "Order" } });
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: "Order" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
     expect(onSubmit).toHaveBeenCalledWith("order", "Order");
     expect(onClose).toHaveBeenCalled();
@@ -67,7 +71,9 @@ describe("NewEntityDialogUI", () => {
 
   test("blocks submit when key duplicates an existing key", () => {
     const { onSubmit } = setup({ existingKeys: ["order"] });
-    fireEvent.change(screen.getByLabelText(/label/i), { target: { value: "Order" } });
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: "Order" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByText(/already used/i)).toBeInTheDocument();
@@ -75,7 +81,9 @@ describe("NewEntityDialogUI", () => {
 
   test("rejects invalid key format", () => {
     const { onSubmit } = setup();
-    fireEvent.change(screen.getByLabelText(/label/i), { target: { value: "Something" } });
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: "Something" },
+    });
     const keyInput = screen.getByLabelText(/key/i);
     fireEvent.change(keyInput, { target: { value: "Has Spaces" } });
     fireEvent.click(screen.getByRole("button", { name: /^create$/i }));

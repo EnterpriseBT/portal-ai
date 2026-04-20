@@ -33,12 +33,22 @@ const meta = {
   argTypes: {
     status: {
       control: "select",
-      options: [undefined, "pending", "active", "completed", "failed", "stalled", "cancelled"],
-      description: "Stream-overridden status (overrides job.status when provided)",
+      options: [
+        undefined,
+        "pending",
+        "active",
+        "completed",
+        "failed",
+        "stalled",
+        "cancelled",
+      ],
+      description:
+        "Stream-overridden status (overrides job.status when provided)",
     },
     progress: {
       control: { type: "range", min: 0, max: 100 },
-      description: "Stream-overridden progress (overrides job.progress when provided)",
+      description:
+        "Stream-overridden progress (overrides job.progress when provided)",
     },
   },
 } satisfies Meta<typeof JobCard>;
@@ -54,13 +64,23 @@ export const Pending: Story = {
 
 export const Active: Story = {
   args: {
-    job: { ...baseJob, status: "active", progress: 45, startedAt: 1710000000000 },
+    job: {
+      ...baseJob,
+      status: "active",
+      progress: 45,
+      startedAt: 1710000000000,
+    },
   },
 };
 
 export const ActiveWithStreamProgress: Story = {
   args: {
-    job: { ...baseJob, status: "active", progress: 20, startedAt: 1710000000000 },
+    job: {
+      ...baseJob,
+      status: "active",
+      progress: 20,
+      startedAt: 1710000000000,
+    },
     status: "active",
     progress: 72,
   },
@@ -105,19 +125,35 @@ export const Cancelled: Story = {
 
 export const Stalled: Story = {
   args: {
-    job: { ...baseJob, status: "stalled", progress: 60, startedAt: 1710000000000 },
+    job: {
+      ...baseJob,
+      status: "stalled",
+      progress: 60,
+      startedAt: 1710000000000,
+    },
   },
 };
 
 export const FileUpload: Story = {
   args: {
-    job: { ...baseJob, type: "file_upload", status: "active", progress: 88, startedAt: 1710000000000 },
+    job: {
+      ...baseJob,
+      type: "file_upload",
+      status: "active",
+      progress: 88,
+      startedAt: 1710000000000,
+    },
   },
 };
 
 export const StreamOverrideCompleted: Story = {
   args: {
-    job: { ...baseJob, status: "active", progress: 80, startedAt: 1710000000000 },
+    job: {
+      ...baseJob,
+      status: "active",
+      progress: 80,
+      startedAt: 1710000000000,
+    },
     status: "completed",
     progress: 100,
   },

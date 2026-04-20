@@ -3,7 +3,10 @@ import { createLogger } from "../utils/logger.util.js";
 import { ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { PortalService, type StationContext } from "../services/portal.service.js";
+import {
+  PortalService,
+  type StationContext,
+} from "../services/portal.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { SseUtil } from "../utils/sse.util.js";
 import { sseAuth } from "../middleware/sse-auth.middleware.js";
@@ -77,8 +80,7 @@ portalEventsRouter.get(
       const { portalId } = req.params;
 
       // Load portal and verify it exists
-      const { portal, coreMessages } =
-        await PortalService.getPortal(portalId);
+      const { portal, coreMessages } = await PortalService.getPortal(portalId);
 
       // Load station data (re-populates in-memory AlaSQL tables)
       const station = await DbService.repository.stations.findById(

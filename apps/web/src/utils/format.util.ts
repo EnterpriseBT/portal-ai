@@ -57,7 +57,10 @@ export class Formatter {
       case "date":
         return Formatter.date(value, cf ? { format: cf } : options?.date);
       case "datetime":
-        return Formatter.datetime(value, cf ? { format: cf } : options?.datetime);
+        return Formatter.datetime(
+          value,
+          cf ? { format: cf } : options?.datetime
+        );
       case "boolean":
         return Formatter.boolean(value, options?.boolean);
       case "number":
@@ -95,16 +98,16 @@ export class Formatter {
 
     const formatted =
       decimals !== undefined
-        ? n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+        ? n.toLocaleString(undefined, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+          })
         : n.toLocaleString();
 
     return `${prefix}${formatted}`;
   }
 
-  static boolean(
-    value: unknown,
-    options?: BooleanFormatOptions
-  ): string {
+  static boolean(value: unknown, options?: BooleanFormatOptions): string {
     const trueLabel = options?.trueLabel ?? "Yes";
     const falseLabel = options?.falseLabel ?? "No";
     return value ? trueLabel : falseLabel;
@@ -119,10 +122,7 @@ export class Formatter {
     }
   }
 
-  static datetime(
-    value: unknown,
-    options?: DatetimeFormatOptions
-  ): string {
+  static datetime(value: unknown, options?: DatetimeFormatOptions): string {
     try {
       const fmt = options?.format ?? "yyyy-MM-dd HH:mm:ss";
       return dates.format(value as string | number, fmt);

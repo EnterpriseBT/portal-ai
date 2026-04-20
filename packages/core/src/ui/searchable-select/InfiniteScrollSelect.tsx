@@ -2,7 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import MuiAutocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 
-import type { SelectOption, SelectBaseProps, FetchPageParams, FetchPageResult } from "./types.js";
+import type {
+  SelectOption,
+  SelectBaseProps,
+  FetchPageParams,
+  FetchPageResult,
+} from "./types.js";
 import {
   InfiniteListboxComponent,
   SentinelRefContext,
@@ -56,7 +61,9 @@ export const InfiniteScrollSelect: React.FC<InfiniteScrollSelectProps> = ({
       try {
         const result = await fetchPage({ search, page: pg, pageSize });
         hasMoreRef.current = result.hasMore;
-        setOptions((prev) => (reset ? result.options : [...prev, ...result.options]));
+        setOptions((prev) =>
+          reset ? result.options : [...prev, ...result.options]
+        );
         pageRef.current = pg;
       } finally {
         loadingRef.current = false;
@@ -103,7 +110,11 @@ export const InfiniteScrollSelect: React.FC<InfiniteScrollSelectProps> = ({
       observerRef.current = new IntersectionObserver(
         (entries) => {
           const entry = entries[0];
-          if (entry?.isIntersecting && hasMoreRef.current && !loadingRef.current) {
+          if (
+            entry?.isIntersecting &&
+            hasMoreRef.current &&
+            !loadingRef.current
+          ) {
             const nextPage = pageRef.current + 1;
             doFetch(searchRef.current, nextPage, false);
           }
@@ -138,7 +149,9 @@ export const InfiniteScrollSelect: React.FC<InfiniteScrollSelectProps> = ({
             onInputChange={(_event, newInputValue, reason) => {
               if (reason !== "reset") setInputValue(newInputValue);
             }}
-            onChange={(_event, option) => onChange(option ? String(option.value) : null)}
+            onChange={(_event, option) =>
+              onChange(option ? String(option.value) : null)
+            }
             isOptionEqualToValue={(option, val) => option.value === val.value}
             getOptionLabel={(option) => option.label}
             filterOptions={(x) => x}

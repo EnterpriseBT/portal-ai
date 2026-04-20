@@ -389,20 +389,18 @@ describe("Column Definition Router", () => {
 
       // Create a second org owned by the same user (valid FK)
       const orgBId = generateId();
-      await (db as ReturnType<typeof drizzle>)
-        .insert(organizations)
-        .values({
-          id: orgBId,
-          name: "Org B",
-          timezone: "UTC",
-          ownerUserId: userId,
-          created: now,
-          createdBy: "SYSTEM_TEST",
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        } as never);
+      await (db as ReturnType<typeof drizzle>).insert(organizations).values({
+        id: orgBId,
+        name: "Org B",
+        timezone: "UTC",
+        ownerUserId: userId,
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
 
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
@@ -429,8 +427,14 @@ describe("Column Definition Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values([
-          createColumnDefinition(organizationId, { label: "Seeded", system: true }),
-          createColumnDefinition(organizationId, { label: "Custom", system: false }),
+          createColumnDefinition(organizationId, {
+            label: "Seeded",
+            system: true,
+          }),
+          createColumnDefinition(organizationId, {
+            label: "Custom",
+            system: false,
+          }),
         ] as never);
 
       const res = await request(app)
@@ -451,8 +455,14 @@ describe("Column Definition Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values([
-          createColumnDefinition(organizationId, { label: "Seeded", system: true }),
-          createColumnDefinition(organizationId, { label: "Custom", system: false }),
+          createColumnDefinition(organizationId, {
+            label: "Seeded",
+            system: true,
+          }),
+          createColumnDefinition(organizationId, {
+            label: "Custom",
+            system: false,
+          }),
         ] as never);
 
       const res = await request(app)
@@ -486,7 +496,9 @@ describe("Column Definition Router", () => {
         AUTH0_ID
       );
 
-      const colDef = createColumnDefinition(organizationId, { label: "My Column" });
+      const colDef = createColumnDefinition(organizationId, {
+        label: "My Column",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values(colDef as never);
@@ -748,7 +760,9 @@ describe("Column Definition Router", () => {
         AUTH0_ID
       );
 
-      const colDef = createColumnDefinition(organizationId, { type: "reference" });
+      const colDef = createColumnDefinition(organizationId, {
+        type: "reference",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values(colDef as never);
@@ -782,7 +796,9 @@ describe("Column Definition Router", () => {
         .send({ description: "Updated description" });
 
       expect(res.status).toBe(200);
-      expect(res.body.payload.columnDefinition.description).toBe("Updated description");
+      expect(res.body.payload.columnDefinition.description).toBe(
+        "Updated description"
+      );
     });
 
     it("should return 422 COLUMN_DEFINITION_SYSTEM_READONLY for a system row", async () => {
@@ -921,7 +937,6 @@ describe("Column Definition Router", () => {
       expect(res.status).toBe(422);
       expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_SYSTEM_READONLY);
     });
-
   });
 
   // ── GET /api/column-definitions/:id/impact ──────────────────────
@@ -960,7 +975,9 @@ describe("Column Definition Router", () => {
       for (let i = 0; i < 3; i++) {
         await (db as ReturnType<typeof drizzle>)
           .insert(entityRecords)
-          .values(createEntityRecord(organizationId, connectorEntityId) as never);
+          .values(
+            createEntityRecord(organizationId, connectorEntityId) as never
+          );
       }
 
       const res = await request(app)
@@ -1059,7 +1076,9 @@ describe("Column Definition Router", () => {
           });
 
         expect(res.status).toBe(400);
-        expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_VALIDATION_PATTERN);
+        expect(res.body.code).toBe(
+          ApiCode.COLUMN_DEFINITION_INVALID_VALIDATION_PATTERN
+        );
       });
 
       it("should reject type 'currency'", async () => {
@@ -1128,7 +1147,9 @@ describe("Column Definition Router", () => {
           .send({ validationPattern: "(unclosed" });
 
         expect(res.status).toBe(400);
-        expect(res.body.code).toBe(ApiCode.COLUMN_DEFINITION_INVALID_VALIDATION_PATTERN);
+        expect(res.body.code).toBe(
+          ApiCode.COLUMN_DEFINITION_INVALID_VALIDATION_PATTERN
+        );
       });
 
       it("should accept and persist validationPattern, validationMessage, canonicalFormat", async () => {
@@ -1255,7 +1276,9 @@ describe("Column Definition Router", () => {
 
       expect(jobRows.length).toBeGreaterThanOrEqual(1);
       const revalJob = jobRows.find(
-        (j) => (j.metadata as Record<string, unknown>).connectorEntityId === connectorEntityId
+        (j) =>
+          (j.metadata as Record<string, unknown>).connectorEntityId ===
+          connectorEntityId
       );
       expect(revalJob).toBeDefined();
     });
@@ -1296,7 +1319,9 @@ describe("Column Definition Router", () => {
 
       expect(jobRows.length).toBeGreaterThanOrEqual(1);
       const revalJob = jobRows.find(
-        (j) => (j.metadata as Record<string, unknown>).connectorEntityId === connectorEntityId
+        (j) =>
+          (j.metadata as Record<string, unknown>).connectorEntityId ===
+          connectorEntityId
       );
       expect(revalJob).toBeDefined();
     });

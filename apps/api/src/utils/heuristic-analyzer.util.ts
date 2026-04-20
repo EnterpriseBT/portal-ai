@@ -12,7 +12,10 @@ import type {
   ColumnStat,
 } from "@portalai/core/models";
 
-import type { AnalyzeFileInput, ExistingColumnDefinition } from "../services/file-analysis.service.js";
+import type {
+  AnalyzeFileInput,
+  ExistingColumnDefinition,
+} from "../services/file-analysis.service.js";
 
 // ---------------------------------------------------------------------------
 // Type inference patterns
@@ -34,16 +37,22 @@ const NUMBER_PATTERN = /^-?[\d,]+\.?\d*$/;
 const BOOLEAN_PATTERN = /^(true|false|yes|no|0|1)$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_PATTERN = /^https?:\/\/[^\s]+$/;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PHONE_PATTERN = /^\+?[\d\s\-().]+$/;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-export function inferType(sampleValues: string[]): { type: string; format: string | null; canonicalFormat: string | null } {
+export function inferType(sampleValues: string[]): {
+  type: string;
+  format: string | null;
+  canonicalFormat: string | null;
+} {
   const nonEmpty = sampleValues.filter((v) => v.trim() !== "");
-  if (nonEmpty.length === 0) return { type: "string", format: null, canonicalFormat: null };
+  if (nonEmpty.length === 0)
+    return { type: "string", format: null, canonicalFormat: null };
 
   // Check datetime before date (more specific first)
   if (nonEmpty.every((v) => DATETIME_PATTERNS.some((p) => p.test(v)))) {
@@ -51,7 +60,11 @@ export function inferType(sampleValues: string[]): { type: string; format: strin
   }
 
   if (nonEmpty.every((v) => DATE_PATTERNS.some((p) => p.test(v)))) {
-    return { type: "date", format: "YYYY-MM-DD", canonicalFormat: "YYYY-MM-DD" };
+    return {
+      type: "date",
+      format: "YYYY-MM-DD",
+      canonicalFormat: "YYYY-MM-DD",
+    };
   }
 
   if (nonEmpty.every((v) => BOOLEAN_PATTERN.test(v))) {
@@ -90,14 +103,15 @@ export function detectValidationPattern(sampleValues: string[]): string | null {
 }
 
 export function toSnakeCase(str: string): string {
-  return str
-    .replace(/([a-z])([A-Z])/g, "$1_$2")
-    .replace(/[\s\-.]+/g, "_")
-    .replace(/[^a-z0-9_]/gi, "")
-    .toLowerCase()
-    .replace(/^_+|_+$/g, "")
-    .replace(/_+/g, "_")
-    || "column";
+  return (
+    str
+      .replace(/([a-z])([A-Z])/g, "$1_$2")
+      .replace(/[\s\-.]+/g, "_")
+      .replace(/[^a-z0-9_]/gi, "")
+      .toLowerCase()
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_") || "column"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +125,7 @@ export function toSnakeCase(str: string): string {
  */
 function matchByPattern(
   sampleValues: string[],
-  existingByKey: Map<string, ExistingColumnDefinition>,
+  existingByKey: Map<string, ExistingColumnDefinition>
 ): ExistingColumnDefinition | null {
   const nonEmpty = sampleValues.filter((v) => v.trim() !== "");
   if (nonEmpty.length === 0) return null;
@@ -144,9 +158,12 @@ function matchByPattern(
 /** Maps inferred type to the seed column definition key to use as fallback. */
 function typeFallbackKey(inferredType: string, sampleValues: string[]): string {
   switch (inferredType) {
-    case "boolean": return "boolean";
-    case "date": return "date";
-    case "datetime": return "datetime";
+    case "boolean":
+      return "boolean";
+    case "date":
+      return "date";
+    case "datetime":
+      return "datetime";
     case "number": {
       // Check if samples contain decimals
       const nonEmpty = sampleValues.filter((v) => v.trim() !== "");
@@ -163,12 +180,16 @@ function typeFallbackKey(inferredType: string, sampleValues: string[]): string {
 // Heuristic analysis
 // ---------------------------------------------------------------------------
 
-export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendationEntity {
+export function heuristicAnalyze(
+  input: AnalyzeFileInput
+): FileUploadRecommendationEntity {
   const { parseResult, existingColumns } = input;
 
   // Build lookup maps for existing columns
   const existingByKey = new Map(existingColumns.map((c) => [c.key, c]));
-  const existingByLabel = new Map(existingColumns.map((c) => [c.label.toLowerCase(), c]));
+  const existingByLabel = new Map(
+    existingColumns.map((c) => [c.label.toLowerCase(), c])
+  );
 
   const columns = parseResult.columnStats.map((stat: ColumnStat) => {
     const normalizedKey = toSnakeCase(stat.name);
@@ -266,7 +287,10 @@ export function heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendat
  * Returns `{ base, sheet: null }` for plain CSVs and
  * `{ base: "data.xlsx", sheet: "Contacts" }` for `data.xlsx[Contacts]`.
  */
-function parseFileName(fileName: string): { base: string; sheet: string | null } {
+function parseFileName(fileName: string): {
+  base: string;
+  sheet: string | null;
+} {
   const match = fileName.match(/^(.+?)\[([^\]]+)\]$/);
   if (match) return { base: match[1], sheet: match[2] };
   return { base: fileName, sheet: null };

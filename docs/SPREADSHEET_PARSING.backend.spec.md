@@ -6,16 +6,17 @@ Read `SPREADSHEET_PARSING.architecture.spec.md` first for the conceptual model, 
 
 ## Module layout
 
-New package under `packages/`:
+New package under `packages/`. The package ships **three subpath exports** split by runtime environment — main (cross-compatible), `/replay` (Node-only), `/ui` (browser-only). See [`packages/spreadsheet-parsing/README.md`](../packages/spreadsheet-parsing/README.md) for the full convention + the compile-time audit that enforces it.
 
 ```
 packages/spreadsheet-parsing/
   src/
-    workbook/               # Workbook type + helpers (row, col, range accessors)
-    plan/                   # LayoutPlan Zod schemas + version semantics
+    workbook/               # (main) Workbook type + Zod schema + accessors + fingerprint
+    plan/                   # (main) LayoutPlan Zod schemas + version semantics
     interpret/
-      index.ts              # interpret() entry point
+      index.ts              # (main) interpret() entry point
       state.ts              # shared InterpretState object
+      deps.ts               # InterpretDeps DI surface (ClassifierFn / AxisNameRecommenderFn)
       stages/
         detect-regions.ts
         detect-headers.ts
@@ -25,28 +26,65 @@ packages/spreadsheet-parsing/
         reconcile-with-prior.ts
         recommend-records-axis-name.ts
         score-and-warn.ts
-    replay/
+      llm/                  # (main) LlmBridge — prompt templates, response Zod schemas,
+                            #         sampling helpers. Pure content; no SDK/network.
+    replay/                 # (/replay subpath — Node-only)
       index.ts              # replay() entry point
-      drift.ts              # drift detection rules
-    warnings/               # Warning code enum + message templates
+      checksum.ts           # SHA-256 via node:crypto (matches legacy record-import)
+      identity.ts
+      resolve-bounds.ts
+      resolve-headers.ts
+      extract-records.ts
+      drift.ts
+    warnings/               # (main) Warning code enum + message templates
+    ui/                     # (/ui subpath — browser-only; empty today, landing zone)
     __tests__/
       fixtures/             # Irregular spreadsheet fixtures + expected plans
-  package.json
+      forbidden-deps.test.ts # Compile-time audit: no SDKs, no node:* outside /replay,
+                             #                     no cross-subpath leakage
+  package.json              # exports: ".", "./replay", "./ui"
 ```
 
-Exported publicly:
+### Main entry — `@portalai/spreadsheet-parsing`
 
-- `Workbook`, `WorkbookCell`, `WorkbookRange` types
-- `LayoutPlan`, `InterpretInput`, `InterpretResult`, `ReplayResult`, `DriftReport` types
-- `interpret(input: InterpretInput): Promise<LayoutPlan>`
-- `replay(plan: LayoutPlan, workbook: Workbook): ReplayResult`
-- Warning code enum
+Cross-compatible runtime code and types. Runs in Node **and** in the browser (Storybook, web app). No Node builtins, no DOM APIs.
 
-Not exported: stage functions, LLM client, prompt templates (internal).
+- `Workbook`, `WorkbookCell`, `SheetData`, `SheetDimensions` types + Zod schemas
+- `LayoutPlan`, `Region`, `HeaderStrategy`, `IdentityStrategy`, `ColumnBinding`, `SkipRule`, `Warning`, `DriftReport`, `InterpretInput`, `RegionHint`, `ExtractedRecord`, `ReplayResult` types + schemas
+- `interpret(input, deps?): Promise<LayoutPlan>`
+- `LlmBridge` namespace — `buildClassifierPrompt`, `buildAxisNameRecommenderPrompt`, `ClassifierResponseSchema`, `AxisNameRecommenderResponseSchema`, `sampleWorkbookRegion`, `MAX_AXIS_LABELS`, `MAX_SHEET_SAMPLE`. Consumers wire these into a real model call behind `deps.classifier` / `deps.axisNameRecommender`.
+- `InterpretDeps`, `ClassifierFn`, `AxisNameRecommenderFn`, `ColumnDefinitionCatalogEntry` — DI surface types
+- `makeSheetAccessor`, `makeWorkbook`, `computeWorkbookFingerprint`
+- `WARNING_CODES`, `WarningCode`, `WarningSeverity`, `DEFAULT_WARNING_SEVERITY`
+- `PLAN_VERSION`
+
+All of the above are additionally re-exported via `@portalai/core/contracts` so API and web consumers share one import site.
+
+### `/replay` subpath — `@portalai/spreadsheet-parsing/replay`
+
+Node-only. Uses `node:crypto` for the SHA-256 checksum so the plan-driven write path matches `apps/api/src/services/record-import.util.ts` byte-for-byte.
+
+- `replay(plan, workbook): ReplayResult`
+
+Never re-exported via `@portalai/core/contracts` — that barrel must stay browser-safe. Node consumers (`apps/api`) import directly:
+
+```ts
+import { replay } from "@portalai/spreadsheet-parsing/replay";
+```
+
+### `/ui` subpath — `@portalai/spreadsheet-parsing/ui`
+
+Browser-only. Empty today; landing zone for future exports that need DOM APIs, React hooks, or browser-only Web Crypto. Must not import from `/replay`.
+
+### Not exported
+
+Stage functions (`detect-regions`, `detect-headers`, …), `InterpretState`, internal drift-detail types, and test fixtures stay internal. `LlmBridge` is the parser's only "helper content" surface — consumers use `LlmBridge.ClassifierResponseSchema` etc. to wire their own model clients behind the public DI slots.
 
 ## Core types
 
-All types are defined as Zod schemas in `packages/spreadsheet-parsing/src/plan/*.ts`, then re-exported from `@portalai/core/contracts` so API and web can validate them. The backend enforces these at route boundaries; the frontend validates user-edited plans before submitting.
+All types are defined as Zod schemas in `packages/spreadsheet-parsing/src/plan/*.ts` and served from the parser's **main entry** (cross-compatible). `@portalai/core/contracts` re-exports the entire main-entry surface so API and web can validate them. The backend enforces these at route boundaries; the frontend validates user-edited plans before submitting.
+
+`ReplayResult`, `ExtractedRecord`, and `DriftReport` are cross-compatible as *types* and stay in the main entry. Only the `replay()` *runtime* lives behind the `/replay` subpath and is **not** re-exported through `@portalai/core/contracts` — browser consumers import the types they need but never the Node-only function.
 
 ### `Workbook`
 

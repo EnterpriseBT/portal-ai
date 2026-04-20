@@ -26,5 +26,5 @@ export const connectorEntities = pgTable(
     uniqueIndex("connector_entities_instance_key_unique")
       .on(table.connectorInstanceId, table.key)
       .where(sql`deleted IS NULL`),
-  ],
+  ]
 );

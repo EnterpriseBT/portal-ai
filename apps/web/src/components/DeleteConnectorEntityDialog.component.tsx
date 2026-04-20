@@ -27,7 +27,10 @@ export interface DeleteConnectorEntityDialogProps {
   serverError?: ServerError | null;
 }
 
-const IMPACT_LABELS: { key: keyof ConnectorEntityImpactResponsePayload; label: string }[] = [
+const IMPACT_LABELS: {
+  key: keyof ConnectorEntityImpactResponsePayload;
+  label: string;
+}[] = [
   { key: "entityRecords", label: "entity records" },
   { key: "fieldMappings", label: "field mappings" },
   { key: "entityTagAssignments", label: "tag assignments" },
@@ -109,14 +112,21 @@ export const DeleteConnectorEntityDialog: React.FC<
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
             type="button"
             variant="contained"
             color="error"
-            onClick={() => { if (!deleteDisabled) onConfirm(); }}
+            onClick={() => {
+              if (!deleteDisabled) onConfirm();
+            }}
             disabled={deleteDisabled}
           >
             {isPending ? "Deleting..." : "Delete"}
@@ -134,14 +144,14 @@ export const DeleteConnectorEntityDialog: React.FC<
 
         {hasBlockingDeps ? (
           <Alert severity="error">
-            This entity cannot be deleted because other entities reference it via
-            field mappings. Remove or reassign the external references before
-            deleting.
+            This entity cannot be deleted because other entities reference it
+            via field mappings. Remove or reassign the external references
+            before deleting.
           </Alert>
         ) : (
           <Alert severity="warning">
-            This action will permanently delete all associated data listed above.
-            This cannot be undone.
+            This action will permanently delete all associated data listed
+            above. This cannot be undone.
           </Alert>
         )}
         <FormAlert serverError={serverError ?? null} />

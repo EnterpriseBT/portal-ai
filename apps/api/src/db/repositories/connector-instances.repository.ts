@@ -5,11 +5,27 @@
  * and transparent encryption/decryption of the `credentials` column.
  */
 
-import { eq, and, asc, desc, getTableColumns, type SQL } from "drizzle-orm";
-import { connectorInstances } from "../schema/index.js";
+import {
+  eq,
+  and,
+  asc,
+  desc,
+  getTableColumns,
+  inArray,
+  isNull,
+  type SQL,
+} from "drizzle-orm";
+import {
+  connectorInstances,
+  connectorInstanceLayoutPlans,
+} from "../schema/index.js";
 import { connectorDefinitions } from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+import {
+  Repository,
+  type DbClient,
+  type ListOptions,
+} from "./base.repository.js";
 
 export interface ConnectorInstanceListOptions extends ListOptions {
   include?: string[];
@@ -32,9 +48,7 @@ function decryptRow<T extends { credentials: string | null }>(
 ): T & { credentials: Record<string, unknown> | null } {
   return {
     ...row,
-    credentials: row.credentials
-      ? decryptCredentials(row.credentials)
-      : null,
+    credentials: row.credentials ? decryptCredentials(row.credentials) : null,
   };
 }
 
@@ -46,13 +60,8 @@ function decryptRows<T extends { credentials: string | null }>(
 }
 
 /** Encrypt plain-text credentials into the format stored in the DB. */
-function encryptInsert<T extends { credentials?: string | null }>(
-  data: T
-): T {
-  if (
-    data.credentials != null &&
-    typeof data.credentials === "object"
-  ) {
+function encryptInsert<T extends { credentials?: string | null }>(data: T): T {
+  if (data.credentials != null && typeof data.credentials === "object") {
     return {
       ...data,
       credentials: encryptCredentials(
@@ -90,7 +99,11 @@ export class ConnectorInstancesRepository extends Repository<
     client: DbClient = db
   ): Promise<ConnectorInstanceSelect[]> {
     if (opts.include?.includes("connectorDefinition")) {
-      return this.findManyWithDefinition(where, opts, client) as unknown as ConnectorInstanceSelect[];
+      return this.findManyWithDefinition(
+        where,
+        opts,
+        client
+      ) as unknown as ConnectorInstanceSelect[];
     }
     const rows = await super.findMany(where, opts, client);
     return decryptRows(rows);
@@ -148,10 +161,7 @@ export class ConnectorInstancesRepository extends Repository<
       .from(connectorInstances)
       .leftJoin(
         connectorDefinitions,
-        eq(
-          connectorInstances.connectorDefinitionId,
-          connectorDefinitions.id
-        )
+        eq(connectorInstances.connectorDefinitionId, connectorDefinitions.id)
       )
       .where(conditions)
       .$dynamic();
@@ -203,10 +213,7 @@ export class ConnectorInstancesRepository extends Repository<
       .from(this.table)
       .where(
         and(
-          eq(
-            connectorInstances.connectorDefinitionId,
-            connectorDefinitionId
-          ),
+          eq(connectorInstances.connectorDefinitionId, connectorDefinitionId),
           this.notDeleted()
         )
       );
@@ -235,6 +242,80 @@ export class ConnectorInstancesRepository extends Repository<
     return rows[0] ? decryptRow(rows[0]) : undefined;
   }
 
+  /**
+   * Soft-delete a connector instance and cascade to its layout plan rows.
+   *
+   * Runs both updates in the same transaction so a failure on either side
+   * leaves state untouched. Plan rows that are already soft-deleted or
+   * belong to an already-deleted instance are no-ops.
+   */
+  override async softDelete(
+    id: string,
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<ConnectorInstanceSelect | undefined> {
+    const run = async (
+      tx: DbClient
+    ): Promise<ConnectorInstanceSelect | undefined> => {
+      const row = await Repository.prototype.softDelete.call(
+        this,
+        id,
+        deletedBy,
+        tx
+      );
+      if (row) await this.cascadeSoftDeleteLayoutPlans([id], deletedBy, tx);
+      return row as ConnectorInstanceSelect | undefined;
+    };
+    if (client !== db) return run(client);
+    return Repository.transaction((tx) => run(tx));
+  }
+
+  /**
+   * Soft-delete many connector instances and cascade to their layout plans.
+   * Transactional across both tables.
+   */
+  override async softDeleteMany(
+    ids: string[],
+    deletedBy: string,
+    client: DbClient = db
+  ): Promise<number> {
+    if (ids.length === 0) return 0;
+    const run = async (tx: DbClient): Promise<number> => {
+      const affected = await Repository.prototype.softDeleteMany.call(
+        this,
+        ids,
+        deletedBy,
+        tx
+      );
+      if (affected > 0)
+        await this.cascadeSoftDeleteLayoutPlans(ids, deletedBy, tx);
+      return affected;
+    };
+    if (client !== db) return run(client);
+    return Repository.transaction((tx) => run(tx));
+  }
+
+  /** Internal: soft-delete every layout plan belonging to the given instances. */
+  private async cascadeSoftDeleteLayoutPlans(
+    connectorInstanceIds: string[],
+    deletedBy: string,
+    client: DbClient
+  ): Promise<void> {
+    const now = Date.now();
+    await (client as typeof db)
+      .update(connectorInstanceLayoutPlans)
+      .set({ deleted: now, deletedBy })
+      .where(
+        and(
+          inArray(
+            connectorInstanceLayoutPlans.connectorInstanceId,
+            connectorInstanceIds
+          ),
+          isNull(connectorInstanceLayoutPlans.deleted)
+        )
+      );
+  }
+
   /** Find a specific instance by org + definition (useful for unique checks). */
   async findByOrgAndDefinition(
     organizationId: string,
@@ -247,10 +328,7 @@ export class ConnectorInstancesRepository extends Repository<
       .where(
         and(
           eq(connectorInstances.organizationId, organizationId),
-          eq(
-            connectorInstances.connectorDefinitionId,
-            connectorDefinitionId
-          ),
+          eq(connectorInstances.connectorDefinitionId, connectorDefinitionId),
           this.notDeleted()
         )
       );

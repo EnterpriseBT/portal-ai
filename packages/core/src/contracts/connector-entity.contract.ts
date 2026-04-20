@@ -4,21 +4,30 @@ import { ColumnDefinitionSchema } from "../models/column-definition.model.js";
 import { ConnectorEntitySchema } from "../models/connector-entity.model.js";
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
 import { FieldMappingSchema } from "../models/field-mapping.model.js";
-import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
+import {
+  PaginatedResponsePayloadSchema,
+  PaginationRequestQuerySchema,
+} from "./pagination.contract.js";
 
 // ── Enriched schemas (entity + nested field mappings + column defs) ──
 
-export const FieldMappingWithColumnDefinitionSchema = FieldMappingSchema.extend({
-  columnDefinition: ColumnDefinitionSchema.nullable(),
-});
+export const FieldMappingWithColumnDefinitionSchema = FieldMappingSchema.extend(
+  {
+    columnDefinition: ColumnDefinitionSchema.nullable(),
+  }
+);
 
-export type FieldMappingWithColumnDefinition = z.infer<typeof FieldMappingWithColumnDefinitionSchema>;
+export type FieldMappingWithColumnDefinition = z.infer<
+  typeof FieldMappingWithColumnDefinitionSchema
+>;
 
 export const ConnectorEntityWithMappingsSchema = ConnectorEntitySchema.extend({
   fieldMappings: z.array(FieldMappingWithColumnDefinitionSchema),
 });
 
-export type ConnectorEntityWithMappings = z.infer<typeof ConnectorEntityWithMappingsSchema>;
+export type ConnectorEntityWithMappings = z.infer<
+  typeof ConnectorEntityWithMappingsSchema
+>;
 
 // ── Enriched schema (entity + connector instance name) ───────────────
 
@@ -26,35 +35,49 @@ export const ConnectorEntityWithInstanceSchema = ConnectorEntitySchema.extend({
   connectorInstance: ConnectorInstanceSchema,
 });
 
-export type ConnectorEntityWithInstance = z.infer<typeof ConnectorEntityWithInstanceSchema>;
+export type ConnectorEntityWithInstance = z.infer<
+  typeof ConnectorEntityWithInstanceSchema
+>;
 
 // ── List ──────────────────────────────────────────────────────────────
 
-export const ConnectorEntityListRequestQuerySchema = PaginationRequestQuerySchema.extend({
-  connectorInstanceIds: z.string().optional(),
-  include: z.string().optional(),
-  tagIds: z.string().optional(),
-});
+export const ConnectorEntityListRequestQuerySchema =
+  PaginationRequestQuerySchema.extend({
+    connectorInstanceIds: z.string().optional(),
+    include: z.string().optional(),
+    tagIds: z.string().optional(),
+  });
 
-export type ConnectorEntityListRequestQuery = z.infer<typeof ConnectorEntityListRequestQuerySchema>;
+export type ConnectorEntityListRequestQuery = z.infer<
+  typeof ConnectorEntityListRequestQuerySchema
+>;
 
-export const ConnectorEntityListResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  connectorEntities: z.array(ConnectorEntitySchema),
-});
+export const ConnectorEntityListResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    connectorEntities: z.array(ConnectorEntitySchema),
+  });
 
-export type ConnectorEntityListResponsePayload = z.infer<typeof ConnectorEntityListResponsePayloadSchema>;
+export type ConnectorEntityListResponsePayload = z.infer<
+  typeof ConnectorEntityListResponsePayloadSchema
+>;
 
-export const ConnectorEntityListWithMappingsResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  connectorEntities: z.array(ConnectorEntityWithMappingsSchema),
-});
+export const ConnectorEntityListWithMappingsResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    connectorEntities: z.array(ConnectorEntityWithMappingsSchema),
+  });
 
-export type ConnectorEntityListWithMappingsResponsePayload = z.infer<typeof ConnectorEntityListWithMappingsResponsePayloadSchema>;
+export type ConnectorEntityListWithMappingsResponsePayload = z.infer<
+  typeof ConnectorEntityListWithMappingsResponsePayloadSchema
+>;
 
-export const ConnectorEntityListWithInstanceResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  connectorEntities: z.array(ConnectorEntityWithInstanceSchema),
-});
+export const ConnectorEntityListWithInstanceResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    connectorEntities: z.array(ConnectorEntityWithInstanceSchema),
+  });
 
-export type ConnectorEntityListWithInstanceResponsePayload = z.infer<typeof ConnectorEntityListWithInstanceResponsePayloadSchema>;
+export type ConnectorEntityListWithInstanceResponsePayload = z.infer<
+  typeof ConnectorEntityListWithInstanceResponsePayloadSchema
+>;
 
 // ── Get ───────────────────────────────────────────────────────────────
 
@@ -62,7 +85,9 @@ export const ConnectorEntityGetResponsePayloadSchema = z.object({
   connectorEntity: ConnectorEntitySchema,
 });
 
-export type ConnectorEntityGetResponsePayload = z.infer<typeof ConnectorEntityGetResponsePayloadSchema>;
+export type ConnectorEntityGetResponsePayload = z.infer<
+  typeof ConnectorEntityGetResponsePayloadSchema
+>;
 
 // ── Create ────────────────────────────────────────────────────────────
 
@@ -72,13 +97,17 @@ export const ConnectorEntityCreateRequestBodySchema = z.object({
   label: z.string().min(1),
 });
 
-export type ConnectorEntityCreateRequestBody = z.infer<typeof ConnectorEntityCreateRequestBodySchema>;
+export type ConnectorEntityCreateRequestBody = z.infer<
+  typeof ConnectorEntityCreateRequestBodySchema
+>;
 
 export const ConnectorEntityCreateResponsePayloadSchema = z.object({
   connectorEntity: ConnectorEntitySchema,
 });
 
-export type ConnectorEntityCreateResponsePayload = z.infer<typeof ConnectorEntityCreateResponsePayloadSchema>;
+export type ConnectorEntityCreateResponsePayload = z.infer<
+  typeof ConnectorEntityCreateResponsePayloadSchema
+>;
 
 // ── Update ───────────────────────────────────────────────────────────
 
@@ -86,13 +115,17 @@ export const ConnectorEntityPatchRequestBodySchema = z.object({
   label: z.string().min(1).optional(),
 });
 
-export type ConnectorEntityPatchRequestBody = z.infer<typeof ConnectorEntityPatchRequestBodySchema>;
+export type ConnectorEntityPatchRequestBody = z.infer<
+  typeof ConnectorEntityPatchRequestBodySchema
+>;
 
 export const ConnectorEntityPatchResponsePayloadSchema = z.object({
   connectorEntity: ConnectorEntitySchema,
 });
 
-export type ConnectorEntityPatchResponsePayload = z.infer<typeof ConnectorEntityPatchResponsePayloadSchema>;
+export type ConnectorEntityPatchResponsePayload = z.infer<
+  typeof ConnectorEntityPatchResponsePayloadSchema
+>;
 
 // ── Delete ───────────────────────────────────────────────────────────
 
@@ -106,7 +139,9 @@ export const ConnectorEntityDeleteResponsePayloadSchema = z.object({
   }),
 });
 
-export type ConnectorEntityDeleteResponsePayload = z.infer<typeof ConnectorEntityDeleteResponsePayloadSchema>;
+export type ConnectorEntityDeleteResponsePayload = z.infer<
+  typeof ConnectorEntityDeleteResponsePayloadSchema
+>;
 
 // ── Impact ───────────────────────────────────────────────────────────
 
@@ -118,4 +153,6 @@ export const ConnectorEntityImpactResponsePayloadSchema = z.object({
   refFieldMappings: z.number(),
 });
 
-export type ConnectorEntityImpactResponsePayload = z.infer<typeof ConnectorEntityImpactResponsePayloadSchema>;
+export type ConnectorEntityImpactResponsePayload = z.infer<
+  typeof ConnectorEntityImpactResponsePayloadSchema
+>;

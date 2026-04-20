@@ -1,6 +1,10 @@
 import React from "react";
 
-import type { SelectOption, FetchPageParams, FetchPageResult } from "./types.js";
+import type {
+  SelectOption,
+  FetchPageParams,
+  FetchPageResult,
+} from "./types.js";
 
 /** Configuration for useInfiniteFilterOptions. Define at module scope for a stable reference. */
 export interface InfiniteFilterOptionsConfig<TResponse, TItem> {
@@ -31,7 +35,9 @@ function buildQueryString(params: Record<string, string | number>): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null) continue;
-    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+    parts.push(
+      `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`
+    );
   }
   return parts.length ? `?${parts.join("&")}` : "";
 }

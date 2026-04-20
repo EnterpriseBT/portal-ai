@@ -24,7 +24,10 @@ export class EntityTagModel extends CoreModel<EntityTag> {
   }
 }
 
-export class EntityTagModelFactory extends ModelFactory<EntityTag, EntityTagModel> {
+export class EntityTagModelFactory extends ModelFactory<
+  EntityTag,
+  EntityTagModel
+> {
   create(createdBy: string): EntityTagModel {
     const baseModel = this._coreModelFactory.create(createdBy);
     const entityTagModel = new EntityTagModel(baseModel.toJSON());

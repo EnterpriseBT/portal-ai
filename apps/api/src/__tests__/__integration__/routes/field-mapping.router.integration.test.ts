@@ -313,9 +313,7 @@ describe("Field Mapping Router", () => {
       );
 
       const res = await request(app)
-        .get(
-          `/api/field-mappings?connectorEntityId=${connectorEntityId}`
-        )
+        .get(`/api/field-mappings?connectorEntityId=${connectorEntityId}`)
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
@@ -335,19 +333,17 @@ describe("Field Mapping Router", () => {
         .insert(columnDefinitions)
         .values([colDef2, colDef3] as never);
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(fieldMappings)
-        .values([
-          createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-            sourceField: "field_a",
-          }),
-          createFieldMap(organizationId, connectorEntityId, colDef2.id, {
-            sourceField: "field_b",
-          }),
-          createFieldMap(organizationId, connectorEntityId, colDef3.id, {
-            sourceField: "field_c",
-          }),
-        ] as never);
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values([
+        createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+          sourceField: "field_a",
+        }),
+        createFieldMap(organizationId, connectorEntityId, colDef2.id, {
+          sourceField: "field_b",
+        }),
+        createFieldMap(organizationId, connectorEntityId, colDef3.id, {
+          sourceField: "field_c",
+        }),
+      ] as never);
 
       const res = await request(app)
         .get(
@@ -369,16 +365,14 @@ describe("Field Mapping Router", () => {
         .insert(columnDefinitions)
         .values(colDef2 as never);
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(fieldMappings)
-        .values([
-          createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-            sourceField: "mapped_a",
-          }),
-          createFieldMap(organizationId, connectorEntityId, colDef2.id, {
-            sourceField: "mapped_b",
-          }),
-        ] as never);
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values([
+        createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+          sourceField: "mapped_a",
+        }),
+        createFieldMap(organizationId, connectorEntityId, colDef2.id, {
+          sourceField: "mapped_b",
+        }),
+      ] as never);
 
       const res = await request(app)
         .get(
@@ -392,8 +386,12 @@ describe("Field Mapping Router", () => {
     });
 
     it("should scope results to the requested connector entity", async () => {
-      const { connectorEntityId, columnDefinitionId, connectorInstanceId, organizationId } =
-        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const {
+        connectorEntityId,
+        columnDefinitionId,
+        connectorInstanceId,
+        organizationId,
+      } = await seedFullChain(db as ReturnType<typeof drizzle>);
 
       // Create a second entity
       const entity2 = createConnEntity(organizationId, connectorInstanceId);
@@ -401,21 +399,17 @@ describe("Field Mapping Router", () => {
         .insert(connectorEntities)
         .values(entity2 as never);
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(fieldMappings)
-        .values([
-          createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-            sourceField: "entity1_field",
-          }),
-          createFieldMap(organizationId, entity2.id, columnDefinitionId, {
-            sourceField: "entity2_field",
-          }),
-        ] as never);
+      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values([
+        createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
+          sourceField: "entity1_field",
+        }),
+        createFieldMap(organizationId, entity2.id, columnDefinitionId, {
+          sourceField: "entity2_field",
+        }),
+      ] as never);
 
       const res = await request(app)
-        .get(
-          `/api/field-mappings?connectorEntityId=${connectorEntityId}`
-        )
+        .get(`/api/field-mappings?connectorEntityId=${connectorEntityId}`)
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
@@ -442,13 +436,17 @@ describe("Field Mapping Router", () => {
     });
 
     it("should return a field mapping by id", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        sourceField: "my_source",
-      });
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          sourceField: "my_source",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -464,14 +462,18 @@ describe("Field Mapping Router", () => {
     });
 
     it("should not return soft-deleted field mappings", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        deleted: now,
-        deletedBy: "SYSTEM_TEST",
-      });
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          deleted: now,
+          deletedBy: "SYSTEM_TEST",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -539,9 +541,8 @@ describe("Field Mapping Router", () => {
     });
 
     it("should create a field mapping successfully", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const res = await request(app)
         .post("/api/field-mappings")
@@ -565,14 +566,18 @@ describe("Field Mapping Router", () => {
     });
 
     it("should return 409 when a field mapping already exists for the same entity and column definition", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
       // Seed an existing field mapping
-      const existing = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        sourceField: "existing_field",
-      });
+      const existing = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          sourceField: "existing_field",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(existing as never);
@@ -594,13 +599,22 @@ describe("Field Mapping Router", () => {
     });
 
     it("should allow creating a field mapping for the same column definition on a different entity", async () => {
-      const { connectorEntityId, columnDefinitionId, connectorInstanceId, organizationId } =
-        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const {
+        connectorEntityId,
+        columnDefinitionId,
+        connectorInstanceId,
+        organizationId,
+      } = await seedFullChain(db as ReturnType<typeof drizzle>);
 
       // Seed an existing field mapping on entity 1
-      const existing = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        sourceField: "entity1_field",
-      });
+      const existing = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          sourceField: "entity1_field",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(existing as never);
@@ -628,9 +642,8 @@ describe("Field Mapping Router", () => {
     });
 
     it("created field mapping should be retrievable via GET", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const createRes = await request(app)
         .post("/api/field-mappings")
@@ -658,7 +671,9 @@ describe("Field Mapping Router", () => {
 
   describe("PATCH /api/field-mappings/:id", () => {
     it("should return 404 when field mapping does not exist", async () => {
-      const { columnDefinitionId } = await seedFullChain(db as ReturnType<typeof drizzle>);
+      const { columnDefinitionId } = await seedFullChain(
+        db as ReturnType<typeof drizzle>
+      );
 
       const res = await request(app)
         .patch(`/api/field-mappings/${generateId()}`)
@@ -670,13 +685,17 @@ describe("Field Mapping Router", () => {
     });
 
     it("should update a field mapping", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        sourceField: "original",
-      });
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          sourceField: "original",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -684,7 +703,11 @@ describe("Field Mapping Router", () => {
       const res = await request(app)
         .patch(`/api/field-mappings/${mapping.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ sourceField: "updated_field", columnDefinitionId, isPrimaryKey: true });
+        .send({
+          sourceField: "updated_field",
+          columnDefinitionId,
+          isPrimaryKey: true,
+        });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -701,7 +724,9 @@ describe("Field Mapping Router", () => {
         db as ReturnType<typeof drizzle>
       );
 
-      const refArrayColDef = createColDef(organizationId, { type: "reference-array" });
+      const refArrayColDef = createColDef(organizationId, {
+        type: "reference-array",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values(refArrayColDef as never);
@@ -728,13 +753,17 @@ describe("Field Mapping Router", () => {
 
   describe("PATCH /api/field-mappings/:id — refNormalizedKey", () => {
     it("can set refNormalizedKey and refEntityKey", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mappingA = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        sourceField: "field_a",
-      });
+      const mappingA = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          sourceField: "field_a",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mappingA as never);
@@ -742,7 +771,12 @@ describe("Field Mapping Router", () => {
       const res = await request(app)
         .patch(`/api/field-mappings/${mappingA.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ sourceField: "field_a", columnDefinitionId, refNormalizedKey: "user_id", refEntityKey: "users" });
+        .send({
+          sourceField: "field_a",
+          columnDefinitionId,
+          refNormalizedKey: "user_id",
+          refEntityKey: "users",
+        });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.fieldMapping.refNormalizedKey).toBe("user_id");
@@ -750,15 +784,19 @@ describe("Field Mapping Router", () => {
     });
 
     it("can clear refNormalizedKey back to null", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mappingA = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        sourceField: "field_a",
-        refNormalizedKey: "user_id",
-        refEntityKey: "users",
-      });
+      const mappingA = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          sourceField: "field_a",
+          refNormalizedKey: "user_id",
+          refEntityKey: "users",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mappingA as never);
@@ -766,7 +804,12 @@ describe("Field Mapping Router", () => {
       const res = await request(app)
         .patch(`/api/field-mappings/${mappingA.id}`)
         .set("Authorization", "Bearer test-token")
-        .send({ sourceField: "field_a", columnDefinitionId, refNormalizedKey: null, refEntityKey: null });
+        .send({
+          sourceField: "field_a",
+          columnDefinitionId,
+          refNormalizedKey: null,
+          refEntityKey: null,
+        });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.fieldMapping.refNormalizedKey).toBeNull();
@@ -788,20 +831,32 @@ describe("Field Mapping Router", () => {
     });
 
     it("should soft-delete a field mapping and cascade to entity group members", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
 
       // Create a group with a member that uses this field mapping as linkFieldMappingId
       const group = createEntityGroup(organizationId);
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
-      const member = createEntityGroupMember(organizationId, group.id, connectorEntityId, mapping.id);
-      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values(member as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
+      const member = createEntityGroupMember(
+        organizationId,
+        group.id,
+        connectorEntityId,
+        mapping.id
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values(member as never);
 
       const deleteRes = await request(app)
         .delete(`/api/field-mappings/${mapping.id}`)
@@ -825,11 +880,14 @@ describe("Field Mapping Router", () => {
     });
 
     it("should return cascaded.entityGroupMembers: 0 when no dependent group members exist", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -844,11 +902,14 @@ describe("Field Mapping Router", () => {
     });
 
     it("deleted field mapping should no longer appear in GET /api/field-mappings list", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -877,29 +938,57 @@ describe("Field Mapping Router", () => {
 
   describe("GET /api/field-mappings/:id/impact", () => {
     it("should return correct entityGroupMembers count", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId, connectorInstanceId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const {
+        connectorEntityId,
+        columnDefinitionId,
+        organizationId,
+        connectorInstanceId,
+      } = await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
 
       // Create a group with two members using this field mapping
       const group = createEntityGroup(organizationId);
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
 
       // Need a second entity for the second member
       const entity2 = createConnEntity(organizationId, connectorInstanceId);
-      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity2 as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity2 as never);
 
       // Need a second field mapping for entity2 that maps to the same column def
-      const mapping2 = createFieldMap(organizationId, entity2.id, columnDefinitionId, { sourceField: "other_field" });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping2 as never);
+      const mapping2 = createFieldMap(
+        organizationId,
+        entity2.id,
+        columnDefinitionId,
+        { sourceField: "other_field" }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping2 as never);
 
-      const member1 = createEntityGroupMember(organizationId, group.id, connectorEntityId, mapping.id);
-      const member2 = createEntityGroupMember(organizationId, group.id, entity2.id, mapping.id);
+      const member1 = createEntityGroupMember(
+        organizationId,
+        group.id,
+        connectorEntityId,
+        mapping.id
+      );
+      const member2 = createEntityGroupMember(
+        organizationId,
+        group.id,
+        entity2.id,
+        mapping.id
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(entityGroupMembers)
         .values([member1, member2] as never);
@@ -928,20 +1017,27 @@ describe("Field Mapping Router", () => {
 
   describe("GET /api/field-mappings/:id/validate-bidirectional", () => {
     it("returns 400 when the column type is not reference-array", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
       // columnDefinitionId has type "string" by default
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
 
       const res = await request(app)
         .get(`/api/field-mappings/${mapping.id}/validate-bidirectional`)
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(400);
-      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED);
+      expect(res.body.code).toBe(
+        ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED
+      );
     });
 
     it("returns isConsistent: null when ref fields are not set", async () => {
@@ -949,11 +1045,21 @@ describe("Field Mapping Router", () => {
         db as ReturnType<typeof drizzle>
       );
 
-      const refArrayColDef = createColDef(organizationId, { type: "reference-array" });
-      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(refArrayColDef as never);
+      const refArrayColDef = createColDef(organizationId, {
+        type: "reference-array",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(refArrayColDef as never);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, refArrayColDef.id);
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        refArrayColDef.id
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
 
       const res = await request(app)
         .get(`/api/field-mappings/${mapping.id}/validate-bidirectional`)
@@ -965,18 +1071,22 @@ describe("Field Mapping Router", () => {
     });
 
     it("returns isConsistent: true when arrays are in agreement", async () => {
-      const { connectorEntityId, connectorInstanceId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, connectorInstanceId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const entityBKey = `ent_b_${generateId().replace(/-/g, "").slice(0, 8)}`;
       const entityB = createConnEntity(organizationId, connectorInstanceId, {
         key: entityBKey,
       });
-      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entityB as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entityB as never);
 
       // Get entity A's key for ref fields
-      const [entityA] = await (db as ReturnType<typeof drizzle>).select().from(connectorEntities).where(eq(connectorEntities.id, connectorEntityId));
+      const [entityA] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(connectorEntities)
+        .where(eq(connectorEntities.id, connectorEntityId));
 
       const colDefA = createColDef(organizationId, {
         type: "reference-array",
@@ -993,13 +1103,20 @@ describe("Field Mapping Router", () => {
       const nkA = `friends_a_${generateId().replace(/-/g, "").slice(0, 6)}`;
       const nkB = `friends_b_${generateId().replace(/-/g, "").slice(0, 6)}`;
 
-      const mappingA = createFieldMap(organizationId, connectorEntityId, colDefA.id, {
-        sourceField: "friends_a",
-        normalizedKey: nkA,
-        refEntityKey: entityBKey,
-        refNormalizedKey: nkB,
-      });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mappingA as never);
+      const mappingA = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        colDefA.id,
+        {
+          sourceField: "friends_a",
+          normalizedKey: nkA,
+          refEntityKey: entityBKey,
+          refNormalizedKey: nkB,
+        }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mappingA as never);
 
       const mappingB = createFieldMap(organizationId, entityB.id, colDefB.id, {
         sourceField: "friends_b",
@@ -1007,13 +1124,47 @@ describe("Field Mapping Router", () => {
         refEntityKey: entityA.key,
         refNormalizedKey: nkA,
       });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mappingB as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mappingB as never);
 
       // Consistent: A["a1"] → ["b1"] and B["b1"] → ["a1"]
-      await (db as ReturnType<typeof drizzle>).insert(schema.entityRecords).values([
-        { id: generateId(), organizationId, connectorEntityId, sourceId: "a1", data: {}, normalizedData: { [nkA]: ["b1"] }, checksum: "ca", syncedAt: now, created: now, createdBy: "test", updated: null, updatedBy: null, deleted: null, deletedBy: null },
-        { id: generateId(), organizationId, connectorEntityId: entityB.id, sourceId: "b1", data: {}, normalizedData: { [nkB]: ["a1"] }, checksum: "cb", syncedAt: now, created: now, createdBy: "test", updated: null, updatedBy: null, deleted: null, deletedBy: null },
-      ] as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.entityRecords)
+        .values([
+          {
+            id: generateId(),
+            organizationId,
+            connectorEntityId,
+            sourceId: "a1",
+            data: {},
+            normalizedData: { [nkA]: ["b1"] },
+            checksum: "ca",
+            syncedAt: now,
+            created: now,
+            createdBy: "test",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+          {
+            id: generateId(),
+            organizationId,
+            connectorEntityId: entityB.id,
+            sourceId: "b1",
+            data: {},
+            normalizedData: { [nkB]: ["a1"] },
+            checksum: "cb",
+            syncedAt: now,
+            created: now,
+            createdBy: "test",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+        ] as never);
 
       const res = await request(app)
         .get(`/api/field-mappings/${mappingA.id}/validate-bidirectional`)
@@ -1026,17 +1177,21 @@ describe("Field Mapping Router", () => {
     });
 
     it("returns isConsistent: false with inconsistentRecordIds when arrays diverge", async () => {
-      const { connectorEntityId, connectorInstanceId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, connectorInstanceId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const entityBKey = `ent_b2_${generateId().replace(/-/g, "").slice(0, 7)}`;
       const entityB = createConnEntity(organizationId, connectorInstanceId, {
         key: entityBKey,
       });
-      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entityB as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entityB as never);
 
-      const [entityA] = await (db as ReturnType<typeof drizzle>).select().from(connectorEntities).where(eq(connectorEntities.id, connectorEntityId));
+      const [entityA] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(connectorEntities)
+        .where(eq(connectorEntities.id, connectorEntityId));
 
       const colDefA = createColDef(organizationId, {
         type: "reference-array",
@@ -1053,13 +1208,20 @@ describe("Field Mapping Router", () => {
       const nkA = `tags_a_${generateId().replace(/-/g, "").slice(0, 6)}`;
       const nkB = `tags_b_${generateId().replace(/-/g, "").slice(0, 6)}`;
 
-      const mappingA = createFieldMap(organizationId, connectorEntityId, colDefA.id, {
-        sourceField: "tags_a",
-        normalizedKey: nkA,
-        refEntityKey: entityBKey,
-        refNormalizedKey: nkB,
-      });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mappingA as never);
+      const mappingA = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        colDefA.id,
+        {
+          sourceField: "tags_a",
+          normalizedKey: nkA,
+          refEntityKey: entityBKey,
+          refNormalizedKey: nkB,
+        }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mappingA as never);
 
       const mappingB = createFieldMap(organizationId, entityB.id, colDefB.id, {
         sourceField: "tags_b",
@@ -1067,14 +1229,48 @@ describe("Field Mapping Router", () => {
         refEntityKey: entityA.key,
         refNormalizedKey: nkA,
       });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mappingB as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mappingB as never);
 
       // Inconsistent: A["a1"] → ["b1"] but B["b1"] → [] (missing back-ref)
       const recAId = generateId();
-      await (db as ReturnType<typeof drizzle>).insert(schema.entityRecords).values([
-        { id: recAId, organizationId, connectorEntityId, sourceId: "a1", data: {}, normalizedData: { [nkA]: ["b1"] }, checksum: "ca", syncedAt: now, created: now, createdBy: "test", updated: null, updatedBy: null, deleted: null, deletedBy: null },
-        { id: generateId(), organizationId, connectorEntityId: entityB.id, sourceId: "b1", data: {}, normalizedData: { [nkB]: [] }, checksum: "cb", syncedAt: now, created: now, createdBy: "test", updated: null, updatedBy: null, deleted: null, deletedBy: null },
-      ] as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.entityRecords)
+        .values([
+          {
+            id: recAId,
+            organizationId,
+            connectorEntityId,
+            sourceId: "a1",
+            data: {},
+            normalizedData: { [nkA]: ["b1"] },
+            checksum: "ca",
+            syncedAt: now,
+            created: now,
+            createdBy: "test",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+          {
+            id: generateId(),
+            organizationId,
+            connectorEntityId: entityB.id,
+            sourceId: "b1",
+            data: {},
+            normalizedData: { [nkB]: [] },
+            checksum: "cb",
+            syncedAt: now,
+            created: now,
+            createdBy: "test",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+        ] as never);
 
       const res = await request(app)
         .get(`/api/field-mappings/${mappingA.id}/validate-bidirectional`)
@@ -1137,14 +1333,18 @@ describe("Field Mapping Router", () => {
     });
 
     it("should reject duplicate normalizedKey within the same connectorEntityId", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
       // Seed existing mapping with normalizedKey "email"
-      const existing = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        normalizedKey: "email",
-      });
+      const existing = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          normalizedKey: "email",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(existing as never);
@@ -1166,12 +1366,18 @@ describe("Field Mapping Router", () => {
         });
 
       expect(res.status).toBe(409);
-      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY);
+      expect(res.body.code).toBe(
+        ApiCode.FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY
+      );
     });
 
     it("should allow same normalizedKey across different entities", async () => {
-      const { connectorEntityId, columnDefinitionId, connectorInstanceId, organizationId } =
-        await seedFullChain(db as ReturnType<typeof drizzle>);
+      const {
+        connectorEntityId,
+        columnDefinitionId,
+        connectorInstanceId,
+        organizationId,
+      } = await seedFullChain(db as ReturnType<typeof drizzle>);
 
       // Create mapping on entity 1
       await request(app)
@@ -1207,11 +1413,14 @@ describe("Field Mapping Router", () => {
 
   describe("Phase 4 — PATCH with new fields", () => {
     it("should accept and persist normalizedKey, required, defaultValue, format, enumValues", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -1239,21 +1448,30 @@ describe("Field Mapping Router", () => {
     });
 
     it("should reject duplicate normalizedKey within the same entity on PATCH", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
       const colDef2 = createColDef(organizationId);
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values(colDef2 as never);
 
-      const mappingA = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        normalizedKey: "field_a",
-      });
-      const mappingB = createFieldMap(organizationId, connectorEntityId, colDef2.id, {
-        normalizedKey: "field_b",
-      });
+      const mappingA = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          normalizedKey: "field_a",
+        }
+      );
+      const mappingB = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        colDef2.id,
+        {
+          normalizedKey: "field_b",
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values([mappingA, mappingB] as never);
@@ -1269,15 +1487,20 @@ describe("Field Mapping Router", () => {
         });
 
       expect(res.status).toBe(409);
-      expect(res.body.code).toBe(ApiCode.FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY);
+      expect(res.body.code).toBe(
+        ApiCode.FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY
+      );
     });
 
     it("should NOT trigger revalidation when only sourceField changes", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -1317,11 +1540,14 @@ describe("Field Mapping Router", () => {
 
     for (const { field, value } of revalidationFields) {
       it(`should trigger revalidation when ${field} changes`, async () => {
-        const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-          db as ReturnType<typeof drizzle>
-        );
+        const { connectorEntityId, columnDefinitionId, organizationId } =
+          await seedFullChain(db as ReturnType<typeof drizzle>);
 
-        const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+        const mapping = createFieldMap(
+          organizationId,
+          connectorEntityId,
+          columnDefinitionId
+        );
         await (db as ReturnType<typeof drizzle>)
           .insert(fieldMappings)
           .values(mapping as never);
@@ -1349,7 +1575,9 @@ describe("Field Mapping Router", () => {
 
         expect(jobRows.length).toBeGreaterThanOrEqual(1);
         const revalJob = jobRows.find(
-          (j) => (j.metadata as Record<string, unknown>).connectorEntityId === connectorEntityId
+          (j) =>
+            (j.metadata as Record<string, unknown>).connectorEntityId ===
+            connectorEntityId
         );
         expect(revalJob).toBeDefined();
       });
@@ -1358,17 +1586,21 @@ describe("Field Mapping Router", () => {
 
   describe("Phase 4 — GET response includes new fields", () => {
     it("should include normalizedKey, required, defaultValue, format, enumValues in response", async () => {
-      const { connectorEntityId, columnDefinitionId, organizationId } = await seedFullChain(
-        db as ReturnType<typeof drizzle>
-      );
+      const { connectorEntityId, columnDefinitionId, organizationId } =
+        await seedFullChain(db as ReturnType<typeof drizzle>);
 
-      const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId, {
-        normalizedKey: "test_key",
-        required: true,
-        defaultValue: "default_val",
-        format: "uppercase",
-        enumValues: ["A", "B"],
-      });
+      const mapping = createFieldMap(
+        organizationId,
+        connectorEntityId,
+        columnDefinitionId,
+        {
+          normalizedKey: "test_key",
+          required: true,
+          defaultValue: "default_val",
+          format: "uppercase",
+          enumValues: ["A", "B"],
+        }
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -1392,10 +1624,11 @@ describe("Field Mapping Router", () => {
   describe("Write capability guards", () => {
     describe("POST /api/field-mappings", () => {
       it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when instance write is disabled", async () => {
-        const { connectorEntityId, columnDefinitionId } = await seedWithCapabilities(
-          db as ReturnType<typeof drizzle>,
-          { definitionWrite: true, enabledCapabilityFlags: { write: false } }
-        );
+        const { connectorEntityId, columnDefinitionId } =
+          await seedWithCapabilities(db as ReturnType<typeof drizzle>, {
+            definitionWrite: true,
+            enabledCapabilityFlags: { write: false },
+          });
 
         const res = await request(app)
           .post("/api/field-mappings")
@@ -1410,17 +1643,21 @@ describe("Field Mapping Router", () => {
         expect(res.status).toBe(422);
         expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
       });
-
     });
 
     describe("PATCH /api/field-mappings/:id", () => {
       it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when instance write is disabled", async () => {
-        const { connectorEntityId, columnDefinitionId, organizationId } = await seedWithCapabilities(
-          db as ReturnType<typeof drizzle>,
-          { definitionWrite: true, enabledCapabilityFlags: { write: false } }
-        );
+        const { connectorEntityId, columnDefinitionId, organizationId } =
+          await seedWithCapabilities(db as ReturnType<typeof drizzle>, {
+            definitionWrite: true,
+            enabledCapabilityFlags: { write: false },
+          });
 
-        const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+        const mapping = createFieldMap(
+          organizationId,
+          connectorEntityId,
+          columnDefinitionId
+        );
         await (db as ReturnType<typeof drizzle>)
           .insert(fieldMappings)
           .values(mapping as never);
@@ -1435,12 +1672,17 @@ describe("Field Mapping Router", () => {
       });
 
       it("should return 422 when enabledCapabilityFlags is null", async () => {
-        const { connectorEntityId, columnDefinitionId, organizationId } = await seedWithCapabilities(
-          db as ReturnType<typeof drizzle>,
-          { definitionWrite: true, enabledCapabilityFlags: null }
-        );
+        const { connectorEntityId, columnDefinitionId, organizationId } =
+          await seedWithCapabilities(db as ReturnType<typeof drizzle>, {
+            definitionWrite: true,
+            enabledCapabilityFlags: null,
+          });
 
-        const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+        const mapping = createFieldMap(
+          organizationId,
+          connectorEntityId,
+          columnDefinitionId
+        );
         await (db as ReturnType<typeof drizzle>)
           .insert(fieldMappings)
           .values(mapping as never);
@@ -1457,12 +1699,17 @@ describe("Field Mapping Router", () => {
 
     describe("DELETE /api/field-mappings/:id", () => {
       it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when instance write is disabled", async () => {
-        const { connectorEntityId, columnDefinitionId, organizationId } = await seedWithCapabilities(
-          db as ReturnType<typeof drizzle>,
-          { definitionWrite: true, enabledCapabilityFlags: { write: false } }
-        );
+        const { connectorEntityId, columnDefinitionId, organizationId } =
+          await seedWithCapabilities(db as ReturnType<typeof drizzle>, {
+            definitionWrite: true,
+            enabledCapabilityFlags: { write: false },
+          });
 
-        const mapping = createFieldMap(organizationId, connectorEntityId, columnDefinitionId);
+        const mapping = createFieldMap(
+          organizationId,
+          connectorEntityId,
+          columnDefinitionId
+        );
         await (db as ReturnType<typeof drizzle>)
           .insert(fieldMappings)
           .values(mapping as never);
@@ -1474,7 +1721,6 @@ describe("Field Mapping Router", () => {
         expect(res.status).toBe(422);
         expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED);
       });
-
     });
   });
 });

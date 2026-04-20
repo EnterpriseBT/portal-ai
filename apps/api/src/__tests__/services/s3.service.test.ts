@@ -8,9 +8,15 @@ const mockGetSignedUrl = jest.fn<any>();
 
 jest.unstable_mockModule("@aws-sdk/client-s3", () => ({
   S3Client: jest.fn().mockImplementation(() => ({ send: mockSend })),
-  HeadObjectCommand: jest.fn().mockImplementation((input: unknown) => ({ input })),
-  PutObjectCommand: jest.fn().mockImplementation((input: unknown) => ({ input })),
-  GetObjectCommand: jest.fn().mockImplementation((input: unknown) => ({ input })),
+  HeadObjectCommand: jest
+    .fn()
+    .mockImplementation((input: unknown) => ({ input })),
+  PutObjectCommand: jest
+    .fn()
+    .mockImplementation((input: unknown) => ({ input })),
+  GetObjectCommand: jest
+    .fn()
+    .mockImplementation((input: unknown) => ({ input })),
 }));
 
 jest.unstable_mockModule("@aws-sdk/s3-request-presigner", () => ({
@@ -31,7 +37,9 @@ describe("S3Service", () => {
 
   describe("createPresignedUpload()", () => {
     it("should return a presigned URL", async () => {
-      mockGetSignedUrl.mockResolvedValue("https://s3.amazonaws.com/presigned-url");
+      mockGetSignedUrl.mockResolvedValue(
+        "https://s3.amazonaws.com/presigned-url"
+      );
 
       const url = await S3Service.createPresignedUpload(
         "uploads/org1/job1/file.csv",
@@ -134,7 +142,9 @@ describe("S3Service", () => {
     it("should rethrow non-NotFound errors", async () => {
       mockSend.mockRejectedValue(new Error("Access Denied"));
 
-      await expect(S3Service.headObject("key")).rejects.toThrow("Access Denied");
+      await expect(S3Service.headObject("key")).rejects.toThrow(
+        "Access Denied"
+      );
     });
   });
 });

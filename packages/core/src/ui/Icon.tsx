@@ -97,7 +97,7 @@ export enum IconName {
   PushPin = "push_pin",
   SatelliteAlt = "satellite_alt",
   HelpOutline = "help_outline",
-  Portal = 'portal'
+  Portal = "portal",
 }
 
 export interface IconProps extends Omit<MuiSvgIconProps, "children"> {

@@ -87,7 +87,7 @@ describe("updateAccumulator", () => {
     expect(acc.sampleValues).toHaveLength(MAX_SAMPLE_VALUES_PER_COLUMN);
     expect(acc.sampleValues[0]).toBe("val0");
     expect(acc.sampleValues[MAX_SAMPLE_VALUES_PER_COLUMN - 1]).toBe(
-      `val${MAX_SAMPLE_VALUES_PER_COLUMN - 1}`,
+      `val${MAX_SAMPLE_VALUES_PER_COLUMN - 1}`
     );
   });
 });
@@ -116,7 +116,8 @@ describe("finalizeAccumulator", () => {
 
   it("propagates uniqueCapped flag", () => {
     const acc = createAccumulator("col");
-    for (let i = 0; i <= MAX_UNIQUE_VALUES; i++) updateAccumulator(acc, `v${i}`);
+    for (let i = 0; i <= MAX_UNIQUE_VALUES; i++)
+      updateAccumulator(acc, `v${i}`);
 
     const stat = finalizeAccumulator(acc);
     expect(stat.uniqueCapped).toBe(true);

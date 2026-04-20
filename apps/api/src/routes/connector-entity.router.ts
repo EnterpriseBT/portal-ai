@@ -1,5 +1,14 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, or, ilike, inArray, isNull, type SQL, type Column } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  ilike,
+  inArray,
+  isNull,
+  type SQL,
+  type Column,
+} from "drizzle-orm";
 import { db } from "../db/client.js";
 
 import { ConnectorEntityModelFactory } from "@portalai/core/models";
@@ -36,7 +45,10 @@ export const connectorEntityRouter = Router();
 connectorEntityRouter.use("/:connectorEntityId/records", entityRecordRouter);
 
 // Nest the entity tag assignments router under /:connectorEntityId/tags
-connectorEntityRouter.use("/:connectorEntityId/tags", entityTagAssignmentRouter);
+connectorEntityRouter.use(
+  "/:connectorEntityId/tags",
+  entityTagAssignmentRouter
+);
 
 /** Map of sortable field names to their Drizzle columns. */
 const SORTABLE_COLUMNS: Record<string, Column> = {
@@ -101,49 +113,97 @@ connectorEntityRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, connectorInstanceIds: connectorInstanceIdsRaw, include, tagIds: tagIdsRaw } =
-        ConnectorEntityListRequestQuerySchema.parse(req.query);
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        search,
+        connectorInstanceIds: connectorInstanceIdsRaw,
+        include,
+        tagIds: tagIdsRaw,
+      } = ConnectorEntityListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
-      const filters: SQL[] = [eq(connectorEntities.organizationId, organizationId)];
+      const filters: SQL[] = [
+        eq(connectorEntities.organizationId, organizationId),
+      ];
 
-      const connectorInstanceIds = connectorInstanceIdsRaw?.split(",").map((id) => id.trim()).filter(Boolean);
+      const connectorInstanceIds = connectorInstanceIdsRaw
+        ?.split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
       if (connectorInstanceIds?.length) {
-        filters.push(inArray(connectorEntities.connectorInstanceId, connectorInstanceIds));
+        filters.push(
+          inArray(connectorEntities.connectorInstanceId, connectorInstanceIds)
+        );
       }
 
       if (search) {
-        filters.push(or(ilike(connectorEntities.key, `%${search}%`), ilike(connectorEntities.label, `%${search}%`))!);
+        filters.push(
+          or(
+            ilike(connectorEntities.key, `%${search}%`),
+            ilike(connectorEntities.label, `%${search}%`)
+          )!
+        );
       }
 
-      const tagIds = tagIdsRaw?.split(",").map((id) => id.trim()).filter(Boolean);
+      const tagIds = tagIdsRaw
+        ?.split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
       if (tagIds?.length) {
         filters.push(
           inArray(
             connectorEntities.id,
-            db.selectDistinct({ id: entityTagAssignments.connectorEntityId })
+            db
+              .selectDistinct({ id: entityTagAssignments.connectorEntityId })
               .from(entityTagAssignments)
-              .where(and(inArray(entityTagAssignments.entityTagId, tagIds), isNull(entityTagAssignments.deleted)))
+              .where(
+                and(
+                  inArray(entityTagAssignments.entityTagId, tagIds),
+                  isNull(entityTagAssignments.deleted)
+                )
+              )
           )
         );
       }
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
+      const include_ = include
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const listOpts = {
+        limit,
+        offset,
+        orderBy: { column, direction: sortOrder },
+        include: include_,
+      };
 
       const [data, total] = await Promise.all([
         DbService.repository.connectorEntities.findMany(where, listOpts),
         DbService.repository.connectorEntities.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector entities");
+        throw new ApiError(
+          500,
+          ApiCode.CONNECTOR_ENTITY_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to list connector entities"
+        );
       });
 
-      type ResponsePayload = ConnectorEntityListResponsePayload | ConnectorEntityListWithMappingsResponsePayload | ConnectorEntityListWithInstanceResponsePayload | ConnectorEntityListWithTagsResponsePayload;
+      type ResponsePayload =
+        | ConnectorEntityListResponsePayload
+        | ConnectorEntityListWithMappingsResponsePayload
+        | ConnectorEntityListWithInstanceResponsePayload
+        | ConnectorEntityListWithTagsResponsePayload;
       return HttpService.success<ResponsePayload>(res, {
-        connectorEntities: data as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
+        connectorEntities:
+          data as unknown as ConnectorEntityListWithMappingsResponsePayload["connectorEntities"],
         total,
         limit,
         offset,
@@ -153,7 +213,17 @@ connectorEntityRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list connector entities"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector entities"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_ENTITY_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list connector entities"
+            )
+      );
     }
   }
 );
@@ -208,26 +278,49 @@ connectorEntityRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/connector-entities/:id called");
 
-      const connectorEntity = await DbService.repository.connectorEntities.findById(id).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector entity");
-      });
+      const connectorEntity = await DbService.repository.connectorEntities
+        .findById(id)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.CONNECTOR_ENTITY_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch connector entity"
+          );
+        });
 
       if (!connectorEntity) {
         return next(
-          new ApiError(404, ApiCode.CONNECTOR_ENTITY_NOT_FOUND, "Connector entity not found")
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
         );
       }
 
       return HttpService.success<ConnectorEntityGetResponsePayload>(res, {
-        connectorEntity: connectorEntity as unknown as ConnectorEntityGetResponsePayload["connectorEntity"],
+        connectorEntity:
+          connectorEntity as unknown as ConnectorEntityGetResponsePayload["connectorEntity"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch connector entity"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector entity"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_ENTITY_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch connector entity"
+            )
+      );
     }
   }
 );
@@ -304,17 +397,26 @@ connectorEntityRouter.post(
       const parsed = ConnectorEntityCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD, "Invalid connector entity payload")
+          new ApiError(
+            400,
+            ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD,
+            "Invalid connector entity payload"
+          )
         );
       }
 
       // Verify connector instance exists
-      const connectorInstance = await DbService.repository.connectorInstances.findById(
-        parsed.data.connectorInstanceId
-      );
+      const connectorInstance =
+        await DbService.repository.connectorInstances.findById(
+          parsed.data.connectorInstanceId
+        );
       if (!connectorInstance) {
         return next(
-          new ApiError(404, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND, "Connector instance not found")
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
         );
       }
 
@@ -329,21 +431,33 @@ connectorEntityRouter.post(
         label: parsed.data.label,
       });
 
-      const connectorEntity = await DbService.repository.connectorEntities.create(
-        model.parse()
-      ).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create connector entity");
-      });
+      const connectorEntity = await DbService.repository.connectorEntities
+        .create(model.parse())
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.CONNECTOR_ENTITY_CREATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to create connector entity"
+          );
+        });
 
       logger.info(
-        { id: connectorEntity.id, connectorInstanceId: parsed.data.connectorInstanceId },
+        {
+          id: connectorEntity.id,
+          connectorInstanceId: parsed.data.connectorInstanceId,
+        },
         "Connector entity created"
       );
 
       return HttpService.success<ConnectorEntityCreateResponsePayload>(
         res,
-        { connectorEntity: connectorEntity as unknown as ConnectorEntityCreateResponsePayload["connectorEntity"] },
+        {
+          connectorEntity:
+            connectorEntity as unknown as ConnectorEntityCreateResponsePayload["connectorEntity"],
+        },
         201
       );
     } catch (error) {
@@ -351,7 +465,17 @@ connectorEntityRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create connector entity"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_ENTITY_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create connector entity"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_ENTITY_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create connector entity"
+            )
+      );
     }
   }
 );
@@ -434,14 +558,23 @@ connectorEntityRouter.patch(
       const parsed = ConnectorEntityPatchRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD, "Invalid connector entity payload")
+          new ApiError(
+            400,
+            ApiCode.CONNECTOR_ENTITY_INVALID_PAYLOAD,
+            "Invalid connector entity payload"
+          )
         );
       }
 
-      const existing = await DbService.repository.connectorEntities.findById(id);
+      const existing =
+        await DbService.repository.connectorEntities.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.CONNECTOR_ENTITY_NOT_FOUND, "Connector entity not found")
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
         );
       }
 
@@ -459,14 +592,17 @@ connectorEntityRouter.patch(
           throw new ApiError(
             500,
             ApiCode.CONNECTOR_ENTITY_UPDATE_FAILED,
-            error instanceof Error ? error.message : "Failed to update connector entity"
+            error instanceof Error
+              ? error.message
+              : "Failed to update connector entity"
           );
         });
 
       logger.info({ id }, "Connector entity updated");
 
       return HttpService.success<ConnectorEntityPatchResponsePayload>(res, {
-        connectorEntity: updated as unknown as ConnectorEntityPatchResponsePayload["connectorEntity"],
+        connectorEntity:
+          updated as unknown as ConnectorEntityPatchResponsePayload["connectorEntity"],
       });
     } catch (error) {
       logger.error(
@@ -479,7 +615,9 @@ connectorEntityRouter.patch(
           : new ApiError(
               500,
               ApiCode.CONNECTOR_ENTITY_UPDATE_FAILED,
-              error instanceof Error ? error.message : "Failed to update connector entity"
+              error instanceof Error
+                ? error.message
+                : "Failed to update connector entity"
             )
       );
     }
@@ -542,23 +680,40 @@ connectorEntityRouter.get(
     try {
       const { id } = req.params;
 
-      const existing = await DbService.repository.connectorEntities.findById(id);
+      const existing =
+        await DbService.repository.connectorEntities.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.CONNECTOR_ENTITY_NOT_FOUND, "Connector entity not found")
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
         );
       }
 
       const entityIds = [id];
 
-      const [entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers, refFieldMappings] =
-        await Promise.all([
-          DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
-          DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
-          DbService.repository.entityTagAssignments.countByConnectorEntityIds(entityIds),
-          DbService.repository.entityGroupMembers.countByConnectorEntityIds(entityIds),
-          DbService.repository.fieldMappings.countByRefEntityKey(existing.key, id),
-        ]);
+      const [
+        entityRecords,
+        fieldMappings,
+        entityTagAssignments,
+        entityGroupMembers,
+        refFieldMappings,
+      ] = await Promise.all([
+        DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
+        DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
+        DbService.repository.entityTagAssignments.countByConnectorEntityIds(
+          entityIds
+        ),
+        DbService.repository.entityGroupMembers.countByConnectorEntityIds(
+          entityIds
+        ),
+        DbService.repository.fieldMappings.countByRefEntityKey(
+          existing.key,
+          id
+        ),
+      ]);
 
       return HttpService.success<ConnectorEntityImpactResponsePayload>(res, {
         entityRecords,
@@ -575,7 +730,13 @@ connectorEntityRouter.get(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.CONNECTOR_ENTITY_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector entity impact")
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_ENTITY_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch connector entity impact"
+            )
       );
     }
   }
@@ -647,21 +808,45 @@ connectorEntityRouter.delete(
 
       await ConnectorEntityValidationService.validateDelete(id);
 
-      const cascaded = await ConnectorEntityValidationService.executeDelete(id, userId)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(500, ApiCode.CONNECTOR_ENTITY_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete connector entity");
-        });
+      const cascaded = await ConnectorEntityValidationService.executeDelete(
+        id,
+        userId
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.CONNECTOR_ENTITY_DELETE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to delete connector entity"
+        );
+      });
 
-      logger.info({ id, cascaded }, "Connector entity soft-deleted with cascade");
+      logger.info(
+        { id, cascaded },
+        "Connector entity soft-deleted with cascade"
+      );
 
-      return HttpService.success<ConnectorEntityDeleteResponsePayload>(res, { id, cascaded });
+      return HttpService.success<ConnectorEntityDeleteResponsePayload>(res, {
+        id,
+        cascaded,
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to delete connector entity"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_ENTITY_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete connector entity"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_ENTITY_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete connector entity"
+            )
+      );
     }
   }
 );

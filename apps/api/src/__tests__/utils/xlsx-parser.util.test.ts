@@ -22,24 +22,27 @@ describe("parseXlsxStream", () => {
       ]);
 
       const results = [];
-      for await (const r of parseXlsxStream(toStream(buf), { fileName: "data.xlsx" })) {
+      for await (const r of parseXlsxStream(toStream(buf), {
+        fileName: "data.xlsx",
+      })) {
         results.push(r);
       }
       expect(results).toHaveLength(1);
     });
 
     it("sets fileName to '<orig>[<SheetName>]'", async () => {
-      const buf = await buildSingleSheetXlsx("Contacts", [
-        ["name"],
-        ["alice"],
-      ]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "data.xlsx" }));
+      const buf = await buildSingleSheetXlsx("Contacts", [["name"], ["alice"]]);
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "data.xlsx" })
+      );
       expect(r.fileName).toBe("data.xlsx[Contacts]");
     });
 
     it("sets delimiter to 'xlsx', hasHeader true, encoding 'utf-8'", async () => {
       const buf = await buildSingleSheetXlsx("S", [["a"], ["1"]]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }));
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
+      );
       expect(r.delimiter).toBe("xlsx");
       expect(r.hasHeader).toBe(true);
       expect(r.encoding).toBe("utf-8");
@@ -50,7 +53,9 @@ describe("parseXlsxStream", () => {
         ["name", "email", "age"],
         ["alice", "a@x.com", 30],
       ]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }));
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
+      );
       expect(r.headers).toEqual(["name", "email", "age"]);
     });
 
@@ -60,7 +65,7 @@ describe("parseXlsxStream", () => {
       const buf = await buildSingleSheetXlsx("S", rows);
 
       const [r] = await collect(
-        parseXlsxStream(toStream(buf), { fileName: "f.xlsx", maxSampleRows: 5 }),
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx", maxSampleRows: 5 })
       );
       expect(r.rowCount).toBe(100);
       expect(r.sampleRows).toHaveLength(5);
@@ -75,21 +80,22 @@ describe("parseXlsxStream", () => {
         ["b", 2],
         ["a", 3],
       ]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }));
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
+      );
       const letterStat = r.columnStats.find((s) => s.name === "letter")!;
       expect(letterStat.totalCount).toBe(3);
       expect(letterStat.uniqueCount).toBe(2);
-      expect(letterStat.sampleValues).toEqual(expect.arrayContaining(["a", "b"]));
+      expect(letterStat.sampleValues).toEqual(
+        expect.arrayContaining(["a", "b"])
+      );
     });
 
     it("rowCount excludes header row", async () => {
-      const buf = await buildSingleSheetXlsx("S", [
-        ["h"],
-        ["a"],
-        ["b"],
-        ["c"],
-      ]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }));
+      const buf = await buildSingleSheetXlsx("S", [["h"], ["a"], ["b"], ["c"]]);
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
+      );
       expect(r.rowCount).toBe(3);
     });
   });
@@ -101,7 +107,7 @@ describe("parseXlsxStream", () => {
         Deals: [["title"], ["d1"], ["d2"]],
       });
       const results = await collect(
-        parseXlsxStream(toStream(buf), { fileName: "data.xlsx" }),
+        parseXlsxStream(toStream(buf), { fileName: "data.xlsx" })
       );
       expect(results.map((r) => r.fileName)).toEqual([
         "data.xlsx[Contacts]",
@@ -118,7 +124,7 @@ describe("parseXlsxStream", () => {
         Real: [["x"], ["1"]],
       });
       const results = await collect(
-        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }),
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
       );
       expect(results.map((r) => r.fileName)).toEqual(["f.xlsx[Real]"]);
     });
@@ -127,31 +133,26 @@ describe("parseXlsxStream", () => {
   describe("data types", () => {
     it("converts Date cells to ISO 8601 strings", async () => {
       const date = new Date("2025-04-15T12:34:56.000Z");
-      const buf = await buildSingleSheetXlsx("S", [
-        ["when"],
-        [date],
-      ]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }));
+      const buf = await buildSingleSheetXlsx("S", [["when"], [date]]);
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
+      );
       expect(r.sampleRows[0]).toEqual([date.toISOString()]);
     });
 
     it("converts numbers to string representation", async () => {
-      const buf = await buildSingleSheetXlsx("S", [
-        ["n"],
-        [42],
-        [3.14],
-      ]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }));
+      const buf = await buildSingleSheetXlsx("S", [["n"], [42], [3.14]]);
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
+      );
       expect(r.sampleRows).toEqual([["42"], ["3.14"]]);
     });
 
     it("converts boolean cells to 'true' / 'false'", async () => {
-      const buf = await buildSingleSheetXlsx("S", [
-        ["b"],
-        [true],
-        [false],
-      ]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }));
+      const buf = await buildSingleSheetXlsx("S", [["b"], [true], [false]]);
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
+      );
       expect(r.sampleRows).toEqual([["true"], ["false"]]);
     });
 
@@ -160,7 +161,9 @@ describe("parseXlsxStream", () => {
         ["a", "b"],
         ["x", null],
       ]);
-      const [r] = await collect(parseXlsxStream(toStream(buf), { fileName: "f.xlsx" }));
+      const [r] = await collect(
+        parseXlsxStream(toStream(buf), { fileName: "f.xlsx" })
+      );
       expect(r.sampleRows[0]).toEqual(["x", ""]);
     });
   });
@@ -169,8 +172,11 @@ describe("parseXlsxStream", () => {
     it("throws ProcessorError('XLSX_PARSE_FAILED') for corrupted input", async () => {
       const corrupt = Buffer.from("not a real xlsx file");
       await expect(
-        collect(parseXlsxStream(toStream(corrupt), { fileName: "bad.xlsx" })),
-      ).rejects.toMatchObject({ name: "ProcessorError", code: "XLSX_PARSE_FAILED" });
+        collect(parseXlsxStream(toStream(corrupt), { fileName: "bad.xlsx" }))
+      ).rejects.toMatchObject({
+        name: "ProcessorError",
+        code: "XLSX_PARSE_FAILED",
+      });
     });
   });
 });
@@ -192,8 +198,11 @@ describe("xlsxSheetRowIterator", () => {
   it("throws ProcessorError('UPLOAD_SHEET_NOT_FOUND') when sheet missing", async () => {
     const buf = await buildSingleSheetXlsx("Contacts", [["name"], ["alice"]]);
     await expect(
-      collect(xlsxSheetRowIterator(toStream(buf), "Nope")),
-    ).rejects.toMatchObject({ name: "ProcessorError", code: "UPLOAD_SHEET_NOT_FOUND" });
+      collect(xlsxSheetRowIterator(toStream(buf), "Nope"))
+    ).rejects.toMatchObject({
+      name: "ProcessorError",
+      code: "UPLOAD_SHEET_NOT_FOUND",
+    });
   });
 
   it("is consumable with for await (async-iterable shape)", async () => {

@@ -11,7 +11,11 @@ import { ConnectorInstancePicker } from "./ConnectorInstancePicker.component";
 import { FormAlert } from "./FormAlert.component";
 import { ToolPackChip } from "./ToolPackChip.component";
 import type { ServerError } from "../utils/api.util";
-import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
+import {
+  validateWithSchema,
+  focusFirstInvalidField,
+  type FormErrors,
+} from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import { ToolPackUtil } from "../utils/tool-packs.util";
 
@@ -73,7 +77,10 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
     }
   }, [open]);
 
-  const handleChange = (field: keyof StationFormState, value: string | string[]) => {
+  const handleChange = (
+    field: keyof StationFormState,
+    value: string | string[]
+  ) => {
     const next = { ...form, [field]: value };
     setForm(next);
     if (touched[field]) {
@@ -126,7 +133,12 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -149,7 +161,9 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
           onBlur={() => handleBlur("name")}
           error={touched.name && !!errors.name}
           helperText={touched.name && errors.name}
-          slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched.name && !!errors.name },
+          }}
           required
           fullWidth
         />
@@ -182,7 +196,11 @@ export const CreateStationDialog: React.FC<CreateStationDialogProps> = ({
               required
               error={touched.toolPacks && !!errors.toolPacks}
               helperText={touched.toolPacks && errors.toolPacks}
-              inputProps={{ ...params.inputProps, "aria-invalid": touched.toolPacks && !!errors.toolPacks || undefined }}
+              inputProps={{
+                ...params.inputProps,
+                "aria-invalid":
+                  (touched.toolPacks && !!errors.toolPacks) || undefined,
+              }}
             />
           )}
         />

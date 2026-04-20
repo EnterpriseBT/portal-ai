@@ -1,3 +1,64 @@
+/**
+ * Frontend-facing types for the region editor.
+ *
+ * Enum-like shapes (orientation, header axis, bounds mode, records-axis
+ * source, skip rule, warning codes, etc.) are **derived** from
+ * `@portalai/core/contracts` — which re-exports from `@portalai/spreadsheet-parsing`.
+ * Do not introduce parallel string-literal unions; extend the parser module
+ * when a new value is needed so the backend remains the canonical owner.
+ *
+ * Draft shapes (`RegionDraft`, `ColumnBindingDraft`) are deliberately loose —
+ * the user is mid-edit, so optional fields and nullable entity IDs are
+ * expected. Validation happens via `validateRegion()` in
+ * `region-editor-validation.util.ts` before the draft is sent to the backend.
+ *
+ * Preview-only shapes (`Workbook`, `SheetPreview`, `EntityOption`,
+ * `EntityLegendEntry`, `DriftReportPreview`) are rendering types for this
+ * editor; they do not correspond to a backend contract.
+ */
+
+import type {
+  BoundsMode,
+  HeaderAxis,
+  HeaderStrategyKind,
+  IdentityStrategyKind,
+  Orientation,
+  RecordsAxisName,
+  SkipRuleAxis,
+  WarningCode,
+  WarningSeverity,
+} from "@portalai/core/contracts";
+
+// ── Re-export canonical enum types so existing imports keep resolving ────
+export type {
+  BoundsMode,
+  HeaderAxis,
+  HeaderStrategyKind,
+  IdentityStrategyKind,
+  Orientation,
+  RecordsAxisName,
+  SkipRule,
+  WarningCode,
+  WarningSeverity,
+} from "@portalai/core/contracts";
+
+/**
+ * Draft form of a SkipRule — identical to the canonical `SkipRule` except
+ * that `crossAxisIndex` may be `undefined` while the user has not yet picked
+ * a row or column. Validation (`validateRegion`) rejects drafts with an
+ * undefined `crossAxisIndex` before submission.
+ */
+export type SkipRuleDraft =
+  | { kind: "blank" }
+  | {
+      kind: "cellMatches";
+      crossAxisIndex: number | undefined;
+      pattern: string;
+      axis?: SkipRuleAxis;
+    };
+
+// ── Preview / rendering types (frontend-only) ────────────────────────────
+
 export type CellCoord = { row: number; col: number };
 
 export type CellBounds = {
@@ -24,34 +85,25 @@ export type Workbook = {
   sourceLabel?: string;
 };
 
-export type Orientation = "rows-as-records" | "columns-as-records" | "cells-as-records";
-export type HeaderAxis = "row" | "column" | "none";
-
 export type ConfidenceBand = "green" | "yellow" | "red";
 
-export type WarningSeverity = "info" | "warn" | "blocker";
-
-export type WarningCode =
-  | "AMBIGUOUS_HEADER"
-  | "MIXED_COLUMN_TYPES"
-  | "DUPLICATE_IDENTITY_VALUES"
-  | "IDENTITY_COLUMN_HAS_BLANKS"
-  | "UNRECOGNIZED_COLUMN"
-  | "REGION_BOUNDS_UNCERTAIN"
-  | "MULTIPLE_HEADER_CANDIDATES"
-  | "SHEET_MAY_BE_NON_DATA"
-  | "PIVOTED_REGION_MISSING_AXIS_NAME";
+// ── Warning shape reused from the canonical Warning but with a UI-friendly locator
+// (cell coords resolved against the preview, not the abstract Locator union).
 
 export type RegionWarning = {
   code: WarningCode;
   severity: WarningSeverity;
   message: string;
   suggestedFix?: string;
-  locator?: { sheetId?: string; bounds?: CellBounds; column?: number; row?: number };
+  locator?: {
+    sheetId?: string;
+    bounds?: CellBounds;
+    column?: number;
+    row?: number;
+  };
 };
 
-export type IdentityStrategyKind = "column" | "composite" | "rowPosition";
-export type HeaderStrategyKind = "row" | "column" | "rowLabels";
+// ── Draft types ───────────────────────────────────────────────────────────
 
 export type ColumnBindingDraft = {
   sourceLocator: string;
@@ -60,50 +112,6 @@ export type ColumnBindingDraft = {
   confidence: number;
   rationale?: string;
 };
-
-export type RecordsAxisName = {
-  name: string;
-  /**
-   * Where the name came from.
-   * - "user" — the user typed it.
-   * - "ai" — the interpreter LLM inferred it.
-   * - "anchor-cell" — auto-populated from the region's axis-anchor cell value.
-   */
-  source: "user" | "ai" | "anchor-cell";
-  confidence?: number;
-};
-
-export type BoundsMode = "absolute" | "untilEmpty" | "matchesPattern";
-
-/**
- * A skip rule omits a record (row or column depending on orientation) during extraction.
- *
- * - `blank` — the record's cells are all empty.
- * - `cellMatches` — the record's cell at `crossAxisIndex` matches `pattern`.
- *   `crossAxisIndex` is an absolute sheet-level index (column for rows-as-records,
- *   row for columns-as-records). For `cells-as-records`, the rule applies to rows by default;
- *   set `axis: "column"` to target columns instead.
- *   Null and undefined cells are coerced to `""` before regex testing, so `^$`
- *   matches both empty-string and null/missing cells.
- *
- * Skip rules serve two purposes in `untilEmpty` regions:
- *   1. Records matching any skip rule are omitted from the extracted output.
- *   2. Skipped records do NOT count toward the terminator — only consecutive
- *      *unskippable* blank records (see `DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT`)
- *      can terminate extension.
- */
-export type SkipRule =
-  | { kind: "blank" }
-  | {
-      kind: "cellMatches";
-      /** Absolute sheet-level index; `undefined` means the user has not selected one yet. */
-      crossAxisIndex: number | undefined;
-      pattern: string;
-      axis?: "row" | "column";
-    };
-
-/** Default consecutive-blank-record count that terminates an `untilEmpty` region. */
-export const DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT = 2;
 
 export type RegionDraft = {
   id: string;
@@ -131,11 +139,15 @@ export type RegionDraft = {
    * Keyed by the default name (e.g. "columnA"), mapped to the override (e.g. "customerName").
    */
   columnOverrides?: Record<string, string>;
-  skipRules?: SkipRule[];
+  skipRules?: SkipRuleDraft[];
   /** Consecutive unskippable blank records required to terminate `untilEmpty`. Defaults to `DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT`. */
   untilEmptyTerminatorCount?: number;
   headerStrategy?: { kind: HeaderStrategyKind; confidence?: number };
-  identityStrategy?: { kind: IdentityStrategyKind; sourceLocator?: string; confidence?: number };
+  identityStrategy?: {
+    kind: IdentityStrategyKind;
+    sourceLocator?: string;
+    confidence?: number;
+  };
   columnBindings?: ColumnBindingDraft[];
   confidence?: number;
   warnings?: RegionWarning[];
@@ -149,6 +161,8 @@ export type RegionDriftState = {
   observedSummary?: string;
   identityChanging?: boolean;
 };
+
+// ── UI aggregates ────────────────────────────────────────────────────────
 
 export type EntityLegendEntry = {
   id: string;
@@ -178,3 +192,6 @@ export type DriftReportPreview = {
   fetchedAt: string;
   notes?: string;
 };
+
+// ── Re-exports of canonical constants consumers previously pulled from here
+export { DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT } from "@portalai/core/contracts";

@@ -9,7 +9,15 @@ import {
   orientationArrowLabel,
 } from "./utils/region-orientation.util";
 
-export type ResizeHandleKind = "nw" | "n" | "ne" | "w" | "e" | "sw" | "s" | "se";
+export type ResizeHandleKind =
+  | "nw"
+  | "n"
+  | "ne"
+  | "w"
+  | "e"
+  | "sw"
+  | "s"
+  | "se";
 
 export const ROW_HEADER_WIDTH = 44;
 export const COL_HEADER_HEIGHT = 24;
@@ -103,9 +111,12 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   const driftFlagged = Boolean(drift?.flagged);
   const isDynamic = boundsMode !== "absolute";
   const extendsDown =
-    isDynamic && (orientation === "rows-as-records" || orientation === "cells-as-records");
+    isDynamic &&
+    (orientation === "rows-as-records" || orientation === "cells-as-records");
   const extendsRight =
-    isDynamic && (orientation === "columns-as-records" || orientation === "cells-as-records");
+    isDynamic &&
+    (orientation === "columns-as-records" ||
+      orientation === "cells-as-records");
   const extentBadge =
     boundsMode === "untilEmpty"
       ? "UNTIL EMPTY"
@@ -160,7 +171,11 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           >
             {orientationArrow(region.orientation)}
           </span>
-          <span>{region.proposedLabel ?? region.targetEntityLabel ?? formatBounds(bounds)}</span>
+          <span>
+            {region.proposedLabel ??
+              region.targetEntityLabel ??
+              formatBounds(bounds)}
+          </span>
           {extentBadge && (
             <span
               style={{

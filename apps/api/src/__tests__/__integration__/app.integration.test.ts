@@ -26,8 +26,8 @@ describe("App Integration", () => {
       expect(res.body).toEqual({
         success: true,
         payload: {
-          sha: 'local',
-          version: 'dev',
+          sha: "local",
+          version: "dev",
           timestamp: expect.any(String),
         },
       });

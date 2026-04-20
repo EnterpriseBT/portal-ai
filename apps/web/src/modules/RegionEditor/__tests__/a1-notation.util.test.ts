@@ -37,11 +37,15 @@ describe("formatCell / formatBounds", () => {
   });
 
   test("formatBounds collapses single-cell ranges", () => {
-    expect(formatBounds({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })).toBe("A1");
+    expect(
+      formatBounds({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
+    ).toBe("A1");
   });
 
   test("formatBounds expands multi-cell ranges", () => {
-    expect(formatBounds({ startRow: 0, endRow: 4, startCol: 1, endCol: 3 })).toBe("B1:D5");
+    expect(
+      formatBounds({ startRow: 0, endRow: 4, startCol: 1, endCol: 3 })
+    ).toBe("B1:D5");
   });
 });
 

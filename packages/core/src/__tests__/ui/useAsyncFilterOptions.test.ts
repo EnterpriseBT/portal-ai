@@ -16,11 +16,15 @@ const ITEMS = [
 ];
 
 function makeConfig(
-  overrides?: Partial<AsyncFilterOptionsConfig<MockResponse, { id: string; name: string }>>
+  overrides?: Partial<
+    AsyncFilterOptionsConfig<MockResponse, { id: string; name: string }>
+  >
 ): AsyncFilterOptionsConfig<MockResponse, { id: string; name: string }> {
   return {
     url: "/api/items",
-    fetcher: jest.fn<(url: string) => Promise<MockResponse>>().mockResolvedValue({ items: ITEMS }),
+    fetcher: jest
+      .fn<(url: string) => Promise<MockResponse>>()
+      .mockResolvedValue({ items: ITEMS }),
     getItems: (res) => res.items,
     mapItem: (item) => ({ value: item.id, label: item.name }),
     ...overrides,
@@ -156,7 +160,9 @@ describe("useAsyncFilterOptions", () => {
 
   it("returns empty options when fetcher returns no items", async () => {
     const config = makeConfig({
-      fetcher: jest.fn<(url: string) => Promise<MockResponse>>().mockResolvedValue({ items: [] }),
+      fetcher: jest
+        .fn<(url: string) => Promise<MockResponse>>()
+        .mockResolvedValue({ items: [] }),
     });
     const { result } = renderHook(() => useAsyncFilterOptions(config));
 
@@ -170,7 +176,9 @@ describe("useAsyncFilterOptions", () => {
 
   it("propagates fetcher errors", async () => {
     const config = makeConfig({
-      fetcher: jest.fn<(url: string) => Promise<MockResponse>>().mockRejectedValue(new Error("Network error")),
+      fetcher: jest
+        .fn<(url: string) => Promise<MockResponse>>()
+        .mockRejectedValue(new Error("Network error")),
     });
     const { result } = renderHook(() => useAsyncFilterOptions(config));
 

@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom';
+import "@testing-library/jest-dom";
 
 // Extend Jest matchers with jest-dom
 // This provides matchers like toBeInTheDocument(), toHaveClass(), etc.
@@ -8,7 +8,7 @@ import '@testing-library/jest-dom';
 // global.customTestUtil = () => { ... };
 
 // Optional: Mock window.matchMedia if components use media queries
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({
     matches: false,

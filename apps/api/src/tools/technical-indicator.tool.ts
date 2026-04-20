@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type StationData } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type StationData,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 import { getRecords } from "../utils/tools.util.js";
 
@@ -33,7 +36,8 @@ export class TechnicalIndicatorTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, dateColumn, valueColumn, indicator, params } = this.validate(input);
+        const { entity, dateColumn, valueColumn, indicator, params } =
+          this.validate(input);
         const records = getRecords(stationData, entity);
         return AnalyticsService.technicalIndicator({
           records,

@@ -14,10 +14,14 @@ async function main() {
     return;
   }
 
-  console.log(`Truncating ${tableNames.length} tables: ${tableNames.join(", ")}`);
+  console.log(
+    `Truncating ${tableNames.length} tables: ${tableNames.join(", ")}`
+  );
 
   await db.execute(
-    sql.raw(`TRUNCATE TABLE ${tableNames.map((t) => `"${t}"`).join(", ")} CASCADE`)
+    sql.raw(
+      `TRUNCATE TABLE ${tableNames.map((t) => `"${t}"`).join(", ")} CASCADE`
+    )
   );
 
   console.log("All tables truncated successfully.");

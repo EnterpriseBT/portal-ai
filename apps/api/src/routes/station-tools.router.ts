@@ -233,10 +233,16 @@ stationToolsRouter.post(
 
       // Verify org tool exists and belongs to org
       const orgTool =
-        await DbService.repository.organizationTools.findById(organizationToolId);
+        await DbService.repository.organizationTools.findById(
+          organizationToolId
+        );
       if (!orgTool || orgTool.organizationId !== organizationId) {
         return next(
-          new ApiError(404, ApiCode.ORG_TOOL_NOT_FOUND, "Organization tool not found")
+          new ApiError(
+            404,
+            ApiCode.ORG_TOOL_NOT_FOUND,
+            "Organization tool not found"
+          )
         );
       }
 
@@ -370,7 +376,11 @@ stationToolsRouter.delete(
         await DbService.repository.stationTools.findById(assignmentId);
       if (!assignment || assignment.stationId !== stationId) {
         return next(
-          new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station tool assignment not found")
+          new ApiError(
+            404,
+            ApiCode.STATION_NOT_FOUND,
+            "Station tool assignment not found"
+          )
         );
       }
 

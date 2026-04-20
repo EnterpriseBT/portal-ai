@@ -7,7 +7,9 @@ describe("ToolPackUtil.getLabel", () => {
     expect(ToolPackUtil.getLabel("regression")).toBe("Regression");
     expect(ToolPackUtil.getLabel("financial")).toBe("Financial");
     expect(ToolPackUtil.getLabel("web_search")).toBe("Web Search");
-    expect(ToolPackUtil.getLabel("entity_management")).toBe("Entity Management");
+    expect(ToolPackUtil.getLabel("entity_management")).toBe(
+      "Entity Management"
+    );
   });
 
   it("falls back to the raw key for unknown packs", () => {

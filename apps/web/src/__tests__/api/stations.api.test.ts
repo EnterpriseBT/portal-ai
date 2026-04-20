@@ -29,7 +29,13 @@ describe("stations.api", () => {
     });
 
     it("calls correct endpoint with params", () => {
-      const params = { limit: 10, offset: 0, sortBy: "created", sortOrder: "asc" as const, search: "test" };
+      const params = {
+        limit: 10,
+        offset: 0,
+        sortBy: "created",
+        sortOrder: "asc" as const,
+        search: "test",
+      };
       stations.list(params);
       expect(mockUseAuthQuery).toHaveBeenCalledWith(
         queryKeys.stations.list(params),

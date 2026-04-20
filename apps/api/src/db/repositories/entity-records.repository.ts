@@ -17,10 +17,7 @@ import {
   type DbClient,
   type ListOptions,
 } from "./base.repository.js";
-import type {
-  EntityRecordSelect,
-  EntityRecordInsert,
-} from "../schema/zod.js";
+import type { EntityRecordSelect, EntityRecordInsert } from "../schema/zod.js";
 
 export class EntityRecordsRepository extends Repository<
   typeof entityRecords,
@@ -47,7 +44,10 @@ export class EntityRecordsRepository extends Repository<
     client: DbClient = db
   ): Promise<number> {
     if (connectorEntityIds.length === 0) return 0;
-    return this.count(inArray(entityRecords.connectorEntityId, connectorEntityIds), client);
+    return this.count(
+      inArray(entityRecords.connectorEntityId, connectorEntityIds),
+      client
+    );
   }
 
   /** Count records for a given connector entity (soft-delete aware). */

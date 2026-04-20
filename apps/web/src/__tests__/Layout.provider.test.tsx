@@ -145,9 +145,9 @@ describe("LayoutProvider", () => {
         </ThemeProvider>
       );
 
-      expect(() =>
-        renderHook(() => useLayout(), { wrapper })
-      ).toThrow("useLayout must be used within a LayoutProvider");
+      expect(() => renderHook(() => useLayout(), { wrapper })).toThrow(
+        "useLayout must be used within a LayoutProvider"
+      );
     });
   });
 });

@@ -59,8 +59,9 @@ organizationToolsRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset } =
-        OrganizationToolListRequestQuerySchema.parse(req.query);
+      const { limit, offset } = OrganizationToolListRequestQuerySchema.parse(
+        req.query
+      );
       const { organizationId } = req.application!.metadata;
 
       const [data, total] = await Promise.all([
@@ -364,7 +365,11 @@ organizationToolsRouter.patch(
         await DbService.repository.organizationTools.findById(toolId);
       if (!existing || existing.organizationId !== organizationId) {
         return next(
-          new ApiError(404, ApiCode.ORG_TOOL_NOT_FOUND, "Organization tool not found")
+          new ApiError(
+            404,
+            ApiCode.ORG_TOOL_NOT_FOUND,
+            "Organization tool not found"
+          )
         );
       }
 
@@ -488,7 +493,11 @@ organizationToolsRouter.delete(
         await DbService.repository.organizationTools.findById(toolId);
       if (!existing || existing.organizationId !== organizationId) {
         return next(
-          new ApiError(404, ApiCode.ORG_TOOL_NOT_FOUND, "Organization tool not found")
+          new ApiError(
+            404,
+            ApiCode.ORG_TOOL_NOT_FOUND,
+            "Organization tool not found"
+          )
         );
       }
 

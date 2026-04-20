@@ -12,8 +12,53 @@
  * type-checker.
  */
 
-import type { User, Organization, OrganizationUser, ConnectorDefinition, ConnectorInstance, Job, ColumnDefinition, ConnectorEntity, FieldMapping, EntityRecord, EntityTag, EntityTagAssignment, EntityGroup, EntityGroupMember, Core, Station, StationInstance, Portal, PortalMessage, PortalResult, OrganizationTool, StationTool } from "@portalai/core/models";
-import type { UserSelect, OrganizationSelect, OrganizationUserSelect, ConnectorDefinitionSelect, ConnectorInstanceSelect, JobSelect, ColumnDefinitionSelect, ConnectorEntitySelect, FieldMappingSelect, EntityRecordSelect, EntityTagSelect, EntityTagAssignmentSelect, EntityGroupSelect, EntityGroupMemberSelect, StationSelect, StationInstanceSelect, PortalSelect, PortalMessageSelect, PortalResultSelect, OrganizationToolSelect, StationToolSelect } from "./zod.js";
+import type {
+  User,
+  Organization,
+  OrganizationUser,
+  ConnectorDefinition,
+  ConnectorInstance,
+  Job,
+  ColumnDefinition,
+  ConnectorEntity,
+  FieldMapping,
+  EntityRecord,
+  EntityTag,
+  EntityTagAssignment,
+  EntityGroup,
+  EntityGroupMember,
+  Core,
+  Station,
+  StationInstance,
+  Portal,
+  PortalMessage,
+  PortalResult,
+  OrganizationTool,
+  StationTool,
+} from "@portalai/core/models";
+import type {
+  UserSelect,
+  OrganizationSelect,
+  OrganizationUserSelect,
+  ConnectorDefinitionSelect,
+  ConnectorInstanceSelect,
+  JobSelect,
+  ColumnDefinitionSelect,
+  ConnectorEntitySelect,
+  FieldMappingSelect,
+  EntityRecordSelect,
+  EntityTagSelect,
+  EntityTagAssignmentSelect,
+  EntityGroupSelect,
+  EntityGroupMemberSelect,
+  StationSelect,
+  StationInstanceSelect,
+  PortalSelect,
+  PortalMessageSelect,
+  PortalResultSelect,
+  OrganizationToolSelect,
+  StationToolSelect,
+} from "./zod.js";
 import type { InferSelectModel } from "drizzle-orm";
 import type { users } from "./users.table.js";
 import type { organizations } from "./organizations.table.js";
@@ -36,6 +81,9 @@ import type { portalMessages } from "./portal-messages.table.js";
 import type { portalResults } from "./portal-results.table.js";
 import type { organizationTools } from "./organization-tools.table.js";
 import type { stationTools } from "./station-tools.table.js";
+import type { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
+import type { InterpretationTrace, LayoutPlan } from "@portalai/core/contracts";
+import type { ConnectorInstanceLayoutPlanSelect } from "./zod.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -78,16 +126,25 @@ const _orgInferredToModel: _OrgInferredToModel = true;
 // ── OrganizationUser ─────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _OrgUserDrizzleToModel = IsAssignable<OrganizationUserSelect, OrganizationUser>;
+type _OrgUserDrizzleToModel = IsAssignable<
+  OrganizationUserSelect,
+  OrganizationUser
+>;
 const _orgUserDrizzleToModel: _OrgUserDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _OrgUserModelToDrizzle = IsAssignable<OrganizationUser, OrganizationUserSelect>;
+type _OrgUserModelToDrizzle = IsAssignable<
+  OrganizationUser,
+  OrganizationUserSelect
+>;
 const _orgUserModelToDrizzle: _OrgUserModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _OrgUserInferredRow = InferSelectModel<typeof organizationUsers>;
-type _OrgUserInferredToModel = IsAssignable<_OrgUserInferredRow, OrganizationUser>;
+type _OrgUserInferredToModel = IsAssignable<
+  _OrgUserInferredRow,
+  OrganizationUser
+>;
 const _orgUserInferredToModel: _OrgUserInferredToModel = true;
 
 // ── Base Model ──────────────────────────────────────────────────────
@@ -106,23 +163,35 @@ const _modelToBase: _ModelToBase = true;
 // ── ConnectorDefinition ─────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _ConnDefDrizzleToModel = IsAssignable<ConnectorDefinitionSelect, ConnectorDefinition>;
+type _ConnDefDrizzleToModel = IsAssignable<
+  ConnectorDefinitionSelect,
+  ConnectorDefinition
+>;
 const _connDefDrizzleToModel: _ConnDefDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _ConnDefModelToDrizzle = IsAssignable<ConnectorDefinition, ConnectorDefinitionSelect>;
+type _ConnDefModelToDrizzle = IsAssignable<
+  ConnectorDefinition,
+  ConnectorDefinitionSelect
+>;
 const _connDefModelToDrizzle: _ConnDefModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _ConnDefInferredRow = InferSelectModel<typeof connectorDefinitions>;
-type _ConnDefInferredToModel = IsAssignable<_ConnDefInferredRow, ConnectorDefinition>;
+type _ConnDefInferredToModel = IsAssignable<
+  _ConnDefInferredRow,
+  ConnectorDefinition
+>;
 const _connDefInferredToModel: _ConnDefInferredToModel = true;
 
 // ── ConnectorInstance ──────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _ConnInstDrizzleToModel = IsAssignable<ConnectorInstanceSelect, ConnectorInstance>;
+type _ConnInstDrizzleToModel = IsAssignable<
+  ConnectorInstanceSelect,
+  ConnectorInstance
+>;
 const _connInstDrizzleToModel: _ConnInstDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
@@ -136,7 +205,10 @@ const _connInstModelToDrizzle: _ConnInstModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _ConnInstInferredRow = InferSelectModel<typeof connectorInstances>;
-type _ConnInstInferredToModel = IsAssignable<_ConnInstInferredRow, ConnectorInstance>;
+type _ConnInstInferredToModel = IsAssignable<
+  _ConnInstInferredRow,
+  ConnectorInstance
+>;
 const _connInstInferredToModel: _ConnInstInferredToModel = true;
 
 // ── Job ─────────────────────────────────────────────────────────────
@@ -157,31 +229,49 @@ const _jobInferredToModel: _JobInferredToModel = true;
 // ── ColumnDefinition ─────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _ColDefDrizzleToModel = IsAssignable<ColumnDefinitionSelect, ColumnDefinition>;
+type _ColDefDrizzleToModel = IsAssignable<
+  ColumnDefinitionSelect,
+  ColumnDefinition
+>;
 const _colDefDrizzleToModel: _ColDefDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _ColDefModelToDrizzle = IsAssignable<ColumnDefinition, ColumnDefinitionSelect>;
+type _ColDefModelToDrizzle = IsAssignable<
+  ColumnDefinition,
+  ColumnDefinitionSelect
+>;
 const _colDefModelToDrizzle: _ColDefModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _ColDefInferredRow = InferSelectModel<typeof columnDefinitions>;
-type _ColDefInferredToModel = IsAssignable<_ColDefInferredRow, ColumnDefinition>;
+type _ColDefInferredToModel = IsAssignable<
+  _ColDefInferredRow,
+  ColumnDefinition
+>;
 const _colDefInferredToModel: _ColDefInferredToModel = true;
 
 // ── ConnectorEntity ──────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _ConnEntDrizzleToModel = IsAssignable<ConnectorEntitySelect, ConnectorEntity>;
+type _ConnEntDrizzleToModel = IsAssignable<
+  ConnectorEntitySelect,
+  ConnectorEntity
+>;
 const _connEntDrizzleToModel: _ConnEntDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _ConnEntModelToDrizzle = IsAssignable<ConnectorEntity, ConnectorEntitySelect>;
+type _ConnEntModelToDrizzle = IsAssignable<
+  ConnectorEntity,
+  ConnectorEntitySelect
+>;
 const _connEntModelToDrizzle: _ConnEntModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _ConnEntInferredRow = InferSelectModel<typeof connectorEntities>;
-type _ConnEntInferredToModel = IsAssignable<_ConnEntInferredRow, ConnectorEntity>;
+type _ConnEntInferredToModel = IsAssignable<
+  _ConnEntInferredRow,
+  ConnectorEntity
+>;
 const _connEntInferredToModel: _ConnEntInferredToModel = true;
 
 // ── FieldMapping ─────────────────────────────────────────────────
@@ -201,7 +291,10 @@ const _fieldMapModelToDrizzle: _FieldMapModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _FieldMapInferredRow = InferSelectModel<typeof fieldMappings>;
-type _FieldMapInferredToModel = IsAssignable<_FieldMapInferredRow, FieldMapping>;
+type _FieldMapInferredToModel = IsAssignable<
+  _FieldMapInferredRow,
+  FieldMapping
+>;
 const _fieldMapInferredToModel: _FieldMapInferredToModel = true;
 
 // ── EntityRecord ────────────────────────────────────────────────────
@@ -242,16 +335,25 @@ const _entTagInferredToModel: _EntTagInferredToModel = true;
 // ── EntityTagAssignment ──────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _EntTagAssignDrizzleToModel = IsAssignable<EntityTagAssignmentSelect, EntityTagAssignment>;
+type _EntTagAssignDrizzleToModel = IsAssignable<
+  EntityTagAssignmentSelect,
+  EntityTagAssignment
+>;
 const _entTagAssignDrizzleToModel: _EntTagAssignDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _EntTagAssignModelToDrizzle = IsAssignable<EntityTagAssignment, EntityTagAssignmentSelect>;
+type _EntTagAssignModelToDrizzle = IsAssignable<
+  EntityTagAssignment,
+  EntityTagAssignmentSelect
+>;
 const _entTagAssignModelToDrizzle: _EntTagAssignModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _EntTagAssignInferredRow = InferSelectModel<typeof entityTagAssignments>;
-type _EntTagAssignInferredToModel = IsAssignable<_EntTagAssignInferredRow, EntityTagAssignment>;
+type _EntTagAssignInferredToModel = IsAssignable<
+  _EntTagAssignInferredRow,
+  EntityTagAssignment
+>;
 const _entTagAssignInferredToModel: _EntTagAssignInferredToModel = true;
 
 // ── EntityGroup ─────────────────────────────────────────────────────
@@ -272,16 +374,25 @@ const _entGrpInferredToModel: _EntGrpInferredToModel = true;
 // ── EntityGroupMember ───────────────────────────────────────────────
 
 // Drizzle select row → core Zod model (every DB row must satisfy the model)
-type _EntGrpMemDrizzleToModel = IsAssignable<EntityGroupMemberSelect, EntityGroupMember>;
+type _EntGrpMemDrizzleToModel = IsAssignable<
+  EntityGroupMemberSelect,
+  EntityGroupMember
+>;
 const _entGrpMemDrizzleToModel: _EntGrpMemDrizzleToModel = true;
 
 // Core Zod model → Drizzle select row (every model value must be a valid row)
-type _EntGrpMemModelToDrizzle = IsAssignable<EntityGroupMember, EntityGroupMemberSelect>;
+type _EntGrpMemModelToDrizzle = IsAssignable<
+  EntityGroupMember,
+  EntityGroupMemberSelect
+>;
 const _entGrpMemModelToDrizzle: _EntGrpMemModelToDrizzle = true;
 
 // Also verify the raw InferSelectModel matches
 type _EntGrpMemInferredRow = InferSelectModel<typeof entityGroupMembers>;
-type _EntGrpMemInferredToModel = IsAssignable<_EntGrpMemInferredRow, EntityGroupMember>;
+type _EntGrpMemInferredToModel = IsAssignable<
+  _EntGrpMemInferredRow,
+  EntityGroupMember
+>;
 const _entGrpMemInferredToModel: _EntGrpMemInferredToModel = true;
 
 // ── Station ───────────────────────────────────────────────────────────
@@ -304,14 +415,23 @@ const _staInferredToModel: _StaInferredToModel = true;
 
 // ── StationInstance ───────────────────────────────────────────────────
 
-type _StaInstDrizzleToModel = IsAssignable<StationInstanceSelect, StationInstance>;
+type _StaInstDrizzleToModel = IsAssignable<
+  StationInstanceSelect,
+  StationInstance
+>;
 const _staInstDrizzleToModel: _StaInstDrizzleToModel = true;
 
-type _StaInstModelToDrizzle = IsAssignable<StationInstance, StationInstanceSelect>;
+type _StaInstModelToDrizzle = IsAssignable<
+  StationInstance,
+  StationInstanceSelect
+>;
 const _staInstModelToDrizzle: _StaInstModelToDrizzle = true;
 
 type _StaInstInferredRow = InferSelectModel<typeof stationInstances>;
-type _StaInstInferredToModel = IsAssignable<_StaInstInferredRow, StationInstance>;
+type _StaInstInferredToModel = IsAssignable<
+  _StaInstInferredRow,
+  StationInstance
+>;
 const _staInstInferredToModel: _StaInstInferredToModel = true;
 
 // ── Portal ────────────────────────────────────────────────────────────
@@ -328,14 +448,23 @@ const _portalInferredToModel: _PortalInferredToModel = true;
 
 // ── PortalMessage ─────────────────────────────────────────────────────
 
-type _PortalMsgDrizzleToModel = IsAssignable<PortalMessageSelect, PortalMessage>;
+type _PortalMsgDrizzleToModel = IsAssignable<
+  PortalMessageSelect,
+  PortalMessage
+>;
 const _portalMsgDrizzleToModel: _PortalMsgDrizzleToModel = true;
 
-type _PortalMsgModelToDrizzle = IsAssignable<PortalMessage, PortalMessageSelect>;
+type _PortalMsgModelToDrizzle = IsAssignable<
+  PortalMessage,
+  PortalMessageSelect
+>;
 const _portalMsgModelToDrizzle: _PortalMsgModelToDrizzle = true;
 
 type _PortalMsgInferredRow = InferSelectModel<typeof portalMessages>;
-type _PortalMsgInferredToModel = IsAssignable<_PortalMsgInferredRow, PortalMessage>;
+type _PortalMsgInferredToModel = IsAssignable<
+  _PortalMsgInferredRow,
+  PortalMessage
+>;
 const _portalMsgInferredToModel: _PortalMsgInferredToModel = true;
 
 // ── PortalResult ──────────────────────────────────────────────────────
@@ -347,19 +476,31 @@ type _PortalResModelToDrizzle = IsAssignable<PortalResult, PortalResultSelect>;
 const _portalResModelToDrizzle: _PortalResModelToDrizzle = true;
 
 type _PortalResInferredRow = InferSelectModel<typeof portalResults>;
-type _PortalResInferredToModel = IsAssignable<_PortalResInferredRow, PortalResult>;
+type _PortalResInferredToModel = IsAssignable<
+  _PortalResInferredRow,
+  PortalResult
+>;
 const _portalResInferredToModel: _PortalResInferredToModel = true;
 
 // ── OrganizationTool ──────────────────────────────────────────────────
 
-type _OrgToolDrizzleToModel = IsAssignable<OrganizationToolSelect, OrganizationTool>;
+type _OrgToolDrizzleToModel = IsAssignable<
+  OrganizationToolSelect,
+  OrganizationTool
+>;
 const _orgToolDrizzleToModel: _OrgToolDrizzleToModel = true;
 
-type _OrgToolModelToDrizzle = IsAssignable<OrganizationTool, OrganizationToolSelect>;
+type _OrgToolModelToDrizzle = IsAssignable<
+  OrganizationTool,
+  OrganizationToolSelect
+>;
 const _orgToolModelToDrizzle: _OrgToolModelToDrizzle = true;
 
 type _OrgToolInferredRow = InferSelectModel<typeof organizationTools>;
-type _OrgToolInferredToModel = IsAssignable<_OrgToolInferredRow, OrganizationTool>;
+type _OrgToolInferredToModel = IsAssignable<
+  _OrgToolInferredRow,
+  OrganizationTool
+>;
 const _orgToolInferredToModel: _OrgToolInferredToModel = true;
 
 // ── StationTool ───────────────────────────────────────────────────────
@@ -373,3 +514,39 @@ const _staToolModelToDrizzle: _StaToolModelToDrizzle = true;
 type _StaToolInferredRow = InferSelectModel<typeof stationTools>;
 type _StaToolInferredToModel = IsAssignable<_StaToolInferredRow, StationTool>;
 const _staToolInferredToModel: _StaToolInferredToModel = true;
+
+// ── ConnectorInstanceLayoutPlan ──────────────────────────────────────
+//
+// No dedicated `@portalai/core` model — the table is a thin persistence
+// wrapper around a `LayoutPlan` (owned by `@portalai/spreadsheet-parsing`).
+// The guards below break the build if the table's JSONB column types drift
+// from the parser module's exported types.
+
+type _CilpInferredRow = InferSelectModel<typeof connectorInstanceLayoutPlans>;
+// The `plan` column must round-trip with `LayoutPlan` from the parser module.
+type _CilpPlanDrizzleToModel = IsAssignable<
+  _CilpInferredRow["plan"],
+  LayoutPlan
+>;
+const _cilpPlanDrizzleToModel: _CilpPlanDrizzleToModel = true;
+
+type _CilpPlanModelToDrizzle = IsAssignable<
+  LayoutPlan,
+  _CilpInferredRow["plan"]
+>;
+const _cilpPlanModelToDrizzle: _CilpPlanModelToDrizzle = true;
+
+// The `interpretationTrace` column must admit `InterpretationTrace | null`.
+type _CilpTraceTypeGuard = IsAssignable<
+  InterpretationTrace | null,
+  _CilpInferredRow["interpretationTrace"]
+>;
+const _cilpTraceTypeGuard: _CilpTraceTypeGuard = true;
+
+// Derived Zod select shape must also carry the same `plan` type — catches
+// a drizzle-zod regression that widens the JSONB column to `unknown`.
+type _CilpSelectPlanTypeGuard = IsAssignable<
+  ConnectorInstanceLayoutPlanSelect["plan"],
+  LayoutPlan
+>;
+const _cilpSelectPlanTypeGuard: _CilpSelectPlanTypeGuard = true;

@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type StationData } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type StationData,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 import { getRecords } from "../utils/tools.util.js";
 
@@ -29,7 +32,8 @@ export class TrendTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, dateColumn, valueColumn, interval } = this.validate(input);
+        const { entity, dateColumn, valueColumn, interval } =
+          this.validate(input);
         const records = getRecords(stationData, entity);
         return AnalyticsService.trend({
           records,

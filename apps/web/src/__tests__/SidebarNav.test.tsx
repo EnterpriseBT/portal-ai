@@ -72,8 +72,9 @@ describe("SidebarNavUI", () => {
       </SidebarNavUI>
     );
 
-    const wrapper = screen.getByText("Nav Content").closest(".MuiDrawer-root")
-      ?.parentElement;
+    const wrapper = screen
+      .getByText("Nav Content")
+      .closest(".MuiDrawer-root")?.parentElement;
     expect(wrapper).toHaveStyle({ display: "none" });
   });
 
@@ -84,8 +85,9 @@ describe("SidebarNavUI", () => {
       </SidebarNavUI>
     );
 
-    const wrapper = screen.getByText("Nav Content").closest(".MuiDrawer-root")
-      ?.parentElement;
+    const wrapper = screen
+      .getByText("Nav Content")
+      .closest(".MuiDrawer-root")?.parentElement;
     expect(wrapper).not.toHaveStyle({ display: "none" });
   });
 });
@@ -141,9 +143,7 @@ describe("Version footer", () => {
     );
 
     const year = new Date().getFullYear();
-    expect(
-      screen.getByText(`Portalsai \u00A9 ${year}`)
-    ).toBeInTheDocument();
+    expect(screen.getByText(`Portalsai \u00A9 ${year}`)).toBeInTheDocument();
   });
 
   it("displays copyright without prefix when collapsed", () => {
@@ -182,11 +182,7 @@ describe("Version footer", () => {
         collapsed={false}
         hidden={false}
         footer={
-          <VersionFooter
-            collapsed={false}
-            version="dev-abc123"
-            sha="abc123"
-          />
+          <VersionFooter collapsed={false} version="dev-abc123" sha="abc123" />
         }
       >
         <div>Nav</div>
@@ -207,11 +203,7 @@ describe("Version footer", () => {
         collapsed={false}
         hidden={false}
         footer={
-          <VersionFooter
-            collapsed={false}
-            version="v1.2.3"
-            sha="deadbeef"
-          />
+          <VersionFooter collapsed={false} version="v1.2.3" sha="deadbeef" />
         }
       >
         <div>Nav</div>

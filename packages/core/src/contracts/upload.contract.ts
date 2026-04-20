@@ -37,12 +37,16 @@ export const PresignResponsePayloadSchema = z.object({
   jobId: z.string(),
   uploads: z.array(PresignUploadItemSchema),
 });
-export type PresignResponsePayload = z.infer<typeof PresignResponsePayloadSchema>;
+export type PresignResponsePayload = z.infer<
+  typeof PresignResponsePayloadSchema
+>;
 
 export const ProcessResponsePayloadSchema = z.object({
   job: JobSchema,
 });
-export type ProcessResponsePayload = z.infer<typeof ProcessResponsePayloadSchema>;
+export type ProcessResponsePayload = z.infer<
+  typeof ProcessResponsePayloadSchema
+>;
 
 // --- Confirm Schemas ---
 
@@ -79,24 +83,30 @@ export const ConfirmResponseEntitySchema = z.object({
   connectorEntityId: z.string(),
   entityKey: z.string(),
   entityLabel: z.string(),
-  columnDefinitions: z.array(z.object({
-    id: z.string(),
-    key: z.string(),
-    label: z.string(),
-  })),
-  fieldMappings: z.array(z.object({
-    id: z.string(),
-    sourceField: z.string(),
-    columnDefinitionId: z.string(),
-    isPrimaryKey: z.boolean(),
-    normalizedKey: z.string(),
-  })),
-  importResult: z.object({
-    created: z.number(),
-    updated: z.number(),
-    unchanged: z.number(),
-    invalid: z.number(),
-  }).optional(),
+  columnDefinitions: z.array(
+    z.object({
+      id: z.string(),
+      key: z.string(),
+      label: z.string(),
+    })
+  ),
+  fieldMappings: z.array(
+    z.object({
+      id: z.string(),
+      sourceField: z.string(),
+      columnDefinitionId: z.string(),
+      isPrimaryKey: z.boolean(),
+      normalizedKey: z.string(),
+    })
+  ),
+  importResult: z
+    .object({
+      created: z.number(),
+      updated: z.number(),
+      unchanged: z.number(),
+      invalid: z.number(),
+    })
+    .optional(),
 });
 export type ConfirmResponseEntity = z.infer<typeof ConfirmResponseEntitySchema>;
 
@@ -105,4 +115,6 @@ export const ConfirmResponsePayloadSchema = z.object({
   connectorInstanceName: z.string(),
   confirmedEntities: z.array(ConfirmResponseEntitySchema),
 });
-export type ConfirmResponsePayload = z.infer<typeof ConfirmResponsePayloadSchema>;
+export type ConfirmResponsePayload = z.infer<
+  typeof ConfirmResponsePayloadSchema
+>;

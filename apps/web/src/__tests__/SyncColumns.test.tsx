@@ -5,8 +5,30 @@ import { SyncColumns } from "../components/SyncColumns.component";
 import type { ResolvedColumn } from "@portalai/core/contracts";
 
 const columns: ResolvedColumn[] = [
-  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  {
+    key: "name",
+    normalizedKey: "name",
+    label: "Name",
+    type: "string",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "age",
+    normalizedKey: "age",
+    label: "Age",
+    type: "number",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
 ];
 
 describe("SyncColumns", () => {
@@ -15,7 +37,7 @@ describe("SyncColumns", () => {
     render(
       <SyncColumns columns={columns} setColumns={setColumns}>
         <div>content</div>
-      </SyncColumns>,
+      </SyncColumns>
     );
     expect(setColumns).toHaveBeenCalledWith(columns);
   });
@@ -25,7 +47,7 @@ describe("SyncColumns", () => {
     render(
       <SyncColumns columns={[]} setColumns={setColumns}>
         <div>content</div>
-      </SyncColumns>,
+      </SyncColumns>
     );
     expect(setColumns).not.toHaveBeenCalled();
   });
@@ -35,7 +57,7 @@ describe("SyncColumns", () => {
     render(
       <SyncColumns columns={columns} setColumns={setColumns}>
         <div>child content</div>
-      </SyncColumns>,
+      </SyncColumns>
     );
     expect(screen.getByText("child content")).toBeInTheDocument();
   });
@@ -43,13 +65,24 @@ describe("SyncColumns", () => {
   it("should call setColumns again when columns change", () => {
     const setColumns = jest.fn();
     const newColumns: ResolvedColumn[] = [
-      { key: "email", normalizedKey: "email", label: "Email", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+      {
+        key: "email",
+        normalizedKey: "email",
+        label: "Email",
+        type: "string",
+        required: false,
+        enumValues: null,
+        defaultValue: null,
+        validationPattern: null,
+        canonicalFormat: null,
+        format: null,
+      },
     ];
 
     const { rerender } = render(
       <SyncColumns columns={columns} setColumns={setColumns}>
         <div>content</div>
-      </SyncColumns>,
+      </SyncColumns>
     );
     expect(setColumns).toHaveBeenCalledWith(columns);
 
@@ -57,7 +90,7 @@ describe("SyncColumns", () => {
     rerender(
       <SyncColumns columns={newColumns} setColumns={setColumns}>
         <div>content</div>
-      </SyncColumns>,
+      </SyncColumns>
     );
     expect(setColumns).toHaveBeenCalledWith(newColumns);
   });
@@ -67,7 +100,7 @@ describe("SyncColumns", () => {
     const { rerender } = render(
       <SyncColumns columns={columns} setColumns={setColumns}>
         <div>content</div>
-      </SyncColumns>,
+      </SyncColumns>
     );
     expect(setColumns).toHaveBeenCalledTimes(1);
 
@@ -75,7 +108,7 @@ describe("SyncColumns", () => {
     rerender(
       <SyncColumns columns={columns} setColumns={setColumns}>
         <div>content</div>
-      </SyncColumns>,
+      </SyncColumns>
     );
     expect(setColumns).not.toHaveBeenCalled();
   });

@@ -8,8 +8,9 @@ import type { RegionDraft, SheetPreview } from "../utils/region-editor.types";
 function makeSheet(): SheetPreview {
   const rowCount = 6;
   const colCount = 5;
-  const cells: (string | number | null)[][] = Array.from({ length: rowCount }, (_, r) =>
-    Array.from({ length: colCount }, (_, c) => `${r},${c}`)
+  const cells: (string | number | null)[][] = Array.from(
+    { length: rowCount },
+    (_, r) => Array.from({ length: colCount }, (_, c) => `${r},${c}`)
   );
   return { id: "s1", name: "Sheet 1", rowCount, colCount, cells };
 }
@@ -48,7 +49,9 @@ describe("SheetCanvasUI", () => {
     fireEvent.pointerMove(start, { pointerId: 1, clientX: 300, clientY: 140 });
     fireEvent.pointerUp(start, { pointerId: 1 });
     // Either a region-draft or a cell-click selection fires — never silent.
-    expect(onDraft.mock.calls.length + onSelect.mock.calls.length).toBeGreaterThan(0);
+    expect(
+      onDraft.mock.calls.length + onSelect.mock.calls.length
+    ).toBeGreaterThan(0);
   });
 
   test("clicking inside an existing region selects it", () => {

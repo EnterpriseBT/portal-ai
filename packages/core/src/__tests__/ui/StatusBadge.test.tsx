@@ -14,11 +14,14 @@ describe("StatusBadge Component", () => {
       "cancelled",
     ];
 
-    it.each(statuses)("should render %s status with capitalized label", (status) => {
-      render(<StatusBadge status={status} />);
-      const expected = status.charAt(0).toUpperCase() + status.slice(1);
-      expect(screen.getByText(expected)).toBeInTheDocument();
-    });
+    it.each(statuses)(
+      "should render %s status with capitalized label",
+      (status) => {
+        render(<StatusBadge status={status} />);
+        const expected = status.charAt(0).toUpperCase() + status.slice(1);
+        expect(screen.getByText(expected)).toBeInTheDocument();
+      }
+    );
 
     it("should use custom label when provided", () => {
       render(<StatusBadge status="active" label="In Progress" />);

@@ -14,7 +14,12 @@ import type {
 } from "@portalai/core/contracts";
 import type { ColumnDefinition } from "@portalai/core/models";
 import type { SelectOption } from "@portalai/core/ui";
-import { useAuthQuery, useAuthMutation, useAuthFetch, type ApiError } from "../utils/api.util";
+import {
+  useAuthQuery,
+  useAuthMutation,
+  useAuthFetch,
+  type ApiError,
+} from "../utils/api.util";
 import { buildUrl } from "../utils/url.util";
 import { queryKeys } from "./keys";
 import type { QueryOptions, SearchHookOptions, SearchResult } from "./types";
@@ -61,13 +66,19 @@ export const columnDefinitions = {
     ),
 
   create: () =>
-    useAuthMutation<ColumnDefinitionCreateResponsePayload, ColumnDefinitionCreateRequestBody>({
+    useAuthMutation<
+      ColumnDefinitionCreateResponsePayload,
+      ColumnDefinitionCreateRequestBody
+    >({
       url: COLUMN_DEFINITIONS_URL,
       method: "POST",
     }),
 
   update: (id: string) =>
-    useAuthMutation<ColumnDefinitionUpdateResponsePayload, ColumnDefinitionUpdateRequestBody>({
+    useAuthMutation<
+      ColumnDefinitionUpdateResponsePayload,
+      ColumnDefinitionUpdateRequestBody
+    >({
       url: `${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
     }),
@@ -82,16 +93,18 @@ export const columnDefinitions = {
     options?: SearchHookOptions<ColumnDefinition, TOption>
   ): SearchResult<TOption> => {
     const { fetchWithAuth } = useAuthFetch();
-    const mapFn = (options?.mapItem ?? defaultMapItem) as (item: ColumnDefinition) => TOption;
+    const mapFn = (options?.mapItem ?? defaultMapItem) as (
+      item: ColumnDefinition
+    ) => TOption;
     const [labelMap, setLabelMap] = useState<Record<string, string>>({});
 
     const searchMutation = useMutation<TOption[], ApiError, string>({
       mutationFn: async (query: string) => {
         const params: Record<string, string> = { ...options?.defaultParams };
         if (query) params.search = query;
-        const res = await fetchWithAuth<ApiSuccessResponse<ColumnDefinitionListResponsePayload>>(
-          buildUrl(COLUMN_DEFINITIONS_URL, params)
-        );
+        const res = await fetchWithAuth<
+          ApiSuccessResponse<ColumnDefinitionListResponsePayload>
+        >(buildUrl(COLUMN_DEFINITIONS_URL, params));
         const mapped = res.payload.columnDefinitions.map(mapFn);
         setLabelMap((prev) => {
           const next = { ...prev };
@@ -104,11 +117,14 @@ export const columnDefinitions = {
 
     const getByIdMutation = useMutation<TOption | null, ApiError, string>({
       mutationFn: async (id: string) => {
-        const res = await fetchWithAuth<ApiSuccessResponse<ColumnDefinitionGetResponsePayload>>(
-          `${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`
-        );
+        const res = await fetchWithAuth<
+          ApiSuccessResponse<ColumnDefinitionGetResponsePayload>
+        >(`${COLUMN_DEFINITIONS_URL}/${encodeURIComponent(id)}`);
         const option = mapFn(res.payload.columnDefinition);
-        setLabelMap((prev) => ({ ...prev, [String(option.value)]: option.label }));
+        setLabelMap((prev) => ({
+          ...prev,
+          [String(option.value)]: option.label,
+        }));
         return option;
       },
     });

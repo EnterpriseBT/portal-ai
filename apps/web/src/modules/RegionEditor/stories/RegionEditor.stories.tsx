@@ -120,7 +120,8 @@ export const ModeB_DriftHalt: Story = {
       severity: "blocker",
       identityChanging: true,
       fetchedAt: "2026-04-17 09:12 UTC",
-      notes: "Records-axis values renamed from short (JAN) to long (January) month labels.",
+      notes:
+        "Records-axis values renamed from short (JAN) to long (January) month labels.",
     },
   },
 };
@@ -129,7 +130,9 @@ interface InteractiveContentProps {
   workbook: Workbook;
 }
 
-const InteractiveContent: React.FC<InteractiveContentProps> = ({ workbook }) => {
+const InteractiveContent: React.FC<InteractiveContentProps> = ({
+  workbook,
+}) => {
   const [step, setStep] = useState<RegionEditorStep>(0);
   const [regions, setRegions] = useState<RegionDraft[]>([]);
   const [activeSheetId, setActiveSheetId] = useState(workbook.sheets[0].id);
@@ -192,7 +195,9 @@ const InteractiveContent: React.FC<InteractiveContentProps> = ({ workbook }) => 
     if (regions.length === 0) return undefined;
     const scored = regions.filter((r) => r.confidence !== undefined);
     if (scored.length === 0) return 0.8;
-    return scored.reduce((sum, r) => sum + (r.confidence ?? 0), 0) / scored.length;
+    return (
+      scored.reduce((sum, r) => sum + (r.confidence ?? 0), 0) / scored.length
+    );
   }, [regions]);
 
   return (
@@ -221,7 +226,7 @@ const InteractiveContent: React.FC<InteractiveContentProps> = ({ workbook }) => 
           setRegions((prev) =>
             prev.map((r, i) => ({
               ...r,
-              confidence: r.confidence ?? 0.7 + (i * 0.07),
+              confidence: r.confidence ?? 0.7 + i * 0.07,
             }))
           );
           setStep(1);

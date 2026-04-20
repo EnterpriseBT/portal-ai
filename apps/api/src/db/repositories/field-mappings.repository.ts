@@ -5,12 +5,31 @@
  * column-definition-scoped queries and composite-key upserts.
  */
 
-import { eq, and, not, asc, desc, getTableColumns, type SQL, inArray, isNull } from "drizzle-orm";
+import {
+  eq,
+  and,
+  not,
+  asc,
+  desc,
+  getTableColumns,
+  type SQL,
+  inArray,
+  isNull,
+} from "drizzle-orm";
 import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { fieldMappings, connectorEntities, connectorInstances, columnDefinitions } from "../schema/index.js";
+import {
+  fieldMappings,
+  connectorEntities,
+  connectorInstances,
+  columnDefinitions,
+} from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+import {
+  Repository,
+  type DbClient,
+  type ListOptions,
+} from "./base.repository.js";
 
 export interface FieldMappingListOptions extends ListOptions {
   include?: string[];
@@ -37,10 +56,18 @@ export class FieldMappingsRepository extends Repository<
     client: DbClient = db
   ): Promise<FieldMappingSelect[]> {
     if (opts.include?.includes("connectorEntity")) {
-      return this.findManyWithConnectorEntity(where, opts, client) as unknown as FieldMappingSelect[];
+      return this.findManyWithConnectorEntity(
+        where,
+        opts,
+        client
+      ) as unknown as FieldMappingSelect[];
     }
     if (opts.include?.includes("columnDefinition")) {
-      return this.findManyWithColumnDefinition(where, opts, client) as unknown as FieldMappingSelect[];
+      return this.findManyWithColumnDefinition(
+        where,
+        opts,
+        client
+      ) as unknown as FieldMappingSelect[];
     }
     return super.findMany(where, opts, client);
   }
@@ -51,7 +78,10 @@ export class FieldMappingsRepository extends Repository<
     client: DbClient = db
   ): Promise<number> {
     if (connectorEntityIds.length === 0) return 0;
-    return this.count(inArray(fieldMappings.connectorEntityId, connectorEntityIds), client);
+    return this.count(
+      inArray(fieldMappings.connectorEntityId, connectorEntityIds),
+      client
+    );
   }
 
   /** Find all field mappings for a given connector entity. */
@@ -91,7 +121,10 @@ export class FieldMappingsRepository extends Repository<
     columnDefinitionId: string,
     client: DbClient = db
   ): Promise<number> {
-    return this.count(eq(fieldMappings.columnDefinitionId, columnDefinitionId), client);
+    return this.count(
+      eq(fieldMappings.columnDefinitionId, columnDefinitionId),
+      client
+    );
   }
 
   /**
@@ -103,7 +136,13 @@ export class FieldMappingsRepository extends Repository<
     opts: ListOptions = {},
     client: DbClient = db
   ): Promise<
-    (FieldMappingSelect & { connectorEntity: (ConnectorEntitySelect & { connectorInstance?: Record<string, unknown> | null }) | null })[]
+    (FieldMappingSelect & {
+      connectorEntity:
+        | (ConnectorEntitySelect & {
+            connectorInstance?: Record<string, unknown> | null;
+          })
+        | null;
+    })[]
   > {
     const conditions = this.withSoftDelete(where, opts.includeDeleted);
 
@@ -250,7 +289,7 @@ export class FieldMappingsRepository extends Repository<
           eq(connectorEntities.key, refEntityKey),
           eq(fieldMappings.normalizedKey, refNormalizedKey),
           eq(fieldMappings.refEntityKey, entityKey),
-          this.notDeleted(),
+          this.notDeleted()
         )
       );
 
@@ -264,10 +303,16 @@ export class FieldMappingsRepository extends Repository<
   async findBidirectionalPair(
     fieldMappingId: string,
     client: DbClient = db
-  ): Promise<{ mapping: FieldMappingSelect; counterpart: FieldMappingSelect | null }> {
+  ): Promise<{
+    mapping: FieldMappingSelect;
+    counterpart: FieldMappingSelect | null;
+  }> {
     const mapping = await this.findById(fieldMappingId, client);
     if (!mapping) {
-      return { mapping: null as unknown as FieldMappingSelect, counterpart: null };
+      return {
+        mapping: null as unknown as FieldMappingSelect,
+        counterpart: null,
+      };
     }
     if (!mapping.refEntityKey || !mapping.refNormalizedKey) {
       return { mapping, counterpart: null };

@@ -9,10 +9,13 @@ export const swaggerRouter = Router();
 
 // Serve Swagger UI
 swaggerRouter.use("/", swaggerUi.serve);
-swaggerRouter.get("/", swaggerUi.setup(swaggerSpec, {
-  customCss: ".swagger-ui .topbar { display: none }",
-  customSiteTitle: "Portal.ai API Documentation",
-}));
+swaggerRouter.get(
+  "/",
+  swaggerUi.setup(swaggerSpec, {
+    customCss: ".swagger-ui .topbar { display: none }",
+    customSiteTitle: "Portal.ai API Documentation",
+  })
+);
 
 // Serve raw OpenAPI spec as JSON
 swaggerRouter.get("/spec", (_req, res) => {

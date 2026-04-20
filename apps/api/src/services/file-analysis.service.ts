@@ -14,9 +14,24 @@ import type {
   FileUploadRecommendationEntity,
 } from "@portalai/core/models";
 import { FileUploadRecommendationEntitySchema } from "@portalai/core/models";
+import type {
+  ColumnDefinitionCatalogEntry,
+  LayoutPlan,
+  RegionHint,
+  WorkbookData,
+} from "@portalai/core/contracts";
+import { interpret } from "@portalai/spreadsheet-parsing";
 
 import { AiService } from "./ai.service.js";
-import { heuristicAnalyze, inferType } from "../utils/heuristic-analyzer.util.js";
+import { DbService } from "./db.service.js";
+import {
+  createInterpretDeps,
+  type CreateInterpretDepsOptions,
+} from "./spreadsheet-parsing-llm.service.js";
+import {
+  heuristicAnalyze,
+  inferType,
+} from "../utils/heuristic-analyzer.util.js";
 import { buildFileAnalysisPrompt } from "../prompts/file-analysis.prompt.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -55,7 +70,9 @@ export interface AnalyzeFileInput {
 // AI analysis (private)
 // ---------------------------------------------------------------------------
 
-async function aiAnalyze(input: AnalyzeFileInput): Promise<FileUploadRecommendationEntity> {
+async function aiAnalyze(
+  input: AnalyzeFileInput
+): Promise<FileUploadRecommendationEntity> {
   const prompt = buildFileAnalysisPrompt(input);
 
   const result = await generateText({
@@ -77,9 +94,12 @@ async function aiAnalyze(input: AnalyzeFileInput): Promise<FileUploadRecommendat
  */
 function typeFallbackKey(inferredType: string, sampleValues: string[]): string {
   switch (inferredType) {
-    case "boolean": return "boolean";
-    case "date": return "date";
-    case "datetime": return "datetime";
+    case "boolean":
+      return "boolean";
+    case "date":
+      return "date";
+    case "datetime":
+      return "datetime";
     case "number": {
       const nonEmpty = sampleValues.filter((v) => v.trim() !== "");
       const hasDecimals = nonEmpty.some((v) => v.includes("."));
@@ -104,7 +124,9 @@ function resolveColumnDefinitionIds(
 ): FileUploadRecommendationEntity {
   const byId = new Map(existingColumns.map((c) => [c.id, c]));
   const byKey = new Map(existingColumns.map((c) => [c.key, c]));
-  const byLabel = new Map(existingColumns.map((c) => [c.label.toLowerCase(), c]));
+  const byLabel = new Map(
+    existingColumns.map((c) => [c.label.toLowerCase(), c])
+  );
 
   return {
     ...recommendation,
@@ -120,35 +142,67 @@ function resolveColumnDefinitionIds(
       // LLM returned a key instead of UUID — resolve it
       const matchByKey = byKey.get(rawId);
       if (matchByKey) {
-        logger.debug({ sourceField: col.sourceField, rawId, resolvedId: matchByKey.id }, "Resolved column definition ID from key");
-        return { ...col, existingColumnDefinitionId: matchByKey.id, existingColumnDefinitionKey: matchByKey.key };
+        logger.debug(
+          { sourceField: col.sourceField, rawId, resolvedId: matchByKey.id },
+          "Resolved column definition ID from key"
+        );
+        return {
+          ...col,
+          existingColumnDefinitionId: matchByKey.id,
+          existingColumnDefinitionKey: matchByKey.key,
+        };
       }
 
       // LLM returned a label instead of UUID — resolve it
       const matchByLabel = byLabel.get(rawId.toLowerCase());
       if (matchByLabel) {
-        logger.debug({ sourceField: col.sourceField, rawId, resolvedId: matchByLabel.id }, "Resolved column definition ID from label");
-        return { ...col, existingColumnDefinitionId: matchByLabel.id, existingColumnDefinitionKey: matchByLabel.key };
+        logger.debug(
+          { sourceField: col.sourceField, rawId, resolvedId: matchByLabel.id },
+          "Resolved column definition ID from label"
+        );
+        return {
+          ...col,
+          existingColumnDefinitionId: matchByLabel.id,
+          existingColumnDefinitionKey: matchByLabel.key,
+        };
       }
 
       // Unresolvable — attempt type-based fallback
-      logger.warn({ sourceField: col.sourceField, rawId }, "Could not resolve existingColumnDefinitionId — attempting type-based fallback");
+      logger.warn(
+        { sourceField: col.sourceField, rawId },
+        "Could not resolve existingColumnDefinitionId — attempting type-based fallback"
+      );
       const { type: inferredType } = inferType(col.sampleValues);
       const fallbackKey = typeFallbackKey(inferredType, col.sampleValues);
       const fallbackDef = byKey.get(fallbackKey);
       if (fallbackDef) {
-        return { ...col, existingColumnDefinitionId: fallbackDef.id, existingColumnDefinitionKey: fallbackDef.key, confidence: 0.5 };
+        return {
+          ...col,
+          existingColumnDefinitionId: fallbackDef.id,
+          existingColumnDefinitionKey: fallbackDef.key,
+          confidence: 0.5,
+        };
       }
 
       // Last resort — pick "text" if available
       const textDef = byKey.get("text");
       if (textDef) {
-        return { ...col, existingColumnDefinitionId: textDef.id, existingColumnDefinitionKey: textDef.key, confidence: 0.5 };
+        return {
+          ...col,
+          existingColumnDefinitionId: textDef.id,
+          existingColumnDefinitionKey: textDef.key,
+          confidence: 0.5,
+        };
       }
 
       // Absolute fallback: use the first existing column definition
       const firstDef = existingColumns[0];
-      return { ...col, existingColumnDefinitionId: firstDef?.id ?? "", existingColumnDefinitionKey: firstDef?.key ?? "", confidence: 0 };
+      return {
+        ...col,
+        existingColumnDefinitionId: firstDef?.id ?? "",
+        existingColumnDefinitionKey: firstDef?.key ?? "",
+        confidence: 0,
+      };
     }),
   };
 }
@@ -166,7 +220,9 @@ export class FileAnalysisService {
    * - AI error
    * - Zod validation failure (after 1 retry)
    */
-  static async getRecommendations(input: AnalyzeFileInput): Promise<FileUploadRecommendationEntity> {
+  static async getRecommendations(
+    input: AnalyzeFileInput
+  ): Promise<FileUploadRecommendationEntity> {
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= MAX_AI_RETRIES; attempt++) {
@@ -182,31 +238,46 @@ export class FileAnalysisService {
         const parsed = FileUploadRecommendationEntitySchema.safeParse(result);
         if (!parsed.success) {
           logger.warn(
-            { fileName: input.parseResult.fileName, errors: parsed.error.issues, attempt },
+            {
+              fileName: input.parseResult.fileName,
+              errors: parsed.error.issues,
+              attempt,
+            },
             "AI result failed Zod validation"
           );
           lastError = parsed.error;
           continue;
         }
 
-        const resolved = resolveColumnDefinitionIds(parsed.data, input.existingColumns);
+        const resolved = resolveColumnDefinitionIds(
+          parsed.data,
+          input.existingColumns
+        );
 
         logger.info(
-          { fileName: input.parseResult.fileName, columnCount: resolved.columns.length },
+          {
+            fileName: input.parseResult.fileName,
+            columnCount: resolved.columns.length,
+          },
           "AI analysis completed"
         );
         return resolved;
       } catch (err) {
         lastError = err;
-        const isTimeout = err instanceof Error && (
-          err.name === "AbortError" ||
-          err.name === "TimeoutError" ||
-          err.message.includes("abort") ||
-          err.message.includes("timeout")
-        );
+        const isTimeout =
+          err instanceof Error &&
+          (err.name === "AbortError" ||
+            err.name === "TimeoutError" ||
+            err.message.includes("abort") ||
+            err.message.includes("timeout"));
 
         logger.warn(
-          { fileName: input.parseResult.fileName, error: err instanceof Error ? err.message : String(err), isTimeout, attempt },
+          {
+            fileName: input.parseResult.fileName,
+            error: err instanceof Error ? err.message : String(err),
+            isTimeout,
+            attempt,
+          },
           isTimeout ? "AI analysis timed out" : "AI analysis failed"
         );
 
@@ -216,7 +287,11 @@ export class FileAnalysisService {
     }
 
     logger.info(
-      { fileName: input.parseResult.fileName, error: lastError instanceof Error ? lastError.message : String(lastError) },
+      {
+        fileName: input.parseResult.fileName,
+        error:
+          lastError instanceof Error ? lastError.message : String(lastError),
+      },
       "Falling back to heuristic analysis"
     );
 
@@ -226,7 +301,58 @@ export class FileAnalysisService {
   /**
    * Heuristic-only analysis. Exposed for testing and as a direct fallback.
    */
-  static heuristicAnalyze(input: AnalyzeFileInput): FileUploadRecommendationEntity {
+  static heuristicAnalyze(
+    input: AnalyzeFileInput
+  ): FileUploadRecommendationEntity {
     return heuristicAnalyze(input);
+  }
+
+  /**
+   * Parser-driven interpretation (new plan-driven path).
+   *
+   * Thin adapter: loads the org's `ColumnDefinition` catalog, builds
+   * `InterpretDeps` via `createInterpretDeps`, then calls the parser
+   * module's `interpret()`. The parser itself never calls a model — the
+   * factory wires an Anthropic-backed classifier + axis-name recommender
+   * behind the DI slots the parser exposes.
+   *
+   * Legacy `getRecommendations` path is unaffected; both coexist until the
+   * upload-deprecation plan retires the legacy flow.
+   */
+  static async analyze(
+    workbook: WorkbookData,
+    hints: RegionHint[],
+    orgId: string,
+    userId: string,
+    depsOverrides?: Omit<CreateInterpretDepsOptions, "columnDefinitionCatalog">
+  ): Promise<LayoutPlan> {
+    const catalog = await FileAnalysisService.loadCatalog(orgId);
+    const deps = createInterpretDeps({
+      ...depsOverrides,
+      columnDefinitionCatalog: catalog,
+      logger:
+        depsOverrides?.logger ??
+        createLogger({ module: "interpret", orgId, userId }),
+    });
+    return interpret({ workbook, regionHints: hints }, deps);
+  }
+
+  /**
+   * Load the org's `ColumnDefinition` catalog in the shape the parser's
+   * classifier expects. Exposed separately so tests can override it via
+   * module mocks without stubbing the whole `analyze` pipeline.
+   */
+  static async loadCatalog(
+    orgId: string
+  ): Promise<ColumnDefinitionCatalogEntry[]> {
+    const rows =
+      await DbService.repository.columnDefinitions.findByOrganizationId(orgId);
+    return rows.map((row) => ({
+      id: row.id,
+      label: row.label,
+      normalizedKey: row.key,
+      description: row.description ?? undefined,
+      type: row.type,
+    }));
   }
 }

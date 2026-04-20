@@ -10,7 +10,8 @@ import {
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockGetObjectStream = jest.fn<() => Promise<{ stream: Readable; contentLength: number }>>();
+const mockGetObjectStream =
+  jest.fn<() => Promise<{ stream: Readable; contentLength: number }>>();
 
 jest.unstable_mockModule("../../services/s3.service.js", () => ({
   S3Service: {
@@ -18,9 +19,15 @@ jest.unstable_mockModule("../../services/s3.service.js", () => ({
   },
 }));
 
-const mockFindBySourceIds = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
-const mockUpsertManyBySourceId = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
-const mockFieldMappingsFindMany = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
+const mockFindBySourceIds = jest
+  .fn<(...args: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
+const mockUpsertManyBySourceId = jest
+  .fn<(...args: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
+const mockFieldMappingsFindMany = jest
+  .fn<(...args: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -40,7 +47,8 @@ jest.unstable_mockModule("../../db/schema/index.js", () => ({
   fieldMappings: { connectorEntityId: "connectorEntityId" },
 }));
 
-const { XlsxImportService } = await import("../../services/xlsx-import.service.js");
+const { XlsxImportService } =
+  await import("../../services/xlsx-import.service.js");
 
 // ---------------------------------------------------------------------------
 // Helpers / fixtures
@@ -60,7 +68,13 @@ const FIELD_MAPPINGS_WITH_COL_DEFS = [
     defaultValue: null,
     format: null,
     enumValues: null,
-    columnDefinition: { key: "name", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null },
+    columnDefinition: {
+      key: "name",
+      type: "string",
+      validationPattern: null,
+      validationMessage: null,
+      canonicalFormat: null,
+    },
   },
   {
     connectorEntityId: ENTITY_ID,
@@ -70,7 +84,13 @@ const FIELD_MAPPINGS_WITH_COL_DEFS = [
     defaultValue: null,
     format: null,
     enumValues: null,
-    columnDefinition: { key: "email", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null },
+    columnDefinition: {
+      key: "email",
+      type: "string",
+      validationPattern: null,
+      validationMessage: null,
+      canonicalFormat: null,
+    },
   },
 ];
 
@@ -84,7 +104,10 @@ function defaultParams(sheetName = "Contacts") {
   };
 }
 
-function bufferToStream(buf: Buffer): { stream: Readable; contentLength: number } {
+function bufferToStream(buf: Buffer): {
+  stream: Readable;
+  contentLength: number;
+} {
   return { stream: Readable.from(buf), contentLength: buf.length };
 }
 
@@ -117,13 +140,18 @@ describe("XlsxImportService", () => {
       expect(result.invalid).toBe(0);
 
       expect(mockUpsertManyBySourceId).toHaveBeenCalledTimes(1);
-      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >;
       expect(upserted).toHaveLength(2);
       expect(upserted[0].normalizedData).toEqual({
         name: "Jane Doe",
         email: "jane@example.com",
       });
-      expect(upserted[0].data).toEqual({ Name: "Jane Doe", Email: "jane@example.com" });
+      expect(upserted[0].data).toEqual({
+        Name: "Jane Doe",
+        Email: "jane@example.com",
+      });
     });
 
     it("imports only the requested sheet from a multi-sheet workbook", async () => {
@@ -140,20 +168,27 @@ describe("XlsxImportService", () => {
       });
       mockGetObjectStream.mockResolvedValue(bufferToStream(xlsx));
 
-      const result = await XlsxImportService.importFromS3(defaultParams("Deals"));
+      const result = await XlsxImportService.importFromS3(
+        defaultParams("Deals")
+      );
 
       expect(result.created).toBe(2);
-      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >;
       expect((upserted[0].data as Record<string, string>).Name).toBe("Bob");
       expect((upserted[1].data as Record<string, string>).Name).toBe("Carol");
     });
 
     it("throws ProcessorError(UPLOAD_SHEET_NOT_FOUND) for a missing sheet", async () => {
-      const xlsx = await buildSingleSheetXlsx("Contacts", [["Name"], ["Alice"]]);
+      const xlsx = await buildSingleSheetXlsx("Contacts", [
+        ["Name"],
+        ["Alice"],
+      ]);
       mockGetObjectStream.mockResolvedValue(bufferToStream(xlsx));
 
       await expect(
-        XlsxImportService.importFromS3(defaultParams("Nope")),
+        XlsxImportService.importFromS3(defaultParams("Nope"))
       ).rejects.toMatchObject({
         name: "ProcessorError",
         code: "UPLOAD_SHEET_NOT_FOUND",
@@ -166,7 +201,12 @@ describe("XlsxImportService", () => {
 
       const result = await XlsxImportService.importFromS3(defaultParams());
 
-      expect(result).toEqual({ created: 0, updated: 0, unchanged: 0, invalid: 0 });
+      expect(result).toEqual({
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+        invalid: 0,
+      });
       expect(mockUpsertManyBySourceId).not.toHaveBeenCalled();
     });
 
@@ -180,7 +220,9 @@ describe("XlsxImportService", () => {
 
       await XlsxImportService.importFromS3(defaultParams());
 
-      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >;
       expect(upserted[0].sourceId).toBe("0");
       expect(upserted[1].sourceId).toBe("1");
     });

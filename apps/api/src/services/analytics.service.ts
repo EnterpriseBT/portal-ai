@@ -149,8 +149,7 @@ function validateVegaLiteSpec(spec: VegaLiteSpec): void {
   try {
     vegaLiteCompile(spec);
   } catch (err: any) {
-    const msg =
-      err instanceof Error ? err.message : String(err);
+    const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid Vega-Lite spec: ${msg}`);
   }
 }
@@ -162,8 +161,7 @@ async function validateVegaSpec(spec: VegaSpec): Promise<void> {
     await view.runAsync();
     view.finalize();
   } catch (err: any) {
-    const msg =
-      err instanceof Error ? err.message : String(err);
+    const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid Vega spec: ${msg}`);
   }
 }
@@ -303,17 +301,19 @@ export class AnalyticsService {
     // 5. Load station-scoped metadata tables into AlaSQL
 
     // Connector instances attached to this station (query directly to avoid credential decryption)
-    const connectorInstanceRows = connectorInstanceIds.length > 0
-      ? await db
-          .select({
-            id: connectorInstancesTable.id,
-            name: connectorInstancesTable.name,
-            status: connectorInstancesTable.status,
-            connectorDefinitionId: connectorInstancesTable.connectorDefinitionId,
-          })
-          .from(connectorInstancesTable)
-          .where(inArray(connectorInstancesTable.id, connectorInstanceIds))
-      : [];
+    const connectorInstanceRows =
+      connectorInstanceIds.length > 0
+        ? await db
+            .select({
+              id: connectorInstancesTable.id,
+              name: connectorInstancesTable.name,
+              status: connectorInstancesTable.status,
+              connectorDefinitionId:
+                connectorInstancesTable.connectorDefinitionId,
+            })
+            .from(connectorInstancesTable)
+            .where(inArray(connectorInstancesTable.id, connectorInstanceIds))
+        : [];
     alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_connector_instances]");
     if (connectorInstanceRows.length > 0) {
       alasql(`INSERT INTO [${dbName}].[_connector_instances] SELECT * FROM ?`, [
@@ -340,7 +340,8 @@ export class AnalyticsService {
     }
 
     // Organization-level column definitions and field mappings
-    const allColumnDefs = await repo.columnDefinitions.findByOrganizationId(organizationId);
+    const allColumnDefs =
+      await repo.columnDefinitions.findByOrganizationId(organizationId);
     alasqlDb.exec("CREATE TABLE IF NOT EXISTS [_column_definitions]");
     if (allColumnDefs.length > 0) {
       alasql(`INSERT INTO [${dbName}].[_column_definitions] SELECT * FROM ?`, [
@@ -395,32 +396,53 @@ export class AnalyticsService {
    * Generic helpers: insert, upsert (by id), and delete a row in a named
    * AlaSQL table.  All helpers silently no-op when the station is not loaded.
    */
-  private static cacheInsert(stationId: string, table: string, row: Record<string, unknown>): void {
+  private static cacheInsert(
+    stationId: string,
+    table: string,
+    row: Record<string, unknown>
+  ): void {
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
     try {
-      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [[row]]);
+      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [
+        [row],
+      ]);
     } catch (err) {
       logger.warn({ stationId, table, err }, "AlaSQL cache insert failed");
     }
   }
 
-  private static cacheUpsert(stationId: string, table: string, id: string, row: Record<string, unknown>): void {
+  private static cacheUpsert(
+    stationId: string,
+    table: string,
+    id: string,
+    row: Record<string, unknown>
+  ): void {
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
     try {
       alasql(`DELETE FROM [${entry.dbName}].[${table}] WHERE id = ?`, [id]);
-      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [[row]]);
+      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [
+        [row],
+      ]);
     } catch (err) {
       logger.warn({ stationId, table, id, err }, "AlaSQL cache upsert failed");
     }
   }
 
-  private static cacheDelete(stationId: string, table: string, idColumn: string, id: string): void {
+  private static cacheDelete(
+    stationId: string,
+    table: string,
+    idColumn: string,
+    id: string
+  ): void {
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
     try {
-      alasql(`DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] = ?`, [id]);
+      alasql(
+        `DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] = ?`,
+        [id]
+      );
     } catch (err) {
       logger.warn({ stationId, table, id, err }, "AlaSQL cache delete failed");
     }
@@ -428,84 +450,189 @@ export class AnalyticsService {
 
   // -- Entity record data tables -------------------------------------------
 
-  static applyRecordInsert(stationId: string, entityKey: string, row: Record<string, unknown>): void {
+  static applyRecordInsert(
+    stationId: string,
+    entityKey: string,
+    row: Record<string, unknown>
+  ): void {
     this.cacheInsert(stationId, entityKey, row);
   }
 
-  static applyRecordUpdate(stationId: string, entityKey: string, recordId: string, row: Record<string, unknown>): void {
+  static applyRecordUpdate(
+    stationId: string,
+    entityKey: string,
+    recordId: string,
+    row: Record<string, unknown>
+  ): void {
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
     try {
-      alasql(`DELETE FROM [${entry.dbName}].[${entityKey}] WHERE _record_id = ?`, [recordId]);
-      alasql(`INSERT INTO [${entry.dbName}].[${entityKey}] SELECT * FROM ?`, [[row]]);
+      alasql(
+        `DELETE FROM [${entry.dbName}].[${entityKey}] WHERE _record_id = ?`,
+        [recordId]
+      );
+      alasql(`INSERT INTO [${entry.dbName}].[${entityKey}] SELECT * FROM ?`, [
+        [row],
+      ]);
     } catch (err) {
-      logger.warn({ stationId, entityKey, recordId, err }, "AlaSQL record update failed");
+      logger.warn(
+        { stationId, entityKey, recordId, err },
+        "AlaSQL record update failed"
+      );
     }
   }
 
-  static applyRecordDelete(stationId: string, entityKey: string, recordId: string): void {
+  static applyRecordDelete(
+    stationId: string,
+    entityKey: string,
+    recordId: string
+  ): void {
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
     try {
-      alasql(`DELETE FROM [${entry.dbName}].[${entityKey}] WHERE _record_id = ?`, [recordId]);
+      alasql(
+        `DELETE FROM [${entry.dbName}].[${entityKey}] WHERE _record_id = ?`,
+        [recordId]
+      );
     } catch (err) {
-      logger.warn({ stationId, entityKey, recordId, err }, "AlaSQL record delete failed");
+      logger.warn(
+        { stationId, entityKey, recordId, err },
+        "AlaSQL record delete failed"
+      );
     }
   }
 
   // -- _connector_entities -------------------------------------------------
 
-  static applyEntityInsert(stationId: string, row: { id: string; key: string; label: string; connectorInstanceId: string }): void {
+  static applyEntityInsert(
+    stationId: string,
+    row: { id: string; key: string; label: string; connectorInstanceId: string }
+  ): void {
     this.cacheInsert(stationId, "_connector_entities", {
-      id: row.id, key: row.key, label: row.label, connector_instance_id: row.connectorInstanceId,
+      id: row.id,
+      key: row.key,
+      label: row.label,
+      connector_instance_id: row.connectorInstanceId,
     });
     // Create the empty data table for the new entity
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
-    try { entry.db.exec(`CREATE TABLE IF NOT EXISTS [${row.key}]`); } catch { /* ignore */ }
+    try {
+      entry.db.exec(`CREATE TABLE IF NOT EXISTS [${row.key}]`);
+    } catch {
+      /* ignore */
+    }
   }
 
-  static applyEntityUpdate(stationId: string, row: { id: string; key: string; label: string; connectorInstanceId: string }): void {
+  static applyEntityUpdate(
+    stationId: string,
+    row: { id: string; key: string; label: string; connectorInstanceId: string }
+  ): void {
     this.cacheUpsert(stationId, "_connector_entities", row.id, {
-      id: row.id, key: row.key, label: row.label, connector_instance_id: row.connectorInstanceId,
+      id: row.id,
+      key: row.key,
+      label: row.label,
+      connector_instance_id: row.connectorInstanceId,
     });
   }
 
-  static applyEntityDelete(stationId: string, entityId: string, entityKey: string): void {
+  static applyEntityDelete(
+    stationId: string,
+    entityId: string,
+    entityKey: string
+  ): void {
     this.cacheDelete(stationId, "_connector_entities", "id", entityId);
     // Drop the entity data table
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
-    try { entry.db.exec(`DROP TABLE IF EXISTS [${entityKey}]`); } catch { /* ignore */ }
+    try {
+      entry.db.exec(`DROP TABLE IF EXISTS [${entityKey}]`);
+    } catch {
+      /* ignore */
+    }
     // Remove field mappings that belonged to this entity
-    try { alasql(`DELETE FROM [${entry.dbName}].[_field_mappings] WHERE connector_entity_id = ?`, [entityId]); } catch { /* ignore */ }
+    try {
+      alasql(
+        `DELETE FROM [${entry.dbName}].[_field_mappings] WHERE connector_entity_id = ?`,
+        [entityId]
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   // -- _column_definitions -------------------------------------------------
 
-  static applyColumnDefinitionInsert(stationId: string, row: { id: string; key: string; label: string; type: string; description: string | null }): void {
+  static applyColumnDefinitionInsert(
+    stationId: string,
+    row: {
+      id: string;
+      key: string;
+      label: string;
+      type: string;
+      description: string | null;
+    }
+  ): void {
     this.cacheInsert(stationId, "_column_definitions", row);
   }
 
-  static applyColumnDefinitionUpdate(stationId: string, row: { id: string; key: string; label: string; type: string; description: string | null }): void {
+  static applyColumnDefinitionUpdate(
+    stationId: string,
+    row: {
+      id: string;
+      key: string;
+      label: string;
+      type: string;
+      description: string | null;
+    }
+  ): void {
     this.cacheUpsert(stationId, "_column_definitions", row.id, row);
   }
 
-  static applyColumnDefinitionDelete(stationId: string, columnDefinitionId: string): void {
-    this.cacheDelete(stationId, "_column_definitions", "id", columnDefinitionId);
+  static applyColumnDefinitionDelete(
+    stationId: string,
+    columnDefinitionId: string
+  ): void {
+    this.cacheDelete(
+      stationId,
+      "_column_definitions",
+      "id",
+      columnDefinitionId
+    );
   }
 
   // -- _field_mappings -----------------------------------------------------
 
-  static applyFieldMappingInsert(stationId: string, row: { id: string; connector_entity_id: string; column_definition_id: string; source_field: string; is_primary_key: boolean }): void {
+  static applyFieldMappingInsert(
+    stationId: string,
+    row: {
+      id: string;
+      connector_entity_id: string;
+      column_definition_id: string;
+      source_field: string;
+      is_primary_key: boolean;
+    }
+  ): void {
     this.cacheInsert(stationId, "_field_mappings", row);
   }
 
-  static applyFieldMappingUpdate(stationId: string, row: { id: string; connector_entity_id: string; column_definition_id: string; source_field: string; is_primary_key: boolean }): void {
+  static applyFieldMappingUpdate(
+    stationId: string,
+    row: {
+      id: string;
+      connector_entity_id: string;
+      column_definition_id: string;
+      source_field: string;
+      is_primary_key: boolean;
+    }
+  ): void {
     this.cacheUpsert(stationId, "_field_mappings", row.id, row);
   }
 
-  static applyFieldMappingDelete(stationId: string, fieldMappingId: string): void {
+  static applyFieldMappingDelete(
+    stationId: string,
+    fieldMappingId: string
+  ): void {
     this.cacheDelete(stationId, "_field_mappings", "id", fieldMappingId);
   }
 
@@ -513,59 +640,110 @@ export class AnalyticsService {
   // Batch cache mutations (called from bulk tools)
   // -------------------------------------------------------------------------
 
-  private static cacheBatchInsert(stationId: string, table: string, rows: Record<string, unknown>[]): void {
+  private static cacheBatchInsert(
+    stationId: string,
+    table: string,
+    rows: Record<string, unknown>[]
+  ): void {
     const entry = stationDatabases.get(stationId);
     if (!entry || rows.length === 0) return;
     try {
-      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [rows]);
+      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [
+        rows,
+      ]);
     } catch (err) {
-      logger.warn({ stationId, table, count: rows.length, err }, "AlaSQL batch insert failed");
+      logger.warn(
+        { stationId, table, count: rows.length, err },
+        "AlaSQL batch insert failed"
+      );
     }
   }
 
-  private static cacheBatchUpsert(stationId: string, table: string, idColumn: string, rows: Record<string, unknown>[]): void {
+  private static cacheBatchUpsert(
+    stationId: string,
+    table: string,
+    idColumn: string,
+    rows: Record<string, unknown>[]
+  ): void {
     const entry = stationDatabases.get(stationId);
     if (!entry || rows.length === 0) return;
     try {
       const ids = rows.map((r) => r[idColumn]);
-      alasql(`DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] IN @(?)`, [ids]);
-      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [rows]);
+      alasql(
+        `DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] IN @(?)`,
+        [ids]
+      );
+      alasql(`INSERT INTO [${entry.dbName}].[${table}] SELECT * FROM ?`, [
+        rows,
+      ]);
     } catch (err) {
-      logger.warn({ stationId, table, count: rows.length, err }, "AlaSQL batch upsert failed");
+      logger.warn(
+        { stationId, table, count: rows.length, err },
+        "AlaSQL batch upsert failed"
+      );
     }
   }
 
-  private static cacheBatchDelete(stationId: string, table: string, idColumn: string, ids: string[]): void {
+  private static cacheBatchDelete(
+    stationId: string,
+    table: string,
+    idColumn: string,
+    ids: string[]
+  ): void {
     const entry = stationDatabases.get(stationId);
     if (!entry || ids.length === 0) return;
     try {
-      alasql(`DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] IN @(?)`, [ids]);
+      alasql(
+        `DELETE FROM [${entry.dbName}].[${table}] WHERE [${idColumn}] IN @(?)`,
+        [ids]
+      );
     } catch (err) {
-      logger.warn({ stationId, table, count: ids.length, err }, "AlaSQL batch delete failed");
+      logger.warn(
+        { stationId, table, count: ids.length, err },
+        "AlaSQL batch delete failed"
+      );
     }
   }
 
   // -- Batch: entity records ------------------------------------------------
 
-  static applyRecordInsertMany(stationId: string, entityKey: string, rows: Record<string, unknown>[]): void {
+  static applyRecordInsertMany(
+    stationId: string,
+    entityKey: string,
+    rows: Record<string, unknown>[]
+  ): void {
     this.cacheBatchInsert(stationId, entityKey, rows);
   }
 
-  static applyRecordUpdateMany(stationId: string, entityKey: string, rows: Record<string, unknown>[]): void {
+  static applyRecordUpdateMany(
+    stationId: string,
+    entityKey: string,
+    rows: Record<string, unknown>[]
+  ): void {
     this.cacheBatchUpsert(stationId, entityKey, "_record_id", rows);
   }
 
-  static applyRecordDeleteMany(stationId: string, entityKey: string, recordIds: string[]): void {
+  static applyRecordDeleteMany(
+    stationId: string,
+    entityKey: string,
+    recordIds: string[]
+  ): void {
     this.cacheBatchDelete(stationId, entityKey, "_record_id", recordIds);
   }
 
   // -- Batch: field mappings ------------------------------------------------
 
-  static applyFieldMappingInsertMany(stationId: string, rows: Record<string, unknown>[]): void {
+  static applyFieldMappingInsertMany(
+    stationId: string,
+    rows: Record<string, unknown>[]
+  ): void {
     this.cacheBatchInsert(stationId, "_field_mappings", rows);
   }
 
-  static applyFieldMappingUpdateMany(stationId: string, rows: Record<string, unknown>[]): void {
+  static applyFieldMappingUpdateMany(
+    stationId: string,
+    rows: Record<string, unknown>[]
+  ): void {
     this.cacheBatchUpsert(stationId, "_field_mappings", "id", rows);
   }
 
@@ -575,34 +753,75 @@ export class AnalyticsService {
 
   // -- Batch: connector entities --------------------------------------------
 
-  static applyEntityInsertMany(stationId: string, rows: { id: string; key: string; label: string; connectorInstanceId: string }[]): void {
+  static applyEntityInsertMany(
+    stationId: string,
+    rows: {
+      id: string;
+      key: string;
+      label: string;
+      connectorInstanceId: string;
+    }[]
+  ): void {
     const cacheRows = rows.map((r) => ({
-      id: r.id, key: r.key, label: r.label, connector_instance_id: r.connectorInstanceId,
+      id: r.id,
+      key: r.key,
+      label: r.label,
+      connector_instance_id: r.connectorInstanceId,
     }));
     this.cacheBatchInsert(stationId, "_connector_entities", cacheRows);
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
     for (const r of rows) {
-      try { entry.db.exec(`CREATE TABLE IF NOT EXISTS [${r.key}]`); } catch { /* ignore */ }
+      try {
+        entry.db.exec(`CREATE TABLE IF NOT EXISTS [${r.key}]`);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
-  static applyEntityUpdateMany(stationId: string, rows: { id: string; key: string; label: string; connectorInstanceId: string }[]): void {
+  static applyEntityUpdateMany(
+    stationId: string,
+    rows: {
+      id: string;
+      key: string;
+      label: string;
+      connectorInstanceId: string;
+    }[]
+  ): void {
     const cacheRows = rows.map((r) => ({
-      id: r.id, key: r.key, label: r.label, connector_instance_id: r.connectorInstanceId,
+      id: r.id,
+      key: r.key,
+      label: r.label,
+      connector_instance_id: r.connectorInstanceId,
     }));
     this.cacheBatchUpsert(stationId, "_connector_entities", "id", cacheRows);
   }
 
-  static applyEntityDeleteMany(stationId: string, entityIds: string[], entityKeys: string[]): void {
+  static applyEntityDeleteMany(
+    stationId: string,
+    entityIds: string[],
+    entityKeys: string[]
+  ): void {
     this.cacheBatchDelete(stationId, "_connector_entities", "id", entityIds);
     const entry = stationDatabases.get(stationId);
     if (!entry) return;
     for (const key of entityKeys) {
-      try { entry.db.exec(`DROP TABLE IF EXISTS [${key}]`); } catch { /* ignore */ }
+      try {
+        entry.db.exec(`DROP TABLE IF EXISTS [${key}]`);
+      } catch {
+        /* ignore */
+      }
     }
     for (const entityId of entityIds) {
-      try { alasql(`DELETE FROM [${entry.dbName}].[_field_mappings] WHERE connector_entity_id = ?`, [entityId]); } catch { /* ignore */ }
+      try {
+        alasql(
+          `DELETE FROM [${entry.dbName}].[_field_mappings] WHERE connector_entity_id = ?`,
+          [entityId]
+        );
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -688,9 +907,10 @@ export class AnalyticsService {
     }
 
     const records = await repo.entityRecords.findByConnectorEntityId(entity.id);
-    return records
-      .map((r: any) => r.normalizedData)
-      .filter(Boolean) as Record<string, unknown>[];
+    return records.map((r: any) => r.normalizedData).filter(Boolean) as Record<
+      string,
+      unknown
+    >[];
   }
 
   // -----------------------------------------------------------------------
@@ -722,7 +942,7 @@ export class AnalyticsService {
    */
   static async visualize(params: {
     sql: string;
-    vegaLiteSpec: VegaLiteSpecInput
+    vegaLiteSpec: VegaLiteSpecInput;
     stationId: string;
   }): Promise<VegaLiteSpec> {
     const { sql, vegaLiteSpec, stationId } = params;
@@ -752,7 +972,7 @@ export class AnalyticsService {
     const rows = this.sqlQuery({ sql, stationId });
     const specData = vegaSpec.data;
     const data: Data[] = Array.isArray(specData)
-      ? [...specData] as Data[]
+      ? ([...specData] as Data[])
       : [];
 
     const first = data[0] as Data | undefined;
@@ -938,8 +1158,7 @@ export class AnalyticsService {
     const data = params.records.map((r) =>
       params.columns.map((col) => {
         const v = Number(r[col]);
-        if (isNaN(v))
-          throw new Error(`Non-numeric value in column "${col}"`);
+        if (isNaN(v)) throw new Error(`Non-numeric value in column "${col}"`);
         return v;
       })
     );
@@ -1135,11 +1354,11 @@ export class AnalyticsService {
         }) as object[];
         break;
       case "ATR": {
-        const high = sorted.map(
-          (r) => Number(r[(extraParams.highColumn as string) ?? "high"])
+        const high = sorted.map((r) =>
+          Number(r[(extraParams.highColumn as string) ?? "high"])
         );
-        const low = sorted.map(
-          (r) => Number(r[(extraParams.lowColumn as string) ?? "low"])
+        const low = sorted.map((r) =>
+          Number(r[(extraParams.lowColumn as string) ?? "low"])
         );
         const close = closePrices;
         values = ATR.calculate({ period, high, low, close });
@@ -1147,8 +1366,8 @@ export class AnalyticsService {
       }
       case "OBV": {
         const close = closePrices;
-        const volume = sorted.map(
-          (r) => Number(r[(extraParams.volumeColumn as string) ?? "volume"])
+        const volume = sorted.map((r) =>
+          Number(r[(extraParams.volumeColumn as string) ?? "volume"])
         );
         values = OBV.calculate({ close, volume });
         break;
@@ -1167,10 +1386,7 @@ export class AnalyticsService {
   /**
    * Net present value via financial.
    */
-  static npv(params: {
-    rate: number;
-    cashFlows: number[];
-  }): { npv: number } {
+  static npv(params: { rate: number; cashFlows: number[] }): { npv: number } {
     return { npv: financial.npv(params.rate, params.cashFlows) };
   }
 
@@ -1222,7 +1438,10 @@ export class AnalyticsService {
     riskFreeRate?: number;
     annualize?: boolean;
   }): { sharpeRatio: number } {
-    const values = this.extractNumericColumn(params.records, params.valueColumn);
+    const values = this.extractNumericColumn(
+      params.records,
+      params.valueColumn
+    );
     if (values.length < 2) {
       throw new Error("At least 2 values required for Sharpe ratio");
     }
@@ -1256,7 +1475,11 @@ export class AnalyticsService {
     records: Record<string, unknown>[];
     dateColumn: string;
     valueColumn: string;
-  }): { maxDrawdown: number; peakDate: string | null; troughDate: string | null } {
+  }): {
+    maxDrawdown: number;
+    peakDate: string | null;
+    troughDate: string | null;
+  } {
     const { records, dateColumn, valueColumn } = params;
 
     if (records.length === 0) {
@@ -1383,10 +1606,7 @@ export class AnalyticsService {
     for (let i = 0; i < size; i++) {
       matrix[i] = [];
       for (let j = 0; j < size; j++) {
-        matrix[i][j] = x.reduce(
-          (sum, xi) => sum + Math.pow(xi, i + j),
-          0
-        );
+        matrix[i][j] = x.reduce((sum, xi) => sum + Math.pow(xi, i + j), 0);
       }
       rhs[i] = x.reduce((sum, xi, k) => sum + y[k] * Math.pow(xi, i), 0);
     }

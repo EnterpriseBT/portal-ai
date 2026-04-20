@@ -1,0 +1,76 @@
+{
+  "planVersion": "1.0.0",
+  "workbookFingerprint": {
+    "sheetNames": ["QuarterByRegion"],
+    "dimensions": { "QuarterByRegion": { "rows": 5, "cols": 5 } },
+    "anchorCells": [
+      { "sheet": "QuarterByRegion", "row": 1, "col": 1, "value": "Quarter" }
+    ]
+  },
+  "regions": [
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "sheet": "QuarterByRegion",
+      "bounds": { "startRow": 1, "startCol": 1, "endRow": 5, "endCol": 5 },
+      "boundsMode": "absolute",
+      "targetEntityDefinitionId": "revenue-crosstab",
+      "orientation": "cells-as-records",
+      "headerAxis": "row",
+      "recordsAxisName": {
+        "name": "Quarter",
+        "source": "anchor-cell",
+        "confidence": 0.85
+      },
+      "secondaryRecordsAxisName": {
+        "name": "Region",
+        "source": "ai",
+        "confidence": 0.75
+      },
+      "cellValueName": {
+        "name": "Revenue",
+        "source": "user"
+      },
+      "axisAnchorCell": { "row": 1, "col": 1 },
+      "headerStrategy": {
+        "kind": "row",
+        "locator": { "kind": "row", "sheet": "QuarterByRegion", "row": 1 },
+        "confidence": 0.9
+      },
+      "identityStrategy": {
+        "kind": "composite",
+        "sourceLocators": [
+          { "kind": "column", "sheet": "QuarterByRegion", "col": 1 },
+          { "kind": "row", "sheet": "QuarterByRegion", "row": 1 }
+        ],
+        "joiner": "|",
+        "confidence": 0.85
+      },
+      "columnBindings": [
+        {
+          "sourceLocator": { "kind": "byHeaderName", "name": "Revenue" },
+          "columnDefinitionId": "col-revenue",
+          "confidence": 0.9
+        }
+      ],
+      "skipRules": [
+        {
+          "kind": "cellMatches",
+          "crossAxisIndex": 4,
+          "pattern": "^Total$",
+          "axis": "row"
+        }
+      ],
+      "drift": {
+        "headerShiftRows": 0,
+        "addedColumns": "halt",
+        "removedColumns": { "max": 0, "action": "halt" }
+      },
+      "confidence": { "region": 0.88, "aggregate": 0.85 },
+      "warnings": []
+    }
+  ],
+  "confidence": {
+    "overall": 0.85,
+    "perRegion": { "33333333-3333-4333-8333-333333333333": 0.85 }
+  }
+}

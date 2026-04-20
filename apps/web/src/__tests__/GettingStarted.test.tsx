@@ -3,9 +3,8 @@ import type { GettingStartedStep } from "../utils/getting-started.util";
 
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { GettingStarted } = await import(
-  "../components/GettingStarted.component"
-);
+const { GettingStarted } =
+  await import("../components/GettingStarted.component");
 const { ApplicationRoute } = await import("../utils/routes.util");
 
 const fixture: GettingStartedStep[] = [
@@ -58,7 +57,9 @@ describe("GettingStarted", () => {
     expect(onNavigate).toHaveBeenCalledWith(ApplicationRoute.Connectors);
 
     onNavigate.mockClear();
-    const entitiesButton = screen.getByRole("button", { name: "Go to Entities" });
+    const entitiesButton = screen.getByRole("button", {
+      name: "Go to Entities",
+    });
     await user.click(entitiesButton);
     expect(onNavigate).toHaveBeenCalledWith(ApplicationRoute.Entities);
   });

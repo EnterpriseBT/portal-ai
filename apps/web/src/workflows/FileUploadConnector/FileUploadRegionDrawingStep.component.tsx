@@ -7,8 +7,7 @@ import type { RegionDrawingStepUIProps } from "../../modules/RegionEditor";
 import { FormAlert } from "../../components/FormAlert.component";
 import type { ServerError } from "../../utils/api.util";
 
-export interface FileUploadRegionDrawingStepUIProps
-  extends RegionDrawingStepUIProps {
+export interface FileUploadRegionDrawingStepUIProps extends RegionDrawingStepUIProps {
   serverError: ServerError | null;
 }
 

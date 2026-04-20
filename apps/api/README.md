@@ -131,6 +131,19 @@ The Swagger documentation will automatically include your new routes!
 
 - `[GET|POST|PUT|DELETE] /api/<path>` - Protected API endpoints (e.g., `/api/users`, `/api/data`)
 
+### Layout Plans (spreadsheet parsing)
+
+Plan-driven interpretation + commit for uploaded/linked spreadsheets. See [`docs/SPREADSHEET_PARSING.backend.spec.md`](../../docs/SPREADSHEET_PARSING.backend.spec.md) for the full spec.
+
+- `POST /api/connector-instances/:connectorInstanceId/layout-plan/interpret` — run `interpret()` against an inline workbook + region hints; persists the resulting `LayoutPlan` as the current revision and supersedes any prior.
+- `GET /api/connector-instances/:connectorInstanceId/layout-plan[?include=interpretationTrace]` — fetch the current plan. `interpretationTrace` is stripped unless the caller opts in.
+- `PATCH /api/connector-instances/:connectorInstanceId/layout-plan/:planId` — shallow-merge a partial `LayoutPlan` onto the stored plan; re-validated through `LayoutPlanSchema` before persistence.
+- `POST /api/connector-instances/:connectorInstanceId/layout-plan/:planId/commit` — runs `replay(plan, workbook)`, gates on drift + blocker warnings, materializes one `ConnectorEntity` per distinct `targetEntityDefinitionId`, reconciles `FieldMapping` rows across regions (deduped by `ColumnDefinition`), writes `entity_records`. Returns `{ connectorEntityIds, recordCounts }`.
+  - 409 `LAYOUT_PLAN_BLOCKER_WARNINGS` — plan has regions with blocker-severity warnings; body carries `details.warnings`.
+  - 409 `LAYOUT_PLAN_DRIFT_IDENTITY_CHANGED` / `_BLOCKER` / `_HALT` — replay detected drift; body carries `details.drift: DriftReport`.
+
+The legacy `POST /api/uploads/*` flow is retained for the simple-layout fast path and scheduled for retirement per [`docs/FILE_UPLOAD_DEPRECATION.plan.md`](../../docs/FILE_UPLOAD_DEPRECATION.plan.md).
+
 ## Project Structure
 
 ```

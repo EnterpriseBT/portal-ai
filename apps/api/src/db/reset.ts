@@ -7,7 +7,9 @@ async function main() {
     console.log(`Resetting organization: ${organizationId}`);
     await ResetService.resetOrganization(organizationId);
   } else {
-    console.log("No organization ID provided — resetting first organization found");
+    console.log(
+      "No organization ID provided — resetting first organization found"
+    );
     await ResetService.resetFirst();
   }
 }

@@ -16,7 +16,9 @@ const SECOND_FILE = new File(
   }
 );
 
-function progressMap(entries: Array<[string, FileUploadProgress]>): Map<string, FileUploadProgress> {
+function progressMap(
+  entries: Array<[string, FileUploadProgress]>
+): Map<string, FileUploadProgress> {
   return new Map(entries);
 }
 

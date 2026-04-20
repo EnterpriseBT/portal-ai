@@ -30,7 +30,9 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     <MuiAutocomplete<SelectOption>
       options={options}
       value={selectedOption}
-      onChange={(_event, option) => onChange(option ? String(option.value) : null)}
+      onChange={(_event, option) =>
+        onChange(option ? String(option.value) : null)
+      }
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}
       disabled={disabled}

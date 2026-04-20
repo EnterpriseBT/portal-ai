@@ -27,9 +27,8 @@ export type TypedJobProcessor<T extends JobType> = (
  * and allow the service to be created in a separate step.
  */
 const getJobEventsService = async () => {
-  const { JobEventsService } = await import(
-    "../services/job-events.service.js"
-  );
+  const { JobEventsService } =
+    await import("../services/job-events.service.js");
   return JobEventsService;
 };
 
@@ -62,9 +61,13 @@ export const createJobsWorker = (
 
           // Emit job:recommendations SSE event with the full recommendation payload
           if (fileResult.recommendations) {
-            await JobEventsService.publishCustomEvent(jobId, "recommendations", {
-              recommendations: fileResult.recommendations,
-            });
+            await JobEventsService.publishCustomEvent(
+              jobId,
+              "recommendations",
+              {
+                recommendations: fileResult.recommendations,
+              }
+            );
           }
         } else {
           await JobEventsService.transition(jobId, "completed", {

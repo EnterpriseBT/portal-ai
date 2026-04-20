@@ -93,9 +93,7 @@ describe("EntityRecordModelFactory", () => {
         coreModelFactory: buildCoreModelFactory(),
       });
       const ids = new Set(
-        Array.from({ length: 50 }, () =>
-          defaultFactory.create("u").toJSON().id
-        )
+        Array.from({ length: 50 }, () => defaultFactory.create("u").toJSON().id)
       );
       expect(ids.size).toBe(50);
     });
@@ -201,22 +199,34 @@ describe("EntityRecordSchema — origin field", () => {
   };
 
   it('should accept origin: "sync"', () => {
-    const result = EntityRecordSchema.safeParse({ ...baseRecord, origin: "sync" });
+    const result = EntityRecordSchema.safeParse({
+      ...baseRecord,
+      origin: "sync",
+    });
     expect(result.success).toBe(true);
   });
 
   it('should accept origin: "manual"', () => {
-    const result = EntityRecordSchema.safeParse({ ...baseRecord, origin: "manual" });
+    const result = EntityRecordSchema.safeParse({
+      ...baseRecord,
+      origin: "manual",
+    });
     expect(result.success).toBe(true);
   });
 
   it('should accept origin: "portal"', () => {
-    const result = EntityRecordSchema.safeParse({ ...baseRecord, origin: "portal" });
+    const result = EntityRecordSchema.safeParse({
+      ...baseRecord,
+      origin: "portal",
+    });
     expect(result.success).toBe(true);
   });
 
   it("should reject an invalid origin value", () => {
-    const result = EntityRecordSchema.safeParse({ ...baseRecord, origin: "unknown" });
+    const result = EntityRecordSchema.safeParse({
+      ...baseRecord,
+      origin: "unknown",
+    });
     expect(result.success).toBe(false);
   });
 

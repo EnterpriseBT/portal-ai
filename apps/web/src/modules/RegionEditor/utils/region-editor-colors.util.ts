@@ -13,21 +13,29 @@ export const ENTITY_COLOR_PALETTE: readonly string[] = [
   "#be185d",
 ];
 
-export function colorForEntity(entityId: string | null | undefined, entityOrder: string[]): string {
+export function colorForEntity(
+  entityId: string | null | undefined,
+  entityOrder: string[]
+): string {
   if (!entityId) return "#64748b";
   const index = entityOrder.indexOf(entityId);
   if (index < 0) return "#64748b";
   return ENTITY_COLOR_PALETTE[index % ENTITY_COLOR_PALETTE.length] ?? "#64748b";
 }
 
-export function confidenceBand(score: number | undefined): "green" | "yellow" | "red" | "none" {
+export function confidenceBand(
+  score: number | undefined
+): "green" | "yellow" | "red" | "none" {
   if (score === undefined) return "none";
   if (score >= 0.85) return "green";
   if (score >= 0.6) return "yellow";
   return "red";
 }
 
-export const CONFIDENCE_BAND_COLOR: Record<"green" | "yellow" | "red" | "none", string> = {
+export const CONFIDENCE_BAND_COLOR: Record<
+  "green" | "yellow" | "red" | "none",
+  string
+> = {
   green: "#16a34a",
   yellow: "#ca8a04",
   red: "#dc2626",

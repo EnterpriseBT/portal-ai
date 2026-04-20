@@ -5,31 +5,64 @@ import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { FieldMappingModelFactory } from "@portalai/core/models";
-import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import {
+  assertStationScope,
+  assertWriteCapability,
+} from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
 
 const ItemSchema = z.object({
-  connectorEntityId: z.string().describe("The connector entity to create the mapping for"),
+  connectorEntityId: z
+    .string()
+    .describe("The connector entity to create the mapping for"),
   columnDefinitionId: z.string().describe("The column definition to map to"),
-  sourceField: z.string().min(1).describe("The source field name in the raw data"),
-  isPrimaryKey: z.boolean().optional().describe("Whether this mapping is a primary key"),
-  normalizedKey: z.string().regex(/^[a-z][a-z0-9_]*$/).describe("A snake_case normalized key for the field"),
+  sourceField: z
+    .string()
+    .min(1)
+    .describe("The source field name in the raw data"),
+  isPrimaryKey: z
+    .boolean()
+    .optional()
+    .describe("Whether this mapping is a primary key"),
+  normalizedKey: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]*$/)
+    .describe("A snake_case normalized key for the field"),
   required: z.boolean().optional().describe("Whether this field is required"),
-  defaultValue: z.string().nullable().optional().describe("Default value for the field"),
-  format: z.string().nullable().optional().describe("Format string for the field"),
-  enumValues: z.array(z.string()).nullable().optional().describe("Allowed enum values for the field"),
+  defaultValue: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Default value for the field"),
+  format: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Format string for the field"),
+  enumValues: z
+    .array(z.string())
+    .nullable()
+    .optional()
+    .describe("Allowed enum values for the field"),
 });
 
 const InputSchema = z.object({
-  items: z.array(ItemSchema).min(1).max(100).describe("Field mappings to create (1–100)"),
+  items: z
+    .array(ItemSchema)
+    .min(1)
+    .max(100)
+    .describe("Field mappings to create (1–100)"),
 });
 
 export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_create";
   name = "Field Mapping Create Tool";
-  description = "Creates or updates one or more field mappings between source fields and column definitions. Accepts 1–100 items.";
+  description =
+    "Creates or updates one or more field mappings between source fields and column definitions. Accepts 1–100 items.";
 
-  get schema() { return InputSchema; }
+  get schema() {
+    return InputSchema;
+  }
 
   build(stationId: string, organizationId: string, userId: string) {
     return tool({
@@ -56,20 +89,30 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
               await assertWriteCapability(connectorEntityId);
             } catch (err: any) {
               for (const item of entityGroups.get(connectorEntityId)!) {
-                failures.push({ index: items.indexOf(item), error: err.message ?? "Scope/capability check failed" });
+                failures.push({
+                  index: items.indexOf(item),
+                  error: err.message ?? "Scope/capability check failed",
+                });
               }
             }
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // Batch-load unique column definitions
-          const uniqueColDefIds = [...new Set(items.map((item) => item.columnDefinitionId))];
+          const uniqueColDefIds = [
+            ...new Set(items.map((item) => item.columnDefinitionId)),
+          ];
           const colDefMap = new Map<string, any>();
           for (const id of uniqueColDefIds) {
-            const colDef = await DbService.repository.columnDefinitions.findById(id);
+            const colDef =
+              await DbService.repository.columnDefinitions.findById(id);
             if (colDef) colDefMap.set(id, colDef);
           }
 
@@ -82,7 +125,11 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // ── Phase 2: Execute ───────────────────────────────────────
@@ -106,7 +153,11 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
                 refNormalizedKey: null,
                 refEntityKey: null,
               });
-              const result = await DbService.repository.fieldMappings.upsertByEntityAndNormalizedKey(model.parse(), tx);
+              const result =
+                await DbService.repository.fieldMappings.upsertByEntityAndNormalizedKey(
+                  model.parse(),
+                  tx
+                );
               results.push(result);
             }
           });
@@ -136,7 +187,10 @@ export class FieldMappingCreateTool extends Tool<typeof InputSchema> {
             })),
           };
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : "Failed to create field mappings";
+          const message =
+            err instanceof Error
+              ? err.message
+              : "Failed to create field mappings";
           return { error: message };
         }
       },

@@ -18,7 +18,9 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeColumnStat(overrides: Partial<ColumnStat> & { name: string }): ColumnStat {
+function makeColumnStat(
+  overrides: Partial<ColumnStat> & { name: string }
+): ColumnStat {
   return {
     nullCount: 0,
     totalCount: 10,
@@ -32,7 +34,9 @@ function makeColumnStat(overrides: Partial<ColumnStat> & { name: string }): Colu
   };
 }
 
-function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseResult {
+function makeParseResult(
+  overrides: Partial<FileParseResult> = {}
+): FileParseResult {
   return {
     fileName: "contacts.csv",
     delimiter: ",",
@@ -46,7 +50,10 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
     ],
     columnStats: [
       makeColumnStat({ name: "name", sampleValues: ["Alice", "Bob", "Carol"] }),
-      makeColumnStat({ name: "email", sampleValues: ["alice@test.com", "bob@test.com", "carol@test.com"] }),
+      makeColumnStat({
+        name: "email",
+        sampleValues: ["alice@test.com", "bob@test.com", "carol@test.com"],
+      }),
       makeColumnStat({ name: "age", sampleValues: ["30", "25", "35"] }),
     ],
     ...overrides,
@@ -56,32 +63,240 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
 /** Standard seed column definitions covering all types. */
 function makeSeedColumns(): ExistingColumnDefinition[] {
   return [
-    { id: "cd-uuid", key: "uuid", label: "UUID", type: "string", description: "Universally unique identifier", validationPattern: null, canonicalFormat: "lowercase" },
-    { id: "cd-string_id", key: "string_id", label: "String ID", type: "string", description: "String identifier", validationPattern: null, canonicalFormat: null },
-    { id: "cd-number_id", key: "number_id", label: "Number ID", type: "number", description: "Numeric identifier", validationPattern: null, canonicalFormat: null },
-    { id: "cd-email", key: "email", label: "Email", type: "string", description: "Email address", validationPattern: null, canonicalFormat: "lowercase" },
-    { id: "cd-phone", key: "phone", label: "Phone", type: "string", description: "Phone number", validationPattern: null, canonicalFormat: "phone" },
-    { id: "cd-url", key: "url", label: "Website", type: "string", description: "Website URL", validationPattern: null, canonicalFormat: "lowercase" },
-    { id: "cd-name", key: "name", label: "Name", type: "string", description: "Person or entity name", validationPattern: null, canonicalFormat: "trim" },
-    { id: "cd-description", key: "description", label: "Description", type: "string", description: "Description text", validationPattern: null, canonicalFormat: "trim" },
-    { id: "cd-text", key: "text", label: "Text", type: "string", description: "General-purpose text content", validationPattern: null, canonicalFormat: "trim" },
-    { id: "cd-code", key: "code", label: "Code", type: "string", description: "Code value", validationPattern: null, canonicalFormat: null },
-    { id: "cd-address", key: "address", label: "Address", type: "string", description: "Physical address", validationPattern: null, canonicalFormat: "trim" },
-    { id: "cd-status", key: "status", label: "Status", type: "string", description: "Status value", validationPattern: null, canonicalFormat: null },
-    { id: "cd-tag", key: "tag", label: "Tag", type: "string", description: "Tag label", validationPattern: null, canonicalFormat: null },
-    { id: "cd-integer", key: "integer", label: "Integer", type: "number", description: "Whole number", validationPattern: null, canonicalFormat: "#,##0" },
-    { id: "cd-decimal", key: "decimal", label: "Decimal", type: "number", description: "Decimal number", validationPattern: null, canonicalFormat: "#,##0.00" },
-    { id: "cd-percentage", key: "percentage", label: "Percentage", type: "number", description: "Percentage value", validationPattern: null, canonicalFormat: null },
-    { id: "cd-currency", key: "currency", label: "Currency", type: "number", description: "Currency amount", validationPattern: null, canonicalFormat: null },
-    { id: "cd-quantity", key: "quantity", label: "Quantity", type: "number", description: "Quantity count", validationPattern: null, canonicalFormat: null },
-    { id: "cd-boolean", key: "boolean", label: "Boolean", type: "boolean", description: "True or false", validationPattern: null, canonicalFormat: null },
-    { id: "cd-date", key: "date", label: "Date", type: "date", description: "Calendar date", validationPattern: null, canonicalFormat: null },
-    { id: "cd-datetime", key: "datetime", label: "Date & Time", type: "datetime", description: "Date and time", validationPattern: null, canonicalFormat: null },
-    { id: "cd-enum", key: "enum", label: "Enum", type: "enum", description: "Enumerated value", validationPattern: null, canonicalFormat: null },
-    { id: "cd-json_data", key: "json_data", label: "JSON Data", type: "json", description: "JSON data", validationPattern: null, canonicalFormat: null },
-    { id: "cd-array", key: "array", label: "Array", type: "array", description: "Array value", validationPattern: null, canonicalFormat: null },
-    { id: "cd-reference", key: "reference", label: "Reference", type: "reference", description: "Reference link", validationPattern: null, canonicalFormat: null },
-    { id: "cd-reference_array", key: "reference_array", label: "Reference Array", type: "reference-array", description: "Reference array", validationPattern: null, canonicalFormat: null },
+    {
+      id: "cd-uuid",
+      key: "uuid",
+      label: "UUID",
+      type: "string",
+      description: "Universally unique identifier",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
+    {
+      id: "cd-string_id",
+      key: "string_id",
+      label: "String ID",
+      type: "string",
+      description: "String identifier",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-number_id",
+      key: "number_id",
+      label: "Number ID",
+      type: "number",
+      description: "Numeric identifier",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-email",
+      key: "email",
+      label: "Email",
+      type: "string",
+      description: "Email address",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
+    {
+      id: "cd-phone",
+      key: "phone",
+      label: "Phone",
+      type: "string",
+      description: "Phone number",
+      validationPattern: null,
+      canonicalFormat: "phone",
+    },
+    {
+      id: "cd-url",
+      key: "url",
+      label: "Website",
+      type: "string",
+      description: "Website URL",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
+    {
+      id: "cd-name",
+      key: "name",
+      label: "Name",
+      type: "string",
+      description: "Person or entity name",
+      validationPattern: null,
+      canonicalFormat: "trim",
+    },
+    {
+      id: "cd-description",
+      key: "description",
+      label: "Description",
+      type: "string",
+      description: "Description text",
+      validationPattern: null,
+      canonicalFormat: "trim",
+    },
+    {
+      id: "cd-text",
+      key: "text",
+      label: "Text",
+      type: "string",
+      description: "General-purpose text content",
+      validationPattern: null,
+      canonicalFormat: "trim",
+    },
+    {
+      id: "cd-code",
+      key: "code",
+      label: "Code",
+      type: "string",
+      description: "Code value",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-address",
+      key: "address",
+      label: "Address",
+      type: "string",
+      description: "Physical address",
+      validationPattern: null,
+      canonicalFormat: "trim",
+    },
+    {
+      id: "cd-status",
+      key: "status",
+      label: "Status",
+      type: "string",
+      description: "Status value",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-tag",
+      key: "tag",
+      label: "Tag",
+      type: "string",
+      description: "Tag label",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-integer",
+      key: "integer",
+      label: "Integer",
+      type: "number",
+      description: "Whole number",
+      validationPattern: null,
+      canonicalFormat: "#,##0",
+    },
+    {
+      id: "cd-decimal",
+      key: "decimal",
+      label: "Decimal",
+      type: "number",
+      description: "Decimal number",
+      validationPattern: null,
+      canonicalFormat: "#,##0.00",
+    },
+    {
+      id: "cd-percentage",
+      key: "percentage",
+      label: "Percentage",
+      type: "number",
+      description: "Percentage value",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-currency",
+      key: "currency",
+      label: "Currency",
+      type: "number",
+      description: "Currency amount",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-quantity",
+      key: "quantity",
+      label: "Quantity",
+      type: "number",
+      description: "Quantity count",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-boolean",
+      key: "boolean",
+      label: "Boolean",
+      type: "boolean",
+      description: "True or false",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-date",
+      key: "date",
+      label: "Date",
+      type: "date",
+      description: "Calendar date",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-datetime",
+      key: "datetime",
+      label: "Date & Time",
+      type: "datetime",
+      description: "Date and time",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-enum",
+      key: "enum",
+      label: "Enum",
+      type: "enum",
+      description: "Enumerated value",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-json_data",
+      key: "json_data",
+      label: "JSON Data",
+      type: "json",
+      description: "JSON data",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-array",
+      key: "array",
+      label: "Array",
+      type: "array",
+      description: "Array value",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-reference",
+      key: "reference",
+      label: "Reference",
+      type: "reference",
+      description: "Reference link",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-reference_array",
+      key: "reference_array",
+      label: "Reference Array",
+      type: "reference-array",
+      description: "Reference array",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
   ];
 }
 
@@ -91,71 +306,137 @@ function makeSeedColumns(): ExistingColumnDefinition[] {
 
 describe("inferType", () => {
   it("returns string for empty sample values", () => {
-    expect(inferType([])).toEqual({ type: "string", format: null, canonicalFormat: null });
+    expect(inferType([])).toEqual({
+      type: "string",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("returns string for whitespace-only values", () => {
-    expect(inferType(["  ", " "])).toEqual({ type: "string", format: null, canonicalFormat: null });
+    expect(inferType(["  ", " "])).toEqual({
+      type: "string",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("detects date (YYYY-MM-DD)", () => {
-    expect(inferType(["2024-01-15", "2024-02-20"])).toEqual({ type: "date", format: "YYYY-MM-DD", canonicalFormat: "YYYY-MM-DD" });
+    expect(inferType(["2024-01-15", "2024-02-20"])).toEqual({
+      type: "date",
+      format: "YYYY-MM-DD",
+      canonicalFormat: "YYYY-MM-DD",
+    });
   });
 
   it("detects date (DD/MM/YYYY)", () => {
-    expect(inferType(["15/01/2024", "20/02/2024"])).toEqual({ type: "date", format: "YYYY-MM-DD", canonicalFormat: "YYYY-MM-DD" });
+    expect(inferType(["15/01/2024", "20/02/2024"])).toEqual({
+      type: "date",
+      format: "YYYY-MM-DD",
+      canonicalFormat: "YYYY-MM-DD",
+    });
   });
 
   it("detects date (DD-MM-YYYY)", () => {
-    expect(inferType(["15-01-2024", "20-02-2024"])).toEqual({ type: "date", format: "YYYY-MM-DD", canonicalFormat: "YYYY-MM-DD" });
+    expect(inferType(["15-01-2024", "20-02-2024"])).toEqual({
+      type: "date",
+      format: "YYYY-MM-DD",
+      canonicalFormat: "YYYY-MM-DD",
+    });
   });
 
   it("detects datetime (ISO 8601 with T)", () => {
-    expect(inferType(["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"])).toEqual({ type: "datetime", format: "ISO8601", canonicalFormat: "ISO8601" });
+    expect(inferType(["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"])).toEqual(
+      { type: "datetime", format: "ISO8601", canonicalFormat: "ISO8601" }
+    );
   });
 
   it("detects datetime (space-separated)", () => {
-    expect(inferType(["2024-01-15 10:30:00", "2024-02-20 14:00:00"])).toEqual({ type: "datetime", format: "ISO8601", canonicalFormat: "ISO8601" });
+    expect(inferType(["2024-01-15 10:30:00", "2024-02-20 14:00:00"])).toEqual({
+      type: "datetime",
+      format: "ISO8601",
+      canonicalFormat: "ISO8601",
+    });
   });
 
   it("detects number (integers)", () => {
-    expect(inferType(["1", "42", "100"])).toEqual({ type: "number", format: null, canonicalFormat: null });
+    expect(inferType(["1", "42", "100"])).toEqual({
+      type: "number",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("detects number (decimals)", () => {
-    expect(inferType(["9.99", "14.50", "100.00"])).toEqual({ type: "number", format: null, canonicalFormat: null });
+    expect(inferType(["9.99", "14.50", "100.00"])).toEqual({
+      type: "number",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("detects number (negative)", () => {
-    expect(inferType(["-5", "-3.14", "0"])).toEqual({ type: "number", format: null, canonicalFormat: null });
+    expect(inferType(["-5", "-3.14", "0"])).toEqual({
+      type: "number",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("detects number (comma-separated thousands)", () => {
-    expect(inferType(["1,000", "10,000", "100,000"])).toEqual({ type: "number", format: null, canonicalFormat: null });
+    expect(inferType(["1,000", "10,000", "100,000"])).toEqual({
+      type: "number",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("detects boolean (true/false)", () => {
-    expect(inferType(["true", "false", "true"])).toEqual({ type: "boolean", format: null, canonicalFormat: null });
+    expect(inferType(["true", "false", "true"])).toEqual({
+      type: "boolean",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("detects boolean (yes/no)", () => {
-    expect(inferType(["yes", "no", "YES"])).toEqual({ type: "boolean", format: null, canonicalFormat: null });
+    expect(inferType(["yes", "no", "YES"])).toEqual({
+      type: "boolean",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("detects boolean (0/1)", () => {
-    expect(inferType(["0", "1", "1", "0"])).toEqual({ type: "boolean", format: null, canonicalFormat: null });
+    expect(inferType(["0", "1", "1", "0"])).toEqual({
+      type: "boolean",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("detects email", () => {
-    expect(inferType(["alice@test.com", "bob@example.org"])).toEqual({ type: "string", format: "email", canonicalFormat: "lowercase" });
+    expect(inferType(["alice@test.com", "bob@example.org"])).toEqual({
+      type: "string",
+      format: "email",
+      canonicalFormat: "lowercase",
+    });
   });
 
   it("returns string for mixed types", () => {
-    expect(inferType(["hello", "42", "true"])).toEqual({ type: "string", format: null, canonicalFormat: null });
+    expect(inferType(["hello", "42", "true"])).toEqual({
+      type: "string",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("returns string for plain text", () => {
-    expect(inferType(["Alice", "Bob", "Carol"])).toEqual({ type: "string", format: null, canonicalFormat: null });
+    expect(inferType(["Alice", "Bob", "Carol"])).toEqual({
+      type: "string",
+      format: null,
+      canonicalFormat: null,
+    });
   });
 
   it("prefers datetime over date when timestamps present", () => {
@@ -219,18 +500,24 @@ describe("toSnakeCase", () => {
 
 describe("detectValidationPattern", () => {
   it("detects email pattern", () => {
-    expect(detectValidationPattern(["a@b.com", "c@d.org"])).toBe("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    expect(detectValidationPattern(["a@b.com", "c@d.org"])).toBe(
+      "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+    );
   });
 
   it("detects URL pattern", () => {
-    expect(detectValidationPattern(["https://example.com", "http://foo.org"])).toBe("^https?://[^\\s]+$");
+    expect(
+      detectValidationPattern(["https://example.com", "http://foo.org"])
+    ).toBe("^https?://[^\\s]+$");
   });
 
   it("detects UUID pattern", () => {
-    expect(detectValidationPattern([
-      "550e8400-e29b-41d4-a716-446655440000",
-      "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-    ])).toBe("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+    expect(
+      detectValidationPattern([
+        "550e8400-e29b-41d4-a716-446655440000",
+        "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+      ])
+    ).toBe("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
   });
 
   it("returns null for plain text", () => {
@@ -291,10 +578,16 @@ describe("heuristicAnalyze", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
         columnStats: [
-          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.org"] }),
+          makeColumnStat({
+            name: "email",
+            sampleValues: ["a@b.com", "c@d.org"],
+          }),
           makeColumnStat({ name: "age", sampleValues: ["30", "25"] }),
           makeColumnStat({ name: "active", sampleValues: ["true", "false"] }),
-          makeColumnStat({ name: "created", sampleValues: ["2024-01-15", "2024-02-20"] }),
+          makeColumnStat({
+            name: "created",
+            sampleValues: ["2024-01-15", "2024-02-20"],
+          }),
           makeColumnStat({ name: "zzz_unknown", sampleValues: ["foo", "bar"] }),
         ],
       }),
@@ -408,7 +701,9 @@ describe("heuristicAnalyze — exact matching", () => {
   it("exact key match has confidence 1.0", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "email", sampleValues: ["a@b.com"] })],
+        columnStats: [
+          makeColumnStat({ name: "email", sampleValues: ["a@b.com"] }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -420,11 +715,21 @@ describe("heuristicAnalyze — exact matching", () => {
 
   it("exact label match (case-insensitive) has confidence 1.0", () => {
     const existing: ExistingColumnDefinition[] = [
-      { id: "col-2", key: "user_email", label: "Email", type: "string", description: "User email", validationPattern: null, canonicalFormat: "lowercase" },
+      {
+        id: "col-2",
+        key: "user_email",
+        label: "Email",
+        type: "string",
+        description: "User email",
+        validationPattern: null,
+        canonicalFormat: "lowercase",
+      },
     ];
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "Email", sampleValues: ["a@b.com"] })],
+        columnStats: [
+          makeColumnStat({ name: "Email", sampleValues: ["a@b.com"] }),
+        ],
       }),
       existingColumns: existing,
       priorRecommendations: [],
@@ -445,7 +750,12 @@ describe("heuristicAnalyze — pattern-based matching", () => {
   it("email-pattern samples match the email column definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "contact_email", sampleValues: ["a@b.com", "c@d.org"] })],
+        columnStats: [
+          makeColumnStat({
+            name: "contact_email",
+            sampleValues: ["a@b.com", "c@d.org"],
+          }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -458,10 +768,15 @@ describe("heuristicAnalyze — pattern-based matching", () => {
   it("UUID-pattern samples match the uuid column definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({
-          name: "record_id",
-          sampleValues: ["550e8400-e29b-41d4-a716-446655440000", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"],
-        })],
+        columnStats: [
+          makeColumnStat({
+            name: "record_id",
+            sampleValues: [
+              "550e8400-e29b-41d4-a716-446655440000",
+              "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+            ],
+          }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -474,10 +789,12 @@ describe("heuristicAnalyze — pattern-based matching", () => {
   it("URL-pattern samples match the url column definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({
-          name: "homepage_link",
-          sampleValues: ["https://example.com", "http://foo.org"],
-        })],
+        columnStats: [
+          makeColumnStat({
+            name: "homepage_link",
+            sampleValues: ["https://example.com", "http://foo.org"],
+          }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -498,7 +815,9 @@ describe("heuristicAnalyze — type-based fallback matching", () => {
   it("numeric samples with decimals match decimal definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "price", sampleValues: ["9.99", "14.50"] })],
+        columnStats: [
+          makeColumnStat({ name: "price", sampleValues: ["9.99", "14.50"] }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -511,7 +830,9 @@ describe("heuristicAnalyze — type-based fallback matching", () => {
   it("numeric samples without decimals match integer definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "count", sampleValues: ["1", "42", "100"] })],
+        columnStats: [
+          makeColumnStat({ name: "count", sampleValues: ["1", "42", "100"] }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -524,7 +845,12 @@ describe("heuristicAnalyze — type-based fallback matching", () => {
   it("date samples match date definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "created_at", sampleValues: ["2024-01-15", "2024-02-20"] })],
+        columnStats: [
+          makeColumnStat({
+            name: "created_at",
+            sampleValues: ["2024-01-15", "2024-02-20"],
+          }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -537,7 +863,12 @@ describe("heuristicAnalyze — type-based fallback matching", () => {
   it("datetime samples match datetime definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "updated_at", sampleValues: ["2024-01-15T10:30:00Z"] })],
+        columnStats: [
+          makeColumnStat({
+            name: "updated_at",
+            sampleValues: ["2024-01-15T10:30:00Z"],
+          }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -550,7 +881,12 @@ describe("heuristicAnalyze — type-based fallback matching", () => {
   it("boolean samples match boolean definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "is_active", sampleValues: ["true", "false"] })],
+        columnStats: [
+          makeColumnStat({
+            name: "is_active",
+            sampleValues: ["true", "false"],
+          }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -563,7 +899,12 @@ describe("heuristicAnalyze — type-based fallback matching", () => {
   it("generic string samples fall back to text definition", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
-        columnStats: [makeColumnStat({ name: "notes", sampleValues: ["foo bar", "baz qux"] })],
+        columnStats: [
+          makeColumnStat({
+            name: "notes",
+            sampleValues: ["foo bar", "baz qux"],
+          }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],
@@ -601,7 +942,9 @@ describe("heuristicAnalyze — confidence priority", () => {
     const result = heuristicAnalyze({
       parseResult: makeParseResult({
         // "email" is both an exact key match AND an email-pattern match
-        columnStats: [makeColumnStat({ name: "email", sampleValues: ["a@b.com"] })],
+        columnStats: [
+          makeColumnStat({ name: "email", sampleValues: ["a@b.com"] }),
+        ],
       }),
       existingColumns: seedColumns,
       priorRecommendations: [],

@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { PortalResult } from "@portalai/core/models";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { PinnedResultDetailUI } = await import(
-  "../views/PinnedResultDetail.view"
-);
+const { PinnedResultDetailUI } =
+  await import("../views/PinnedResultDetail.view");
 
 const makePinnedResult = (
   overrides: Partial<PortalResult> = {}
@@ -43,7 +42,9 @@ describe("PinnedResultDetailUI", () => {
 
   it("should render result name and type chip", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
-    expect(screen.getByRole("heading", { name: "Revenue Summary" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Revenue Summary" })
+    ).toBeInTheDocument();
     expect(screen.getByText("Text")).toBeInTheDocument();
   });
 
@@ -51,7 +52,12 @@ describe("PinnedResultDetailUI", () => {
     render(
       <PinnedResultDetailUI
         {...defaultProps}
-        result={makePinnedResult({ type: "vega-lite", content: { $schema: "https://vega.github.io/schema/vega-lite/v5.json" } })}
+        result={makePinnedResult({
+          type: "vega-lite",
+          content: {
+            $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+          },
+        })}
       />
     );
     expect(screen.getByText("Chart")).toBeInTheDocument();
@@ -72,7 +78,9 @@ describe("PinnedResultDetailUI", () => {
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Pinned Results")).toBeInTheDocument();
     // "Revenue Summary" appears in both breadcrumb and heading
-    expect(screen.getAllByText("Revenue Summary").length).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getAllByText("Revenue Summary").length
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it("should open rename dialog and call onRename on submit", () => {
@@ -107,7 +115,9 @@ describe("PinnedResultDetailUI", () => {
   it("should render Open Source Portal in actions menu when portalId is present", () => {
     render(<PinnedResultDetailUI {...defaultProps} />);
     fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
-    expect(screen.getByRole("menuitem", { name: /Open Source Portal/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /Open Source Portal/i })
+    ).toBeInTheDocument();
   });
 
   it("should call onOpenPortal when Open Source Portal is clicked", () => {
@@ -116,7 +126,9 @@ describe("PinnedResultDetailUI", () => {
       <PinnedResultDetailUI {...defaultProps} onOpenPortal={onOpenPortal} />
     );
     fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Open Source Portal/i }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Open Source Portal/i })
+    );
     expect(onOpenPortal).toHaveBeenCalledWith("portal-1", null);
   });
 
@@ -130,7 +142,9 @@ describe("PinnedResultDetailUI", () => {
       />
     );
     fireEvent.click(screen.getByRole("button", { name: /More actions/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Open Source Portal/i }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /Open Source Portal/i })
+    );
     expect(onOpenPortal).toHaveBeenCalledWith("portal-1", "msg-42");
   });
 

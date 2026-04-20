@@ -84,7 +84,10 @@ describe("OrganizationToolsRepository Integration Tests", () => {
       const data = makeTool({
         name: "my-tool",
         description: "A test tool",
-        parameterSchema: { type: "object", properties: { query: { type: "string" } } },
+        parameterSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+        },
         implementation: {
           type: "webhook",
           url: "https://example.com/api",
@@ -183,11 +186,7 @@ describe("OrganizationToolsRepository Integration Tests", () => {
     it("should modify name and return updated row", async () => {
       const tool = await repo.create(makeTool({ name: "original" }), db);
 
-      const updated = await repo.update(
-        tool.id,
-        { name: "renamed" },
-        db
-      );
+      const updated = await repo.update(tool.id, { name: "renamed" }, db);
 
       expect(updated?.name).toBe("renamed");
     });

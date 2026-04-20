@@ -23,5 +23,5 @@ export const stationTools = pgTable(
     uniqueIndex("station_tools_station_tool_unique")
       .on(table.stationId, table.organizationToolId)
       .where(sql`deleted IS NULL`),
-  ],
+  ]
 );

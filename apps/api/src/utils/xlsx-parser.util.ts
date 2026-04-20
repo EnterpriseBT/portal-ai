@@ -19,12 +19,13 @@ const DEFAULT_MAX_SAMPLE_ROWS = 50;
 const MAX_COLUMNS = 500;
 
 /** Common reader options — `styles: "cache"` is required for date detection. */
-const READER_OPTIONS: Partial<ExcelJS.stream.xlsx.WorkbookStreamReaderOptions> = {
-  worksheets: "emit",
-  sharedStrings: "cache",
-  hyperlinks: "ignore",
-  styles: "cache",
-};
+const READER_OPTIONS: Partial<ExcelJS.stream.xlsx.WorkbookStreamReaderOptions> =
+  {
+    worksheets: "emit",
+    sharedStrings: "cache",
+    hyperlinks: "ignore",
+    styles: "cache",
+  };
 
 /**
  * Coerce a single XLSX cell value to its canonical string form.
@@ -79,7 +80,14 @@ function isEmptyRow(values: string[]): boolean {
   return values.length === 0 || values.every((v) => v.trim() === "");
 }
 
-/** Synthesize column_N for empty cells in the header row. */
+/**
+ * Synthesize column_N for empty cells in the header row.
+ *
+ * @deprecated Header detection is moving into
+ * `@portalai/spreadsheet-parsing`'s `detect-headers` stage in Phase 3. New
+ * callers should consume the `Workbook` adapters and run interpretation via
+ * the parser module rather than this heuristic.
+ */
 function normalizeHeaders(values: string[]): string[] {
   return values.map((v, i) => (v.trim() === "" ? `column_${i + 1}` : v));
 }
@@ -90,12 +98,12 @@ function wrapXlsxError(err: unknown): ProcessorError {
   if (/password|encrypted|encryption/i.test(message)) {
     return new ProcessorError(
       "XLSX_PASSWORD_PROTECTED",
-      `XLSX file is password-protected: ${message}`,
+      `XLSX file is password-protected: ${message}`
     );
   }
   return new ProcessorError(
     "XLSX_PARSE_FAILED",
-    `Failed to parse XLSX file: ${message}`,
+    `Failed to parse XLSX file: ${message}`
   );
 }
 
@@ -109,13 +117,16 @@ function wrapXlsxError(err: unknown): ProcessorError {
  */
 export async function* parseXlsxStream(
   source: Readable,
-  options: { fileName: string; maxSampleRows?: number },
+  options: { fileName: string; maxSampleRows?: number }
 ): AsyncGenerator<FileParseResult> {
   const maxSampleRows = options.maxSampleRows ?? DEFAULT_MAX_SAMPLE_ROWS;
 
   let workbookReader: ExcelJS.stream.xlsx.WorkbookReader;
   try {
-    workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(source, READER_OPTIONS);
+    workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(
+      source,
+      READER_OPTIONS
+    );
   } catch (err) {
     throw wrapXlsxError(err);
   }
@@ -183,11 +194,14 @@ export async function* parseXlsxStream(
  */
 export async function* xlsxSheetRowIterator(
   source: Readable,
-  sheetName: string,
+  sheetName: string
 ): AsyncGenerator<Record<string, string>> {
   let workbookReader: ExcelJS.stream.xlsx.WorkbookReader;
   try {
-    workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(source, READER_OPTIONS);
+    workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(
+      source,
+      READER_OPTIONS
+    );
   } catch (err) {
     throw wrapXlsxError(err);
   }
@@ -196,7 +210,8 @@ export async function* xlsxSheetRowIterator(
 
   try {
     for await (const worksheetReader of workbookReader) {
-      const currentName = (worksheetReader as unknown as { name?: string }).name;
+      const currentName = (worksheetReader as unknown as { name?: string })
+        .name;
       if (currentName !== sheetName) {
         // Drain to advance the underlying stream to the next sheet entry
         for await (const _ of worksheetReader) {
@@ -231,7 +246,7 @@ export async function* xlsxSheetRowIterator(
   if (!found) {
     throw new ProcessorError(
       "UPLOAD_SHEET_NOT_FOUND",
-      `Sheet "${sheetName}" not found in XLSX file`,
+      `Sheet "${sheetName}" not found in XLSX file`
     );
   }
 }

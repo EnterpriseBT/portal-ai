@@ -107,7 +107,9 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
 
   // ── Helpers ──────────────────────────────────────────────────────
 
-  function makeGroup(overrides?: Partial<EntityGroupInsert>): EntityGroupInsert {
+  function makeGroup(
+    overrides?: Partial<EntityGroupInsert>
+  ): EntityGroupInsert {
     const now = Date.now();
     return {
       id: generateId(),
@@ -124,7 +126,9 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
     } as EntityGroupInsert;
   }
 
-  function makeEntity(overrides?: Partial<ConnectorEntityInsert>): ConnectorEntityInsert {
+  function makeEntity(
+    overrides?: Partial<ConnectorEntityInsert>
+  ): ConnectorEntityInsert {
     const now = Date.now();
     return {
       id: generateId(),
@@ -142,7 +146,9 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
     } as ConnectorEntityInsert;
   }
 
-  function makeColumnDef(overrides?: Partial<ColumnDefinitionInsert>): ColumnDefinitionInsert {
+  function makeColumnDef(
+    overrides?: Partial<ColumnDefinitionInsert>
+  ): ColumnDefinitionInsert {
     const now = Date.now();
     return {
       id: generateId(),
@@ -253,7 +259,11 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
       const { entityId, fieldMappingId } = await seedEntityWithMapping();
       await repo.create(makeMember(groupId, entityId, fieldMappingId), db);
 
-      const results = await repo.findByEntityGroupId(groupId, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] }, db);
+      const results = await repo.findByEntityGroupId(
+        groupId,
+        { include: ["connectorEntity", "fieldMapping", "columnDefinition"] },
+        db
+      );
       expect(results).toHaveLength(1);
       expect(results[0].connectorEntityId).toBe(entityId);
       expect(results[0].connectorEntity).toBeDefined();
@@ -283,10 +293,17 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
     it("should exclude soft-deleted members", async () => {
       const groupId = await seedGroup();
       const { entityId, fieldMappingId } = await seedEntityWithMapping();
-      const member = await repo.create(makeMember(groupId, entityId, fieldMappingId), db);
+      const member = await repo.create(
+        makeMember(groupId, entityId, fieldMappingId),
+        db
+      );
       await repo.softDelete(member.id, "test-system", db);
 
-      const results = await repo.findByEntityGroupId(groupId, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] }, db);
+      const results = await repo.findByEntityGroupId(
+        groupId,
+        { include: ["connectorEntity", "fieldMapping", "columnDefinition"] },
+        db
+      );
       expect(results).toHaveLength(0);
     });
   });
@@ -340,7 +357,10 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
     it("should return undefined for a soft-deleted member", async () => {
       const groupId = await seedGroup();
       const { entityId, fieldMappingId } = await seedEntityWithMapping();
-      const member = await repo.create(makeMember(groupId, entityId, fieldMappingId), db);
+      const member = await repo.create(
+        makeMember(groupId, entityId, fieldMappingId),
+        db
+      );
       await repo.softDelete(member.id, "test-system", db);
 
       const found = await repo.findExisting(groupId, entityId, db);
@@ -383,11 +403,15 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
       const seed1 = await seedEntityWithMapping();
       const seed2 = await seedEntityWithMapping();
       await repo.create(
-        makeMember(groupId, seed1.entityId, seed1.fieldMappingId, { isPrimary: true }),
+        makeMember(groupId, seed1.entityId, seed1.fieldMappingId, {
+          isPrimary: true,
+        }),
         db
       );
       await repo.create(
-        makeMember(groupId, seed2.entityId, seed2.fieldMappingId, { isPrimary: false }),
+        makeMember(groupId, seed2.entityId, seed2.fieldMappingId, {
+          isPrimary: false,
+        }),
         db
       );
 
@@ -406,7 +430,9 @@ describe("EntityGroupMembersRepository Integration Tests", () => {
       const seed1 = await seedEntityWithMapping();
       const seed2 = await seedEntityWithMapping();
       const member1 = await repo.create(
-        makeMember(groupId, seed1.entityId, seed1.fieldMappingId, { isPrimary: true }),
+        makeMember(groupId, seed1.entityId, seed1.fieldMappingId, {
+          isPrimary: true,
+        }),
         db
       );
       const member2 = await repo.create(

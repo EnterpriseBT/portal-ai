@@ -40,7 +40,11 @@ import type {
 } from "@portalai/core/contracts";
 import type { ColumnDataType } from "@portalai/core/models";
 
-import { getOperatorLabel, createDefaultCondition, createEmptyGroup } from "../utils/advanced-filter-builder.util";
+import {
+  getOperatorLabel,
+  createDefaultCondition,
+  createEmptyGroup,
+} from "../utils/advanced-filter-builder.util";
 
 // ── Props ───────────────────────────────────────────────────────────
 
@@ -60,7 +64,8 @@ export const AdvancedFilterBuilderUI: React.FC<AdvancedFilterBuilderProps> = ({
   const totalConditions = countConditions(expression);
   const depth = measureDepth(expression);
   const canAddCondition = totalConditions < MAX_CONDITIONS;
-  const canAddGroup = depth < MAX_FILTER_DEPTH && totalConditions < MAX_CONDITIONS;
+  const canAddGroup =
+    depth < MAX_FILTER_DEPTH && totalConditions < MAX_CONDITIONS;
 
   if (columnDefinitions.length === 0) {
     return (
@@ -118,7 +123,10 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
     }
   };
 
-  const handleConditionChange = (index: number, item: FilterCondition | FilterGroup) => {
+  const handleConditionChange = (
+    index: number,
+    item: FilterCondition | FilterGroup
+  ) => {
     const next = [...group.conditions];
     next[index] = item;
     onChange({ ...group, conditions: next });
@@ -164,10 +172,16 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
           onChange={handleCombinatorChange}
           size="small"
         >
-          <ToggleButton value="and" sx={{ px: 1.5, py: 0.25, textTransform: "none" }}>
+          <ToggleButton
+            value="and"
+            sx={{ px: 1.5, py: 0.25, textTransform: "none" }}
+          >
             AND
           </ToggleButton>
-          <ToggleButton value="or" sx={{ px: 1.5, py: 0.25, textTransform: "none" }}>
+          <ToggleButton
+            value="or"
+            sx={{ px: 1.5, py: 0.25, textTransform: "none" }}
+          >
             OR
           </ToggleButton>
         </ToggleButtonGroup>
@@ -175,7 +189,12 @@ const FilterGroupEditor: React.FC<FilterGroupEditorProps> = ({
         <Box sx={{ flex: 1 }} />
 
         {!isRoot && onRemove && (
-          <IconButton size="small" onClick={onRemove} color="error" aria-label="Remove filter group">
+          <IconButton
+            size="small"
+            onClick={onRemove}
+            color="error"
+            aria-label="Remove filter group"
+          >
             <DeleteOutlineIcon fontSize="small" />
           </IconButton>
         )}
@@ -250,9 +269,12 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
   onRemove,
   columnDefinitions,
 }) => {
-  const colDef = columnDefinitions.find((c) => c.normalizedKey === condition.field);
+  const colDef = columnDefinitions.find(
+    (c) => c.normalizedKey === condition.field
+  );
   const colType: ColumnDataType = colDef?.type ?? "string";
-  const operators = OPERATORS_BY_COLUMN_TYPE[colType] ?? OPERATORS_BY_COLUMN_TYPE.string;
+  const operators =
+    OPERATORS_BY_COLUMN_TYPE[colType] ?? OPERATORS_BY_COLUMN_TYPE.string;
 
   // Reset operator and value when field changes
   const handleFieldChange = (field: string) => {
@@ -267,11 +289,15 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
 
   const handleOperatorChange = (operator: FilterOperator) => {
     // Clear value for empty/not-empty operators
-    const value = operator === "is_empty" || operator === "is_not_empty" ? null : condition.value;
+    const value =
+      operator === "is_empty" || operator === "is_not_empty"
+        ? null
+        : condition.value;
     onChange({ ...condition, operator, value });
   };
 
-  const needsValue = condition.operator !== "is_empty" && condition.operator !== "is_not_empty";
+  const needsValue =
+    condition.operator !== "is_empty" && condition.operator !== "is_not_empty";
   const isBetween = condition.operator === "between";
 
   return (
@@ -295,7 +321,9 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
       <FormControl size="small" sx={{ minWidth: 120 }}>
         <Select
           value={condition.operator}
-          onChange={(e) => handleOperatorChange(e.target.value as FilterOperator)}
+          onChange={(e) =>
+            handleOperatorChange(e.target.value as FilterOperator)
+          }
         >
           {operators.map((op) => (
             <MenuItem key={op} value={op}>
@@ -318,7 +346,12 @@ const FilterConditionEditor: React.FC<FilterConditionEditorProps> = ({
       )}
 
       {/* Remove */}
-      <IconButton size="small" onClick={onRemove} color="error" aria-label="Remove filter condition">
+      <IconButton
+        size="small"
+        onClick={onRemove}
+        color="error"
+        aria-label="Remove filter condition"
+      >
         <DeleteOutlineIcon fontSize="small" />
       </IconButton>
     </Box>
@@ -348,7 +381,9 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
             <Switch
               size="small"
               checked={String(condition.value) === "true"}
-              onChange={(e) => onChange({ ...condition, value: e.target.checked })}
+              onChange={(e) =>
+                onChange({ ...condition, value: e.target.checked })
+              }
             />
           }
           label={String(condition.value) === "true" ? "True" : "False"}
@@ -365,7 +400,12 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
               type="number"
               placeholder="Min"
               value={arr[0] ?? ""}
-              onChange={(e) => onChange({ ...condition, value: [e.target.value, arr[1] ?? ""] })}
+              onChange={(e) =>
+                onChange({
+                  ...condition,
+                  value: [e.target.value, arr[1] ?? ""],
+                })
+              }
               sx={{ flex: 1 }}
             />
             <Typography variant="body2">-</Typography>
@@ -374,7 +414,12 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
               type="number"
               placeholder="Max"
               value={arr[1] ?? ""}
-              onChange={(e) => onChange({ ...condition, value: [arr[0] ?? "", e.target.value] })}
+              onChange={(e) =>
+                onChange({
+                  ...condition,
+                  value: [arr[0] ?? "", e.target.value],
+                })
+              }
               sx={{ flex: 1 }}
             />
           </Box>
@@ -387,7 +432,9 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
           fullWidth
           placeholder="Value"
           value={condition.value ?? ""}
-          onChange={(e) => onChange({ ...condition, value: Number(e.target.value) })}
+          onChange={(e) =>
+            onChange({ ...condition, value: Number(e.target.value) })
+          }
         />
       );
 
@@ -400,7 +447,12 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
               size="small"
               type="date"
               value={arr[0] ?? ""}
-              onChange={(e) => onChange({ ...condition, value: [e.target.value, arr[1] ?? ""] })}
+              onChange={(e) =>
+                onChange({
+                  ...condition,
+                  value: [e.target.value, arr[1] ?? ""],
+                })
+              }
               sx={{ flex: 1 }}
               slotProps={{ inputLabel: { shrink: true } }}
             />
@@ -409,7 +461,12 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
               size="small"
               type="date"
               value={arr[1] ?? ""}
-              onChange={(e) => onChange({ ...condition, value: [arr[0] ?? "", e.target.value] })}
+              onChange={(e) =>
+                onChange({
+                  ...condition,
+                  value: [arr[0] ?? "", e.target.value],
+                })
+              }
               sx={{ flex: 1 }}
               slotProps={{ inputLabel: { shrink: true } }}
             />
@@ -436,7 +493,12 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
               size="small"
               type="datetime-local"
               value={arr[0] ?? ""}
-              onChange={(e) => onChange({ ...condition, value: [e.target.value, arr[1] ?? ""] })}
+              onChange={(e) =>
+                onChange({
+                  ...condition,
+                  value: [e.target.value, arr[1] ?? ""],
+                })
+              }
               sx={{ flex: 1 }}
               slotProps={{ inputLabel: { shrink: true } }}
             />
@@ -445,7 +507,12 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
               size="small"
               type="datetime-local"
               value={arr[1] ?? ""}
-              onChange={(e) => onChange({ ...condition, value: [arr[0] ?? "", e.target.value] })}
+              onChange={(e) =>
+                onChange({
+                  ...condition,
+                  value: [arr[0] ?? "", e.target.value],
+                })
+              }
               sx={{ flex: 1 }}
               slotProps={{ inputLabel: { shrink: true } }}
             />
@@ -465,7 +532,8 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
 
     case "enum": {
       // For in/not_in, allow comma-separated values as a simple text input
-      const isMulti = condition.operator === "in" || condition.operator === "not_in";
+      const isMulti =
+        condition.operator === "in" || condition.operator === "not_in";
       if (isMulti) {
         const arr = Array.isArray(condition.value) ? condition.value : [];
         return (
@@ -475,7 +543,10 @@ const FilterValueInput: React.FC<FilterValueInputProps> = ({
             placeholder="value1, value2, ..."
             value={arr.join(", ")}
             onChange={(e) => {
-              const values = e.target.value.split(",").map((v) => v.trim()).filter(Boolean);
+              const values = e.target.value
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean);
               onChange({ ...condition, value: values });
             }}
           />

@@ -41,15 +41,17 @@ import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError, type ServerError } from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
-import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
+import {
+  validateWithSchema,
+  focusFirstInvalidField,
+  type FormErrors,
+} from "../utils/form-validation.util";
 
 // ── Data list component ─────────────────────────────────────────────
 
 interface EntityGroupDataListProps {
   query: EntityGroupListRequestQuery;
-  children: (
-    data: ReturnType<typeof sdk.entityGroups.list>
-  ) => React.ReactNode;
+  children: (data: ReturnType<typeof sdk.entityGroups.list>) => React.ReactNode;
 }
 
 const EntityGroupDataList: React.FC<EntityGroupDataListProps> = ({
@@ -70,18 +72,37 @@ interface EntityGroupCardProps {
   onDelete: () => void;
 }
 
-const EntityGroupCard: React.FC<EntityGroupCardProps> = ({ group, onClick, onDelete }) => {
+const EntityGroupCard: React.FC<EntityGroupCardProps> = ({
+  group,
+  onClick,
+  onDelete,
+}) => {
   const actions: ActionSuiteItem[] = [
-    { label: "Delete", icon: <DeleteIcon />, onClick: onDelete, color: "error" as const },
+    {
+      label: "Delete",
+      icon: <DeleteIcon />,
+      onClick: onDelete,
+      color: "error" as const,
+    },
   ];
 
   return (
     <DetailCard title={group.name} onClick={onClick} actions={actions}>
       <MetadataList
         items={[
-          { label: "Description", value: group.description ?? "", hidden: !group.description },
-          { label: "Members", value: `${group.memberCount} ${group.memberCount === 1 ? "member" : "members"}` },
-          { label: "Created", value: dates.format(group.created, "MM/dd/yyyy") },
+          {
+            label: "Description",
+            value: group.description ?? "",
+            hidden: !group.description,
+          },
+          {
+            label: "Members",
+            value: `${group.memberCount} ${group.memberCount === 1 ? "member" : "members"}`,
+          },
+          {
+            label: "Created",
+            value: dates.format(group.created, "MM/dd/yyyy"),
+          },
         ]}
       />
     </DetailCard>
@@ -92,7 +113,9 @@ const EntityGroupCard: React.FC<EntityGroupCardProps> = ({ group, onClick, onDel
 
 export interface EntityGroupsViewUIProps {
   onCreateGroup: () => void;
-  onDeleteGroup: (group: EntityGroupListResponsePayload["entityGroups"][number]) => void;
+  onDeleteGroup: (
+    group: EntityGroupListResponsePayload["entityGroups"][number]
+  ) => void;
 }
 
 export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
@@ -142,10 +165,12 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
 
         <Box>
           <EntityGroupDataList
-            query={{
-              ...pagination.queryParams,
-              include: "memberCount",
-            } as EntityGroupListRequestQuery}
+            query={
+              {
+                ...pagination.queryParams,
+                include: "memberCount",
+              } as EntityGroupListRequestQuery
+            }
           >
             {(listResult) => (
               <SyncTotal
@@ -157,7 +182,11 @@ export const EntityGroupsViewUI: React.FC<EntityGroupsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityGroupListResponsePayload;
                     if (list.entityGroups.length === 0) {
-                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      const hasActiveFilters =
+                        pagination.search ||
+                        Object.values(pagination.filters).some(
+                          (v) => v.length > 0
+                        );
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (
@@ -276,7 +305,9 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
               }}
               error={touched.name && !!errors.name}
               helperText={touched.name && errors.name}
-              slotProps={{ htmlInput: { "aria-invalid": touched.name && !!errors.name } }}
+              slotProps={{
+                htmlInput: { "aria-invalid": touched.name && !!errors.name },
+              }}
               required
               fullWidth
             />
@@ -292,14 +323,15 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button type="button" variant="outlined" onClick={handleClose} disabled={isPending}>
-            Cancel
-          </Button>
           <Button
-            type="submit"
-            variant="contained"
+            type="button"
+            variant="outlined"
+            onClick={handleClose}
             disabled={isPending}
           >
+            Cancel
+          </Button>
+          <Button type="submit" variant="contained" disabled={isPending}>
             Create
           </Button>
         </DialogActions>
@@ -314,7 +346,9 @@ export const EntityGroupsView: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [deletingGroup, setDeletingGroup] = useState<EntityGroupListResponsePayload["entityGroups"][number] | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState<
+    EntityGroupListResponsePayload["entityGroups"][number] | null
+  >(null);
 
   const createMutation = sdk.entityGroups.create();
   const deleteMutation = sdk.entityGroups.delete(deletingGroup?.id ?? "");

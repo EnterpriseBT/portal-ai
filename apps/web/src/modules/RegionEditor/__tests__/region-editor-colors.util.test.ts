@@ -22,7 +22,10 @@ describe("colorForEntity", () => {
   });
 
   test("cycles palette when order exceeds palette length", () => {
-    const big = Array.from({ length: ENTITY_COLOR_PALETTE.length + 2 }, (_, i) => `e${i}`);
+    const big = Array.from(
+      { length: ENTITY_COLOR_PALETTE.length + 2 },
+      (_, i) => `e${i}`
+    );
     const last = big[big.length - 1];
     expect(colorForEntity(last, big)).toBe(
       ENTITY_COLOR_PALETTE[(big.length - 1) % ENTITY_COLOR_PALETTE.length]

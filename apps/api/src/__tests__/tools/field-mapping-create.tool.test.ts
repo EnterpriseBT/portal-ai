@@ -3,9 +3,16 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockFindColDef = jest.fn<any>().mockResolvedValue({ id: "cd-1", organizationId: "org-1", label: "Column 1" });
+const mockFindColDef = jest
+  .fn<any>()
+  .mockResolvedValue({
+    id: "cd-1",
+    organizationId: "org-1",
+    label: "Column 1",
+  });
 const mockUpsert = jest.fn<any>().mockResolvedValue({ id: "fm-1" });
-const mockTransaction = jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+const mockTransaction = jest
+  .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
   .mockImplementation((fn) => fn("mock-tx"));
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
@@ -27,19 +34,41 @@ jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
 
-const { FieldMappingCreateTool } = await import("../../tools/field-mapping-create.tool.js");
+const { FieldMappingCreateTool } =
+  await import("../../tools/field-mapping-create.tool.js");
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
-type Item = { connectorEntityId: string; columnDefinitionId: string; sourceField: string; normalizedKey: string; isPrimaryKey?: boolean; required?: boolean; defaultValue?: string | null; format?: string | null; enumValues?: string[] | null };
+type Item = {
+  connectorEntityId: string;
+  columnDefinitionId: string;
+  sourceField: string;
+  normalizedKey: string;
+  isPrimaryKey?: boolean;
+  required?: boolean;
+  defaultValue?: string | null;
+  format?: string | null;
+  enumValues?: string[] | null;
+};
 const exec = (input: { items: Item[] }) =>
-  new FieldMappingCreateTool().build("station-1", "org-1", "user-1")
-    .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
+  new FieldMappingCreateTool().build("station-1", "org-1", "user-1").execute!(
+    input,
+    { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+  );
 
 describe("FieldMappingCreateTool", () => {
   it("single-item regression — upserts one mapping", async () => {
     const result: any = await exec({
-      items: [{ connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "Name", normalizedKey: "name" }],
+      items: [
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "Name",
+          normalizedKey: "name",
+        },
+      ],
     });
     expect(result.success).toBe(true);
     expect(result.count).toBe(1);
@@ -47,15 +76,28 @@ describe("FieldMappingCreateTool", () => {
     expect(mockAssertStationScope).toHaveBeenCalledTimes(1);
     expect(mockAssertWriteCapability).toHaveBeenCalledTimes(1);
     expect(mockUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "Name", normalizedKey: "name" }),
-      "mock-tx",
+      expect.objectContaining({
+        connectorEntityId: "ce-1",
+        columnDefinitionId: "cd-1",
+        sourceField: "Name",
+        normalizedKey: "name",
+      }),
+      "mock-tx"
     );
   });
 
   it("bulk create — 3 mappings upserted in transaction", async () => {
     mockFindColDef
-      .mockResolvedValueOnce({ id: "cd-1", organizationId: "org-1", label: "C1" })
-      .mockResolvedValueOnce({ id: "cd-2", organizationId: "org-1", label: "C2" });
+      .mockResolvedValueOnce({
+        id: "cd-1",
+        organizationId: "org-1",
+        label: "C1",
+      })
+      .mockResolvedValueOnce({
+        id: "cd-2",
+        organizationId: "org-1",
+        label: "C2",
+      });
     mockUpsert
       .mockResolvedValueOnce({ id: "fm-1" })
       .mockResolvedValueOnce({ id: "fm-2" })
@@ -63,9 +105,24 @@ describe("FieldMappingCreateTool", () => {
 
     const result: any = await exec({
       items: [
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "A", normalizedKey: "a" },
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "B", normalizedKey: "b" },
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-2", sourceField: "C", normalizedKey: "c" },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "A",
+          normalizedKey: "a",
+        },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "B",
+          normalizedKey: "b",
+        },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-2",
+          sourceField: "C",
+          normalizedKey: "c",
+        },
       ],
     });
 
@@ -79,13 +136,27 @@ describe("FieldMappingCreateTool", () => {
 
   it("validation failure — column definition not found for one item", async () => {
     mockFindColDef
-      .mockResolvedValueOnce({ id: "cd-1", organizationId: "org-1", label: "C1" })
+      .mockResolvedValueOnce({
+        id: "cd-1",
+        organizationId: "org-1",
+        label: "C1",
+      })
       .mockResolvedValueOnce(null);
 
     const result: any = await exec({
       items: [
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "A", normalizedKey: "a" },
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-missing", sourceField: "B", normalizedKey: "b" },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "A",
+          normalizedKey: "a",
+        },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-missing",
+          sourceField: "B",
+          normalizedKey: "b",
+        },
       ],
     });
 
@@ -95,10 +166,21 @@ describe("FieldMappingCreateTool", () => {
   });
 
   it("validation failure — column definition belongs to different org", async () => {
-    mockFindColDef.mockResolvedValueOnce({ id: "cd-1", organizationId: "other-org", label: "C1" });
+    mockFindColDef.mockResolvedValueOnce({
+      id: "cd-1",
+      organizationId: "other-org",
+      label: "C1",
+    });
 
     const result: any = await exec({
-      items: [{ connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "A", normalizedKey: "a" }],
+      items: [
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "A",
+          normalizedKey: "a",
+        },
+      ],
     });
 
     expect(result.success).toBe(false);
@@ -106,14 +188,33 @@ describe("FieldMappingCreateTool", () => {
   });
 
   it("batch column definition lookup — deduplicates findById calls", async () => {
-    mockFindColDef.mockResolvedValue({ id: "cd-1", organizationId: "org-1", label: "C1" });
+    mockFindColDef.mockResolvedValue({
+      id: "cd-1",
+      organizationId: "org-1",
+      label: "C1",
+    });
     mockUpsert.mockResolvedValue({ id: "fm-1" });
 
     await exec({
       items: [
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "A", normalizedKey: "a" },
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "B", normalizedKey: "b" },
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "C", normalizedKey: "c" },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "A",
+          normalizedKey: "a",
+        },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "B",
+          normalizedKey: "b",
+        },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "C",
+          normalizedKey: "c",
+        },
       ],
     });
 
@@ -126,8 +227,18 @@ describe("FieldMappingCreateTool", () => {
 
     const result: any = await exec({
       items: [
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "A", normalizedKey: "a" },
-        { connectorEntityId: "ce-1", columnDefinitionId: "cd-1", sourceField: "B", normalizedKey: "b" },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "A",
+          normalizedKey: "a",
+        },
+        {
+          connectorEntityId: "ce-1",
+          columnDefinitionId: "cd-1",
+          sourceField: "B",
+          normalizedKey: "b",
+        },
       ],
     });
 

@@ -2,25 +2,21 @@ import { jest } from "@jest/globals";
 import type { EntityTag } from "@portalai/core/models";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { TagFormModal } = await import(
-  "../components/TagFormModal.component"
-);
+const { TagFormModal } = await import("../components/TagFormModal.component");
 
 // Mock canvas context for ColorPicker's color wheel
-jest
-  .spyOn(HTMLCanvasElement.prototype, "getContext")
-  .mockReturnValue({
-    clearRect: jest.fn(),
-    createImageData: jest.fn().mockReturnValue({
-      data: new Uint8ClampedArray(4),
-    }),
-    putImageData: jest.fn(),
-    beginPath: jest.fn(),
-    arc: jest.fn(),
-    stroke: jest.fn(),
-    strokeStyle: "",
-    lineWidth: 0,
-  } as unknown as CanvasRenderingContext2D);
+jest.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+  clearRect: jest.fn(),
+  createImageData: jest.fn().mockReturnValue({
+    data: new Uint8ClampedArray(4),
+  }),
+  putImageData: jest.fn(),
+  beginPath: jest.fn(),
+  arc: jest.fn(),
+  stroke: jest.fn(),
+  strokeStyle: "",
+  lineWidth: 0,
+} as unknown as CanvasRenderingContext2D);
 
 const existingTag: EntityTag = {
   id: "tag-1",
@@ -203,9 +199,7 @@ describe("TagFormModal", () => {
 
   it("should show 'Saving...' and disable buttons when pending", () => {
     render(<TagFormModal {...defaultProps} isPending={true} />);
-    expect(
-      screen.getByRole("button", { name: "Saving..." })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
@@ -222,9 +216,7 @@ describe("TagFormModal", () => {
     expect(
       screen.getByText(/An entity tag with this name already exists/)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/ENTITY_TAG_DUPLICATE_NAME/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/ENTITY_TAG_DUPLICATE_NAME/)).toBeInTheDocument();
   });
 
   // ── Close ───────────────────────────────────────────────────────

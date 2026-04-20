@@ -4,7 +4,11 @@ import { z } from "zod";
 import TextField from "@mui/material/TextField";
 import { Button, Modal, Stack } from "@portalai/core/ui";
 
-import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
+import {
+  validateWithSchema,
+  focusFirstInvalidField,
+  type FormErrors,
+} from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 const EditNameSchema = z.object({
@@ -71,7 +75,12 @@ const EditForm: React.FC<{
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -98,7 +107,9 @@ const EditForm: React.FC<{
           }}
           error={touched && !!errors.name}
           helperText={touched && errors.name}
-          slotProps={{ htmlInput: { "aria-invalid": touched && !!errors.name } }}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched && !!errors.name },
+          }}
           required
           fullWidth
         />

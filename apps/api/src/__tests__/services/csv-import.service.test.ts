@@ -5,7 +5,8 @@ import { Readable } from "node:stream";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockGetObjectStream = jest.fn<() => Promise<{ stream: Readable; contentLength: number }>>();
+const mockGetObjectStream =
+  jest.fn<() => Promise<{ stream: Readable; contentLength: number }>>();
 
 jest.unstable_mockModule("../../services/s3.service.js", () => ({
   S3Service: {
@@ -13,9 +14,15 @@ jest.unstable_mockModule("../../services/s3.service.js", () => ({
   },
 }));
 
-const mockFindBySourceIds = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
-const mockUpsertManyBySourceId = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
-const mockFieldMappingsFindMany = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
+const mockFindBySourceIds = jest
+  .fn<(...args: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
+const mockUpsertManyBySourceId = jest
+  .fn<(...args: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
+const mockFieldMappingsFindMany = jest
+  .fn<(...args: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -35,13 +42,17 @@ jest.unstable_mockModule("../../db/schema/index.js", () => ({
   fieldMappings: { connectorEntityId: "connectorEntityId" },
 }));
 
-const { CsvImportService } = await import("../../services/csv-import.service.js");
+const { CsvImportService } =
+  await import("../../services/csv-import.service.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function csvToStream(content: string): { stream: Readable; contentLength: number } {
+function csvToStream(content: string): {
+  stream: Readable;
+  contentLength: number;
+} {
   return {
     stream: Readable.from(Buffer.from(content, "utf-8")),
     contentLength: content.length,
@@ -63,7 +74,13 @@ const FIELD_MAPPINGS_WITH_COL_DEFS = [
     defaultValue: null,
     format: null,
     enumValues: null,
-    columnDefinition: { key: "name", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null },
+    columnDefinition: {
+      key: "name",
+      type: "string",
+      validationPattern: null,
+      validationMessage: null,
+      canonicalFormat: null,
+    },
   },
   {
     connectorEntityId: ENTITY_ID,
@@ -73,7 +90,13 @@ const FIELD_MAPPINGS_WITH_COL_DEFS = [
     defaultValue: null,
     format: null,
     enumValues: null,
-    columnDefinition: { key: "email", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null },
+    columnDefinition: {
+      key: "email",
+      type: "string",
+      validationPattern: null,
+      validationMessage: null,
+      canonicalFormat: null,
+    },
   },
 ];
 
@@ -100,7 +123,8 @@ describe("CsvImportService", () => {
 
   describe("importFromS3()", () => {
     it("should parse CSV and bulk insert rows with normalizedData mapped via field mappings", async () => {
-      const csv = "Name,Email\nJane Doe,jane@example.com\nJohn Smith,john@example.com\n";
+      const csv =
+        "Name,Email\nJane Doe,jane@example.com\nJohn Smith,john@example.com\n";
       mockGetObjectStream.mockResolvedValue(csvToStream(csv));
 
       const result = await CsvImportService.importFromS3(defaultParams());
@@ -111,7 +135,8 @@ describe("CsvImportService", () => {
       expect(result.invalid).toBe(0);
 
       expect(mockUpsertManyBySourceId).toHaveBeenCalledTimes(1);
-      const upsertedRecords = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+      const upsertedRecords = mockUpsertManyBySourceId.mock
+        .calls[0][0] as Array<Record<string, unknown>>;
       expect(upsertedRecords).toHaveLength(2);
 
       // Verify normalizedData is mapped via field mappings using normalizedKey
@@ -135,7 +160,8 @@ describe("CsvImportService", () => {
     });
 
     it("should compute checksum for each row and skip unchanged records on re-sync", async () => {
-      const csv = "Name,Email\nJane Doe,jane@example.com\nJohn Smith,john@example.com\n";
+      const csv =
+        "Name,Email\nJane Doe,jane@example.com\nJohn Smith,john@example.com\n";
       mockGetObjectStream.mockResolvedValue(csvToStream(csv));
 
       // First call: get the checksum for Jane Doe
@@ -143,7 +169,9 @@ describe("CsvImportService", () => {
       expect(firstResult.created).toBe(2);
 
       // Get the checksum from the first upsert call
-      const firstUpserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+      const firstUpserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >;
       const existingChecksum = firstUpserted[0].checksum as string;
 
       // Second call: simulate existing record with same checksum
@@ -162,7 +190,8 @@ describe("CsvImportService", () => {
     });
 
     it("should return accurate { created, updated, unchanged, invalid } counts", async () => {
-      const csv = "Name,Email\nJane Doe,jane@example.com\nJohn Smith,john@example.com\nBob,bob@example.com\n";
+      const csv =
+        "Name,Email\nJane Doe,jane@example.com\nJohn Smith,john@example.com\nBob,bob@example.com\n";
       mockGetObjectStream.mockResolvedValue(csvToStream(csv));
 
       // Row 0: unchanged (matching checksum)
@@ -209,7 +238,9 @@ describe("CsvImportService", () => {
 
       await CsvImportService.importFromS3(defaultParams());
 
-      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >;
       expect(upserted[0].sourceId).toBe("0");
       expect(upserted[1].sourceId).toBe("1");
     });
@@ -225,7 +256,13 @@ describe("CsvImportService", () => {
           defaultValue: null,
           format: null,
           enumValues: null,
-          columnDefinition: { key: "name", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null },
+          columnDefinition: {
+            key: "name",
+            type: "string",
+            validationPattern: null,
+            validationMessage: null,
+            canonicalFormat: null,
+          },
         },
       ]);
 
@@ -237,7 +274,9 @@ describe("CsvImportService", () => {
 
       expect(result.invalid).toBe(1);
 
-      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+      const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >;
 
       // Valid row
       expect(upserted[0].isValid).toBe(true);
@@ -275,7 +314,7 @@ describe("CsvImportService", () => {
           columnDefinition: {
             key: "date",
             type: "date",
-            validationPattern: "[unclosed",   // invalid regex — would have crashed before the fix
+            validationPattern: "[unclosed", // invalid regex — would have crashed before the fix
             validationMessage: null,
             canonicalFormat: null,
           },
@@ -312,15 +351,25 @@ describe("CsvImportService", () => {
           defaultValue: null,
           format: null,
           enumValues: null,
-          columnDefinition: { key: "name", type: "string", validationPattern: null, validationMessage: null, canonicalFormat: null },
+          columnDefinition: {
+            key: "name",
+            type: "string",
+            validationPattern: null,
+            validationMessage: null,
+            canonicalFormat: null,
+          },
         },
       ]);
 
       // Force upsertManyBySourceId to throw on the first call to verify the
       // per-row guard doesn't apply here (batch-level errors still propagate).
-      mockUpsertManyBySourceId.mockRejectedValueOnce(new Error("DB connection lost"));
+      mockUpsertManyBySourceId.mockRejectedValueOnce(
+        new Error("DB connection lost")
+      );
 
-      await expect(CsvImportService.importFromS3(defaultParams())).rejects.toThrow("DB connection lost");
+      await expect(
+        CsvImportService.importFromS3(defaultParams())
+      ).rejects.toThrow("DB connection lost");
     });
   });
 });

@@ -37,12 +37,18 @@ export const organizationTools = {
     ),
 
   create: () =>
-    useAuthMutation<OrganizationToolCreateResponsePayload, CreateOrganizationToolBody>({
+    useAuthMutation<
+      OrganizationToolCreateResponsePayload,
+      CreateOrganizationToolBody
+    >({
       url: "/api/organization-tools",
     }),
 
   update: (toolId: string) =>
-    useAuthMutation<OrganizationToolUpdateResponsePayload, UpdateOrganizationToolBody>({
+    useAuthMutation<
+      OrganizationToolUpdateResponsePayload,
+      UpdateOrganizationToolBody
+    >({
       url: `/api/organization-tools/${encodeURIComponent(toolId)}`,
       method: "PATCH",
     }),

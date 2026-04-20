@@ -4,9 +4,16 @@ import type { ColumnDataType } from "@portalai/core/models";
 
 import { DbService } from "./db.service.js";
 import { fieldMappings } from "../db/schema/index.js";
-import type { FieldMappingSelect, ColumnDefinitionSelect } from "../db/schema/zod.js";
+import type {
+  FieldMappingSelect,
+  ColumnDefinitionSelect,
+} from "../db/schema/zod.js";
 import { coerce } from "../utils/coercion.util.js";
-import { validateRequired, validatePattern, validateEnum } from "../utils/field-validation.util.js";
+import {
+  validateRequired,
+  validatePattern,
+  validateEnum,
+} from "../utils/field-validation.util.js";
 import { canonicalizeString } from "../utils/canonicalize.util.js";
 
 export interface NormalizationResult {
@@ -30,12 +37,12 @@ export class NormalizationService {
    */
   static async normalize(
     connectorEntityId: string,
-    data: Record<string, unknown>,
+    data: Record<string, unknown>
   ): Promise<NormalizationResult> {
-    const mappings = await DbService.repository.fieldMappings.findMany(
+    const mappings = (await DbService.repository.fieldMappings.findMany(
       eq(fieldMappings.connectorEntityId, connectorEntityId),
-      { include: ["columnDefinition"] },
-    ) as unknown as MappingWithColumnDef[];
+      { include: ["columnDefinition"] }
+    )) as unknown as MappingWithColumnDef[];
 
     return NormalizationService.normalizeWithMappings(mappings, data);
   }
@@ -46,15 +53,15 @@ export class NormalizationService {
    */
   static async normalizeMany(
     connectorEntityId: string,
-    dataItems: Record<string, unknown>[],
+    dataItems: Record<string, unknown>[]
   ): Promise<NormalizationResult[]> {
-    const mappings = await DbService.repository.fieldMappings.findMany(
+    const mappings = (await DbService.repository.fieldMappings.findMany(
       eq(fieldMappings.connectorEntityId, connectorEntityId),
-      { include: ["columnDefinition"] },
-    ) as unknown as MappingWithColumnDef[];
+      { include: ["columnDefinition"] }
+    )) as unknown as MappingWithColumnDef[];
 
     return dataItems.map((data) =>
-      NormalizationService.normalizeWithMappings(mappings, data),
+      NormalizationService.normalizeWithMappings(mappings, data)
     );
   }
 
@@ -64,12 +71,16 @@ export class NormalizationService {
    */
   static normalizeWithMappings(
     mappings: MappingWithColumnDef[],
-    data: Record<string, unknown>,
+    data: Record<string, unknown>
   ): NormalizationResult {
     const entityMappings = mappings.filter((m) => m.columnDefinition);
 
     if (entityMappings.length === 0) {
-      return { normalizedData: { ...data }, validationErrors: null, isValid: true };
+      return {
+        normalizedData: { ...data },
+        validationErrors: null,
+        isValid: true,
+      };
     }
 
     const normalizedData: Record<string, unknown> = {};
@@ -81,15 +92,18 @@ export class NormalizationService {
 
       // 1. Extract — prefer `normalizedKey` (used by portal-origin writes)
       // and fall back to `sourceField` (used by connector sync payloads).
-      let sourceValue: unknown = mapping.normalizedKey in data
-        ? data[mapping.normalizedKey]
-        : mapping.sourceField in data
-        ? data[mapping.sourceField]
-        : undefined;
+      let sourceValue: unknown =
+        mapping.normalizedKey in data
+          ? data[mapping.normalizedKey]
+          : mapping.sourceField in data
+            ? data[mapping.sourceField]
+            : undefined;
 
       // 2. Default handling
       if (
-        (sourceValue === null || sourceValue === undefined || sourceValue === "") &&
+        (sourceValue === null ||
+          sourceValue === undefined ||
+          sourceValue === "") &&
         mapping.defaultValue !== null
       ) {
         sourceValue = mapping.defaultValue;
@@ -109,7 +123,11 @@ export class NormalizationService {
       }
 
       // 4. Coerce
-      const coerced = coerce(cd.type as ColumnDataType, sourceValue, mapping.format);
+      const coerced = coerce(
+        cd.type as ColumnDataType,
+        sourceValue,
+        mapping.format
+      );
       if (coerced.error) {
         errors.push({ field: key, error: coerced.error });
         normalizedData[key] = null;
@@ -119,8 +137,11 @@ export class NormalizationService {
       let finalValue = coerced.value;
 
       // 5. Enum validation
-      if (mapping.enumValues != null && cd.type === 'enum') {
-        const enumError = validateEnum(finalValue, mapping.enumValues as string[]);
+      if (mapping.enumValues != null && cd.type === "enum") {
+        const enumError = validateEnum(
+          finalValue,
+          mapping.enumValues as string[]
+        );
         if (enumError) {
           errors.push({ field: key, error: enumError });
         }
@@ -128,14 +149,22 @@ export class NormalizationService {
 
       // 6. Pattern validation
       if (cd.validationPattern !== null) {
-        const patternError = validatePattern(finalValue, cd.validationPattern, cd.validationMessage ?? null);
+        const patternError = validatePattern(
+          finalValue,
+          cd.validationPattern,
+          cd.validationMessage ?? null
+        );
         if (patternError) {
           errors.push({ field: key, error: patternError });
         }
       }
 
       // 7. Canonicalize (string type only)
-      if (cd.type === "string" && cd.canonicalFormat !== null && finalValue !== null) {
+      if (
+        cd.type === "string" &&
+        cd.canonicalFormat !== null &&
+        finalValue !== null
+      ) {
         finalValue = canonicalizeString(String(finalValue), cd.canonicalFormat);
       }
 

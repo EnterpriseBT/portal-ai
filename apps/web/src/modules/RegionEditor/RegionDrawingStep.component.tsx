@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, Stack, Typography, Tabs, Button, Select } from "@portalai/core/ui";
+import {
+  Box,
+  Stack,
+  Typography,
+  Tabs,
+  Button,
+  Select,
+} from "@portalai/core/ui";
 import MuiTab from "@mui/material/Tab";
 import MuiChip from "@mui/material/Chip";
 import { useTheme } from "@mui/material/styles";
@@ -70,7 +77,8 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   const [attemptedInterpret, setAttemptedInterpret] = useState(false);
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up("lg"));
-  const activeSheet = workbook.sheets.find((s) => s.id === activeSheetId) ?? workbook.sheets[0];
+  const activeSheet =
+    workbook.sheets.find((s) => s.id === activeSheetId) ?? workbook.sheets[0];
 
   const entityOrder = useMemo(() => {
     const seen = new Set<string>();
@@ -115,8 +123,9 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       const entityLabel =
         region.targetEntityLabel ??
         (region.targetEntityDefinitionId
-          ? entityOptions.find((o) => o.value === region.targetEntityDefinitionId)?.label ??
-          region.targetEntityDefinitionId
+          ? (entityOptions.find(
+              (o) => o.value === region.targetEntityDefinitionId
+            )?.label ?? region.targetEntityDefinitionId)
           : "Unbound");
       const labelPart = region.proposedLabel ?? formatBounds(region.bounds);
       return `${labelPart} · ${sheetName} · ${entityLabel}`;
@@ -148,7 +157,10 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   }, [computedErrors, errors]);
 
   const invalidRegionIds = useMemo(
-    () => regions.map((r) => r.id).filter((id) => effectiveErrors[id] !== undefined),
+    () =>
+      regions
+        .map((r) => r.id)
+        .filter((id) => effectiveErrors[id] !== undefined),
     [regions, effectiveErrors]
   );
 
@@ -183,12 +195,18 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   useEffect(() => {
     if (!selectedRegionId) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Delete" && e.key !== "Backspace" && e.key !== "Escape") return;
+      if (e.key !== "Delete" && e.key !== "Backspace" && e.key !== "Escape")
+        return;
       const target = e.target as HTMLElement | null;
       // Never hijack keys while the user is editing text.
       if (target) {
         const tag = target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) {
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
           return;
         }
       }
@@ -210,10 +228,10 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     : undefined;
   const siblingsInSameEntity = selectedRegion?.targetEntityDefinitionId
     ? regions.filter(
-      (r) =>
-        r.id !== selectedRegion.id &&
-        r.targetEntityDefinitionId === selectedRegion.targetEntityDefinitionId
-    ).length
+        (r) =>
+          r.id !== selectedRegion.id &&
+          r.targetEntityDefinitionId === selectedRegion.targetEntityDefinitionId
+      ).length
     : 0;
 
   const showErrors = attemptedInterpret;
@@ -252,7 +270,13 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         flexWrap="wrap"
         useFlexGap
       >
-        <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="baseline"
+          flexWrap="wrap"
+          useFlexGap
+        >
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             Draw regions
           </Typography>
@@ -260,7 +284,13 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             Drag to outline a region, then bind it to an entity.
           </Typography>
         </Stack>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          flexWrap="wrap"
+          useFlexGap
+        >
           {workbook.fetchedAt && (
             <Typography variant="caption" color="text.secondary">
               Data as of {workbook.fetchedAt}
@@ -292,7 +322,9 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
           onChange={(e) => handleJumpToRegion((e.target.value as string) || "")}
           options={regionSelectOptions}
           placeholder={
-            regions.length === 0 ? "No regions yet — draw one on the grid" : "Select a region…"
+            regions.length === 0
+              ? "No regions yet — draw one on the grid"
+              : "Select a region…"
           }
           disabled={regions.length === 0}
           sx={{ width: { xs: "100%", sm: 320 }, flexShrink: 0 }}
@@ -336,8 +368,10 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                         borderRadius: 9,
                         fontSize: 10,
                         fontWeight: 700,
-                        backgroundColor: count > 0 ? "primary.main" : "grey.300",
-                        color: count > 0 ? "primary.contrastText" : "text.secondary",
+                        backgroundColor:
+                          count > 0 ? "primary.main" : "grey.300",
+                        color:
+                          count > 0 ? "primary.contrastText" : "text.secondary",
                       }}
                     >
                       {count}

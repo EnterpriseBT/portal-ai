@@ -3,9 +3,21 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockFindById = jest.fn<any>().mockResolvedValue({ id: "fm-1", connectorEntityId: "ce-1", organizationId: "org-1", sourceField: "Name" });
+const mockFindById = jest
+  .fn<any>()
+  .mockResolvedValue({
+    id: "fm-1",
+    connectorEntityId: "ce-1",
+    organizationId: "org-1",
+    sourceField: "Name",
+  });
 const mockValidateDelete = jest.fn<any>().mockResolvedValue(undefined);
-const mockExecuteDelete = jest.fn<any>().mockResolvedValue({ cascadedEntityGroupMembers: 2, counterpartCleared: true });
+const mockExecuteDelete = jest
+  .fn<any>()
+  .mockResolvedValue({
+    cascadedEntityGroupMembers: 2,
+    counterpartCleared: true,
+  });
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertStationScope: mockAssertStationScope,
@@ -14,21 +26,32 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: { repository: { fieldMappings: { findById: mockFindById } } },
 }));
-jest.unstable_mockModule("../../services/field-mapping-validation.service.js", () => ({
-  FieldMappingValidationService: { validateDelete: mockValidateDelete, executeDelete: mockExecuteDelete },
-}));
+jest.unstable_mockModule(
+  "../../services/field-mapping-validation.service.js",
+  () => ({
+    FieldMappingValidationService: {
+      validateDelete: mockValidateDelete,
+      executeDelete: mockExecuteDelete,
+    },
+  })
+);
 jest.unstable_mockModule("../../services/analytics.service.js", () => ({
   AnalyticsService: { applyFieldMappingDeleteMany: jest.fn() },
 }));
 
-const { FieldMappingDeleteTool } = await import("../../tools/field-mapping-delete.tool.js");
+const { FieldMappingDeleteTool } =
+  await import("../../tools/field-mapping-delete.tool.js");
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
 type Item = { fieldMappingId: string };
 const exec = (input: { items: Item[] }) =>
-  new FieldMappingDeleteTool().build("station-1", "org-1", "user-1")
-    .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
+  new FieldMappingDeleteTool().build("station-1", "org-1", "user-1").execute!(
+    input,
+    { toolCallId: "t", messages: [], abortSignal: new AbortController().signal }
+  );
 
 describe("FieldMappingDeleteTool", () => {
   it("single-item regression — deletes with cascaded counts", async () => {
@@ -43,13 +66,37 @@ describe("FieldMappingDeleteTool", () => {
 
   it("bulk delete — 3 mappings deleted sequentially", async () => {
     mockFindById
-      .mockResolvedValueOnce({ id: "fm-1", connectorEntityId: "ce-1", organizationId: "org-1", sourceField: "A" })
-      .mockResolvedValueOnce({ id: "fm-2", connectorEntityId: "ce-1", organizationId: "org-1", sourceField: "B" })
-      .mockResolvedValueOnce({ id: "fm-3", connectorEntityId: "ce-1", organizationId: "org-1", sourceField: "C" });
+      .mockResolvedValueOnce({
+        id: "fm-1",
+        connectorEntityId: "ce-1",
+        organizationId: "org-1",
+        sourceField: "A",
+      })
+      .mockResolvedValueOnce({
+        id: "fm-2",
+        connectorEntityId: "ce-1",
+        organizationId: "org-1",
+        sourceField: "B",
+      })
+      .mockResolvedValueOnce({
+        id: "fm-3",
+        connectorEntityId: "ce-1",
+        organizationId: "org-1",
+        sourceField: "C",
+      });
     mockExecuteDelete
-      .mockResolvedValueOnce({ cascadedEntityGroupMembers: 1, counterpartCleared: false })
-      .mockResolvedValueOnce({ cascadedEntityGroupMembers: 0, counterpartCleared: false })
-      .mockResolvedValueOnce({ cascadedEntityGroupMembers: 0, counterpartCleared: true });
+      .mockResolvedValueOnce({
+        cascadedEntityGroupMembers: 1,
+        counterpartCleared: false,
+      })
+      .mockResolvedValueOnce({
+        cascadedEntityGroupMembers: 0,
+        counterpartCleared: false,
+      })
+      .mockResolvedValueOnce({
+        cascadedEntityGroupMembers: 0,
+        counterpartCleared: true,
+      });
 
     const result: any = await exec({
       items: [
@@ -71,17 +118,24 @@ describe("FieldMappingDeleteTool", () => {
 
   it("validation failure — one mapping fails validateDelete, nothing deleted", async () => {
     mockFindById
-      .mockResolvedValueOnce({ id: "fm-1", connectorEntityId: "ce-1", organizationId: "org-1", sourceField: "A" })
-      .mockResolvedValueOnce({ id: "fm-2", connectorEntityId: "ce-1", organizationId: "org-1", sourceField: "B" });
+      .mockResolvedValueOnce({
+        id: "fm-1",
+        connectorEntityId: "ce-1",
+        organizationId: "org-1",
+        sourceField: "A",
+      })
+      .mockResolvedValueOnce({
+        id: "fm-2",
+        connectorEntityId: "ce-1",
+        organizationId: "org-1",
+        sourceField: "B",
+      });
     mockValidateDelete
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error("Has records"));
 
     const result: any = await exec({
-      items: [
-        { fieldMappingId: "fm-1" },
-        { fieldMappingId: "fm-2" },
-      ],
+      items: [{ fieldMappingId: "fm-1" }, { fieldMappingId: "fm-2" }],
     });
 
     expect(result.success).toBe(false);
@@ -92,7 +146,9 @@ describe("FieldMappingDeleteTool", () => {
   it("validation failure — mapping not found", async () => {
     mockFindById.mockResolvedValueOnce(null);
 
-    const result: any = await exec({ items: [{ fieldMappingId: "fm-missing" }] });
+    const result: any = await exec({
+      items: [{ fieldMappingId: "fm-missing" }],
+    });
 
     expect(result.success).toBe(false);
     expect(mockExecuteDelete).not.toHaveBeenCalled();

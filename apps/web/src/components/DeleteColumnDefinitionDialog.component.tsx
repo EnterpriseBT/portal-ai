@@ -27,7 +27,10 @@ export interface DeleteColumnDefinitionDialogProps {
   serverError?: ServerError | null;
 }
 
-const IMPACT_LABELS: { key: keyof ColumnDefinitionImpactResponsePayload; label: string }[] = [
+const IMPACT_LABELS: {
+  key: keyof ColumnDefinitionImpactResponsePayload;
+  label: string;
+}[] = [
   { key: "fieldMappings", label: "field mappings" },
   { key: "refFieldMappings", label: "reference field mappings" },
   { key: "entityRecords", label: "entity records" },
@@ -86,7 +89,8 @@ export const DeleteColumnDefinitionDialog: React.FC<
   isLoadingImpact,
   serverError,
 }) => {
-  const hasBlockingDeps = impact && (impact.fieldMappings > 0 || impact.refFieldMappings > 0);
+  const hasBlockingDeps =
+    impact && (impact.fieldMappings > 0 || impact.refFieldMappings > 0);
   const deleteDisabled = isPending || isLoadingImpact || !!hasBlockingDeps;
 
   return (
@@ -107,14 +111,21 @@ export const DeleteColumnDefinitionDialog: React.FC<
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
             type="button"
             variant="contained"
             color="error"
-            onClick={() => { if (!deleteDisabled) onConfirm(); }}
+            onClick={() => {
+              if (!deleteDisabled) onConfirm();
+            }}
             disabled={deleteDisabled}
           >
             {isPending ? "Deleting..." : "Delete"}

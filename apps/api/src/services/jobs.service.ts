@@ -48,7 +48,10 @@ export class JobsService {
         bullJobId: bullJob.id,
       });
 
-      logger.info({ jobId: job.id, type: params.type }, "Job created and enqueued");
+      logger.info(
+        { jobId: job.id, type: params.type },
+        "Job created and enqueued"
+      );
       return { ...job, bullJobId: bullJob.id ?? null };
     } catch (err) {
       // If enqueue fails, mark the job as failed
@@ -56,7 +59,11 @@ export class JobsService {
         status: "failed",
         error: err instanceof Error ? err.message : "Failed to enqueue job",
       });
-      throw new ApiError(500, ApiCode.JOB_ENQUEUE_FAILED, "Failed to enqueue job");
+      throw new ApiError(
+        500,
+        ApiCode.JOB_ENQUEUE_FAILED,
+        "Failed to enqueue job"
+      );
     }
   }
 
@@ -93,7 +100,10 @@ export class JobsService {
         const bullJob = await jobsQueue.getJob(job.bullJobId);
         if (bullJob) await bullJob.remove();
       } catch (err) {
-        logger.warn({ jobId, err }, "Failed to remove BullMQ job (may already be processed)");
+        logger.warn(
+          { jobId, err },
+          "Failed to remove BullMQ job (may already be processed)"
+        );
       }
     }
 

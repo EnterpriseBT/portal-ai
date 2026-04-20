@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { ConnectorDefinitionSchema } from "../models/connector-definition.model.js";
 import { ConnectorInstanceSchema } from "../models/connector-instance.model.js";
-import { PaginatedResponsePayloadSchema, PaginationRequestQuerySchema } from "./pagination.contract.js";
+import {
+  PaginatedResponsePayloadSchema,
+  PaginationRequestQuerySchema,
+} from "./pagination.contract.js";
 
 /**
  * API-facing schema for connector instances.
@@ -14,33 +17,45 @@ export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.extend({
 
 export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;
 
-export const ConnectorInstanceListRequestQuerySchema = PaginationRequestQuerySchema.extend({
-  connectorDefinitionId: z.string().optional(),
-  status: z.string().optional(),
-  include: z.string().optional(),
-  capability: z.string().optional(),
-});
+export const ConnectorInstanceListRequestQuerySchema =
+  PaginationRequestQuerySchema.extend({
+    connectorDefinitionId: z.string().optional(),
+    status: z.string().optional(),
+    include: z.string().optional(),
+    capability: z.string().optional(),
+  });
 
-export type ConnectorInstanceListRequestQuery = z.infer<typeof ConnectorInstanceListRequestQuerySchema>;
+export type ConnectorInstanceListRequestQuery = z.infer<
+  typeof ConnectorInstanceListRequestQuerySchema
+>;
 
 /** API schema for connector instances with their associated definition attached. */
-export const ConnectorInstanceWithDefinitionApiSchema = ConnectorInstanceApiSchema.extend({
-  connectorDefinition: ConnectorDefinitionSchema.nullable(),
-});
+export const ConnectorInstanceWithDefinitionApiSchema =
+  ConnectorInstanceApiSchema.extend({
+    connectorDefinition: ConnectorDefinitionSchema.nullable(),
+  });
 
-export type ConnectorInstanceWithDefinitionApi = z.infer<typeof ConnectorInstanceWithDefinitionApiSchema>;
+export type ConnectorInstanceWithDefinitionApi = z.infer<
+  typeof ConnectorInstanceWithDefinitionApiSchema
+>;
 
-export const ConnectorInstanceListResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  connectorInstances: z.array(ConnectorInstanceApiSchema),
-});
+export const ConnectorInstanceListResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    connectorInstances: z.array(ConnectorInstanceApiSchema),
+  });
 
-export type ConnectorInstanceListResponsePayload = z.infer<typeof ConnectorInstanceListResponsePayloadSchema>;
+export type ConnectorInstanceListResponsePayload = z.infer<
+  typeof ConnectorInstanceListResponsePayloadSchema
+>;
 
-export const ConnectorInstanceListWithDefinitionResponsePayloadSchema = PaginatedResponsePayloadSchema.extend({
-  connectorInstances: z.array(ConnectorInstanceWithDefinitionApiSchema),
-});
+export const ConnectorInstanceListWithDefinitionResponsePayloadSchema =
+  PaginatedResponsePayloadSchema.extend({
+    connectorInstances: z.array(ConnectorInstanceWithDefinitionApiSchema),
+  });
 
-export type ConnectorInstanceListWithDefinitionResponsePayload = z.infer<typeof ConnectorInstanceListWithDefinitionResponsePayloadSchema>;
+export type ConnectorInstanceListWithDefinitionResponsePayload = z.infer<
+  typeof ConnectorInstanceListWithDefinitionResponsePayloadSchema
+>;
 
 export const ConnectorInstanceGetResponseSchema = z.object({
   connectorInstance: ConnectorInstanceWithDefinitionApiSchema,
@@ -65,7 +80,9 @@ export const ConnectorInstanceCreateRequestBodySchema = z.object({
   credentials: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
-export type ConnectorInstanceCreateRequestBody = z.infer<typeof ConnectorInstanceCreateRequestBodySchema>;
+export type ConnectorInstanceCreateRequestBody = z.infer<
+  typeof ConnectorInstanceCreateRequestBodySchema
+>;
 
 export const ConnectorInstanceCreateResponseSchema = z.object({
   connectorInstance: ConnectorInstanceApiSchema,
@@ -77,15 +94,20 @@ export type ConnectorInstanceCreateResponsePayload = z.infer<
 
 export const ConnectorInstancePatchRequestBodySchema = z.object({
   name: z.string().min(1, "Name is required"),
-  enabledCapabilityFlags: z.object({
-    sync: z.boolean().optional(),
-    read: z.boolean().optional(),
-    write: z.boolean().optional(),
-    push: z.boolean().optional(),
-  }).nullable().optional(),
+  enabledCapabilityFlags: z
+    .object({
+      sync: z.boolean().optional(),
+      read: z.boolean().optional(),
+      write: z.boolean().optional(),
+      push: z.boolean().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
-export type ConnectorInstancePatchRequestBody = z.infer<typeof ConnectorInstancePatchRequestBodySchema>;
+export type ConnectorInstancePatchRequestBody = z.infer<
+  typeof ConnectorInstancePatchRequestBodySchema
+>;
 
 export const ConnectorInstanceImpactResponseSchema = z.object({
   connectorEntities: z.number(),
@@ -96,4 +118,6 @@ export const ConnectorInstanceImpactResponseSchema = z.object({
   stations: z.number(),
 });
 
-export type ConnectorInstanceImpact = z.infer<typeof ConnectorInstanceImpactResponseSchema>;
+export type ConnectorInstanceImpact = z.infer<
+  typeof ConnectorInstanceImpactResponseSchema
+>;

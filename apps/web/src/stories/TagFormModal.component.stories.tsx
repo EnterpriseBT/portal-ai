@@ -64,7 +64,8 @@ export const ServerError: Story = {
   args: {
     tag: null,
     serverError: {
-      message: "An entity tag with this name already exists in this organization",
+      message:
+        "An entity tag with this name already exists in this organization",
       code: "ENTITY_TAG_DUPLICATE_NAME",
     },
   },
@@ -74,7 +75,8 @@ export const EditWithServerError: Story = {
   args: {
     tag: existingTag,
     serverError: {
-      message: "An entity tag with this name already exists in this organization",
+      message:
+        "An entity tag with this name already exists in this organization",
       code: "ENTITY_TAG_DUPLICATE_NAME",
     },
   },

@@ -2,7 +2,10 @@ import { createLogger } from "./logger.util.js";
 
 const logger = createLogger({ module: "canonicalize" });
 
-export function canonicalizeString(value: string, canonicalFormat: string): string {
+export function canonicalizeString(
+  value: string,
+  canonicalFormat: string
+): string {
   switch (canonicalFormat) {
     case "lowercase":
       return value.toLowerCase();
@@ -16,7 +19,10 @@ export function canonicalizeString(value: string, canonicalFormat: string): stri
       return digits;
     }
     default:
-      logger.warn({ canonicalFormat }, "Unrecognized canonicalFormat — returning value unchanged");
+      logger.warn(
+        { canonicalFormat },
+        "Unrecognized canonicalFormat — returning value unchanged"
+      );
       return value;
   }
 }

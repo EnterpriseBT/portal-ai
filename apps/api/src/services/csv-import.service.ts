@@ -27,10 +27,15 @@ export class CsvImportService {
    * Stream a CSV from S3, normalize rows through field mappings, and upsert
    * into entity_records. Returns created/updated/unchanged/invalid counts.
    */
-  static async importFromS3(params: ImportEntityParams): Promise<CsvImportResult> {
+  static async importFromS3(
+    params: ImportEntityParams
+  ): Promise<CsvImportResult> {
     const { s3Key, connectorEntityId } = params;
 
-    logger.info({ connectorEntityId, s3Key }, "Starting CSV import from S3 (streaming)");
+    logger.info(
+      { connectorEntityId, s3Key },
+      "Starting CSV import from S3 (streaming)"
+    );
 
     const { stream } = await S3Service.getObjectStream(s3Key);
     const rows = csvRowIterator(stream);

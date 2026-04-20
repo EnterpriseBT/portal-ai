@@ -53,7 +53,7 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "How do I start asking questions about my data?",
     answer:
-      "From a station, click \"New Portal\" to open a chat session. Type your question — the assistant will use the station's tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later.",
+      'From a station, click "New Portal" to open a chat session. Type your question — the assistant will use the station\'s tool packs (data query, statistics, etc.) and the connected data to respond. You can pin useful results for quick access later.',
     category: FAQCategory.GettingStarted,
     relatedGlossaryTerms: ["Portal", "Portal Message", "Pinned Result"],
   },
@@ -76,16 +76,24 @@ export const FAQ_ENTRIES: FAQEntry[] = [
   {
     question: "What are field mappings?",
     answer:
-      "A field mapping links a raw field on a connector entity to a column definition. Mapping the CRM's \"Email Address\" and the CSV's \"email\" to the same email column definition is what makes records from different sources comparable.",
+      'A field mapping links a raw field on a connector entity to a column definition. Mapping the CRM\'s "Email Address" and the CSV\'s "email" to the same email column definition is what makes records from different sources comparable.',
     category: FAQCategory.Data,
-    relatedGlossaryTerms: ["Field Mapping", "Column Definition", "Normalized Data"],
+    relatedGlossaryTerms: [
+      "Field Mapping",
+      "Column Definition",
+      "Normalized Data",
+    ],
   },
   {
     question: "How do I validate my data?",
     answer:
-      "Validation is driven by your column definitions: each one can declare a data type and a regex validation pattern. When records are synced or written, those rules run automatically — invalid records are flagged so you can fix them. Use \"Re-validate\" on an entity to re-run the rules across all records.",
+      'Validation is driven by your column definitions: each one can declare a data type and a regex validation pattern. When records are synced or written, those rules run automatically — invalid records are flagged so you can fix them. Use "Re-validate" on an entity to re-run the rules across all records.',
     category: FAQCategory.Data,
-    relatedGlossaryTerms: ["Validation Pattern", "Column Definition", "Entity Record"],
+    relatedGlossaryTerms: [
+      "Validation Pattern",
+      "Column Definition",
+      "Entity Record",
+    ],
   },
   {
     question: "What happens when I sync an entity?",
@@ -104,9 +112,9 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     relatedGlossaryTerms: ["Entity Group", "Entity Group Member", "Link Field"],
   },
   {
-    question: "What is a \"link field\" in an entity group?",
+    question: 'What is a "link field" in an entity group?',
     answer:
-      "The link field is the shared identifier used to match records across the group's members. If you pick \"email\" as the link field, two records — one from each source — are treated as the same entity when they share an email address. The Overlap Preview shows how well your link field actually matches data across members.",
+      'The link field is the shared identifier used to match records across the group\'s members. If you pick "email" as the link field, two records — one from each source — are treated as the same entity when they share an email address. The Overlap Preview shows how well your link field actually matches data across members.',
     category: FAQCategory.Organization,
     relatedGlossaryTerms: ["Link Field", "Entity Group", "Overlap Preview"],
   },
@@ -138,7 +146,12 @@ export const FAQ_ENTRIES: FAQEntry[] = [
     answer:
       "A portal is the whole chat session — the conversation, the messages, the context. A portal result is a single piece of structured output (a chart, a table, a text block) produced by the assistant inside one of the messages. You pin portal results, not portals.",
     category: FAQCategory.Analytics,
-    relatedGlossaryTerms: ["Portal", "Portal Message", "Portal Result", "Pinned Result"],
+    relatedGlossaryTerms: [
+      "Portal",
+      "Portal Message",
+      "Portal Result",
+      "Pinned Result",
+    ],
   },
 
   // Jobs & Background Tasks

@@ -13,7 +13,5 @@ export const stations = pgTable("stations", {
     .references(() => organizations.id),
   name: text("name").notNull(),
   description: text("description"),
-  toolPacks: jsonb("tool_packs")
-    .$type<string[]>()
-    .notNull(),
+  toolPacks: jsonb("tool_packs").$type<string[]>().notNull(),
 });

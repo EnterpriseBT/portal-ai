@@ -61,7 +61,13 @@ jobEventsRouter.get(
       // Verify job exists
       const job = await JobsService.findById(jobId).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.JOB_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch job for event stream");
+        throw new ApiError(
+          500,
+          ApiCode.JOB_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch job for event stream"
+        );
       });
 
       const sse = new SseUtil(res);
@@ -88,7 +94,9 @@ jobEventsRouter.get(
       let cleaned = false;
       const unsubscribe = JobEventsService.subscribe(jobId, (event) => {
         // Custom event types (e.g. "recommendations") use a distinct SSE event name
-        const customType = (event as Record<string, unknown>)._eventType as string | undefined;
+        const customType = (event as Record<string, unknown>)._eventType as
+          | string
+          | undefined;
         const sseEventName = customType ? `job:${customType}` : "update";
         sse.send(sseEventName, event);
 
@@ -112,7 +120,17 @@ jobEventsRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to open SSE stream"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.JOB_SUBSCRIBE_FAILED, error instanceof Error ? error.message : "Failed to open job event stream"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.JOB_SUBSCRIBE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to open job event stream"
+            )
+      );
     }
   }
 );

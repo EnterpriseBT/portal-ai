@@ -128,10 +128,7 @@ export class ToolService {
     input: Record<string, unknown>
   ): Promise<unknown> {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      WEBHOOK_TIMEOUT_MS
-    );
+    const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
 
     try {
       const response = await fetch(implementation.url, {
@@ -162,7 +159,7 @@ export class ToolService {
   static async buildAnalyticsTools(
     organizationId: string,
     stationId: string,
-    userId: string,
+    userId: string
   ): Promise<Record<string, Tool>> {
     const repo = DbService.repository;
 
@@ -223,7 +220,9 @@ export class ToolService {
     // Pack: financial
     // -------------------------------------------------------------------
     if (enabledPacks.has("financial")) {
-      tools.technical_indicator = new TechnicalIndicatorTool().build(stationData);
+      tools.technical_indicator = new TechnicalIndicatorTool().build(
+        stationData
+      );
       tools.npv = new NpvTool().build();
       tools.irr = new IrrTool().build();
       tools.amortize = new AmortizeTool().build();
@@ -248,15 +247,46 @@ export class ToolService {
       const hasWrite = stationCaps.some((sc) => sc.capabilities.write);
 
       if (hasWrite) {
-        tools.entity_record_create = new EntityRecordCreateTool().build(stationId, organizationId, userId);
-        tools.entity_record_update = new EntityRecordUpdateTool().build(stationId, userId);
-        tools.entity_record_delete = new EntityRecordDeleteTool().build(stationId, userId);
-        tools.connector_entity_create = new ConnectorEntityCreateTool().build(stationId, userId);
-        tools.connector_entity_update = new ConnectorEntityUpdateTool().build(stationId, userId);
-        tools.connector_entity_delete = new ConnectorEntityDeleteTool().build(stationId, userId);
-        tools.field_mapping_create = new FieldMappingCreateTool().build(stationId, organizationId, userId);
-        tools.field_mapping_update = new FieldMappingUpdateTool().build(stationId, organizationId, userId);
-        tools.field_mapping_delete = new FieldMappingDeleteTool().build(stationId, organizationId, userId);
+        tools.entity_record_create = new EntityRecordCreateTool().build(
+          stationId,
+          organizationId,
+          userId
+        );
+        tools.entity_record_update = new EntityRecordUpdateTool().build(
+          stationId,
+          userId
+        );
+        tools.entity_record_delete = new EntityRecordDeleteTool().build(
+          stationId,
+          userId
+        );
+        tools.connector_entity_create = new ConnectorEntityCreateTool().build(
+          stationId,
+          userId
+        );
+        tools.connector_entity_update = new ConnectorEntityUpdateTool().build(
+          stationId,
+          userId
+        );
+        tools.connector_entity_delete = new ConnectorEntityDeleteTool().build(
+          stationId,
+          userId
+        );
+        tools.field_mapping_create = new FieldMappingCreateTool().build(
+          stationId,
+          organizationId,
+          userId
+        );
+        tools.field_mapping_update = new FieldMappingUpdateTool().build(
+          stationId,
+          organizationId,
+          userId
+        );
+        tools.field_mapping_delete = new FieldMappingDeleteTool().build(
+          stationId,
+          organizationId,
+          userId
+        );
       }
     }
 
@@ -283,7 +313,7 @@ export class ToolService {
 
   private static async buildCustomWebhookTools(
     tools: Record<string, Tool>,
-    stationId: string,
+    stationId: string
   ): Promise<void> {
     const repo = DbService.repository;
     const stationToolRows = await repo.stationTools.findByStationId(stationId);
@@ -303,7 +333,7 @@ export class ToolService {
         def.description ?? `Custom tool: ${toolName}`,
         def.parameterSchema as Record<string, unknown>,
         def.implementation as unknown as WebhookImplementation,
-        stationId,
+        stationId
       ).build();
     }
   }

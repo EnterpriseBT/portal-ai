@@ -1,3 +1,14 @@
+/**
+ * Legacy simple-layout upload path. New flows should use
+ * `POST /api/connector-instances/:id/layout-plan/interpret` +
+ * `POST /api/connector-instances/:id/layout-plan/:planId/commit`
+ * per `docs/SPREADSHEET_PARSING.backend.spec.md`.
+ *
+ * The three routes exposed here (`/presign`, `/:jobId/process`,
+ * `/:jobId/confirm`) are scheduled for retirement per
+ * `docs/FILE_UPLOAD_DEPRECATION.plan.md`.
+ */
+
 import { Router, Request, Response, NextFunction } from "express";
 
 import { createLogger } from "../utils/logger.util.js";
@@ -80,7 +91,11 @@ uploadsRouter.post(
       const parsed = PresignRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.UPLOAD_INVALID_PAYLOAD, "Invalid presign request body")
+          new ApiError(
+            400,
+            ApiCode.UPLOAD_INVALID_PAYLOAD,
+            "Invalid presign request body"
+          )
         );
       }
 
@@ -91,7 +106,11 @@ uploadsRouter.post(
       // Validate file count
       if (files.length === 0) {
         return next(
-          new ApiError(400, ApiCode.UPLOAD_NO_FILES, "At least one file is required")
+          new ApiError(
+            400,
+            ApiCode.UPLOAD_NO_FILES,
+            "At least one file is required"
+          )
         );
       }
       if (files.length > environment.UPLOAD_MAX_FILES) {
@@ -106,7 +125,9 @@ uploadsRouter.post(
 
       // Validate each file
       for (const file of files) {
-        const ext = file.fileName.substring(file.fileName.lastIndexOf(".")).toLowerCase();
+        const ext = file.fileName
+          .substring(file.fileName.lastIndexOf("."))
+          .toLowerCase();
         if (!environment.UPLOAD_ALLOWED_EXTENSIONS.includes(ext)) {
           return next(
             new ApiError(
@@ -162,7 +183,9 @@ uploadsRouter.post(
         throw new ApiError(
           500,
           ApiCode.UPLOAD_S3_ERROR,
-          error instanceof Error ? error.message : "Failed to generate presigned URLs"
+          error instanceof Error
+            ? error.message
+            : "Failed to generate presigned URLs"
         );
       });
 
@@ -179,7 +202,10 @@ uploadsRouter.post(
         metadata: updatedMetadata as Record<string, unknown>,
       });
 
-      logger.info({ jobId: job.id, fileCount: files.length }, "Presigned URLs generated");
+      logger.info(
+        { jobId: job.id, fileCount: files.length },
+        "Presigned URLs generated"
+      );
 
       return HttpService.success<PresignResponsePayload>(res, {
         jobId: job.id,
@@ -193,7 +219,11 @@ uploadsRouter.post(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.UPLOAD_S3_ERROR, "Failed to generate presigned URLs")
+          : new ApiError(
+              500,
+              ApiCode.UPLOAD_S3_ERROR,
+              "Failed to generate presigned URLs"
+            )
       );
     }
   }
@@ -240,13 +270,23 @@ uploadsRouter.post(
 
       // Verify org ownership
       if (job.organizationId !== organizationId) {
-        return next(new ApiError(403, ApiCode.JOB_UNAUTHORIZED, "Job belongs to a different organization"));
+        return next(
+          new ApiError(
+            403,
+            ApiCode.JOB_UNAUTHORIZED,
+            "Job belongs to a different organization"
+          )
+        );
       }
 
       // Verify job is pending
       if (job.status !== "pending") {
         return next(
-          new ApiError(400, ApiCode.UPLOAD_JOB_NOT_PENDING, `Job is not pending (current status: ${job.status})`)
+          new ApiError(
+            400,
+            ApiCode.UPLOAD_JOB_NOT_PENDING,
+            `Job is not pending (current status: ${job.status})`
+          )
         );
       }
 
@@ -257,7 +297,9 @@ uploadsRouter.post(
           throw new ApiError(
             500,
             ApiCode.UPLOAD_S3_ERROR,
-            error instanceof Error ? error.message : "Failed to verify file in S3"
+            error instanceof Error
+              ? error.message
+              : "Failed to verify file in S3"
           );
         });
 
@@ -284,13 +326,20 @@ uploadsRouter.post(
           bullJobId: bullJob.id,
         });
 
-        logger.info({ jobId: job.id, bullJobId: bullJob.id }, "File upload job enqueued");
+        logger.info(
+          { jobId: job.id, bullJobId: bullJob.id },
+          "File upload job enqueued"
+        );
       } catch (err) {
         await DbService.repository.jobs.update(job.id, {
           status: "failed",
           error: err instanceof Error ? err.message : "Failed to enqueue job",
         });
-        throw new ApiError(500, ApiCode.JOB_ENQUEUE_FAILED, "Failed to enqueue job");
+        throw new ApiError(
+          500,
+          ApiCode.JOB_ENQUEUE_FAILED,
+          "Failed to enqueue job"
+        );
       }
 
       // Refetch to get updated bullJobId
@@ -309,7 +358,11 @@ uploadsRouter.post(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.UPLOAD_S3_ERROR, "Failed to process upload")
+          : new ApiError(
+              500,
+              ApiCode.UPLOAD_S3_ERROR,
+              "Failed to process upload"
+            )
       );
     }
   }
@@ -360,7 +413,11 @@ uploadsRouter.post(
       const parsed = ConfirmRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.UPLOAD_INVALID_PAYLOAD, "Invalid confirm request body")
+          new ApiError(
+            400,
+            ApiCode.UPLOAD_INVALID_PAYLOAD,
+            "Invalid confirm request body"
+          )
         );
       }
 
@@ -374,13 +431,22 @@ uploadsRouter.post(
       return HttpService.success<ConfirmResponsePayload>(res, result);
     } catch (error) {
       logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error", stack: error instanceof Error ? error.stack : undefined },
+        {
+          error: error instanceof Error ? error.message : "Unknown error",
+          stack: error instanceof Error ? error.stack : undefined,
+        },
         "Failed to confirm upload"
       );
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.UPLOAD_CONFIRM_FAILED, error instanceof Error ? error.message : "Failed to confirm upload")
+          : new ApiError(
+              500,
+              ApiCode.UPLOAD_CONFIRM_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to confirm upload"
+            )
       );
     }
   }

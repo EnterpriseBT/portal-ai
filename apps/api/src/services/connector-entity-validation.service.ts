@@ -28,7 +28,7 @@ export class ConnectorEntityValidationService {
       throw new ApiError(
         404,
         ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-        "Connector entity not found",
+        "Connector entity not found"
       );
     }
 
@@ -37,7 +37,7 @@ export class ConnectorEntityValidationService {
     const externalRefs =
       await DbService.repository.fieldMappings.findByRefEntityKey(
         entity.key,
-        connectorEntityId,
+        connectorEntityId
       );
     if (externalRefs.length > 0) {
       throw new ApiError(
@@ -49,7 +49,7 @@ export class ConnectorEntityValidationService {
             id: fm.id,
             connectorEntityId: fm.connectorEntityId,
           })),
-        },
+        }
       );
     }
   }
@@ -64,26 +64,51 @@ export class ConnectorEntityValidationService {
   static async executeDelete(
     connectorEntityId: string,
     userId: string,
-    client?: DbClient,
+    client?: DbClient
   ): Promise<ConnectorEntityCascadeCounts> {
     const run = async (tx: DbClient): Promise<ConnectorEntityCascadeCounts> => {
       const entityIds = [connectorEntityId];
 
-      const [entityGroupMembers, entityTagAssignments, fieldMappings, entityRecords] =
-        await Promise.all([
-          DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-          DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-          DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-          DbService.repository.entityRecords.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-        ]);
+      const [
+        entityGroupMembers,
+        entityTagAssignments,
+        fieldMappings,
+        entityRecords,
+      ] = await Promise.all([
+        DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(
+          entityIds,
+          userId,
+          tx
+        ),
+        DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(
+          entityIds,
+          userId,
+          tx
+        ),
+        DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(
+          entityIds,
+          userId,
+          tx
+        ),
+        DbService.repository.entityRecords.softDeleteByConnectorEntityIds(
+          entityIds,
+          userId,
+          tx
+        ),
+      ]);
 
       await DbService.repository.connectorEntities.softDelete(
         connectorEntityId,
         userId,
-        tx,
+        tx
       );
 
-      return { entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers };
+      return {
+        entityRecords,
+        fieldMappings,
+        entityTagAssignments,
+        entityGroupMembers,
+      };
     };
 
     if (client) return run(client);

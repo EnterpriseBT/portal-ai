@@ -23,10 +23,7 @@ export const SettingsView = () => {
 
   return (
     <Box>
-      <PageHeader
-        title="Settings"
-        icon={<Icon name={IconName.Settings} />}
-      />
+      <PageHeader title="Settings" icon={<Icon name={IconName.Settings} />} />
 
       <Tabs {...tabsProps} variant="scrollable">
         <Tab label="Profile" {...getTabProps(0)} />
@@ -89,7 +86,13 @@ export const SettingsView = () => {
                     size="medium"
                     items={[
                       { label: "Email", value: profile.email },
-                      { label: "Last login", value: profileResult.lastLogin ? new Date(profileResult.lastLogin).toLocaleString() : "", hidden: !profileResult.lastLogin },
+                      {
+                        label: "Last login",
+                        value: profileResult.lastLogin
+                          ? new Date(profileResult.lastLogin).toLocaleString()
+                          : "",
+                        hidden: !profileResult.lastLogin,
+                      },
                     ]}
                   />
                 </Stack>
@@ -131,8 +134,17 @@ export const SettingsView = () => {
                     size="medium"
                     items={[
                       { label: "Timezone", value: organization.timezone },
-                      { label: "Created", value: new Date(organization.created).toLocaleString() },
-                      { label: "Updated", value: organization.updated ? new Date(organization.updated).toLocaleString() : "", hidden: !organization.updated },
+                      {
+                        label: "Created",
+                        value: new Date(organization.created).toLocaleString(),
+                      },
+                      {
+                        label: "Updated",
+                        value: organization.updated
+                          ? new Date(organization.updated).toLocaleString()
+                          : "",
+                        hidden: !organization.updated,
+                      },
                     ]}
                   />
                 </Stack>

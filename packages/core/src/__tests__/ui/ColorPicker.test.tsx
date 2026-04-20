@@ -164,7 +164,7 @@ describe("ColorPicker", () => {
           value="#000000"
           onChange={handleChange}
           samples={samples}
-        />,
+        />
       );
 
       fireEvent.click(screen.getByLabelText("Select color Red"));
@@ -178,7 +178,7 @@ describe("ColorPicker", () => {
           value="#000000"
           onChange={handleChange}
           samples={samples}
-        />,
+        />
       );
 
       fireEvent.keyDown(screen.getByLabelText("Select color Green"), {
@@ -194,7 +194,7 @@ describe("ColorPicker", () => {
           value="#000000"
           onChange={handleChange}
           samples={samples}
-        />,
+        />
       );
 
       fireEvent.keyDown(screen.getByLabelText("Select color Blue"), {
@@ -208,9 +208,7 @@ describe("ColorPicker", () => {
         { color: "#abcdef" },
       ];
       render(<ColorPicker samples={noLabelSamples} />);
-      expect(
-        screen.getByLabelText("Select color #abcdef"),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Select color #abcdef")).toBeInTheDocument();
     });
 
     it("should highlight the selected sample", () => {
@@ -224,11 +222,7 @@ describe("ColorPicker", () => {
     it("should pick a color on mouse down within the wheel", () => {
       const handleChange = jest.fn();
       render(
-        <ColorPicker
-          value="#000000"
-          onChange={handleChange}
-          wheelSize={200}
-        />,
+        <ColorPicker value="#000000" onChange={handleChange} wheelSize={200} />
       );
       openPopup();
 
@@ -245,11 +239,7 @@ describe("ColorPicker", () => {
     it("should not pick color outside the wheel radius", () => {
       const handleChange = jest.fn();
       render(
-        <ColorPicker
-          value="#000000"
-          onChange={handleChange}
-          wheelSize={200}
-        />,
+        <ColorPicker value="#000000" onChange={handleChange} wheelSize={200} />
       );
       openPopup();
 
@@ -266,11 +256,7 @@ describe("ColorPicker", () => {
     it("should pick colors while dragging", () => {
       const handleChange = jest.fn();
       render(
-        <ColorPicker
-          value="#000000"
-          onChange={handleChange}
-          wheelSize={200}
-        />,
+        <ColorPicker value="#000000" onChange={handleChange} wheelSize={200} />
       );
       openPopup();
 
@@ -288,11 +274,7 @@ describe("ColorPicker", () => {
     it("should stop picking on mouse up", () => {
       const handleChange = jest.fn();
       render(
-        <ColorPicker
-          value="#000000"
-          onChange={handleChange}
-          wheelSize={200}
-        />,
+        <ColorPicker value="#000000" onChange={handleChange} wheelSize={200} />
       );
       openPopup();
 
@@ -311,11 +293,7 @@ describe("ColorPicker", () => {
     it("should stop picking on mouse leave", () => {
       const handleChange = jest.fn();
       render(
-        <ColorPicker
-          value="#000000"
-          onChange={handleChange}
-          wheelSize={200}
-        />,
+        <ColorPicker value="#000000" onChange={handleChange} wheelSize={200} />
       );
       openPopup();
 
@@ -362,7 +340,7 @@ describe("ColorPicker", () => {
       const handleChange = jest.fn();
       const samples = [{ color: "#ff0000", label: "Red" }];
       render(
-        <ColorPicker disabled onChange={handleChange} samples={samples} />,
+        <ColorPicker disabled onChange={handleChange} samples={samples} />
       );
 
       fireEvent.click(screen.getByLabelText("Select color Red"));
@@ -377,7 +355,7 @@ describe("ColorPicker", () => {
           value="#000000"
           onChange={handleChange}
           wheelSize={200}
-        />,
+        />
       );
 
       // Popup can't be opened when disabled

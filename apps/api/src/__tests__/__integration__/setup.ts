@@ -23,7 +23,7 @@ export default async function globalSetup() {
     "postgresql://postgres:postgres@postgres-test:5432/portal_ai_test";
 
   console.log("🔄 Connecting to test database...");
-  console.log(`📍 Connection: ${databaseUrl.replace(/:[^:@]+@/, ':****@')}`);
+  console.log(`📍 Connection: ${databaseUrl.replace(/:[^:@]+@/, ":****@")}`);
 
   // Set environment variables for tests
   process.env.DATABASE_URL = databaseUrl;

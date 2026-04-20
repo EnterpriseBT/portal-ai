@@ -13,8 +13,7 @@ const InputSchema = z.object({
 export class IrrTool extends Tool<typeof InputSchema> {
   slug = "irr";
   name = "IRR";
-  description =
-    "Compute internal rate of return for a cash flow series.";
+  description = "Compute internal rate of return for a cash flow series.";
 
   get schema() {
     return InputSchema;

@@ -97,7 +97,9 @@ describe("computeRegionDecorations — crosstab cell-value overlay", () => {
     });
     const s = sheet(Array.from({ length: 5 }, () => Array(4).fill("x")));
     const decos = computeRegionDecorations(region, s);
-    expect(decos.find((d) => d.kind === "cellValue")?.label).toBe("Cell values");
+    expect(decos.find((d) => d.kind === "cellValue")?.label).toBe(
+      "Cell values"
+    );
   });
 
   test("no cellValue decoration when the crosstab has zero inner area", () => {
@@ -370,7 +372,9 @@ describe("computeRegionDecorations — skipped rows", () => {
       skipRules: [{ kind: "blank" }],
     });
     const s = sheet(cells);
-    const skipped = computeRegionDecorations(region, s).filter((d) => d.kind === "skipped");
+    const skipped = computeRegionDecorations(region, s).filter(
+      (d) => d.kind === "skipped"
+    );
     expect(skipped).toHaveLength(1);
     expect(skipped[0].bounds.startRow).toBe(3);
   });
@@ -383,10 +387,14 @@ describe("computeRegionDecorations — skipped rows", () => {
     ];
     const region = baseRegion({
       bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 1 },
-      skipRules: [{ kind: "cellMatches", crossAxisIndex: undefined, pattern: ".*" }],
+      skipRules: [
+        { kind: "cellMatches", crossAxisIndex: undefined, pattern: ".*" },
+      ],
     });
     const s = sheet(cells);
-    const skipped = computeRegionDecorations(region, s).filter((d) => d.kind === "skipped");
+    const skipped = computeRegionDecorations(region, s).filter(
+      (d) => d.kind === "skipped"
+    );
     expect(skipped).toHaveLength(0);
   });
 
@@ -502,7 +510,12 @@ describe("computeRegionDecorations — skipped columns (columns-as-records)", ()
       headerAxis: "column",
       bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 3 },
       skipRules: [
-        { kind: "cellMatches", crossAxisIndex: 0, pattern: "^—.*—$", axis: "row" },
+        {
+          kind: "cellMatches",
+          crossAxisIndex: 0,
+          pattern: "^—.*—$",
+          axis: "row",
+        },
       ],
     });
     const s = sheet(cells);

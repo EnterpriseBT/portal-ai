@@ -81,13 +81,9 @@ export interface CreateColumnDefinitionDialogProps {
   serverError: ServerError | null;
 }
 
-export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialogProps> = ({
-  open,
-  onClose,
-  onSubmit,
-  isPending,
-  serverError,
-}) => {
+export const CreateColumnDefinitionDialog: React.FC<
+  CreateColumnDefinitionDialogProps
+> = ({ open, onClose, onSubmit, isPending, serverError }) => {
   const [form, setForm] = useState<ColumnDefinitionFormState>(INITIAL_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -103,16 +99,27 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
 
   const typeConfig = getTypeConfig(form.type);
 
-  const handleChange = (field: keyof ColumnDefinitionFormState, value: string | boolean) => {
+  const handleChange = (
+    field: keyof ColumnDefinitionFormState,
+    value: string | boolean
+  ) => {
     let next = { ...form, [field]: value };
 
     if (field === "type" && typeof value === "string") {
       const newConfig = getTypeConfig(value);
       const prevConfig = getTypeConfig(form.type);
       if (!newConfig.validation.enabled) {
-        next = { ...next, validationPattern: "", validationMessage: "", preset: "" };
+        next = {
+          ...next,
+          validationPattern: "",
+          validationMessage: "",
+          preset: "",
+        };
       }
-      if (!newConfig.canonicalFormat.enabled || newConfig.canonicalFormat.options !== prevConfig.canonicalFormat.options) {
+      if (
+        !newConfig.canonicalFormat.enabled ||
+        newConfig.canonicalFormat.options !== prevConfig.canonicalFormat.options
+      ) {
         next = { ...next, canonicalFormat: "" };
       }
     }
@@ -120,7 +127,11 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
     if (field === "preset" && typeof value === "string") {
       const presetValues = VALIDATION_PRESET_VALUES[value];
       if (presetValues) {
-        next = { ...next, validationPattern: presetValues.pattern, validationMessage: presetValues.message };
+        next = {
+          ...next,
+          validationPattern: presetValues.pattern,
+          validationMessage: presetValues.message,
+        };
       }
     }
 
@@ -179,7 +190,12 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -201,8 +217,10 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
           onChange={(e) => handleChange("key", e.target.value)}
           onBlur={() => handleBlur("key")}
           error={touched.key && !!errors.key}
-          helperText={(touched.key && errors.key) || 'e.g. customer_name'}
-          slotProps={{ htmlInput: { "aria-invalid": touched.key && !!errors.key } }}
+          helperText={(touched.key && errors.key) || "e.g. customer_name"}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched.key && !!errors.key },
+          }}
           required
           fullWidth
         />
@@ -213,7 +231,9 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
           onBlur={() => handleBlur("label")}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
-          slotProps={{ htmlInput: { "aria-invalid": touched.label && !!errors.label } }}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched.label && !!errors.label },
+          }}
           required
           fullWidth
         />
@@ -262,9 +282,15 @@ export const CreateColumnDefinitionDialog: React.FC<CreateColumnDefinitionDialog
           helperText={
             !typeConfig.validation.enabled
               ? "Not applicable for this column type"
-              : (touched.validationPattern && errors.validationPattern) || "Regex that values must match after coercion"
+              : (touched.validationPattern && errors.validationPattern) ||
+                "Regex that values must match after coercion"
           }
-          slotProps={{ htmlInput: { "aria-invalid": touched.validationPattern && !!errors.validationPattern } }}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid":
+                touched.validationPattern && !!errors.validationPattern,
+            },
+          }}
         />
         <TextField
           label="Validation Message"

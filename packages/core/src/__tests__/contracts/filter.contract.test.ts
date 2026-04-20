@@ -22,7 +22,10 @@ import type { ColumnDataType } from "../../models/column-definition.model.js";
 /** Builds a FilterGroup conveniently in tests. */
 function group(
   combinator: "and" | "or",
-  conditions: (FilterGroup | { field: string; operator: string; value: unknown })[],
+  conditions: (
+    | FilterGroup
+    | { field: string; operator: string; value: unknown }
+  )[]
 ): FilterGroup {
   return { combinator, conditions: conditions as FilterGroup["conditions"] };
 }
@@ -36,9 +39,21 @@ function cond(field: string, operator: string, value: unknown) {
 describe("FilterOperatorEnum", () => {
   it("should accept all valid operators", () => {
     const operators = [
-      "eq", "neq", "contains", "not_contains", "starts_with", "ends_with",
-      "gt", "gte", "lt", "lte", "between", "in", "not_in",
-      "is_empty", "is_not_empty",
+      "eq",
+      "neq",
+      "contains",
+      "not_contains",
+      "starts_with",
+      "ends_with",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "between",
+      "in",
+      "not_in",
+      "is_empty",
+      "is_not_empty",
     ];
     for (const op of operators) {
       expect(FilterOperatorEnum.safeParse(op).success).toBe(true);
@@ -239,7 +254,16 @@ describe("OPERATORS_BY_COLUMN_TYPE", () => {
 
   it("should map string type to expected operators", () => {
     expect(OPERATORS_BY_COLUMN_TYPE.string).toEqual(
-      expect.arrayContaining(["eq", "neq", "contains", "not_contains", "starts_with", "ends_with", "is_empty", "is_not_empty"]),
+      expect.arrayContaining([
+        "eq",
+        "neq",
+        "contains",
+        "not_contains",
+        "starts_with",
+        "ends_with",
+        "is_empty",
+        "is_not_empty",
+      ])
     );
   });
 
@@ -275,20 +299,14 @@ describe("OPERATORS_BY_COLUMN_TYPE", () => {
 
 describe("countConditions", () => {
   it("should count flat conditions", () => {
-    const expr = group("and", [
-      cond("a", "eq", "1"),
-      cond("b", "eq", "2"),
-    ]);
+    const expr = group("and", [cond("a", "eq", "1"), cond("b", "eq", "2")]);
     expect(countConditions(expr)).toBe(2);
   });
 
   it("should count nested conditions", () => {
     const expr = group("and", [
       cond("a", "eq", "1"),
-      group("or", [
-        cond("b", "eq", "2"),
-        cond("c", "eq", "3"),
-      ]),
+      group("or", [cond("b", "eq", "2"), cond("c", "eq", "3")]),
     ]);
     expect(countConditions(expr)).toBe(3);
   });
@@ -302,19 +320,13 @@ describe("measureDepth", () => {
   });
 
   it("should return 2 for one level of nesting", () => {
-    const expr = group("and", [
-      group("or", [cond("a", "eq", "1")]),
-    ]);
+    const expr = group("and", [group("or", [cond("a", "eq", "1")])]);
     expect(measureDepth(expr)).toBe(2);
   });
 
   it("should return correct depth for deep nesting", () => {
     const expr = group("and", [
-      group("or", [
-        group("and", [
-          group("or", [cond("a", "eq", "1")]),
-        ]),
-      ]),
+      group("or", [group("and", [group("or", [cond("a", "eq", "1")])])]),
     ]);
     expect(measureDepth(expr)).toBe(4);
   });
@@ -324,7 +336,9 @@ describe("measureDepth", () => {
 
 describe("validateFilterLimits", () => {
   it("should return null for a valid expression", () => {
-    expect(validateFilterLimits(group("and", [cond("a", "eq", "1")]))).toBeNull();
+    expect(
+      validateFilterLimits(group("and", [cond("a", "eq", "1")]))
+    ).toBeNull();
   });
 
   it("should return error when depth exceeds MAX_FILTER_DEPTH", () => {
@@ -340,7 +354,7 @@ describe("validateFilterLimits", () => {
 
   it("should return error when conditions exceed MAX_CONDITIONS", () => {
     const conditions = Array.from({ length: MAX_CONDITIONS + 1 }, (_, i) =>
-      cond(`field_${i}`, "eq", `val_${i}`),
+      cond(`field_${i}`, "eq", `val_${i}`)
     );
     const expr = group("and", conditions);
     const error = validateFilterLimits(expr);
@@ -359,7 +373,7 @@ describe("validateFilterLimits", () => {
 
   it("should accept exactly MAX_CONDITIONS conditions", () => {
     const conditions = Array.from({ length: MAX_CONDITIONS }, (_, i) =>
-      cond(`field_${i}`, "eq", `val_${i}`),
+      cond(`field_${i}`, "eq", `val_${i}`)
     );
     const expr = group("and", conditions);
     expect(countConditions(expr)).toBe(MAX_CONDITIONS);
@@ -424,7 +438,7 @@ describe("validateOperatorTypeCompat", () => {
     const expr = group("and", [
       cond("name", "eq", "Alice"),
       group("or", [
-        cond("active", "gt", 1),      // invalid: gt on boolean
+        cond("active", "gt", 1), // invalid: gt on boolean
         cond("metadata", "contains", "x"), // invalid: contains on json
       ]),
     ]);

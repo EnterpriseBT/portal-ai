@@ -99,7 +99,8 @@ export const ServerError: Story = {
     regions: POST_INTERPRET_REGIONS,
     overallConfidence: 0.85,
     serverError: {
-      message: "Commit failed — the downstream service is temporarily unavailable.",
+      message:
+        "Commit failed — the downstream service is temporarily unavailable.",
       code: "COMMIT_UNAVAILABLE",
     },
   },

@@ -46,10 +46,7 @@ export const WithIcons: Story = {
 
 export const TwoItems: Story = {
   args: {
-    items: [
-      { label: "Dashboard", href: "/dashboard" },
-      { label: "Details" },
-    ],
+    items: [{ label: "Dashboard", href: "/dashboard" }, { label: "Details" }],
   },
 };
 

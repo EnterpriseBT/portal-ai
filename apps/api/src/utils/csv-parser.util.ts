@@ -1,10 +1,8 @@
 import type { Readable } from "node:stream";
 
-import { parse } from "csv-parse";
-import chardet from "chardet";
-
 import type { FileParseResult } from "@portalai/core/models";
 
+import { configureCsvStream } from "../services/workbook-adapters/csv.adapter.js";
 import {
   type ColumnAccumulator,
   createAccumulator,
@@ -15,138 +13,19 @@ import {
 /** Maximum sample rows to capture per file. */
 const DEFAULT_MAX_SAMPLE_ROWS = 50;
 
-/** Bytes to read for delimiter/encoding detection. */
-const DETECTION_CHUNK_SIZE = 4096;
-
-const CANDIDATE_DELIMITERS = [",", "\t", ";", "|"];
-
 /**
- * Auto-detect the delimiter from a sample of the file.
- * Counts occurrences of each candidate and picks the most frequent.
- */
-function detectDelimiter(sample: string): string {
-  let best = ",";
-  let bestCount = 0;
-
-  for (const d of CANDIDATE_DELIMITERS) {
-    const count = sample.split(d).length - 1;
-    if (count > bestCount) {
-      bestCount = count;
-      best = d;
-    }
-  }
-  return best;
-}
-
-/**
- * Heuristic header detection: first row is a header iff it has >1 non-empty
- * values and none of them parse as numbers.
+ * Legacy heuristic header detection for the simple-layout upload path.
+ *
+ * @deprecated Header detection is moving into
+ * `@portalai/spreadsheet-parsing`'s `detect-headers` stage in Phase 3. New
+ * callers should consume the `Workbook` adapters and run interpretation via
+ * the parser module rather than this heuristic.
  */
 function detectHeader(values: string[]): boolean {
   return (
     values.length > 1 &&
     values.every((v) => v.trim() !== "" && isNaN(Number(v.trim())))
   );
-}
-
-interface ConfiguredParser {
-  /** The csv-parse parser stream. Consume via `for await`. */
-  parser: AsyncIterable<string[]>;
-  /** Detected (or explicitly provided) delimiter. */
-  delimiter: string;
-  /** Detected encoding (defaults to utf-8). */
-  encoding: string;
-  /** True if the source stream was empty. */
-  empty: boolean;
-}
-
-/**
- * Read up to DETECTION_CHUNK_SIZE bytes from the source to detect encoding +
- * delimiter, then wire the remaining stream into a configured csv-parse parser.
- * Memory usage is bounded by DETECTION_CHUNK_SIZE plus csv-parse's internal
- * buffer — no full-file buffering.
- */
-async function configureParser(
-  source: Readable,
-  explicitDelimiter?: string,
-): Promise<ConfiguredParser> {
-  const iter = source[Symbol.asyncIterator]() as AsyncIterator<Buffer>;
-
-  // Read chunks until we have enough for detection or the source ends
-  const sampleChunks: Buffer[] = [];
-  let sampleSize = 0;
-  let sourceEnded = false;
-
-  while (sampleSize < DETECTION_CHUNK_SIZE) {
-    const next = await iter.next();
-    if (next.done) {
-      sourceEnded = true;
-      break;
-    }
-    sampleChunks.push(next.value);
-    sampleSize += next.value.length;
-  }
-
-  const sampleBuf = Buffer.concat(sampleChunks);
-
-  if (sampleBuf.length === 0) {
-    // Empty source — create a parser that immediately ends
-    const parser = parse({
-      delimiter: ",",
-      relax_column_count: true,
-      skip_empty_lines: true,
-    });
-    parser.end();
-    return {
-      parser: parser as unknown as AsyncIterable<string[]>,
-      delimiter: ",",
-      encoding: "utf-8",
-      empty: true,
-    };
-  }
-
-  const encoding = chardet.detect(sampleBuf) ?? "utf-8";
-  const sampleText = sampleBuf.subarray(0, DETECTION_CHUNK_SIZE).toString("utf-8");
-  const delimiter = explicitDelimiter ?? detectDelimiter(sampleText);
-
-  const parser = parse({
-    delimiter,
-    relax_column_count: true,
-    skip_empty_lines: true,
-  });
-
-  // Seed the parser with the buffered sample
-  parser.write(sampleBuf);
-
-  if (sourceEnded) {
-    parser.end();
-  } else {
-    // Pump the remainder in the background, handling backpressure
-    void (async () => {
-      try {
-        while (true) {
-          const next = await iter.next();
-          if (next.done) break;
-          const ok = parser.write(next.value);
-          if (!ok) {
-            await new Promise<void>((resolve) =>
-              parser.once("drain", resolve),
-            );
-          }
-        }
-        parser.end();
-      } catch (err) {
-        parser.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    })();
-  }
-
-  return {
-    parser: parser as unknown as AsyncIterable<string[]>,
-    delimiter,
-    encoding,
-    empty: false,
-  };
 }
 
 /**
@@ -162,12 +41,12 @@ export async function parseCsvStream(
     maxSampleRows?: number;
     /** Skip delimiter detection and use this value. */
     delimiter?: string;
-  },
+  }
 ): Promise<FileParseResult> {
   const maxSampleRows = options.maxSampleRows ?? DEFAULT_MAX_SAMPLE_ROWS;
-  const { parser, delimiter, encoding, empty } = await configureParser(
+  const { parser, delimiter, encoding, empty } = await configureCsvStream(
     source,
-    options.delimiter,
+    options.delimiter
   );
 
   if (empty) {
@@ -233,9 +112,9 @@ export async function parseCsvStream(
  */
 export async function* csvRowIterator(
   source: Readable,
-  options: { delimiter?: string } = {},
+  options: { delimiter?: string } = {}
 ): AsyncIterable<Record<string, string>> {
-  const { parser, empty } = await configureParser(source, options.delimiter);
+  const { parser, empty } = await configureCsvStream(source, options.delimiter);
   if (empty) return;
 
   let headers: string[] | null = null;

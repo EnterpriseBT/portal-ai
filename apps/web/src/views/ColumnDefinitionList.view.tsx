@@ -7,7 +7,15 @@ import type {
 } from "@portalai/core/contracts";
 import type { ColumnDefinition } from "@portalai/core/models";
 import { ColumnDataTypeEnum } from "@portalai/core/models";
-import { Box, Button, Icon, IconName, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
+import {
+  Box,
+  Button,
+  Icon,
+  IconName,
+  PageEmptyState,
+  PageHeader,
+  Stack,
+} from "@portalai/core/ui";
 import AddIcon from "@mui/icons-material/Add";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -40,10 +48,9 @@ export interface ColumnDefinitionListViewUIProps {
   onDelete: (cd: ColumnDefinition) => void;
 }
 
-export const ColumnDefinitionListViewUI: React.FC<ColumnDefinitionListViewUIProps> = ({
-  onCreateOpen,
-  onDelete,
-}) => {
+export const ColumnDefinitionListViewUI: React.FC<
+  ColumnDefinitionListViewUIProps
+> = ({ onCreateOpen, onDelete }) => {
   const navigate = useNavigate();
 
   const pagination = usePagination({
@@ -114,7 +121,11 @@ export const ColumnDefinitionListViewUI: React.FC<ColumnDefinitionListViewUIProp
                     list: ColumnDefinitionListResponsePayload;
                   }) => {
                     if (list.columnDefinitions.length === 0) {
-                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      const hasActiveFilters =
+                        pagination.search ||
+                        Object.values(pagination.filters).some(
+                          (v) => v.length > 0
+                        );
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (
@@ -174,7 +185,9 @@ export const ColumnDefinitionListView: React.FC = () => {
       createMutation.mutate(body, {
         onSuccess: () => {
           handleCreateClose();
-          queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.columnDefinitions.root,
+          });
         },
       });
     },
@@ -203,7 +216,9 @@ export const ColumnDefinitionListView: React.FC = () => {
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         handleDeleteClose();
-        queryClient.invalidateQueries({ queryKey: queryKeys.columnDefinitions.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.columnDefinitions.root,
+        });
       },
     });
   }, [deleteMutation, handleDeleteClose, queryClient]);

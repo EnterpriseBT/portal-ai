@@ -6,7 +6,14 @@ import type {
   StationListResponsePayload,
 } from "@portalai/core/contracts";
 import type { OrganizationGetResponse } from "@portalai/core/contracts";
-import { DetailCard, Icon, IconName, MetadataList, PageEmptyState, Stack } from "@portalai/core/ui";
+import {
+  DetailCard,
+  Icon,
+  IconName,
+  MetadataList,
+  PageEmptyState,
+  Stack,
+} from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { EmptyResults } from "./EmptyResults.component";
 import Chip from "@mui/material/Chip";
@@ -37,7 +44,9 @@ export const StationDataList: React.FC<StationDataListProps> = ({
 // ── Organization data component ─────────────────────────────────────
 
 interface OrgDataProps {
-  children: (data: ReturnType<typeof sdk.organizations.current>) => React.ReactNode;
+  children: (
+    data: ReturnType<typeof sdk.organizations.current>
+  ) => React.ReactNode;
 }
 
 export const OrgData: React.FC<OrgDataProps> = ({ children }) => {
@@ -64,9 +73,20 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
 }) => {
   const actions: ActionSuiteItem[] = [
     ...(!isDefault
-      ? [{ label: "Set as default", icon: <StarOutlineIcon />, onClick: () => onSetDefault(station) }]
+      ? [
+          {
+            label: "Set as default",
+            icon: <StarOutlineIcon />,
+            onClick: () => onSetDefault(station),
+          },
+        ]
       : []),
-    { label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(station), color: "error" as const },
+    {
+      label: "Delete",
+      icon: <DeleteIcon />,
+      onClick: () => onDelete(station),
+      color: "error" as const,
+    },
   ];
 
   return (
@@ -92,7 +112,11 @@ export const StationCardUI: React.FC<StationCardUIProps> = ({
             variant: "chip",
             hidden: !isDefault,
           },
-          { label: "Description", value: station.description ?? "", hidden: !station.description },
+          {
+            label: "Description",
+            value: station.description ?? "",
+            hidden: !station.description,
+          },
           {
             label: "Tool packs",
             value: (
@@ -185,10 +209,8 @@ export const StationListConnected: React.FC<StationListConnectedProps> = ({
           <SyncTotal total={listResult.data?.total} setTotal={setTotal}>
             <DataResult results={{ list: listResult, org: orgResult }}>
               {(data) => {
-                const list =
-                  data.list as unknown as StationListResponsePayload;
-                const org =
-                  data.org as unknown as OrganizationGetResponse;
+                const list = data.list as unknown as StationListResponsePayload;
+                const org = data.org as unknown as OrganizationGetResponse;
                 return (
                   <StationListUI
                     stations={list.stations}

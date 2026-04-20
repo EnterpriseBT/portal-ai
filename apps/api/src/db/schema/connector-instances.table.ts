@@ -30,6 +30,7 @@ export const connectorInstances = pgTable("connector_instances", {
   credentials: text("credentials"),
   lastSyncAt: bigint("last_sync_at", { mode: "number" }),
   lastErrorMessage: text("last_error_message"),
-  enabledCapabilityFlags:
-    jsonb("enabled_capability_flags").$type<EnabledCapabilityFlags>(),
+  enabledCapabilityFlags: jsonb(
+    "enabled_capability_flags"
+  ).$type<EnabledCapabilityFlags>(),
 });

@@ -11,7 +11,8 @@ export const SentinelRefContext = React.createContext<
 export const InfiniteLoadingContext = React.createContext(false);
 
 /** Context used to pass a stable ref that tracks the listbox scroll position. */
-export const ScrollTopRef = React.createContext<React.MutableRefObject<number> | null>(null);
+export const ScrollTopRef =
+  React.createContext<React.MutableRefObject<number> | null>(null);
 
 export const InfiniteListboxComponent = React.forwardRef<
   HTMLUListElement,
@@ -39,7 +40,8 @@ export const InfiniteListboxComponent = React.forwardRef<
     (el: HTMLUListElement | null) => {
       innerRef.current = el;
       if (typeof ref === "function") ref(el);
-      else if (ref) (ref as React.MutableRefObject<HTMLUListElement | null>).current = el;
+      else if (ref)
+        (ref as React.MutableRefObject<HTMLUListElement | null>).current = el;
     },
     [ref]
   );

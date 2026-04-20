@@ -6,26 +6,45 @@ import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
 import { EntityRecordModelFactory } from "@portalai/core/models";
-import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import {
+  assertStationScope,
+  assertWriteCapability,
+} from "../utils/resolve-capabilities.util.js";
 import { NormalizationService } from "../services/normalization.service.js";
 import { Repository } from "../db/repositories/base.repository.js";
 
 const ItemSchema = z.object({
-  connectorEntityId: z.string().describe("The connector entity to create a record in"),
-  sourceId: z.string().optional().describe("Optional source ID; auto-generated if omitted"),
-  data: z.record(z.string(), z.unknown()).describe("Record data keyed by `normalizedKey` from the entity's field mappings"),
+  connectorEntityId: z
+    .string()
+    .describe("The connector entity to create a record in"),
+  sourceId: z
+    .string()
+    .optional()
+    .describe("Optional source ID; auto-generated if omitted"),
+  data: z
+    .record(z.string(), z.unknown())
+    .describe(
+      "Record data keyed by `normalizedKey` from the entity's field mappings"
+    ),
 });
 
 const InputSchema = z.object({
-  items: z.array(ItemSchema).min(1).max(100).describe("Records to create (1–100)"),
+  items: z
+    .array(ItemSchema)
+    .min(1)
+    .max(100)
+    .describe("Records to create (1–100)"),
 });
 
 export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
   slug = "entity_record_create";
   name = "Entity Record Create Tool";
-  description = "Creates one or more entity records with auto-normalized data. Accepts 1–100 items.";
+  description =
+    "Creates one or more entity records with auto-normalized data. Accepts 1–100 items.";
 
-  get schema() { return InputSchema; }
+  get schema() {
+    return InputSchema;
+  }
 
   build(stationId: string, organizationId: string, userId: string) {
     return tool({
@@ -52,7 +71,10 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
             } catch (err: any) {
               const groupItems = groups.get(connectorEntityId)!;
               for (const item of groupItems) {
-                failures.push({ index: items.indexOf(item), error: err.message ?? "Scope/capability check failed" });
+                failures.push({
+                  index: items.indexOf(item),
+                  error: err.message ?? "Scope/capability check failed",
+                });
               }
             }
           }
@@ -66,14 +88,23 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
           }
 
           // Normalize per group
-          type NormResult = { normalizedData: Record<string, unknown>; validationErrors: any; isValid: boolean };
+          type NormResult = {
+            normalizedData: Record<string, unknown>;
+            validationErrors: any;
+            isValid: boolean;
+          };
           const normResults: NormResult[] = new Array(items.length);
 
           for (const [connectorEntityId, groupItems] of groups) {
             const dataArray = groupItems.map((item) => item.data);
-            const results = await NormalizationService.normalizeMany(connectorEntityId, dataArray);
+            const results = await NormalizationService.normalizeMany(
+              connectorEntityId,
+              dataArray
+            );
             for (let i = 0; i < groupItems.length; i++) {
-              normResults[items.indexOf(groupItems[i])] = results[i] as NormResult;
+              normResults[items.indexOf(groupItems[i])] = results[
+                i
+              ] as NormResult;
             }
           }
 
@@ -99,12 +130,18 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
 
           // ── Phase 2: Execute ───────────────────────────────────────
           const created = await Repository.transaction(async (tx) => {
-            return DbService.repository.entityRecords.createMany(parsedModels, tx);
+            return DbService.repository.entityRecords.createMany(
+              parsedModels,
+              tx
+            );
           });
 
           // ── Phase 3: Cache ─────────────────────────────────────────
           for (const connectorEntityId of groups.keys()) {
-            const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
+            const entity =
+              await DbService.repository.connectorEntities.findById(
+                connectorEntityId
+              );
             if (!entity) continue;
             const groupItems = groups.get(connectorEntityId)!;
             const rows = groupItems.map((item) => {
@@ -117,7 +154,11 @@ export class EntityRecordCreateTool extends Tool<typeof InputSchema> {
                 ...norm.normalizedData,
               };
             });
-            AnalyticsService.applyRecordInsertMany(stationId, (entity as any).key, rows);
+            AnalyticsService.applyRecordInsertMany(
+              stationId,
+              (entity as any).key,
+              rows
+            );
           }
 
           return {

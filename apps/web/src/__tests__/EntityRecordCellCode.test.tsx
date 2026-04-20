@@ -3,7 +3,9 @@ import { EntityRecordCellCode } from "../components/EntityRecordCellCode.compone
 
 describe("EntityRecordCellCode", () => {
   it("renders a JSON object as inline code", () => {
-    render(<EntityRecordCellCode value={{ id: 1, name: "Alice" }} type="json" />);
+    render(
+      <EntityRecordCellCode value={{ id: 1, name: "Alice" }} type="json" />
+    );
     expect(screen.getByText(/\{"id":1,"name":"Alice"\}/)).toBeInTheDocument();
   });
 
@@ -13,7 +15,9 @@ describe("EntityRecordCellCode", () => {
   });
 
   it("renders a reference-array as inline code", () => {
-    render(<EntityRecordCellCode value={["id-1", "id-2"]} type="reference-array" />);
+    render(
+      <EntityRecordCellCode value={["id-1", "id-2"]} type="reference-array" />
+    );
     expect(screen.getByText(/\["id-1","id-2"\]/)).toBeInTheDocument();
   });
 
@@ -24,7 +28,9 @@ describe("EntityRecordCellCode", () => {
 
   it("truncates long values and renders ellipsis", () => {
     const longValue = { key: "a".repeat(200) };
-    render(<EntityRecordCellCode value={longValue} type="json" maxLength={80} />);
+    render(
+      <EntityRecordCellCode value={longValue} type="json" maxLength={80} />
+    );
     const code = screen.getByRole("code");
     expect(code.textContent).toHaveLength(81); // 80 chars + "…"
     expect(code.textContent).toMatch(/…$/);

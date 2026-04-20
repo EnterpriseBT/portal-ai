@@ -18,7 +18,9 @@ async function fetchVersion(): Promise<string | null> {
   }
 }
 
-export function useAppVersion(pollInterval = POLL_INTERVAL_MS): AppVersionState {
+export function useAppVersion(
+  pollInterval = POLL_INTERVAL_MS
+): AppVersionState {
   const [initialVersion, setInitialVersion] = useState<string | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [dismissed, setDismissed] = useState(false);

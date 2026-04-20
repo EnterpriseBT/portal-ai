@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { Station } from "@portalai/core/models";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeleteStationDialog } = await import(
-  "../components/DeleteStationDialog.component"
-);
+const { DeleteStationDialog } =
+  await import("../components/DeleteStationDialog.component");
 
 const sampleStation: Station = {
   id: "station-1",
@@ -46,7 +45,9 @@ describe("DeleteStationDialog", () => {
   it("should display the cascade warning about portals and unpinned results", () => {
     render(<DeleteStationDialog {...defaultProps} />);
     expect(
-      screen.getByText(/All associated portals, their messages, and unpinned results/)
+      screen.getByText(
+        /All associated portals, their messages, and unpinned results/
+      )
     ).toBeInTheDocument();
   });
 
@@ -67,7 +68,9 @@ describe("DeleteStationDialog", () => {
   it("should submit on Enter key press (form submission)", () => {
     const onConfirm = jest.fn();
     render(<DeleteStationDialog {...defaultProps} onConfirm={onConfirm} />);
-    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    const form = screen
+      .getByRole("button", { name: "Delete" })
+      .closest("form")!;
     fireEvent.submit(form);
     expect(onConfirm).toHaveBeenCalled();
   });
@@ -81,9 +84,7 @@ describe("DeleteStationDialog", () => {
 
   it("should show 'Deleting...' and disable buttons when pending", () => {
     render(<DeleteStationDialog {...defaultProps} isPending={true} />);
-    expect(
-      screen.getByRole("button", { name: "Deleting..." })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
@@ -101,7 +102,10 @@ describe("DeleteStationDialog", () => {
     render(
       <DeleteStationDialog
         {...defaultProps}
-        serverError={{ message: "Station not found", code: "STATION_NOT_FOUND" }}
+        serverError={{
+          message: "Station not found",
+          code: "STATION_NOT_FOUND",
+        }}
       />
     );
     expect(screen.getByText(/Station not found/)).toBeInTheDocument();

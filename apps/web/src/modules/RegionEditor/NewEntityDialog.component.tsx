@@ -146,7 +146,9 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
           onBlur={() => setTouched((t) => ({ ...t, label: true }))}
           placeholder="e.g. Contact, Deal, Revenue"
           error={labelInvalid}
-          helperText={labelInvalid ? errors.label : "Human-readable name for this entity."}
+          helperText={
+            labelInvalid ? errors.label : "Human-readable name for this entity."
+          }
           slotProps={{ htmlInput: { "aria-invalid": labelInvalid } }}
         />
         <TextInput

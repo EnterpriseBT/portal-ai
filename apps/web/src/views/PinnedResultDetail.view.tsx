@@ -131,12 +131,13 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
             },
             ...(result.portalId
               ? [
-                {
-                  label: "Open Source Portal",
-                  icon: <OpenInNewIcon />,
-                  onClick: () => onOpenPortal(result.portalId!, result.messageId),
-                },
-              ]
+                  {
+                    label: "Open Source Portal",
+                    icon: <OpenInNewIcon />,
+                    onClick: () =>
+                      onOpenPortal(result.portalId!, result.messageId),
+                  },
+                ]
               : []),
             {
               label: "Delete",
@@ -148,8 +149,15 @@ export const PinnedResultDetailUI: React.FC<PinnedResultDetailUIProps> = ({
         >
           <MetadataList
             items={[
-              { label: "Type", value: result.type === "vega-lite" ? "Chart" : "Text", variant: "chip" },
-              { label: "Created", value: DateFactory.relativeTime(result.created) },
+              {
+                label: "Type",
+                value: result.type === "vega-lite" ? "Chart" : "Text",
+                variant: "chip",
+              },
+              {
+                label: "Created",
+                value: DateFactory.relativeTime(result.created),
+              },
             ]}
           />
         </PageHeader>
@@ -292,7 +300,8 @@ export const PinnedResultDetailView: React.FC<PinnedResultDetailViewProps> = ({
         <DataResult results={{ result }}>
           {(data) => {
             const payload = data.result as unknown as PortalResultPayload;
-            const portalResult = payload.portalResult as unknown as PortalResult;
+            const portalResult =
+              payload.portalResult as unknown as PortalResult;
             return (
               <PinnedResultDetailUI
                 result={portalResult}

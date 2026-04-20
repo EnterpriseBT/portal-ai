@@ -85,8 +85,7 @@ stationRouter.get(
       }
       const where = and(...filters);
 
-      const column =
-        sortBy === "name" ? stations.name : stations.created;
+      const column = sortBy === "name" ? stations.name : stations.created;
       const listOpts = {
         limit,
         offset,
@@ -112,7 +111,11 @@ stationRouter.get(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.STATION_NOT_FOUND, "Failed to list stations")
+          : new ApiError(
+              500,
+              ApiCode.STATION_NOT_FOUND,
+              "Failed to list stations"
+            )
       );
     }
   }
@@ -179,10 +182,11 @@ stationRouter.get(
       const { id } = req.params;
       const { organizationId } = req.application!.metadata;
 
-      const include_ = (req.query.include as string | undefined)
-        ?.split(",")
-        .map((s) => s.trim())
-        .filter(Boolean) ?? [];
+      const include_ =
+        (req.query.include as string | undefined)
+          ?.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean) ?? [];
 
       const station = await DbService.repository.stations.findById(id);
       if (!station || station.organizationId !== organizationId) {
@@ -192,7 +196,9 @@ stationRouter.get(
       }
 
       const instances =
-        await DbService.repository.stationInstances.findByStationId(id, { include: include_ });
+        await DbService.repository.stationInstances.findByStationId(id, {
+          include: include_,
+        });
 
       return HttpService.success<StationGetResponsePayload>(res, {
         station: {
@@ -208,7 +214,11 @@ stationRouter.get(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.STATION_NOT_FOUND, "Failed to fetch station")
+          : new ApiError(
+              500,
+              ApiCode.STATION_NOT_FOUND,
+              "Failed to fetch station"
+            )
       );
     }
   }
@@ -286,12 +296,17 @@ stationRouter.post(
       const parsed = CreateStationBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.STATION_NOT_FOUND, "Invalid station payload")
+          new ApiError(
+            400,
+            ApiCode.STATION_NOT_FOUND,
+            "Invalid station payload"
+          )
         );
       }
 
       const { organizationId, userId } = req.application!.metadata;
-      const { name, description, connectorInstanceIds, toolPacks } = parsed.data;
+      const { name, description, connectorInstanceIds, toolPacks } =
+        parsed.data;
 
       const factory = new StationModelFactory();
       const model = factory.create(userId);
@@ -302,9 +317,7 @@ stationRouter.post(
         toolPacks: toolPacks ?? ["data_query"],
       });
 
-      const station = await DbService.repository.stations.create(
-        model.parse()
-      );
+      const station = await DbService.repository.stations.create(model.parse());
 
       if (connectorInstanceIds && connectorInstanceIds.length > 0) {
         const now = Date.now();
@@ -329,7 +342,10 @@ stationRouter.post(
 
       return HttpService.success<StationCreateResponsePayload>(
         res,
-        { station: station as unknown as StationCreateResponsePayload["station"] },
+        {
+          station:
+            station as unknown as StationCreateResponsePayload["station"],
+        },
         201
       );
     } catch (error) {
@@ -340,7 +356,11 @@ stationRouter.post(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.STATION_NOT_FOUND, "Failed to create station")
+          : new ApiError(
+              500,
+              ApiCode.STATION_NOT_FOUND,
+              "Failed to create station"
+            )
       );
     }
   }
@@ -431,7 +451,11 @@ stationRouter.patch(
       const parsed = UpdateStationBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.STATION_NOT_FOUND, "Invalid station payload")
+          new ApiError(
+            400,
+            ApiCode.STATION_NOT_FOUND,
+            "Invalid station payload"
+          )
         );
       }
 
@@ -442,7 +466,8 @@ stationRouter.patch(
         );
       }
 
-      const { name, description, connectorInstanceIds, toolPacks } = parsed.data;
+      const { name, description, connectorInstanceIds, toolPacks } =
+        parsed.data;
       const updates: Record<string, unknown> = {
         updated: Date.now(),
         updatedBy: userId,
@@ -497,7 +522,11 @@ stationRouter.patch(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.STATION_NOT_FOUND, "Failed to update station")
+          : new ApiError(
+              500,
+              ApiCode.STATION_NOT_FOUND,
+              "Failed to update station"
+            )
       );
     }
   }
@@ -566,7 +595,11 @@ stationRouter.delete(
       }
 
       await DbService.transaction(async (tx) => {
-        const stationPortals = await DbService.repository.portals.findByStation(id, {}, tx);
+        const stationPortals = await DbService.repository.portals.findByStation(
+          id,
+          {},
+          tx
+        );
 
         if (stationPortals.length > 0) {
           const portalIds = stationPortals.map((p) => p.id);
@@ -579,16 +612,26 @@ stationRouter.delete(
 
           // Hard-delete messages — no value without the portal
           for (const portalId of portalIds) {
-            await DbService.repository.portalMessages.deleteByPortal(portalId, tx);
+            await DbService.repository.portalMessages.deleteByPortal(
+              portalId,
+              tx
+            );
           }
 
           // Soft-delete all portals
-          await DbService.repository.portals.softDeleteMany(portalIds, userId, tx);
+          await DbService.repository.portals.softDeleteMany(
+            portalIds,
+            userId,
+            tx
+          );
         }
 
         // Clear the org's defaultStationId if it points to this station
         await DbService.repository.organizations.updateWhere(
-          and(eq(organizations.id, organizationId), eq(organizations.defaultStationId, id)) as SQL,
+          and(
+            eq(organizations.id, organizationId),
+            eq(organizations.defaultStationId, id)
+          ) as SQL,
           { defaultStationId: null },
           tx
         );
@@ -606,7 +649,11 @@ stationRouter.delete(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.STATION_NOT_FOUND, "Failed to delete station")
+          : new ApiError(
+              500,
+              ApiCode.STATION_NOT_FOUND,
+              "Failed to delete station"
+            )
       );
     }
   }

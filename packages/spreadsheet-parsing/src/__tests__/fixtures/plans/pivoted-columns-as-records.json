@@ -1,0 +1,66 @@
+{
+  "planVersion": "1.0.0",
+  "workbookFingerprint": {
+    "sheetNames": ["Monthly"],
+    "dimensions": { "Monthly": { "rows": 5, "cols": 13 } },
+    "anchorCells": [
+      { "sheet": "Monthly", "row": 1, "col": 1, "value": "Metric" }
+    ]
+  },
+  "regions": [
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "sheet": "Monthly",
+      "bounds": { "startRow": 1, "startCol": 1, "endRow": 5, "endCol": 13 },
+      "boundsMode": "absolute",
+      "targetEntityDefinitionId": "monthly-metrics",
+      "orientation": "columns-as-records",
+      "headerAxis": "row",
+      "recordsAxisName": {
+        "name": "Month",
+        "source": "anchor-cell",
+        "confidence": 0.8
+      },
+      "axisAnchorCell": { "row": 1, "col": 1 },
+      "headerStrategy": {
+        "kind": "rowLabels",
+        "locator": { "kind": "column", "sheet": "Monthly", "col": 1 },
+        "confidence": 0.9
+      },
+      "identityStrategy": {
+        "kind": "rowPosition",
+        "confidence": 0.6
+      },
+      "columnBindings": [
+        {
+          "sourceLocator": { "kind": "byHeaderName", "name": "Revenue" },
+          "columnDefinitionId": "col-revenue",
+          "confidence": 0.85
+        },
+        {
+          "sourceLocator": { "kind": "byHeaderName", "name": "Cost" },
+          "columnDefinitionId": "col-cost",
+          "confidence": 0.82
+        }
+      ],
+      "skipRules": [],
+      "drift": {
+        "headerShiftRows": 0,
+        "addedColumns": "halt",
+        "removedColumns": { "max": 0, "action": "halt" }
+      },
+      "confidence": { "region": 0.83, "aggregate": 0.83 },
+      "warnings": [
+        {
+          "code": "ROW_POSITION_IDENTITY",
+          "severity": "warn",
+          "message": "Identity falls back to row position — breaks if rows reorder."
+        }
+      ]
+    }
+  ],
+  "confidence": {
+    "overall": 0.83,
+    "perRegion": { "22222222-2222-4222-8222-222222222222": 0.83 }
+  }
+}

@@ -8,7 +8,10 @@ export type QueryOptions<T> = Omit<
 >;
 
 /** Options for SDK `search()` hooks. Override `mapItem` for rich options or custom labels. */
-export interface SearchHookOptions<TItem, TOption extends SelectOption = SelectOption> {
+export interface SearchHookOptions<
+  TItem,
+  TOption extends SelectOption = SelectOption,
+> {
   mapItem?: (item: TItem) => TOption;
   defaultParams?: Record<string, string>;
 }

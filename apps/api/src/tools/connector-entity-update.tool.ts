@@ -4,7 +4,10 @@ import { tool } from "ai";
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
-import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import {
+  assertStationScope,
+  assertWriteCapability,
+} from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
 
 const ItemSchema = z.object({
@@ -13,15 +16,22 @@ const ItemSchema = z.object({
 });
 
 const InputSchema = z.object({
-  items: z.array(ItemSchema).min(1).max(100).describe("Connector entities to update (1–100)"),
+  items: z
+    .array(ItemSchema)
+    .min(1)
+    .max(100)
+    .describe("Connector entities to update (1–100)"),
 });
 
 export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_update";
   name = "Connector Entity Update Tool";
-  description = "Updates one or more connector entities' labels. Accepts 1–100 items.";
+  description =
+    "Updates one or more connector entities' labels. Accepts 1–100 items.";
 
-  get schema() { return InputSchema; }
+  get schema() {
+    return InputSchema;
+  }
 
   build(stationId: string, userId: string) {
     return tool({
@@ -41,11 +51,17 @@ export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
               await assertStationScope(stationId, item.connectorEntityId);
               await assertWriteCapability(item.connectorEntityId);
             } catch (err: any) {
-              failures.push({ index: i, error: err.message ?? "Scope/capability check failed" });
+              failures.push({
+                index: i,
+                error: err.message ?? "Scope/capability check failed",
+              });
               continue;
             }
 
-            const existing = await DbService.repository.connectorEntities.findById(item.connectorEntityId);
+            const existing =
+              await DbService.repository.connectorEntities.findById(
+                item.connectorEntityId
+              );
             if (!existing) {
               failures.push({ index: i, error: "Connector entity not found" });
               continue;
@@ -54,17 +70,25 @@ export class ConnectorEntityUpdateTool extends Tool<typeof InputSchema> {
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // ── Phase 2: Execute ───────────────────────────────────────
           await Repository.transaction(async (tx) => {
             for (const item of items) {
-              await DbService.repository.connectorEntities.update(item.connectorEntityId, {
-                label: item.label,
-                updated: Date.now(),
-                updatedBy: userId,
-              } as any, tx);
+              await DbService.repository.connectorEntities.update(
+                item.connectorEntityId,
+                {
+                  label: item.label,
+                  updated: Date.now(),
+                  updatedBy: userId,
+                } as any,
+                tx
+              );
             }
           });
 

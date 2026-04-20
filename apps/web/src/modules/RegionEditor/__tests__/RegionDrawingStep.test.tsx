@@ -28,7 +28,9 @@ function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
   };
 }
 
-function baseProps(overrides: Partial<React.ComponentProps<typeof RegionDrawingStepUI>> = {}) {
+function baseProps(
+  overrides: Partial<React.ComponentProps<typeof RegionDrawingStepUI>> = {}
+) {
   return {
     workbook: WORKBOOK,
     regions: [baseRegion()],
@@ -62,7 +64,11 @@ describe("RegionDrawingStepUI — keyboard delete", () => {
 
   test("does nothing when no region is selected", () => {
     const onRegionDelete = jest.fn();
-    render(<RegionDrawingStepUI {...baseProps({ onRegionDelete, selectedRegionId: null })} />);
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({ onRegionDelete, selectedRegionId: null })}
+      />
+    );
     fireEvent.keyDown(document, { key: "Delete" });
     expect(onRegionDelete).not.toHaveBeenCalled();
   });
@@ -88,8 +94,14 @@ describe("RegionDrawingStepUI — keyboard delete", () => {
 
   test("cleans up the listener when selection is cleared", () => {
     const onRegionDelete = jest.fn();
-    const { rerender } = render(<RegionDrawingStepUI {...baseProps({ onRegionDelete })} />);
-    rerender(<RegionDrawingStepUI {...baseProps({ onRegionDelete, selectedRegionId: null })} />);
+    const { rerender } = render(
+      <RegionDrawingStepUI {...baseProps({ onRegionDelete })} />
+    );
+    rerender(
+      <RegionDrawingStepUI
+        {...baseProps({ onRegionDelete, selectedRegionId: null })}
+      />
+    );
     fireEvent.keyDown(document, { key: "Delete" });
     expect(onRegionDelete).not.toHaveBeenCalled();
   });
@@ -100,9 +112,7 @@ describe("RegionDrawingStepUI — keyboard Escape", () => {
     const onSelectRegion = jest.fn();
     const onRegionDelete = jest.fn();
     render(
-      <RegionDrawingStepUI
-        {...baseProps({ onSelectRegion, onRegionDelete })}
-      />
+      <RegionDrawingStepUI {...baseProps({ onSelectRegion, onRegionDelete })} />
     );
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onSelectRegion).toHaveBeenCalledWith(null);
@@ -112,7 +122,9 @@ describe("RegionDrawingStepUI — keyboard Escape", () => {
   test("Escape does nothing when no region is selected", () => {
     const onSelectRegion = jest.fn();
     render(
-      <RegionDrawingStepUI {...baseProps({ onSelectRegion, selectedRegionId: null })} />
+      <RegionDrawingStepUI
+        {...baseProps({ onSelectRegion, selectedRegionId: null })}
+      />
     );
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onSelectRegion).not.toHaveBeenCalled();
@@ -177,7 +189,9 @@ describe("RegionDrawingStepUI — interpret validation", () => {
       targetEntityDefinitionId: null,
     });
     render(
-      <RegionDrawingStepUI {...baseProps({ regions: [first, second], selectedRegionId: null })} />
+      <RegionDrawingStepUI
+        {...baseProps({ regions: [first, second], selectedRegionId: null })}
+      />
     );
     fireEvent.click(screen.getByRole("button", { name: /interpret/i }));
     const alert = screen.getByRole("alert");
@@ -210,8 +224,8 @@ describe("RegionDrawingStepUI — interpret validation", () => {
     fireEvent.click(getByRole("button", { name: /interpret/i }));
     onSelectRegion.mockClear();
     const alert = getByRole("alert");
-    const chip = Array.from(alert.querySelectorAll(".MuiChip-root")).find((el) =>
-      el.textContent?.includes("Second region")
+    const chip = Array.from(alert.querySelectorAll(".MuiChip-root")).find(
+      (el) => el.textContent?.includes("Second region")
     );
     expect(chip).toBeDefined();
     fireEvent.click(chip!);

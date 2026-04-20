@@ -145,7 +145,9 @@ export const DriftSeeded: Story = {
 
 const InteractiveContent: React.FC = () => {
   const [regions, setRegions] = useState<RegionDraft[]>([]);
-  const [activeSheetId, setActiveSheetId] = useState(DEMO_WORKBOOK.sheets[0].id);
+  const [activeSheetId, setActiveSheetId] = useState(
+    DEMO_WORKBOOK.sheets[0].id
+  );
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 
   const handleDraft = (draft: { sheetId: string; bounds: CellBounds }) => {

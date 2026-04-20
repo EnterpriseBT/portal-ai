@@ -93,7 +93,10 @@ function createConnectorDefinition() {
   };
 }
 
-function createConnectorInstance(connectorDefinitionId: string, organizationId: string) {
+function createConnectorInstance(
+  connectorDefinitionId: string,
+  organizationId: string
+) {
   return {
     id: generateId(),
     connectorDefinitionId,
@@ -114,7 +117,11 @@ function createConnectorInstance(connectorDefinitionId: string, organizationId: 
   };
 }
 
-function createConnectorEntity(organizationId: string, connectorInstanceId: string, overrides?: Partial<Record<string, unknown>>) {
+function createConnectorEntity(
+  organizationId: string,
+  connectorInstanceId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
   return {
     id: generateId(),
     organizationId,
@@ -131,7 +138,10 @@ function createConnectorEntity(organizationId: string, connectorInstanceId: stri
   };
 }
 
-function createColumnDef(organizationId: string, overrides?: Partial<Record<string, unknown>>) {
+function createColumnDef(
+  organizationId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
   return {
     id: generateId(),
     organizationId,
@@ -227,23 +237,45 @@ describe("Entity Group Member Router", () => {
     );
 
     const group = createEntityGroup(organizationId, { name: "People" });
-    await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(entityGroups)
+      .values(group as never);
 
     const connDef = createConnectorDefinition();
-    await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(connDef as never);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(connectorDefinitions)
+      .values(connDef as never);
     const connInst = createConnectorInstance(connDef.id, organizationId);
-    await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(connInst as never);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(connectorInstances)
+      .values(connInst as never);
 
-    return { organizationId, groupId: group.id, connectorInstanceId: connInst.id };
+    return {
+      organizationId,
+      groupId: group.id,
+      connectorInstanceId: connInst.id,
+    };
   }
 
-  async function seedEntityWithMapping(organizationId: string, connectorInstanceId: string, sourceField = "email") {
+  async function seedEntityWithMapping(
+    organizationId: string,
+    connectorInstanceId: string,
+    sourceField = "email"
+  ) {
     const entity = createConnectorEntity(organizationId, connectorInstanceId);
-    await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity as never);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(connectorEntities)
+      .values(entity as never);
     const colDef = createColumnDef(organizationId, { key: sourceField });
-    await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef as never);
-    const mapping = createFieldMapping(organizationId, entity.id, colDef.id, { sourceField });
-    await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(columnDefinitions)
+      .values(colDef as never);
+    const mapping = createFieldMapping(organizationId, entity.id, colDef.id, {
+      sourceField,
+    });
+    await (db as ReturnType<typeof drizzle>)
+      .insert(fieldMappings)
+      .values(mapping as never);
     return { entityId: entity.id, fieldMappingId: mapping.id };
   }
 
@@ -265,15 +297,29 @@ describe("Entity Group Member Router", () => {
 
   describe("GET /api/entity-groups/:id/members", () => {
     it("should return members with enriched details", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const { entityId, fieldMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const { entityId, fieldMappingId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId
+      );
 
-      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values({
-        id: generateId(), organizationId, entityGroupId: groupId,
-        connectorEntityId: entityId, linkFieldMappingId: fieldMappingId,
-        isPrimary: false, created: now, createdBy: "SYSTEM_TEST",
-        updated: null, updatedBy: null, deleted: null, deletedBy: null,
-      } as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values({
+          id: generateId(),
+          organizationId,
+          entityGroupId: groupId,
+          connectorEntityId: entityId,
+          linkFieldMappingId: fieldMappingId,
+          isPrimary: false,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
 
       const res = await request(app)
         .get(`/api/entity-groups/${groupId}/members`)
@@ -282,7 +328,9 @@ describe("Entity Group Member Router", () => {
       expect(res.status).toBe(200);
       expect(res.body.payload.members).toHaveLength(1);
       expect(res.body.payload.members[0].connectorEntityLabel).toBeDefined();
-      expect(res.body.payload.members[0].linkFieldMappingSourceField).toBe("email");
+      expect(res.body.payload.members[0].linkFieldMappingSourceField).toBe(
+        "email"
+      );
     });
   });
 
@@ -290,65 +338,111 @@ describe("Entity Group Member Router", () => {
 
   describe("POST /api/entity-groups/:id/members", () => {
     it("should add a member, return 201", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const { entityId, fieldMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const { entityId, fieldMappingId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId
+      );
 
       const res = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: entityId, linkFieldMappingId: fieldMappingId });
+        .send({
+          connectorEntityId: entityId,
+          linkFieldMappingId: fieldMappingId,
+        });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
-      expect(res.body.payload.entityGroupMember.connectorEntityId).toBe(entityId);
+      expect(res.body.payload.entityGroupMember.connectorEntityId).toBe(
+        entityId
+      );
       expect(res.body.payload.entityGroupMember.isPrimary).toBe(false);
     });
 
     it("should return 409 if entity already a member", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const { entityId, fieldMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const { entityId, fieldMappingId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId
+      );
 
       // Add first time
       await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: entityId, linkFieldMappingId: fieldMappingId });
+        .send({
+          connectorEntityId: entityId,
+          linkFieldMappingId: fieldMappingId,
+        });
 
       // Try again
       const res = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: entityId, linkFieldMappingId: fieldMappingId });
+        .send({
+          connectorEntityId: entityId,
+          linkFieldMappingId: fieldMappingId,
+        });
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_ALREADY_EXISTS);
     });
 
     it("should return 400 if link field mapping does not belong to the connector entity", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const { entityId } = await seedEntityWithMapping(organizationId, connectorInstanceId, "email");
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const { entityId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "email"
+      );
       // Create a second entity with its own mapping
-      const { fieldMappingId: otherMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId, "name");
+      const { fieldMappingId: otherMappingId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "name"
+      );
 
       const res = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: entityId, linkFieldMappingId: otherMappingId });
+        .send({
+          connectorEntityId: entityId,
+          linkFieldMappingId: otherMappingId,
+        });
 
       expect(res.status).toBe(400);
-      expect(res.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID);
+      expect(res.body.code).toBe(
+        ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID
+      );
     });
 
     it("should clear existing primary and set new member as primary with isPrimary: true", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const seed1 = await seedEntityWithMapping(organizationId, connectorInstanceId, "email");
-      const seed2 = await seedEntityWithMapping(organizationId, connectorInstanceId, "name");
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const seed1 = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "email"
+      );
+      const seed2 = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "name"
+      );
 
       // Add first member as primary
       const res1 = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: seed1.entityId, linkFieldMappingId: seed1.fieldMappingId, isPrimary: true });
+        .send({
+          connectorEntityId: seed1.entityId,
+          linkFieldMappingId: seed1.fieldMappingId,
+          isPrimary: true,
+        });
 
       expect(res1.status).toBe(201);
       expect(res1.body.payload.entityGroupMember.isPrimary).toBe(true);
@@ -357,7 +451,11 @@ describe("Entity Group Member Router", () => {
       const res2 = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: seed2.entityId, linkFieldMappingId: seed2.fieldMappingId, isPrimary: true });
+        .send({
+          connectorEntityId: seed2.entityId,
+          linkFieldMappingId: seed2.fieldMappingId,
+          isPrimary: true,
+        });
 
       expect(res2.status).toBe(201);
       expect(res2.body.payload.entityGroupMember.isPrimary).toBe(true);
@@ -368,7 +466,10 @@ describe("Entity Group Member Router", () => {
         .set("Authorization", "Bearer test-token");
 
       const members = listRes.body.payload.members;
-      const firstMember = members.find((m: { connectorEntityId: string }) => m.connectorEntityId === seed1.entityId);
+      const firstMember = members.find(
+        (m: { connectorEntityId: string }) =>
+          m.connectorEntityId === seed1.entityId
+      );
       expect(firstMember.isPrimary).toBe(false);
     });
   });
@@ -377,20 +478,36 @@ describe("Entity Group Member Router", () => {
 
   describe("PATCH /api/entity-groups/:id/members/:memberId", () => {
     it("should update isPrimary correctly with transactional primary swap", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const seed1 = await seedEntityWithMapping(organizationId, connectorInstanceId, "email");
-      const seed2 = await seedEntityWithMapping(organizationId, connectorInstanceId, "name");
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const seed1 = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "email"
+      );
+      const seed2 = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "name"
+      );
 
       // Add two members, first as primary
       const res1 = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: seed1.entityId, linkFieldMappingId: seed1.fieldMappingId, isPrimary: true });
+        .send({
+          connectorEntityId: seed1.entityId,
+          linkFieldMappingId: seed1.fieldMappingId,
+          isPrimary: true,
+        });
 
       const res2 = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: seed2.entityId, linkFieldMappingId: seed2.fieldMappingId });
+        .send({
+          connectorEntityId: seed2.entityId,
+          linkFieldMappingId: seed2.fieldMappingId,
+        });
 
       const member2Id = res2.body.payload.entityGroupMember.id;
 
@@ -408,25 +525,44 @@ describe("Entity Group Member Router", () => {
         .get(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token");
 
-      const m1 = listRes.body.payload.members.find((m: { connectorEntityId: string }) => m.connectorEntityId === seed1.entityId);
+      const m1 = listRes.body.payload.members.find(
+        (m: { connectorEntityId: string }) =>
+          m.connectorEntityId === seed1.entityId
+      );
       expect(m1.isPrimary).toBe(false);
     });
 
     it("should update linkFieldMappingId and validate ownership", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const { entityId, fieldMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const { entityId, fieldMappingId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId
+      );
 
       // Create a second field mapping on the SAME entity
       const colDef2 = createColumnDef(organizationId, { key: "name" });
-      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef2 as never);
-      const mapping2 = createFieldMapping(organizationId, entityId, colDef2.id, { sourceField: "name" });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping2 as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef2 as never);
+      const mapping2 = createFieldMapping(
+        organizationId,
+        entityId,
+        colDef2.id,
+        { sourceField: "name" }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping2 as never);
 
       // Add member
       const addRes = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: entityId, linkFieldMappingId: fieldMappingId });
+        .send({
+          connectorEntityId: entityId,
+          linkFieldMappingId: fieldMappingId,
+        });
 
       const memberId = addRes.body.payload.entityGroupMember.id;
 
@@ -437,10 +573,16 @@ describe("Entity Group Member Router", () => {
         .send({ linkFieldMappingId: mapping2.id });
 
       expect(patchRes.status).toBe(200);
-      expect(patchRes.body.payload.entityGroupMember.linkFieldMappingId).toBe(mapping2.id);
+      expect(patchRes.body.payload.entityGroupMember.linkFieldMappingId).toBe(
+        mapping2.id
+      );
 
       // Try to update to a mapping from a DIFFERENT entity — should fail
-      const { fieldMappingId: otherMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId, "phone");
+      const { fieldMappingId: otherMappingId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "phone"
+      );
 
       const failRes = await request(app)
         .patch(`/api/entity-groups/${groupId}/members/${memberId}`)
@@ -448,7 +590,9 @@ describe("Entity Group Member Router", () => {
         .send({ linkFieldMappingId: otherMappingId });
 
       expect(failRes.status).toBe(400);
-      expect(failRes.body.code).toBe(ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID);
+      expect(failRes.body.code).toBe(
+        ApiCode.ENTITY_GROUP_MEMBER_LINK_FIELD_INVALID
+      );
     });
   });
 
@@ -456,13 +600,20 @@ describe("Entity Group Member Router", () => {
 
   describe("DELETE /api/entity-groups/:id/members/:memberId", () => {
     it("should remove member, return 200", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const { entityId, fieldMappingId } = await seedEntityWithMapping(organizationId, connectorInstanceId);
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const { entityId, fieldMappingId } = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId
+      );
 
       const addRes = await request(app)
         .post(`/api/entity-groups/${groupId}/members`)
         .set("Authorization", "Bearer test-token")
-        .send({ connectorEntityId: entityId, linkFieldMappingId: fieldMappingId });
+        .send({
+          connectorEntityId: entityId,
+          linkFieldMappingId: fieldMappingId,
+        });
 
       const memberId = addRes.body.payload.entityGroupMember.id;
 
@@ -486,32 +637,65 @@ describe("Entity Group Member Router", () => {
 
   describe("GET /api/entity-groups/:id/members/overlap", () => {
     it("should return overlap statistics", async () => {
-      const { organizationId, groupId, connectorInstanceId } = await seedGroupWithInfra();
-      const seed1 = await seedEntityWithMapping(organizationId, connectorInstanceId, "email");
+      const { organizationId, groupId, connectorInstanceId } =
+        await seedGroupWithInfra();
+      const seed1 = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "email"
+      );
 
       // Add member to group
-      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values({
-        id: generateId(), organizationId, entityGroupId: groupId,
-        connectorEntityId: seed1.entityId, linkFieldMappingId: seed1.fieldMappingId,
-        isPrimary: true, created: now, createdBy: "SYSTEM_TEST",
-        updated: null, updatedBy: null, deleted: null, deletedBy: null,
-      } as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values({
+          id: generateId(),
+          organizationId,
+          entityGroupId: groupId,
+          connectorEntityId: seed1.entityId,
+          linkFieldMappingId: seed1.fieldMappingId,
+          isPrimary: true,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
 
       // Create records for existing member
-      await (db as ReturnType<typeof drizzle>).insert(entityRecords).values([
-        createEntityRecord(organizationId, seed1.entityId, { email: "a@test.com" }),
-        createEntityRecord(organizationId, seed1.entityId, { email: "b@test.com" }),
-      ] as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityRecords)
+        .values([
+          createEntityRecord(organizationId, seed1.entityId, {
+            email: "a@test.com",
+          }),
+          createEntityRecord(organizationId, seed1.entityId, {
+            email: "b@test.com",
+          }),
+        ] as never);
 
       // Create target entity with records
-      const seed2 = await seedEntityWithMapping(organizationId, connectorInstanceId, "contact_email");
-      await (db as ReturnType<typeof drizzle>).insert(entityRecords).values([
-        createEntityRecord(organizationId, seed2.entityId, { contact_email: "a@test.com" }),
-        createEntityRecord(organizationId, seed2.entityId, { contact_email: "c@test.com" }),
-      ] as never);
+      const seed2 = await seedEntityWithMapping(
+        organizationId,
+        connectorInstanceId,
+        "contact_email"
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityRecords)
+        .values([
+          createEntityRecord(organizationId, seed2.entityId, {
+            contact_email: "a@test.com",
+          }),
+          createEntityRecord(organizationId, seed2.entityId, {
+            contact_email: "c@test.com",
+          }),
+        ] as never);
 
       const res = await request(app)
-        .get(`/api/entity-groups/${groupId}/members/overlap?targetConnectorEntityId=${seed2.entityId}&targetLinkFieldMappingId=${seed2.fieldMappingId}`)
+        .get(
+          `/api/entity-groups/${groupId}/members/overlap?targetConnectorEntityId=${seed2.entityId}&targetLinkFieldMappingId=${seed2.fieldMappingId}`
+        )
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);

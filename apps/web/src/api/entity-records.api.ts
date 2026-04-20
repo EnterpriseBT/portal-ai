@@ -48,7 +48,10 @@ export const entityRecords = {
     ),
 
   create: (connectorEntityId: string) =>
-    useAuthMutation<EntityRecordCreateResponsePayload, EntityRecordCreateRequestBody>({
+    useAuthMutation<
+      EntityRecordCreateResponsePayload,
+      EntityRecordCreateRequestBody
+    >({
       url: recordsUrl(connectorEntityId),
     }),
 
@@ -84,7 +87,10 @@ export const entityRecords = {
     ),
 
   update: (connectorEntityId: string, recordId: string) =>
-    useAuthMutation<EntityRecordPatchResponsePayload, EntityRecordPatchRequestBody>({
+    useAuthMutation<
+      EntityRecordPatchResponsePayload,
+      EntityRecordPatchRequestBody
+    >({
       url: recordsUrl(connectorEntityId, `/${encodeURIComponent(recordId)}`),
       method: "PATCH",
     }),

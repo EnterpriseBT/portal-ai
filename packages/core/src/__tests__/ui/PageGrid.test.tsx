@@ -9,7 +9,7 @@ describe("PageGrid Component", () => {
         <PageGrid>
           <div>Cell A</div>
           <div>Cell B</div>
-        </PageGrid>,
+        </PageGrid>
       );
       expect(screen.getByText("Cell A")).toBeInTheDocument();
       expect(screen.getByText("Cell B")).toBeInTheDocument();
@@ -19,7 +19,7 @@ describe("PageGrid Component", () => {
       const { container } = render(
         <PageGrid>
           <div>Cell</div>
-        </PageGrid>,
+        </PageGrid>
       );
       expect(container.firstChild).toHaveStyle({ display: "grid" });
     });
@@ -30,7 +30,7 @@ describe("PageGrid Component", () => {
       const { container } = render(
         <PageGrid className="custom-grid">
           <div>Cell</div>
-        </PageGrid>,
+        </PageGrid>
       );
       expect(container.firstChild).toHaveClass("custom-grid");
     });
@@ -39,7 +39,7 @@ describe("PageGrid Component", () => {
       render(
         <PageGrid data-testid="my-grid">
           <div>Cell</div>
-        </PageGrid>,
+        </PageGrid>
       );
       expect(screen.getByTestId("my-grid")).toBeInTheDocument();
     });
@@ -51,7 +51,7 @@ describe("PageGrid Component", () => {
       render(
         <PageGrid ref={ref}>
           <div>Cell</div>
-        </PageGrid>,
+        </PageGrid>
       );
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
@@ -64,7 +64,7 @@ describe("PageGridItem Component", () => {
       render(
         <PageGridItem>
           <p>Item content</p>
-        </PageGridItem>,
+        </PageGridItem>
       );
       expect(screen.getByText("Item content")).toBeInTheDocument();
     });
@@ -75,7 +75,7 @@ describe("PageGridItem Component", () => {
       const { container } = render(
         <PageGridItem className="custom-item">
           <p>Content</p>
-        </PageGridItem>,
+        </PageGridItem>
       );
       expect(container.firstChild).toHaveClass("custom-item");
     });
@@ -84,7 +84,7 @@ describe("PageGridItem Component", () => {
       render(
         <PageGridItem data-testid="grid-item">
           <p>Content</p>
-        </PageGridItem>,
+        </PageGridItem>
       );
       expect(screen.getByTestId("grid-item")).toBeInTheDocument();
     });
@@ -93,7 +93,7 @@ describe("PageGridItem Component", () => {
       const { container } = render(
         <PageGridItem span={2}>
           <p>Content</p>
-        </PageGridItem>,
+        </PageGridItem>
       );
       expect(container.firstChild).toHaveStyle({ gridColumn: "span 2" });
     });
@@ -102,7 +102,7 @@ describe("PageGridItem Component", () => {
       const { container } = render(
         <PageGridItem rowSpan={3}>
           <p>Content</p>
-        </PageGridItem>,
+        </PageGridItem>
       );
       expect(container.firstChild).toHaveStyle({ gridRow: "span 3" });
     });
@@ -111,7 +111,7 @@ describe("PageGridItem Component", () => {
       const { container } = render(
         <PageGridItem span={2} rowSpan={3}>
           <p>Content</p>
-        </PageGridItem>,
+        </PageGridItem>
       );
       expect(container.firstChild).toHaveStyle({
         gridColumn: "span 2",
@@ -123,7 +123,7 @@ describe("PageGridItem Component", () => {
       const { container } = render(
         <PageGridItem>
           <p>Content</p>
-        </PageGridItem>,
+        </PageGridItem>
       );
       const el = container.firstChild as HTMLElement;
       // sx should not be set — no inline grid-column or grid-row
@@ -138,7 +138,7 @@ describe("PageGridItem Component", () => {
       render(
         <PageGridItem ref={ref}>
           <p>Content</p>
-        </PageGridItem>,
+        </PageGridItem>
       );
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });

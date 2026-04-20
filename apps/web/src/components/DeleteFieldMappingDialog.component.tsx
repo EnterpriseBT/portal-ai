@@ -101,7 +101,8 @@ export const DeleteFieldMappingDialog: React.FC<
   const hasRecords = impact ? impact.entityRecords > 0 : false;
   const deleteBlocked = hasRecords;
   const deleteDisabled = isPending || isLoadingImpact || deleteBlocked;
-  const hasCascade = impact && (impact.entityGroupMembers > 0 || !!impact.counterpart);
+  const hasCascade =
+    impact && (impact.entityGroupMembers > 0 || !!impact.counterpart);
 
   return (
     <Modal
@@ -121,14 +122,21 @@ export const DeleteFieldMappingDialog: React.FC<
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
             type="button"
             variant="contained"
             color="error"
-            onClick={() => { if (!deleteDisabled) onConfirm(); }}
+            onClick={() => {
+              if (!deleteDisabled) onConfirm();
+            }}
             disabled={deleteDisabled}
           >
             {isPending ? "Deleting..." : "Delete"}

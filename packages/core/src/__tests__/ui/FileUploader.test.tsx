@@ -83,9 +83,7 @@ describe("FileUploader Component", () => {
   describe("Validation", () => {
     it("should reject files exceeding maxSizeMB", () => {
       const handleChange = jest.fn();
-      render(
-        <FileUploader maxSizeMB={1} onChange={handleChange} />
-      );
+      render(<FileUploader maxSizeMB={1} onChange={handleChange} />);
       const input = screen.getByTestId("file-input");
       const file = createFile("large.bin", 2);
       fireEvent.change(input, { target: { files: [file] } });

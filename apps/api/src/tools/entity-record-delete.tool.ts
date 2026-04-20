@@ -4,16 +4,25 @@ import { tool } from "ai";
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
-import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import {
+  assertStationScope,
+  assertWriteCapability,
+} from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
 
 const ItemSchema = z.object({
-  connectorEntityId: z.string().describe("The connector entity the record belongs to"),
+  connectorEntityId: z
+    .string()
+    .describe("The connector entity the record belongs to"),
   entityRecordId: z.string().describe("The record ID to delete"),
 });
 
 const InputSchema = z.object({
-  items: z.array(ItemSchema).min(1).max(100).describe("Records to delete (1–100)"),
+  items: z
+    .array(ItemSchema)
+    .min(1)
+    .max(100)
+    .describe("Records to delete (1–100)"),
 });
 
 export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
@@ -21,7 +30,9 @@ export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
   name = "Entity Record Delete Tool";
   description = "Soft-deletes one or more entity records. Accepts 1–100 items.";
 
-  get schema() { return InputSchema; }
+  get schema() {
+    return InputSchema;
+  }
 
   build(stationId: string, userId: string) {
     return tool({
@@ -48,41 +59,71 @@ export class EntityRecordDeleteTool extends Tool<typeof InputSchema> {
             } catch (err: any) {
               const groupItems = groups.get(connectorEntityId)!;
               for (const item of groupItems) {
-                failures.push({ index: items.indexOf(item), error: err.message ?? "Scope/capability check failed" });
+                failures.push({
+                  index: items.indexOf(item),
+                  error: err.message ?? "Scope/capability check failed",
+                });
               }
             }
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // Verify each record exists and belongs to its entity
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            const existing = await DbService.repository.entityRecords.findById(item.entityRecordId);
-            if (!existing || existing.connectorEntityId !== item.connectorEntityId) {
-              failures.push({ index: i, error: "Record not found or does not belong to entity" });
+            const existing = await DbService.repository.entityRecords.findById(
+              item.entityRecordId
+            );
+            if (
+              !existing ||
+              existing.connectorEntityId !== item.connectorEntityId
+            ) {
+              failures.push({
+                index: i,
+                error: "Record not found or does not belong to entity",
+              });
             }
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // ── Phase 2: Execute ───────────────────────────────────────
           const allIds = items.map((item) => item.entityRecordId);
 
           await Repository.transaction(async (tx) => {
-            await DbService.repository.entityRecords.softDeleteMany(allIds, userId, tx);
+            await DbService.repository.entityRecords.softDeleteMany(
+              allIds,
+              userId,
+              tx
+            );
           });
 
           // ── Phase 3: Cache ─────────────────────────────────────────
           for (const [connectorEntityId, groupItems] of groups) {
-            const entity = await DbService.repository.connectorEntities.findById(connectorEntityId);
+            const entity =
+              await DbService.repository.connectorEntities.findById(
+                connectorEntityId
+              );
             if (!entity) continue;
             const recordIds = groupItems.map((item) => item.entityRecordId);
-            AnalyticsService.applyRecordDeleteMany(stationId, (entity as any).key, recordIds);
+            AnalyticsService.applyRecordDeleteMany(
+              stationId,
+              (entity as any).key,
+              recordIds
+            );
           }
 
           return {

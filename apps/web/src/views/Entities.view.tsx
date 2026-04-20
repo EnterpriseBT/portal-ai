@@ -6,7 +6,17 @@ import type {
 } from "@portalai/core/contracts";
 import type { EntityTag } from "@portalai/core/models";
 import type { ConnectorEntityCreateRequestBody } from "@portalai/core/contracts";
-import { Box, Button, DetailCard, Icon, IconName, MetadataList, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
+import {
+  Box,
+  Button,
+  DetailCard,
+  Icon,
+  IconName,
+  MetadataList,
+  PageEmptyState,
+  PageHeader,
+  Stack,
+} from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -28,9 +38,10 @@ import { toServerError } from "../utils/api.util";
 
 // ── Entity card ─────────────────────────────────────────────────────
 
-type EntityWithTags = ConnectorEntityListWithInstanceResponsePayload["connectorEntities"][number] & {
-  tags?: EntityTag[];
-};
+type EntityWithTags =
+  ConnectorEntityListWithInstanceResponsePayload["connectorEntities"][number] & {
+    tags?: EntityTag[];
+  };
 
 interface EntityCardProps {
   entity: EntityWithTags;
@@ -38,11 +49,23 @@ interface EntityCardProps {
   onDelete: () => void;
 }
 
-const EntityCard: React.FC<EntityCardProps> = ({ entity, onClick, onDelete }) => {
-  const isWriteEnabled = entity.connectorInstance?.enabledCapabilityFlags?.write === true;
+const EntityCard: React.FC<EntityCardProps> = ({
+  entity,
+  onClick,
+  onDelete,
+}) => {
+  const isWriteEnabled =
+    entity.connectorInstance?.enabledCapabilityFlags?.write === true;
 
   const actions: ActionSuiteItem[] = isWriteEnabled
-    ? [{ label: "Delete", icon: <DeleteIcon />, onClick: onDelete, color: "error" as const }]
+    ? [
+        {
+          label: "Delete",
+          icon: <DeleteIcon />,
+          onClick: onDelete,
+          color: "error" as const,
+        },
+      ]
     : [];
 
   return (
@@ -99,8 +122,10 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
 }) => {
   const navigate = useNavigate();
 
-  const { onSearch: searchConnectorInstances, labelMap: connectorInstanceLabelMap } =
-    sdk.connectorInstances.search();
+  const {
+    onSearch: searchConnectorInstances,
+    labelMap: connectorInstanceLabelMap,
+  } = sdk.connectorInstances.search();
   const { onSearch: searchTags, labelMap: tagLabelMap } =
     sdk.entityTags.search();
 
@@ -142,7 +167,11 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
           title="Entities"
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
-            <Button variant="contained" startIcon={<AddIcon />} onClick={onCreate}>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={onCreate}
+            >
               Create Entity
             </Button>
           }
@@ -169,7 +198,11 @@ export const EntitiesViewUI: React.FC<EntitiesViewUIProps> = ({
                     const list =
                       data.list as unknown as ConnectorEntityListWithInstanceResponsePayload;
                     if (list.connectorEntities.length === 0) {
-                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      const hasActiveFilters =
+                        pagination.search ||
+                        Object.values(pagination.filters).some(
+                          (v) => v.length > 0
+                        );
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (
@@ -214,7 +247,9 @@ export const EntitiesView: React.FC = () => {
 
   const [createOpen, setCreateOpen] = useState(false);
   const createMutation = sdk.connectorEntities.create();
-  const [deletingEntity, setDeletingEntity] = useState<EntityWithTags | null>(null);
+  const [deletingEntity, setDeletingEntity] = useState<EntityWithTags | null>(
+    null
+  );
 
   const deleteMutation = sdk.connectorEntities.delete(deletingEntity?.id ?? "");
   const impactQuery = sdk.connectorEntities.impact(deletingEntity?.id ?? "", {
@@ -231,7 +266,9 @@ export const EntitiesView: React.FC = () => {
       createMutation.mutate(body, {
         onSuccess: () => {
           handleCreateClose();
-          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorEntities.root,
+          });
         },
       });
     },
@@ -250,10 +287,18 @@ export const EntitiesView: React.FC = () => {
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeletingEntity(null);
-        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.connectorEntities.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.entityRecords.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.fieldMappings.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.entityGroups.root,
+        });
       },
     });
   }, [deleteMutation, queryClient]);

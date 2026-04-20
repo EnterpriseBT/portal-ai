@@ -35,7 +35,6 @@ describe("Formatter", () => {
           datetime: { format: "HH:mm" },
         })
       ).toBe("10:30");
-
     });
   });
 
@@ -78,9 +77,7 @@ describe("Formatter", () => {
     });
 
     it("uses custom trueLabel", () => {
-      expect(Formatter.boolean(true, { trueLabel: "Active" })).toBe(
-        "Active"
-      );
+      expect(Formatter.boolean(true, { trueLabel: "Active" })).toBe("Active");
     });
 
     it("uses custom falseLabel", () => {
@@ -201,24 +198,32 @@ describe("Formatter", () => {
   describe("format with canonicalFormat", () => {
     it("applies canonicalFormat to date type (overrides default)", () => {
       expect(
-        Formatter.format("2025-06-15", "date", { canonicalFormat: "dd/MM/yyyy" })
+        Formatter.format("2025-06-15", "date", {
+          canonicalFormat: "dd/MM/yyyy",
+        })
       ).toBe("15/06/2025");
     });
 
     it("applies canonicalFormat to datetime type", () => {
       expect(
-        Formatter.format("2025-06-15T10:30:00Z", "datetime", { canonicalFormat: "HH:mm" })
+        Formatter.format("2025-06-15T10:30:00Z", "datetime", {
+          canonicalFormat: "HH:mm",
+        })
       ).toBe("10:30");
     });
 
     it("applies canonicalFormat to number type with currency prefix", () => {
-      const result = Formatter.format(1234.5, "number", { canonicalFormat: "$#,##0.00" });
+      const result = Formatter.format(1234.5, "number", {
+        canonicalFormat: "$#,##0.00",
+      });
       expect(result).toMatch(/^\$/);
       expect(result).toContain("1");
     });
 
     it("applies canonicalFormat to number with fixed decimals", () => {
-      const result = Formatter.format(42, "number", { canonicalFormat: "#,##0.00" });
+      const result = Formatter.format(42, "number", {
+        canonicalFormat: "#,##0.00",
+      });
       // Should have 2 decimal places
       expect(result).toMatch(/42[.,]00/);
     });

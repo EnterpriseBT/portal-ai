@@ -26,7 +26,11 @@ export const JobStatusEnum = z.enum([
 export type JobStatus = z.infer<typeof JobStatusEnum>;
 
 /** Statuses that indicate a job has reached a final state and will not change further. */
-export const TERMINAL_JOB_STATUSES: JobStatus[] = ["completed", "failed", "cancelled"];
+export const TERMINAL_JOB_STATUSES: JobStatus[] = [
+  "completed",
+  "failed",
+  "cancelled",
+];
 
 export const JobTypeEnum = z.enum([
   "file_upload",
@@ -115,7 +119,9 @@ export const FileUploadColumnRecommendationSchema = z.object({
   /** Allowed values for enum-like columns. Mapping-level. */
   enumValues: z.array(z.string()).nullable().optional(),
 });
-export type FileUploadColumnRecommendation = z.infer<typeof FileUploadColumnRecommendationSchema>;
+export type FileUploadColumnRecommendation = z.infer<
+  typeof FileUploadColumnRecommendationSchema
+>;
 
 /** Per-file entity recommendation produced by AI analysis. */
 export const FileUploadRecommendationEntitySchema = z.object({
@@ -128,7 +134,9 @@ export const FileUploadRecommendationEntitySchema = z.object({
   /** Column-level recommendations. */
   columns: z.array(FileUploadColumnRecommendationSchema),
 });
-export type FileUploadRecommendationEntity = z.infer<typeof FileUploadRecommendationEntitySchema>;
+export type FileUploadRecommendationEntity = z.infer<
+  typeof FileUploadRecommendationEntitySchema
+>;
 
 /** Top-level recommendation payload. */
 export const FileUploadRecommendationSchema = z.object({
@@ -137,7 +145,9 @@ export const FileUploadRecommendationSchema = z.object({
   /** Per-file entity recommendations. */
   entities: z.array(FileUploadRecommendationEntitySchema),
 });
-export type FileUploadRecommendation = z.infer<typeof FileUploadRecommendationSchema>;
+export type FileUploadRecommendation = z.infer<
+  typeof FileUploadRecommendationSchema
+>;
 
 export const FileUploadResultSchema = z.object({
   parseResults: z.array(FileParseResultSchema).optional(),
@@ -156,10 +166,12 @@ export const RevalidationResultSchema = z.object({
   total: z.number(),
   valid: z.number(),
   invalid: z.number(),
-  errors: z.array(z.object({
-    recordId: z.string(),
-    errors: z.array(z.object({ field: z.string(), error: z.string() })),
-  })),
+  errors: z.array(
+    z.object({
+      recordId: z.string(),
+      errors: z.array(z.object({ field: z.string(), error: z.string() })),
+    })
+  ),
 });
 export type RevalidationResult = z.infer<typeof RevalidationResultSchema>;
 
@@ -189,9 +201,18 @@ export const JOB_TYPE_SCHEMAS: {
     result: z.ZodType<JobTypeMap[K]["result"]>;
   };
 } = {
-  system_check: { metadata: SystemCheckMetadataSchema, result: SystemCheckResultSchema },
-  file_upload: { metadata: FileUploadMetadataSchema, result: FileUploadResultSchema },
-  revalidation: { metadata: RevalidationMetadataSchema, result: RevalidationResultSchema },
+  system_check: {
+    metadata: SystemCheckMetadataSchema,
+    result: SystemCheckResultSchema,
+  },
+  file_upload: {
+    metadata: FileUploadMetadataSchema,
+    result: FileUploadResultSchema,
+  },
+  revalidation: {
+    metadata: RevalidationMetadataSchema,
+    result: RevalidationResultSchema,
+  },
 };
 
 // --- Schema ---
@@ -216,7 +237,8 @@ export type Job = z.infer<typeof JobSchema>;
 // --- Model Class ---
 
 export class JobModel extends CoreModel<Job> {
-  static readonly TERMINAL_STATUSES: readonly JobStatus[] = TERMINAL_JOB_STATUSES;
+  static readonly TERMINAL_STATUSES: readonly JobStatus[] =
+    TERMINAL_JOB_STATUSES;
 
   static isTerminalStatus(status: JobStatus): boolean {
     return TERMINAL_JOB_STATUSES.includes(status);
@@ -251,7 +273,10 @@ export class JobModelFactory extends ModelFactory<Job, JobModel> {
  * A `Job` with `metadata` and `result` narrowed to the file_upload type.
  * Use for construction and service-layer code; the DB layer still uses `Job`.
  */
-export interface FileUploadJob extends Omit<Job, "type" | "metadata" | "result"> {
+export interface FileUploadJob extends Omit<
+  Job,
+  "type" | "metadata" | "result"
+> {
   type: "file_upload";
   metadata: FileUploadMetadata;
   result: FileUploadResult | null;
@@ -282,7 +307,10 @@ export interface CreateFileUploadJobParams {
  * the upload-specific fields.  All generic job defaults (`status`, `progress`,
  * `attempts`, …) are set automatically.
  */
-export class FileUploadJobModelFactory extends ModelFactory<Job, FileUploadJobModel> {
+export class FileUploadJobModelFactory extends ModelFactory<
+  Job,
+  FileUploadJobModel
+> {
   create(createdBy: string): FileUploadJobModel {
     const baseModel = this._coreModelFactory.create(createdBy);
     return new FileUploadJobModel(baseModel.toJSON());
@@ -294,7 +322,7 @@ export class FileUploadJobModelFactory extends ModelFactory<Job, FileUploadJobMo
    */
   createForUpload(
     createdBy: string,
-    params: CreateFileUploadJobParams,
+    params: CreateFileUploadJobParams
   ): FileUploadJobModel {
     const model = this.create(createdBy);
 

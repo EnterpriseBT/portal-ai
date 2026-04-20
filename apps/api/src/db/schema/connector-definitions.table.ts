@@ -1,4 +1,10 @@
-import { pgTable, text, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  boolean,
+  jsonb,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { baseColumns } from "./base.columns.js";
 
@@ -21,7 +27,9 @@ export const connectorDefinitions = pgTable(
     category: text("category").notNull(),
     authType: text("auth_type").notNull(),
     configSchema: jsonb("config_schema").$type<Record<string, unknown>>(),
-    capabilityFlags: jsonb("capability_flags").$type<CapabilityFlags>().notNull(),
+    capabilityFlags: jsonb("capability_flags")
+      .$type<CapabilityFlags>()
+      .notNull(),
     isActive: boolean("is_active").notNull(),
     version: text("version").notNull(),
     iconUrl: text("icon_url"),
@@ -30,5 +38,5 @@ export const connectorDefinitions = pgTable(
     uniqueIndex("connector_definitions_slug_unique")
       .on(table.slug)
       .where(sql`deleted IS NULL`),
-  ],
+  ]
 );

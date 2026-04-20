@@ -1,5 +1,63 @@
 import swaggerJsdoc from "swagger-jsdoc";
+import { z } from "zod";
+
+import {
+  ColumnBindingSchema,
+  DriftReportSchema,
+  HeaderStrategySchema,
+  IdentityStrategySchema,
+  InterpretInputSchema,
+  InterpretRequestBodySchema,
+  InterpretResponsePayloadSchema,
+  LayoutPlanCommitResultSchema,
+  LayoutPlanSchema,
+  RegionHintSchema,
+  RegionSchema,
+  SkipRuleSchema,
+  WarningSchema,
+} from "@portalai/core/contracts";
+
 import { environment } from "../environment.js";
+
+/**
+ * Spreadsheet-parsing schemas re-exported from `@portalai/core/contracts` and
+ * emitted as JSON Schema via `z.toJSONSchema` so the parser module stays the
+ * single source of truth. Any new schema added here must be mirrored in the
+ * round-trip test at `src/__tests__/config/swagger.config.test.ts`.
+ *
+ * `unrepresentable: "any"` lets Zod emit `{}` for JSON-incompatible leaves
+ * (notably `z.date()` inside `WorkbookCell.value`); OpenAPI consumers treat
+ * these as free-form, which matches the spec's "serialised as ISO 8601 strings
+ * on the wire" guarantee.
+ */
+const JSON_SCHEMA_OPTS = { unrepresentable: "any" as const };
+const spreadsheetParsingSchemas: Record<string, unknown> = {
+  LayoutPlan: z.toJSONSchema(LayoutPlanSchema, JSON_SCHEMA_OPTS),
+  Region: z.toJSONSchema(RegionSchema, JSON_SCHEMA_OPTS),
+  ColumnBinding: z.toJSONSchema(ColumnBindingSchema, JSON_SCHEMA_OPTS),
+  SkipRule: z.toJSONSchema(SkipRuleSchema, JSON_SCHEMA_OPTS),
+  HeaderStrategy: z.toJSONSchema(HeaderStrategySchema, JSON_SCHEMA_OPTS),
+  IdentityStrategy: z.toJSONSchema(IdentityStrategySchema, JSON_SCHEMA_OPTS),
+  Warning: z.toJSONSchema(WarningSchema, JSON_SCHEMA_OPTS),
+  DriftReport: z.toJSONSchema(DriftReportSchema, JSON_SCHEMA_OPTS),
+  InterpretInput: z.toJSONSchema(InterpretInputSchema, JSON_SCHEMA_OPTS),
+  RegionHint: z.toJSONSchema(RegionHintSchema, JSON_SCHEMA_OPTS),
+  // Endpoint-level aliases — `InterpretRequestBody` is the explicit request
+  // body name referenced by the interpret route's JSDoc, `InterpretResponsePayload`
+  // is the wrapped plan + trace response.
+  InterpretRequestBody: z.toJSONSchema(
+    InterpretRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  InterpretResponsePayload: z.toJSONSchema(
+    InterpretResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  LayoutPlanCommitResult: z.toJSONSchema(
+    LayoutPlanCommitResultSchema,
+    JSON_SCHEMA_OPTS
+  ),
+};
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -556,7 +614,11 @@ const options: swaggerJsdoc.Options = {
           properties: {
             id: { type: "string" },
             organizationId: { type: "string" },
-            key: { type: "string", pattern: "^[a-z][a-z0-9_]*$", example: "email" },
+            key: {
+              type: "string",
+              pattern: "^[a-z][a-z0-9_]*$",
+              example: "email",
+            },
             label: { type: "string", example: "Email Address" },
             type: {
               type: "string",
@@ -572,12 +634,27 @@ const options: swaggerJsdoc.Options = {
                 "reference",
                 "reference-array",
               ],
-              description: "Column data type. Note: 'currency' is not a valid type — use 'number' with canonicalFormat instead.",
+              description:
+                "Column data type. Note: 'currency' is not a valid type — use 'number' with canonicalFormat instead.",
             },
             description: { type: "string", nullable: true },
-            validationPattern: { type: "string", nullable: true, description: "Regex validation pattern for values" },
-            validationMessage: { type: "string", nullable: true, description: "Human-readable message when validationPattern fails" },
-            canonicalFormat: { type: "string", nullable: true, description: "Display/storage format (e.g. 'lowercase', 'USD', 'YYYY-MM-DD')" },
+            validationPattern: {
+              type: "string",
+              nullable: true,
+              description: "Regex validation pattern for values",
+            },
+            validationMessage: {
+              type: "string",
+              nullable: true,
+              description:
+                "Human-readable message when validationPattern fails",
+            },
+            canonicalFormat: {
+              type: "string",
+              nullable: true,
+              description:
+                "Display/storage format (e.g. 'lowercase', 'USD', 'YYYY-MM-DD')",
+            },
             created: { type: "number", description: "Epoch ms" },
             createdBy: { type: "string" },
             updated: { type: "number", nullable: true },
@@ -684,11 +761,33 @@ const options: swaggerJsdoc.Options = {
             columnDefinitionId: { type: "string" },
             sourceField: { type: "string", example: "account_name" },
             isPrimaryKey: { type: "boolean" },
-            normalizedKey: { type: "string", pattern: "^[a-z][a-z0-9_]*$", description: "Key used in normalizedData JSONB", example: "account_name" },
-            required: { type: "boolean", description: "Whether this field is required for this source" },
-            defaultValue: { type: "string", nullable: true, description: "Default fill value when source value is missing" },
-            format: { type: "string", nullable: true, description: "Per-source parse format (e.g. 'YYYY-MM-DD', 'email')" },
-            enumValues: { type: "array", items: { type: "string" }, nullable: true, description: "Allowed values for this field" },
+            normalizedKey: {
+              type: "string",
+              pattern: "^[a-z][a-z0-9_]*$",
+              description: "Key used in normalizedData JSONB",
+              example: "account_name",
+            },
+            required: {
+              type: "boolean",
+              description: "Whether this field is required for this source",
+            },
+            defaultValue: {
+              type: "string",
+              nullable: true,
+              description: "Default fill value when source value is missing",
+            },
+            format: {
+              type: "string",
+              nullable: true,
+              description:
+                "Per-source parse format (e.g. 'YYYY-MM-DD', 'email')",
+            },
+            enumValues: {
+              type: "array",
+              items: { type: "string" },
+              nullable: true,
+              description: "Allowed values for this field",
+            },
             refNormalizedKey: { type: "string", nullable: true },
             refEntityKey: { type: "string", nullable: true },
             created: { type: "number", description: "Epoch ms" },
@@ -841,7 +940,12 @@ const options: swaggerJsdoc.Options = {
             organizationId: { type: "string" },
             connectorEntityId: { type: "string" },
             data: { type: "object", additionalProperties: true },
-            normalizedData: { type: "object", additionalProperties: true, description: "Normalized data keyed by fieldMapping.normalizedKey" },
+            normalizedData: {
+              type: "object",
+              additionalProperties: true,
+              description:
+                "Normalized data keyed by fieldMapping.normalizedKey",
+            },
             sourceId: { type: "string" },
             checksum: { type: "string" },
             syncedAt: { type: "number", description: "Epoch ms" },
@@ -857,7 +961,11 @@ const options: swaggerJsdoc.Options = {
               },
               description: "Per-field validation failures, null when valid",
             },
-            isValid: { type: "boolean", description: "Quick filter flag — true when validationErrors is null or empty" },
+            isValid: {
+              type: "boolean",
+              description:
+                "Quick filter flag — true when validationErrors is null or empty",
+            },
             created: { type: "number", description: "Epoch ms" },
             createdBy: { type: "string" },
             updated: { type: "number", nullable: true },
@@ -906,9 +1014,19 @@ const options: swaggerJsdoc.Options = {
         },
         Station: {
           type: "object",
-          required: ["id", "organizationId", "name", "toolPacks", "created", "createdBy"],
+          required: [
+            "id",
+            "organizationId",
+            "name",
+            "toolPacks",
+            "created",
+            "createdBy",
+          ],
           properties: {
-            id: { type: "string", example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+            id: {
+              type: "string",
+              example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            },
             organizationId: { type: "string" },
             name: { type: "string", example: "Sales Analytics" },
             description: { type: "string", nullable: true },
@@ -917,7 +1035,11 @@ const options: swaggerJsdoc.Options = {
               items: { type: "string" },
               example: ["data_query"],
             },
-            created: { type: "number", description: "Epoch ms", example: 1700000000000 },
+            created: {
+              type: "number",
+              description: "Epoch ms",
+              example: 1700000000000,
+            },
             createdBy: { type: "string" },
             updated: { type: "number", nullable: true },
             updatedBy: { type: "string", nullable: true },
@@ -927,7 +1049,13 @@ const options: swaggerJsdoc.Options = {
         },
         StationInstance: {
           type: "object",
-          required: ["id", "stationId", "connectorInstanceId", "created", "createdBy"],
+          required: [
+            "id",
+            "stationId",
+            "connectorInstanceId",
+            "created",
+            "createdBy",
+          ],
           properties: {
             id: { type: "string" },
             stationId: { type: "string" },
@@ -972,13 +1100,27 @@ const options: swaggerJsdoc.Options = {
         },
         Portal: {
           type: "object",
-          required: ["id", "organizationId", "stationId", "name", "created", "createdBy"],
+          required: [
+            "id",
+            "organizationId",
+            "stationId",
+            "name",
+            "created",
+            "createdBy",
+          ],
           properties: {
-            id: { type: "string", example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+            id: {
+              type: "string",
+              example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            },
             organizationId: { type: "string" },
             stationId: { type: "string" },
             name: { type: "string", example: "Test Portal" },
-            created: { type: "number", description: "Epoch ms", example: 1700000000000 },
+            created: {
+              type: "number",
+              description: "Epoch ms",
+              example: 1700000000000,
+            },
             createdBy: { type: "string" },
             updated: { type: "number", nullable: true },
             updatedBy: { type: "string", nullable: true },
@@ -988,7 +1130,14 @@ const options: swaggerJsdoc.Options = {
         },
         PortalMessage: {
           type: "object",
-          required: ["id", "portalId", "role", "blocks", "created", "createdBy"],
+          required: [
+            "id",
+            "portalId",
+            "role",
+            "blocks",
+            "created",
+            "createdBy",
+          ],
           properties: {
             id: { type: "string" },
             portalId: { type: "string" },
@@ -1039,14 +1188,28 @@ const options: swaggerJsdoc.Options = {
         },
         PortalResult: {
           type: "object",
-          required: ["id", "organizationId", "stationId", "portalId", "name", "type", "content", "created", "createdBy"],
+          required: [
+            "id",
+            "organizationId",
+            "stationId",
+            "portalId",
+            "name",
+            "type",
+            "content",
+            "created",
+            "createdBy",
+          ],
           properties: {
             id: { type: "string" },
             organizationId: { type: "string" },
             stationId: { type: "string" },
             portalId: { type: "string" },
             name: { type: "string", example: "Q1 Revenue Chart" },
-            type: { type: "string", enum: ["text", "vega-lite"], example: "vega-lite" },
+            type: {
+              type: "string",
+              enum: ["text", "vega-lite"],
+              example: "vega-lite",
+            },
             content: { type: "object", additionalProperties: true },
             created: { type: "number", description: "Epoch ms" },
             createdBy: { type: "string" },
@@ -1073,7 +1236,15 @@ const options: swaggerJsdoc.Options = {
         },
         OrganizationTool: {
           type: "object",
-          required: ["id", "organizationId", "name", "parameterSchema", "implementation", "created", "createdBy"],
+          required: [
+            "id",
+            "organizationId",
+            "name",
+            "parameterSchema",
+            "implementation",
+            "created",
+            "createdBy",
+          ],
           properties: {
             id: { type: "string" },
             organizationId: { type: "string" },
@@ -1089,7 +1260,10 @@ const options: swaggerJsdoc.Options = {
               properties: {
                 type: { type: "string", enum: ["webhook"], example: "webhook" },
                 url: { type: "string", example: "https://example.com/tool" },
-                headers: { type: "object", additionalProperties: { type: "string" } },
+                headers: {
+                  type: "object",
+                  additionalProperties: { type: "string" },
+                },
               },
             },
             created: { type: "number", description: "Epoch ms" },
@@ -1117,7 +1291,13 @@ const options: swaggerJsdoc.Options = {
         },
         StationTool: {
           type: "object",
-          required: ["id", "stationId", "organizationToolId", "created", "createdBy"],
+          required: [
+            "id",
+            "stationId",
+            "organizationToolId",
+            "created",
+            "createdBy",
+          ],
           properties: {
             id: { type: "string" },
             stationId: { type: "string" },
@@ -1136,7 +1316,9 @@ const options: swaggerJsdoc.Options = {
             {
               type: "object",
               properties: {
-                organizationTool: { $ref: "#/components/schemas/OrganizationTool" },
+                organizationTool: {
+                  $ref: "#/components/schemas/OrganizationTool",
+                },
               },
             },
           ],
@@ -1150,12 +1332,15 @@ const options: swaggerJsdoc.Options = {
               properties: {
                 stationTools: {
                   type: "array",
-                  items: { $ref: "#/components/schemas/StationToolWithOrgTool" },
+                  items: {
+                    $ref: "#/components/schemas/StationToolWithOrgTool",
+                  },
                 },
               },
             },
           ],
         },
+        ...spreadsheetParsingSchemas,
       },
     },
     tags: [
@@ -1181,7 +1366,8 @@ const options: swaggerJsdoc.Options = {
       },
       {
         name: "Column Definitions",
-        description: "Organization-level column definition management endpoints",
+        description:
+          "Organization-level column definition management endpoints",
       },
       {
         name: "Connector Entities",
@@ -1201,11 +1387,13 @@ const options: swaggerJsdoc.Options = {
       },
       {
         name: "Entity Groups",
-        description: "Entity group management and identity resolution endpoints",
+        description:
+          "Entity group management and identity resolution endpoints",
       },
       {
         name: "Entity Group Members",
-        description: "Entity group member management and overlap preview endpoints",
+        description:
+          "Entity group member management and overlap preview endpoints",
       },
       {
         name: "Organization",
@@ -1221,7 +1409,8 @@ const options: swaggerJsdoc.Options = {
       },
       {
         name: "Portal Events",
-        description: "Server-sent events (SSE) for portal AI response streaming",
+        description:
+          "Server-sent events (SSE) for portal AI response streaming",
       },
       {
         name: "Portal Results",

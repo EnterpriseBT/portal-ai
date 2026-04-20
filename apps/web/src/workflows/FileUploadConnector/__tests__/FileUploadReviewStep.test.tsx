@@ -5,9 +5,7 @@ import userEvent from "@testing-library/user-event";
 
 import { FileUploadReviewStepUI } from "../FileUploadReviewStep.component";
 import type { FileUploadReviewStepUIProps } from "../FileUploadReviewStep.component";
-import {
-  POST_INTERPRET_REGIONS,
-} from "../utils/file-upload-fixtures.util";
+import { POST_INTERPRET_REGIONS } from "../utils/file-upload-fixtures.util";
 import type { RegionDraft } from "../../../modules/RegionEditor";
 
 function makeProps(
@@ -33,7 +31,9 @@ describe("FileUploadReviewStepUI — rendering", () => {
 
   test("renders one card per bound region", () => {
     render(<FileUploadReviewStepUI {...makeProps()} />);
-    const jumpButtons = screen.getAllByRole("button", { name: /jump to region/i });
+    const jumpButtons = screen.getAllByRole("button", {
+      name: /jump to region/i,
+    });
     expect(jumpButtons.length).toBe(POST_INTERPRET_REGIONS.length);
   });
 
@@ -100,9 +100,7 @@ describe("FileUploadReviewStepUI — commit disabled states", () => {
       ],
     };
     render(
-      <FileUploadReviewStepUI
-        {...makeProps({ regions: [blockerRegion] })}
-      />
+      <FileUploadReviewStepUI {...makeProps({ regions: [blockerRegion] })} />
     );
     const btn = screen.getByRole("button", { name: /commit plan/i });
     expect(btn).toBeDisabled();
@@ -119,9 +117,7 @@ describe("FileUploadReviewStepUI — interactions", () => {
         {...makeProps({ regions: [region], onJumpToRegion })}
       />
     );
-    await user.click(
-      screen.getByRole("button", { name: /jump to region/i })
-    );
+    await user.click(screen.getByRole("button", { name: /jump to region/i }));
     expect(onJumpToRegion).toHaveBeenCalledWith(region.id);
   });
 
@@ -165,7 +161,11 @@ describe("FileUploadReviewStepUI — server error", () => {
   });
 
   test("does not render FormAlert when serverError is null", () => {
-    render(<FileUploadReviewStepUI {...makeProps({ regions: [POST_INTERPRET_REGIONS[0]] })} />);
+    render(
+      <FileUploadReviewStepUI
+        {...makeProps({ regions: [POST_INTERPRET_REGIONS[0]] })}
+      />
+    );
     // POST_INTERPRET_REGIONS[0] has no warnings, so the only possible alert
     // would be from FormAlert — and there is no serverError, so none.
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

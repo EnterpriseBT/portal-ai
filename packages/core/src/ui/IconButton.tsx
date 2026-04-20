@@ -15,5 +15,5 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
         <Icon name={icon} />
       </MuiIconButton>
     );
-  },
+  }
 );

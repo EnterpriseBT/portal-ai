@@ -37,7 +37,8 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { SYSTEM_COLUMN_DEFINITIONS, SeedService } = await import("../../services/seed.service.js");
+const { SYSTEM_COLUMN_DEFINITIONS, SeedService } =
+  await import("../../services/seed.service.js");
 
 describe("SYSTEM_COLUMN_DEFINITIONS", () => {
   it("should have 26 entries", () => {

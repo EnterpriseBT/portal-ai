@@ -28,6 +28,7 @@ import {
   portalResultsRepo,
   organizationToolsRepo,
   stationToolsRepo,
+  connectorInstanceLayoutPlansRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -100,6 +101,7 @@ export class DbService {
       portalResults: portalResultsRepo,
       organizationTools: organizationToolsRepo,
       stationTools: stationToolsRepo,
+      connectorInstanceLayoutPlans: connectorInstanceLayoutPlansRepo,
     };
   }
 }

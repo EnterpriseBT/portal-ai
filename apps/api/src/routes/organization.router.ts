@@ -95,26 +95,38 @@ organizationRouter.patch(
       // Only allow users to update their current org
       if (id !== organizationId) {
         return next(
-          new ApiError(404, ApiCode.ORGANIZATION_NOT_FOUND, "Organization not found")
+          new ApiError(
+            404,
+            ApiCode.ORGANIZATION_NOT_FOUND,
+            "Organization not found"
+          )
         );
       }
 
-      const { defaultStationId } = req.body as { defaultStationId?: string | null };
+      const { defaultStationId } = req.body as {
+        defaultStationId?: string | null;
+      };
 
       if (defaultStationId !== undefined && defaultStationId !== null) {
         // Validate the station belongs to this org
-        const station = await DbService.repository.stations.findById(defaultStationId);
+        const station =
+          await DbService.repository.stations.findById(defaultStationId);
         if (!station || station.organizationId !== organizationId) {
           return next(
-            new ApiError(404, ApiCode.STATION_NOT_FOUND, "Station not found or does not belong to this organization")
+            new ApiError(
+              404,
+              ApiCode.STATION_NOT_FOUND,
+              "Station not found or does not belong to this organization"
+            )
           );
         }
       }
 
-      const organization = await DbService.repository.organizations.update(
-        id,
-        { defaultStationId: defaultStationId ?? null, updated: Date.now(), updatedBy: userId } as never
-      );
+      const organization = await DbService.repository.organizations.update(id, {
+        defaultStationId: defaultStationId ?? null,
+        updated: Date.now(),
+        updatedBy: userId,
+      } as never);
 
       return HttpService.success(res, { organization });
     } catch (error) {
@@ -122,7 +134,17 @@ organizationRouter.patch(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to update organization"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ORGANIZATION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to update organization"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to update organization"
+            )
+      );
     }
   }
 );
@@ -134,10 +156,16 @@ organizationRouter.get(
       const auth0Id = req.auth?.payload.sub as string;
       logger.info({ auth0Id }, "GET /api/organization/current called");
 
-      const user = await DbService.repository.users.findByAuth0Id(auth0Id).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ORGANIZATION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch user");
-      });
+      const user = await DbService.repository.users
+        .findByAuth0Id(auth0Id)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ORGANIZATION_FETCH_FAILED,
+            error instanceof Error ? error.message : "Failed to fetch user"
+          );
+        });
       if (!user) {
         return next(
           new ApiError(
@@ -148,9 +176,17 @@ organizationRouter.get(
         );
       }
 
-      const result = await ApplicationService.getCurrentOrganization(user.id).catch((error) => {
+      const result = await ApplicationService.getCurrentOrganization(
+        user.id
+      ).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ORGANIZATION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch current organization");
+        throw new ApiError(
+          500,
+          ApiCode.ORGANIZATION_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch current organization"
+        );
       });
       if (!result) {
         return next(
@@ -170,7 +206,17 @@ organizationRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch current organization"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ORGANIZATION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch current organization"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ORGANIZATION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch current organization"
+            )
+      );
     }
   }
 );

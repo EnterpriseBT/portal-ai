@@ -1,7 +1,10 @@
 import { jest } from "@jest/globals";
 import { z } from "zod";
 
-import { validateWithSchema, focusFirstInvalidField } from "../utils/form-validation.util";
+import {
+  validateWithSchema,
+  focusFirstInvalidField,
+} from "../utils/form-validation.util";
 
 const TestSchema = z.object({
   name: z.string().min(1, "Name is required"),

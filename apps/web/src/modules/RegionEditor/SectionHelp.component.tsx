@@ -8,7 +8,10 @@ export interface SectionHelpUIProps {
   ariaLabel: string;
 }
 
-export const SectionHelpUI: React.FC<SectionHelpUIProps> = ({ title, ariaLabel }) => (
+export const SectionHelpUI: React.FC<SectionHelpUIProps> = ({
+  title,
+  ariaLabel,
+}) => (
   <Tooltip arrow title={title}>
     <Icon
       name={IconName.HelpOutline}

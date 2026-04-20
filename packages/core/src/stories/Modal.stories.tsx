@@ -44,9 +44,7 @@ export const Default: Story = {
     open: true,
     onClose: () => {},
     title: "Modal Title",
-    children: (
-      <Typography>This is the modal content.</Typography>
-    ),
+    children: <Typography>This is the modal content.</Typography>,
   },
 };
 
@@ -55,9 +53,7 @@ export const WithActions: Story = {
     open: true,
     onClose: () => {},
     title: "Confirm Action",
-    children: (
-      <Typography>Are you sure you want to proceed?</Typography>
-    ),
+    children: <Typography>Are you sure you want to proceed?</Typography>,
     actions: (
       <>
         <Button variant="text">Cancel</Button>
@@ -73,9 +69,7 @@ export const NoCloseButton: Story = {
     onClose: () => {},
     title: "Important Notice",
     showCloseButton: false,
-    children: (
-      <Typography>You must acknowledge this message.</Typography>
-    ),
+    children: <Typography>You must acknowledge this message.</Typography>,
     actions: <Button variant="contained">Acknowledge</Button>,
   },
 };

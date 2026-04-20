@@ -1,5 +1,8 @@
 export { RegionEditorUI } from "./RegionEditor.component";
-export type { RegionEditorUIProps, RegionEditorStep } from "./RegionEditor.component";
+export type {
+  RegionEditorUIProps,
+  RegionEditorStep,
+} from "./RegionEditor.component";
 
 export { RegionDrawingStepUI } from "./RegionDrawingStep.component";
 export type { RegionDrawingStepUIProps } from "./RegionDrawingStep.component";

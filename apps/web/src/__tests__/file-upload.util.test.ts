@@ -260,9 +260,11 @@ describe("useFileUpload", () => {
       expect(mockPresign).toHaveBeenCalledWith(
         expect.objectContaining({
           files: [
-            expect.objectContaining({ contentType: "application/octet-stream" }),
+            expect.objectContaining({
+              contentType: "application/octet-stream",
+            }),
           ],
-        }),
+        })
       );
     });
   });
@@ -351,10 +353,10 @@ describe("useFileUpload", () => {
     });
 
     expect(MockXMLHttpRequest.instances[0].url).toBe(
-      "https://s3.example.com/presigned/contacts.csv",
+      "https://s3.example.com/presigned/contacts.csv"
     );
     expect(MockXMLHttpRequest.instances[1].url).toBe(
-      "https://s3.example.com/presigned/products.csv",
+      "https://s3.example.com/presigned/products.csv"
     );
 
     // Complete both
@@ -476,7 +478,9 @@ describe("useFileUpload", () => {
 
   it("should preserve ApiError code when presign fails with ApiError", async () => {
     const { ApiError } = await import("../utils/api.util");
-    mockPresign.mockRejectedValue(new ApiError("Too many files", "UPLOAD_TOO_MANY", 400));
+    mockPresign.mockRejectedValue(
+      new ApiError("Too many files", "UPLOAD_TOO_MANY", 400)
+    );
 
     const { result } = renderHook(() => useFileUpload());
     const file = createMockFile("contacts.csv", 1024);
@@ -526,7 +530,7 @@ describe("useFileUpload", () => {
     const { ApiError } = await import("../utils/api.util");
     mockPresign.mockResolvedValue(PRESIGN_RESPONSE);
     mockProcess.mockRejectedValue(
-      new ApiError("Job not found", "UPLOAD_JOB_NOT_FOUND", 404),
+      new ApiError("Job not found", "UPLOAD_JOB_NOT_FOUND", 404)
     );
 
     const { result } = renderHook(() => useFileUpload());

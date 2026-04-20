@@ -11,9 +11,12 @@ import {
 // ---------------------------------------------------------------------------
 
 const mockGenerateText = jest.fn<() => Promise<{ output: unknown }>>();
+const mockGenerateObject =
+  jest.fn<() => Promise<{ object: unknown; usage: unknown }>>();
 
 jest.unstable_mockModule("ai", () => ({
   generateText: mockGenerateText,
+  generateObject: mockGenerateObject,
   Output: {
     object: ({ schema }: { schema: unknown }) => ({ type: "object", schema }),
   },
@@ -28,19 +31,20 @@ jest.unstable_mockModule("../../services/ai.service.js", () => ({
   },
 }));
 
-const { FileAnalysisService } = await import(
-  "../../services/file-analysis.service.js"
-);
-const { buildFileAnalysisPrompt } = await import(
-  "../../prompts/file-analysis.prompt.js"
-);
-type ExistingColumnDefinition = import("../../services/file-analysis.service.js").ExistingColumnDefinition;
+const { FileAnalysisService } =
+  await import("../../services/file-analysis.service.js");
+const { buildFileAnalysisPrompt } =
+  await import("../../prompts/file-analysis.prompt.js");
+type ExistingColumnDefinition =
+  import("../../services/file-analysis.service.js").ExistingColumnDefinition;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeColumnStat(overrides: Partial<ColumnStat> & { name: string }): ColumnStat {
+function makeColumnStat(
+  overrides: Partial<ColumnStat> & { name: string }
+): ColumnStat {
   return {
     nullCount: 0,
     totalCount: 10,
@@ -54,7 +58,9 @@ function makeColumnStat(overrides: Partial<ColumnStat> & { name: string }): Colu
   };
 }
 
-function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseResult {
+function makeParseResult(
+  overrides: Partial<FileParseResult> = {}
+): FileParseResult {
   return {
     fileName: "contacts.csv",
     delimiter: ",",
@@ -68,7 +74,10 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
     ],
     columnStats: [
       makeColumnStat({ name: "name", sampleValues: ["Alice", "Bob", "Carol"] }),
-      makeColumnStat({ name: "email", sampleValues: ["alice@test.com", "bob@test.com", "carol@test.com"] }),
+      makeColumnStat({
+        name: "email",
+        sampleValues: ["alice@test.com", "bob@test.com", "carol@test.com"],
+      }),
       makeColumnStat({ name: "age", sampleValues: ["30", "25", "35"] }),
     ],
     ...overrides,
@@ -78,17 +87,105 @@ function makeParseResult(overrides: Partial<FileParseResult> = {}): FileParseRes
 /** Standard seed column definitions covering all types. */
 function makeSeedColumns(): ExistingColumnDefinition[] {
   return [
-    { id: "cd-uuid", key: "uuid", label: "UUID", type: "string", description: "Universally unique identifier", validationPattern: null, canonicalFormat: "lowercase" },
-    { id: "cd-email", key: "email", label: "Email", type: "string", description: "Email address", validationPattern: null, canonicalFormat: "lowercase" },
-    { id: "cd-phone", key: "phone", label: "Phone", type: "string", description: "Phone number", validationPattern: null, canonicalFormat: "phone" },
-    { id: "cd-name", key: "name", label: "Name", type: "string", description: "Person or entity name", validationPattern: null, canonicalFormat: "trim" },
-    { id: "cd-text", key: "text", label: "Text", type: "string", description: "General-purpose text content", validationPattern: null, canonicalFormat: "trim" },
-    { id: "cd-integer", key: "integer", label: "Integer", type: "number", description: "Whole number", validationPattern: null, canonicalFormat: "#,##0" },
-    { id: "cd-decimal", key: "decimal", label: "Decimal", type: "number", description: "Decimal number", validationPattern: null, canonicalFormat: "#,##0.00" },
-    { id: "cd-boolean", key: "boolean", label: "Boolean", type: "boolean", description: "True or false", validationPattern: null, canonicalFormat: null },
-    { id: "cd-date", key: "date", label: "Date", type: "date", description: "Calendar date", validationPattern: null, canonicalFormat: null },
-    { id: "cd-datetime", key: "datetime", label: "Date & Time", type: "datetime", description: "Date and time", validationPattern: null, canonicalFormat: null },
-    { id: "cd-url", key: "url", label: "Website", type: "string", description: "Website URL", validationPattern: null, canonicalFormat: "lowercase" },
+    {
+      id: "cd-uuid",
+      key: "uuid",
+      label: "UUID",
+      type: "string",
+      description: "Universally unique identifier",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
+    {
+      id: "cd-email",
+      key: "email",
+      label: "Email",
+      type: "string",
+      description: "Email address",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
+    {
+      id: "cd-phone",
+      key: "phone",
+      label: "Phone",
+      type: "string",
+      description: "Phone number",
+      validationPattern: null,
+      canonicalFormat: "phone",
+    },
+    {
+      id: "cd-name",
+      key: "name",
+      label: "Name",
+      type: "string",
+      description: "Person or entity name",
+      validationPattern: null,
+      canonicalFormat: "trim",
+    },
+    {
+      id: "cd-text",
+      key: "text",
+      label: "Text",
+      type: "string",
+      description: "General-purpose text content",
+      validationPattern: null,
+      canonicalFormat: "trim",
+    },
+    {
+      id: "cd-integer",
+      key: "integer",
+      label: "Integer",
+      type: "number",
+      description: "Whole number",
+      validationPattern: null,
+      canonicalFormat: "#,##0",
+    },
+    {
+      id: "cd-decimal",
+      key: "decimal",
+      label: "Decimal",
+      type: "number",
+      description: "Decimal number",
+      validationPattern: null,
+      canonicalFormat: "#,##0.00",
+    },
+    {
+      id: "cd-boolean",
+      key: "boolean",
+      label: "Boolean",
+      type: "boolean",
+      description: "True or false",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-date",
+      key: "date",
+      label: "Date",
+      type: "date",
+      description: "Calendar date",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-datetime",
+      key: "datetime",
+      label: "Date & Time",
+      type: "datetime",
+      description: "Date and time",
+      validationPattern: null,
+      canonicalFormat: null,
+    },
+    {
+      id: "cd-url",
+      key: "url",
+      label: "Website",
+      type: "string",
+      description: "Website URL",
+      validationPattern: null,
+      canonicalFormat: "lowercase",
+    },
   ];
 }
 
@@ -199,13 +296,32 @@ describe("FileAnalysisService", () => {
 
     it("resolves existingColumnDefinitionId when AI returns key instead of UUID", async () => {
       const existingColumns: ExistingColumnDefinition[] = [
-        { id: "uuid-123", key: "is_active", label: "Is Active", type: "boolean", description: "Active flag", validationPattern: null, canonicalFormat: null },
-        { id: "uuid-456", key: "email", label: "Email", type: "string", description: "Email address", validationPattern: null, canonicalFormat: "lowercase" },
+        {
+          id: "uuid-123",
+          key: "is_active",
+          label: "Is Active",
+          type: "boolean",
+          description: "Active flag",
+          validationPattern: null,
+          canonicalFormat: null,
+        },
+        {
+          id: "uuid-456",
+          key: "email",
+          label: "Email",
+          type: "string",
+          description: "Email address",
+          validationPattern: null,
+          canonicalFormat: "lowercase",
+        },
       ];
       const parseResult = makeParseResult({
         headers: ["is_active", "email"],
         columnStats: [
-          makeColumnStat({ name: "is_active", sampleValues: ["true", "false"] }),
+          makeColumnStat({
+            name: "is_active",
+            sampleValues: ["true", "false"],
+          }),
           makeColumnStat({ name: "email", sampleValues: ["a@b.com"] }),
         ],
       });
@@ -260,9 +376,7 @@ describe("FileAnalysisService", () => {
       const seedColumns = makeSeedColumns();
       const parseResult = makeParseResult({
         headers: ["mystery"],
-        columnStats: [
-          makeColumnStat({ name: "mystery", sampleValues: ["x"] }),
-        ],
+        columnStats: [makeColumnStat({ name: "mystery", sampleValues: ["x"] })],
       });
       const aiResult = {
         entityKey: "data",
@@ -318,7 +432,10 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult({
         headers: ["created_at"],
         columnStats: [
-          makeColumnStat({ name: "created_at", sampleValues: ["2024-01-15", "2024-02-20", "2024-03-10"] }),
+          makeColumnStat({
+            name: "created_at",
+            sampleValues: ["2024-01-15", "2024-02-20", "2024-03-10"],
+          }),
         ],
       });
 
@@ -335,7 +452,10 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult({
         headers: ["price"],
         columnStats: [
-          makeColumnStat({ name: "price", sampleValues: ["9.99", "14.50", "100.00"] }),
+          makeColumnStat({
+            name: "price",
+            sampleValues: ["9.99", "14.50", "100.00"],
+          }),
         ],
       });
 
@@ -352,7 +472,10 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult({
         headers: ["active"],
         columnStats: [
-          makeColumnStat({ name: "active", sampleValues: ["true", "false", "true", "false"] }),
+          makeColumnStat({
+            name: "active",
+            sampleValues: ["true", "false", "true", "false"],
+          }),
         ],
       });
 
@@ -369,7 +492,10 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult({
         headers: ["email"],
         columnStats: [
-          makeColumnStat({ name: "email", sampleValues: ["alice@test.com", "bob@example.org"] }),
+          makeColumnStat({
+            name: "email",
+            sampleValues: ["alice@test.com", "bob@example.org"],
+          }),
         ],
       });
 
@@ -404,12 +530,23 @@ describe("FileAnalysisService", () => {
     it("exact label match against existing column definitions works", () => {
       const existingColumns: ExistingColumnDefinition[] = [
         ...makeSeedColumns(),
-        { id: "col-2", key: "user_email", label: "Contact Email", type: "string", description: "User email", validationPattern: null, canonicalFormat: "lowercase" },
+        {
+          id: "col-2",
+          key: "user_email",
+          label: "Contact Email",
+          type: "string",
+          description: "User email",
+          validationPattern: null,
+          canonicalFormat: "lowercase",
+        },
       ];
       const parseResult = makeParseResult({
         headers: ["Contact Email"],
         columnStats: [
-          makeColumnStat({ name: "Contact Email", sampleValues: ["alice@test.com"] }),
+          makeColumnStat({
+            name: "Contact Email",
+            sampleValues: ["alice@test.com"],
+          }),
         ],
       });
 
@@ -428,7 +565,10 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult({
         headers: ["weird_column_xyz"],
         columnStats: [
-          makeColumnStat({ name: "weird_column_xyz", sampleValues: ["foo", "bar"] }),
+          makeColumnStat({
+            name: "weird_column_xyz",
+            sampleValues: ["foo", "bar"],
+          }),
         ],
       });
 
@@ -461,7 +601,10 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult({
         headers: ["timestamp"],
         columnStats: [
-          makeColumnStat({ name: "timestamp", sampleValues: ["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"] }),
+          makeColumnStat({
+            name: "timestamp",
+            sampleValues: ["2024-01-15T10:30:00Z", "2024-02-20T14:00:00Z"],
+          }),
         ],
       });
 
@@ -495,8 +638,14 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult({
         headers: ["First Name", "email"],
         columnStats: [
-          makeColumnStat({ name: "First Name", sampleValues: ["Alice", "Bob"] }),
-          makeColumnStat({ name: "email", sampleValues: ["a@b.com", "c@d.com"] }),
+          makeColumnStat({
+            name: "First Name",
+            sampleValues: ["Alice", "Bob"],
+          }),
+          makeColumnStat({
+            name: "email",
+            sampleValues: ["a@b.com", "c@d.com"],
+          }),
         ],
       });
 
@@ -514,7 +663,10 @@ describe("FileAnalysisService", () => {
       const parseResult = makeParseResult({
         headers: ["status"],
         columnStats: [
-          makeColumnStat({ name: "status", sampleValues: ["active", "inactive"] }),
+          makeColumnStat({
+            name: "status",
+            sampleValues: ["active", "inactive"],
+          }),
         ],
       });
 
@@ -588,8 +740,13 @@ describe("FileAnalysisService", () => {
       const columns = makeSeedColumns();
       // Add a column with validationPattern to verify it's rendered
       columns.push({
-        id: "cd-custom", key: "custom_email", label: "Custom Email", type: "string",
-        description: "Custom email", validationPattern: "^[^@]+@[^@]+$", canonicalFormat: "lowercase",
+        id: "cd-custom",
+        key: "custom_email",
+        label: "Custom Email",
+        type: "string",
+        description: "Custom email",
+        validationPattern: "^[^@]+@[^@]+$",
+        canonicalFormat: "lowercase",
       });
       const prompt = buildFileAnalysisPrompt({
         parseResult: makeParseResult(),

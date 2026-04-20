@@ -6,7 +6,11 @@ import { SidebarNavToggleUI } from "../components/SidebarNavToggle.component";
 describe("SidebarNavToggleUI", () => {
   it("renders the collapsed icon when collapsed", () => {
     const { container } = render(
-      <SidebarNavToggleUI variant="compact" collapsed={true} onClick={jest.fn()} />
+      <SidebarNavToggleUI
+        variant="compact"
+        collapsed={true}
+        onClick={jest.fn()}
+      />
     );
 
     expect(
@@ -16,7 +20,11 @@ describe("SidebarNavToggleUI", () => {
 
   it("renders the expanded icon when not collapsed", () => {
     const { container } = render(
-      <SidebarNavToggleUI variant="compact" collapsed={false} onClick={jest.fn()} />
+      <SidebarNavToggleUI
+        variant="compact"
+        collapsed={false}
+        onClick={jest.fn()}
+      />
     );
 
     expect(
@@ -56,7 +64,13 @@ describe("SidebarNavToggleUI", () => {
 
   it("calls onClick when clicked", () => {
     const onClick = jest.fn();
-    render(<SidebarNavToggleUI variant="compact" collapsed={false} onClick={onClick} />);
+    render(
+      <SidebarNavToggleUI
+        variant="compact"
+        collapsed={false}
+        onClick={onClick}
+      />
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /toggle sidebar/i }));
 

@@ -19,16 +19,18 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 }));
 
 // Mock usersRepo
-jest.unstable_mockModule("../../../db/repositories/users.repository.js", () => ({
-  usersRepo: {
-    findByAuth0Id: jest.fn(),
-  },
-}));
+jest.unstable_mockModule(
+  "../../../db/repositories/users.repository.js",
+  () => ({
+    usersRepo: {
+      findByAuth0Id: jest.fn(),
+    },
+  })
+);
 
 const { Auth0Service } = await import("../../../services/auth0.service.js");
-const { usersRepo } = await import(
-  "../../../db/repositories/users.repository.js"
-);
+const { usersRepo } =
+  await import("../../../db/repositories/users.repository.js");
 const { app } = await import("../../../app.js");
 const { ApiError } = await import("../../../services/http.service.js");
 const mockedAuth0Service = Auth0Service as jest.Mocked<typeof Auth0Service>;

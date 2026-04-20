@@ -60,12 +60,16 @@ describe("JobSchema", () => {
   });
 
   it("should reject an invalid status value", () => {
-    const result = JobSchema.safeParse(buildValidJob({ status: "unknown" as never }));
+    const result = JobSchema.safeParse(
+      buildValidJob({ status: "unknown" as never })
+    );
     expect(result.success).toBe(false);
   });
 
   it("should reject an invalid type value", () => {
-    const result = JobSchema.safeParse(buildValidJob({ type: "invalid_type" as never }));
+    const result = JobSchema.safeParse(
+      buildValidJob({ type: "invalid_type" as never })
+    );
     expect(result.success).toBe(false);
   });
 
@@ -100,12 +104,17 @@ describe("JobSchema", () => {
 // ── JobStatusEnum ────────────────────────────────────────────────────
 
 describe("JobStatusEnum", () => {
-  it.each(["pending", "active", "completed", "failed", "stalled", "cancelled", "awaiting_confirmation"])(
-    "should accept '%s'",
-    (status) => {
-      expect(JobStatusEnum.safeParse(status).success).toBe(true);
-    }
-  );
+  it.each([
+    "pending",
+    "active",
+    "completed",
+    "failed",
+    "stalled",
+    "cancelled",
+    "awaiting_confirmation",
+  ])("should accept '%s'", (status) => {
+    expect(JobStatusEnum.safeParse(status).success).toBe(true);
+  });
 
   it("should reject an unknown status", () => {
     expect(JobStatusEnum.safeParse("running").success).toBe(false);
@@ -311,9 +320,11 @@ describe("JobModel.TERMINAL_STATUSES", () => {
   });
 
   it("should contain exactly completed, failed, and cancelled", () => {
-    expect([...JobModel.TERMINAL_STATUSES].sort()).toEqual(
-      ["cancelled", "completed", "failed"]
-    );
+    expect([...JobModel.TERMINAL_STATUSES].sort()).toEqual([
+      "cancelled",
+      "completed",
+      "failed",
+    ]);
   });
 });
 
@@ -362,7 +373,9 @@ describe("FileUploadMetadataSchema", () => {
   };
 
   it("should parse valid metadata", () => {
-    expect(FileUploadMetadataSchema.safeParse(validMetadata).success).toBe(true);
+    expect(FileUploadMetadataSchema.safeParse(validMetadata).success).toBe(
+      true
+    );
   });
 
   it("should parse metadata with multiple files", () => {
@@ -399,7 +412,11 @@ describe("FileUploadJobModelFactory", () => {
     organizationId: "org-1",
     connectorDefinitionId: "cdef-fileupload",
     files: [
-      { originalName: "data.csv", s3Key: "uploads/org-1/job-1/data.csv", sizeBytes: 1024 },
+      {
+        originalName: "data.csv",
+        s3Key: "uploads/org-1/job-1/data.csv",
+        sizeBytes: 1024,
+      },
     ],
   };
 

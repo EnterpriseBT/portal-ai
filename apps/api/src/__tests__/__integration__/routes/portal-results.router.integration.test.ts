@@ -153,9 +153,12 @@ describe("Portal Results Router", () => {
         .insert(portals)
         .values(portal as never);
 
-      const assistantMsg = createPortalMessage(organizationId, portal.id, "assistant", [
-        { type: "text", content: "Analysis complete." },
-      ]);
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [{ type: "text", content: "Analysis complete." }]
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(portalMessages)
         .values(assistantMsg as never);
@@ -197,9 +200,12 @@ describe("Portal Results Router", () => {
         .insert(portals)
         .values(portal as never);
 
-      const assistantMsg = createPortalMessage(organizationId, portal.id, "assistant", [
-        { type: "text", content: "Hello" },
-      ]);
+      const assistantMsg = createPortalMessage(
+        organizationId,
+        portal.id,
+        "assistant",
+        [{ type: "text", content: "Hello" }]
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(portalMessages)
         .values(assistantMsg as never);
@@ -259,8 +265,16 @@ describe("Portal Results Router", () => {
         .insert(portals)
         .values([portalA as never, portalB as never]);
 
-      const resultA = createPortalResult(organizationId, stationA.id, portalA.id);
-      const resultB = createPortalResult(organizationId, stationB.id, portalB.id);
+      const resultA = createPortalResult(
+        organizationId,
+        stationA.id,
+        portalA.id
+      );
+      const resultB = createPortalResult(
+        organizationId,
+        stationB.id,
+        portalB.id
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(portalResults)
         .values([resultA as never, resultB as never]);
@@ -289,8 +303,16 @@ describe("Portal Results Router", () => {
         .insert(portals)
         .values([portalA as never, portalB as never]);
 
-      const resultA = createPortalResult(organizationId, station.id, portalA.id);
-      const resultB = createPortalResult(organizationId, station.id, portalB.id);
+      const resultA = createPortalResult(
+        organizationId,
+        station.id,
+        portalA.id
+      );
+      const resultB = createPortalResult(
+        organizationId,
+        station.id,
+        portalB.id
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(portalResults)
         .values([resultA as never, resultB as never]);
@@ -385,7 +407,9 @@ describe("Portal Results Router", () => {
 
       const res = await request(app).get("/api/portal-results").expect(200);
 
-      expect(res.body.payload.portalResults[0]).not.toHaveProperty("portalName");
+      expect(res.body.payload.portalResults[0]).not.toHaveProperty(
+        "portalName"
+      );
     });
   });
 
@@ -425,9 +449,7 @@ describe("Portal Results Router", () => {
     it("returns 404 for non-existent ID", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
-      await request(app)
-        .get(`/api/portal-results/${generateId()}`)
-        .expect(404);
+      await request(app).get(`/api/portal-results/${generateId()}`).expect(404);
     });
 
     it("returns 404 for soft-deleted result", async () => {
@@ -454,9 +476,7 @@ describe("Portal Results Router", () => {
         .insert(portalResults)
         .values(result as never);
 
-      await request(app)
-        .get(`/api/portal-results/${result.id}`)
-        .expect(404);
+      await request(app).get(`/api/portal-results/${result.id}`).expect(404);
     });
   });
 

@@ -9,7 +9,11 @@ import { eq, inArray } from "drizzle-orm";
 import { stationInstances, connectorInstances } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
-import type { StationInstanceSelect, StationInstanceInsert, ConnectorInstanceSelect } from "../schema/zod.js";
+import type {
+  StationInstanceSelect,
+  StationInstanceInsert,
+  ConnectorInstanceSelect,
+} from "../schema/zod.js";
 
 export class StationInstancesRepository extends Repository<
   typeof stationInstances,
@@ -25,8 +29,14 @@ export class StationInstancesRepository extends Repository<
     stationId: string,
     opts: { include?: string[] } = {},
     client: DbClient = db
-  ): Promise<(StationInstanceSelect & { connectorInstance?: ConnectorInstanceSelect })[]> {
-    const rows = await this.findMany(eq(stationInstances.stationId, stationId), {}, client);
+  ): Promise<
+    (StationInstanceSelect & { connectorInstance?: ConnectorInstanceSelect })[]
+  > {
+    const rows = await this.findMany(
+      eq(stationInstances.stationId, stationId),
+      {},
+      client
+    );
     if (rows.length === 0 || !opts.include?.includes("connectorInstance")) {
       return rows;
     }
@@ -36,7 +46,9 @@ export class StationInstancesRepository extends Repository<
       .select()
       .from(connectorInstances)
       .where(inArray(connectorInstances.id, instanceIds));
-    const instanceMap = new Map(instances.map((i) => [i.id, i as ConnectorInstanceSelect]));
+    const instanceMap = new Map(
+      instances.map((i) => [i.id, i as ConnectorInstanceSelect])
+    );
 
     return rows.map((row) => ({
       ...row,
@@ -49,7 +61,10 @@ export class StationInstancesRepository extends Repository<
     connectorInstanceId: string,
     client: DbClient = db
   ): Promise<number> {
-    return this.count(eq(stationInstances.connectorInstanceId, connectorInstanceId), client);
+    return this.count(
+      eq(stationInstances.connectorInstanceId, connectorInstanceId),
+      client
+    );
   }
 
   /**

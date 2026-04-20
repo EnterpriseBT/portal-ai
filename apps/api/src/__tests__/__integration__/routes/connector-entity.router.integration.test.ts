@@ -41,7 +41,18 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 
-const { connectorDefinitions, connectorInstances, connectorEntities, fieldMappings, columnDefinitions, entityRecords, entityTagAssignments, entityTags, entityGroups, entityGroupMembers } = schema;
+const {
+  connectorDefinitions,
+  connectorInstances,
+  connectorEntities,
+  fieldMappings,
+  columnDefinitions,
+  entityRecords,
+  entityTagAssignments,
+  entityTags,
+  entityGroups,
+  entityGroupMembers,
+} = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -275,8 +286,12 @@ describe("Connector Entity Router", () => {
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorEntities)
         .values([
-          createConnEntity(organizationId, instA, { label: "Instance A Entity" }),
-          createConnEntity(organizationId, instB, { label: "Instance B Entity" }),
+          createConnEntity(organizationId, instA, {
+            label: "Instance A Entity",
+          }),
+          createConnEntity(organizationId, instB, {
+            label: "Instance B Entity",
+          }),
         ] as never);
 
       const res = await request(app)
@@ -315,12 +330,9 @@ describe("Connector Entity Router", () => {
         .insert(columnDefinitions)
         .values(colDef as never);
 
-      const mapping = createFieldMapping(
-        organizationId,
-        entity.id,
-        colDef.id,
-        { sourceField: "first_name" }
-      );
+      const mapping = createFieldMapping(organizationId, entity.id, colDef.id, {
+        sourceField: "first_name",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(fieldMappings)
         .values(mapping as never);
@@ -339,8 +351,12 @@ describe("Connector Entity Router", () => {
       expect(returnedEntity.fieldMappings).toHaveLength(1);
       expect(returnedEntity.fieldMappings[0].sourceField).toBe("first_name");
       expect(returnedEntity.fieldMappings[0].columnDefinition).toBeDefined();
-      expect(returnedEntity.fieldMappings[0].columnDefinition.id).toBe(colDef.id);
-      expect(returnedEntity.fieldMappings[0].columnDefinition.label).toBe("First Name");
+      expect(returnedEntity.fieldMappings[0].columnDefinition.id).toBe(
+        colDef.id
+      );
+      expect(returnedEntity.fieldMappings[0].columnDefinition.label).toBe(
+        "First Name"
+      );
     });
 
     it("should return flat data without fieldMappings key when include is not set", async () => {
@@ -467,14 +483,12 @@ describe("Connector Entity Router", () => {
         organizationId
       );
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(connectorEntities)
-        .values(
-          createConnEntity(organizationId, connectorInstanceId, {
-            key: "contacts",
-            label: "Contacts",
-          }) as never
-        );
+      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(
+        createConnEntity(organizationId, connectorInstanceId, {
+          key: "contacts",
+          label: "Contacts",
+        }) as never
+      );
 
       const res = await request(app)
         .get(
@@ -497,14 +511,12 @@ describe("Connector Entity Router", () => {
         organizationId
       );
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(connectorEntities)
-        .values(
-          createConnEntity(organizationId, connectorInstanceId, {
-            key: "contacts",
-            label: "Contacts",
-          }) as never
-        );
+      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(
+        createConnEntity(organizationId, connectorInstanceId, {
+          key: "contacts",
+          label: "Contacts",
+        }) as never
+      );
 
       const res = await request(app)
         .get(
@@ -534,8 +546,12 @@ describe("Connector Entity Router", () => {
         .insert(connectorEntities)
         .values(entity as never);
 
-      const colDefA = createColumnDefinition(organizationId, { label: "Active Col" });
-      const colDefB = createColumnDefinition(organizationId, { label: "Deleted Col" });
+      const colDefA = createColumnDefinition(organizationId, {
+        label: "Active Col",
+      });
+      const colDefB = createColumnDefinition(organizationId, {
+        label: "Deleted Col",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(columnDefinitions)
         .values([colDefA, colDefB] as never);
@@ -773,9 +789,13 @@ describe("Connector Entity Router", () => {
       const def = createConnectorDefinition({
         capabilityFlags: { sync: true, read: true, write: true },
       });
-      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
       const inst = createConnectorInstance(def.id, organizationId);
-      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(inst as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(inst as never);
 
       const entity = createConnEntity(organizationId, inst.id);
       await (db as ReturnType<typeof drizzle>)
@@ -841,14 +861,17 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
     const entity = createConnEntity(organizationId, inst.id);
     await db.insert(connectorEntities).values(entity as never);
 
-    return { userId, organizationId, connectorInstanceId: inst.id, connectorDefinitionId: def.id, entity };
+    return {
+      userId,
+      organizationId,
+      connectorInstanceId: inst.id,
+      connectorDefinitionId: def.id,
+      entity,
+    };
   }
 
   /** Seed related child data for an entity (records, mappings, tags, group members). */
-  async function seedRelatedData(
-    organizationId: string,
-    entityId: string,
-  ) {
+  async function seedRelatedData(organizationId: string, entityId: string) {
     // Column definition + field mapping
     const colDef = createColumnDefinition(organizationId);
     await db.insert(columnDefinitions).values(colDef as never);
@@ -958,21 +981,29 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
     });
 
     it("should return 422 ENTITY_HAS_EXTERNAL_REFERENCES when other entities reference it via refEntityKey", async () => {
-      const { organizationId, connectorInstanceId, entity } = await seedWithCapabilities({
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: true },
-      });
+      const { organizationId, connectorInstanceId, entity } =
+        await seedWithCapabilities({
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
 
       // Create another entity with a field mapping that references the first entity's key
       const otherEntity = createConnEntity(organizationId, connectorInstanceId);
       await db.insert(connectorEntities).values(otherEntity as never);
 
-      const colDef = createColumnDefinition(organizationId, { type: "reference" });
+      const colDef = createColumnDefinition(organizationId, {
+        type: "reference",
+      });
       await db.insert(columnDefinitions).values(colDef as never);
 
-      const refMapping = createFieldMapping(organizationId, otherEntity.id, colDef.id, {
-        refEntityKey: entity.key,
-      });
+      const refMapping = createFieldMapping(
+        organizationId,
+        otherEntity.id,
+        colDef.id,
+        {
+          refEntityKey: entity.key,
+        }
+      );
       await db.insert(fieldMappings).values(refMapping as never);
 
       const res = await request(app)
@@ -1016,24 +1047,28 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
         .set("Authorization", "Bearer test-token");
 
       // Query with includeDeleted to verify timestamps
-      const [recordRows] = await db.select().from(entityRecords).where(
-        eq(entityRecords.id, related.record.id)
-      );
+      const [recordRows] = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, related.record.id));
       expect(recordRows.deleted).not.toBeNull();
 
-      const [mappingRows] = await db.select().from(fieldMappings).where(
-        eq(fieldMappings.id, related.mapping.id)
-      );
+      const [mappingRows] = await db
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.id, related.mapping.id));
       expect(mappingRows.deleted).not.toBeNull();
 
-      const [tagAssignmentRows] = await db.select().from(entityTagAssignments).where(
-        eq(entityTagAssignments.id, related.tagAssignment.id)
-      );
+      const [tagAssignmentRows] = await db
+        .select()
+        .from(entityTagAssignments)
+        .where(eq(entityTagAssignments.id, related.tagAssignment.id));
       expect(tagAssignmentRows.deleted).not.toBeNull();
 
-      const [memberRows] = await db.select().from(entityGroupMembers).where(
-        eq(entityGroupMembers.id, related.member.id)
-      );
+      const [memberRows] = await db
+        .select()
+        .from(entityGroupMembers)
+        .where(eq(entityGroupMembers.id, related.member.id));
       expect(memberRows.deleted).not.toBeNull();
     });
 
@@ -1062,7 +1097,9 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
         .set("Authorization", "Bearer test-token");
 
       const listRes = await request(app)
-        .get(`/api/connector-entities?connectorInstanceIds=${connectorInstanceId}`)
+        .get(
+          `/api/connector-entities?connectorInstanceIds=${connectorInstanceId}`
+        )
         .set("Authorization", "Bearer test-token");
 
       expect(listRes.status).toBe(200);
@@ -1074,10 +1111,11 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
 
   describe("GET /api/connector-entities/:id/impact", () => {
     it("should return correct counts including refFieldMappings", async () => {
-      const { organizationId, connectorInstanceId, entity } = await seedWithCapabilities({
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: true },
-      });
+      const { organizationId, connectorInstanceId, entity } =
+        await seedWithCapabilities({
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
 
       await seedRelatedData(organizationId, entity.id);
 
@@ -1085,7 +1123,9 @@ describe("Connector Entity Router — Delete with Guards & Impact", () => {
       const otherEntity = createConnEntity(organizationId, connectorInstanceId);
       await db.insert(connectorEntities).values(otherEntity as never);
 
-      const refColDef = createColumnDefinition(organizationId, { type: "reference" });
+      const refColDef = createColumnDefinition(organizationId, {
+        type: "reference",
+      });
       await db.insert(columnDefinitions).values(refColDef as never);
 
       await db.insert(fieldMappings).values(

@@ -5,14 +5,18 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // ---------------------------------------------------------------------------
 
 const mockJobsFindMany = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockFieldMappingsFindByColumnDefinitionId = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockJobsServiceCreate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockFieldMappingsFindByColumnDefinitionId =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockJobsServiceCreate =
+  jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
       jobs: { findMany: mockJobsFindMany },
-      fieldMappings: { findByColumnDefinitionId: mockFieldMappingsFindByColumnDefinitionId },
+      fieldMappings: {
+        findByColumnDefinitionId: mockFieldMappingsFindByColumnDefinitionId,
+      },
     },
   },
 }));
@@ -25,15 +29,17 @@ jest.unstable_mockModule("../../db/schema/index.js", () => ({
   jobs: { type: "type", status: "status" },
 }));
 
-const { RevalidationService } = await import(
-  "../../services/revalidation.service.js"
-);
+const { RevalidationService } =
+  await import("../../services/revalidation.service.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function activeJob(connectorEntityId: string, overrides: Record<string, unknown> = {}) {
+function activeJob(
+  connectorEntityId: string,
+  overrides: Record<string, unknown> = {}
+) {
   return {
     id: "job-active-1",
     type: "revalidation",
@@ -110,7 +116,7 @@ describe("RevalidationService.assertNoActiveJob", () => {
     mockJobsFindMany.mockResolvedValue([]);
 
     await expect(
-      RevalidationService.assertNoActiveJob("ce-1"),
+      RevalidationService.assertNoActiveJob("ce-1")
     ).resolves.toBeUndefined();
   });
 
@@ -118,7 +124,7 @@ describe("RevalidationService.assertNoActiveJob", () => {
     mockJobsFindMany.mockResolvedValue([activeJob("ce-1")]);
 
     await expect(
-      RevalidationService.assertNoActiveJob("ce-1"),
+      RevalidationService.assertNoActiveJob("ce-1")
     ).rejects.toMatchObject({
       status: 409,
       code: "REVALIDATION_ACTIVE",
@@ -135,7 +141,7 @@ describe("RevalidationService.assertNoActiveJobForColumnDefinition", () => {
     mockFieldMappingsFindByColumnDefinitionId.mockResolvedValue([]);
 
     await expect(
-      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1"),
+      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1")
     ).resolves.toBeUndefined();
   });
 
@@ -147,7 +153,7 @@ describe("RevalidationService.assertNoActiveJobForColumnDefinition", () => {
     mockJobsFindMany.mockResolvedValue([]);
 
     await expect(
-      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1"),
+      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1")
     ).resolves.toBeUndefined();
   });
 
@@ -158,7 +164,7 @@ describe("RevalidationService.assertNoActiveJobForColumnDefinition", () => {
     mockJobsFindMany.mockResolvedValue([activeJob("ce-1")]);
 
     await expect(
-      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1"),
+      RevalidationService.assertNoActiveJobForColumnDefinition("cd-1")
     ).rejects.toMatchObject({
       status: 409,
       code: "REVALIDATION_ACTIVE",

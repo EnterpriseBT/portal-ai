@@ -15,16 +15,26 @@ jest.unstable_mockModule("../api/sdk", () => ({
   },
 }));
 
-jest.unstable_mockModule("../components/EntityRecordCellCode.component", () => ({
-  EntityRecordCellCode: ({ value, type }: { value: unknown; type: string }) => (
-    <code data-testid="cell-code" data-type={type}>{JSON.stringify(value)}</code>
-  ),
-}));
+jest.unstable_mockModule(
+  "../components/EntityRecordCellCode.component",
+  () => ({
+    EntityRecordCellCode: ({
+      value,
+      type,
+    }: {
+      value: unknown;
+      type: string;
+    }) => (
+      <code data-testid="cell-code" data-type={type}>
+        {JSON.stringify(value)}
+      </code>
+    ),
+  })
+);
 
 const { render, screen } = await import("./test-utils");
-const { EntityRecordDataTableUI } = await import(
-  "../components/EntityRecordDataTable.component"
-);
+const { EntityRecordDataTableUI } =
+  await import("../components/EntityRecordDataTable.component");
 
 // ── Tests ───────────────────────────────────────────────────────────
 
@@ -32,9 +42,42 @@ describe("EntityRecordDataTableUI", () => {
   const connectorEntityId = "test-entity-id";
 
   const columns = [
-    { key: "first_name", normalizedKey: "first_name", label: "First Name", type: "string" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-    { key: "email", normalizedKey: "email", label: "Email", type: "string" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-    { key: "active", normalizedKey: "active", label: "Active", type: "boolean" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+    {
+      key: "first_name",
+      normalizedKey: "first_name",
+      label: "First Name",
+      type: "string" as const,
+      required: false,
+      enumValues: null,
+      defaultValue: null,
+      validationPattern: null,
+      canonicalFormat: null,
+      format: null,
+    },
+    {
+      key: "email",
+      normalizedKey: "email",
+      label: "Email",
+      type: "string" as const,
+      required: false,
+      enumValues: null,
+      defaultValue: null,
+      validationPattern: null,
+      canonicalFormat: null,
+      format: null,
+    },
+    {
+      key: "active",
+      normalizedKey: "active",
+      label: "Active",
+      type: "boolean" as const,
+      required: false,
+      enumValues: null,
+      defaultValue: null,
+      validationPattern: null,
+      canonicalFormat: null,
+      format: null,
+    },
   ];
 
   const rows = [
@@ -142,12 +185,28 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ data: { id: 1 } }]}
-        columns={[{ key: "data", normalizedKey: "data", label: "Data", type: "json" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
+        columns={[
+          {
+            key: "data",
+            normalizedKey: "data",
+            label: "Data",
+            type: "json" as const,
+            required: false,
+            enumValues: null,
+            defaultValue: null,
+            validationPattern: null,
+            canonicalFormat: null,
+            format: null,
+          },
+        ]}
         source="cache"
       />
     );
     expect(screen.getByTestId("cell-code")).toBeInTheDocument();
-    expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "json");
+    expect(screen.getByTestId("cell-code")).toHaveAttribute(
+      "data-type",
+      "json"
+    );
   });
 
   it("renders array column as a <code> element", () => {
@@ -155,12 +214,28 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ tags: ["a", "b"] }]}
-        columns={[{ key: "tags", normalizedKey: "tags", label: "Tags", type: "array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
+        columns={[
+          {
+            key: "tags",
+            normalizedKey: "tags",
+            label: "Tags",
+            type: "array" as const,
+            required: false,
+            enumValues: null,
+            defaultValue: null,
+            validationPattern: null,
+            canonicalFormat: null,
+            format: null,
+          },
+        ]}
         source="cache"
       />
     );
     expect(screen.getByTestId("cell-code")).toBeInTheDocument();
-    expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "array");
+    expect(screen.getByTestId("cell-code")).toHaveAttribute(
+      "data-type",
+      "array"
+    );
   });
 
   it("renders reference-array column as a <code> element", () => {
@@ -168,12 +243,28 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ refs: ["id-1", "id-2"] }]}
-        columns={[{ key: "refs", normalizedKey: "refs", label: "Refs", type: "reference-array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
+        columns={[
+          {
+            key: "refs",
+            normalizedKey: "refs",
+            label: "Refs",
+            type: "reference-array" as const,
+            required: false,
+            enumValues: null,
+            defaultValue: null,
+            validationPattern: null,
+            canonicalFormat: null,
+            format: null,
+          },
+        ]}
         source="cache"
       />
     );
     expect(screen.getByTestId("cell-code")).toBeInTheDocument();
-    expect(screen.getByTestId("cell-code")).toHaveAttribute("data-type", "reference-array");
+    expect(screen.getByTestId("cell-code")).toHaveAttribute(
+      "data-type",
+      "reference-array"
+    );
   });
 
   it("calls onRowClick when a row is clicked", async () => {
@@ -212,7 +303,20 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ data: { id: 1 } }]}
-        columns={[{ key: "data", normalizedKey: "data", label: "Data", type: "json" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
+        columns={[
+          {
+            key: "data",
+            normalizedKey: "data",
+            label: "Data",
+            type: "json" as const,
+            required: false,
+            enumValues: null,
+            defaultValue: null,
+            validationPattern: null,
+            canonicalFormat: null,
+            format: null,
+          },
+        ]}
         source="cache"
       />
     );
@@ -224,7 +328,20 @@ describe("EntityRecordDataTableUI", () => {
       <EntityRecordDataTableUI
         connectorEntityId={connectorEntityId}
         rows={[{ refs: ["id-1"] }]}
-        columns={[{ key: "refs", normalizedKey: "refs", label: "Refs", type: "reference-array" as const, required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null }]}
+        columns={[
+          {
+            key: "refs",
+            normalizedKey: "refs",
+            label: "Refs",
+            type: "reference-array" as const,
+            required: false,
+            enumValues: null,
+            defaultValue: null,
+            validationPattern: null,
+            canonicalFormat: null,
+            format: null,
+          },
+        ]}
         source="cache"
       />
     );

@@ -38,40 +38,46 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   loadSelectedOption,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
-  const [selectedOption, setSelectedOption] = useState<SelectOption | null>(null);
+  const [selectedOption, setSelectedOption] = useState<SelectOption | null>(
+    null
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-
     let cancelled = false;
 
     if (value && loadSelectedOption) {
       // Load the specific selected option by value (e.g. by ID)
       setLoading(true);
-      loadSelectedOption(value).then((opt) => {
-        if (cancelled) return;
-        setSelectedOption(opt);
-      }).finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      loadSelectedOption(value)
+        .then((opt) => {
+          if (cancelled) return;
+          setSelectedOption(opt);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     } else {
       // Default: load initial options with empty search
       setLoading(true);
-      onSearch("").then((results) => {
-        if (!cancelled) setOptions(results);
-      }).finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      onSearch("")
+        .then((results) => {
+          if (!cancelled) setOptions(results);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Debounced search on query change ---
   useEffect(() => {
-
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
@@ -90,7 +96,10 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   }, [searchQuery, onSearch, debounceMs]);
 
   // --- Handlers ---
-  const handleSelect = (_event: React.SyntheticEvent, option: SelectOption | null) => {
+  const handleSelect = (
+    _event: React.SyntheticEvent,
+    option: SelectOption | null
+  ) => {
     if (option) {
       onChange(String(option.value));
       setSelectedOption(option);
@@ -147,7 +156,9 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
                 ...params.InputProps,
                 endAdornment: (
                   <>
-                    {loading ? <CircularProgress color="inherit" size={16} /> : null}
+                    {loading ? (
+                      <CircularProgress color="inherit" size={16} />
+                    ) : null}
                     {params.InputProps.endAdornment}
                   </>
                 ),

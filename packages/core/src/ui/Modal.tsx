@@ -6,8 +6,10 @@ import DialogActions from "@mui/material/DialogActions";
 import IconButton from "@mui/material/IconButton";
 import CloseIcon from "@mui/icons-material/Close";
 
-export interface ModalProps
-  extends Omit<DialogProps, "title" | "onClose" | "open"> {
+export interface ModalProps extends Omit<
+  DialogProps,
+  "title" | "onClose" | "open"
+> {
   open: boolean;
   onClose: () => void;
   title?: React.ReactNode;

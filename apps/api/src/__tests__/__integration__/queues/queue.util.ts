@@ -23,7 +23,8 @@ export function waitForJobState(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error(`Timed out waiting for job ${jobId} to be ${state}`)),
+      () =>
+        reject(new Error(`Timed out waiting for job ${jobId} to be ${state}`)),
       timeoutMs
     );
 

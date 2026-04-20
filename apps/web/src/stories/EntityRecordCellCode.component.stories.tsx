@@ -34,7 +34,10 @@ export const ArrayValue: Story = {
 
 export const Truncated: Story = {
   args: {
-    value: { description: "This is a very long description that will be truncated because it exceeds the default maxLength of eighty characters" },
+    value: {
+      description:
+        "This is a very long description that will be truncated because it exceeds the default maxLength of eighty characters",
+    },
     type: "json",
   },
 };

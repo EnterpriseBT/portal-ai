@@ -27,5 +27,5 @@ export const entityTagAssignments = pgTable(
     uniqueIndex("entity_tag_assignments_entity_tag_unique")
       .on(table.connectorEntityId, table.entityTagId)
       .where(sql`deleted IS NULL`),
-  ],
+  ]
 );

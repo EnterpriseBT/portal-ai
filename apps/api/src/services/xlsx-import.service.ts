@@ -10,7 +10,11 @@
 
 import { S3Service } from "./s3.service.js";
 import { xlsxSheetRowIterator } from "../utils/xlsx-parser.util.js";
-import { importRows, type ImportResult, type ImportRowsParams } from "./record-import.util.js";
+import {
+  importRows,
+  type ImportResult,
+  type ImportRowsParams,
+} from "./record-import.util.js";
 import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "xlsx-import-service" });
@@ -31,12 +35,14 @@ export class XlsxImportService {
    * Throws ProcessorError("UPLOAD_SHEET_NOT_FOUND") if `sheetName` is not
    * present in the workbook.
    */
-  static async importFromS3(params: ImportEntityParams): Promise<XlsxImportResult> {
+  static async importFromS3(
+    params: ImportEntityParams
+  ): Promise<XlsxImportResult> {
     const { s3Key, sheetName, connectorEntityId } = params;
 
     logger.info(
       { connectorEntityId, s3Key, sheetName },
-      "Starting XLSX import from S3 (streaming)",
+      "Starting XLSX import from S3 (streaming)"
     );
 
     const { stream } = await S3Service.getObjectStream(s3Key);

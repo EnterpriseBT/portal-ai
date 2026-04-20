@@ -19,7 +19,7 @@ export function coerceString(value: unknown): CoercionResult {
 
 export function coerceNumber(
   value: unknown,
-  format?: string | null,
+  format?: string | null
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
   if (typeof value === "number") {
@@ -45,7 +45,10 @@ export function coerceNumber(
   return applyNumberFormat(num, format);
 }
 
-function applyNumberFormat(num: number, format?: string | null): CoercionResult {
+function applyNumberFormat(
+  num: number,
+  format?: string | null
+): CoercionResult {
   if (!format) return { value: num };
   if (format === "currency") return { value: parseFloat(num.toFixed(2)) };
   if (format.startsWith("precision:")) {
@@ -59,7 +62,7 @@ function applyNumberFormat(num: number, format?: string | null): CoercionResult 
 
 export function coerceBoolean(
   value: unknown,
-  format?: string | null,
+  format?: string | null
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
   if (typeof value === "boolean") return { value };
@@ -93,23 +96,21 @@ export function coerceBoolean(
  * from throwing RangeError on mixed week-year / calendar-date tokens.
  */
 function normalizeDateFormat(fmt: string): string {
-  return fmt
-    .replace(/YYYY/g, "yyyy")
-    .replace(/YY/g, "yy")
-    .replace(/DD/g, "dd");
+  return fmt.replace(/YYYY/g, "yyyy").replace(/YY/g, "yy").replace(/DD/g, "dd");
 }
 
-function parseDate(
-  value: unknown,
-  format?: string | null,
-): Date | null {
+function parseDate(value: unknown, format?: string | null): Date | null {
   const str = String(value).trim();
   if (str === "") return null;
 
   try {
     if (format) {
       const normalizedFormat = normalizeDateFormat(format);
-      const parsed = utcDateFactory.fns.parse(str, normalizedFormat, new Date(0));
+      const parsed = utcDateFactory.fns.parse(
+        str,
+        normalizedFormat,
+        new Date(0)
+      );
       return utcDateFactory.fns.isValid(parsed) ? parsed : null;
     }
 
@@ -123,7 +124,7 @@ function parseDate(
 
 export function coerceDate(
   value: unknown,
-  format?: string | null,
+  format?: string | null
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
 
@@ -136,7 +137,7 @@ export function coerceDate(
 
 export function coerceDatetime(
   value: unknown,
-  format?: string | null,
+  format?: string | null
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
 
@@ -144,7 +145,9 @@ export function coerceDatetime(
   if (!parsed) {
     return { value: null, error: "Expected a valid datetime" };
   }
-  return { value: utcDateFactory.format(parsed, "yyyy-MM-dd'T'HH:mm:ss.SSSXXX") };
+  return {
+    value: utcDateFactory.format(parsed, "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"),
+  };
 }
 
 export function coerceEnum(value: unknown): CoercionResult {
@@ -167,7 +170,7 @@ export function coerceJson(value: unknown): CoercionResult {
 
 export function coerceArray(
   value: unknown,
-  format?: string | null,
+  format?: string | null
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
   if (Array.isArray(value)) return { value };
@@ -185,7 +188,7 @@ export function coerceReference(value: unknown): CoercionResult {
 
 export function coerceReferenceArray(
   value: unknown,
-  format?: string | null,
+  format?: string | null
 ): CoercionResult {
   if (isNullish(value)) return { value: null };
   if (Array.isArray(value)) return { value };
@@ -199,7 +202,7 @@ export function coerceReferenceArray(
 export function coerce(
   type: ColumnDataType,
   value: unknown,
-  format?: string | null,
+  format?: string | null
 ): CoercionResult {
   switch (type) {
     case "string":

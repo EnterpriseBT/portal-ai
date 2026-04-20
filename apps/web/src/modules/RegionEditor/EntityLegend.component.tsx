@@ -38,7 +38,9 @@ export const EntityLegendUI: React.FC<EntityLegendUIProps> = ({
               border: "1px solid",
               borderColor: isSelected ? entry.color : "divider",
               borderRadius: 16,
-              backgroundColor: isSelected ? `${entry.color}14` : "background.paper",
+              backgroundColor: isSelected
+                ? `${entry.color}14`
+                : "background.paper",
               px: 1,
               py: 0.25,
               cursor: interactive ? "pointer" : "default",
@@ -56,7 +58,8 @@ export const EntityLegendUI: React.FC<EntityLegendUIProps> = ({
               {entry.label}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {entry.regionCount} {entry.regionCount === 1 ? "region" : "regions"}
+              {entry.regionCount}{" "}
+              {entry.regionCount === 1 ? "region" : "regions"}
             </Typography>
           </Box>
         );

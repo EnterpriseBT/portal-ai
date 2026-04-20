@@ -10,7 +10,7 @@ describe("PageSection Component", () => {
       render(
         <PageSection>
           <p>Section body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(screen.getByText("Section body")).toBeInTheDocument();
     });
@@ -19,10 +19,10 @@ describe("PageSection Component", () => {
       render(
         <PageSection title="Connectors">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(
-        screen.getByRole("heading", { name: "Connectors", level: 2 }),
+        screen.getByRole("heading", { name: "Connectors", level: 2 })
       ).toBeInTheDocument();
     });
 
@@ -30,7 +30,7 @@ describe("PageSection Component", () => {
       render(
         <PageSection>
           <p>Body only</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     });
@@ -42,19 +42,16 @@ describe("PageSection Component", () => {
           icon={<span data-testid="section-icon">ic</span>}
         >
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(screen.getByTestId("section-icon")).toBeInTheDocument();
     });
 
     it("should render the primary action", () => {
       render(
-        <PageSection
-          title="Connectors"
-          primaryAction={<button>Add</button>}
-        >
+        <PageSection title="Connectors" primaryAction={<button>Add</button>}>
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
     });
@@ -66,10 +63,10 @@ describe("PageSection Component", () => {
           secondaryActions={[{ label: "Export", onClick: () => {} }]}
         >
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(
-        screen.getByRole("button", { name: "More actions" }),
+        screen.getByRole("button", { name: "More actions" })
       ).toBeInTheDocument();
     });
 
@@ -77,10 +74,10 @@ describe("PageSection Component", () => {
       render(
         <PageSection title="Connectors" secondaryActions={[]}>
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(
-        screen.queryByRole("button", { name: "More actions" }),
+        screen.queryByRole("button", { name: "More actions" })
       ).not.toBeInTheDocument();
     });
 
@@ -88,7 +85,7 @@ describe("PageSection Component", () => {
       const { container } = render(
         <PageSection title="Connectors" variant="divider">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(container.querySelector("hr")).toBeInTheDocument();
     });
@@ -97,7 +94,7 @@ describe("PageSection Component", () => {
       const { container } = render(
         <PageSection title="Connectors" variant="outlined">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(container.querySelector("hr")).not.toBeInTheDocument();
     });
@@ -106,21 +103,19 @@ describe("PageSection Component", () => {
       const { container } = render(
         <PageSection title="Connectors" variant="outlined">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
-      expect(
-        container.querySelector(".MuiPaper-outlined"),
-      ).toBeInTheDocument();
+      expect(container.querySelector(".MuiPaper-outlined")).toBeInTheDocument();
     });
 
     it("should not wrap content in Paper for divider variant", () => {
       const { container } = render(
         <PageSection title="Connectors" variant="divider">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(
-        container.querySelector(".MuiPaper-outlined"),
+        container.querySelector(".MuiPaper-outlined")
       ).not.toBeInTheDocument();
     });
 
@@ -128,9 +123,11 @@ describe("PageSection Component", () => {
       render(
         <PageSection primaryAction={<button>Create</button>}>
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
-      expect(screen.getByRole("button", { name: "Create" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Create" })
+      ).toBeInTheDocument();
       expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     });
   });
@@ -147,13 +144,19 @@ describe("PageSection Component", () => {
           ]}
         >
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
 
-      await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "More actions" })
+      );
 
-      expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
-      expect(screen.getByRole("menuitem", { name: "Refresh" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Export" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Refresh" })
+      ).toBeInTheDocument();
     });
 
     it("should call item onClick and close the menu on click", async () => {
@@ -164,14 +167,18 @@ describe("PageSection Component", () => {
           secondaryActions={[{ label: "Export", onClick: handleExport }]}
         >
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
 
-      await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "More actions" })
+      );
       await userEvent.click(screen.getByRole("menuitem", { name: "Export" }));
 
       expect(handleExport).toHaveBeenCalledTimes(1);
-      expect(screen.queryByRole("menuitem", { name: "Export" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("menuitem", { name: "Export" })
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -180,7 +187,7 @@ describe("PageSection Component", () => {
       const { container } = render(
         <PageSection className="custom-section">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(container.firstChild).toHaveClass("custom-section");
     });
@@ -189,7 +196,7 @@ describe("PageSection Component", () => {
       const { container } = render(
         <PageSection className="custom-section" variant="outlined">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(container.firstChild).toHaveClass("custom-section");
     });
@@ -198,7 +205,7 @@ describe("PageSection Component", () => {
       render(
         <PageSection data-testid="my-section">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(screen.getByTestId("my-section")).toBeInTheDocument();
     });
@@ -210,7 +217,7 @@ describe("PageSection Component", () => {
       render(
         <PageSection ref={ref}>
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
     });
@@ -220,7 +227,7 @@ describe("PageSection Component", () => {
       render(
         <PageSection ref={ref} variant="outlined">
           <p>Body</p>
-        </PageSection>,
+        </PageSection>
       );
       expect(ref.current).toBeInstanceOf(HTMLDivElement);
       expect(ref.current?.classList.contains("MuiPaper-outlined")).toBe(true);

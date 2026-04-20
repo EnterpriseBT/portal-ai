@@ -1,11 +1,9 @@
 import { jest } from "@jest/globals";
 
-const { render, screen, fireEvent } = await import(
-  "../../../__tests__/test-utils"
-);
-const { SandboxConnectorWorkflowUI } = await import(
-  "../SandboxConnectorWorkflow.component"
-);
+const { render, screen, fireEvent } =
+  await import("../../../__tests__/test-utils");
+const { SandboxConnectorWorkflowUI } =
+  await import("../SandboxConnectorWorkflow.component");
 import type { SandboxConnectorWorkflowUIProps } from "../SandboxConnectorWorkflow.component";
 
 // ---------------------------------------------------------------------------
@@ -80,9 +78,7 @@ describe("SandboxConnectorWorkflowUI", () => {
   });
 
   it("shows loading state when isPending is true", () => {
-    render(
-      <SandboxConnectorWorkflowUI {...makeProps({ isPending: true })} />
-    );
+    render(<SandboxConnectorWorkflowUI {...makeProps({ isPending: true })} />);
     expect(
       screen.getByRole("button", { name: "Connecting..." })
     ).toBeInTheDocument();
@@ -101,9 +97,7 @@ describe("SandboxConnectorWorkflowUI", () => {
       />
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Instance already exists/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Instance already exists/)).toBeInTheDocument();
     expect(
       screen.getByText(/CONNECTOR_INSTANCE_DUPLICATE/)
     ).toBeInTheDocument();
@@ -169,16 +163,12 @@ describe("SandboxConnectorWorkflowUI", () => {
         })}
       />
     );
-    expect(screen.getByLabelText(/Name/)).toHaveAttribute(
-      "aria-describedby"
-    );
+    expect(screen.getByLabelText(/Name/)).toHaveAttribute("aria-describedby");
   });
 
   it("calls onNameChange when name field value changes", () => {
     const onNameChange = jest.fn();
-    render(
-      <SandboxConnectorWorkflowUI {...makeProps({ onNameChange })} />
-    );
+    render(<SandboxConnectorWorkflowUI {...makeProps({ onNameChange })} />);
     fireEvent.change(screen.getByLabelText(/Name/), {
       target: { value: "New Name" },
     });

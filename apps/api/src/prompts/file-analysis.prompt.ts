@@ -29,7 +29,10 @@ XLSX uploads use the convention \`<workbook>.xlsx[<SheetName>]\` in \`File:\` be
 ${parseResult.columnStats.map((s) => `- **${s.name}**: ${s.totalCount} values, ${(s.nullRate * 100).toFixed(1)}% null, ${s.uniqueCount} unique${s.uniqueCapped ? " (capped)" : ""}, sample: [${s.sampleValues.slice(0, 5).join(", ")}]`).join("\n")}
 
 ## Sample Rows (first 5)
-${parseResult.sampleRows.slice(0, 5).map((r) => r.join(" | ")).join("\n")}
+${parseResult.sampleRows
+  .slice(0, 5)
+  .map((r) => r.join(" | "))
+  .join("\n")}
 `;
 
   if (existingColumns.length > 0) {

@@ -214,14 +214,14 @@ describe("FieldMappingsRepository Integration Tests", () => {
         db
       );
       await repo.create(
-        makeMapping({ columnDefinitionId: columnDefinitionId2, sourceField: "email_addr" }),
+        makeMapping({
+          columnDefinitionId: columnDefinitionId2,
+          sourceField: "email_addr",
+        }),
         db
       );
 
-      const results = await repo.findByConnectorEntityId(
-        connectorEntityId,
-        db
-      );
+      const results = await repo.findByConnectorEntityId(connectorEntityId, db);
       expect(results).toHaveLength(2);
       results.forEach((r) =>
         expect(r.connectorEntityId).toBe(connectorEntityId)
@@ -231,15 +231,15 @@ describe("FieldMappingsRepository Integration Tests", () => {
     it("should exclude soft-deleted rows", async () => {
       const m = await repo.create(makeMapping(), db);
       await repo.create(
-        makeMapping({ columnDefinitionId: columnDefinitionId2, sourceField: "email" }),
+        makeMapping({
+          columnDefinitionId: columnDefinitionId2,
+          sourceField: "email",
+        }),
         db
       );
       await repo.softDelete(m.id, "test-system", db);
 
-      const results = await repo.findByConnectorEntityId(
-        connectorEntityId,
-        db
-      );
+      const results = await repo.findByConnectorEntityId(connectorEntityId, db);
       expect(results).toHaveLength(1);
     });
 
@@ -253,10 +253,7 @@ describe("FieldMappingsRepository Integration Tests", () => {
 
   describe("findByColumnDefinitionId", () => {
     it("should return all mappings across entities for a given column", async () => {
-      await repo.create(
-        makeMapping({ sourceField: "contact_name" }),
-        db
-      );
+      await repo.create(makeMapping({ sourceField: "contact_name" }), db);
 
       const results = await repo.findByColumnDefinitionId(
         columnDefinitionId,
@@ -282,7 +279,10 @@ describe("FieldMappingsRepository Integration Tests", () => {
 
   describe("upsertByEntityAndNormalizedKey", () => {
     it("should insert on first call", async () => {
-      const data = makeMapping({ sourceField: "full_name", normalizedKey: "full_name" });
+      const data = makeMapping({
+        sourceField: "full_name",
+        normalizedKey: "full_name",
+      });
       const result = await repo.upsertByEntityAndNormalizedKey(data, db);
 
       expect(result.sourceField).toBe("full_name");
@@ -292,7 +292,10 @@ describe("FieldMappingsRepository Integration Tests", () => {
     });
 
     it("should update on second call with same entity + normalizedKey", async () => {
-      const data = makeMapping({ sourceField: "full_name", normalizedKey: "full_name" });
+      const data = makeMapping({
+        sourceField: "full_name",
+        normalizedKey: "full_name",
+      });
       await repo.upsertByEntityAndNormalizedKey(data, db);
 
       const updated = await repo.upsertByEntityAndNormalizedKey(
@@ -341,7 +344,9 @@ describe("FieldMappingsRepository Integration Tests", () => {
       // Create a second entity for the counterpart
       const dbTyped = db as any;
       const entity2Id = generateId();
-      const [firstEntity] = await dbTyped.select().from(schema.connectorEntities);
+      const [firstEntity] = await dbTyped
+        .select()
+        .from(schema.connectorEntities);
       await dbTyped.insert(schema.connectorEntities).values({
         id: entity2Id,
         organizationId: orgId,
@@ -391,7 +396,9 @@ describe("FieldMappingsRepository Integration Tests", () => {
 
     beforeEach(async () => {
       const dbTyped = db as any;
-      const [firstEntity] = await dbTyped.select().from(schema.connectorEntities);
+      const [firstEntity] = await dbTyped
+        .select()
+        .from(schema.connectorEntities);
       entity2Id = generateId();
       await dbTyped.insert(schema.connectorEntities).values({
         id: entity2Id,
@@ -420,13 +427,25 @@ describe("FieldMappingsRepository Integration Tests", () => {
       });
       await repo.create(counterpart, db);
 
-      const result = await repo.findCounterpart(orgId, "contacts", "tags", "contact_id", db);
+      const result = await repo.findCounterpart(
+        orgId,
+        "contacts",
+        "tags",
+        "contact_id",
+        db
+      );
       expect(result).not.toBeNull();
       expect(result!.id).toBe(counterpart.id);
     });
 
     it("returns null when no counterpart exists", async () => {
-      const result = await repo.findCounterpart(orgId, "contacts", "tags", "contact_id", db);
+      const result = await repo.findCounterpart(
+        orgId,
+        "contacts",
+        "tags",
+        "contact_id",
+        db
+      );
       expect(result).toBeNull();
     });
 
@@ -442,7 +461,13 @@ describe("FieldMappingsRepository Integration Tests", () => {
       });
       await repo.create(notCounterpart, db);
 
-      const result = await repo.findCounterpart(orgId, "contacts", "tags", "contact_id", db);
+      const result = await repo.findCounterpart(
+        orgId,
+        "contacts",
+        "tags",
+        "contact_id",
+        db
+      );
       expect(result).toBeNull();
     });
 
@@ -458,7 +483,13 @@ describe("FieldMappingsRepository Integration Tests", () => {
       await repo.create(counterpart, db);
       await repo.softDelete(counterpart.id, "test-system", db);
 
-      const result = await repo.findCounterpart(orgId, "contacts", "tags", "contact_id", db);
+      const result = await repo.findCounterpart(
+        orgId,
+        "contacts",
+        "tags",
+        "contact_id",
+        db
+      );
       expect(result).toBeNull();
     });
   });
@@ -470,7 +501,10 @@ describe("FieldMappingsRepository Integration Tests", () => {
       const nk = `nk_${generateId().replace(/-/g, "").slice(0, 8)}`;
       await repo.create(makeMapping({ normalizedKey: nk }), db);
 
-      const duplicate = makeMapping({ normalizedKey: nk, columnDefinitionId: columnDefinitionId2 });
+      const duplicate = makeMapping({
+        normalizedKey: nk,
+        columnDefinitionId: columnDefinitionId2,
+      });
       await expect(repo.create(duplicate, db)).rejects.toThrow();
     });
   });
@@ -495,12 +529,18 @@ describe("FieldMappingsRepository Integration Tests", () => {
     it("should attach connectorEntity when include contains connectorEntity", async () => {
       await repo.create(makeMapping({ sourceField: "full_name" }), db);
 
-      const results = await repo.findMany(undefined, { include: ["connectorEntity"] }, db);
+      const results = await repo.findMany(
+        undefined,
+        { include: ["connectorEntity"] },
+        db
+      );
 
       expect(results).toHaveLength(1);
       const enriched = results[0] as Record<string, unknown>;
       expect(enriched.connectorEntity).toBeDefined();
-      expect((enriched.connectorEntity as { id: string }).id).toBe(connectorEntityId);
+      expect((enriched.connectorEntity as { id: string }).id).toBe(
+        connectorEntityId
+      );
     });
 
     it("should return plain rows when include is empty", async () => {
@@ -509,7 +549,9 @@ describe("FieldMappingsRepository Integration Tests", () => {
       const results = await repo.findMany(undefined, { include: [] }, db);
 
       expect(results).toHaveLength(1);
-      expect((results[0] as Record<string, unknown>).connectorEntity).toBeUndefined();
+      expect(
+        (results[0] as Record<string, unknown>).connectorEntity
+      ).toBeUndefined();
     });
   });
 

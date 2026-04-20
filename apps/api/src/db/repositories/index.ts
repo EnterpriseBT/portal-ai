@@ -23,3 +23,4 @@ export * from "./portal-messages.repository.js";
 export * from "./portal-results.repository.js";
 export * from "./organization-tools.repository.js";
 export * from "./station-tools.repository.js";
+export * from "./connector-instance-layout-plans.repository.js";

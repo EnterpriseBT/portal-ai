@@ -96,10 +96,20 @@ const CreateForm: React.FC<{
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
-          <Button type="button" variant="contained" onClick={handleSubmit} disabled={isPending}>
+          <Button
+            type="button"
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={isPending}
+          >
             {isPending ? "Creating..." : "Create"}
           </Button>
         </Stack>
@@ -125,14 +135,9 @@ const CreateForm: React.FC<{
   );
 };
 
-export const CreateEntityRecordDialog: React.FC<CreateEntityRecordDialogProps> = ({
-  open,
-  onClose,
-  columns,
-  onSubmit,
-  isPending,
-  serverError,
-}) => {
+export const CreateEntityRecordDialog: React.FC<
+  CreateEntityRecordDialogProps
+> = ({ open, onClose, columns, onSubmit, isPending, serverError }) => {
   if (!open) return null;
 
   return (

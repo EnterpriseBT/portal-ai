@@ -10,20 +10,68 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 const { render, screen, fireEvent } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { EditEntityRecordDialog } = await import(
-  "../components/EditEntityRecordDialog.component"
-);
+const { EditEntityRecordDialog } =
+  await import("../components/EditEntityRecordDialog.component");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
 const columns: ResolvedColumn[] = [
-  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: true, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "metadata", normalizedKey: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  {
+    key: "name",
+    normalizedKey: "name",
+    label: "Name",
+    type: "string",
+    required: true,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "age",
+    normalizedKey: "age",
+    label: "Age",
+    type: "number",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "active",
+    normalizedKey: "active",
+    label: "Active",
+    type: "boolean",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "metadata",
+    normalizedKey: "metadata",
+    label: "Metadata",
+    type: "json",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
 ];
 
-const normalizedData = { name: "Alice", age: 25, active: true, metadata: { key: "val" } };
+const normalizedData = {
+  name: "Alice",
+  age: 25,
+  active: true,
+  metadata: { key: "val" },
+};
 
 const defaultProps = {
   open: true,
@@ -68,7 +116,9 @@ describe("EditEntityRecordDialog — rendering", () => {
 
   it("deserializes existing json to pretty-printed string", () => {
     render(<EditEntityRecordDialog {...defaultProps} />);
-    expect(screen.getByLabelText("Metadata")).toHaveValue('{\n  "key": "val"\n}');
+    expect(screen.getByLabelText("Metadata")).toHaveValue(
+      '{\n  "key": "val"\n}'
+    );
   });
 
   it("deserializes existing number to string", () => {
@@ -145,7 +195,10 @@ describe("EditEntityRecordDialog — server errors", () => {
     render(
       <EditEntityRecordDialog
         {...defaultProps}
-        serverError={{ message: "Server exploded", code: "ENTITY_RECORD_UPDATE_FAILED" }}
+        serverError={{
+          message: "Server exploded",
+          code: "ENTITY_RECORD_UPDATE_FAILED",
+        }}
       />
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();

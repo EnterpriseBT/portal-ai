@@ -1,21 +1,18 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type StationData } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type StationData,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 import { getRecords } from "../utils/tools.util.js";
 
 const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
   valueColumn: z.string().describe("Value/price column key"),
-  riskFreeRate: z
-    .number()
-    .optional()
-    .describe("Risk-free rate (default 0)"),
-  annualize: z
-    .boolean()
-    .optional()
-    .describe("Multiply by √252 for daily data"),
+  riskFreeRate: z.number().optional().describe("Risk-free rate (default 0)"),
+  annualize: z.boolean().optional().describe("Multiply by √252 for daily data"),
 });
 
 export class SharpeRatioTool extends Tool<typeof InputSchema> {
@@ -33,7 +30,8 @@ export class SharpeRatioTool extends Tool<typeof InputSchema> {
       description: this.description,
       inputSchema: this.schema,
       execute: async (input) => {
-        const { entity, valueColumn, riskFreeRate, annualize } = this.validate(input);
+        const { entity, valueColumn, riskFreeRate, annualize } =
+          this.validate(input);
         const records = getRecords(stationData, entity);
         return AnalyticsService.sharpeRatio({
           records,

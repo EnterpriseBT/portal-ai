@@ -99,7 +99,9 @@ describe("AsyncSearchableSelect", () => {
   });
 
   it("calls onSearch('') on mount to load initial options", async () => {
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue(OPTIONS);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue(OPTIONS);
 
     await act(async () => {
       render(
@@ -117,7 +119,9 @@ describe("AsyncSearchableSelect", () => {
 
   it("debounces search after user types (does not fire synchronously)", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([]);
 
     await act(async () => {
       render(
@@ -141,9 +145,9 @@ describe("AsyncSearchableSelect", () => {
 
   it("calls onSearch with query after debounce delay", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "banana", label: "Banana" },
-    ]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([{ value: "banana", label: "Banana" }]);
 
     await act(async () => {
       render(
@@ -160,7 +164,9 @@ describe("AsyncSearchableSelect", () => {
     const input = screen.getByRole("combobox");
     await user.type(input, "ban");
 
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => {
       expect(onSearch).toHaveBeenCalledWith("ban");
@@ -170,12 +176,14 @@ describe("AsyncSearchableSelect", () => {
   it("replaces options with each new search result", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     let callCount = 0;
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockImplementation(async () => {
-      callCount++;
-      // First call is initial load, second is "b", third is "c"
-      if (callCount <= 2) return [{ value: "banana", label: "Banana" }];
-      return [{ value: "cherry", label: "Cherry" }];
-    });
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockImplementation(async () => {
+        callCount++;
+        // First call is initial load, second is "b", third is "c"
+        if (callCount <= 2) return [{ value: "banana", label: "Banana" }];
+        return [{ value: "cherry", label: "Cherry" }];
+      });
 
     await act(async () => {
       render(
@@ -193,13 +201,17 @@ describe("AsyncSearchableSelect", () => {
 
     // First user search
     await user.type(input, "b");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
     await waitFor(() => expect(screen.getByText("Banana")).toBeInTheDocument());
 
     // Clear input and type new query
     await user.clear(input);
     await user.type(input, "c");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     // Previous result should be replaced
     await waitFor(() => {
@@ -212,13 +224,15 @@ describe("AsyncSearchableSelect", () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     let resolveSearch!: (options: SelectOption[]) => void;
     let callCount = 0;
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockImplementation(
-      () => {
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockImplementation(() => {
         callCount++;
         if (callCount === 1) return Promise.resolve([]); // initial load resolves fast
-        return new Promise<SelectOption[]>((resolve) => { resolveSearch = resolve; });
-      }
-    );
+        return new Promise<SelectOption[]>((resolve) => {
+          resolveSearch = resolve;
+        });
+      });
 
     await act(async () => {
       render(
@@ -234,7 +248,9 @@ describe("AsyncSearchableSelect", () => {
 
     const input = screen.getByRole("combobox");
     await user.type(input, "ban");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(onSearch).toHaveBeenCalledWith("ban"));
 
@@ -242,14 +258,16 @@ describe("AsyncSearchableSelect", () => {
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
 
     // Resolve the search
-    await act(async () => { resolveSearch([{ value: "banana", label: "Banana" }]); });
+    await act(async () => {
+      resolveSearch([{ value: "banana", label: "Banana" }]);
+    });
   });
 
   it("retains search text in input after results are loaded", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "banana", label: "Banana" },
-    ]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([{ value: "banana", label: "Banana" }]);
 
     await act(async () => {
       render(
@@ -265,7 +283,9 @@ describe("AsyncSearchableSelect", () => {
 
     const input = screen.getByRole("combobox");
     await user.type(input, "ban");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(screen.getByText("Banana")).toBeInTheDocument());
 
@@ -274,9 +294,12 @@ describe("AsyncSearchableSelect", () => {
   });
 
   it("displays selected value as a Chip above the input when value is set", async () => {
-    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+    const loadSelectedOption = jest
+      .fn<() => Promise<SelectOption | null>>()
       .mockResolvedValue({ value: "banana", label: "Banana" });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([]);
 
     await act(async () => {
       render(
@@ -299,9 +322,12 @@ describe("AsyncSearchableSelect", () => {
   it("clears selection when Chip delete icon is clicked", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const onChange = jest.fn();
-    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+    const loadSelectedOption = jest
+      .fn<() => Promise<SelectOption | null>>()
       .mockResolvedValue({ value: "banana", label: "Banana" });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([]);
 
     await act(async () => {
       render(
@@ -324,9 +350,12 @@ describe("AsyncSearchableSelect", () => {
   });
 
   it("calls loadSelectedOption on mount when value is set", async () => {
-    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+    const loadSelectedOption = jest
+      .fn<() => Promise<SelectOption | null>>()
       .mockResolvedValue({ value: "id-123", label: "Loaded by ID" });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([]);
 
     await act(async () => {
       render(
@@ -347,11 +376,17 @@ describe("AsyncSearchableSelect", () => {
 
   it("retains loaded option label after debounce fires on mount", async () => {
     let resolveLoad!: (opt: SelectOption) => void;
-    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
-      .mockImplementation(() => new Promise((resolve) => { resolveLoad = resolve; }));
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "common-1", label: "Common One" },
-    ]);
+    const loadSelectedOption = jest
+      .fn<() => Promise<SelectOption | null>>()
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveLoad = resolve;
+          })
+      );
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([{ value: "common-1", label: "Common One" }]);
 
     await act(async () => {
       render(
@@ -367,7 +402,9 @@ describe("AsyncSearchableSelect", () => {
     });
 
     // loadSelectedOption is in-flight; advance past debounce delay
-    act(() => { jest.advanceTimersByTime(200); });
+    act(() => {
+      jest.advanceTimersByTime(200);
+    });
 
     // Now resolve loadSelectedOption after the debounce window
     await act(async () => {
@@ -382,12 +419,15 @@ describe("AsyncSearchableSelect", () => {
 
   it("preserves selected option label after a subsequent search replaces options", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+    const loadSelectedOption = jest
+      .fn<() => Promise<SelectOption | null>>()
       .mockResolvedValue({ value: "rare-id", label: "Rare Array Column" });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "common-1", label: "Common One" },
-      { value: "common-2", label: "Common Two" },
-    ]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([
+        { value: "common-1", label: "Common One" },
+        { value: "common-2", label: "Common Two" },
+      ]);
 
     await act(async () => {
       render(
@@ -405,14 +445,18 @@ describe("AsyncSearchableSelect", () => {
     // Selected option label should be visible in chip after mount
     const chipLabel = () => {
       const labels = document.querySelectorAll(".MuiChip-label");
-      return Array.from(labels).find((el) => el.textContent === "Rare Array Column");
+      return Array.from(labels).find(
+        (el) => el.textContent === "Rare Array Column"
+      );
     };
     expect(chipLabel()).toBeTruthy();
 
     // Type a search that returns results NOT including the selected option
     const input = screen.getByRole("combobox");
     await user.type(input, "common");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(onSearch).toHaveBeenCalledWith("common"));
 
@@ -421,9 +465,12 @@ describe("AsyncSearchableSelect", () => {
   });
 
   it("does not call loadSelectedOption when value is null", async () => {
-    const loadSelectedOption = jest.fn<() => Promise<SelectOption | null>>()
+    const loadSelectedOption = jest
+      .fn<() => Promise<SelectOption | null>>()
       .mockResolvedValue(null);
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([]);
 
     await act(async () => {
       render(
@@ -447,7 +494,11 @@ describe("AsyncSearchableSelect", () => {
 
 describe("InfiniteScrollSelect", () => {
   let observerCallback: IntersectionObserverCallback;
-  let mockObserver: { observe: jest.Mock; disconnect: jest.Mock; unobserve: jest.Mock };
+  let mockObserver: {
+    observe: jest.Mock;
+    disconnect: jest.Mock;
+    unobserve: jest.Mock;
+  };
 
   beforeEach(() => {
     mockObserver = {
@@ -469,7 +520,8 @@ describe("InfiniteScrollSelect", () => {
   });
 
   it("calls fetchPage on open with page 0", async () => {
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
       .mockResolvedValue({ options: OPTIONS, hasMore: false });
 
     render(
@@ -485,7 +537,11 @@ describe("InfiniteScrollSelect", () => {
     await userEvent.click(screen.getByRole("combobox"));
 
     await waitFor(() => {
-      expect(fetchPage).toHaveBeenCalledWith({ search: "", page: 0, pageSize: 5 });
+      expect(fetchPage).toHaveBeenCalledWith({
+        search: "",
+        page: 0,
+        pageSize: 5,
+      });
     });
   });
 
@@ -493,7 +549,8 @@ describe("InfiniteScrollSelect", () => {
     const page0 = OPTIONS.slice(0, 3).map((o) => ({ ...o }));
     const page1 = OPTIONS.slice(3).map((o) => ({ ...o }));
 
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
       .mockResolvedValueOnce({ options: page0, hasMore: true })
       .mockResolvedValueOnce({ options: page1, hasMore: false });
 
@@ -523,15 +580,23 @@ describe("InfiniteScrollSelect", () => {
     });
 
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
-    expect(fetchPage).toHaveBeenLastCalledWith({ search: "", page: 1, pageSize: 3 });
+    expect(fetchPage).toHaveBeenLastCalledWith({
+      search: "",
+      page: 1,
+      pageSize: 3,
+    });
   });
 
   it("resets options and refetches on search input change", async () => {
     jest.useFakeTimers();
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
-      .mockResolvedValue({ options: [{ value: "apple", label: "Apple" }], hasMore: false });
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+      .mockResolvedValue({
+        options: [{ value: "apple", label: "Apple" }],
+        hasMore: false,
+      });
 
     render(
       <InfiniteScrollSelect
@@ -550,12 +615,20 @@ describe("InfiniteScrollSelect", () => {
     const input = screen.getByRole("combobox");
     await user.type(input, "app");
 
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
-    expect(fetchPage).toHaveBeenLastCalledWith({ search: "app", page: 0, pageSize: 20 });
+    expect(fetchPage).toHaveBeenLastCalledWith({
+      search: "app",
+      page: 0,
+      pageSize: 20,
+    });
 
-    act(() => { jest.runOnlyPendingTimers(); });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
     jest.useRealTimers();
   });
 
@@ -563,8 +636,12 @@ describe("InfiniteScrollSelect", () => {
     jest.useFakeTimers();
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
-      .mockResolvedValue({ options: [{ value: "apple", label: "Apple" }], hasMore: false });
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+      .mockResolvedValue({
+        options: [{ value: "apple", label: "Apple" }],
+        hasMore: false,
+      });
 
     render(
       <InfiniteScrollSelect
@@ -582,7 +659,9 @@ describe("InfiniteScrollSelect", () => {
 
     const input = screen.getByRole("combobox");
     await user.type(input, "app");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByText("Apple")).toBeInTheDocument());
@@ -590,12 +669,15 @@ describe("InfiniteScrollSelect", () => {
     // Input must not be reset by MUI's internal "reset" event when options load
     expect(input).toHaveValue("app");
 
-    act(() => { jest.runOnlyPendingTimers(); });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
     jest.useRealTimers();
   });
 
   it("does not fetch the next page when hasMore is false", async () => {
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
       .mockResolvedValue({ options: OPTIONS, hasMore: false });
 
     render(

@@ -146,7 +146,9 @@ describe("Jobs Router — GET /api/jobs", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.payload.jobs).toHaveLength(2);
-    const statuses = res.body.payload.jobs.map((j: { status: string }) => j.status);
+    const statuses = res.body.payload.jobs.map(
+      (j: { status: string }) => j.status
+    );
     expect(statuses).toContain("completed");
     expect(statuses).toContain("failed");
     expect(statuses).not.toContain("pending");
@@ -183,7 +185,10 @@ describe("Jobs Router — GET /api/jobs", () => {
     await (db as ReturnType<typeof drizzle>)
       .insert(jobs)
       .values([
-        createJob(organizationId, { type: "system_check", status: "completed" }),
+        createJob(organizationId, {
+          type: "system_check",
+          status: "completed",
+        }),
         createJob(organizationId, { type: "file_upload", status: "pending" }),
       ] as never);
 
@@ -207,7 +212,10 @@ describe("Jobs Router — GET /api/jobs", () => {
     await (db as ReturnType<typeof drizzle>)
       .insert(jobs)
       .values([
-        createJob(organizationId, { type: "system_check", status: "completed" }),
+        createJob(organizationId, {
+          type: "system_check",
+          status: "completed",
+        }),
         createJob(organizationId, { type: "file_upload", status: "completed" }),
         createJob(organizationId, { type: "system_check", status: "failed" }),
       ] as never);

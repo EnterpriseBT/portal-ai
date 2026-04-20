@@ -4,7 +4,7 @@ import type {
   CellValue,
   RegionDraft,
   SheetPreview,
-  SkipRule,
+  SkipRuleDraft,
 } from "./region-editor.types";
 
 /** Resolve the region's axis-name anchor cell, defaulting to the top-left of bounds. */
@@ -58,7 +58,9 @@ export const DECORATION_COLOR: Record<DecorationKind, string> = {
 };
 
 /** Optional secondary styling — used by skipped to get the striped "excluded" treatment. */
-export const DECORATION_BACKGROUND_IMAGE: Partial<Record<DecorationKind, string>> = {
+export const DECORATION_BACKGROUND_IMAGE: Partial<
+  Record<DecorationKind, string>
+> = {
   skipped:
     "repeating-linear-gradient(45deg, rgba(100,116,139,0.45) 0 6px, transparent 6px 12px)",
 };
@@ -109,7 +111,7 @@ function regexSafe(pattern: string): RegExp | null {
 }
 
 function ruleMatchesRow(
-  rule: SkipRule,
+  rule: SkipRuleDraft,
   row: number,
   cells: CellValue[][],
   bounds: CellBounds
@@ -125,7 +127,7 @@ function ruleMatchesRow(
 }
 
 function ruleMatchesCol(
-  rule: SkipRule,
+  rule: SkipRuleDraft,
   col: number,
   cells: CellValue[][],
   bounds: CellBounds
@@ -152,8 +154,10 @@ export function computeRegionDecorations(
   // data itself and the user must supply a name via recordsAxisName. In those
   // cases a single anchor cell — defaulting to the top-left corner but
   // user-overridable — is the location of the axis-name label.
-  const pivotedRows = orientation === "rows-as-records" && headerAxis === "column";
-  const pivotedCols = orientation === "columns-as-records" && headerAxis === "row";
+  const pivotedRows =
+    orientation === "rows-as-records" && headerAxis === "column";
+  const pivotedCols =
+    orientation === "columns-as-records" && headerAxis === "row";
   const crosstab = orientation === "cells-as-records";
   const anchor = resolveAnchorCell(region);
   const anchorAtCorner =
@@ -173,7 +177,9 @@ export function computeRegionDecorations(
           startRow: bounds.startRow,
           endRow: bounds.startRow,
           startCol:
-            pivotedCols && anchorAtCorner ? bounds.startCol + 1 : bounds.startCol,
+            pivotedCols && anchorAtCorner
+              ? bounds.startCol + 1
+              : bounds.startCol,
           endCol: bounds.endCol,
         },
         label: "Header row",
@@ -183,7 +189,9 @@ export function computeRegionDecorations(
         kind: "header",
         bounds: {
           startRow:
-            pivotedRows && anchorAtCorner ? bounds.startRow + 1 : bounds.startRow,
+            pivotedRows && anchorAtCorner
+              ? bounds.startRow + 1
+              : bounds.startRow,
           endRow: bounds.endRow,
           startCol: bounds.startCol,
           endCol: bounds.startCol,
@@ -195,8 +203,7 @@ export function computeRegionDecorations(
 
   // Crosstab: row-axis labels (leftmost column) and column-axis labels (top row).
   // Corner is carved out only when the anchor sits at the default corner.
-  const primaryName =
-    region.recordsAxisName?.name ?? (anchorValue ?? undefined);
+  const primaryName = region.recordsAxisName?.name ?? anchorValue ?? undefined;
   const secondaryName = region.secondaryRecordsAxisName?.name;
   if (crosstab) {
     decorations.push({
@@ -268,7 +275,11 @@ export function computeRegionDecorations(
     const evaluateRows =
       orientation === "rows-as-records" ||
       (orientation === "cells-as-records" &&
-        skipRules.some((r) => r.kind === "blank" || (r.kind === "cellMatches" && r.axis !== "column")));
+        skipRules.some(
+          (r) =>
+            r.kind === "blank" ||
+            (r.kind === "cellMatches" && r.axis !== "column")
+        ));
     const evaluateCols =
       orientation === "columns-as-records" ||
       (orientation === "cells-as-records" &&
@@ -276,9 +287,13 @@ export function computeRegionDecorations(
 
     if (evaluateRows) {
       const startRow =
-        orientation === "cells-as-records" ? bounds.startRow + 1 : recordStartRow;
+        orientation === "cells-as-records"
+          ? bounds.startRow + 1
+          : recordStartRow;
       const startCol =
-        orientation === "cells-as-records" ? bounds.startCol + 1 : bounds.startCol;
+        orientation === "cells-as-records"
+          ? bounds.startCol + 1
+          : bounds.startCol;
       const scanBounds: CellBounds = {
         startRow,
         endRow: bounds.endRow,
@@ -286,7 +301,9 @@ export function computeRegionDecorations(
         endCol: bounds.endCol,
       };
       for (let row = startRow; row <= bounds.endRow; row++) {
-        const match = skipRules.some((rule) => ruleMatchesRow(rule, row, cells, scanBounds));
+        const match = skipRules.some((rule) =>
+          ruleMatchesRow(rule, row, cells, scanBounds)
+        );
         if (match) {
           decorations.push({
             kind: "skipped",
@@ -304,9 +321,13 @@ export function computeRegionDecorations(
 
     if (evaluateCols) {
       const startRow =
-        orientation === "cells-as-records" ? bounds.startRow + 1 : bounds.startRow;
+        orientation === "cells-as-records"
+          ? bounds.startRow + 1
+          : bounds.startRow;
       const startCol =
-        orientation === "cells-as-records" ? bounds.startCol + 1 : recordStartCol;
+        orientation === "cells-as-records"
+          ? bounds.startCol + 1
+          : recordStartCol;
       const scanBounds: CellBounds = {
         startRow,
         endRow: bounds.endRow,
@@ -314,7 +335,9 @@ export function computeRegionDecorations(
         endCol: bounds.endCol,
       };
       for (let col = startCol; col <= bounds.endCol; col++) {
-        const match = skipRules.some((rule) => ruleMatchesCol(rule, col, cells, scanBounds));
+        const match = skipRules.some((rule) =>
+          ruleMatchesCol(rule, col, cells, scanBounds)
+        );
         if (match) {
           decorations.push({
             kind: "skipped",

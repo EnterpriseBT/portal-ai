@@ -26,54 +26,62 @@ const queryKeyValues = {
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     connectorInstances: {
-      delete: () => ({
-        mutate: mockDeleteConnectorInstance,
-        isPending: false,
-        error: null,
-      } as Partial<UseMutationResult>),
-      rename: () => ({
-        mutate: mockRenameConnectorInstance,
-        isPending: false,
-        error: null,
-      } as Partial<UseMutationResult>),
+      delete: () =>
+        ({
+          mutate: mockDeleteConnectorInstance,
+          isPending: false,
+          error: null,
+        }) as Partial<UseMutationResult>,
+      rename: () =>
+        ({
+          mutate: mockRenameConnectorInstance,
+          isPending: false,
+          error: null,
+        }) as Partial<UseMutationResult>,
       impact: () => ({ data: null, isLoading: false }),
     },
     portals: {
       get: () => ({ data: null, isLoading: false }),
-      rename: () => ({
-        mutate: mockRenamePortal,
-        isPending: false,
-        error: null,
-      } as Partial<UseMutationResult>),
-      remove: () => ({
-        mutate: mockRemovePortal,
-        isPending: false,
-        error: null,
-      } as Partial<UseMutationResult>),
-      create: () => ({
-        mutate: mockCreatePortal,
-        isPending: false,
-        error: null,
-      } as Partial<UseMutationResult>),
+      rename: () =>
+        ({
+          mutate: mockRenamePortal,
+          isPending: false,
+          error: null,
+        }) as Partial<UseMutationResult>,
+      remove: () =>
+        ({
+          mutate: mockRemovePortal,
+          isPending: false,
+          error: null,
+        }) as Partial<UseMutationResult>,
+      create: () =>
+        ({
+          mutate: mockCreatePortal,
+          isPending: false,
+          error: null,
+        }) as Partial<UseMutationResult>,
     },
     stations: {
       get: () => ({ data: null, isLoading: false }),
-      update: () => ({
-        mutate: mockUpdateStation,
-        isPending: false,
-        error: null,
-      } as Partial<UseMutationResult>),
-      delete: () => ({
-        mutate: mockDeleteStation,
-        isPending: false,
-        error: null,
-      } as Partial<UseMutationResult>),
+      update: () =>
+        ({
+          mutate: mockUpdateStation,
+          isPending: false,
+          error: null,
+        }) as Partial<UseMutationResult>,
+      delete: () =>
+        ({
+          mutate: mockDeleteStation,
+          isPending: false,
+          error: null,
+        }) as Partial<UseMutationResult>,
     },
     portalResults: {
-      pin: () => ({
-        mutate: mockPinResult,
-        isPending: false,
-      } as Partial<UseMutationResult>),
+      pin: () =>
+        ({
+          mutate: mockPinResult,
+          isPending: false,
+        }) as Partial<UseMutationResult>,
     },
   },
   queryKeys: queryKeyValues,
@@ -121,7 +129,10 @@ const { render, screen, fireEvent } = await import("./test-utils");
 
 /** Extracts the onSuccess callback from a mock's first call and invokes it */
 function callOnSuccess(mockFn: jest.Mock, successData: unknown = {}) {
-  const [, options] = mockFn.mock.calls[0] as [unknown, { onSuccess?: (data: unknown) => void }];
+  const [, options] = mockFn.mock.calls[0] as [
+    unknown,
+    { onSuccess?: (data: unknown) => void },
+  ];
   options.onSuccess?.(successData);
 }
 
@@ -129,9 +140,8 @@ function callOnSuccess(mockFn: jest.Mock, successData: unknown = {}) {
 
 describe("Cache invalidation — Connector Instance delete", () => {
   it("invalidates connectorInstances, connectorEntities, stations, and fieldMappings on delete", async () => {
-    const { DeleteConnectorInstanceDialog } = await import(
-      "../components/DeleteConnectorInstanceDialog.component"
-    );
+    const { DeleteConnectorInstanceDialog } =
+      await import("../components/DeleteConnectorInstanceDialog.component");
 
     const queryClient = new QueryClient();
     const spy = jest.spyOn(queryClient, "invalidateQueries");
@@ -166,9 +176,8 @@ describe("Cache invalidation — Connector Instance delete", () => {
 
 describe("Cache invalidation — PortalMessage pin/unpin", () => {
   it("invalidates portalResults.root after successful pin", async () => {
-    const { PortalMessage } = await import(
-      "../components/PortalMessage.component"
-    );
+    const { PortalMessage } =
+      await import("../components/PortalMessage.component");
 
     const queryClient = new QueryClient();
     const spy = jest.spyOn(queryClient, "invalidateQueries");
@@ -216,9 +225,8 @@ describe("Cache invalidation — PortalMessage pin/unpin", () => {
   });
 
   it("invalidates portalResults.root after successful unpin", async () => {
-    const { PortalMessage } = await import(
-      "../components/PortalMessage.component"
-    );
+    const { PortalMessage } =
+      await import("../components/PortalMessage.component");
 
     const queryClient = new QueryClient();
     const spy = jest.spyOn(queryClient, "invalidateQueries");

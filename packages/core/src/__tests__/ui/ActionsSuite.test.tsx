@@ -19,8 +19,12 @@ describe("ActionsSuite Component", () => {
     it("should render all action buttons", () => {
       render(<ActionsSuite items={items} />);
       expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Duplicate" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Duplicate" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Delete" })
+      ).toBeInTheDocument();
     });
 
     it("should render nothing when items is empty", () => {
@@ -61,10 +65,10 @@ describe("ActionsSuite Component", () => {
       ];
       render(<ActionsSuite items={mixedItems} />);
       expect(screen.getByRole("button", { name: "Primary" })).toHaveClass(
-        "MuiButton-contained",
+        "MuiButton-contained"
       );
       expect(screen.getByRole("button", { name: "Secondary" })).toHaveClass(
-        "MuiButton-text",
+        "MuiButton-text"
       );
     });
 
@@ -73,19 +77,17 @@ describe("ActionsSuite Component", () => {
         <ActionsSuite
           items={[{ label: "Edit", onClick: jest.fn() }]}
           size="medium"
-        />,
+        />
       );
       expect(screen.getByRole("button", { name: "Edit" })).toHaveClass(
-        "MuiButton-sizeMedium",
+        "MuiButton-sizeMedium"
       );
     });
 
     it("should default to small size", () => {
-      render(
-        <ActionsSuite items={[{ label: "Edit", onClick: jest.fn() }]} />,
-      );
+      render(<ActionsSuite items={[{ label: "Edit", onClick: jest.fn() }]} />);
       expect(screen.getByRole("button", { name: "Edit" })).toHaveClass(
-        "MuiButton-sizeSmall",
+        "MuiButton-sizeSmall"
       );
     });
   });
@@ -113,7 +115,7 @@ describe("ActionsSuite Component", () => {
   describe("Props", () => {
     it("should accept a custom className", () => {
       const { container } = render(
-        <ActionsSuite items={items} className="custom-suite" />,
+        <ActionsSuite items={items} className="custom-suite" />
       );
       expect(container.firstChild).toHaveClass("custom-suite");
     });

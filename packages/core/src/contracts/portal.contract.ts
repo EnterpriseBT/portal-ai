@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { PortalSchema } from "../models/portal.model.js";
-import { PortalResultSchema, PortalResultTypeSchema, type PortalResultType } from "../models/portal-result.model.js";
+import {
+  PortalResultSchema,
+  PortalResultTypeSchema,
+  type PortalResultType,
+} from "../models/portal-result.model.js";
 import {
   PaginatedResponsePayloadSchema,
   PaginationRequestQuerySchema,
@@ -9,11 +13,12 @@ import {
 
 // ── List ──────────────────────────────────────────────────────────────
 
-export const PortalListRequestQuerySchema =
-  PaginationRequestQuerySchema.extend({
+export const PortalListRequestQuerySchema = PaginationRequestQuerySchema.extend(
+  {
     stationId: z.string().optional(),
     include: z.string().optional(),
-  });
+  }
+);
 
 export type PortalListRequestQuery = z.infer<
   typeof PortalListRequestQuerySchema
@@ -52,9 +57,7 @@ export const PortalMessageResponseSchema = z.object({
   created: z.number(),
 });
 
-export type PortalMessageResponse = z.infer<
-  typeof PortalMessageResponseSchema
->;
+export type PortalMessageResponse = z.infer<typeof PortalMessageResponseSchema>;
 
 // ── Get ───────────────────────────────────────────────────────────────
 
@@ -192,7 +195,11 @@ export const MutationItemSchema = z.object({
 
 export type MutationItem = z.infer<typeof MutationItemSchema>;
 
-export const MutationOperationSchema = z.enum(["created", "updated", "deleted"]);
+export const MutationOperationSchema = z.enum([
+  "created",
+  "updated",
+  "deleted",
+]);
 
 export type MutationOperation = z.infer<typeof MutationOperationSchema>;
 
@@ -238,10 +245,12 @@ export const MutationResultContentBlockSchema = z.union([
   BulkMutationResultContentBlockSchema,
 ]);
 
-export type MutationResultContentBlock = z.infer<typeof MutationResultContentBlockSchema>;
+export type MutationResultContentBlock = z.infer<
+  typeof MutationResultContentBlockSchema
+>;
 
 export function isBulkMutationResult(
-  block: MutationResultContentBlock,
+  block: MutationResultContentBlock
 ): block is BulkMutationResultContentBlock {
   return "items" in block;
 }

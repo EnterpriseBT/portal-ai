@@ -6,7 +6,18 @@ import type {
   PortalListRequestQuery,
   PortalListResponsePayload,
 } from "@portalai/core/contracts";
-import { Box, Button, Icon, IconName, MetadataList, PageEmptyState, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
+import {
+  Box,
+  Button,
+  Icon,
+  IconName,
+  MetadataList,
+  PageEmptyState,
+  PageHeader,
+  PageSection,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
@@ -68,12 +79,16 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
   const createPortalMutation = sdk.portals.create();
   const updateMutation = sdk.stations.update(stationId);
   const orgResult = sdk.organizations.current();
-  const defaultStationId = orgResult.data?.organization.defaultStationId ?? null;
+  const defaultStationId =
+    orgResult.data?.organization.defaultStationId ?? null;
   const isDefaultStation = defaultStationId === stationId;
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteStationOpen, setDeleteStationOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const deleteStationMutation = sdk.stations.delete(stationId);
 
@@ -114,10 +129,9 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
-    await fetchWithAuth(
-      `/api/portals/${encodeURIComponent(deleteTarget.id)}`,
-      { method: "DELETE" }
-    );
+    await fetchWithAuth(`/api/portals/${encodeURIComponent(deleteTarget.id)}`, {
+      method: "DELETE",
+    });
     queryClient.invalidateQueries({
       queryKey: queryKeys.portals.root,
     });
@@ -159,12 +173,23 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           onClick={handleLaunchPortal}
                           disabled={createPortalMutation.isPending}
                         >
-                          {createPortalMutation.isPending ? "Opening..." : "Open Portal"}
+                          {createPortalMutation.isPending
+                            ? "Opening..."
+                            : "Open Portal"}
                         </Button>
                       }
                       secondaryActions={[
-                        { label: "Edit", icon: <EditIcon />, onClick: () => setEditOpen(true) },
-                        { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteStationOpen(true), color: "error" },
+                        {
+                          label: "Edit",
+                          icon: <EditIcon />,
+                          onClick: () => setEditOpen(true),
+                        },
+                        {
+                          label: "Delete",
+                          icon: <DeleteIcon />,
+                          onClick: () => setDeleteStationOpen(true),
+                          color: "error",
+                        },
                       ]}
                     >
                       {station.description && (
@@ -177,7 +202,10 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           {
                             label: "Tool Packs",
                             value: (
-                              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+                              <Stack
+                                direction="row"
+                                sx={{ flexWrap: "wrap", gap: 0.75 }}
+                              >
                                 {station.toolPacks.map((pack) => (
                                   <ToolPackChip key={pack} pack={pack} />
                                 ))}
@@ -189,12 +217,18 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                           {
                             label: "Connectors",
                             value: (
-                              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75 }}>
+                              <Stack
+                                direction="row"
+                                sx={{ flexWrap: "wrap", gap: 0.75 }}
+                              >
                                 {(station.instances ?? []).map((inst) => (
                                   <Chip
                                     key={inst.id}
                                     icon={<MemoryOutlined fontSize="small" />}
-                                    label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
+                                    label={
+                                      inst.connectorInstance?.name ??
+                                      inst.connectorInstanceId
+                                    }
                                     size="small"
                                     variant="outlined"
                                     color="primary"
@@ -205,20 +239,30 @@ export const StationDetailView: React.FC<StationDetailViewProps> = ({
                             variant: "chip",
                             hidden: (station.instances ?? []).length === 0,
                           },
-                          { label: "Created", value: DateFactory.relativeTime(station.created) },
-                          { label: "Organization Default", value: "Yes", hidden: !isDefaultStation },
+                          {
+                            label: "Created",
+                            value: DateFactory.relativeTime(station.created),
+                          },
+                          {
+                            label: "Organization Default",
+                            value: "Yes",
+                            hidden: !isDefaultStation,
+                          },
                         ]}
                       />
                       {(station.instances ?? []).length === 0 && (
                         <Alert severity="warning" variant="outlined">
-                          This station has no connector instances. Add connectors to enable data access.
+                          This station has no connector instances. Add
+                          connectors to enable data access.
                         </Alert>
                       )}
                     </PageHeader>
 
-
                     {/* Portals Section */}
-                    <PageSection title="Portals" icon={<Icon name={IconName.Portal} />}>
+                    <PageSection
+                      title="Portals"
+                      icon={<Icon name={IconName.Portal} />}
+                    >
                       <PaginationToolbar {...portalsPagination.toolbarProps} />
 
                       <Box sx={{ mt: 2 }}>

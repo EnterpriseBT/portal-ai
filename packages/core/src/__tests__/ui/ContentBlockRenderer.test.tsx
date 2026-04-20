@@ -3,7 +3,9 @@ import { jest } from "@jest/globals";
 import { render, screen } from "@testing-library/react";
 
 jest.unstable_mockModule("react-markdown", () => ({
-  default: ({ children }: { children: string }) => <span data-testid="markdown">{children}</span>,
+  default: ({ children }: { children: string }) => (
+    <span data-testid="markdown">{children}</span>
+  ),
 }));
 
 jest.unstable_mockModule("react-vega", () => ({
@@ -17,7 +19,9 @@ const { ContentBlockRenderer } = await import("../../ui/ContentBlockRenderer");
 
 describe("ContentBlockRenderer", () => {
   it("renders text block via ReactMarkdown", () => {
-    render(<ContentBlockRenderer block={{ type: "text", content: "Hello world" }} />);
+    render(
+      <ContentBlockRenderer block={{ type: "text", content: "Hello world" }} />
+    );
     const el = screen.getByTestId("markdown");
     expect(el).toBeInTheDocument();
     expect(el).toHaveTextContent("Hello world");
@@ -34,12 +38,20 @@ describe("ContentBlockRenderer", () => {
   });
 
   it("renders vega-lite block via VegaLite", async () => {
-    render(<ContentBlockRenderer block={{ type: "vega-lite", content: { mark: "bar" } }} />);
+    render(
+      <ContentBlockRenderer
+        block={{ type: "vega-lite", content: { mark: "bar" } }}
+      />
+    );
     expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
   });
 
   it("renders vega block via Vega", async () => {
-    render(<ContentBlockRenderer block={{ type: "vega", content: { data: [], marks: [] } }} />);
+    render(
+      <ContentBlockRenderer
+        block={{ type: "vega", content: { data: [], marks: [] } }}
+      />
+    );
     expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
   });
 

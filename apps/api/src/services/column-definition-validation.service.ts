@@ -29,9 +29,10 @@ export class ColumnDefinitionValidationService {
    * Blocks if any field mappings reference it directly via columnDefinitionId.
    */
   static async validateDelete(columnDefinitionId: string): Promise<void> {
-    const depsByColumn = await DbService.repository.fieldMappings.findByColumnDefinitionId(
-      columnDefinitionId,
-    );
+    const depsByColumn =
+      await DbService.repository.fieldMappings.findByColumnDefinitionId(
+        columnDefinitionId
+      );
 
     if (depsByColumn.length > 0) {
       throw new ApiError(
@@ -40,7 +41,7 @@ export class ColumnDefinitionValidationService {
         "Column definition has dependent field mappings",
         {
           fieldMappings: depsByColumn.map((fm) => fm.id),
-        },
+        }
       );
     }
   }

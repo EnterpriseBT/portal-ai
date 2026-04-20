@@ -162,12 +162,20 @@ interface InteractiveContentProps {
   initialRegions: typeof PROPOSED_REGIONS;
 }
 
-const InteractiveContent: React.FC<InteractiveContentProps> = ({ initialRegions }) => {
+const InteractiveContent: React.FC<InteractiveContentProps> = ({
+  initialRegions,
+}) => {
   const [regions, setRegions] = React.useState(initialRegions);
-  const [selectedRegionId, setSelectedRegionId] = React.useState<string | null>(null);
+  const [selectedRegionId, setSelectedRegionId] = React.useState<string | null>(
+    null
+  );
   const sheet = DEMO_WORKBOOK.sheets[0];
   const entityOrder = Array.from(
-    new Set(regions.map((r) => r.targetEntityDefinitionId).filter((id): id is string => Boolean(id)))
+    new Set(
+      regions
+        .map((r) => r.targetEntityDefinitionId)
+        .filter((id): id is string => Boolean(id))
+    )
   );
 
   return (
@@ -195,7 +203,9 @@ const InteractiveContent: React.FC<InteractiveContentProps> = ({ initialRegions 
       }}
       onRegionResize={(regionId, nextBounds) => {
         setRegions((prev) =>
-          prev.map((r) => (r.id === regionId ? { ...r, bounds: nextBounds } : r))
+          prev.map((r) =>
+            r.id === regionId ? { ...r, bounds: nextBounds } : r
+          )
         );
       }}
     />

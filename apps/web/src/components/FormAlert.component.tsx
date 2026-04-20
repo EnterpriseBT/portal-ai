@@ -15,11 +15,7 @@ export const FormAlert: React.FC<FormAlertProps> = ({ serverError }) => {
   return (
     <Alert severity="error">
       {serverError.message}{" "}
-      <Typography
-        component="span"
-        variant="caption"
-        color="text.secondary"
-      >
+      <Typography component="span" variant="caption" color="text.secondary">
         ({serverError.code})
       </Typography>
     </Alert>

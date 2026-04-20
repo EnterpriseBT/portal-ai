@@ -103,7 +103,7 @@ export const DataTableBlock: React.FC<DataTableBlockProps> = ({
     <Box sx={{ my: 1 }}>
       <Box
         sx={{
-          display: rows.length ? "flex" : 'none',
+          display: rows.length ? "flex" : "none",
           justifyContent: "space-between",
           alignItems: "center",
           flexWrap: "wrap",

@@ -10,7 +10,11 @@ import type { SQL } from "drizzle-orm";
 
 import { entityGroups, entityGroupMembers } from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+import {
+  Repository,
+  type DbClient,
+  type ListOptions,
+} from "./base.repository.js";
 import type { EntityGroupSelect, EntityGroupInsert } from "../schema/zod.js";
 
 export interface EntityGroupListOptions extends ListOptions {
@@ -74,7 +78,11 @@ export class EntityGroupsRepository extends Repository<
     opts: ListOptions = {},
     client: DbClient = db
   ): Promise<EntityGroupSelect[]> {
-    return this.findMany(eq(entityGroups.organizationId, organizationId), opts, client);
+    return this.findMany(
+      eq(entityGroups.organizationId, organizationId),
+      opts,
+      client
+    );
   }
 
   /** Find a single group by exact name within an organization (used for duplicate name validation). */
@@ -123,10 +131,7 @@ export class EntityGroupsRepository extends Repository<
       .select()
       .from(this.table)
       .where(
-        and(
-          inArray(entityGroups.id, groupIds),
-          isNull(entityGroups.deleted)
-        )
+        and(inArray(entityGroups.id, groupIds), isNull(entityGroups.deleted))
       );
 
     return groups as EntityGroupSelect[];

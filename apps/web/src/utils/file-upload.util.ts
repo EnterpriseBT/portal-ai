@@ -18,7 +18,13 @@ export interface FileUploadProgress {
   percent: number;
 }
 
-export type UploadPhase = "idle" | "presigning" | "uploading" | "processing" | "done" | "error";
+export type UploadPhase =
+  | "idle"
+  | "presigning"
+  | "uploading"
+  | "processing"
+  | "done"
+  | "error";
 
 export interface UseFileUploadState {
   phase: UploadPhase;
@@ -47,7 +53,7 @@ export interface UseFileUploadReturn extends UseFileUploadState {
    */
   startUpload: (
     files: File[],
-    presignParams: Omit<PresignRequestBody, "files">,
+    presignParams: Omit<PresignRequestBody, "files">
   ) => Promise<string>;
   reset: () => void;
 }
@@ -57,12 +63,15 @@ export interface UseFileUploadReturn extends UseFileUploadState {
 function uploadFileToS3(
   file: File,
   upload: PresignUploadItem,
-  onProgress: (loaded: number, total: number) => void,
+  onProgress: (loaded: number, total: number) => void
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", upload.presignedUrl, true);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.setRequestHeader(
+      "Content-Type",
+      file.type || "application/octet-stream"
+    );
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) {
@@ -74,7 +83,9 @@ function uploadFileToS3(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`S3 upload failed for ${file.name}: HTTP ${xhr.status}`));
+        reject(
+          new Error(`S3 upload failed for ${file.name}: HTTP ${xhr.status}`)
+        );
       }
     });
 
@@ -109,7 +120,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
   const startUpload = useCallback(
     async (
       files: File[],
-      presignParams: Omit<PresignRequestBody, "files">,
+      presignParams: Omit<PresignRequestBody, "files">
     ): Promise<string> => {
       try {
         // Phase 1: Presign
@@ -124,7 +135,8 @@ export const useFileUpload = (): UseFileUploadReturn => {
           })),
         };
 
-        const presignResult: PresignResponsePayload = await presign(presignBody);
+        const presignResult: PresignResponsePayload =
+          await presign(presignBody);
         const { jobId, uploads } = presignResult;
 
         setState((prev) => ({ ...prev, jobId, phase: "uploading" }));
@@ -161,7 +173,8 @@ export const useFileUpload = (): UseFileUploadReturn => {
               totalLoaded += p.loaded;
               totalSize += p.total;
             }
-            const overallPercent = totalSize > 0 ? Math.round((totalLoaded / totalSize) * 100) : 0;
+            const overallPercent =
+              totalSize > 0 ? Math.round((totalLoaded / totalSize) * 100) : 0;
 
             setState((prev) => ({
               ...prev,
@@ -193,7 +206,7 @@ export const useFileUpload = (): UseFileUploadReturn => {
         throw err;
       }
     },
-    [presign, process],
+    [presign, process]
   );
 
   const reset = useCallback(() => {

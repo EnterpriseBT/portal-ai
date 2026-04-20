@@ -20,7 +20,9 @@ describe("SectionHelpUI", () => {
     render(<SectionHelpUI title="Helpful tip" ariaLabel="What is this?" />);
     const trigger = screen.getByLabelText("What is this?");
     fireEvent.mouseOver(trigger);
-    await waitFor(() => expect(screen.getByRole("tooltip")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    );
     expect(screen.getByRole("tooltip")).toHaveTextContent("Helpful tip");
   });
 
@@ -36,7 +38,9 @@ describe("SectionHelpUI", () => {
       />
     );
     fireEvent.mouseOver(screen.getByLabelText("Explain"));
-    await waitFor(() => expect(screen.getByRole("tooltip")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    );
     const tooltip = screen.getByRole("tooltip");
     expect(tooltip).toHaveTextContent(/Bold:/);
     expect(tooltip.querySelector("strong")).not.toBeNull();

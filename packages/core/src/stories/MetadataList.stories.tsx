@@ -96,7 +96,10 @@ export const WithCustomValues: Story = {
   args: {
     items: [
       { label: "ID", value: "rec_xyz789", variant: "mono" },
-      { label: "Status", value: <Chip label="Active" size="small" color="success" /> },
+      {
+        label: "Status",
+        value: <Chip label="Active" size="small" color="success" />,
+      },
       {
         label: "Tags",
         value: (
@@ -151,7 +154,11 @@ export const MediumSize: Story = {
 export const LongLabels: Story = {
   args: {
     items: [
-      { label: "Connection String", value: "postgresql://...", variant: "mono" },
+      {
+        label: "Connection String",
+        value: "postgresql://...",
+        variant: "mono",
+      },
       { label: "Max Connections", value: "25" },
       { label: "Connection Timeout", value: "30s" },
       { label: "SSL Mode", value: "require", variant: "chip" },

@@ -49,7 +49,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A live connection to one of your data sources, created by configuring a connector definition with your credentials or files.",
     example:
-      "You upload a CSV of customer data — that creates a connector instance named \"Q1 Customers CSV\".",
+      'You upload a CSV of customer data — that creates a connector instance named "Q1 Customers CSV".',
     relatedTerms: ["Connector Definition", "Connector Entity", "Station"],
     pageRoute: ApplicationRoute.Connectors,
   },
@@ -79,7 +79,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "Pulling the latest data from a connector into Portals.ai so your entities stay current.",
     example:
-      "Click \"Sync\" on a connector instance to fetch any new or changed records from the source.",
+      'Click "Sync" on a connector instance to fetch any new or changed records from the source.',
     relatedTerms: ["Connector Instance", "Entity Record", "Job"],
     pageRoute: ApplicationRoute.Entities,
   },
@@ -90,7 +90,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A reusable field specification — name, type, and validation rules — that your entities can map their fields to.",
     example:
-      "Define an \"email\" column once with email-pattern validation, then map it across every entity that has email data.",
+      'Define an "email" column once with email-pattern validation, then map it across every entity that has email data.',
     relatedTerms: ["Field Mapping", "Data Types", "Validation Pattern"],
     pageRoute: ApplicationRoute.ColumnDefinitions,
   },
@@ -100,7 +100,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A link between a raw field on a connector entity and a shared column definition, so different sources can be normalized to the same shape.",
     example:
-      "Map the \"Email Address\" field from your CRM and the \"email\" field from your CSV to the same email column definition.",
+      'Map the "Email Address" field from your CRM and the "email" field from your CSV to the same email column definition.',
     relatedTerms: ["Column Definition", "Connector Entity", "Normalized Data"],
     pageRoute: ApplicationRoute.Entities,
   },
@@ -110,7 +110,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "The supported value types for a column definition: string, number, boolean, date, datetime, enum, json, array, reference, and reference-array.",
     example:
-      "A \"price\" column uses the number type; a \"tags\" column uses the array type.",
+      'A "price" column uses the number type; a "tags" column uses the array type.',
     relatedTerms: ["Column Definition", "Validation Pattern"],
     pageRoute: ApplicationRoute.ColumnDefinitions,
   },
@@ -130,7 +130,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A standard display form for a column's values — for example, ISO-8601 for dates — applied consistently across sources.",
     example:
-      "A canonical date format ensures \"2026-04-13\" is shown identically whether the source stored it as \"4/13/26\" or \"13 Apr 2026\".",
+      'A canonical date format ensures "2026-04-13" is shown identically whether the source stored it as "4/13/26" or "13 Apr 2026".',
     relatedTerms: ["Column Definition", "Normalized Data"],
     pageRoute: ApplicationRoute.ColumnDefinitions,
   },
@@ -139,8 +139,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     category: GlossaryCategory.DataModeling,
     definition:
       "The field on a connector entity that uniquely identifies each record.",
-    example:
-      "A Customers entity might use \"customer_id\" as its primary key.",
+    example: 'A Customers entity might use "customer_id" as its primary key.',
     relatedTerms: ["Connector Entity", "Entity Record"],
     pageRoute: ApplicationRoute.Entities,
   },
@@ -172,7 +171,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "An individual connector entity that belongs to an entity group.",
     example:
-      "Inside the \"People\" entity group, both the CRM Contacts entity and the support Users entity are members.",
+      'Inside the "People" entity group, both the CRM Contacts entity and the support Users entity are members.',
     relatedTerms: ["Entity Group", "Link Field"],
     pageRoute: ApplicationRoute.EntityGroups,
   },
@@ -182,7 +181,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "The field used to match records across the members of an entity group — typically a shared identifier such as email.",
     example:
-      "Use \"email\" as the link field so the same person in your CRM and your billing system can be recognized as one.",
+      'Use "email" as the link field so the same person in your CRM and your billing system can be recognized as one.',
     relatedTerms: ["Entity Group", "Entity Group Member", "Overlap Preview"],
     pageRoute: ApplicationRoute.EntityGroups,
   },
@@ -192,7 +191,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A color-coded label you attach to entities to categorize and filter them.",
     example:
-      "Tag all your customer-data entities with a green \"Customers\" tag for quick filtering on the entities page.",
+      'Tag all your customer-data entities with a green "Customers" tag for quick filtering on the entities page.',
     relatedTerms: ["Connector Entity"],
     pageRoute: ApplicationRoute.Tags,
   },
@@ -214,8 +213,13 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A workspace that groups connector instances and tool packs together so you can analyze them in a portal.",
     example:
-      "Create a \"Sales\" station with your CRM and billing connectors plus the statistics tool pack.",
-    relatedTerms: ["Connector Instance", "Tool Pack", "Portal", "Default Station"],
+      'Create a "Sales" station with your CRM and billing connectors plus the statistics tool pack.',
+    relatedTerms: [
+      "Connector Instance",
+      "Tool Pack",
+      "Portal",
+      "Default Station",
+    ],
     pageRoute: ApplicationRoute.Stations,
   },
   {
@@ -234,7 +238,7 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     definition:
       "A chat session where you ask questions about the data in a station; the assistant answers using the station's tool packs.",
     example:
-      "Open a portal on the Sales station and ask, \"What was last quarter's revenue by region?\"",
+      'Open a portal on the Sales station and ask, "What was last quarter\'s revenue by region?"',
     relatedTerms: ["Station", "Portal Message", "Portal Result"],
   },
   {

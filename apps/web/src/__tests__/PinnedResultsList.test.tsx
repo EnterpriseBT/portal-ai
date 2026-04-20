@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { PortalResultWithIncludes } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { PinnedResultCardUI, PinnedResultsListUI } = await import(
-  "../components/PinnedResultsList.component"
-);
+const { PinnedResultCardUI, PinnedResultsListUI } =
+  await import("../components/PinnedResultsList.component");
 
 const makePinnedResult = (
   overrides: Partial<PortalResultWithIncludes> = {}
@@ -56,7 +55,9 @@ describe("PinnedResultCardUI", () => {
 
   it("should call onResultClick with result id when card is clicked", () => {
     const onResultClick = jest.fn();
-    render(<PinnedResultCardUI {...defaultCardProps} onResultClick={onResultClick} />);
+    render(
+      <PinnedResultCardUI {...defaultCardProps} onResultClick={onResultClick} />
+    );
     fireEvent.click(screen.getByText("Revenue Summary"));
     expect(onResultClick).toHaveBeenCalledWith("result-1");
   });
@@ -86,7 +87,11 @@ describe("PinnedResultCardUI", () => {
   it("should render portal name when portalName is provided", () => {
     const result = makePinnedResult({ portalName: "Research Portal" });
     render(
-      <PinnedResultCardUI result={result} onResultClick={jest.fn()} onUnpin={jest.fn()} />
+      <PinnedResultCardUI
+        result={result}
+        onResultClick={jest.fn()}
+        onUnpin={jest.fn()}
+      />
     );
     expect(screen.getByText("from Research Portal")).toBeInTheDocument();
   });
@@ -94,7 +99,11 @@ describe("PinnedResultCardUI", () => {
   it("should not render portal name when portalName is null", () => {
     const result = makePinnedResult({ portalName: null });
     render(
-      <PinnedResultCardUI result={result} onResultClick={jest.fn()} onUnpin={jest.fn()} />
+      <PinnedResultCardUI
+        result={result}
+        onResultClick={jest.fn()}
+        onUnpin={jest.fn()}
+      />
     );
     expect(screen.queryByText(/from/)).not.toBeInTheDocument();
   });
@@ -102,7 +111,11 @@ describe("PinnedResultCardUI", () => {
   it("should not render portal name when portalName is absent", () => {
     const result = makePinnedResult();
     render(
-      <PinnedResultCardUI result={result} onResultClick={jest.fn()} onUnpin={jest.fn()} />
+      <PinnedResultCardUI
+        result={result}
+        onResultClick={jest.fn()}
+        onUnpin={jest.fn()}
+      />
     );
     expect(screen.queryByText(/from/)).not.toBeInTheDocument();
   });
@@ -131,9 +144,7 @@ describe("PinnedResultsListUI", () => {
   it("should render empty-state placeholder when results is empty", () => {
     render(<PinnedResultsListUI {...defaultListProps} results={[]} />);
     expect(screen.getByTestId("empty-pinned-results")).toBeInTheDocument();
-    expect(
-      screen.getByText(/No pinned results yet/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/No pinned results yet/)).toBeInTheDocument();
   });
 
   it("should render View All link", () => {
@@ -151,6 +162,8 @@ describe("PinnedResultsListUI", () => {
 
   it("should not render View All link in empty state", () => {
     render(<PinnedResultsListUI {...defaultListProps} results={[]} />);
-    expect(screen.queryByTestId("view-all-pinned-results")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("view-all-pinned-results")
+    ).not.toBeInTheDocument();
   });
 });

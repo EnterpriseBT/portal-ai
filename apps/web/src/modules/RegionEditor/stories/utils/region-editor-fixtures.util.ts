@@ -41,9 +41,9 @@ const UNIFIED_REGION_NAMES = ["North America", "EMEA", "APAC", "LATAM"];
 const UNIFIED_QUARTERS = ["Q1 2025", "Q2 2025", "Q3 2025", "Q4 2025"];
 const UNIFIED_REVENUE: number[][] = [
   [120000, 135000, 148000, 152000], // North America
-  [82000, 89000, 91000, 95000],     // EMEA
-  [45000, 52000, 61000, 68000],     // APAC
-  [22000, 28000, 31000, 35000],     // LATAM
+  [82000, 89000, 91000, 95000], // EMEA
+  [45000, 52000, 61000, 68000], // APAC
+  [22000, 28000, 31000, 35000], // LATAM
 ];
 
 // ----------------------------------------------------------------------------
@@ -71,7 +71,13 @@ function buildRowTablesSheet(): SheetPreview {
     }
   }
 
-  return { id: "sheet_row_tables", name: "Row tables", rowCount: 22, colCount: 5, cells };
+  return {
+    id: "sheet_row_tables",
+    name: "Row tables",
+    rowCount: 22,
+    colCount: 5,
+    cells,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -119,16 +125,17 @@ function buildColumnTablesSheet(): SheetPreview {
 
 const UNIFIED_REGION_FIELDS = ["Manager", "Headcount", "HQ", "Currency"];
 const UNIFIED_REGION_ATTRS: Cell[][] = [
-  ["Priya", 120, "New York", "USD"],   // North America
-  ["Hans", 82, "London", "EUR"],       // EMEA
-  ["Yuki", 45, "Singapore", "SGD"],    // APAC
-  ["Diego", 22, "São Paulo", "BRL"],   // LATAM
+  ["Priya", 120, "New York", "USD"], // North America
+  ["Hans", 82, "London", "EUR"], // EMEA
+  ["Yuki", 45, "Singapore", "SGD"], // APAC
+  ["Diego", 22, "São Paulo", "BRL"], // LATAM
 ];
 
 function buildMixedAxesSheet(): SheetPreview {
   const cells = blank(20, 7);
 
-  cells[0][0] = "Same regions, heterogeneous attributes — two pivot permutations";
+  cells[0][0] =
+    "Same regions, heterogeneous attributes — two pivot permutations";
 
   // Variant A: rows-as-records + headerAxis: column
   //   Col A identifies each record (region); row 3 labels the attribute columns.
@@ -162,7 +169,13 @@ function buildMixedAxesSheet(): SheetPreview {
     }
   }
 
-  return { id: "sheet_mixed_axes", name: "Mixed axes", rowCount: 20, colCount: 7, cells };
+  return {
+    id: "sheet_mixed_axes",
+    name: "Mixed axes",
+    rowCount: 20,
+    colCount: 7,
+    cells,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -186,7 +199,13 @@ function buildCrosstabSheet(): SheetPreview {
     }
   }
 
-  return { id: "sheet_crosstab", name: "Crosstab", rowCount: 10, colCount: 7, cells };
+  return {
+    id: "sheet_crosstab",
+    name: "Crosstab",
+    rowCount: 10,
+    colCount: 7,
+    cells,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -205,7 +224,13 @@ function buildMessyPipelineSheet(): SheetPreview {
 
   write(cells, 5, 0, ["— NA Region —"]);
   write(cells, 6, 0, ["Acme", "Priya", "Closed Won", 48000, "2026-03-01"]);
-  write(cells, 7, 0, ["Beta Industries", "Marco", "Negotiation", 17000, "2026-04-22"]);
+  write(cells, 7, 0, [
+    "Beta Industries",
+    "Marco",
+    "Negotiation",
+    17000,
+    "2026-04-22",
+  ]);
   write(cells, 8, 0, ["Chai & Co", "Priya", "Proposal", 22500, "2026-05-10"]);
   // Blank row to test single-blank skip (terminator=2 so this doesn't end things).
   // Row 9 intentionally blank.
@@ -214,9 +239,27 @@ function buildMessyPipelineSheet(): SheetPreview {
   // Row 12 intentionally blank (aesthetic separator between regions).
 
   write(cells, 13, 0, ["— EMEA Region —"]);
-  write(cells, 14, 0, ["Epsilon GmbH", "Hans", "Closed Won", 32000, "2026-03-14"]);
-  write(cells, 15, 0, ["Foxtrot SARL", "Claire", "Proposal", 12000, "2026-05-03"]);
-  write(cells, 16, 0, ["Gamma PLC", "Hans", "Negotiation", 41000, "2026-04-28"]);
+  write(cells, 14, 0, [
+    "Epsilon GmbH",
+    "Hans",
+    "Closed Won",
+    32000,
+    "2026-03-14",
+  ]);
+  write(cells, 15, 0, [
+    "Foxtrot SARL",
+    "Claire",
+    "Proposal",
+    12000,
+    "2026-05-03",
+  ]);
+  write(cells, 16, 0, [
+    "Gamma PLC",
+    "Hans",
+    "Negotiation",
+    41000,
+    "2026-04-28",
+  ]);
   write(cells, 17, 0, ["Subtotal", "", "", 85000, ""]);
   // Row 18 blank.
 
@@ -244,8 +287,10 @@ function buildMessyPipelineSheet(): SheetPreview {
 function buildMessyQuartersSheet(): SheetPreview {
   const cells = blank(12, 14);
 
-  cells[0][0] = "Quarterly snapshot — messy export where non-data columns interleave";
-  cells[1][0] = "Rows are fields. Columns with '— Subtotal —' in row 3 are aggregates to skip.";
+  cells[0][0] =
+    "Quarterly snapshot — messy export where non-data columns interleave";
+  cells[1][0] =
+    "Rows are fields. Columns with '— Subtotal —' in row 3 are aggregates to skip.";
 
   // Row 3 is the label row the skip rule will target (axis: "row", crossAxisIndex: 3).
   write(cells, 3, 0, [
@@ -306,7 +351,13 @@ function buildHeaderlessSheet(): SheetPreview {
   write(cells, 16, 0, ["ORD-102", "Chai", 6500, "No"]);
   write(cells, 17, 0, ["ORD-103", "Delta", 12000, "No"]);
 
-  return { id: "sheet_headerless", name: "Headerless", rowCount: 22, colCount: 10, cells };
+  return {
+    id: "sheet_headerless",
+    name: "Headerless",
+    rowCount: 22,
+    colCount: 10,
+    cells,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -320,18 +371,34 @@ function buildLargeFactSheet(): SheetPreview {
     Array<CellValue>(colCount).fill("")
   );
 
-  cells[0][0] = "Raw GL export — Jan 2024 – Dec 2026 (scroll to draw across full range)";
+  cells[0][0] =
+    "Raw GL export — Jan 2024 – Dec 2026 (scroll to draw across full range)";
 
   const monthHeaders = Array.from({ length: 36 }, (_, i) => {
     const year = 2024 + Math.floor(i / 12);
     const month = (i % 12) + 1;
     return `${year}-${String(month).padStart(2, "0")}`;
   });
-  const staticHeaders = ["Account", "Cost Center", "Region", "Product", "Segment"];
-  const headers = [...staticHeaders, ...monthHeaders.slice(0, colCount - staticHeaders.length)];
+  const staticHeaders = [
+    "Account",
+    "Cost Center",
+    "Region",
+    "Product",
+    "Segment",
+  ];
+  const headers = [
+    ...staticHeaders,
+    ...monthHeaders.slice(0, colCount - staticHeaders.length),
+  ];
   for (let c = 0; c < colCount; c++) cells[2][c] = headers[c];
 
-  const accounts = ["4000 Revenue", "4100 Services", "4200 Licenses", "5000 COGS", "6000 Opex"];
+  const accounts = [
+    "4000 Revenue",
+    "4100 Services",
+    "4200 Licenses",
+    "5000 COGS",
+    "6000 Opex",
+  ];
   const centers = ["AMER-East", "AMER-West", "EMEA", "APAC", "LATAM"];
   const regions = ["US", "CA", "UK", "DE", "FR", "JP", "AU", "BR"];
   const products = ["Portal", "Pulse", "Prism", "Pilot", "Pivot"];
@@ -349,7 +416,13 @@ function buildLargeFactSheet(): SheetPreview {
     }
   }
 
-  return { id: "sheet_large_fact", name: "GL fact (large)", rowCount, colCount, cells };
+  return {
+    id: "sheet_large_fact",
+    name: "GL fact (large)",
+    rowCount,
+    colCount,
+    cells,
+  };
 }
 
 export const DEMO_WORKBOOK: Workbook = {
@@ -445,7 +518,11 @@ export const PROPOSED_REGIONS: RegionDraft[] = [
     orientation: "cells-as-records",
     headerAxis: "row",
     recordsAxisName: { name: "Region", source: "user" },
-    secondaryRecordsAxisName: { name: "Quarter", source: "ai", confidence: 0.82 },
+    secondaryRecordsAxisName: {
+      name: "Quarter",
+      source: "ai",
+      confidence: 0.82,
+    },
     cellValueName: { name: "Revenue", source: "ai", confidence: 0.79 },
     boundsMode: "absolute",
     confidence: 0.83,
@@ -476,7 +553,8 @@ export const PROPOSED_REGIONS: RegionDraft[] = [
       {
         code: "AMBIGUOUS_HEADER",
         severity: "info",
-        message: "Three skip rules active — extraction omits section labels and subtotals.",
+        message:
+          "Three skip rules active — extraction omits section labels and subtotals.",
         suggestedFix: "Verify the 9 extracted rows match the 9 real deals.",
       },
     ],
@@ -498,7 +576,12 @@ export const PROPOSED_REGIONS: RegionDraft[] = [
       { kind: "blank" },
       // Row 3 is the label row for each column. Skip columns whose row-3 cell
       // looks like an aggregate header ("— Subtotal —", "— Year-end —").
-      { kind: "cellMatches", crossAxisIndex: 3, pattern: "^—.*—$", axis: "row" },
+      {
+        kind: "cellMatches",
+        crossAxisIndex: 3,
+        pattern: "^—.*—$",
+        axis: "row",
+      },
     ],
     untilEmptyTerminatorCount: 2,
     confidence: 0.74,
@@ -506,7 +589,8 @@ export const PROPOSED_REGIONS: RegionDraft[] = [
       {
         code: "UNRECOGNIZED_COLUMN",
         severity: "info",
-        message: "Subtotal columns are skipped; record columns extend until two consecutive empty columns.",
+        message:
+          "Subtotal columns are skipped; record columns extend until two consecutive empty columns.",
       },
     ],
   },
@@ -551,7 +635,8 @@ export const DRIFT_REGIONS: RegionDraft[] = PROPOSED_REGIONS.map((r) => {
         flagged: true,
         kind: "columns",
         priorSummary: "Columns: Region · Quarter · Revenue",
-        observedSummary: "New column observed: 'Source' between Quarter and Revenue",
+        observedSummary:
+          "New column observed: 'Source' between Quarter and Revenue",
       },
       warnings: [
         {
@@ -579,7 +664,8 @@ export const DRIFT_REGIONS: RegionDraft[] = PROPOSED_REGIONS.map((r) => {
           code: "DUPLICATE_IDENTITY_VALUES",
           severity: "blocker",
           message: "Renaming axis labels changes source_id derivation.",
-          suggestedFix: "Confirm whether to accept the rename or keep prior identity mapping.",
+          suggestedFix:
+            "Confirm whether to accept the rename or keep prior identity mapping.",
         },
       ],
     };
@@ -595,7 +681,8 @@ export const BLOCKER_REGIONS: RegionDraft[] = [
         code: "IDENTITY_COLUMN_HAS_BLANKS",
         severity: "blocker",
         message: "Identity column 'Region' has 2 blank rows.",
-        suggestedFix: "Fill the blanks in the source file or choose a different identity column.",
+        suggestedFix:
+          "Fill the blanks in the source file or choose a different identity column.",
       },
     ],
     confidence: 0.48,

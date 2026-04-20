@@ -13,7 +13,9 @@ const logger = createLogger({ module: "revalidation-processor" });
 /** Batch size for updating records to avoid memory spikes. */
 const BATCH_SIZE = 100;
 
-export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (bullJob) => {
+export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (
+  bullJob
+) => {
   const { jobId, connectorEntityId } = bullJob.data;
 
   logger.info({ jobId, connectorEntityId }, "Revalidation started");
@@ -21,18 +23,22 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (b
   // 1. Fetch all field mappings for the entity (with column definitions)
   const mappings = await DbService.repository.fieldMappings.findMany(
     eq(fieldMappings.connectorEntityId, connectorEntityId),
-    { include: ["columnDefinition"] },
+    { include: ["columnDefinition"] }
   );
 
   await bullJob.updateProgress(10);
 
   // 2. Fetch all records for the entity
-  const records = await DbService.repository.entityRecords.findByConnectorEntityId(
-    connectorEntityId,
-  );
+  const records =
+    await DbService.repository.entityRecords.findByConnectorEntityId(
+      connectorEntityId
+    );
 
   const total = records.length;
-  logger.info({ jobId, connectorEntityId, total }, "Fetched records for revalidation");
+  logger.info(
+    { jobId, connectorEntityId, total },
+    "Fetched records for revalidation"
+  );
 
   if (total === 0) {
     await bullJob.updateProgress(100);
@@ -50,10 +56,15 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (b
     const batch = records.slice(i, i + BATCH_SIZE);
 
     const updates = batch.map((record) => {
-      const rawData = (record.data ?? record.normalizedData ?? {}) as Record<string, unknown>;
+      const rawData = (record.data ?? record.normalizedData ?? {}) as Record<
+        string,
+        unknown
+      >;
       const result = NormalizationService.normalizeWithMappings(
-        mappings as Parameters<typeof NormalizationService.normalizeWithMappings>[0],
-        rawData,
+        mappings as Parameters<
+          typeof NormalizationService.normalizeWithMappings
+        >[0],
+        rawData
       );
 
       if (result.isValid) {
@@ -83,8 +94,8 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (b
           normalizedData: u.normalizedData,
           validationErrors: u.validationErrors,
           isValid: u.isValid,
-        } as never),
-      ),
+        } as never)
+      )
     );
 
     // Progress: 20-90 range spread across batches
@@ -94,9 +105,14 @@ export const revalidationProcessor: TypedJobProcessor<"revalidation"> = async (b
 
   logger.info(
     { jobId, connectorEntityId, total, valid, invalid },
-    "Revalidation complete",
+    "Revalidation complete"
   );
 
-  const result: RevalidationResult = { total, valid, invalid, errors: errorSummary };
+  const result: RevalidationResult = {
+    total,
+    valid,
+    invalid,
+    errors: errorSummary,
+  };
   return result;
 };

@@ -2,10 +2,7 @@ import { Readable } from "node:stream";
 
 import { describe, it, expect } from "@jest/globals";
 
-import {
-  parseCsvStream,
-  csvRowIterator,
-} from "../../utils/csv-parser.util.js";
+import { parseCsvStream, csvRowIterator } from "../../utils/csv-parser.util.js";
 
 function toStream(text: string): Readable {
   return Readable.from(Buffer.from(text, "utf8"));
@@ -24,7 +21,9 @@ function chunkedStream(text: string, chunkSize: number): Readable {
 describe("parseCsvStream", () => {
   it("streams a simple CSV and returns FileParseResult with headers + sample rows + stats", async () => {
     const csv = "name,age,email\nalice,30,a@x.com\nbob,25,b@x.com\n";
-    const result = await parseCsvStream(toStream(csv), { fileName: "test.csv" });
+    const result = await parseCsvStream(toStream(csv), {
+      fileName: "test.csv",
+    });
 
     expect(result.fileName).toBe("test.csv");
     expect(result.delimiter).toBe(",");
@@ -42,7 +41,9 @@ describe("parseCsvStream", () => {
   });
 
   it("handles empty file without throwing", async () => {
-    const result = await parseCsvStream(toStream(""), { fileName: "empty.csv" });
+    const result = await parseCsvStream(toStream(""), {
+      fileName: "empty.csv",
+    });
 
     expect(result.rowCount).toBe(0);
     expect(result.headers).toEqual([]);
@@ -83,7 +84,10 @@ describe("parseCsvStream", () => {
   it("respects explicit delimiter option (skips detection)", async () => {
     // This text has pipe data but auto-detect would pick comma; explicit wins
     const csv = "x|y|z\n1|2|3\n";
-    const result = await parseCsvStream(toStream(csv), { fileName: "x.csv", delimiter: "|" });
+    const result = await parseCsvStream(toStream(csv), {
+      fileName: "x.csv",
+      delimiter: "|",
+    });
     expect(result.delimiter).toBe("|");
     expect(result.headers).toEqual(["x", "y", "z"]);
   });
@@ -110,7 +114,9 @@ describe("parseCsvStream", () => {
 
   it("accumulates column stats incrementally across chunked input", async () => {
     const csv = "letter,num\na,1\nb,2\na,3\nc,4\n";
-    const result = await parseCsvStream(chunkedStream(csv, 3), { fileName: "c.csv" });
+    const result = await parseCsvStream(chunkedStream(csv, 3), {
+      fileName: "c.csv",
+    });
 
     expect(result.rowCount).toBe(4);
     const letterStat = result.columnStats.find((s) => s.name === "letter")!;
@@ -143,7 +149,7 @@ describe("parseCsvStream", () => {
     // Unterminated quoted field triggers csv-parse error
     const csv = 'a,b,c\n"unterminated,x,y\n';
     await expect(
-      parseCsvStream(toStream(csv), { fileName: "bad.csv" }),
+      parseCsvStream(toStream(csv), { fileName: "bad.csv" })
     ).rejects.toThrow();
   });
 });

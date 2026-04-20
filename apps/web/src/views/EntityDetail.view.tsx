@@ -10,7 +10,15 @@ import type {
   FieldMappingListResponsePayload,
   AssignedEntityTag,
 } from "@portalai/core/contracts";
-import { Box, Icon, IconName, MetadataList, PageHeader, PageSection, Stack } from "@portalai/core/ui";
+import {
+  Box,
+  Icon,
+  IconName,
+  MetadataList,
+  PageHeader,
+  PageSection,
+  Stack,
+} from "@portalai/core/ui";
 import { AsyncSearchableSelect } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
@@ -119,7 +127,13 @@ export interface EntityDetailViewUIProps {
   /** Server error from the delete mutation. */
   deleteServerError?: ServerError | null;
   /** Impact data for deletion. */
-  deleteImpact?: { entityRecords: number; fieldMappings: number; entityTagAssignments: number; entityGroupMembers: number; refFieldMappings: number } | null;
+  deleteImpact?: {
+    entityRecords: number;
+    fieldMappings: number;
+    entityTagAssignments: number;
+    entityGroupMembers: number;
+    refFieldMappings: number;
+  } | null;
   /** Whether impact is loading. */
   isLoadingDeleteImpact?: boolean;
   /** Whether the delete dialog is open. */
@@ -190,9 +204,7 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
 
   // Column definitions captured from the first successful API response.
   // Used to populate the advanced filter builder and validate persisted filters.
-  const [columnDefs, setColumnDefs] = React.useState<ResolvedColumn[]>(
-    []
-  );
+  const [columnDefs, setColumnDefs] = React.useState<ResolvedColumn[]>([]);
 
   const { value: storedPagination, setValue: persistPagination } =
     useStorage<PaginationPersistedState>({
@@ -274,19 +286,46 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           }
           secondaryActions={[
             ...(isWriteEnabled
-              ? [{ label: "Edit", icon: <EditIcon />, onClick: () => onOpenEditDialog?.(), disabled: isUpdating }]
+              ? [
+                  {
+                    label: "Edit",
+                    icon: <EditIcon />,
+                    onClick: () => onOpenEditDialog?.(),
+                    disabled: isUpdating,
+                  },
+                ]
               : []),
             ...(isWriteEnabled
-              ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onOpenDeleteDialog?.(), color: "error" as const, disabled: isDeleting }]
+              ? [
+                  {
+                    label: "Delete",
+                    icon: <DeleteIcon />,
+                    onClick: () => onOpenDeleteDialog?.(),
+                    color: "error" as const,
+                    disabled: isDeleting,
+                  },
+                ]
               : []),
           ]}
         >
           <MetadataList
             items={[
               { label: "Key", value: entity.key, variant: "mono" },
-              { label: "Connector", value: connectorInstanceName ?? "", hidden: !connectorInstanceName },
-              { label: "Records", value: recordCount != null ? recordCount.toLocaleString() : "", hidden: recordCount == null },
-              { label: "Last sync", value: lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "", hidden: !lastSyncAt },
+              {
+                label: "Connector",
+                value: connectorInstanceName ?? "",
+                hidden: !connectorInstanceName,
+              },
+              {
+                label: "Records",
+                value: recordCount != null ? recordCount.toLocaleString() : "",
+                hidden: recordCount == null,
+              },
+              {
+                label: "Last sync",
+                value: lastSyncAt ? new Date(lastSyncAt).toLocaleString() : "",
+                hidden: !lastSyncAt,
+              },
             ]}
           />
         </PageHeader>
@@ -332,19 +371,19 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           </PageSection>
         )}
 
-
         {/* Bidirectional consistency warnings */}
-        {bidirectionalFieldMappings && bidirectionalFieldMappings.length > 0 && (
-          <Stack spacing={1}>
-            {bidirectionalFieldMappings.map((fm) => (
-              <BidirectionalConsistencyBanner
-                key={fm.id}
-                fieldMappingId={fm.id}
-                sourceField={fm.sourceField}
-              />
-            ))}
-          </Stack>
-        )}
+        {bidirectionalFieldMappings &&
+          bidirectionalFieldMappings.length > 0 && (
+            <Stack spacing={1}>
+              {bidirectionalFieldMappings.map((fm) => (
+                <BidirectionalConsistencyBanner
+                  key={fm.id}
+                  fieldMappingId={fm.id}
+                  sourceField={fm.sourceField}
+                />
+              ))}
+            </Stack>
+          )}
 
         {/* Data table */}
         <PageSection
@@ -363,11 +402,18 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                   {isRevalidating ? "Re-validating..." : "Re-validate All"}
                 </Button>
               )}
-              {isWriteEnabled && columnDefs.length > 0 && onOpenCreateRecordDialog && (
-                <Button variant="outlined" size="small" startIcon={<AddIcon />} onClick={onOpenCreateRecordDialog}>
-                  Create
-                </Button>
-              )}
+              {isWriteEnabled &&
+                columnDefs.length > 0 &&
+                onOpenCreateRecordDialog && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={onOpenCreateRecordDialog}
+                  >
+                    Create
+                  </Button>
+                )}
             </Stack>
           }
         >
@@ -448,16 +494,18 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           />
         )}
 
-        {createRecordDialogOpen !== undefined && onCloseCreateRecordDialog && onCreateRecord && (
-          <CreateEntityRecordDialog
-            open={!!createRecordDialogOpen}
-            onClose={onCloseCreateRecordDialog}
-            columns={columnDefs}
-            onSubmit={onCreateRecord}
-            isPending={isCreatingRecord}
-            serverError={createRecordServerError ?? null}
-          />
-        )}
+        {createRecordDialogOpen !== undefined &&
+          onCloseCreateRecordDialog &&
+          onCreateRecord && (
+            <CreateEntityRecordDialog
+              open={!!createRecordDialogOpen}
+              onClose={onCloseCreateRecordDialog}
+              columns={columnDefs}
+              onSubmit={onCreateRecord}
+              isPending={isCreatingRecord}
+              serverError={createRecordServerError ?? null}
+            />
+          )}
 
         {deleteDialogOpen !== undefined && onCloseDeleteDialog && onDelete && (
           <DeleteConnectorEntityDialog
@@ -494,7 +542,8 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const [createRecordDialogOpen, setCreateRecordDialogOpen] = useState(false);
 
   const entityResult = sdk.connectorEntities.get(entityId);
-  const connectorInstanceId = entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
+  const connectorInstanceId =
+    entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
   const instanceResult = sdk.connectorInstances.get(connectorInstanceId, {
     enabled: !!connectorInstanceId,
   });
@@ -508,13 +557,14 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const impactQuery = sdk.connectorEntities.impact(entityId, {
     enabled: deleteDialogOpen,
   });
-  const fieldMappingsResult = sdk.fieldMappings.list<FieldMappingListResponsePayload>({
-    connectorEntityId: entityId,
-    limit: 100,
-    offset: 0,
-    sortBy: "created",
-    sortOrder: "asc",
-  });
+  const fieldMappingsResult =
+    sdk.fieldMappings.list<FieldMappingListResponsePayload>({
+      connectorEntityId: entityId,
+      limit: 100,
+      offset: 0,
+      sortBy: "created",
+      sortOrder: "asc",
+    });
 
   const tagsResult = sdk.entityTagAssignments.listByEntity(entityId);
   const assignMutation = sdk.entityTagAssignments.assign(entityId);
@@ -528,20 +578,14 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
 
   const handleAssignTag = useCallback(
     (entityTagId: string) => {
-      assignMutation.mutate(
-        { entityTagId },
-        { onSuccess: invalidateTags }
-      );
+      assignMutation.mutate({ entityTagId }, { onSuccess: invalidateTags });
     },
     [assignMutation, invalidateTags]
   );
 
   const handleUnassignTag = useCallback(
     (assignmentId: string) => {
-      unassignMutation.mutate(
-        { assignmentId },
-        { onSuccess: invalidateTags }
-      );
+      unassignMutation.mutate({ assignmentId }, { onSuccess: invalidateTags });
     },
     [unassignMutation, invalidateTags]
   );
@@ -551,8 +595,12 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
       updateMutation.mutate(body, {
         onSuccess: () => {
           setEditDialogOpen(false);
-          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
-          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.get(entityId) });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorEntities.root,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorEntities.get(entityId),
+          });
         },
       });
     },
@@ -563,10 +611,18 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.connectorEntities.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.entityRecords.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.fieldMappings.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.entityGroups.root,
+        });
         navigate({ to: "/entities" });
       },
     });
@@ -575,7 +631,9 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   const handleRevalidate = useCallback(() => {
     revalidateMutation.mutate(undefined, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.entityRecords.root,
+        });
         queryClient.invalidateQueries({ queryKey: queryKeys.jobs.root });
       },
     });
@@ -587,7 +645,9 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
         onSuccess: () => {
           setCreateRecordDialogOpen(false);
           createRecordMutation.reset();
-          queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.entityRecords.root,
+          });
         },
       });
     },
@@ -609,7 +669,9 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
         const bidirectionalFieldMappings = (
           fieldMappingsResult.data?.fieldMappings ?? []
         )
-          .filter((fm) => fm.refEntityKey !== null && fm.refNormalizedKey !== null)
+          .filter(
+            (fm) => fm.refEntityKey !== null && fm.refNormalizedKey !== null
+          )
           .map((fm) => ({ id: fm.id, sourceField: fm.sourceField }));
 
         const instance = instanceResult.data?.connectorInstance;

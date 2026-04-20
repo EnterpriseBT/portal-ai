@@ -5,9 +5,7 @@ import { SampleFiles } from "../SampleFiles.component";
 describe("SampleFiles", () => {
   it("renders a prompt explaining what the links are", () => {
     render(<SampleFiles />);
-    expect(
-      screen.getByText(/recommended layout/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/recommended layout/i)).toBeInTheDocument();
   });
 
   it("renders a CSV sample link pointing at /samples/sample-contacts.csv", () => {

@@ -12,7 +12,10 @@ import type {
 import type { TypedJobProcessor } from "../jobs.worker.js";
 import { S3Service } from "../../services/s3.service.js";
 import { DbService } from "../../services/db.service.js";
-import { FileAnalysisService, type ExistingColumnDefinition } from "../../services/file-analysis.service.js";
+import {
+  FileAnalysisService,
+  type ExistingColumnDefinition,
+} from "../../services/file-analysis.service.js";
 import { createLogger } from "../../utils/logger.util.js";
 import { parseCsvStream } from "../../utils/csv-parser.util.js";
 import { parseXlsxStream } from "../../utils/xlsx-parser.util.js";
@@ -27,9 +30,7 @@ const MAX_SAMPLE_ROWS = 50;
 // S3 verification phase
 // ---------------------------------------------------------------------------
 
-async function verifyFiles(
-  files: FileUploadFile[]
-): Promise<void> {
+async function verifyFiles(files: FileUploadFile[]): Promise<void> {
   for (const file of files) {
     let head: { contentLength: number; contentType: string } | null;
     try {
@@ -142,7 +143,9 @@ async function parseFile(file: FileUploadFile): Promise<FileParseResult[]> {
 // Main processor
 // ---------------------------------------------------------------------------
 
-export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bullJob) => {
+export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (
+  bullJob
+) => {
   const { jobId, files } = bullJob.data;
   const fileCount = files.length;
 
@@ -160,13 +163,21 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
 
   for (let i = 0; i < fileCount; i++) {
     const file = files[i];
-    logger.info({ jobId, fileName: file.originalName }, `Parsing file ${i + 1}/${fileCount}`);
+    logger.info(
+      { jobId, fileName: file.originalName },
+      `Parsing file ${i + 1}/${fileCount}`
+    );
 
     const fileResults = await parseFile(file);
     for (const result of fileResults) {
       parseResults.push(result);
       logger.info(
-        { jobId, fileName: result.fileName, rowCount: result.rowCount, delimiter: result.delimiter },
+        {
+          jobId,
+          fileName: result.fileName,
+          rowCount: result.rowCount,
+          delimiter: result.delimiter,
+        },
         `Parsed ${result.fileName}`
       );
     }
@@ -184,17 +195,21 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
   const organizationId = bullJob.data.organizationId;
 
   // Fetch existing column definitions for the organization
-  const existingColumnDefs = await DbService.repository.columnDefinitions
-    .findByOrganizationId(organizationId);
-  const existingColumns: ExistingColumnDefinition[] = existingColumnDefs.map((cd) => ({
-    id: cd.id,
-    key: cd.key,
-    label: cd.label,
-    type: cd.type,
-    description: cd.description ?? null,
-    validationPattern: cd.validationPattern ?? null,
-    canonicalFormat: cd.canonicalFormat ?? null,
-  }));
+  const existingColumnDefs =
+    await DbService.repository.columnDefinitions.findByOrganizationId(
+      organizationId
+    );
+  const existingColumns: ExistingColumnDefinition[] = existingColumnDefs.map(
+    (cd) => ({
+      id: cd.id,
+      key: cd.key,
+      label: cd.label,
+      type: cd.type,
+      description: cd.description ?? null,
+      validationPattern: cd.validationPattern ?? null,
+      canonicalFormat: cd.canonicalFormat ?? null,
+    })
+  );
 
   const entityRecommendations: FileUploadRecommendationEntity[] = [];
 
@@ -218,7 +233,11 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
     await bullJob.updateProgress(progress);
 
     logger.info(
-      { jobId, fileName: parseResult.fileName, columnCount: recommendation.columns.length },
+      {
+        jobId,
+        fileName: parseResult.fileName,
+        columnCount: recommendation.columns.length,
+      },
       `Analyzed file ${i + 1}/${parseResults.length}`
     );
   }
@@ -231,9 +250,10 @@ export const fileUploadProcessor: TypedJobProcessor<"file_upload"> = async (bull
   // Derive a suggested connector instance name from the uploaded files.
   // Use the file count (not parseResults.length) so a single XLSX with N sheets
   // yields a workbook-based name rather than "(N files)".
-  const connectorInstanceName = fileCount === 1
-    ? files[0].originalName.replace(/\.[^.]+$/, "")
-    : `File Import (${fileCount} files)`;
+  const connectorInstanceName =
+    fileCount === 1
+      ? files[0].originalName.replace(/\.[^.]+$/, "")
+      : `File Import (${fileCount} files)`;
 
   const recommendations: FileUploadRecommendation = {
     connectorInstanceName,

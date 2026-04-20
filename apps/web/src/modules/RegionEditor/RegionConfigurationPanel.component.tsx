@@ -19,7 +19,11 @@ import { SectionHelpUI } from "./SectionHelp.component";
 import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
 import { ToggleRowUI } from "./ToggleRow.component";
 import { formatBounds } from "./utils/a1-notation.util";
-import { colorForEntity, confidenceBand, CONFIDENCE_BAND_COLOR } from "./utils/region-editor-colors.util";
+import {
+  colorForEntity,
+  confidenceBand,
+  CONFIDENCE_BAND_COLOR,
+} from "./utils/region-editor-colors.util";
 import {
   DECORATION_COLOR,
   DECORATION_LABEL,
@@ -71,7 +75,9 @@ const SECTION_HEADING_SX = {
   color: "text.secondary",
 } as const;
 
-export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProps> = ({
+export const RegionConfigurationPanelUI: React.FC<
+  RegionConfigurationPanelUIProps
+> = ({
   region,
   sheet,
   entityOptions,
@@ -108,8 +114,10 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
   const regionIsPivoted =
     !!region &&
     (region.orientation === "cells-as-records" ||
-      (region.orientation === "columns-as-records" && region.headerAxis === "row") ||
-      (region.orientation === "rows-as-records" && region.headerAxis === "column"));
+      (region.orientation === "columns-as-records" &&
+        region.headerAxis === "row") ||
+      (region.orientation === "rows-as-records" &&
+        region.headerAxis === "column"));
   const existingAxisName = region?.recordsAxisName;
   useEffect(() => {
     if (!region || !regionIsPivoted || !proposedFromAnchor) return;
@@ -118,7 +126,10 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
       onUpdate({
         recordsAxisName: { name: proposedFromAnchor, source: "anchor-cell" },
       });
-    } else if (current.source === "anchor-cell" && current.name !== proposedFromAnchor) {
+    } else if (
+      current.source === "anchor-cell" &&
+      current.name !== proposedFromAnchor
+    ) {
       onUpdate({
         recordsAxisName: { name: proposedFromAnchor, source: "anchor-cell" },
       });
@@ -141,7 +152,8 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
         }}
       >
         <Typography variant="body2" color="text.secondary">
-          Draw a region on the canvas, or select an existing region, to configure it here.
+          Draw a region on the canvas, or select an existing region, to
+          configure it here.
         </Typography>
       </Stack>
     );
@@ -152,10 +164,13 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
   const legendKinds = deriveLegendKinds(region);
   const pivoted =
     crosstab ||
-    (region.orientation === "columns-as-records" && region.headerAxis === "row") ||
-    (region.orientation === "rows-as-records" && region.headerAxis === "column");
+    (region.orientation === "columns-as-records" &&
+      region.headerAxis === "row") ||
+    (region.orientation === "rows-as-records" &&
+      region.headerAxis === "column");
   const needsAxisName = pivoted && !region.recordsAxisName?.name;
-  const needsSecondaryAxisName = crosstab && !region.secondaryRecordsAxisName?.name;
+  const needsSecondaryAxisName =
+    crosstab && !region.secondaryRecordsAxisName?.name;
   const needsCellValueName = crosstab && !region.cellValueName?.name;
   const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
   const band = confidenceBand(region.confidence);
@@ -182,7 +197,12 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
       }}
     >
       <Stack spacing={1} sx={{ gridColumn: "1 / -1" }}>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          sx={{ minWidth: 0 }}
+        >
           <Box
             sx={{
               width: 14,
@@ -201,7 +221,9 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
-            title={region.proposedLabel ?? region.targetEntityLabel ?? "New region"}
+            title={
+              region.proposedLabel ?? region.targetEntityLabel ?? "New region"
+            }
           >
             {region.proposedLabel ?? region.targetEntityLabel ?? "New region"}
           </Typography>
@@ -222,7 +244,8 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
           >
             {orientationArrow(region.orientation)}
           </Box>
-          {formatBounds(region.bounds)} · {region.bounds.endRow - region.bounds.startRow + 1} rows ·{" "}
+          {formatBounds(region.bounds)} ·{" "}
+          {region.bounds.endRow - region.bounds.startRow + 1} rows ·{" "}
           {region.bounds.endCol - region.bounds.startCol + 1} cols
         </Typography>
 
@@ -276,8 +299,13 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
               borderColor: "warning.main",
             }}
           >
-            <Typography variant="subtitle2" color="warning.dark" sx={{ mb: 0.5 }}>
-              Drift detected {region.drift?.identityChanging ? "— identity changing" : ""}
+            <Typography
+              variant="subtitle2"
+              color="warning.dark"
+              sx={{ mb: 0.5 }}
+            >
+              Drift detected{" "}
+              {region.drift?.identityChanging ? "— identity changing" : ""}
             </Typography>
             {region.drift?.priorSummary && (
               <Typography variant="caption" sx={{ display: "block" }}>
@@ -291,10 +319,18 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
             )}
             {region.drift?.identityChanging && (
               <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                <Button size="small" variant="contained" onClick={onAcceptProposedIdentity}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={onAcceptProposedIdentity}
+                >
                   Accept {driftProposedIdentityLabel ?? "new identity"}
                 </Button>
-                <Button size="small" variant="outlined" onClick={onKeepPriorIdentity}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={onKeepPriorIdentity}
+                >
                   Keep prior
                 </Button>
               </Stack>
@@ -330,7 +366,16 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
             sx={{ flex: 1, minWidth: 0 }}
           />
 
-          <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0, width: '100%', flexDirection: 'row', alignItems: 'center' }}>
+          <Stack
+            spacing={0.5}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              width: "100%",
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
             <Select
               label="Target entity"
               size="small"
@@ -349,7 +394,11 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
               }}
               options={selectOptions}
               placeholder="Select entity…"
-              slotProps={{ htmlInput: { "aria-invalid": Boolean(errors.targetEntityDefinitionId) } }}
+              slotProps={{
+                htmlInput: {
+                  "aria-invalid": Boolean(errors.targetEntityDefinitionId),
+                },
+              }}
             />
             {onCreateEntity && (
               <Button
@@ -367,8 +416,8 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
         {siblingsInSameEntity > 0 && region.targetEntityDefinitionId && (
           <Typography variant="caption" color="text.secondary">
             Merges into entity with {siblingsInSameEntity} other{" "}
-            {siblingsInSameEntity === 1 ? "region" : "regions"}. AI field mapping runs once across all
-            merged regions.
+            {siblingsInSameEntity === 1 ? "region" : "regions"}. AI field
+            mapping runs once across all merged regions.
           </Typography>
         )}
       </Stack>
@@ -405,13 +454,15 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
               ariaLabel="What is orientation?"
               title={
                 <>
-                  <strong>Rows:</strong> each row is a record — the most common table shape.
+                  <strong>Rows:</strong> each row is a record — the most common
+                  table shape.
                   <br />
-                  <strong>Columns:</strong> each column is a record — use when the data is
-                  pivoted sideways (field names down the left).
+                  <strong>Columns:</strong> each column is a record — use when
+                  the data is pivoted sideways (field names down the left).
                   <br />
-                  <strong>Cells (crosstab):</strong> every cell in the region is a record,
-                  indexed by its row and column label (e.g. revenue by month × region).
+                  <strong>Cells (crosstab):</strong> every cell in the region is
+                  a record, indexed by its row and column label (e.g. revenue by
+                  month × region).
                 </>
               }
             />
@@ -437,14 +488,15 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                 ariaLabel="What is the header axis?"
                 title={
                   <>
-                    <strong>Row:</strong> the top row of the region holds the field names
-                    (headers along the top).
+                    <strong>Row:</strong> the top row of the region holds the
+                    field names (headers along the top).
                     <br />
-                    <strong>Column:</strong> the left-most column of the region holds the
-                    field names (headers down the left).
+                    <strong>Column:</strong> the left-most column of the region
+                    holds the field names (headers down the left).
                     <br />
-                    <strong>None:</strong> the region has no header — field names are
-                    auto-generated from position and can be overridden below.
+                    <strong>None:</strong> the region has no header — field
+                    names are auto-generated from position and can be overridden
+                    below.
                   </>
                 }
               />
@@ -486,22 +538,25 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
               </Typography>
               <SectionHelpUI
                 ariaLabel={
-                  crosstab ? "What is the row-axis name?" : "What is the records-axis name?"
+                  crosstab
+                    ? "What is the row-axis name?"
+                    : "What is the records-axis name?"
                 }
                 title={
                   crosstab ? (
                     <>
-                      Name the dimension whose <em>values</em> run down the rows of the
-                      crosstab (e.g. <em>Month</em> when months label the rows). It becomes
-                      a field on every extracted record.
+                      Name the dimension whose <em>values</em> run down the rows
+                      of the crosstab (e.g. <em>Month</em> when months label the
+                      rows). It becomes a field on every extracted record.
                     </>
                   ) : (
                     <>
-                      When a region is pivoted (field names run along the header axis
-                      rather than the record axis), the record-axis labels themselves
-                      become the values of a field — this name labels that field. For
-                      example, if each column is a record and years label the columns,
-                      the records-axis name might be <em>Year</em>.
+                      When a region is pivoted (field names run along the header
+                      axis rather than the record axis), the record-axis labels
+                      themselves become the values of a field — this name labels
+                      that field. For example, if each column is a record and
+                      years label the columns, the records-axis name might be{" "}
+                      <em>Year</em>.
                     </>
                   )
                 }
@@ -519,7 +574,9 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                       : undefined,
                   })
                 }
-                placeholder={crosstab ? "e.g. Quarter, Region" : "e.g. Month, Region, Year"}
+                placeholder={
+                  crosstab ? "e.g. Quarter, Region" : "e.g. Month, Region, Year"
+                }
                 required
                 error={needsAxisName}
                 helperText={
@@ -532,7 +589,11 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                 slotProps={{ htmlInput: { "aria-invalid": needsAxisName } }}
               />
               {onSuggestAxisName && !region.recordsAxisName?.name && (
-                <Button size="small" variant="outlined" onClick={onSuggestAxisName}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={onSuggestAxisName}
+                >
                   Suggest
                 </Button>
               )}
@@ -560,9 +621,10 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                 ariaLabel="What is the column-axis name?"
                 title={
                   <>
-                    Name the dimension whose <em>values</em> run across the columns of the
-                    crosstab (e.g. <em>Region</em> when regions label the columns). It
-                    becomes a field on every extracted record.
+                    Name the dimension whose <em>values</em> run across the
+                    columns of the crosstab (e.g. <em>Region</em> when regions
+                    label the columns). It becomes a field on every extracted
+                    record.
                   </>
                 }
               />
@@ -581,8 +643,14 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
               placeholder="e.g. Month, Category"
               required
               error={needsSecondaryAxisName}
-              helperText={needsSecondaryAxisName ? "Required — names the column dimension" : undefined}
-              slotProps={{ htmlInput: { "aria-invalid": needsSecondaryAxisName } }}
+              helperText={
+                needsSecondaryAxisName
+                  ? "Required — names the column dimension"
+                  : undefined
+              }
+              slotProps={{
+                htmlInput: { "aria-invalid": needsSecondaryAxisName },
+              }}
             />
           </Stack>
         )}
@@ -597,10 +665,10 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                 ariaLabel="What is the cell value name?"
                 title={
                   <>
-                    Name the field that holds each cell&apos;s <em>value</em> in the crosstab
-                    (e.g. <em>Revenue</em> when cells contain dollar amounts). Every
-                    extracted record has this field alongside the row- and column-axis
-                    fields.
+                    Name the field that holds each cell&apos;s <em>value</em> in
+                    the crosstab (e.g. <em>Revenue</em> when cells contain
+                    dollar amounts). Every extracted record has this field
+                    alongside the row- and column-axis fields.
                   </>
                 }
               />
@@ -639,15 +707,21 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                 ariaLabel="What is the axis-name anchor cell?"
                 title={
                   <>
-                    The cell whose value names the unlabeled axis (or axes, for a
-                    crosstab). Defaults to the top-left of the region. Override it
-                    only when the axis label lives in a different cell — e.g. a
-                    legend row at the bottom of the block.
+                    The cell whose value names the unlabeled axis (or axes, for
+                    a crosstab). Defaults to the top-left of the region.
+                    Override it only when the axis label lives in a different
+                    cell — e.g. a legend row at the bottom of the block.
                   </>
                 }
               />
             </Stack>
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              flexWrap="wrap"
+              useFlexGap
+            >
               <CellPositionInputUI
                 axis="row"
                 label="Row"
@@ -701,7 +775,9 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
         flexItem
         sx={{ display: { xs: "none", sm: "block", lg: "none" } }}
       />
-      <Divider sx={{ gridColumn: "1 / -1", display: { xs: "none", lg: "block" } }} />
+      <Divider
+        sx={{ gridColumn: "1 / -1", display: { xs: "none", lg: "block" } }}
+      />
 
       <Stack spacing={2}>
         <Typography variant="caption" sx={SECTION_HEADING_SX}>
@@ -717,7 +793,10 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
             onChange={(v) =>
               onUpdate({
                 boundsMode: v,
-                boundsPattern: v === "matchesPattern" ? region.boundsPattern ?? "" : undefined,
+                boundsPattern:
+                  v === "matchesPattern"
+                    ? (region.boundsPattern ?? "")
+                    : undefined,
               })
             }
             options={[
@@ -727,7 +806,10 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
             ]}
           />
           <Typography variant="caption" color="text.secondary">
-            {extentDescription(region.orientation, region.boundsMode ?? "absolute")}
+            {extentDescription(
+              region.orientation,
+              region.boundsMode ?? "absolute"
+            )}
           </Typography>
           {region.boundsMode === "matchesPattern" && (
             <TextInput
@@ -743,16 +825,27 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
                 errors.boundsPattern ??
                 "Region ends at the first record matching this pattern."
               }
-              slotProps={{ htmlInput: { "aria-invalid": Boolean(errors.boundsPattern) } }}
+              slotProps={{
+                htmlInput: { "aria-invalid": Boolean(errors.boundsPattern) },
+              }}
             />
           )}
         </Stack>
 
-        <SkipAndTerminatorEditorUI region={region} onUpdate={onUpdate} errors={errors} />
+        <SkipAndTerminatorEditorUI
+          region={region}
+          onUpdate={onUpdate}
+          errors={errors}
+        />
       </Stack>
 
       {band !== "none" && (
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ gridColumn: "1 / -1" }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          sx={{ gridColumn: "1 / -1" }}
+        >
           <Box
             sx={{
               width: 8,
@@ -763,7 +856,9 @@ export const RegionConfigurationPanelUI: React.FC<RegionConfigurationPanelUIProp
           />
           <Typography variant="caption" color="text.secondary">
             Confidence:{" "}
-            {region.confidence !== undefined ? `${Math.round(region.confidence * 100)}%` : "—"}
+            {region.confidence !== undefined
+              ? `${Math.round(region.confidence * 100)}%`
+              : "—"}
           </Typography>
         </Stack>
       )}

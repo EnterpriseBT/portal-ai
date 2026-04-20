@@ -40,7 +40,10 @@ const RecordsAxisNameSchema = z.object({
 
 const CellMatchesSkipRuleSchema = z.object({
   kind: z.literal("cellMatches"),
-  crossAxisIndex: z.number({ message: "Position is required" }).int().nonnegative(),
+  crossAxisIndex: z
+    .number({ message: "Position is required" })
+    .int()
+    .nonnegative(),
   pattern: z.string().trim().min(1, "Pattern is required"),
   axis: z.enum(["row", "column"]).optional(),
 });
@@ -82,8 +85,10 @@ export function validateRegion(region: RegionDraft): RegionErrors {
   const crosstab = region.orientation === "cells-as-records";
   const pivoted =
     crosstab ||
-    (region.orientation === "columns-as-records" && region.headerAxis === "row") ||
-    (region.orientation === "rows-as-records" && region.headerAxis === "column");
+    (region.orientation === "columns-as-records" &&
+      region.headerAxis === "row") ||
+    (region.orientation === "rows-as-records" &&
+      region.headerAxis === "column");
 
   if (pivoted) {
     if (!region.recordsAxisName?.name || !region.recordsAxisName.name.trim()) {
@@ -93,7 +98,8 @@ export function validateRegion(region: RegionDraft): RegionErrors {
     } else {
       const parsed = RecordsAxisNameSchema.safeParse(region.recordsAxisName);
       if (!parsed.success) {
-        errors.recordsAxisName = parsed.error.issues[0]?.message ?? "Invalid records-axis name";
+        errors.recordsAxisName =
+          parsed.error.issues[0]?.message ?? "Invalid records-axis name";
       }
     }
   }
@@ -103,7 +109,8 @@ export function validateRegion(region: RegionDraft): RegionErrors {
       !region.secondaryRecordsAxisName?.name ||
       !region.secondaryRecordsAxisName.name.trim()
     ) {
-      errors.secondaryRecordsAxisName = "Column-axis name is required for crosstab regions";
+      errors.secondaryRecordsAxisName =
+        "Column-axis name is required for crosstab regions";
     }
     if (!region.cellValueName?.name || !region.cellValueName.name.trim()) {
       errors.cellValueName = "Cell value name is required for crosstab regions";
@@ -113,8 +120,14 @@ export function validateRegion(region: RegionDraft): RegionErrors {
   // --- Axis-anchor-cell override (optional; only meaningful for pivoted shapes) ---
   if (region.axisAnchorCell) {
     const { row, col } = region.axisAnchorCell;
-    if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || col < 0) {
-      errors.axisAnchorCell = "Anchor cell row and column must be non-negative integers";
+    if (
+      !Number.isInteger(row) ||
+      !Number.isInteger(col) ||
+      row < 0 ||
+      col < 0
+    ) {
+      errors.axisAnchorCell =
+        "Anchor cell row and column must be non-negative integers";
     } else if (
       row < region.bounds.startRow ||
       row > region.bounds.endRow ||
@@ -131,7 +144,8 @@ export function validateRegion(region: RegionDraft): RegionErrors {
   if (region.boundsMode === "matchesPattern") {
     const p = region.boundsPattern?.trim();
     if (!p) {
-      errors.boundsPattern = "Stop pattern is required when extent is Matches pattern";
+      errors.boundsPattern =
+        "Stop pattern is required when extent is Matches pattern";
     } else {
       try {
         new RegExp(p);
@@ -141,7 +155,10 @@ export function validateRegion(region: RegionDraft): RegionErrors {
     }
   }
 
-  if (region.boundsMode === "untilEmpty" && region.untilEmptyTerminatorCount !== undefined) {
+  if (
+    region.boundsMode === "untilEmpty" &&
+    region.untilEmptyTerminatorCount !== undefined
+  ) {
     if (
       !Number.isFinite(region.untilEmptyTerminatorCount) ||
       region.untilEmptyTerminatorCount < 1
@@ -164,7 +181,8 @@ export function validateRegion(region: RegionDraft): RegionErrors {
         try {
           new RegExp(result.data.pattern);
         } catch {
-          errors[`skipRules.${i}.pattern`] = "Pattern is not a valid regular expression";
+          errors[`skipRules.${i}.pattern`] =
+            "Pattern is not a valid regular expression";
         }
       }
     }

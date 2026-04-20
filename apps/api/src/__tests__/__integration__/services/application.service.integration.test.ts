@@ -184,7 +184,7 @@ describe("ApplicationService Integration Tests", () => {
         read: true,
         write: true,
         sync: false,
-        push: false
+        push: false,
       });
 
       // Verify connectorDefinitionId matches the sandbox definition
@@ -231,8 +231,7 @@ describe("ApplicationService Integration Tests", () => {
       const links = await stationInstancesRepo.findMany(undefined, {}, db);
       const link = links.find(
         (l) =>
-          l.stationId === station?.id &&
-          l.connectorInstanceId === instance?.id
+          l.stationId === station?.id && l.connectorInstanceId === instance?.id
       );
 
       expect(link).toBeDefined();

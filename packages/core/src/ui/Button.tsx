@@ -11,5 +11,5 @@ export const Button = React.forwardRef<HTMLButtonElement, MuiButtonProps>(
         {children}
       </MuiButton>
     );
-  },
+  }
 );

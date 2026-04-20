@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { ColumnDefinitionImpactResponsePayload } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeleteColumnDefinitionDialog } = await import(
-  "../components/DeleteColumnDefinitionDialog.component"
-);
+const { DeleteColumnDefinitionDialog } =
+  await import("../components/DeleteColumnDefinitionDialog.component");
 
 const fullImpact: ColumnDefinitionImpactResponsePayload = {
   fieldMappings: 5,
@@ -35,9 +34,7 @@ describe("DeleteColumnDefinitionDialog", () => {
 
   it("should render title when open is true", () => {
     render(<DeleteColumnDefinitionDialog {...defaultProps} />);
-    expect(
-      screen.getByText("Delete Column Definition")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Delete Column Definition")).toBeInTheDocument();
   });
 
   it("should not render when open is false", () => {
@@ -49,10 +46,7 @@ describe("DeleteColumnDefinitionDialog", () => {
 
   it("should show blocked state when impact has fieldMappings > 0", () => {
     render(
-      <DeleteColumnDefinitionDialog
-        {...defaultProps}
-        impact={fullImpact}
-      />
+      <DeleteColumnDefinitionDialog {...defaultProps} impact={fullImpact} />
     );
     expect(
       screen.getByText(/cannot be deleted because it is referenced/)
@@ -74,12 +68,8 @@ describe("DeleteColumnDefinitionDialog", () => {
   });
 
   it("should show loading state when isPending is true", () => {
-    render(
-      <DeleteColumnDefinitionDialog {...defaultProps} isPending={true} />
-    );
-    expect(
-      screen.getByRole("button", { name: "Deleting..." })
-    ).toBeDisabled();
+    render(<DeleteColumnDefinitionDialog {...defaultProps} isPending={true} />);
+    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
   });
 
   it("should render FormAlert when serverError is provided", () => {
@@ -105,10 +95,7 @@ describe("DeleteColumnDefinitionDialog", () => {
 
   it("should display impact counts when impact data is provided", () => {
     render(
-      <DeleteColumnDefinitionDialog
-        {...defaultProps}
-        impact={fullImpact}
-      />
+      <DeleteColumnDefinitionDialog {...defaultProps} impact={fullImpact} />
     );
     expect(screen.getByText("5 field mappings")).toBeInTheDocument();
     expect(screen.getByText("2 reference field mappings")).toBeInTheDocument();
@@ -123,21 +110,14 @@ describe("DeleteColumnDefinitionDialog", () => {
         isLoadingImpact={true}
       />
     );
-    expect(
-      screen.getByText("Checking associated data...")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Checking associated data...")).toBeInTheDocument();
   });
 
   it("should show 'No associated data found' when all counts are zero", () => {
     render(
-      <DeleteColumnDefinitionDialog
-        {...defaultProps}
-        impact={zeroImpact}
-      />
+      <DeleteColumnDefinitionDialog {...defaultProps} impact={zeroImpact} />
     );
-    expect(
-      screen.getByText("No associated data found.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("No associated data found.")).toBeInTheDocument();
   });
 
   it("should submit on Enter key press (form submission)", () => {
@@ -149,7 +129,9 @@ describe("DeleteColumnDefinitionDialog", () => {
         onConfirm={onConfirm}
       />
     );
-    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    const form = screen
+      .getByRole("button", { name: "Delete" })
+      .closest("form")!;
     fireEvent.submit(form);
     expect(onConfirm).toHaveBeenCalled();
   });

@@ -19,7 +19,12 @@ export const TagCardUI: React.FC<TagCardUIProps> = ({
 }) => {
   const actions: ActionSuiteItem[] = [
     { label: "Edit", icon: <EditIcon />, onClick: () => onEdit(tag) },
-    { label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(tag), color: "error" },
+    {
+      label: "Delete",
+      icon: <DeleteIcon />,
+      onClick: () => onDelete(tag),
+      color: "error",
+    },
   ];
 
   return (

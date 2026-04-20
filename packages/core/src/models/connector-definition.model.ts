@@ -49,7 +49,9 @@ export class ConnectorDefinitionModelFactory extends ModelFactory<
 > {
   create(createdBy: string): ConnectorDefinitionModel {
     const baseModel = this._coreModelFactory.create(createdBy);
-    const connectorDefinitionsModel = new ConnectorDefinitionModel(baseModel.toJSON());
+    const connectorDefinitionsModel = new ConnectorDefinitionModel(
+      baseModel.toJSON()
+    );
     return connectorDefinitionsModel;
   }
 }
@@ -68,11 +70,14 @@ export class ConnectorDefinitionModelFactory extends ModelFactory<
  * Parse options and column mappings are determined per-upload by the
  * streaming parsers, not here.
  */
-export const FileUploadConnectorDefinitionSchema = ConnectorDefinitionSchema.extend({
-  // No format-specific fields. CSV vs XLSX is decided per-file at parse time.
-});
+export const FileUploadConnectorDefinitionSchema =
+  ConnectorDefinitionSchema.extend({
+    // No format-specific fields. CSV vs XLSX is decided per-file at parse time.
+  });
 
-export type FileUploadConnectorDefinition = z.infer<typeof FileUploadConnectorDefinitionSchema>;
+export type FileUploadConnectorDefinition = z.infer<
+  typeof FileUploadConnectorDefinitionSchema
+>;
 
 export class FileUploadConnectorDefinitionModel extends CoreModel<FileUploadConnectorDefinition> {
   get schema() {
@@ -94,16 +99,20 @@ export class FileUploadConnectorDefinitionModelFactory extends ModelFactory<
 > {
   create(createdBy: string): FileUploadConnectorDefinitionModel {
     const baseModel = this._coreModelFactory.create(createdBy);
-    const fileUploadConnectorDefinitionModel = new FileUploadConnectorDefinitionModel(baseModel.toJSON());
+    const fileUploadConnectorDefinitionModel =
+      new FileUploadConnectorDefinitionModel(baseModel.toJSON());
     return fileUploadConnectorDefinitionModel;
   }
 }
 
 // ── Sandbox Connector Definition ─────────────────────────────────────
 
-export const SandboxConnectorDefinitionSchema = ConnectorDefinitionSchema.extend({});
+export const SandboxConnectorDefinitionSchema =
+  ConnectorDefinitionSchema.extend({});
 
-export type SandboxConnectorDefinition = z.infer<typeof SandboxConnectorDefinitionSchema>;
+export type SandboxConnectorDefinition = z.infer<
+  typeof SandboxConnectorDefinitionSchema
+>;
 
 export class SandboxConnectorDefinitionModel extends CoreModel<SandboxConnectorDefinition> {
   get schema() {
@@ -125,7 +134,9 @@ export class SandboxConnectorDefinitionModelFactory extends ModelFactory<
 > {
   create(createdBy: string): SandboxConnectorDefinitionModel {
     const baseModel = this._coreModelFactory.create(createdBy);
-    const sandboxConnectorDefinitionModel = new SandboxConnectorDefinitionModel(baseModel.toJSON());
+    const sandboxConnectorDefinitionModel = new SandboxConnectorDefinitionModel(
+      baseModel.toJSON()
+    );
     return sandboxConnectorDefinitionModel;
   }
 }

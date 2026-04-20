@@ -9,7 +9,7 @@ import {
   Icon,
   IconName,
   Typography,
-  Divider
+  Divider,
 } from "@portalai/core/ui";
 import { sdk } from "../api/sdk";
 import { Link } from "@tanstack/react-router";

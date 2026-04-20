@@ -39,7 +39,11 @@ export const PinnedResultCardUI: React.FC<PinnedResultCardUIProps> = ({
   onUnpin,
 }) => {
   const actions: ActionSuiteItem[] = [
-    { label: "Unpin", icon: <PushPinIcon />, onClick: () => onUnpin(result.id) },
+    {
+      label: "Unpin",
+      icon: <PushPinIcon />,
+      onClick: () => onUnpin(result.id),
+    },
   ];
 
   return (
@@ -121,11 +125,17 @@ export const PinnedResultsListUI: React.FC<PinnedResultsListUIProps> = ({
 // ── Data component ──────────────────────────────────────────────────
 
 interface PinnedResultsDataProps {
-  children: (data: ReturnType<typeof sdk.portalResults.list>) => React.ReactNode;
+  children: (
+    data: ReturnType<typeof sdk.portalResults.list>
+  ) => React.ReactNode;
 }
 
 const PinnedResultsData: React.FC<PinnedResultsDataProps> = ({ children }) => {
-  const res = sdk.portalResults.list({ limit: 5, offset: 0, include: "portal" });
+  const res = sdk.portalResults.list({
+    limit: 5,
+    offset: 0,
+    include: "portal",
+  });
   return <>{children(res)}</>;
 };
 
@@ -147,7 +157,9 @@ export const PinnedResultsListConnected: React.FC<
           const payload = data.pinned as unknown as PortalResultsListPayload;
           return (
             <PinnedResultsListUI
-              results={payload.portalResults as unknown as PortalResultWithIncludes[]}
+              results={
+                payload.portalResults as unknown as PortalResultWithIncludes[]
+              }
               onResultClick={onResultClick}
               onUnpin={onUnpin}
               onViewAll={onViewAll}

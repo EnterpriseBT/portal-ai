@@ -55,16 +55,13 @@ const VALID_COLUMN: DataTableColumn = {
     ),
 };
 
-function toDataTableColumns(
-  columns: ResolvedColumn[]
-): DataTableColumn[] {
+function toDataTableColumns(columns: ResolvedColumn[]): DataTableColumn[] {
   const cols: DataTableColumn[] = columns.map((col) => {
     // Use normalizedKey as the header label since it's the field-mapping-level
     // identifier; show the column definition label as a caption alongside type.
     const headerLabel = col.normalizedKey;
-    const caption = col.normalizedKey !== col.key
-      ? `${col.label} · ${col.type}`
-      : col.type;
+    const caption =
+      col.normalizedKey !== col.key ? `${col.label} · ${col.type}` : col.type;
 
     if (
       col.type === "json" ||
@@ -90,7 +87,9 @@ function toDataTableColumns(
       caption,
       sortable: SORTABLE_COLUMN_TYPES.has(col.type),
       format: (value: unknown) =>
-        Formatter.format(value, col.type, { canonicalFormat: col.canonicalFormat }),
+        Formatter.format(value, col.type, {
+          canonicalFormat: col.canonicalFormat,
+        }),
     };
   });
 
@@ -123,52 +122,52 @@ export const EntityRecordDataTableUI: React.FC<
   onSort,
   onRowClick,
 }) => {
-    const theme = useTheme();
-    const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
 
-    const dataTableColumns = React.useMemo(
-      () => toDataTableColumns(columns),
-      [columns]
-    );
+  const dataTableColumns = React.useMemo(
+    () => toDataTableColumns(columns),
+    [columns]
+  );
 
-    const { value: storedConfig, setValue: persistConfig } = useStorage<
-      ColumnConfig[]
-    >({
-      key: `column-config:entity-records:${connectorEntityId}`,
-      defaultValue: [],
-    });
+  const { value: storedConfig, setValue: persistConfig } = useStorage<
+    ColumnConfig[]
+  >({
+    key: `column-config:entity-records:${connectorEntityId}`,
+    defaultValue: [],
+  });
 
-    const [columnConfig, setColumnConfig] = useColumnConfig(dataTableColumns, {
-      initialValue: storedConfig.length > 0 ? storedConfig : undefined,
-      onPersist: persistConfig,
-      defaultVisibleCount: isSmallScreen ? 5 : 8,
-    });
+  const [columnConfig, setColumnConfig] = useColumnConfig(dataTableColumns, {
+    initialValue: storedConfig.length > 0 ? storedConfig : undefined,
+    onPersist: persistConfig,
+    defaultVisibleCount: isSmallScreen ? 5 : 8,
+  });
 
-    return (
-      <Stack spacing={1}>
-        <DataTable
-          header={
-            <Chip
-              label={source === "cache" ? "Cached" : "Live"}
-              size="small"
-              variant="outlined"
-              color={source === "live" ? "success" : "default"}
-            />
-          }
-          columns={dataTableColumns}
-          rows={rows}
-          sortColumn={sortColumn}
-          sortDirection={sortDirection}
-          onSort={onSort}
-          emptyMessage="No records found"
-          columnConfig={columnConfig}
-          onColumnConfigChange={setColumnConfig}
-          onRowClick={
-            onRowClick
-              ? (row: Record<string, unknown>) => onRowClick(row)
-              : undefined
-          }
-        />
-      </Stack>
-    );
-  };
+  return (
+    <Stack spacing={1}>
+      <DataTable
+        header={
+          <Chip
+            label={source === "cache" ? "Cached" : "Live"}
+            size="small"
+            variant="outlined"
+            color={source === "live" ? "success" : "default"}
+          />
+        }
+        columns={dataTableColumns}
+        rows={rows}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={onSort}
+        emptyMessage="No records found"
+        columnConfig={columnConfig}
+        onColumnConfigChange={setColumnConfig}
+        onRowClick={
+          onRowClick
+            ? (row: Record<string, unknown>) => onRowClick(row)
+            : undefined
+        }
+      />
+    </Stack>
+  );
+};

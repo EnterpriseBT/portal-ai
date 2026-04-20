@@ -32,7 +32,9 @@ describe("StatusMessage Component", () => {
     });
 
     it("should fall back to error.message when no message prop", () => {
-      render(<StatusMessage variant="error" error={new Error("Network error")} />);
+      render(
+        <StatusMessage variant="error" error={new Error("Network error")} />
+      );
       expect(screen.getByText("Network error")).toBeInTheDocument();
     });
 

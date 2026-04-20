@@ -9,9 +9,7 @@ import type {
 } from "../../../modules/RegionEditor";
 import { ApiError } from "../../../utils/api.util";
 import type { ServerError } from "../../../utils/api.util";
-import type {
-  FileUploadProgress,
-} from "../../../utils/file-upload.util";
+import type { FileUploadProgress } from "../../../utils/file-upload.util";
 import type {
   FileUploadWorkflowState,
   UploadPhase,
@@ -29,7 +27,9 @@ export interface FileUploadWorkflowCallbacks {
     regions: RegionDraft[];
     overallConfidence: number;
   }>;
-  runCommit: (regions: RegionDraft[]) => Promise<{ connectorInstanceId: string }>;
+  runCommit: (
+    regions: RegionDraft[]
+  ) => Promise<{ connectorInstanceId: string }>;
   onCommitSuccess?: (connectorInstanceId: string) => void;
 }
 

@@ -25,9 +25,7 @@ describe("RadioGroup Component", () => {
     });
 
     it("should render with helper text", () => {
-      render(
-        <RadioGroup options={options} helperText="Choose wisely" />
-      );
+      render(<RadioGroup options={options} helperText="Choose wisely" />);
       expect(screen.getByText("Choose wisely")).toBeInTheDocument();
     });
 
@@ -40,7 +38,10 @@ describe("RadioGroup Component", () => {
     });
 
     it("should render disabled option", () => {
-      const opts = [...options, { value: "d", label: "Disabled", disabled: true }];
+      const opts = [
+        ...options,
+        { value: "d", label: "Disabled", disabled: true },
+      ];
       render(<RadioGroup options={opts} />);
       const radios = screen.getAllByRole("radio");
       expect(radios[3]).toBeDisabled();
@@ -59,11 +60,7 @@ describe("RadioGroup Component", () => {
   describe("Error State", () => {
     it("should display error helper text", () => {
       render(
-        <RadioGroup
-          options={options}
-          error
-          helperText="Selection required"
-        />
+        <RadioGroup options={options} error helperText="Selection required" />
       );
       expect(screen.getByText("Selection required")).toBeInTheDocument();
     });

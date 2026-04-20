@@ -69,3 +69,9 @@ export * from "./organization-tool.contract.js";
 
 /** Station Tool contracts — schemas & types */
 export * from "./station-tool.contract.js";
+
+/** Spreadsheet parsing contracts — re-exported from @portalai/spreadsheet-parsing */
+export * from "./spreadsheet-parsing.contract.js";
+
+/** Connector instance layout-plan endpoint contracts */
+export * from "./connector-instance-layout-plans.contract.js";

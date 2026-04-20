@@ -1,10 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import {
-  FAQList,
-  type FAQListProps,
-} from "../components/FAQList.component";
+import { FAQList, type FAQListProps } from "../components/FAQList.component";
 import { FAQ_ENTRIES, FAQCategory, filterFAQ } from "../utils/faq.util";
 
 const meta = {

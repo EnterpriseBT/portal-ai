@@ -135,33 +135,48 @@ describe("FileUploadColumnRecommendationSchema", () => {
   };
 
   it("should accept valid payloads with field-mapping-level fields only", () => {
-    const result = FileUploadColumnRecommendationSchema.safeParse(validRecommendation);
+    const result =
+      FileUploadColumnRecommendationSchema.safeParse(validRecommendation);
     expect(result.success).toBe(true);
   });
 
   it("should require existingColumnDefinitionId as a non-nullable string", () => {
-    const withNull = { ...validRecommendation, existingColumnDefinitionId: null };
-    expect(FileUploadColumnRecommendationSchema.safeParse(withNull).success).toBe(false);
+    const withNull = {
+      ...validRecommendation,
+      existingColumnDefinitionId: null,
+    };
+    expect(
+      FileUploadColumnRecommendationSchema.safeParse(withNull).success
+    ).toBe(false);
 
     const { existingColumnDefinitionId: _, ...withoutId } = validRecommendation;
-    expect(FileUploadColumnRecommendationSchema.safeParse(withoutId).success).toBe(false);
+    expect(
+      FileUploadColumnRecommendationSchema.safeParse(withoutId).success
+    ).toBe(false);
   });
 
   it("should reject payloads with action field", () => {
     const withAction = { ...validRecommendation, action: "match_existing" };
-    const result = FileUploadColumnRecommendationSchema.strict().safeParse(withAction);
+    const result =
+      FileUploadColumnRecommendationSchema.strict().safeParse(withAction);
     expect(result.success).toBe(false);
   });
 
   it("should reject payloads with key/label/type fields", () => {
     const withKey = { ...validRecommendation, key: "email" };
-    expect(FileUploadColumnRecommendationSchema.strict().safeParse(withKey).success).toBe(false);
+    expect(
+      FileUploadColumnRecommendationSchema.strict().safeParse(withKey).success
+    ).toBe(false);
 
     const withLabel = { ...validRecommendation, label: "Email" };
-    expect(FileUploadColumnRecommendationSchema.strict().safeParse(withLabel).success).toBe(false);
+    expect(
+      FileUploadColumnRecommendationSchema.strict().safeParse(withLabel).success
+    ).toBe(false);
 
     const withType = { ...validRecommendation, type: "string" };
-    expect(FileUploadColumnRecommendationSchema.strict().safeParse(withType).success).toBe(false);
+    expect(
+      FileUploadColumnRecommendationSchema.strict().safeParse(withType).success
+    ).toBe(false);
   });
 
   it("should accept optional field-mapping fields", () => {

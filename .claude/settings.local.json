@@ -29,7 +29,10 @@
       "Bash(NODE_OPTIONS='--experimental-vm-modules --import tsx/esm --max-old-space-size=4096' npx jest --config jest.integration.config.js --runInBand --testPathPattern='revalidation' --testNamePattern='allows mutations when no')",
       "Bash(NODE_OPTIONS='--experimental-vm-modules --import tsx/esm --max-old-space-size=4096' npx jest --config jest.integration.config.js --runInBand --testPathPattern='revalidation' --testNamePattern='allows mutations when no' --verbose)",
       "Bash(node --experimental-vm-modules ../../node_modules/.bin/jest --testPathPattern 'uploads.service.test' --no-coverage)",
-      "Bash(NODE_OPTIONS='--experimental-vm-modules' npx jest --testPathPattern='column-definition-update.tool' --no-coverage)"
+      "Bash(NODE_OPTIONS='--experimental-vm-modules' npx jest --testPathPattern='column-definition-update.tool' --no-coverage)",
+      "Bash(npm --workspace packages/spreadsheet-parsing run test:unit)",
+      "Bash(npm --workspace apps/api run test:unit)",
+      "Bash(npm --workspace apps/api run test:unit -- --runInBand)"
     ]
   }
 }

@@ -25,51 +25,51 @@ interface MessageListProps {
   streamError: string | null;
 }
 
-const MessageList = React.memo<MessageListProps>(({
-  portalId,
-  messages,
-  pinnedBlocks,
-  onPinChange,
-  streamingBlocks,
-  streamError,
-}) => {
-  const hasStreamingContent =
-    streamingBlocks !== null && streamingBlocks.length > 0;
-  const isEmpty =
-    messages.length === 0 && !hasStreamingContent && !streamError;
+const MessageList = React.memo<MessageListProps>(
+  ({
+    portalId,
+    messages,
+    pinnedBlocks,
+    onPinChange,
+    streamingBlocks,
+    streamError,
+  }) => {
+    const hasStreamingContent =
+      streamingBlocks !== null && streamingBlocks.length > 0;
+    const isEmpty =
+      messages.length === 0 && !hasStreamingContent && !streamError;
 
-  if (isEmpty) {
-    return <PortalSessionEmptyState />;
+    if (isEmpty) {
+      return <PortalSessionEmptyState />;
+    }
+
+    return (
+      <>
+        {messages.map((msg) => (
+          <PortalMessage
+            key={msg.id}
+            message={msg}
+            portalId={portalId}
+            pinnedBlocks={pinnedBlocks}
+            onPinChange={onPinChange}
+          />
+        ))}
+
+        {hasStreamingContent && (
+          <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
+            {streamingBlocks!.map((block, i) => (
+              <Box key={i} sx={{ overflow: "auto" }}>
+                <ContentBlockRenderer block={block} />
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        {streamError && <StatusMessage variant="error" message={streamError} />}
+      </>
+    );
   }
-
-  return (
-    <>
-      {messages.map((msg) => (
-        <PortalMessage
-          key={msg.id}
-          message={msg}
-          portalId={portalId}
-          pinnedBlocks={pinnedBlocks}
-          onPinChange={onPinChange}
-        />
-      ))}
-
-      {hasStreamingContent && (
-        <Box sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
-          {streamingBlocks!.map((block, i) => (
-            <Box key={i} sx={{ overflow: "auto" }}>
-              <ContentBlockRenderer block={block} />
-            </Box>
-          ))}
-        </Box>
-      )}
-
-      {streamError && (
-        <StatusMessage variant="error" message={streamError} />
-      )}
-    </>
-  );
-});
+);
 
 // ── Empty State ──────────────────────────────────────────────────────
 
@@ -96,8 +96,8 @@ const PortalSessionEmptyState: React.FC = () => (
     </Typography>
     <Typography variant="body2" sx={{ maxWidth: 520, mb: 1.5 }}>
       Portal sessions let you explore your data through conversation — ask
-      questions, generate charts, and create or modify records, entities,
-      and field mappings, all in natural language.
+      questions, generate charts, and create or modify records, entities, and
+      field mappings, all in natural language.
     </Typography>
     <MuiLink
       component={Link}
@@ -176,14 +176,14 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // that block into view instead of scrolling to the bottom of the feed.
   const targetMessageId = useMemo(
     () => location.hash.replace(/^#/, "") || null,
-    [location.hash],
+    [location.hash]
   );
 
   // Server messages come directly from the query (no local copy).
   const portalQuery = sdk.portals.get(portalId, { include: "pinnedResults" });
   const serverMessages = useMemo(
     () => portalQuery.data?.messages ?? [],
-    [portalQuery.data?.messages],
+    [portalQuery.data?.messages]
   );
 
   // Build a lookup map from the server-side pinnedBlocks data:
@@ -205,11 +205,14 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // metadata) replace the display-only local copies. This ensures pin
   // operations send correct block indices. The hook stores onDone in a ref
   // internally, so this callback can safely close over portalQuery.
-  const handleStreamDone = useCallback((clear: () => void) => {
-    portalQuery.refetch().then(() => {
-      clear();
-    });
-  }, [portalQuery]);
+  const handleStreamDone = useCallback(
+    (clear: () => void) => {
+      portalQuery.refetch().then(() => {
+        clear();
+      });
+    },
+    [portalQuery]
+  );
 
   const [streamState, streamActions] = usePortalStream(handleStreamDone);
 
@@ -257,13 +260,18 @@ export const PortalSession: React.FC<PortalSessionProps> = ({ portalId }) => {
   // specific pinned message instead of the bottom). Reset on portal change.
   const messageCount = allMessages.length;
   const streamingBlockCount = streamState.streamingBlocks?.length ?? 0;
-  const prevCountsRef = useRef<{ messages: number; blocks: number } | null>(null);
+  const prevCountsRef = useRef<{ messages: number; blocks: number } | null>(
+    null
+  );
   useEffect(() => {
     prevCountsRef.current = null;
   }, [portalId]);
   useEffect(() => {
     const prev = prevCountsRef.current;
-    prevCountsRef.current = { messages: messageCount, blocks: streamingBlockCount };
+    prevCountsRef.current = {
+      messages: messageCount,
+      blocks: streamingBlockCount,
+    };
     if (prev === null) return;
     if (messageCount > prev.messages || streamingBlockCount > prev.blocks) {
       chatRef.current?.scrollToBottom();

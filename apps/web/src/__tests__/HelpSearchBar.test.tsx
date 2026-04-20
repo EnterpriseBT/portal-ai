@@ -2,9 +2,7 @@ import { jest } from "@jest/globals";
 
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { HelpSearchBar } = await import(
-  "../components/HelpSearchBar.component"
-);
+const { HelpSearchBar } = await import("../components/HelpSearchBar.component");
 
 describe("HelpSearchBar", () => {
   it("renders an input with the default placeholder 'Search help'", () => {
@@ -14,7 +12,11 @@ describe("HelpSearchBar", () => {
 
   it("supports overriding the placeholder via prop", () => {
     render(
-      <HelpSearchBar value="" onChange={jest.fn()} placeholder="Find anything" />
+      <HelpSearchBar
+        value=""
+        onChange={jest.fn()}
+        placeholder="Find anything"
+      />
     );
     expect(screen.getByPlaceholderText("Find anything")).toBeInTheDocument();
   });

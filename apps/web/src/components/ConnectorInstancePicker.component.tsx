@@ -10,10 +10,9 @@ export interface ConnectorInstancePickerProps {
   onChange: (ids: string[]) => void;
 }
 
-export const ConnectorInstancePicker: React.FC<ConnectorInstancePickerProps> = ({
-  selected,
-  onChange,
-}) => {
+export const ConnectorInstancePicker: React.FC<
+  ConnectorInstancePickerProps
+> = ({ selected, onChange }) => {
   const { data, isLoading } = sdk.connectorInstances.list({
     limit: 100,
     offset: 0,

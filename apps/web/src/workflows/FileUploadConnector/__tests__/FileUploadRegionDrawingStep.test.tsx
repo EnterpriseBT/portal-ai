@@ -115,9 +115,7 @@ describe("FileUploadRegionDrawingStepUI — Interpret", () => {
     const btn = screen.getByRole("button", { name: /^interpret$/i });
     await user.click(btn);
     expect(onInterpret).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /validation errors/i
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/validation errors/i);
   });
 });
 
@@ -153,9 +151,7 @@ describe("FileUploadRegionDrawingStepUI — passthrough", () => {
     const user = userEvent.setup();
     const onActiveSheetChange = jest.fn();
     render(
-      <FileUploadRegionDrawingStepUI
-        {...makeProps({ onActiveSheetChange })}
-      />
+      <FileUploadRegionDrawingStepUI {...makeProps({ onActiveSheetChange })} />
     );
     const secondSheet = DEMO_WORKBOOK.sheets[1];
     const tab = screen
@@ -181,8 +177,6 @@ describe("FileUploadRegionDrawingStepUI — passthrough", () => {
       />
     );
     await user.click(screen.getByRole("button", { name: /^interpret$/i }));
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /validation errors/i
-    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/validation errors/i);
   });
 });

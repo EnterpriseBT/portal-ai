@@ -89,9 +89,24 @@ connectorDefinitionRouter.get(
   "/",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      logger.info({ rawQuery: req.query, rawIsActive: req.query.isActive, typeofIsActive: typeof req.query.isActive }, "DEBUG raw query before parse");
-      const { limit, offset, sortBy, sortOrder, category, authType, isActive, search } =
-        ConnectorDefinitionListRequestQuerySchema.parse(req.query);
+      logger.info(
+        {
+          rawQuery: req.query,
+          rawIsActive: req.query.isActive,
+          typeofIsActive: typeof req.query.isActive,
+        },
+        "DEBUG raw query before parse"
+      );
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        category,
+        authType,
+        isActive,
+        search,
+      } = ConnectorDefinitionListRequestQuerySchema.parse(req.query);
 
       // Build filter conditions
       const filters: SQL[] = [];
@@ -121,7 +136,13 @@ connectorDefinitionRouter.get(
         DbService.repository.connectorDefinitions.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector definitions");
+        throw new ApiError(
+          500,
+          ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to list connector definitions"
+        );
       });
 
       return HttpService.success<ConnectorDefinitionListResponsePayload>(res, {
@@ -135,7 +156,17 @@ connectorDefinitionRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list connector definitions"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector definitions"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list connector definitions"
+            )
+      );
     }
   }
 );
@@ -190,10 +221,18 @@ connectorDefinitionRouter.get(
       logger.info({ id }, "GET /api/connector-definitions/:id called");
 
       const connectorDefinition =
-        await DbService.repository.connectorDefinitions.findById(id).catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector definition");
-        });
+        await DbService.repository.connectorDefinitions
+          .findById(id)
+          .catch((error) => {
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(
+              500,
+              ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch connector definition"
+            );
+          });
 
       if (!connectorDefinition) {
         return next(
@@ -213,7 +252,17 @@ connectorDefinitionRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch connector definition"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector definition"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch connector definition"
+            )
+      );
     }
   }
 );

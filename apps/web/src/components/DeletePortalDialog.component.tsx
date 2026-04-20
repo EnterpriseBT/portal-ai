@@ -39,7 +39,12 @@ export const DeletePortalDialog: React.FC<DeletePortalDialogProps> = ({
     }}
     actions={
       <Stack direction="row" spacing={1}>
-        <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+        <Button
+          type="button"
+          variant="outlined"
+          onClick={onClose}
+          disabled={isPending}
+        >
           Cancel
         </Button>
         <Button

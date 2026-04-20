@@ -5,13 +5,21 @@ import { z } from "zod";
  */
 export const PaginationRequestQuerySchema = z.object({
   search: z.string().optional(),
-  limit: z.coerce.number().int().min(1).optional().default(20).transform((v) => Math.min(v, 100)),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .default(20)
+    .transform((v) => Math.min(v, 100)),
   offset: z.coerce.number().int().min(0).optional().default(0),
   sortBy: z.string().optional().default("created"),
   sortOrder: z.enum(["asc", "desc"]).optional().default("asc"),
 });
 
-export type PaginationRequestQuery = z.infer<typeof PaginationRequestQuerySchema>;
+export type PaginationRequestQuery = z.infer<
+  typeof PaginationRequestQuerySchema
+>;
 
 /**
  * Generic pagination metadata included in list responses.
@@ -22,4 +30,6 @@ export const PaginatedResponsePayloadSchema = z.object({
   offset: z.number(),
 });
 
-export type PaginatedResponsePayload = z.infer<typeof PaginatedResponsePayloadSchema>;
+export type PaginatedResponsePayload = z.infer<
+  typeof PaginatedResponsePayloadSchema
+>;

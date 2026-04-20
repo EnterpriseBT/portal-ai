@@ -1,9 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-} from "@jest/globals";
+import { describe, it, expect, beforeEach } from "@jest/globals";
 
 import { ConnectorAdapterRegistry } from "../../adapters/adapter.registry.js";
 import type {

@@ -18,17 +18,75 @@ import {
   validateOperatorTypeCompat,
 } from "@portalai/core/contracts";
 
-import type { FilterExpression, ResolvedColumn } from "@portalai/core/contracts";
+import type {
+  FilterExpression,
+  ResolvedColumn,
+} from "@portalai/core/contracts";
 import type { ColumnDataType } from "@portalai/core/models";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
 const columnDefs: ResolvedColumn[] = [
-  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "signup_date", normalizedKey: "signup_date", label: "Signup Date", type: "date", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "status", normalizedKey: "status", label: "Status", type: "enum", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  {
+    key: "name",
+    normalizedKey: "name",
+    label: "Name",
+    type: "string",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "age",
+    normalizedKey: "age",
+    label: "Age",
+    type: "number",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "active",
+    normalizedKey: "active",
+    label: "Active",
+    type: "boolean",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "signup_date",
+    normalizedKey: "signup_date",
+    label: "Signup Date",
+    type: "date",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "status",
+    normalizedKey: "status",
+    label: "Status",
+    type: "enum",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
 ];
 
 function columnTypes(): Record<string, ColumnDataType> {
@@ -128,7 +186,11 @@ describe("Advanced Filters — end-to-end pipeline", () => {
       combinator: "and",
       conditions: [
         { field: "age", operator: "between", value: ["18", "65"] },
-        { field: "signup_date", operator: "between", value: ["2023-01-01", "2024-12-31"] },
+        {
+          field: "signup_date",
+          operator: "between",
+          value: ["2023-01-01", "2024-12-31"],
+        },
       ],
     });
   });

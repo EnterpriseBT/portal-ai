@@ -16,16 +16,16 @@ describe("PageEmptyState Component", () => {
         <PageEmptyState
           title="No stations found"
           description="Create your first station to get started."
-        />,
+        />
       );
       expect(
-        screen.getByText("Create your first station to get started."),
+        screen.getByText("Create your first station to get started.")
       ).toBeInTheDocument();
     });
 
     it("should not render a description when not provided", () => {
       const { container } = render(
-        <PageEmptyState title="No stations found" />,
+        <PageEmptyState title="No stations found" />
       );
       // Only the title text node should exist
       const paragraphs = container.querySelectorAll("p");
@@ -38,15 +38,13 @@ describe("PageEmptyState Component", () => {
         <PageEmptyState
           title="No results"
           icon={<span data-testid="empty-icon">ic</span>}
-        />,
+        />
       );
       expect(screen.getByTestId("empty-icon")).toBeInTheDocument();
     });
 
     it("should not render an icon container when icon is not provided", () => {
-      const { container } = render(
-        <PageEmptyState title="No results" />,
-      );
+      const { container } = render(<PageEmptyState title="No results" />);
       expect(screen.queryByTestId("empty-icon")).not.toBeInTheDocument();
       // The title should still render
       expect(screen.getByText("No results")).toBeInTheDocument();
@@ -57,10 +55,10 @@ describe("PageEmptyState Component", () => {
         <PageEmptyState
           title="No stations found"
           action={<button>Create Station</button>}
-        />,
+        />
       );
       expect(
-        screen.getByRole("button", { name: "Create Station" }),
+        screen.getByRole("button", { name: "Create Station" })
       ).toBeInTheDocument();
     });
 
@@ -76,14 +74,16 @@ describe("PageEmptyState Component", () => {
           description="Add some items to see them listed."
           icon={<span data-testid="all-icon">ic</span>}
           action={<button>Add Item</button>}
-        />,
+        />
       );
       expect(screen.getByTestId("all-icon")).toBeInTheDocument();
       expect(screen.getByText("Nothing here")).toBeInTheDocument();
       expect(
-        screen.getByText("Add some items to see them listed."),
+        screen.getByText("Add some items to see them listed.")
       ).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Add Item" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Add Item" })
+      ).toBeInTheDocument();
     });
   });
 
@@ -94,7 +94,7 @@ describe("PageEmptyState Component", () => {
         <PageEmptyState
           title="Empty"
           action={<button onClick={handleClick}>Retry</button>}
-        />,
+        />
       );
       await userEvent.click(screen.getByRole("button", { name: "Retry" }));
       expect(handleClick).toHaveBeenCalledTimes(1);
@@ -104,15 +104,13 @@ describe("PageEmptyState Component", () => {
   describe("Props", () => {
     it("should accept a custom className", () => {
       const { container } = render(
-        <PageEmptyState title="Empty" className="custom-empty" />,
+        <PageEmptyState title="Empty" className="custom-empty" />
       );
       expect(container.firstChild).toHaveClass("custom-empty");
     });
 
     it("should accept custom data attributes", () => {
-      render(
-        <PageEmptyState title="Empty" data-testid="empty-state" />,
-      );
+      render(<PageEmptyState title="Empty" data-testid="empty-state" />);
       expect(screen.getByTestId("empty-state")).toBeInTheDocument();
     });
   });

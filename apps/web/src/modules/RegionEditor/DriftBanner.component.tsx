@@ -28,7 +28,8 @@ export const DriftBannerUI: React.FC<DriftBannerUIProps> = ({ report }) => {
         Drift halted sync {report.identityChanging ? "— identity changing" : ""}
       </Box>
       <Box sx={{ fontSize: 12, color: "text.secondary" }}>
-        Workbook pinned as of {report.fetchedAt}. Editing against the same data the sync saw.
+        Workbook pinned as of {report.fetchedAt}. Editing against the same data
+        the sync saw.
       </Box>
       {report.notes && <Box sx={{ fontSize: 12, mt: 0.5 }}>{report.notes}</Box>}
     </Box>

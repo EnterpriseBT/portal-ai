@@ -35,12 +35,20 @@ describe("FieldMappingSchema", () => {
   };
 
   it("accepts refNormalizedKey: null and refEntityKey: null", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, refNormalizedKey: null, refEntityKey: null });
+    const result = FieldMappingSchema.safeParse({
+      ...base,
+      refNormalizedKey: null,
+      refEntityKey: null,
+    });
     expect(result.success).toBe(true);
   });
 
   it("accepts refNormalizedKey as a valid string with refEntityKey", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, refNormalizedKey: "user_id", refEntityKey: "user" });
+    const result = FieldMappingSchema.safeParse({
+      ...base,
+      refNormalizedKey: "user_id",
+      refEntityKey: "user",
+    });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.refNormalizedKey).toBe("user_id");
@@ -49,22 +57,34 @@ describe("FieldMappingSchema", () => {
   });
 
   it("rejects refNormalizedKey as a non-string value", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, refNormalizedKey: 42 });
+    const result = FieldMappingSchema.safeParse({
+      ...base,
+      refNormalizedKey: 42,
+    });
     expect(result.success).toBe(false);
   });
 
   it("accepts a valid snake_case normalizedKey", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, normalizedKey: "account_name" });
+    const result = FieldMappingSchema.safeParse({
+      ...base,
+      normalizedKey: "account_name",
+    });
     expect(result.success).toBe(true);
   });
 
   it("rejects normalizedKey with uppercase characters", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, normalizedKey: "Account_Name" });
+    const result = FieldMappingSchema.safeParse({
+      ...base,
+      normalizedKey: "Account_Name",
+    });
     expect(result.success).toBe(false);
   });
 
   it("rejects normalizedKey with hyphens", () => {
-    const result = FieldMappingSchema.safeParse({ ...base, normalizedKey: "account-name" });
+    const result = FieldMappingSchema.safeParse({
+      ...base,
+      normalizedKey: "account-name",
+    });
     expect(result.success).toBe(false);
   });
 });
@@ -234,7 +254,9 @@ describe("FieldMappingModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(false);
       if (!result.success) {
-        const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
         expect(paths).toContain("connectorEntityId");
         expect(paths).toContain("columnDefinitionId");
         expect(paths).toContain("sourceField");
@@ -252,7 +274,9 @@ describe("FieldMappingModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(false);
       if (!result.success) {
-        const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
         expect(paths).toContain("isPrimaryKey");
       }
     });
