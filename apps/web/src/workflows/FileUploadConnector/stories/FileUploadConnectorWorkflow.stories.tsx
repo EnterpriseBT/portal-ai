@@ -1,183 +1,82 @@
-import React from "react";
-
+import React, { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
-import type { FileUploadConnectorWorkflowUIProps } from "../FileUploadConnectorWorkflow.component";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import MuiButton from "@mui/material/Button";
+
 import { FileUploadConnectorWorkflowUI } from "../FileUploadConnectorWorkflow.component";
-import type {
-  Recommendations,
-  RecommendedEntity,
-  RecommendedColumn,
-} from "../utils/upload-workflow.util";
+import type { FileUploadConnectorWorkflowUIProps } from "../FileUploadConnectorWorkflow.component";
+import {
+  DEMO_WORKBOOK,
+  ENTITY_OPTIONS,
+  POST_INTERPRET_REGIONS,
+  SAMPLE_FILE,
+  SAMPLE_REGIONS,
+} from "../utils/file-upload-fixtures.util";
+import {
+  FILE_UPLOAD_WORKFLOW_STEPS,
+  useFileUploadWorkflow,
+} from "../utils/file-upload-workflow.util";
 import type { FileUploadProgress } from "../../../utils/file-upload.util";
+import type { RegionDraft } from "../../../modules/RegionEditor";
 
 // ---------------------------------------------------------------------------
-// Mock Data
+// Base args shared across non-interactive stories
 // ---------------------------------------------------------------------------
 
-const MOCK_FILES = [
-  new File([""], "contacts.csv", { type: "text/csv" }),
-  new File([""], "products.csv", { type: "text/csv" }),
-];
-
-const MOCK_COLUMN_CONTACT: RecommendedColumn = {
-  confidence: 0.95,
-  existingColumnDefinitionId: "col_001",
-  existingColumnDefinitionKey: "email",
-  sourceField: "Email Address",
-  isPrimaryKeyCandidate: true,
-  sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
-  normalizedKey: "email",
-  required: true,
-  defaultValue: null,
-  format: null,
-  enumValues: null,
-};
-
-const MOCK_COLUMN_NAME: RecommendedColumn = {
-  confidence: 0.72,
-  existingColumnDefinitionId: "col_002",
-  existingColumnDefinitionKey: "name",
-  sourceField: "Full Name",
-  isPrimaryKeyCandidate: false,
-  sampleValues: ["Alice Johnson", "Bob Smith", "Carol Williams"],
-  normalizedKey: "full_name",
-  required: false,
-  defaultValue: null,
-  format: null,
-  enumValues: null,
-};
-
-const MOCK_COLUMN_PHONE: RecommendedColumn = {
-  confidence: 0.45,
-  existingColumnDefinitionId: "col_003",
-  existingColumnDefinitionKey: "phone",
-  sourceField: "Phone Number",
-  isPrimaryKeyCandidate: false,
-  sampleValues: ["+1-555-0100", "+1-555-0101"],
-  normalizedKey: "phone",
-  required: false,
-  defaultValue: null,
-  format: null,
-  enumValues: null,
-};
-
-const MOCK_COLUMN_PRODUCT: RecommendedColumn = {
-  confidence: 0.88,
-  existingColumnDefinitionId: "col_010",
-  existingColumnDefinitionKey: "sku",
-  sourceField: "Product SKU",
-  isPrimaryKeyCandidate: true,
-  sampleValues: ["SKU-001", "SKU-002", "SKU-003"],
-  normalizedKey: "sku",
-  required: true,
-  defaultValue: null,
-  format: null,
-  enumValues: null,
-};
-
-const MOCK_COLUMN_PRICE: RecommendedColumn = {
-  confidence: 0.91,
-  existingColumnDefinitionId: "col_011",
-  existingColumnDefinitionKey: "price",
-  sourceField: "Unit Price",
-  isPrimaryKeyCandidate: false,
-  sampleValues: ["19.99", "24.50", "99.00"],
-  normalizedKey: "price",
-  required: true,
-  defaultValue: null,
-  format: null,
-  enumValues: null,
-};
-
-const MOCK_ENTITIES: RecommendedEntity[] = [
+const SECOND_FILE = new File(
+  [new Uint8Array([0x50, 0x4b, 0x03, 0x04])],
+  "regional-sales.xlsx",
   {
-    connectorEntity: { key: "contacts", label: "Contacts" },
-    sourceFileName: "contacts.csv",
-    columns: [MOCK_COLUMN_CONTACT, MOCK_COLUMN_NAME, MOCK_COLUMN_PHONE],
-  },
-  {
-    connectorEntity: { key: "products", label: "Products" },
-    sourceFileName: "products.csv",
-    columns: [MOCK_COLUMN_PRODUCT, MOCK_COLUMN_PRICE],
-  },
-];
-
-const MOCK_RECOMMENDATIONS: Recommendations = {
-  connectorInstance: {
-    name: "My CSV Import",
-    config: {},
-  },
-  entities: MOCK_ENTITIES,
-};
-
-const STEP_CONFIGS = [
-  { label: "Upload Files", description: "Select and upload files" },
-  { label: "Confirm Entities", description: "Review detected entities" },
-  { label: "Map Columns", description: "Map source columns to definitions" },
-  { label: "Review & Import", description: "Review and confirm import" },
-];
-
-function makeFileProgress(
-  entries: Array<{ name: string; loaded: number; total: number }>
-): Map<string, FileUploadProgress> {
-  const map = new Map<string, FileUploadProgress>();
-  for (const e of entries) {
-    map.set(e.name, {
-      fileName: e.name,
-      loaded: e.loaded,
-      total: e.total,
-      percent: Math.round((e.loaded / e.total) * 100),
-    });
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   }
-  return map;
+);
+
+function progressMap(
+  entries: Array<[string, FileUploadProgress]>
+): Map<string, FileUploadProgress> {
+  return new Map(entries);
 }
 
-// ---------------------------------------------------------------------------
-// Base props factory
-// ---------------------------------------------------------------------------
-
-const baseArgs: FileUploadConnectorWorkflowUIProps = {
+const BASE_ARGS: FileUploadConnectorWorkflowUIProps = {
   open: true,
   onClose: fn(),
   step: 0,
-  stepConfigs: STEP_CONFIGS,
+  stepConfigs: FILE_UPLOAD_WORKFLOW_STEPS,
+
   files: [],
   onFilesChange: fn(),
   uploadPhase: "idle",
   fileProgress: new Map(),
   overallUploadPercent: 0,
-  jobProgress: 0,
-  jobError: null,
-  uploadError: null,
-  isProcessing: false,
-  connectionStatus: "idle",
-  jobStatus: null,
-  jobResult: null,
-  recommendations: null,
-  parseResults: null,
-  onUpdateEntity: fn(),
-  dbEntities: [],
-  isLoadingDbEntities: false,
-  onUpdateColumn: fn(),
-  onColumnKeySearch: fn().mockResolvedValue([]),
-  onColumnKeyGetById: fn().mockResolvedValue(null),
+  onStartParse: fn(),
 
-  onConnectorNameChange: fn(),
-  onConfirm: fn(),
-  isConfirming: false,
-  confirmError: null,
-  confirmResult: null,
-  onDone: fn(),
-  onCancel: fn(),
-  isCancelling: false,
+  workbook: null,
+  regions: [],
+  selectedRegionId: null,
+  activeSheetId: null,
+  entityOptions: ENTITY_OPTIONS,
+  onActiveSheetChange: fn(),
+  onSelectRegion: fn(),
+  onRegionDraft: fn(),
+  onRegionUpdate: fn(),
+  onRegionDelete: fn(),
+  onInterpret: fn(),
+
+  overallConfidence: undefined,
+  onJumpToRegion: fn(),
+  onEditBinding: fn(),
+  onCommit: fn(),
+
   onBack: fn(),
-  onNext: fn(),
-  backLabel: "Cancel",
-  nextLabel: "Upload",
-  isBackDisabled: false,
-  isNextDisabled: true,
+
+  serverError: null,
+  isInterpreting: false,
+  isCommitting: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -185,7 +84,7 @@ const baseArgs: FileUploadConnectorWorkflowUIProps = {
 // ---------------------------------------------------------------------------
 
 const meta = {
-  title: "Workflows/CSVConnector",
+  title: "Workflows/FileUploadConnector",
   component: FileUploadConnectorWorkflowUI,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],
@@ -195,192 +94,253 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // ---------------------------------------------------------------------------
-// Step 0: Upload CSV
+// Step 0 — Upload
 // ---------------------------------------------------------------------------
 
 export const Step0_Idle: Story = {
-  name: "Step 0 — Idle (no files)",
-  args: { ...baseArgs },
+  name: "Step 0 — Idle (modal open, no files)",
+  args: { ...BASE_ARGS },
 };
 
 export const Step0_FilesSelected: Story = {
-  name: "Step 0 — Files selected",
+  name: "Step 0 — Files staged",
   args: {
-    ...baseArgs,
-    files: MOCK_FILES,
-    nextLabel: "Upload",
-    isNextDisabled: false,
+    ...BASE_ARGS,
+    files: [SAMPLE_FILE, SECOND_FILE],
   },
 };
 
 export const Step0_Uploading: Story = {
   name: "Step 0 — Uploading",
   args: {
-    ...baseArgs,
-    files: MOCK_FILES,
+    ...BASE_ARGS,
+    files: [SAMPLE_FILE],
     uploadPhase: "uploading",
-    isProcessing: true,
-    fileProgress: makeFileProgress([
-      { name: "contacts.csv", loaded: 512000, total: 1024000 },
-      { name: "products.csv", loaded: 200000, total: 800000 },
+    overallUploadPercent: 62,
+    fileProgress: progressMap([
+      [
+        SAMPLE_FILE.name,
+        {
+          fileName: SAMPLE_FILE.name,
+          loaded: 820_000,
+          total: 1_200_000,
+          percent: 68,
+        },
+      ],
     ]),
-    overallUploadPercent: 39,
-    nextLabel: "Processing...",
-    isNextDisabled: true,
-  },
-};
-
-export const Step0_Processing: Story = {
-  name: "Step 0 — Processing (server-side)",
-  args: {
-    ...baseArgs,
-    files: MOCK_FILES,
-    uploadPhase: "done",
-    isProcessing: true,
-    jobProgress: 55,
-    connectionStatus: "connected",
-    nextLabel: "Processing...",
-    isNextDisabled: true,
-  },
-};
-
-export const Step0_UploadError: Story = {
-  name: "Step 0 — Upload error",
-  args: {
-    ...baseArgs,
-    files: MOCK_FILES,
-    uploadPhase: "error",
-    uploadError: "S3 upload failed for contacts.csv (status 403)",
-    isProcessing: false,
-    nextLabel: "Upload",
-    isNextDisabled: false,
-  },
-};
-
-export const Step0_JobError: Story = {
-  name: "Step 0 — Job processing error",
-  args: {
-    ...baseArgs,
-    files: MOCK_FILES,
-    uploadPhase: "done",
-    isProcessing: false,
-    jobError: "Failed to parse CSV: invalid encoding detected",
-    connectionStatus: "connected",
-    nextLabel: "Upload",
-    isNextDisabled: false,
-  },
-};
-
-export const Step0_ConnectionLost: Story = {
-  name: "Step 0 — SSE connection lost",
-  args: {
-    ...baseArgs,
-    files: MOCK_FILES,
-    uploadPhase: "done",
-    isProcessing: true,
-    jobProgress: 30,
-    connectionStatus: "error",
-    nextLabel: "Processing...",
-    isNextDisabled: true,
   },
 };
 
 // ---------------------------------------------------------------------------
-// Step 1: Confirm Entities
+// Step 1 — Region drawing
 // ---------------------------------------------------------------------------
 
-export const Step1_Entities: Story = {
-  name: "Step 1 — Confirm Entities",
+export const Step1_Empty: Story = {
+  name: "Step 1 — Parsed workbook, no regions drawn",
   args: {
-    ...baseArgs,
+    ...BASE_ARGS,
     step: 1,
-    files: MOCK_FILES,
-    uploadPhase: "done",
-    recommendations: MOCK_RECOMMENDATIONS,
-    backLabel: "Back",
-    nextLabel: "Next",
-    isNextDisabled: false,
+    files: [SAMPLE_FILE],
+    uploadPhase: "parsed",
+    workbook: DEMO_WORKBOOK,
+    activeSheetId: DEMO_WORKBOOK.sheets[0].id,
   },
 };
 
-export const Step1_NoRecommendations: Story = {
-  name: "Step 1 — Waiting for recommendations",
+export const Step1_RegionsDrawn_Valid: Story = {
+  name: "Step 1 — Regions drawn and bound, Interpret enabled",
   args: {
-    ...baseArgs,
+    ...BASE_ARGS,
     step: 1,
-    files: MOCK_FILES,
-    uploadPhase: "done",
-    recommendations: null,
-    backLabel: "Back",
-    nextLabel: "Next",
-    isNextDisabled: true,
+    files: [SAMPLE_FILE],
+    uploadPhase: "parsed",
+    workbook: DEMO_WORKBOOK,
+    regions: SAMPLE_REGIONS,
+    activeSheetId: SAMPLE_REGIONS[0].sheetId,
+    selectedRegionId: SAMPLE_REGIONS[0].id,
+  },
+};
+
+const invalidRegion: RegionDraft = {
+  id: "r_invalid_story",
+  sheetId: DEMO_WORKBOOK.sheets[0].id,
+  bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+  orientation: "rows-as-records",
+  headerAxis: "row",
+  targetEntityDefinitionId: null,
+};
+
+export const Step1_InvalidRegion: Story = {
+  name: "Step 1 — Invalid region (entity unbound) with injected errors",
+  args: {
+    ...BASE_ARGS,
+    step: 1,
+    files: [SAMPLE_FILE],
+    uploadPhase: "parsed",
+    workbook: DEMO_WORKBOOK,
+    regions: [invalidRegion],
+    activeSheetId: invalidRegion.sheetId,
+    selectedRegionId: invalidRegion.id,
+    errors: {
+      [invalidRegion.id]: {
+        targetEntityDefinitionId: "Select an entity to bind this region to",
+      },
+    },
   },
 };
 
 // ---------------------------------------------------------------------------
-// Step 2: Map Columns
+// Step 2 — Review
 // ---------------------------------------------------------------------------
 
-export const Step2_ColumnMapping: Story = {
-  name: "Step 2 — Column Mapping",
+export const Step2_AllGreen: Story = {
+  name: "Step 2 — Review with high confidence",
   args: {
-    ...baseArgs,
+    ...BASE_ARGS,
     step: 2,
-    files: MOCK_FILES,
-    uploadPhase: "done",
-    recommendations: MOCK_RECOMMENDATIONS,
-    backLabel: "Back",
-    nextLabel: "Next",
-    isNextDisabled: false,
+    files: [SAMPLE_FILE],
+    uploadPhase: "parsed",
+    workbook: DEMO_WORKBOOK,
+    regions: POST_INTERPRET_REGIONS,
+    activeSheetId: POST_INTERPRET_REGIONS[0].sheetId,
+    overallConfidence: 0.91,
   },
 };
 
-// ---------------------------------------------------------------------------
-// Step 3: Review & Import
-// ---------------------------------------------------------------------------
+const blockerRegion: RegionDraft = {
+  ...POST_INTERPRET_REGIONS[0],
+  confidence: 0.56,
+  warnings: [
+    {
+      code: "IDENTITY_COLUMN_HAS_BLANKS",
+      severity: "blocker",
+      message: "Identity column 'Region' has 2 blank rows.",
+      suggestedFix:
+        "Fill the blanks in the source file or choose a different identity column.",
+    },
+  ],
+};
 
-export const Step3_Review: Story = {
-  name: "Step 3 — Review & Import",
+export const Step2_BlockerPresent: Story = {
+  name: "Step 2 — Blocker present, commit disabled",
   args: {
-    ...baseArgs,
-    step: 3,
-    files: MOCK_FILES,
-    uploadPhase: "done",
-    recommendations: MOCK_RECOMMENDATIONS,
-    backLabel: "Back",
-    nextLabel: "Confirm",
-    isNextDisabled: false,
+    ...BASE_ARGS,
+    step: 2,
+    files: [SAMPLE_FILE],
+    uploadPhase: "parsed",
+    workbook: DEMO_WORKBOOK,
+    regions: [blockerRegion],
+    activeSheetId: blockerRegion.sheetId,
+    overallConfidence: 0.56,
   },
 };
 
 // ---------------------------------------------------------------------------
-// Interactive story
+// Interactive — full click-through with fake async handlers
 // ---------------------------------------------------------------------------
+
+function delay<T>(value: T, ms = 300): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+}
 
 const InteractiveContent: React.FC = () => {
-  const [step, setStep] = React.useState<0 | 1 | 2 | 3>(0);
+  const [committedPayload, setCommittedPayload] = useState<{
+    regions: RegionDraft[];
+    connectorInstanceId: string;
+  } | null>(null);
 
-  const handleNext = () => setStep((s) => Math.min(s + 1, 3) as 0 | 1 | 2 | 3);
-  const handleBack = () => setStep((s) => Math.max(s - 1, 0) as 0 | 1 | 2 | 3);
+  const workflow = useFileUploadWorkflow({
+    parseFile: () => delay(DEMO_WORKBOOK),
+    runInterpret: (regions) =>
+      delay({
+        regions: regions.map((r) => ({
+          ...r,
+          confidence: 0.88,
+          columnBindings: POST_INTERPRET_REGIONS[0].columnBindings,
+        })),
+        overallConfidence: 0.88,
+      }),
+    runCommit: (regions) => {
+      void regions;
+      return delay({ connectorInstanceId: "ci_interactive" });
+    },
+    onCommitSuccess: (connectorInstanceId) => {
+      setCommittedPayload({
+        regions: workflow.regions,
+        connectorInstanceId,
+      });
+    },
+  });
 
   return (
-    <FileUploadConnectorWorkflowUI
-      {...baseArgs}
-      step={step}
-      files={MOCK_FILES}
-      recommendations={MOCK_RECOMMENDATIONS}
-      uploadPhase="done"
-      onBack={handleBack}
-      onNext={handleNext}
-      backLabel={step === 0 ? "Cancel" : "Back"}
-      nextLabel={step === 3 ? "Confirm" : "Next"}
-      isNextDisabled={false}
-    />
+    <>
+      <FileUploadConnectorWorkflowUI
+        open={true}
+        onClose={fn()}
+        step={workflow.step}
+        stepConfigs={FILE_UPLOAD_WORKFLOW_STEPS}
+        files={workflow.files}
+        onFilesChange={workflow.addFiles}
+        uploadPhase={workflow.uploadPhase}
+        fileProgress={workflow.fileProgress}
+        overallUploadPercent={workflow.overallUploadPercent}
+        onStartParse={() => {
+          void workflow.startParse();
+        }}
+        workbook={workflow.workbook}
+        regions={workflow.regions}
+        selectedRegionId={workflow.selectedRegionId}
+        activeSheetId={workflow.activeSheetId}
+        entityOptions={ENTITY_OPTIONS}
+        onActiveSheetChange={workflow.onActiveSheetChange}
+        onSelectRegion={workflow.onSelectRegion}
+        onRegionDraft={workflow.onRegionDraft}
+        onRegionUpdate={workflow.onRegionUpdate}
+        onRegionDelete={workflow.onRegionDelete}
+        onInterpret={() => {
+          void workflow.onInterpret();
+        }}
+        overallConfidence={workflow.overallConfidence}
+        onJumpToRegion={(regionId) => workflow.onSelectRegion(regionId)}
+        onEditBinding={(regionId) => workflow.onSelectRegion(regionId)}
+        onCommit={() => {
+          void workflow.onCommit();
+        }}
+        onBack={workflow.goBack}
+        serverError={workflow.serverError}
+        isInterpreting={workflow.isInterpreting}
+        isCommitting={workflow.isCommitting}
+      />
+
+      <Dialog
+        open={committedPayload !== null}
+        onClose={() => setCommittedPayload(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Commit payload</DialogTitle>
+        <DialogContent dividers>
+          <pre style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap" }}>
+            {JSON.stringify(committedPayload, null, 2)}
+          </pre>
+        </DialogContent>
+        <DialogActions>
+          <MuiButton
+            onClick={() => {
+              setCommittedPayload(null);
+              workflow.reset();
+            }}
+          >
+            Done
+          </MuiButton>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 
 export const Interactive: Story = {
-  name: "Interactive — Navigate steps",
-  args: { ...baseArgs },
+  name: "Interactive — click through Upload → Draw → Review → Commit",
+  args: { ...BASE_ARGS },
   render: () => <InteractiveContent />,
 };

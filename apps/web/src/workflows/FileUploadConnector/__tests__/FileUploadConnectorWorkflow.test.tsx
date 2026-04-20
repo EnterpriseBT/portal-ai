@@ -5,73 +5,15 @@ import userEvent from "@testing-library/user-event";
 
 import { FileUploadConnectorWorkflowUI } from "../FileUploadConnectorWorkflow.component";
 import type { FileUploadConnectorWorkflowUIProps } from "../FileUploadConnectorWorkflow.component";
-import type {
-  Recommendations,
-  RecommendedColumn,
-  RecommendedEntity,
-} from "../utils/upload-workflow.util";
+import {
+  DEMO_WORKBOOK,
+  ENTITY_OPTIONS,
+  SAMPLE_FILE,
+  SAMPLE_REGIONS,
+  POST_INTERPRET_REGIONS,
+} from "../utils/file-upload-fixtures.util";
+import { FILE_UPLOAD_WORKFLOW_STEPS } from "../utils/file-upload-workflow.util";
 import type { FileUploadProgress } from "../../../utils/file-upload.util";
-import type { EntityStepErrors, ColumnStepErrors } from "../utils/file-upload-validation.util";
-
-// ---------------------------------------------------------------------------
-// Mock Data
-// ---------------------------------------------------------------------------
-
-const MOCK_COLUMN: RecommendedColumn = {
-  confidence: 0.95,
-  existingColumnDefinitionId: "col_001",
-  existingColumnDefinitionKey: "email",
-  sourceField: "Email Address",
-  isPrimaryKeyCandidate: true,
-  sampleValues: ["alice@example.com", "bob@test.org", "carol@acme.io"],
-  normalizedKey: "email_address",
-  required: true,
-  format: "email",
-  enumValues: null,
-  defaultValue: null,
-};
-
-const MOCK_COLUMN_NEW: RecommendedColumn = {
-  confidence: 0.45,
-  existingColumnDefinitionId: "col_002",
-  existingColumnDefinitionKey: "phone",
-  sourceField: "Phone Number",
-  isPrimaryKeyCandidate: false,
-  sampleValues: ["+1-555-0100", "+1-555-0101"],
-  normalizedKey: "phone_number",
-  required: false,
-  format: null,
-  enumValues: null,
-  defaultValue: null,
-};
-
-const MOCK_ENTITIES: RecommendedEntity[] = [
-  {
-    connectorEntity: { key: "contacts", label: "Contacts" },
-    sourceFileName: "contacts.csv",
-    columns: [MOCK_COLUMN, MOCK_COLUMN_NEW],
-  },
-];
-
-const MOCK_RECOMMENDATIONS: Recommendations = {
-  connectorInstance: { name: "My CSV Import", config: {} },
-  entities: MOCK_ENTITIES,
-};
-
-const STEP_CONFIGS = [
-  { label: "Upload Files", description: "Select and upload files" },
-  { label: "Confirm Entities", description: "Review detected entities" },
-  { label: "Map Columns", description: "Map source columns to definitions" },
-  { label: "Review & Import", description: "Review and confirm import" },
-];
-
-const MOCK_FILES = [
-  new File(["a,b,c"], "contacts.csv", { type: "text/csv" }),
-];
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeProps(
   overrides: Partial<FileUploadConnectorWorkflowUIProps> = {}
@@ -80,433 +22,310 @@ function makeProps(
     open: true,
     onClose: jest.fn(),
     step: 0,
-    stepConfigs: STEP_CONFIGS,
+    stepConfigs: FILE_UPLOAD_WORKFLOW_STEPS,
+
     files: [],
     onFilesChange: jest.fn(),
     uploadPhase: "idle",
     fileProgress: new Map<string, FileUploadProgress>(),
     overallUploadPercent: 0,
-    jobProgress: 0,
-    jobError: null,
-    uploadError: null,
-    isProcessing: false,
-    connectionStatus: "idle",
-    jobStatus: null,
-    jobResult: null,
-    recommendations: null,
-    parseResults: null,
-    onUpdateEntity: jest.fn(),
-    dbEntities: [],
-    isLoadingDbEntities: false,
-    onUpdateColumn: jest.fn(),
-    onColumnKeySearch: jest.fn<() => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
-    onColumnKeyGetById: jest.fn<() => Promise<null>>().mockResolvedValue(null),
+    onStartParse: jest.fn(),
 
-    onConnectorNameChange: jest.fn(),
-    onConfirm: jest.fn(),
-    isConfirming: false,
-    confirmError: null,
-    confirmResult: null,
-    onDone: jest.fn(),
-    onCancel: jest.fn(),
-    isCancelling: false,
+    workbook: null,
+    regions: [],
+    selectedRegionId: null,
+    activeSheetId: null,
+    entityOptions: ENTITY_OPTIONS,
+    onActiveSheetChange: jest.fn(),
+    onSelectRegion: jest.fn(),
+    onRegionDraft: jest.fn(),
+    onRegionUpdate: jest.fn(),
+    onRegionDelete: jest.fn(),
+    onInterpret: jest.fn(),
+
+    overallConfidence: undefined,
+    onJumpToRegion: jest.fn(),
+    onEditBinding: jest.fn(),
+    onCommit: jest.fn(),
+
     onBack: jest.fn(),
-    onNext: jest.fn(),
-    backLabel: "Cancel",
-    nextLabel: "Upload",
-    isBackDisabled: false,
-    isNextDisabled: true,
+
+    serverError: null,
+    isInterpreting: false,
+    isCommitting: false,
     ...overrides,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe("FileUploadConnectorWorkflowUI", () => {
-  describe("Modal shell", () => {
-    it("renders modal with title when open", () => {
-      render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
-      expect(screen.getByText("File Upload")).toBeInTheDocument();
-    });
-
-    it("does not render content when closed", () => {
-      render(<FileUploadConnectorWorkflowUI {...makeProps({ open: false })} />);
-      expect(screen.queryByText("File Upload")).not.toBeInTheDocument();
-    });
+describe("FileUploadConnectorWorkflowUI — modal shell", () => {
+  test("renders the modal with its title when open", () => {
+    render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
+    expect(screen.getByText("Upload a spreadsheet")).toBeInTheDocument();
   });
 
-  describe("Navigation buttons", () => {
-    it("renders back and next buttons with provided labels", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({ backLabel: "Cancel", nextLabel: "Upload" })}
-        />
-      );
-      expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Upload" })).toBeInTheDocument();
-    });
-
-    it("disables next button when isNextDisabled is true", () => {
-      render(
-        <FileUploadConnectorWorkflowUI {...makeProps({ isNextDisabled: true })} />
-      );
-      expect(screen.getByRole("button", { name: "Upload" })).toBeDisabled();
-    });
-
-    it("enables next button when isNextDisabled is false", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({ isNextDisabled: false, nextLabel: "Next" })}
-        />
-      );
-      expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
-    });
-
-    it("disables back button when isBackDisabled is true", () => {
-      render(
-        <FileUploadConnectorWorkflowUI {...makeProps({ isBackDisabled: true })} />
-      );
-      expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    });
-
-    it("calls onNext when next button clicked", async () => {
-      const user = userEvent.setup();
-      const onNext = jest.fn();
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({ onNext, isNextDisabled: false, nextLabel: "Next" })}
-        />
-      );
-      await user.click(screen.getByRole("button", { name: "Next" }));
-      expect(onNext).toHaveBeenCalledTimes(1);
-    });
-
-    it("calls onBack when back button clicked", async () => {
-      const user = userEvent.setup();
-      const onBack = jest.fn();
-      render(
-        <FileUploadConnectorWorkflowUI {...makeProps({ onBack, backLabel: "Back" })} />
-      );
-      await user.click(screen.getByRole("button", { name: "Back" }));
-      expect(onBack).toHaveBeenCalledTimes(1);
-    });
+  test("does not render modal content when closed", () => {
+    render(<FileUploadConnectorWorkflowUI {...makeProps({ open: false })} />);
+    expect(screen.queryByText("Upload a spreadsheet")).not.toBeInTheDocument();
   });
 
-  describe("Stepper", () => {
-    it("renders all step labels", () => {
-      render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
-      expect(screen.getByText("Upload Files")).toBeInTheDocument();
-      expect(screen.getByText("Confirm Entities")).toBeInTheDocument();
-      expect(screen.getByText("Map Columns")).toBeInTheDocument();
-      expect(screen.getByText("Review & Import")).toBeInTheDocument();
-    });
+  test("renders every step label in the stepper", () => {
+    render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
+    for (const config of FILE_UPLOAD_WORKFLOW_STEPS) {
+      // Some labels (e.g. "Draw regions") are reused as an inner heading when
+      // the step is active, so tolerate multiple matches.
+      expect(screen.getAllByText(config.label).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("FileUploadConnectorWorkflowUI — step routing", () => {
+  test("step 0 renders the UploadStep dropzone", () => {
+    render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
+    expect(screen.getByTestId("dropzone")).toBeInTheDocument();
   });
 
-  describe("Step 0: Upload", () => {
-    it("shows file picker text when idle", () => {
-      render(<FileUploadConnectorWorkflowUI {...makeProps()} />);
-      expect(
-        screen.getByText("Select one or more files to upload.")
-      ).toBeInTheDocument();
-    });
-
-    it("shows upload error when present", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            uploadPhase: "error",
-            uploadError: "S3 upload failed",
-          })}
-        />
-      );
-      expect(screen.getByText("S3 upload failed")).toBeInTheDocument();
-    });
-
-    it("shows processing label during presigning phase", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            files: MOCK_FILES,
-            uploadPhase: "presigning",
-            isProcessing: true,
-          })}
-        />
-      );
-      expect(screen.getByText("Preparing upload...")).toBeInTheDocument();
-    });
-
-    it("shows per-file progress during upload phase", () => {
-      const fileProgress = new Map<string, FileUploadProgress>();
-      fileProgress.set("contacts.csv", {
-        fileName: "contacts.csv",
-        loaded: 500,
-        total: 1000,
-        percent: 50,
-      });
-
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            files: MOCK_FILES,
-            uploadPhase: "uploading",
-            isProcessing: true,
-            fileProgress,
-          })}
-        />
-      );
-      expect(screen.getByText("contacts.csv")).toBeInTheDocument();
-      expect(
-        screen.getByText("Uploading files to storage...")
-      ).toBeInTheDocument();
-    });
+  test("step 1 renders the Draw regions heading when a workbook is present", () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 1,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+        })}
+      />
+    );
+    // "Draw regions" appears twice when step 1 is active — stepper label +
+    // inner panel heading. Both rendered ⇒ the region-drawing panel is live.
+    expect(screen.getAllByText("Draw regions").length).toBeGreaterThanOrEqual(2);
   });
 
-  describe("Step 1: Confirm Entities", () => {
-    it("shows waiting message when no recommendations", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({ step: 1, recommendations: null })}
-        />
-      );
-      expect(
-        screen.getByText("Waiting for recommendations...")
-      ).toBeInTheDocument();
-    });
-
-    it("shows entity details when recommendations present", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 1,
-            files: MOCK_FILES,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.getByText("2 columns detected")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("contacts")).toBeInTheDocument();
-      expect(screen.getByDisplayValue("Contacts")).toBeInTheDocument();
-    });
-
-    it("shows source file name for entity", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 1,
-            files: MOCK_FILES,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.getByText("Source: contacts.csv")).toBeInTheDocument();
-    });
+  test("step 1 shows a loading fallback when the workbook is not yet populated", () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 1,
+          workbook: null,
+          uploadPhase: "parsing",
+        })}
+      />
+    );
+    expect(screen.getByText(/preparing your spreadsheet/i)).toBeInTheDocument();
   });
 
-  describe("Step 2: Column Mapping", () => {
-    it("shows waiting message when no recommendations", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({ step: 2, recommendations: null })}
-        />
-      );
-      expect(
-        screen.getByText("Waiting for recommendations...")
-      ).toBeInTheDocument();
-    });
+  test("step 2 renders the Review interpretation heading", () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 2,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          regions: POST_INTERPRET_REGIONS,
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+          overallConfidence: 0.85,
+        })}
+      />
+    );
+    expect(screen.getByText("Review interpretation")).toBeInTheDocument();
+  });
+});
 
-    it("shows column details when recommendations present", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 2,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.getByText("Email Address")).toBeInTheDocument();
-      expect(screen.getByText("Phone Number")).toBeInTheDocument();
-      expect(screen.getByText("95%")).toBeInTheDocument();
-      expect(screen.getByText("45%")).toBeInTheDocument();
-    });
-
-    it("shows confidence percentages for columns", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 2,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.getByText("95%")).toBeInTheDocument();
-      expect(screen.getByText("45%")).toBeInTheDocument();
-    });
+describe("FileUploadConnectorWorkflowUI — footer navigation", () => {
+  test('step 0 Cancel button calls onClose', async () => {
+    const user = userEvent.setup();
+    const onClose = jest.fn();
+    render(<FileUploadConnectorWorkflowUI {...makeProps({ onClose })} />);
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  describe("Step 3: Review & Import", () => {
-    it("shows no recommendations message when null", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({ step: 3, recommendations: null })}
-        />
-      );
-      expect(
-        screen.getByText("No recommendations available.")
-      ).toBeInTheDocument();
-    });
+  test('step 0 Upload button fires onStartParse and is disabled with no files', async () => {
+    const user = userEvent.setup();
+    const onStartParse = jest.fn();
+    const { rerender } = render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({ onStartParse })}
+      />
+    );
+    const uploadBtn = screen.getByRole("button", { name: /^upload$/i });
+    expect(uploadBtn).toBeDisabled();
 
-    it("shows connector instance name", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 3,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.getByDisplayValue("My CSV Import")).toBeInTheDocument();
-    });
-
-    it("shows summary statistics", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 3,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.getByText("Entities: 1")).toBeInTheDocument();
-      expect(screen.getByText("Total columns: 2")).toBeInTheDocument();
-    });
-
-    it("shows per-entity column mapping details", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 3,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.getByText("Contacts (contacts)")).toBeInTheDocument();
-      expect(screen.getByText("Email Address")).toBeInTheDocument();
-      expect(screen.getByText("Phone Number")).toBeInTheDocument();
-    });
-
-    it("calls onConnectorNameChange when name is edited", async () => {
-      const user = userEvent.setup();
-      const onConnectorNameChange = jest.fn();
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 3,
-            recommendations: MOCK_RECOMMENDATIONS,
-            onConnectorNameChange,
-          })}
-        />
-      );
-      const input = screen.getByDisplayValue("My CSV Import");
-      await user.clear(input);
-      await user.type(input, "Renamed");
-      expect(onConnectorNameChange).toHaveBeenCalled();
-    });
+    rerender(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({ onStartParse, files: [SAMPLE_FILE] })}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: /^upload$/i }));
+    expect(onStartParse).toHaveBeenCalledTimes(1);
   });
 
-  describe("Step 1: Entity validation errors", () => {
-    it("displays entity key error when entityStepErrors is passed", () => {
-      const entityStepErrors: EntityStepErrors = {
-        0: { key: "Entity key is required" },
-      };
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 1,
-            files: MOCK_FILES,
-            recommendations: MOCK_RECOMMENDATIONS,
-            entityStepErrors,
-          })}
-        />
-      );
-      expect(screen.getByText("Entity key is required")).toBeInTheDocument();
-    });
-
-    it("displays entity label error when entityStepErrors is passed", () => {
-      const entityStepErrors: EntityStepErrors = {
-        0: { label: "Entity label is required" },
-      };
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 1,
-            files: MOCK_FILES,
-            recommendations: MOCK_RECOMMENDATIONS,
-            entityStepErrors,
-          })}
-        />
-      );
-      expect(screen.getByText("Entity label is required")).toBeInTheDocument();
-    });
-
-    it("does not display entity errors when entityStepErrors is undefined", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 1,
-            files: MOCK_FILES,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.queryByText("Entity key is required")).not.toBeInTheDocument();
-    });
+  test('step 0 Upload button is disabled while uploading', () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          files: [SAMPLE_FILE],
+          uploadPhase: "uploading",
+        })}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /^upload$/i })
+    ).toBeDisabled();
   });
 
-  describe("Step 2: Column validation errors", () => {
-    it("displays column definition error when columnStepErrors is passed", () => {
-      const columnStepErrors: ColumnStepErrors = {
-        0: { 0: { existingColumnDefinitionId: "Column definition must be selected" } },
-      };
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 2,
-            recommendations: MOCK_RECOMMENDATIONS,
-            columnStepErrors,
-          })}
-        />
-      );
-      expect(screen.getByText("Column definition must be selected")).toBeInTheDocument();
-    });
+  test("step 1 Back button calls onBack", async () => {
+    const user = userEvent.setup();
+    const onBack = jest.fn();
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 1,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+          onBack,
+        })}
+      />
+    );
+    const backButtons = screen
+      .getAllByRole("button")
+      .filter((b) => b.textContent?.trim() === "Back");
+    expect(backButtons.length).toBeGreaterThan(0);
+    await user.click(backButtons[0]);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
 
-    it("displays normalizedKey error when columnStepErrors is passed", () => {
-      const columnStepErrors: ColumnStepErrors = {
-        0: { 0: { normalizedKey: "Normalized key must be lowercase snake_case" } },
-      };
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 2,
-            recommendations: MOCK_RECOMMENDATIONS,
-            columnStepErrors,
-          })}
-        />
-      );
-      expect(screen.getByText("Normalized key must be lowercase snake_case")).toBeInTheDocument();
-    });
+  test("step 2 renders no global footer nav (Review step owns its own actions)", () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 2,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          regions: POST_INTERPRET_REGIONS,
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+        })}
+      />
+    );
+    // The only Back available is the Review step's internal "Back to regions".
+    expect(
+      screen.queryByRole("button", { name: /^back$/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /back to regions/i })
+    ).toBeInTheDocument();
+  });
+});
 
-    it("does not display column errors when columnStepErrors is undefined", () => {
-      render(
-        <FileUploadConnectorWorkflowUI
-          {...makeProps({
-            step: 2,
-            recommendations: MOCK_RECOMMENDATIONS,
-          })}
-        />
-      );
-      expect(screen.queryByText("Column definition must be selected")).not.toBeInTheDocument();
-    });
+describe("FileUploadConnectorWorkflowUI — server error", () => {
+  test("propagates serverError into the active step's wrapper (step 0)", () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          serverError: {
+            message: "Upload rejected by server",
+            code: "UPLOAD_ERROR",
+          },
+        })}
+      />
+    );
+    const alerts = screen.getAllByRole("alert");
+    expect(
+      alerts.some((el) =>
+        el.textContent?.includes("Upload rejected by server")
+      )
+    ).toBe(true);
+  });
+
+  test("propagates serverError into the active step's wrapper (step 1)", () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 1,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          files: [SAMPLE_FILE],
+          regions: [SAMPLE_REGIONS[0]],
+          selectedRegionId: SAMPLE_REGIONS[0].id,
+          uploadPhase: "parsed",
+          serverError: {
+            message: "Interpreter unavailable",
+            code: "INTERPRETER_UNAVAILABLE",
+          },
+        })}
+      />
+    );
+    const alerts = screen.getAllByRole("alert");
+    expect(
+      alerts.some((el) => el.textContent?.includes("Interpreter unavailable"))
+    ).toBe(true);
+  });
+
+  test("propagates serverError into the active step's wrapper (step 2)", () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 2,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          regions: POST_INTERPRET_REGIONS,
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+          serverError: {
+            message: "Commit failed",
+            code: "COMMIT_FAILED",
+          },
+        })}
+      />
+    );
+    const alerts = screen.getAllByRole("alert");
+    expect(
+      alerts.some((el) => el.textContent?.includes("Commit failed"))
+    ).toBe(true);
+  });
+});
+
+describe("FileUploadConnectorWorkflowUI — pending flags", () => {
+  test('step 1 Interpret button label flips to "Interpreting…" when isInterpreting is true', () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 1,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          files: [SAMPLE_FILE],
+          regions: [SAMPLE_REGIONS[0]],
+          selectedRegionId: SAMPLE_REGIONS[0].id,
+          uploadPhase: "parsed",
+          isInterpreting: true,
+        })}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /interpreting/i })
+    ).toBeDisabled();
+  });
+
+  test('step 2 Commit button label flips to "Committing…" when isCommitting is true', () => {
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 2,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          regions: POST_INTERPRET_REGIONS,
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+          isCommitting: true,
+        })}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /committing/i })
+    ).toBeDisabled();
   });
 });

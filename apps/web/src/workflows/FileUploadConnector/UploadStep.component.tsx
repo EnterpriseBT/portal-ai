@@ -1,178 +1,163 @@
-import React from "react";
+import React, { useCallback, useRef, useState } from "react";
 
-import {
-  Box,
-  Stack,
-  Typography,
-  Progress,
-  StatusMessage,
-  FileUploader,
-} from "@portalai/core/ui";
+import { Box, Stack, Typography, Progress, Button } from "@portalai/core/ui";
 
-import type { JobStatus, FileParseResult } from "@portalai/core/models";
-
+import { FormAlert } from "../../components/FormAlert.component";
+import type { ServerError } from "../../utils/api.util";
+import type { FileUploadProgress } from "../../utils/file-upload.util";
+import { SPREADSHEET_FILE_EXTENSIONS } from "./utils/file-upload-fixtures.util";
+import type { UploadPhase } from "./utils/file-upload-fixtures.util";
 import { SampleFiles } from "./SampleFiles.component";
-import type { FileUploadProgress, UploadPhase } from "../../utils/file-upload.util";
 
-// --- Types ---
-
-interface UploadStepProps {
+export interface UploadStepUIProps {
   files: File[];
   onFilesChange: (files: File[]) => void;
   uploadPhase: UploadPhase;
   fileProgress: Map<string, FileUploadProgress>;
   overallUploadPercent: number;
-  jobProgress: number;
-  jobError: string | null;
-  uploadError: string | null;
-  isProcessing: boolean;
-  connectionStatus: string;
-  jobStatus: JobStatus | null;
-  jobResult: Record<string, unknown> | null;
+  serverError: ServerError | null;
+  errors?: { files?: string };
+  onRetry?: () => void;
 }
 
-// --- Phase Labels ---
+const ACCEPT_ATTRIBUTE = SPREADSHEET_FILE_EXTENSIONS.join(",");
 
-function getPhaseLabel(
-  uploadPhase: UploadPhase,
-  jobProgress: number,
-): string {
-  switch (uploadPhase) {
-    case "presigning":
-      return "Preparing upload...";
-    case "uploading":
-      return "Uploading files to storage...";
-    case "processing":
-      return "Starting processing...";
-    case "done":
-      if (jobProgress <= 10) return "Verifying files...";
-      if (jobProgress < 30) return "Parsing files...";
-      if (jobProgress < 70) return "Analyzing schema...";
-      if (jobProgress < 80) return "Generating recommendations...";
-      return "Finalizing...";
-    case "error":
-      return "An error occurred";
-    default:
-      return "";
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function mergeUnique(existing: File[], incoming: File[]): File[] {
+  const merged = [...existing];
+  const seen = new Set(existing.map((f) => f.name));
+  for (const file of incoming) {
+    if (seen.has(file.name)) continue;
+    seen.add(file.name);
+    merged.push(file);
   }
+  return merged;
 }
 
-/**
- * Split an XLSX-style fileName into its workbook + sheet parts.
- *   "data.xlsx[Contacts]" → { displayName: "data.xlsx", sheetName: "Contacts" }
- *   "contacts.csv"        → { displayName: "contacts.csv", sheetName: null }
- */
-function parseDisplayFileName(fileName: string): { displayName: string; sheetName: string | null } {
-  const match = fileName.match(/^(.+?)\[([^\]]+)\]$/);
-  if (match) return { displayName: match[1], sheetName: match[2] };
-  return { displayName: fileName, sheetName: null };
-}
-
-// --- Component ---
-
-export const UploadStep: React.FC<UploadStepProps> = ({
+export const UploadStep: React.FC<UploadStepUIProps> = ({
   files,
   onFilesChange,
   uploadPhase,
   fileProgress,
   overallUploadPercent,
-  jobProgress,
-  jobError,
-  uploadError,
-  isProcessing,
-  connectionStatus,
-  jobStatus,
-  jobResult,
+  serverError,
+  errors,
+  onRetry,
 }) => {
-  const isUploading = uploadPhase === "uploading";
-  const isActive = uploadPhase !== "idle" && uploadPhase !== "error";
-  const error = jobError || uploadError;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
 
-  // Extract parse results from job result for completed jobs
-  const parseResults = extractParseResults(jobResult);
+  const isBusy = uploadPhase === "uploading" || uploadPhase === "parsing";
+  const hasFieldError = Boolean(errors?.files);
 
-  // Show file picker when idle or error (allow re-selection)
-  if (uploadPhase === "idle" || (uploadPhase === "error" && !isProcessing)) {
-    return (
-      <Stack spacing={2}>
-        <Typography variant="body1">
-          Select one or more files to upload.
-        </Typography>
-        <SampleFiles />
-        <FileUploader
-          accept=".csv,.xlsx"
-          multiple
-          maxSizeMB={50}
-          onChange={onFilesChange}
-          helperText="Accepted formats: .csv, .xlsx (max 50MB per file, up to 5 files)"
-        />
-        {error && (
-          <StatusMessage message={error} variant="error" />
-        )}
-      </Stack>
-    );
-  }
+  const handleIncoming = useCallback(
+    (list: FileList | null) => {
+      if (!list || list.length === 0) return;
+      const merged = mergeUnique(files, Array.from(list));
+      if (merged.length === files.length) return;
+      onFilesChange(merged);
+    },
+    [files, onFilesChange]
+  );
 
-  // Show parse summary when job completed with results (Phase 2 temporary completion)
-  if (jobStatus === "completed" && parseResults && parseResults.length > 0) {
-    return (
-      <Stack spacing={2}>
-        <StatusMessage
-          message={`Successfully parsed ${parseResults.length} file${parseResults.length > 1 ? "s" : ""}`}
-          variant="success"
-        />
-        <Stack spacing={1.5}>
-          {parseResults.map((result) => {
-            const { displayName, sheetName } = parseDisplayFileName(result.fileName);
-            return (
-              <Box
-                key={result.fileName}
-                sx={{
-                  p: 1.5,
-                  borderRadius: 1,
-                  bgcolor: "action.hover",
-                }}
-              >
-                <Typography variant="body2" fontWeight="medium">
-                  {displayName}
-                  {sheetName && (
-                    <Typography component="span" variant="body2" color="text.secondary">
-                      {" — sheet: "}
-                      {sheetName}
-                    </Typography>
-                  )}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {result.rowCount.toLocaleString()} rows
-                  {" · "}delimiter: {formatDelimiter(result.delimiter)}
-                  {" · "}encoding: {result.encoding}
-                  {" · "}{result.headers.length} columns
-                </Typography>
-              </Box>
-            );
-          })}
-        </Stack>
-      </Stack>
-    );
-  }
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    handleIncoming(event.target.files);
+    if (inputRef.current) inputRef.current.value = "";
+  };
 
-  // Show upload/processing progress
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragActive(false);
+    if (isBusy) return;
+    handleIncoming(event.dataTransfer.files);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (!isBusy) setDragActive(true);
+  };
+
+  const handleDragLeave = () => setDragActive(false);
+
+  const handleClick = () => {
+    if (isBusy) return;
+    inputRef.current?.click();
+  };
+
+  const borderColor = hasFieldError
+    ? "error.main"
+    : dragActive
+    ? "primary.main"
+    : "divider";
+
   return (
     <Stack spacing={2}>
-      <Typography variant="body1" fontWeight="medium">
-        {getPhaseLabel(uploadPhase, jobProgress)}
+      <Typography variant="body1">
+        Select one or more spreadsheets to upload.
       </Typography>
 
-      {connectionStatus === "error" && (
-        <StatusMessage message="Connection lost. Reconnecting..." variant="warning" />
+      <SampleFiles />
+
+      <Box
+        data-testid="dropzone"
+        onClick={handleClick}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        sx={{
+          border: 2,
+          borderStyle: "dashed",
+          borderColor,
+          borderRadius: 1,
+          p: 3,
+          textAlign: "center",
+          cursor: isBusy ? "default" : "pointer",
+          opacity: isBusy ? 0.5 : 1,
+          bgcolor: dragActive ? "action.hover" : "transparent",
+          transition: "all 0.2s ease",
+        }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Drag and drop spreadsheets here, or click to browse.
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Accepted formats: {SPREADSHEET_FILE_EXTENSIONS.join(", ")}
+        </Typography>
+      </Box>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPT_ATTRIBUTE}
+        multiple
+        onChange={handleInputChange}
+        disabled={isBusy}
+        aria-invalid={hasFieldError ? true : undefined}
+        aria-describedby={hasFieldError ? "upload-step-files-error" : undefined}
+        data-testid="file-input"
+        style={{ display: "none" }}
+      />
+
+      {hasFieldError && (
+        <Typography
+          id="upload-step-files-error"
+          variant="caption"
+          color="error"
+        >
+          {errors?.files}
+        </Typography>
       )}
 
-      {error && (
-        <StatusMessage message={error} variant="error" />
-      )}
+      {serverError && <FormAlert serverError={serverError} />}
 
-      {/* Per-file upload progress */}
-      {isUploading && (
+      {files.length > 0 && (
         <Stack spacing={1}>
           {files.map((file) => {
             const progress = fileProgress.get(file.name);
@@ -191,51 +176,35 @@ export const UploadStep: React.FC<UploadStepProps> = ({
                     {formatBytes(progress?.loaded ?? 0)} / {formatBytes(file.size)}
                   </Typography>
                 </Stack>
-                <Progress value={progress?.percent ?? 0} height={6} animated />
+                <Progress
+                  value={progress?.percent ?? 0}
+                  height={6}
+                  animated={uploadPhase === "uploading"}
+                />
               </Box>
             );
           })}
         </Stack>
       )}
 
-      {/* Overall progress during processing */}
-      {isActive && !isUploading && (
+      {(uploadPhase === "uploading" || uploadPhase === "parsing") && (
         <Box>
-          <Progress
-            value={uploadPhase === "done" ? jobProgress : overallUploadPercent}
-            height={8}
-            animated
-          />
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            {uploadPhase === "uploading"
+              ? "Uploading..."
+              : "Parsing spreadsheet..."}
+          </Typography>
+          <Progress value={overallUploadPercent} height={8} animated />
         </Box>
+      )}
+
+      {uploadPhase === "error" && onRetry && (
+        <Stack direction="row" justifyContent="flex-end">
+          <Button variant="outlined" onClick={onRetry}>
+            Retry
+          </Button>
+        </Stack>
       )}
     </Stack>
   );
 };
-
-// --- Utilities ---
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
-
-function formatDelimiter(d: string): string {
-  if (d === ",") return "comma";
-  if (d === "\t") return "tab";
-  if (d === ";") return "semicolon";
-  if (d === "|") return "pipe";
-  if (d === "xlsx") return "N/A";
-  return `"${d}"`;
-}
-
-function extractParseResults(
-  result: Record<string, unknown> | null,
-): FileParseResult[] | null {
-  if (!result) return null;
-  const pr = result.parseResults;
-  if (!Array.isArray(pr) || pr.length === 0) return null;
-  return pr as FileParseResult[];
-}

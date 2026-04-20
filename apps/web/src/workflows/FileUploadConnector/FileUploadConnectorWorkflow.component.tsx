@@ -1,59 +1,49 @@
-import React, { useCallback, useState } from "react";
-
-import { sdk } from "../../api/sdk";
-import type { ConnectorEntityListWithMappingsResponsePayload, ConnectorEntityWithMappings } from "@portalai/core/contracts";
+import React, { useCallback } from "react";
 
 import {
   Box,
-  Stack,
-  Typography,
   Button,
   Modal,
-  Stepper,
+  Stack,
   StepPanel,
+  Stepper,
+  Typography,
 } from "@portalai/core/ui";
-import type { StepConfig, SelectOption } from "@portalai/core/ui";
-import type { JobStatus } from "@portalai/core/models";
+import type { StepConfig } from "@portalai/core/ui";
 
 import { UploadStep } from "./UploadStep.component";
-import { EntityStep } from "./EntityStep.component";
-import { ColumnMappingStep } from "./ColumnMappingStep.component";
-import { ReviewStep } from "./ReviewStep.component";
+import { FileUploadRegionDrawingStepUI } from "./FileUploadRegionDrawingStep.component";
+import { FileUploadReviewStepUI } from "./FileUploadReviewStep.component";
 import {
-  useUploadWorkflow,
-  WORKFLOW_STEPS,
-} from "./utils/upload-workflow.util";
+  FILE_UPLOAD_WORKFLOW_STEPS,
+  useFileUploadWorkflow,
+} from "./utils/file-upload-workflow.util";
+import type { FileUploadWorkflowCallbacks } from "./utils/file-upload-workflow.util";
 import {
-  validateEntityStep,
-  validateColumnStep,
-  hasEntityStepErrors,
-  hasColumnStepErrors,
-} from "./utils/file-upload-validation.util";
-import type { EntityStepErrors, ColumnStepErrors } from "./utils/file-upload-validation.util";
-import { focusFirstInvalidField } from "../../utils/form-validation.util";
-import type { ConfirmResponsePayload } from "@portalai/core/contracts";
+  DEMO_WORKBOOK,
+  ENTITY_OPTIONS,
+  POST_INTERPRET_REGIONS,
+} from "./utils/file-upload-fixtures.util";
+import type { UploadPhase } from "./utils/file-upload-fixtures.util";
 
 import type {
-  UseUploadWorkflowReturn,
-  Recommendations,
-  RecommendedEntity,
-  RecommendedColumnUpdate,
-  ParseSummary,
-  WorkflowStep,
-} from "./utils/upload-workflow.util";
-import type {
-  FileUploadProgress,
-  UploadPhase,
-} from "../../utils/file-upload.util";
+  CellBounds,
+  EntityOption,
+  RegionDraft,
+  RegionEditorErrors,
+  Workbook,
+} from "../../modules/RegionEditor";
+import type { FileUploadProgress } from "../../utils/file-upload.util";
+import type { ServerError } from "../../utils/api.util";
 
-// --- UI Props ---
+// ---------------------------------------------------------------------------
+// UI Props
+// ---------------------------------------------------------------------------
 
 export interface FileUploadConnectorWorkflowUIProps {
   open: boolean;
   onClose: () => void;
-
-  // Stepper state
-  step: WorkflowStep;
+  step: 0 | 1 | 2;
   stepConfigs: StepConfig[];
 
   // Upload step
@@ -62,54 +52,45 @@ export interface FileUploadConnectorWorkflowUIProps {
   uploadPhase: UploadPhase;
   fileProgress: Map<string, FileUploadProgress>;
   overallUploadPercent: number;
-  jobProgress: number;
-  jobError: string | null;
-  uploadError: string | null;
-  isProcessing: boolean;
-  connectionStatus: string;
-  jobStatus: JobStatus | null;
-  jobResult: Record<string, unknown> | null;
+  onStartParse: () => void;
 
-  // Entity step
-  recommendations: Recommendations | null;
-  parseResults: ParseSummary[] | null;
-  onUpdateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
-  entityStepErrors?: EntityStepErrors;
-
-  // Column mapping step
-  dbEntities: ConnectorEntityWithMappings[];
-  isLoadingDbEntities: boolean;
-  columnStepErrors?: ColumnStepErrors;
-  onUpdateColumn: (
-    entityIndex: number,
-    columnIndex: number,
-    updates: RecommendedColumnUpdate
-  ) => void;
-  onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
-  onColumnKeyGetById: ((id: string) => Promise<SelectOption | null>) | undefined;
+  // Region drawing step
+  workbook: Workbook | null;
+  regions: RegionDraft[];
+  selectedRegionId: string | null;
+  activeSheetId: string | null;
+  entityOptions: EntityOption[];
+  onActiveSheetChange: (sheetId: string) => void;
+  onSelectRegion: (regionId: string | null) => void;
+  onRegionDraft: (draft: { sheetId: string; bounds: CellBounds }) => void;
+  onRegionUpdate: (regionId: string, updates: Partial<RegionDraft>) => void;
+  onRegionDelete: (regionId: string) => void;
+  onCreateEntity?: (key: string, label: string) => string;
+  onInterpret: () => void;
 
   // Review step
-  onConnectorNameChange: (name: string) => void;
-  onConfirm: () => void;
-  isConfirming: boolean;
-  confirmError: string | null;
-  confirmResult: ConfirmResponsePayload | null;
-  onDone: () => void;
-  onCancel: () => void;
-  isCancelling: boolean;
+  overallConfidence?: number;
+  onJumpToRegion: (regionId: string) => void;
+  onEditBinding: (regionId: string, sourceLocator: string) => void;
+  onCommit: () => void;
 
   // Navigation
   onBack: () => void;
-  onNext: () => void;
-  backLabel: string;
-  nextLabel: string;
-  isBackDisabled: boolean;
-  isNextDisabled: boolean;
+
+  // Status
+  errors?: RegionEditorErrors;
+  serverError: ServerError | null;
+  isInterpreting: boolean;
+  isCommitting: boolean;
 }
 
-// --- Pure UI Component ---
+// ---------------------------------------------------------------------------
+// Pure UI
+// ---------------------------------------------------------------------------
 
-export const FileUploadConnectorWorkflowUI: React.FC<FileUploadConnectorWorkflowUIProps> = ({
+export const FileUploadConnectorWorkflowUI: React.FC<
+  FileUploadConnectorWorkflowUIProps
+> = ({
   open,
   onClose,
   step,
@@ -119,49 +100,47 @@ export const FileUploadConnectorWorkflowUI: React.FC<FileUploadConnectorWorkflow
   uploadPhase,
   fileProgress,
   overallUploadPercent,
-  jobProgress,
-  jobError,
-  uploadError,
-  isProcessing,
-  connectionStatus,
-  jobStatus,
-  jobResult,
-  recommendations,
-  parseResults,
-  onUpdateEntity,
-  entityStepErrors,
-  dbEntities,
-  isLoadingDbEntities,
-  columnStepErrors,
-  onUpdateColumn,
-  onColumnKeySearch,
-  onColumnKeyGetById,
-  onConnectorNameChange,
-  onConfirm,
-  isConfirming,
-  confirmError,
-  confirmResult,
-  onDone,
-  onCancel,
-  isCancelling,
+  onStartParse,
+  workbook,
+  regions,
+  selectedRegionId,
+  activeSheetId,
+  entityOptions,
+  onActiveSheetChange,
+  onSelectRegion,
+  onRegionDraft,
+  onRegionUpdate,
+  onRegionDelete,
+  onCreateEntity,
+  onInterpret,
+  overallConfidence,
+  onJumpToRegion,
+  onEditBinding,
+  onCommit,
   onBack,
-  onNext,
-  backLabel,
-  nextLabel,
-  isBackDisabled,
-  isNextDisabled,
+  errors,
+  serverError,
+  isInterpreting,
+  isCommitting,
 }) => {
+  const isUploadDisabled =
+    files.length === 0 ||
+    uploadPhase === "uploading" ||
+    uploadPhase === "parsing";
+
+  const resolvedActiveSheetId =
+    activeSheetId ?? workbook?.sheets[0]?.id ?? "";
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="File Upload"
-      maxWidth="md"
+      title="Upload a spreadsheet"
+      maxWidth="lg"
       fullWidth
     >
-      <Box sx={{ minHeight: 400 }}>
+      <Stack spacing={2} sx={{ minWidth: 0 }}>
         <Stepper steps={stepConfigs} activeStep={step}>
-          {/* Step 0: Upload CSV */}
           <StepPanel index={0} activeStep={step}>
             <UploadStep
               files={files}
@@ -169,99 +148,86 @@ export const FileUploadConnectorWorkflowUI: React.FC<FileUploadConnectorWorkflow
               uploadPhase={uploadPhase}
               fileProgress={fileProgress}
               overallUploadPercent={overallUploadPercent}
-              jobProgress={jobProgress}
-              jobError={jobError}
-              uploadError={uploadError}
-              isProcessing={isProcessing}
-              connectionStatus={connectionStatus}
-              jobStatus={jobStatus}
-              jobResult={jobResult}
+              serverError={serverError}
             />
           </StepPanel>
 
-          {/* Step 1: Confirm Entities */}
           <StepPanel index={1} activeStep={step}>
-            {recommendations ? (
-              <EntityStep
-                entities={recommendations.entities}
-                files={files}
-                parseResults={parseResults}
-                onUpdateEntity={onUpdateEntity}
-                errors={entityStepErrors}
+            {workbook ? (
+              <FileUploadRegionDrawingStepUI
+                workbook={workbook}
+                regions={regions}
+                activeSheetId={resolvedActiveSheetId}
+                onActiveSheetChange={onActiveSheetChange}
+                selectedRegionId={selectedRegionId}
+                onSelectRegion={onSelectRegion}
+                onRegionDraft={onRegionDraft}
+                onRegionUpdate={onRegionUpdate}
+                onRegionDelete={onRegionDelete}
+                entityOptions={entityOptions}
+                onCreateEntity={onCreateEntity}
+                onInterpret={onInterpret}
+                isInterpreting={isInterpreting}
+                errors={errors}
+                serverError={serverError}
               />
             ) : (
-              <Typography color="text.secondary">
-                Waiting for recommendations...
-              </Typography>
+              <Box sx={{ p: 3 }}>
+                <Typography color="text.secondary">
+                  Preparing your spreadsheet…
+                </Typography>
+              </Box>
             )}
           </StepPanel>
 
-          {/* Step 2: Map Columns */}
           <StepPanel index={2} activeStep={step}>
-            {recommendations ? (
-              <ColumnMappingStep
-                entities={recommendations.entities}
-                dbEntities={dbEntities}
-                isLoadingDbEntities={isLoadingDbEntities}
-                onUpdateColumn={onUpdateColumn}
-                errors={columnStepErrors}
-                onColumnKeySearch={onColumnKeySearch}
-                onColumnKeyGetById={onColumnKeyGetById}
-              />
-            ) : (
-              <Typography color="text.secondary">
-                Waiting for recommendations...
-              </Typography>
-            )}
-          </StepPanel>
-
-          {/* Step 3: Review & Import */}
-          <StepPanel index={3} activeStep={step}>
-            {recommendations || confirmResult ? (
-              <ReviewStep
-                recommendations={recommendations}
-                onConnectorNameChange={onConnectorNameChange}
-                onConfirm={onConfirm}
-                isConfirming={isConfirming}
-                confirmError={confirmError}
-                confirmResult={confirmResult}
-                onDone={onDone}
-                onCancel={onCancel}
-                isCancelling={isCancelling}
-              />
-            ) : (
-              <Typography color="text.secondary">
-                No recommendations available.
-              </Typography>
-            )}
+            <FileUploadReviewStepUI
+              regions={regions}
+              overallConfidence={overallConfidence}
+              onJumpToRegion={onJumpToRegion}
+              onEditBinding={onEditBinding}
+              onCommit={onCommit}
+              onBack={onBack}
+              isCommitting={isCommitting}
+              serverError={serverError}
+            />
           </StepPanel>
         </Stepper>
 
-        {/* Navigation — hidden on step 3 where ReviewStep has its own actions */}
-        {step !== 3 && (
+        {step === 0 && (
           <Stack
             direction="row"
             justifyContent="space-between"
-            sx={{ pt: 2, px: 2 }}
+            sx={{ pt: 1 }}
           >
-            <Button onClick={onBack} disabled={isBackDisabled} variant="text">
-              {backLabel}
+            <Button variant="text" onClick={onClose}>
+              Cancel
             </Button>
             <Button
-              onClick={onNext}
-              disabled={isNextDisabled}
               variant="contained"
+              onClick={onStartParse}
+              disabled={isUploadDisabled}
             >
-              {nextLabel}
+              Upload
             </Button>
           </Stack>
         )}
-      </Box>
+
+        {step === 1 && (
+          <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
+            <Button variant="text" onClick={onBack}>
+              Back
+            </Button>
+          </Stack>
+        )}
+      </Stack>
     </Modal>
   );
 };
 
-// --- Container Props ---
+// ---------------------------------------------------------------------------
+// Container Props
+// ---------------------------------------------------------------------------
 
 interface FileUploadConnectorWorkflowProps {
   open: boolean;
@@ -270,191 +236,176 @@ interface FileUploadConnectorWorkflowProps {
   connectorDefinitionId: string;
 }
 
-// --- Helpers ---
+// ---------------------------------------------------------------------------
+// Stub async callbacks — follow-up PR replaces each with a real SDK call.
+//
+// See docs/SPREADSHEET_PARSING.frontend.plan.md §Phase 6 for the hand-off
+// contract. Each stub below is anchored with `TODO(API wiring):` so the
+// replacement PR can grep them in one pass.
+// ---------------------------------------------------------------------------
 
-function deriveNextLabel(workflow: UseUploadWorkflowReturn): string {
-  switch (workflow.step) {
-    case 0:
-      if (workflow.uploadPhase === "idle" && workflow.files.length > 0)
-        return "Upload";
-      if (workflow.isProcessing) return "Processing...";
-      return "Next";
-    case 3:
-      return "Confirm";
-    default:
-      return "Next";
-  }
+/**
+ * TODO(API wiring): upload + parse files into a `Workbook`.
+ *
+ * Backend endpoint: `POST /api/file-uploads/parse` (to be added — not in
+ *   `SPREADSHEET_PARSING.backend.spec.md` yet; track as an open item and
+ *   define the request body to accept multipart files, response body to
+ *   return a `Workbook` matching `modules/RegionEditor/utils/region-editor.types.ts`).
+ * SDK method: `sdk.fileUploads.parse(files, options)` — add to
+ *   `apps/web/src/api/` (new `file-uploads.api.ts`) and re-export via
+ *   `api/sdk.ts`.
+ * Cache invalidation: none. Parse output is ephemeral and consumed
+ *   in-memory by the region editor; it is never cached in TanStack Query.
+ */
+function stubParseFile(_files: File[]): Promise<Workbook> {
+  return new Promise((resolve) => setTimeout(() => resolve(DEMO_WORKBOOK), 300));
 }
 
-function deriveIsNextDisabled(workflow: UseUploadWorkflowReturn): boolean {
-  switch (workflow.step) {
-    case 0:
-      return workflow.files.length === 0 || workflow.isProcessing;
-    case 1:
-      return (
-        !workflow.recommendations ||
-        workflow.recommendations.entities.length === 0
-      );
-    case 2:
-      return !workflow.recommendations;
-    case 3:
-      return false;
-    default:
-      return false;
-  }
+/**
+ * TODO(API wiring): run the interpreter against the current region drafts.
+ *
+ * Backend endpoint: `POST /api/connector-instances/:id/layout-plan/interpret`
+ *   (see `SPREADSHEET_PARSING.backend.spec.md` §Sync integration).
+ * SDK method: `sdk.connectorInstanceLayoutPlans.interpret(connectorInstanceId,
+ *   { workbook, regionHints })`. Add a new `connector-instance-layout-plans.api.ts`
+ *   module and re-export from `api/sdk.ts`.
+ * Query keys to add in `api/keys.ts` (re-exported from `api/sdk.ts`):
+ *   - `connectorInstanceLayoutPlans.root`
+ *   - `connectorInstanceLayoutPlans.detail(connectorInstanceId)`
+ * Cache invalidation on success:
+ *   - `connectorInstanceLayoutPlans.root`
+ *
+ * The backend persists the plan with `supersededBy: null` and returns the
+ * plan plus `interpretationTrace`; this callback maps that payload back into
+ * the shape the `useFileUploadWorkflow` hook expects
+ * (`{ regions: RegionDraft[], overallConfidence: number }`).
+ */
+function stubRunInterpret(
+  _regions: RegionDraft[]
+): Promise<{ regions: RegionDraft[]; overallConfidence: number }> {
+  return new Promise((resolve) =>
+    setTimeout(
+      () => resolve({ regions: POST_INTERPRET_REGIONS, overallConfidence: 0.86 }),
+      300
+    )
+  );
 }
 
-function deriveStepConfigs(workflow: UseUploadWorkflowReturn): StepConfig[] {
-  return WORKFLOW_STEPS.map((s, index) => ({
-    label: s.label,
-    description: s.description,
-    validate: () => {
-      switch (index) {
-        case 0:
-          if (workflow.files.length === 0)
-            return "Please select at least one CSV file";
-          return true;
-        case 1:
-          if (
-            !workflow.recommendations ||
-            workflow.recommendations.entities.length === 0
-          )
-            return "No entities to review";
-          return true;
-        default:
-          return true;
-      }
+/**
+ * TODO(API wiring): commit the reviewed plan.
+ *
+ * Backend endpoint: `POST /api/connector-instances/:id/layout-plan/:planId/commit`
+ *   (see `SPREADSHEET_PARSING.backend.spec.md` §Sync integration). Loads the
+ *   adapted workbook, calls `replay(plan, workbook)`, writes `entity_records`,
+ *   and links the sync history row to `layout_plan_id`.
+ * SDK method: `sdk.connectorInstanceLayoutPlans.commit(connectorInstanceId,
+ *   planId)` (same module added for interpret).
+ * Cache invalidation on success (per `CLAUDE.md` §Mutation Cache Invalidation
+ *   — a commit is a cascade across the connector's downstream entities):
+ *   - `connectorInstances.root`
+ *   - `connectorEntities.root`
+ *   - `stations.root`
+ *   - `fieldMappings.root`
+ *   - `portals.root`
+ *   - `portalResults.root`
+ *   - `connectorInstanceLayoutPlans.root`
+ *
+ * Drift-gated failures return `409` with a `DriftReport`; the replacement
+ * wiring must surface that via `toServerError(...)` so
+ * `FileUploadReviewStepUI` renders it in its `<FormAlert>`.
+ */
+function stubRunCommit(
+  _regions: RegionDraft[]
+): Promise<{ connectorInstanceId: string }> {
+  return new Promise((resolve) =>
+    setTimeout(() => resolve({ connectorInstanceId: "ci_demo" }), 300)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Container
+// ---------------------------------------------------------------------------
+
+export const FileUploadConnectorWorkflow: React.FC<
+  FileUploadConnectorWorkflowProps
+> = ({ open, onClose, organizationId, connectorDefinitionId }) => {
+  // TODO(API wiring): `organizationId` + `connectorDefinitionId` are the scope
+  // for the upcoming stubs. `parseFile` / `runInterpret` / `runCommit` call
+  // sites will pass them through as path/body params once real SDK mutations
+  // land. Kept in the signature today so the callsite in Connector.view.tsx
+  // stays stable.
+  void organizationId;
+  void connectorDefinitionId;
+
+  const callbacks: FileUploadWorkflowCallbacks = {
+    parseFile: stubParseFile,
+    runInterpret: stubRunInterpret,
+    runCommit: stubRunCommit,
+    onCommitSuccess: (connectorInstanceId) => {
+      // TODO(API wiring): navigate to the connector instance detail view via
+      // TanStack Router (e.g. `navigate({ to: "/connectors/$id", params: { id: connectorInstanceId } })`)
+      // and close the modal. For now we only close — the fake commit id
+      // (`"ci_demo"`) is not yet a routable resource.
+      void connectorInstanceId;
+      handleClose();
     },
-  }));
-}
+  };
 
-// --- Container Component ---
-
-export const FileUploadConnectorWorkflow: React.FC<FileUploadConnectorWorkflowProps> = ({
-  open,
-  onClose,
-  organizationId,
-  connectorDefinitionId,
-}) => {
-  const workflow = useUploadWorkflow();
-  const [entityStepErrors, setEntityStepErrors] = useState<EntityStepErrors>({});
-  const [columnStepErrors, setColumnStepErrors] = useState<ColumnStepErrors>({});
-  const { onSearch: onColumnKeySearch, getById: onColumnKeyGetById } = sdk.columnDefinitions.search({
-    mapItem: (cd) => ({
-      value: cd.id,
-      label: `${cd.label} (${cd.key}) — ${cd.type}${cd.description ? ` · ${cd.description}` : ""}`,
-      columnDefinition: cd,
-    }),
-  });
-
-  const { data: dbEntitiesData, isLoading: isLoadingDbEntities } =
-    sdk.connectorEntities.list(
-      { include: "fieldMappings" } as Parameters<typeof sdk.connectorEntities.list>[0],
-      { staleTime: 30_000 }
-    );
-  const dbEntities: ConnectorEntityWithMappings[] =
-    (dbEntitiesData as ConnectorEntityListWithMappingsResponsePayload | undefined)
-      ?.connectorEntities ?? [];
+  const workflow = useFileUploadWorkflow(callbacks);
 
   const handleClose = useCallback(() => {
     workflow.reset();
-    setEntityStepErrors({});
-    setColumnStepErrors({});
     onClose();
   }, [workflow, onClose]);
-
-  const handleStartUpload = useCallback(async () => {
-    await workflow.startUpload(organizationId, connectorDefinitionId);
-  }, [workflow, organizationId, connectorDefinitionId]);
-
-  const handleNext = useCallback(async () => {
-    if (workflow.step === 0 && workflow.uploadPhase === "idle") {
-      await handleStartUpload();
-      return;
-    }
-
-    if (workflow.step === 1 && workflow.recommendations) {
-      const errors = validateEntityStep(workflow.recommendations.entities);
-      setEntityStepErrors(errors);
-      if (hasEntityStepErrors(errors)) {
-        requestAnimationFrame(() => focusFirstInvalidField());
-        return;
-      }
-    }
-
-    if (workflow.step === 2 && workflow.recommendations) {
-      const errors = validateColumnStep(workflow.recommendations.entities);
-      setColumnStepErrors(errors);
-      if (hasColumnStepErrors(errors)) {
-        requestAnimationFrame(() => focusFirstInvalidField());
-        return;
-      }
-    }
-
-    workflow.goNext();
-  }, [workflow, handleStartUpload]);
-
-  const handleBack = useCallback(() => {
-    if (workflow.step === 0) {
-      handleClose();
-    } else {
-      workflow.goBack();
-    }
-  }, [workflow, handleClose]);
-
-  const handleConfirm = useCallback(async () => {
-    await workflow.confirm();
-  }, [workflow]);
-
-  const handleCancel = useCallback(async () => {
-    await workflow.cancel();
-    handleClose();
-  }, [workflow, handleClose]);
-
-  const stepConfigs = deriveStepConfigs(workflow);
 
   return (
     <FileUploadConnectorWorkflowUI
       open={open}
       onClose={handleClose}
       step={workflow.step}
-      stepConfigs={stepConfigs}
+      stepConfigs={FILE_UPLOAD_WORKFLOW_STEPS}
       files={workflow.files}
       onFilesChange={workflow.addFiles}
       uploadPhase={workflow.uploadPhase}
-      fileProgress={workflow.uploadProgress}
+      fileProgress={workflow.fileProgress}
       overallUploadPercent={workflow.overallUploadPercent}
-      jobProgress={workflow.jobProgress}
-      jobError={workflow.jobError}
-      uploadError={workflow.uploadError}
-      isProcessing={workflow.isProcessing}
-      connectionStatus={workflow.connectionStatus}
-      jobStatus={workflow.jobStatus}
-      jobResult={workflow.jobResult}
-      recommendations={workflow.recommendations}
-      parseResults={workflow.parseResults}
-      onUpdateEntity={workflow.updateEntity}
-      entityStepErrors={entityStepErrors}
-      dbEntities={dbEntities}
-      isLoadingDbEntities={isLoadingDbEntities}
-      columnStepErrors={columnStepErrors}
-      onUpdateColumn={workflow.updateColumn}
-      onColumnKeySearch={onColumnKeySearch}
-      onColumnKeyGetById={onColumnKeyGetById}
-      onConnectorNameChange={workflow.updateConnectorName}
-      onConfirm={handleConfirm}
-      isConfirming={workflow.isConfirming}
-      confirmError={workflow.confirmError}
-      confirmResult={workflow.confirmResult}
-      onDone={handleClose}
-      onCancel={handleCancel}
-      isCancelling={workflow.isCancelling}
-      onBack={handleBack}
-      onNext={handleNext}
-      backLabel={workflow.step === 0 ? "Cancel" : "Back"}
-      nextLabel={deriveNextLabel(workflow)}
-      isBackDisabled={workflow.step === 0 ? false : workflow.isProcessing}
-      isNextDisabled={deriveIsNextDisabled(workflow)}
+      onStartParse={() => {
+        void workflow.startParse();
+      }}
+      workbook={workflow.workbook}
+      regions={workflow.regions}
+      selectedRegionId={workflow.selectedRegionId}
+      activeSheetId={workflow.activeSheetId}
+      entityOptions={ENTITY_OPTIONS}
+      onActiveSheetChange={workflow.onActiveSheetChange}
+      onSelectRegion={workflow.onSelectRegion}
+      onRegionDraft={workflow.onRegionDraft}
+      onRegionUpdate={workflow.onRegionUpdate}
+      onRegionDelete={workflow.onRegionDelete}
+      onInterpret={() => {
+        void workflow.onInterpret();
+      }}
+      overallConfidence={workflow.overallConfidence}
+      onJumpToRegion={(regionId) => {
+        workflow.onSelectRegion(regionId);
+      }}
+      onEditBinding={(regionId, _sourceLocator) => {
+        // TODO(API wiring): open the binding-edit popover against the shared
+        // RegionEditor's column-binding mutation. Edit is a local plan-state
+        // change (the interpreter already ran); on confirm the bound
+        // container calls `sdk.connectorInstanceLayoutPlans.updateBinding`
+        // (to be added under the same module as interpret/commit) and
+        // invalidates `connectorInstanceLayoutPlans.detail(connectorInstanceId)`.
+        // For now, jumping the user to the region on-canvas is the placeholder.
+        workflow.onSelectRegion(regionId);
+      }}
+      onCommit={() => {
+        void workflow.onCommit();
+      }}
+      onBack={workflow.goBack}
+      serverError={workflow.serverError}
+      isInterpreting={workflow.isInterpreting}
+      isCommitting={workflow.isCommitting}
     />
   );
 };
