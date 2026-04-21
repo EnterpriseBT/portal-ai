@@ -45,12 +45,62 @@ function serializeLocator(locator: BackendLocator): string {
 }
 
 function bindingToDraft(binding: BackendBinding): ColumnBindingDraft {
-  return {
+  const draft: ColumnBindingDraft = {
     sourceLocator: serializeLocator(binding.sourceLocator),
     columnDefinitionId: binding.columnDefinitionId,
     confidence: binding.confidence,
     rationale: binding.rationale,
   };
+  if (binding.excluded !== undefined) draft.excluded = binding.excluded;
+  if (binding.normalizedKey !== undefined) {
+    draft.normalizedKey = binding.normalizedKey;
+  }
+  if (binding.required !== undefined) draft.required = binding.required;
+  if (binding.defaultValue !== undefined) {
+    draft.defaultValue = binding.defaultValue;
+  }
+  if (binding.format !== undefined) draft.format = binding.format;
+  if (binding.enumValues !== undefined) draft.enumValues = binding.enumValues;
+  if (binding.refEntityKey !== undefined) {
+    draft.refEntityKey = binding.refEntityKey;
+  }
+  if (binding.refNormalizedKey !== undefined) {
+    draft.refNormalizedKey = binding.refNormalizedKey;
+  }
+  return draft;
+}
+
+/**
+ * Merge user-set overrides from a prior `ColumnBindingDraft` onto the
+ * interpret-returned `ColumnBinding`. The `columnDefinitionId` override wins
+ * too — if the user rebound the column before Interpret, preserve it; the
+ * classifier will otherwise pick its own answer on every run.
+ */
+function mergeBindingOverrides(
+  plan: BackendBinding,
+  prior: ColumnBindingDraft
+): BackendBinding {
+  const merged: BackendBinding = { ...plan };
+  if (prior.columnDefinitionId && prior.columnDefinitionId !== plan.columnDefinitionId) {
+    merged.columnDefinitionId = prior.columnDefinitionId;
+  }
+  if (prior.excluded !== undefined) merged.excluded = prior.excluded;
+  if (prior.normalizedKey !== undefined) {
+    merged.normalizedKey = prior.normalizedKey;
+  }
+  if (prior.required !== undefined) merged.required = prior.required;
+  if (prior.defaultValue !== undefined) {
+    merged.defaultValue = prior.defaultValue;
+  }
+  if (prior.format !== undefined) merged.format = prior.format;
+  if (prior.enumValues !== undefined) merged.enumValues = prior.enumValues;
+  if (prior.refEntityKey !== undefined) {
+    merged.refEntityKey = prior.refEntityKey;
+  }
+  if (prior.refNormalizedKey !== undefined) {
+    merged.refNormalizedKey = prior.refNormalizedKey;
+  }
+  return merged;
 }
 
 type BackendSkipRule = BackendRegion["skipRules"][number];
@@ -109,6 +159,20 @@ export function preserveUserRegionConfig(
           .map(draftSkipRuleToBackend)
           .filter((r): r is BackendSkipRule => r !== null);
         merged.skipRules = mapped;
+      }
+      if (prior.columnBindings && prior.columnBindings.length > 0) {
+        const priorByLocator = new Map<string, ColumnBindingDraft>();
+        for (const b of prior.columnBindings) {
+          priorByLocator.set(b.sourceLocator, b);
+        }
+        merged.columnBindings = region.columnBindings.map((binding) => {
+          const priorBinding = priorByLocator.get(
+            serializeLocator(binding.sourceLocator)
+          );
+          return priorBinding
+            ? mergeBindingOverrides(binding, priorBinding)
+            : binding;
+        });
       }
       return merged;
     }),

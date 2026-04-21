@@ -299,6 +299,183 @@ describe("preserveUserRegionConfig", () => {
     ]);
     expect(result).toBe(basePlan);
   });
+
+  describe("— binding overrides", () => {
+    const baseBackendBinding: LayoutPlan["regions"][number]["columnBindings"][number] =
+      {
+        sourceLocator: { kind: "byHeaderName", name: "Email" },
+        columnDefinitionId: "coldef_email",
+        confidence: 0.9,
+      };
+    const regionWithBindings: LayoutPlan["regions"][number] = {
+      ...baseRegion,
+      columnBindings: [
+        baseBackendBinding,
+        {
+          sourceLocator: { kind: "byColumnIndex", col: 3 },
+          columnDefinitionId: "coldef_name",
+          confidence: 0.7,
+        },
+      ],
+    };
+    const planWithBindings: LayoutPlan = {
+      ...basePlan,
+      regions: [regionWithBindings],
+    };
+
+    it("carries binding-level overrides from prior drafts onto the plan, matching by serialized sourceLocator", () => {
+      const result = preserveUserRegionConfig(planWithBindings, [
+        baseDraft({
+          columnBindings: [
+            {
+              sourceLocator: "header:Email",
+              columnDefinitionId: "coldef_email",
+              confidence: 0.9,
+              excluded: false,
+              normalizedKey: "email_override",
+              required: true,
+              defaultValue: "unknown@example.com",
+              format: "lowercase",
+              enumValues: null,
+              refEntityKey: null,
+              refNormalizedKey: null,
+            },
+            {
+              sourceLocator: "col:3",
+              columnDefinitionId: "coldef_name",
+              confidence: 0.7,
+              excluded: true,
+            },
+          ],
+        }),
+      ]);
+      const bindings = result.regions[0].columnBindings;
+      expect(bindings[0]).toMatchObject({
+        sourceLocator: { kind: "byHeaderName", name: "Email" },
+        columnDefinitionId: "coldef_email",
+        normalizedKey: "email_override",
+        required: true,
+        defaultValue: "unknown@example.com",
+        format: "lowercase",
+      });
+      expect(bindings[1].excluded).toBe(true);
+    });
+
+    it("prefers the user's columnDefinitionId override when prior draft differs from plan", () => {
+      const result = preserveUserRegionConfig(planWithBindings, [
+        baseDraft({
+          columnBindings: [
+            {
+              sourceLocator: "header:Email",
+              columnDefinitionId: "coldef_email_rebind",
+              confidence: 1,
+            },
+          ],
+        }),
+      ]);
+      expect(result.regions[0].columnBindings[0].columnDefinitionId).toBe(
+        "coldef_email_rebind"
+      );
+    });
+
+    it("leaves non-overridden fields as interpret returned them", () => {
+      const result = preserveUserRegionConfig(planWithBindings, [
+        baseDraft({
+          columnBindings: [
+            {
+              sourceLocator: "header:Email",
+              columnDefinitionId: "coldef_email",
+              confidence: 0.9,
+              // no override fields set
+            },
+          ],
+        }),
+      ]);
+      expect(result.regions[0].columnBindings[0]).toEqual(baseBackendBinding);
+    });
+
+    it("drops prior overrides when the plan no longer carries a matching binding", () => {
+      const result = preserveUserRegionConfig(planWithBindings, [
+        baseDraft({
+          columnBindings: [
+            {
+              sourceLocator: "header:PhantomColumn",
+              columnDefinitionId: "coldef_ghost",
+              confidence: 1,
+              excluded: true,
+            },
+          ],
+        }),
+      ]);
+      const bindings = result.regions[0].columnBindings;
+      expect(bindings).toHaveLength(2);
+      expect(
+        bindings.some((b) => "excluded" in b && b.excluded === true)
+      ).toBe(false);
+    });
+
+    it("skips binding merge when the prior draft has no columnBindings", () => {
+      const result = preserveUserRegionConfig(planWithBindings, [
+        baseDraft({ columnBindings: undefined }),
+      ]);
+      expect(result.regions[0].columnBindings).toEqual(
+        regionWithBindings.columnBindings
+      );
+    });
+  });
+});
+
+describe("planRegionsToDrafts — binding overrides", () => {
+  it("copies excluded / normalizedKey / required / defaultValue / format / enumValues / refEntityKey / refNormalizedKey from each binding onto the resulting draft", () => {
+    const plan = {
+      regions: [
+        {
+          id: "region-1",
+          sheet: "Alpha",
+          bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
+          boundsMode: "absolute" as const,
+          orientation: "rows-as-records" as const,
+          headerAxis: "row" as const,
+          targetEntityDefinitionId: "ent_contact",
+          identityStrategy: { kind: "rowPosition" as const, confidence: 0.9 },
+          columnBindings: [
+            {
+              sourceLocator: { kind: "byHeaderName" as const, name: "Email" },
+              columnDefinitionId: "coldef_email",
+              confidence: 0.9,
+              excluded: true,
+              normalizedKey: "email_override",
+              required: true,
+              defaultValue: "foo",
+              format: "lowercase",
+              enumValues: ["A", "B"],
+              refEntityKey: "customers",
+              refNormalizedKey: "id",
+            },
+          ],
+          skipRules: [],
+          drift: { boundsPolicy: "auto" as const },
+          confidence: { region: 0.9, aggregate: 0.85 },
+          warnings: [],
+        },
+      ],
+      confidence: { overall: 0.85, perRegion: { "region-1": 0.85 } },
+    } as unknown as Parameters<typeof planRegionsToDrafts>[0];
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    const binding = drafts[0].columnBindings?.[0];
+    expect(binding).toMatchObject({
+      sourceLocator: "header:Email",
+      columnDefinitionId: "coldef_email",
+      excluded: true,
+      normalizedKey: "email_override",
+      required: true,
+      defaultValue: "foo",
+      format: "lowercase",
+      enumValues: ["A", "B"],
+      refEntityKey: "customers",
+      refNormalizedKey: "id",
+    });
+  });
 });
 
 describe("overallConfidenceFromPlan", () => {

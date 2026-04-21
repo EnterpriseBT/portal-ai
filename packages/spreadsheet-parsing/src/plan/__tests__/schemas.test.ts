@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "@jest/globals";
 
 import {
+  ColumnBindingSchema,
   LayoutPlanSchema,
   RegionSchema,
   SkipRuleSchema,
@@ -258,6 +259,108 @@ describe("WarningSchema / WarningCode", () => {
         message: "x",
       }).success
     ).toBe(false);
+  });
+});
+
+describe("ColumnBindingSchema — user overrides", () => {
+  const baseBinding = {
+    sourceLocator: { kind: "byHeaderName" as const, name: "Email" },
+    columnDefinitionId: "coldef_email",
+    confidence: 0.95,
+  };
+
+  it("accepts a binding with no override fields (baseline)", () => {
+    expect(ColumnBindingSchema.safeParse(baseBinding).success).toBe(true);
+  });
+
+  it("accepts excluded: true", () => {
+    expect(
+      ColumnBindingSchema.safeParse({ ...baseBinding, excluded: true }).success
+    ).toBe(true);
+  });
+
+  it("accepts valid normalizedKey", () => {
+    for (const nk of ["email", "customer_name", "email2", "a", "a_b_c_1"]) {
+      const result = ColumnBindingSchema.safeParse({
+        ...baseBinding,
+        normalizedKey: nk,
+      });
+      if (!result.success) {
+        throw new Error(
+          `Expected ${nk} to pass: ${JSON.stringify(result.error.issues)}`
+        );
+      }
+    }
+  });
+
+  it("rejects normalizedKey that violates the regex", () => {
+    for (const nk of ["Email", "1_bar", "foo-bar", "_leading", "has space", ""]) {
+      expect(
+        ColumnBindingSchema.safeParse({ ...baseBinding, normalizedKey: nk })
+          .success
+      ).toBe(false);
+    }
+  });
+
+  it("accepts required / defaultValue / format / enumValues with nullable semantics", () => {
+    const result = ColumnBindingSchema.safeParse({
+      ...baseBinding,
+      required: true,
+      defaultValue: null,
+      format: "YYYY-MM-DD",
+      enumValues: ["A", "B"],
+    });
+    if (!result.success) {
+      throw new Error(JSON.stringify(result.error.issues));
+    }
+    expect(result.success).toBe(true);
+
+    // nullable-optional enumValues
+    expect(
+      ColumnBindingSchema.safeParse({ ...baseBinding, enumValues: null }).success
+    ).toBe(true);
+  });
+
+  it("accepts refEntityKey and refNormalizedKey (nullable-optional)", () => {
+    expect(
+      ColumnBindingSchema.safeParse({
+        ...baseBinding,
+        refEntityKey: "customers",
+        refNormalizedKey: "id",
+      }).success
+    ).toBe(true);
+
+    expect(
+      ColumnBindingSchema.safeParse({
+        ...baseBinding,
+        refEntityKey: null,
+        refNormalizedKey: null,
+      }).success
+    ).toBe(true);
+  });
+
+  it("propagates through RegionSchema without breaking cross-field invariants", () => {
+    const fixture = loadFixture("simple-rows-as-records.json") as {
+      regions: Array<{
+        columnBindings: Array<Record<string, unknown>>;
+      }>;
+    };
+    fixture.regions[0].columnBindings[0] = {
+      ...fixture.regions[0].columnBindings[0],
+      excluded: true,
+      normalizedKey: "email_override",
+      required: true,
+      defaultValue: null,
+      format: null,
+      enumValues: null,
+      refEntityKey: null,
+      refNormalizedKey: null,
+    };
+    const result = LayoutPlanSchema.safeParse(fixture);
+    if (!result.success) {
+      throw new Error(JSON.stringify(result.error.issues, null, 2));
+    }
+    expect(result.success).toBe(true);
   });
 });
 

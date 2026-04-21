@@ -77,11 +77,28 @@ export const BindingSourceLocatorSchema = z.discriminatedUnion("kind", [
 
 export type BindingSourceLocator = z.infer<typeof BindingSourceLocatorSchema>;
 
+// Shape of `FieldMapping.normalizedKey` — mirrors the regex enforced by
+// `FieldMappingSchema` so the plan and the materialised row agree.
+const NormalizedKeyPattern = /^[a-z][a-z0-9_]*$/;
+
 export const ColumnBindingSchema = z.object({
   sourceLocator: BindingSourceLocatorSchema,
   columnDefinitionId: z.string().min(1),
   confidence: z.number().min(0).max(1),
   rationale: z.string().optional(),
+
+  // ── User overrides (see BINDING_OVERRIDES.spec.md) ────────────────
+  // All optional so prior plans without overrides remain parse-valid.
+  // Reconcile reads these at commit time and falls back to the catalog
+  // defaults when unset.
+  excluded: z.boolean().optional(),
+  normalizedKey: z.string().regex(NormalizedKeyPattern).optional(),
+  required: z.boolean().optional(),
+  defaultValue: z.string().nullable().optional(),
+  format: z.string().nullable().optional(),
+  enumValues: z.array(z.string()).nullable().optional(),
+  refEntityKey: z.string().nullable().optional(),
+  refNormalizedKey: z.string().nullable().optional(),
 });
 
 export type ColumnBinding = z.infer<typeof ColumnBindingSchema>;

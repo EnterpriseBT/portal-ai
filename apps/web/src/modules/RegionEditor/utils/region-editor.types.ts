@@ -28,6 +28,7 @@ import type {
   WarningCode,
   WarningSeverity,
 } from "@portalai/core/contracts";
+import type { ColumnDataType } from "@portalai/core/models";
 
 // ── Re-export canonical enum types so existing imports keep resolving ────
 export type {
@@ -109,8 +110,28 @@ export type ColumnBindingDraft = {
   sourceLocator: string;
   columnDefinitionId: string | null;
   columnDefinitionLabel?: string;
+  /**
+   * Resolved `ColumnDefinition.type` for the bound definition. Populated by
+   * the container alongside `columnDefinitionLabel` via the org column-
+   * definition catalog. Drives conditional editors in the binding popover
+   * (reference picker, enum-values input, etc.).
+   */
+  columnDefinitionType?: ColumnDataType;
   confidence: number;
   rationale?: string;
+
+  // ── User overrides (mirror ColumnBindingSchema) ──────────────────
+  // See `docs/BINDING_OVERRIDES.spec.md`. All optional; commit falls back
+  // to catalog defaults when unset, and the review-step binding editor
+  // writes these through `onUpdateBinding`.
+  excluded?: boolean;
+  normalizedKey?: string;
+  required?: boolean;
+  defaultValue?: string | null;
+  format?: string | null;
+  enumValues?: string[] | null;
+  refEntityKey?: string | null;
+  refNormalizedKey?: string | null;
 };
 
 export type RegionDraft = {
