@@ -1,4 +1,7 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+
+import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Box,
@@ -10,6 +13,14 @@ import {
   Typography,
 } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
+import type {
+  ApiSuccessResponse,
+  CommitLayoutPlanRequestBody,
+  InterpretRequestBody,
+  InterpretResponsePayload,
+  LayoutPlanCommitResult,
+  WorkbookData,
+} from "@portalai/core/contracts";
 
 import { UploadStep } from "./UploadStep.component";
 import { FileUploadRegionDrawingStepUI } from "./FileUploadRegionDrawingStep.component";
@@ -19,22 +30,72 @@ import {
   useFileUploadWorkflow,
 } from "./utils/file-upload-workflow.util";
 import type { FileUploadWorkflowCallbacks } from "./utils/file-upload-workflow.util";
-import {
-  DEMO_WORKBOOK,
-  ENTITY_OPTIONS,
-  POST_INTERPRET_REGIONS,
-} from "./utils/file-upload-fixtures.util";
 import type { UploadPhase } from "./utils/file-upload-fixtures.util";
+import {
+  entityOptionsFromWorkbook,
+  mergeStagedEntityOptions,
+  overallConfidenceFromPlan,
+  planRegionsToDrafts,
+  regionDraftsToHints,
+  workbookToBackend,
+} from "./utils/layout-plan-mapping.util";
 
+import { sdk, queryKeys } from "../../api/sdk";
+import { useAuthFetch } from "../../utils/api.util";
 import type {
   CellBounds,
+  CellValue,
   EntityOption,
   RegionDraft,
   RegionEditorErrors,
+  SheetPreview,
   Workbook,
 } from "../../modules/RegionEditor";
-import type { FileUploadProgress } from "../../utils/file-upload.util";
+import type { FileUploadProgress } from "./utils/file-upload-workflow.util";
 import type { ServerError } from "../../utils/api.util";
+
+/**
+ * Convert the backend's sparse `WorkbookData` (1-based cell tuples) into the
+ * dense `Workbook` the RegionEditor renders. Deterministic sheet ids are
+ * minted from the source filename + sheet name so `regionDraftsToHints` can
+ * later map them back by name at the interpret boundary.
+ */
+function backendWorkbookToPreview(
+  workbook: WorkbookData,
+  sourceLabel: string
+): Workbook {
+  const sheets: SheetPreview[] = workbook.sheets.map((sheet, idx) => {
+    const rows = sheet.dimensions.rows;
+    const cols = sheet.dimensions.cols;
+    const cells: CellValue[][] = Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => "" as CellValue)
+    );
+    for (const cell of sheet.cells) {
+      const r = cell.row - 1;
+      const c = cell.col - 1;
+      if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+      const value = cell.value;
+      if (typeof value === "string" || typeof value === "number") {
+        cells[r][c] = value;
+      } else if (value === null) {
+        cells[r][c] = null;
+      } else if (value instanceof Date) {
+        cells[r][c] = value.toISOString();
+      } else if (typeof value === "boolean") {
+        cells[r][c] = value ? "TRUE" : "FALSE";
+      }
+    }
+    return {
+      id: `sheet_${idx}_${sheet.name.replace(/\s+/g, "_").toLowerCase()}`,
+      name: sheet.name,
+      rowCount: rows,
+      colCount: cols,
+      cells,
+    };
+  });
+
+  return { sheets, sourceLabel };
+}
 
 // ---------------------------------------------------------------------------
 // UI Props
@@ -64,6 +125,7 @@ export interface FileUploadConnectorWorkflowUIProps {
   onSelectRegion: (regionId: string | null) => void;
   onRegionDraft: (draft: { sheetId: string; bounds: CellBounds }) => void;
   onRegionUpdate: (regionId: string, updates: Partial<RegionDraft>) => void;
+  onRegionResize: (regionId: string, nextBounds: CellBounds) => void;
   onRegionDelete: (regionId: string) => void;
   onCreateEntity?: (key: string, label: string) => string;
   onInterpret: () => void;
@@ -110,6 +172,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   onSelectRegion,
   onRegionDraft,
   onRegionUpdate,
+  onRegionResize,
   onRegionDelete,
   onCreateEntity,
   onInterpret,
@@ -123,102 +186,103 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   isInterpreting,
   isCommitting,
 }) => {
-  const isUploadDisabled =
-    files.length === 0 ||
-    uploadPhase === "uploading" ||
-    uploadPhase === "parsing";
+    const isUploadDisabled =
+      files.length === 0 ||
+      uploadPhase === "uploading" ||
+      uploadPhase === "parsing";
 
-  const resolvedActiveSheetId = activeSheetId ?? workbook?.sheets[0]?.id ?? "";
+    const resolvedActiveSheetId = activeSheetId ?? workbook?.sheets[0]?.id ?? "";
 
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Upload a spreadsheet"
-      maxWidth="lg"
-      fullWidth
-    >
-      <Stack spacing={2} sx={{ minWidth: 0 }}>
-        <Stepper steps={stepConfigs} activeStep={step}>
-          <StepPanel index={0} activeStep={step}>
-            <UploadStep
-              files={files}
-              onFilesChange={onFilesChange}
-              uploadPhase={uploadPhase}
-              fileProgress={fileProgress}
-              overallUploadPercent={overallUploadPercent}
-              serverError={serverError}
-            />
-          </StepPanel>
-
-          <StepPanel index={1} activeStep={step}>
-            {workbook ? (
-              <FileUploadRegionDrawingStepUI
-                workbook={workbook}
-                regions={regions}
-                activeSheetId={resolvedActiveSheetId}
-                onActiveSheetChange={onActiveSheetChange}
-                selectedRegionId={selectedRegionId}
-                onSelectRegion={onSelectRegion}
-                onRegionDraft={onRegionDraft}
-                onRegionUpdate={onRegionUpdate}
-                onRegionDelete={onRegionDelete}
-                entityOptions={entityOptions}
-                onCreateEntity={onCreateEntity}
-                onInterpret={onInterpret}
-                isInterpreting={isInterpreting}
-                errors={errors}
+    return (
+      <Modal
+        open={open}
+        onClose={onClose}
+        title="Upload a spreadsheet"
+        defaultMaximized
+        maximizable
+      >
+        <Stack spacing={2} sx={{ minWidth: 0 }}>
+          <Stepper steps={stepConfigs} activeStep={step}>
+            <StepPanel index={0} activeStep={step}>
+              <UploadStep
+                files={files}
+                onFilesChange={onFilesChange}
+                uploadPhase={uploadPhase}
+                fileProgress={fileProgress}
+                overallUploadPercent={overallUploadPercent}
                 serverError={serverError}
               />
-            ) : (
-              <Box sx={{ p: 3 }}>
-                <Typography color="text.secondary">
-                  Preparing your spreadsheet…
-                </Typography>
-              </Box>
-            )}
-          </StepPanel>
+            </StepPanel>
 
-          <StepPanel index={2} activeStep={step}>
-            <FileUploadReviewStepUI
-              regions={regions}
-              overallConfidence={overallConfidence}
-              onJumpToRegion={onJumpToRegion}
-              onEditBinding={onEditBinding}
-              onCommit={onCommit}
-              onBack={onBack}
-              isCommitting={isCommitting}
-              serverError={serverError}
-            />
-          </StepPanel>
-        </Stepper>
+            <StepPanel index={1} activeStep={step}>
+              {workbook ? (
+                <FileUploadRegionDrawingStepUI
+                  workbook={workbook}
+                  regions={regions}
+                  activeSheetId={resolvedActiveSheetId}
+                  onActiveSheetChange={onActiveSheetChange}
+                  selectedRegionId={selectedRegionId}
+                  onSelectRegion={onSelectRegion}
+                  onRegionDraft={onRegionDraft}
+                  onRegionUpdate={onRegionUpdate}
+                  onRegionResize={onRegionResize}
+                  onRegionDelete={onRegionDelete}
+                  entityOptions={entityOptions}
+                  onCreateEntity={onCreateEntity}
+                  onInterpret={onInterpret}
+                  isInterpreting={isInterpreting}
+                  errors={errors}
+                  serverError={serverError}
+                />
+              ) : (
+                <Box sx={{ p: 3 }}>
+                  <Typography color="text.secondary">
+                    Preparing your spreadsheet…
+                  </Typography>
+                </Box>
+              )}
+            </StepPanel>
 
-        {step === 0 && (
-          <Stack direction="row" justifyContent="space-between" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              variant="contained"
-              onClick={onStartParse}
-              disabled={isUploadDisabled}
-            >
-              Upload
-            </Button>
-          </Stack>
-        )}
+            <StepPanel index={2} activeStep={step}>
+              <FileUploadReviewStepUI
+                regions={regions}
+                overallConfidence={overallConfidence}
+                onJumpToRegion={onJumpToRegion}
+                onEditBinding={onEditBinding}
+                onCommit={onCommit}
+                onBack={onBack}
+                isCommitting={isCommitting}
+                serverError={serverError}
+              />
+            </StepPanel>
+          </Stepper>
 
-        {step === 1 && (
-          <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
-            <Button variant="text" onClick={onBack}>
-              Back
-            </Button>
-          </Stack>
-        )}
-      </Stack>
-    </Modal>
-  );
-};
+          {step === 0 && (
+            <Stack direction="row" justifyContent="space-between" sx={{ pt: 1 }}>
+              <Button variant="text" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={onStartParse}
+                disabled={isUploadDisabled}
+              >
+                Upload
+              </Button>
+            </Stack>
+          )}
+
+          {step === 1 && (
+            <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
+              <Button variant="text" onClick={onBack}>
+                Back
+              </Button>
+            </Stack>
+          )}
+        </Stack>
+      </Modal>
+    );
+  };
 
 // ---------------------------------------------------------------------------
 // Container Props
@@ -232,129 +296,155 @@ interface FileUploadConnectorWorkflowProps {
 }
 
 // ---------------------------------------------------------------------------
-// Stub async callbacks — follow-up PR replaces each with a real SDK call.
-//
-// See docs/SPREADSHEET_PARSING.frontend.plan.md §Phase 6 for the hand-off
-// contract. Each stub below is anchored with `TODO(API wiring):` so the
-// replacement PR can grep them in one pass.
-// ---------------------------------------------------------------------------
-
-/**
- * TODO(API wiring): upload + parse files into a `Workbook`.
- *
- * Backend endpoint: `POST /api/file-uploads/parse` (to be added — not in
- *   `SPREADSHEET_PARSING.backend.spec.md` yet; track as an open item and
- *   define the request body to accept multipart files, response body to
- *   return a `Workbook` matching `modules/RegionEditor/utils/region-editor.types.ts`).
- * SDK method: `sdk.fileUploads.parse(files, options)` — add to
- *   `apps/web/src/api/` (new `file-uploads.api.ts`) and re-export via
- *   `api/sdk.ts`.
- * Cache invalidation: none. Parse output is ephemeral and consumed
- *   in-memory by the region editor; it is never cached in TanStack Query.
- */
-function stubParseFile(_files: File[]): Promise<Workbook> {
-  return new Promise((resolve) =>
-    setTimeout(() => resolve(DEMO_WORKBOOK), 300)
-  );
-}
-
-/**
- * TODO(API wiring): run the interpreter against the current region drafts.
- *
- * Backend endpoint: `POST /api/connector-instances/:id/layout-plan/interpret`
- *   (see `SPREADSHEET_PARSING.backend.spec.md` §Sync integration).
- * SDK method: `sdk.connectorInstanceLayoutPlans.interpret(connectorInstanceId,
- *   { workbook, regionHints })`. Add a new `connector-instance-layout-plans.api.ts`
- *   module and re-export from `api/sdk.ts`.
- * Query keys to add in `api/keys.ts` (re-exported from `api/sdk.ts`):
- *   - `connectorInstanceLayoutPlans.root`
- *   - `connectorInstanceLayoutPlans.detail(connectorInstanceId)`
- * Cache invalidation on success:
- *   - `connectorInstanceLayoutPlans.root`
- *
- * The backend persists the plan with `supersededBy: null` and returns the
- * plan plus `interpretationTrace`; this callback maps that payload back into
- * the shape the `useFileUploadWorkflow` hook expects
- * (`{ regions: RegionDraft[], overallConfidence: number }`).
- */
-function stubRunInterpret(
-  _regions: RegionDraft[]
-): Promise<{ regions: RegionDraft[]; overallConfidence: number }> {
-  return new Promise((resolve) =>
-    setTimeout(
-      () =>
-        resolve({ regions: POST_INTERPRET_REGIONS, overallConfidence: 0.86 }),
-      300
-    )
-  );
-}
-
-/**
- * TODO(API wiring): commit the reviewed plan.
- *
- * Backend endpoint: `POST /api/connector-instances/:id/layout-plan/:planId/commit`
- *   (see `SPREADSHEET_PARSING.backend.spec.md` §Sync integration). Loads the
- *   adapted workbook, calls `replay(plan, workbook)`, writes `entity_records`,
- *   and links the sync history row to `layout_plan_id`.
- * SDK method: `sdk.connectorInstanceLayoutPlans.commit(connectorInstanceId,
- *   planId)` (same module added for interpret).
- * Cache invalidation on success (per `CLAUDE.md` §Mutation Cache Invalidation
- *   — a commit is a cascade across the connector's downstream entities):
- *   - `connectorInstances.root`
- *   - `connectorEntities.root`
- *   - `stations.root`
- *   - `fieldMappings.root`
- *   - `portals.root`
- *   - `portalResults.root`
- *   - `connectorInstanceLayoutPlans.root`
- *
- * Drift-gated failures return `409` with a `DriftReport`; the replacement
- * wiring must surface that via `toServerError(...)` so
- * `FileUploadReviewStepUI` renders it in its `<FormAlert>`.
- */
-function stubRunCommit(
-  _regions: RegionDraft[]
-): Promise<{ connectorInstanceId: string }> {
-  return new Promise((resolve) =>
-    setTimeout(() => resolve({ connectorInstanceId: "ci_demo" }), 300)
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Container
 // ---------------------------------------------------------------------------
 
 export const FileUploadConnectorWorkflow: React.FC<
   FileUploadConnectorWorkflowProps
 > = ({ open, onClose, organizationId, connectorDefinitionId }) => {
-  // TODO(API wiring): `organizationId` + `connectorDefinitionId` are the scope
-  // for the upcoming stubs. `parseFile` / `runInterpret` / `runCommit` call
-  // sites will pass them through as path/body params once real SDK mutations
-  // land. Kept in the signature today so the callsite in Connector.view.tsx
-  // stays stable.
-  void organizationId;
-  void connectorDefinitionId;
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-  const callbacks: FileUploadWorkflowCallbacks = {
-    parseFile: stubParseFile,
-    runInterpret: stubRunInterpret,
-    runCommit: stubRunCommit,
-    onCommitSuccess: (connectorInstanceId) => {
-      // TODO(API wiring): navigate to the connector instance detail view via
-      // TanStack Router (e.g. `navigate({ to: "/connectors/$id", params: { id: connectorInstanceId } })`)
-      // and close the modal. For now we only close — the fake commit id
-      // (`"ci_demo"`) is not yet a routable resource.
-      void connectorInstanceId;
-      handleClose();
+  const { mutateAsync: parseMutate } = sdk.fileUploads.parse();
+  const { mutateAsync: createInstanceMutate } = sdk.connectorInstances.create();
+  const { fetchWithAuth } = useAuthFetch();
+  const workbookRef = useRef<Workbook | null>(null);
+
+  // User-staged entities created via the region editor's "+ Create new entity"
+  // affordance. Sheet-derived options always win on key collisions; see
+  // `mergeStagedEntityOptions`.
+  const [stagedEntities, setStagedEntities] = useState<EntityOption[]>([]);
+
+  const handleCreateEntity = useCallback(
+    (key: string, label: string): string => {
+      setStagedEntities((prev) => {
+        if (prev.some((e) => e.value === key)) return prev;
+        return [...prev, { value: key, label, source: "staged" as const }];
+      });
+      return key;
     },
-  };
+    []
+  );
 
-  const workflow = useFileUploadWorkflow(callbacks);
+  const parseFile = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) throw new Error("No file selected");
+      const payload = await parseMutate(files);
+      const sourceLabel =
+        files.length === 1
+          ? files[0].name
+          : `${files.length} files`;
+      const converted = backendWorkbookToPreview(payload.workbook, sourceLabel);
+      workbookRef.current = converted;
+      return converted;
+    },
+    [parseMutate]
+  );
+
+  const createConnectorInstance: FileUploadWorkflowCallbacks["createConnectorInstance"] =
+    useCallback(
+      async (args) => {
+        const res = await createInstanceMutate({
+          organizationId: args.organizationId,
+          connectorDefinitionId: args.connectorDefinitionId,
+          name: args.name,
+          status: "active",
+          enabledCapabilityFlags: { sync: true },
+        });
+        return { connectorInstanceId: res.connectorInstance.id };
+      },
+      [createInstanceMutate]
+    );
+
+  const runInterpret: FileUploadWorkflowCallbacks["runInterpret"] = useCallback(
+    async (regions, connectorInstanceId) => {
+      const workbook = workbookRef.current;
+      if (!workbook) throw new Error("Workbook not parsed");
+      const body: InterpretRequestBody = {
+        workbook: workbookToBackend(workbook),
+        regionHints: regionDraftsToHints(workbook, regions),
+      };
+      const res = await fetchWithAuth<ApiSuccessResponse<InterpretResponsePayload>>(
+        `/api/connector-instances/${encodeURIComponent(connectorInstanceId)}/layout-plan/interpret`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      );
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.connectorInstanceLayoutPlans.root,
+      });
+      return {
+        regions: planRegionsToDrafts(res.payload.plan, workbook),
+        overallConfidence: overallConfidenceFromPlan(res.payload.plan),
+        planId: res.payload.planId,
+      };
+    },
+    [fetchWithAuth, queryClient]
+  );
+
+  const runCommit: FileUploadWorkflowCallbacks["runCommit"] = useCallback(
+    async (_regions, ids) => {
+      const workbook = workbookRef.current;
+      if (!workbook) throw new Error("Workbook not parsed");
+      const body: CommitLayoutPlanRequestBody = {
+        workbook: workbookToBackend(workbook),
+      };
+      await fetchWithAuth<ApiSuccessResponse<LayoutPlanCommitResult>>(
+        `/api/connector-instances/${encodeURIComponent(ids.connectorInstanceId)}/layout-plan/${encodeURIComponent(ids.planId)}/commit`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      );
+      await Promise.all(
+        [
+          queryKeys.connectorInstances.root,
+          queryKeys.connectorEntities.root,
+          queryKeys.stations.root,
+          queryKeys.fieldMappings.root,
+          queryKeys.portals.root,
+          queryKeys.portalResults.root,
+          queryKeys.connectorInstanceLayoutPlans.root,
+        ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
+      );
+      return { connectorInstanceId: ids.connectorInstanceId };
+    },
+    [fetchWithAuth, queryClient]
+  );
+
+  const workflow = useFileUploadWorkflow(
+    {
+      parseFile,
+      createConnectorInstance,
+      runInterpret,
+      runCommit,
+      onCommitSuccess: (connectorInstanceId) => {
+        navigate({
+          to: "/connectors/$connectorInstanceId",
+          params: { connectorInstanceId },
+        });
+        handleClose();
+      },
+    },
+    { organizationId, connectorDefinitionId }
+  );
 
   const handleClose = useCallback(() => {
+    workbookRef.current = null;
+    setStagedEntities([]);
     workflow.reset();
     onClose();
   }, [workflow, onClose]);
+
+  const entityOptions = useMemo(
+    () =>
+      mergeStagedEntityOptions(
+        entityOptionsFromWorkbook(workflow.workbook),
+        stagedEntities
+      ),
+    [workflow.workbook, stagedEntities]
+  );
 
   return (
     <FileUploadConnectorWorkflowUI
@@ -374,12 +464,16 @@ export const FileUploadConnectorWorkflow: React.FC<
       regions={workflow.regions}
       selectedRegionId={workflow.selectedRegionId}
       activeSheetId={workflow.activeSheetId}
-      entityOptions={ENTITY_OPTIONS}
+      entityOptions={entityOptions}
       onActiveSheetChange={workflow.onActiveSheetChange}
       onSelectRegion={workflow.onSelectRegion}
       onRegionDraft={workflow.onRegionDraft}
       onRegionUpdate={workflow.onRegionUpdate}
+      onRegionResize={(regionId, nextBounds) =>
+        workflow.onRegionUpdate(regionId, { bounds: nextBounds })
+      }
       onRegionDelete={workflow.onRegionDelete}
+      onCreateEntity={handleCreateEntity}
       onInterpret={() => {
         void workflow.onInterpret();
       }}
@@ -388,13 +482,10 @@ export const FileUploadConnectorWorkflow: React.FC<
         workflow.onSelectRegion(regionId);
       }}
       onEditBinding={(regionId, _sourceLocator) => {
-        // TODO(API wiring): open the binding-edit popover against the shared
-        // RegionEditor's column-binding mutation. Edit is a local plan-state
-        // change (the interpreter already ran); on confirm the bound
-        // container calls `sdk.connectorInstanceLayoutPlans.updateBinding`
-        // (to be added under the same module as interpret/commit) and
-        // invalidates `connectorInstanceLayoutPlans.detail(connectorInstanceId)`.
-        // For now, jumping the user to the region on-canvas is the placeholder.
+        // Binding-edit popover not yet wired. Out of scope for this phase —
+        // tracked against a follow-up that adds sdk.connectorInstanceLayoutPlans.patch
+        // with per-binding mutations. For now, jumping the user to the region
+        // on-canvas is the visible affordance.
         workflow.onSelectRegion(regionId);
       }}
       onCommit={() => {

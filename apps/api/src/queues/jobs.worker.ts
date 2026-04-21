@@ -49,32 +49,10 @@ export const createJobsWorker = (
       await JobEventsService.transition(jobId, "active", { progress: 0 });
       try {
         const result = await processor(bullJob);
-
-        // file_upload jobs transition to awaiting_confirmation (not completed)
-        // so the user can review AI recommendations before final persistence.
-        if (type === "file_upload") {
-          const fileResult = result as Record<string, unknown>;
-          await JobEventsService.transition(jobId, "awaiting_confirmation", {
-            progress: 80,
-            result: fileResult,
-          });
-
-          // Emit job:recommendations SSE event with the full recommendation payload
-          if (fileResult.recommendations) {
-            await JobEventsService.publishCustomEvent(
-              jobId,
-              "recommendations",
-              {
-                recommendations: fileResult.recommendations,
-              }
-            );
-          }
-        } else {
-          await JobEventsService.transition(jobId, "completed", {
-            progress: 100,
-            result: result as Record<string, unknown>,
-          });
-        }
+        await JobEventsService.transition(jobId, "completed", {
+          progress: 100,
+          result: result as Record<string, unknown>,
+        });
         return result;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

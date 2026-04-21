@@ -161,4 +161,16 @@ export const queryKeys = {
     list: (stationId: string, params?: StationToolListRequestQuery) =>
       [...queryKeys.stationTools.root, "list", stationId, params] as const,
   },
+  connectorInstanceLayoutPlans: {
+    root: ["connectorInstanceLayoutPlans"] as const,
+    detail: (connectorInstanceId: string) =>
+      [
+        ...queryKeys.connectorInstanceLayoutPlans.root,
+        "detail",
+        connectorInstanceId,
+      ] as const,
+  },
+  fileUploads: {
+    root: ["fileUploads"] as const,
+  },
 };

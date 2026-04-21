@@ -32,20 +32,20 @@ export const environment = {
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
-  // S3 configuration (file uploads)
-  UPLOAD_S3_BUCKET: process.env.UPLOAD_S3_BUCKET || "",
-  UPLOAD_S3_REGION: process.env.UPLOAD_S3_REGION || "us-east-1",
-  UPLOAD_S3_PREFIX: process.env.UPLOAD_S3_PREFIX || "uploads",
-  UPLOAD_S3_PRESIGN_EXPIRY_SEC: parseInt(
-    process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "900",
+  // Size cap for POST /api/file-uploads/parse. Defaults to 25 MB, per the
+  // frontend plan §Phase 6.1. Override via env when a customer needs a larger
+  // in-memory parse ceiling.
+  FILE_UPLOAD_PARSE_MAX_BYTES: parseInt(
+    process.env.FILE_UPLOAD_PARSE_MAX_BYTES || String(25 * 1024 * 1024),
     10
   ),
-  UPLOAD_MAX_FILE_SIZE_MB: parseInt(
-    process.env.UPLOAD_MAX_FILE_SIZE_MB || "50",
+  // Body-parser cap for `express.json()`. Plan-driven endpoints
+  // (`/layout-plan/interpret`, `/layout-plan/:planId/commit`) accept the
+  // adapted workbook inline as JSON; sparse-cell encoding adds ~30 bytes per
+  // populated cell so the JSON payload can run a few× larger than the source
+  // file. Default sized to comfortably hold a 25 MB upload after expansion.
+  REQUEST_JSON_LIMIT_BYTES: parseInt(
+    process.env.REQUEST_JSON_LIMIT_BYTES || String(100 * 1024 * 1024),
     10
   ),
-  UPLOAD_MAX_FILES: parseInt(process.env.UPLOAD_MAX_FILES || "5", 10),
-  UPLOAD_ALLOWED_EXTENSIONS: (
-    process.env.UPLOAD_ALLOWED_EXTENSIONS || ".csv,.xlsx"
-  ).split(","),
 };

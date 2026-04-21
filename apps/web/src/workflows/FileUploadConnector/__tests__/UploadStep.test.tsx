@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 
 import { UploadStep } from "../UploadStep.component";
 import type { UploadStepUIProps } from "../UploadStep.component";
-import type { FileUploadProgress } from "../../../utils/file-upload.util";
+import type { FileUploadProgress } from "../utils/file-upload-workflow.util";
 import { SPREADSHEET_FILE_EXTENSIONS } from "../utils/file-upload-fixtures.util";
 
 function makeProps(

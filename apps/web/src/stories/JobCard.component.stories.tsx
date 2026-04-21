@@ -134,11 +134,11 @@ export const Stalled: Story = {
   },
 };
 
-export const FileUpload: Story = {
+export const Revalidation: Story = {
   args: {
     job: {
       ...baseJob,
-      type: "file_upload",
+      type: "revalidation",
       status: "active",
       progress: 88,
       startedAt: 1710000000000,

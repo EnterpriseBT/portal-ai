@@ -38,6 +38,8 @@ export interface FileUploadWorkflowState {
   serverError: ServerError | null;
   isInterpreting: boolean;
   isCommitting: boolean;
+  connectorInstanceId: string | null;
+  planId: string | null;
 }
 
 export const SAMPLE_FILE: File = new File(
@@ -133,6 +135,8 @@ export const IDLE_STATE: FileUploadWorkflowState = {
   serverError: null,
   isInterpreting: false,
   isCommitting: false,
+  connectorInstanceId: null,
+  planId: null,
 };
 
 export const UPLOADING_STATE: FileUploadWorkflowState = {

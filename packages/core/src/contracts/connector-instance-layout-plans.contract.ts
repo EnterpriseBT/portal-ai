@@ -32,10 +32,12 @@ export type PatchLayoutPlanBody = z.infer<typeof PatchLayoutPlanBodySchema>;
 // ── Response schemas ──────────────────────────────────────────────────────
 
 /**
- * Response payload for the interpret endpoint — returns both the persisted
- * plan and the checkpointed interpretation trace for UI inspection.
+ * Response payload for the interpret endpoint — returns the persisted plan's
+ * database id (required for a follow-on commit), the plan itself, and the
+ * checkpointed interpretation trace for UI inspection.
  */
 export const InterpretResponsePayloadSchema = z.object({
+  planId: z.string().min(1),
   plan: LayoutPlanSchema,
   interpretationTrace: InterpretationTraceSchema.nullable(),
 });
@@ -49,6 +51,7 @@ export type InterpretResponsePayload = z.infer<
  * `?include=interpretationTrace` (the router strips it otherwise).
  */
 export const LayoutPlanResponsePayloadSchema = z.object({
+  planId: z.string().min(1),
   plan: LayoutPlanSchema,
   interpretationTrace: InterpretationTraceSchema.nullable(),
 });

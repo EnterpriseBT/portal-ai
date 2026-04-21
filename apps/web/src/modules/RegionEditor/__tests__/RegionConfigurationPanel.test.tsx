@@ -298,4 +298,19 @@ describe("RegionConfigurationPanelUI", () => {
       screen.getByRole("button", { name: /create new entity/i })
     ).toBeInTheDocument();
   });
+
+  test("renders an Identity help tooltip next to the section heading", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    const help = screen.getByLabelText("What is the target entity?");
+    expect(help).toBeInTheDocument();
+  });
 });

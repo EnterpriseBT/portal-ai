@@ -4,7 +4,7 @@ import { Box, Stack, Typography, Progress, Button } from "@portalai/core/ui";
 
 import { FormAlert } from "../../components/FormAlert.component";
 import type { ServerError } from "../../utils/api.util";
-import type { FileUploadProgress } from "../../utils/file-upload.util";
+import type { FileUploadProgress } from "./utils/file-upload-workflow.util";
 import { SPREADSHEET_FILE_EXTENSIONS } from "./utils/file-upload-fixtures.util";
 import type { UploadPhase } from "./utils/file-upload-fixtures.util";
 import { SampleFiles } from "./SampleFiles.component";

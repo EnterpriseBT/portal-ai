@@ -24,6 +24,11 @@ const SECOND_FILE = new File([new Uint8Array([1, 2])], "sales.xlsx", {
   type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 });
 
+const SCOPE = {
+  organizationId: "org_test",
+  connectorDefinitionId: "cdef_fileupload01",
+};
+
 function makeCallbacks(
   overrides: Partial<FileUploadWorkflowCallbacks> = {}
 ): FileUploadWorkflowCallbacks {
@@ -31,11 +36,15 @@ function makeCallbacks(
     parseFile: jest
       .fn<FileUploadWorkflowCallbacks["parseFile"]>()
       .mockResolvedValue(DEMO_WORKBOOK),
+    createConnectorInstance: jest
+      .fn<FileUploadWorkflowCallbacks["createConnectorInstance"]>()
+      .mockResolvedValue({ connectorInstanceId: "ci_123" }),
     runInterpret: jest
       .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
       .mockResolvedValue({
         regions: POST_INTERPRET_REGIONS,
         overallConfidence: 0.86,
+        planId: "plan_abc",
       }),
     runCommit: jest
       .fn<FileUploadWorkflowCallbacks["runCommit"]>()
@@ -47,7 +56,7 @@ function makeCallbacks(
 
 describe("useFileUploadWorkflow — initial state", () => {
   test("starts at step 0 with no files, no workbook, no regions", () => {
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     expect(result.current.step).toBe(0);
     expect(result.current.files).toEqual([]);
     expect(result.current.uploadPhase).toBe("idle");
@@ -72,14 +81,14 @@ describe("useFileUploadWorkflow — initial state", () => {
 
 describe("useFileUploadWorkflow — file management", () => {
   test("addFiles sets files and leaves step at 0", () => {
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
     expect(result.current.files).toEqual([SAMPLE_FILE]);
     expect(result.current.step).toBe(0);
   });
 
   test("addFiles dedupes by filename", () => {
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
     act(() => result.current.addFiles([SAMPLE_FILE, SECOND_FILE]));
     expect(result.current.files.map((f) => f.name)).toEqual([
@@ -89,7 +98,7 @@ describe("useFileUploadWorkflow — file management", () => {
   });
 
   test("removeFile removes by filename", () => {
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE, SECOND_FILE]));
     act(() => result.current.removeFile(SAMPLE_FILE.name));
     expect(result.current.files.map((f) => f.name)).toEqual([SECOND_FILE.name]);
@@ -99,7 +108,7 @@ describe("useFileUploadWorkflow — file management", () => {
 describe("useFileUploadWorkflow — startParse", () => {
   test("transitions uploading → parsed, stores workbook, auto-advances to step 1", async () => {
     const callbacks = makeCallbacks();
-    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks, SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
 
     await act(async () => {
@@ -119,7 +128,7 @@ describe("useFileUploadWorkflow — startParse", () => {
       .fn<FileUploadWorkflowCallbacks["parseFile"]>()
       .mockRejectedValue(new Error("Malformed workbook"));
     const { result } = renderHook(() =>
-      useFileUploadWorkflow(makeCallbacks({ parseFile }))
+      useFileUploadWorkflow(makeCallbacks({ parseFile }), SCOPE)
     );
     act(() => result.current.addFiles([SAMPLE_FILE]));
 
@@ -135,7 +144,7 @@ describe("useFileUploadWorkflow — startParse", () => {
 
   test("startParse is a no-op when no files are selected", async () => {
     const callbacks = makeCallbacks();
-    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks, SCOPE));
     await act(async () => {
       await result.current.startParse();
     });
@@ -146,7 +155,7 @@ describe("useFileUploadWorkflow — startParse", () => {
 
 describe("useFileUploadWorkflow — region editing", () => {
   test("onRegionDraft appends a region and selects it", async () => {
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
       await result.current.startParse();
@@ -181,7 +190,8 @@ describe("useFileUploadWorkflow — region editing", () => {
           parseFile: jest
             .fn<FileUploadWorkflowCallbacks["parseFile"]>()
             .mockResolvedValue(DEMO_WORKBOOK),
-        })
+        }),
+        SCOPE
       )
     );
     act(() => result.current.addFiles([SAMPLE_FILE]));
@@ -201,7 +211,7 @@ describe("useFileUploadWorkflow — region editing", () => {
 
   test("onRegionUpdate is a no-op for a missing id", () => {
     const region = SAMPLE_REGIONS[0];
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     act(() =>
       result.current.onRegionDraft({
         sheetId: region.sheetId,
@@ -219,7 +229,7 @@ describe("useFileUploadWorkflow — region editing", () => {
 
   test("onRegionDelete removes and clears selection when the deleted region was selected", () => {
     const region = SAMPLE_REGIONS[0];
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     act(() =>
       result.current.onRegionDraft({
         sheetId: region.sheetId,
@@ -235,7 +245,7 @@ describe("useFileUploadWorkflow — region editing", () => {
   });
 
   test("onSelectRegion updates selection, onActiveSheetChange updates the active sheet", () => {
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     act(() => result.current.onSelectRegion("r_any"));
     expect(result.current.selectedRegionId).toBe("r_any");
     act(() => result.current.onActiveSheetChange("sheet_other"));
@@ -246,7 +256,7 @@ describe("useFileUploadWorkflow — region editing", () => {
 describe("useFileUploadWorkflow — onInterpret", () => {
   test("blocks when there are no regions", async () => {
     const callbacks = makeCallbacks();
-    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks, SCOPE));
     await act(async () => {
       await result.current.onInterpret();
     });
@@ -255,7 +265,7 @@ describe("useFileUploadWorkflow — onInterpret", () => {
 
   test("calls runInterpret, replaces regions, sets overallConfidence, advances to step 2", async () => {
     const callbacks = makeCallbacks();
-    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks, SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
       await result.current.startParse();
@@ -285,7 +295,7 @@ describe("useFileUploadWorkflow — onInterpret", () => {
       .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
       .mockRejectedValue(new Error("Interpreter unavailable"));
     const { result } = renderHook(() =>
-      useFileUploadWorkflow(makeCallbacks({ runInterpret }))
+      useFileUploadWorkflow(makeCallbacks({ runInterpret }), SCOPE)
     );
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
@@ -311,6 +321,7 @@ describe("useFileUploadWorkflow — onInterpret", () => {
     let resolveInterpret: (payload: {
       regions: RegionDraft[];
       overallConfidence: number;
+      planId: string;
     }) => void = () => {};
     const runInterpret = jest
       .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
@@ -321,7 +332,7 @@ describe("useFileUploadWorkflow — onInterpret", () => {
           })
       );
     const { result } = renderHook(() =>
-      useFileUploadWorkflow(makeCallbacks({ runInterpret }))
+      useFileUploadWorkflow(makeCallbacks({ runInterpret }), SCOPE)
     );
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
@@ -344,6 +355,7 @@ describe("useFileUploadWorkflow — onInterpret", () => {
       resolveInterpret({
         regions: POST_INTERPRET_REGIONS,
         overallConfidence: 0.9,
+        planId: "plan_inflight",
       });
       await interpretPromise;
     });
@@ -354,7 +366,7 @@ describe("useFileUploadWorkflow — onInterpret", () => {
 describe("useFileUploadWorkflow — navigation", () => {
   test("goBack from step 2 returns to step 1 and preserves regions", async () => {
     const callbacks = makeCallbacks();
-    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks, SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
       await result.current.startParse();
@@ -377,7 +389,7 @@ describe("useFileUploadWorkflow — navigation", () => {
 
   test("goBack from step 1 returns to step 0 and preserves the parsed workbook", async () => {
     const callbacks = makeCallbacks();
-    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks, SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
       await result.current.startParse();
@@ -393,7 +405,7 @@ describe("useFileUploadWorkflow — onCommit", () => {
   test("calls runCommit and fires onCommitSuccess with the new connectorInstanceId", async () => {
     const onCommitSuccess = jest.fn();
     const callbacks = makeCallbacks({ onCommitSuccess });
-    const { result } = renderHook(() => useFileUploadWorkflow(callbacks));
+    const { result } = renderHook(() => useFileUploadWorkflow(callbacks, SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
       await result.current.startParse();
@@ -422,7 +434,7 @@ describe("useFileUploadWorkflow — onCommit", () => {
       .fn<FileUploadWorkflowCallbacks["runCommit"]>()
       .mockRejectedValue(new Error("Commit exploded"));
     const { result } = renderHook(() =>
-      useFileUploadWorkflow(makeCallbacks({ runCommit }))
+      useFileUploadWorkflow(makeCallbacks({ runCommit }), SCOPE)
     );
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
@@ -449,7 +461,7 @@ describe("useFileUploadWorkflow — onCommit", () => {
 
 describe("useFileUploadWorkflow — reset", () => {
   test("reset returns every field to its initial value", async () => {
-    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks()));
+    const { result } = renderHook(() => useFileUploadWorkflow(makeCallbacks(), SCOPE));
     act(() => result.current.addFiles([SAMPLE_FILE]));
     await act(async () => {
       await result.current.startParse();
@@ -476,7 +488,7 @@ describe("useFileUploadWorkflow — reset", () => {
           })
       );
     const { result } = renderHook(() =>
-      useFileUploadWorkflow(makeCallbacks({ parseFile }))
+      useFileUploadWorkflow(makeCallbacks({ parseFile }), SCOPE)
     );
     act(() => result.current.addFiles([SAMPLE_FILE]));
     let pending: Promise<void> = Promise.resolve();
@@ -493,5 +505,181 @@ describe("useFileUploadWorkflow — reset", () => {
     expect(result.current.step).toBe(0);
     expect(result.current.workbook).toBeNull();
     expect(result.current.uploadPhase).toBe("idle");
+  });
+});
+
+describe("useFileUploadWorkflow — connector-instance bootstrap", () => {
+  test("startParse calls createConnectorInstance with a name derived from the filename", async () => {
+    const callbacks = makeCallbacks();
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(callbacks, SCOPE)
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+
+    await act(async () => {
+      await result.current.startParse();
+    });
+
+    expect(callbacks.createConnectorInstance).toHaveBeenCalledTimes(1);
+    expect(callbacks.createConnectorInstance).toHaveBeenCalledWith({
+      organizationId: SCOPE.organizationId,
+      connectorDefinitionId: SCOPE.connectorDefinitionId,
+      name: "quarterly-revenue",
+    });
+    expect(result.current.connectorInstanceId).toBe("ci_123");
+    expect(result.current.step).toBe(1);
+  });
+
+  test("uses 'Upload' as the default name when no files provide one", async () => {
+    const fileWithoutExt = new File([new Uint8Array([1])], "rawdata", {
+      type: "text/plain",
+    });
+    const callbacks = makeCallbacks({
+      parseFile: jest
+        .fn<FileUploadWorkflowCallbacks["parseFile"]>()
+        .mockResolvedValue(DEMO_WORKBOOK),
+    });
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(callbacks, SCOPE)
+    );
+    act(() => result.current.addFiles([fileWithoutExt]));
+
+    await act(async () => {
+      await result.current.startParse();
+    });
+
+    expect(callbacks.createConnectorInstance).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "rawdata" })
+    );
+  });
+
+  test("createConnectorInstance failure sets serverError and keeps step at 0", async () => {
+    const createConnectorInstance = jest
+      .fn<FileUploadWorkflowCallbacks["createConnectorInstance"]>()
+      .mockRejectedValue(new Error("Create failed"));
+    const callbacks = makeCallbacks({ createConnectorInstance });
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(callbacks, SCOPE)
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+
+    await act(async () => {
+      await result.current.startParse();
+    });
+
+    expect(result.current.step).toBe(0);
+    expect(result.current.connectorInstanceId).toBeNull();
+    expect(result.current.serverError?.message).toBe("Create failed");
+    expect(result.current.uploadPhase).toBe("error");
+  });
+
+  test("re-interpret in the same session reuses the connectorInstanceId", async () => {
+    const callbacks = makeCallbacks();
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(callbacks, SCOPE)
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+    await act(async () => {
+      await result.current.startParse();
+    });
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+      })
+    );
+
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+    act(() => result.current.goBack());
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+
+    expect(callbacks.createConnectorInstance).toHaveBeenCalledTimes(1);
+    expect(result.current.connectorInstanceId).toBe("ci_123");
+  });
+
+  test("onInterpret forwards the stored connectorInstanceId to runInterpret", async () => {
+    const callbacks = makeCallbacks();
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(callbacks, SCOPE)
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+    await act(async () => {
+      await result.current.startParse();
+    });
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+      })
+    );
+
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+
+    expect(callbacks.runInterpret).toHaveBeenCalledWith(
+      expect.any(Array),
+      "ci_123"
+    );
+    expect(result.current.planId).toBe("plan_abc");
+  });
+
+  test("onCommit forwards connectorInstanceId + planId to runCommit", async () => {
+    const callbacks = makeCallbacks();
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(callbacks, SCOPE)
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+    await act(async () => {
+      await result.current.startParse();
+    });
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+      })
+    );
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+    await act(async () => {
+      await result.current.onCommit();
+    });
+
+    expect(callbacks.runCommit).toHaveBeenCalledWith(expect.any(Array), {
+      connectorInstanceId: "ci_123",
+      planId: "plan_abc",
+    });
+  });
+
+  test("reset clears connectorInstanceId and planId", async () => {
+    const callbacks = makeCallbacks();
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(callbacks, SCOPE)
+    );
+    act(() => result.current.addFiles([SAMPLE_FILE]));
+    await act(async () => {
+      await result.current.startParse();
+    });
+    act(() =>
+      result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+      })
+    );
+    await act(async () => {
+      await result.current.onInterpret();
+    });
+    expect(result.current.connectorInstanceId).toBe("ci_123");
+    expect(result.current.planId).toBe("plan_abc");
+
+    act(() => result.current.reset());
+
+    expect(result.current.connectorInstanceId).toBeNull();
+    expect(result.current.planId).toBeNull();
   });
 });

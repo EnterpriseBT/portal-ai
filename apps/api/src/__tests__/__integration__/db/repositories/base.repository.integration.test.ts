@@ -184,7 +184,7 @@ describe("Repository Integration Tests", () => {
         ({
           id: generateId(),
           organizationId,
-          type: "file_upload",
+          type: "system_check",
           status: "pending",
           progress: 0,
           metadata: {},

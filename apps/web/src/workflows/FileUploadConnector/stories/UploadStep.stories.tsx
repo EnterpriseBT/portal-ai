@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 
 import { UploadStep } from "../UploadStep.component";
-import type { FileUploadProgress } from "../../../utils/file-upload.util";
+import type { FileUploadProgress } from "../utils/file-upload-workflow.util";
 import {
   SAMPLE_FILE,
   SPREADSHEET_FILE_EXTENSIONS,

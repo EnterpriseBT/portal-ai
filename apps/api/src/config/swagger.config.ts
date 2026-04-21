@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   ColumnBindingSchema,
   DriftReportSchema,
+  FileUploadParseResponsePayloadSchema,
   HeaderStrategySchema,
   IdentityStrategySchema,
   InterpretInputSchema,
@@ -55,6 +56,10 @@ const spreadsheetParsingSchemas: Record<string, unknown> = {
   ),
   LayoutPlanCommitResult: z.toJSONSchema(
     LayoutPlanCommitResultSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  FileUploadParseResponsePayload: z.toJSONSchema(
+    FileUploadParseResponsePayloadSchema,
     JSON_SCHEMA_OPTS
   ),
 };
@@ -482,7 +487,7 @@ const options: swaggerJsdoc.Options = {
             },
             type: {
               type: "string",
-              enum: ["file_upload", "system_check", "revalidation"],
+              enum: ["system_check", "revalidation"],
               description: "Job type",
             },
             status: {

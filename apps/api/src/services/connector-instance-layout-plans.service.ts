@@ -2,7 +2,7 @@
  * Service layer for connector-instance layout plans.
  *
  * Orchestrates interpret → persist, fetch-current, and in-place patch.
- * Delegates LLM interpretation to `FileAnalysisService.analyze` (which wires
+ * Delegates LLM interpretation to `LayoutPlanInterpretService.analyze` (which wires
  * the parser module's `ClassifierFn` / `AxisNameRecommenderFn` DI slots) and
  * JSONB persistence to `DbService.repository.connectorInstanceLayoutPlans`.
  */
@@ -21,7 +21,7 @@ import { LayoutPlanSchema } from "@portalai/core/contracts";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
-import { FileAnalysisService } from "./file-analysis.service.js";
+import { LayoutPlanInterpretService } from "./layout-plan-interpret.service.js";
 import { ApiError } from "./http.service.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { connectorInstances } from "../db/schema/index.js";
@@ -53,7 +53,7 @@ export class ConnectorInstanceLayoutPlansService {
 
     let plan: LayoutPlan;
     try {
-      plan = await FileAnalysisService.analyze(
+      plan = await LayoutPlanInterpretService.analyze(
         body.workbook,
         body.regionHints ?? [],
         organizationId,
@@ -104,7 +104,7 @@ export class ConnectorInstanceLayoutPlansService {
       }
     });
 
-    return { plan, interpretationTrace: null };
+    return { planId, plan, interpretationTrace: null };
   }
 
   /**
@@ -140,6 +140,7 @@ export class ConnectorInstanceLayoutPlansService {
     const trace = (row.interpretationTrace ??
       null) as InterpretationTrace | null;
     return {
+      planId: row.id,
       plan: row.plan as LayoutPlan,
       interpretationTrace: opts.includeTrace ? trace : null,
     };
@@ -203,6 +204,7 @@ export class ConnectorInstanceLayoutPlansService {
     }
 
     return {
+      planId: updated.id,
       plan: updated.plan as LayoutPlan,
       interpretationTrace: null,
     };

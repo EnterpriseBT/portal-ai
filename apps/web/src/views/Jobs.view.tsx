@@ -49,7 +49,7 @@ export const JobsView = () => {
         label: "Type",
         options: [
           { label: "System Check", value: "system_check" },
-          { label: "File Upload", value: "file_upload" },
+          { label: "Revalidation", value: "revalidation" },
         ],
       },
     ],

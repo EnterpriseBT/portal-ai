@@ -2,15 +2,12 @@
  * Commit a layout plan: run `replay(plan, workbook)`, gate on drift, then
  * materialize `ConnectorEntity` / `FieldMapping` / `entity_records` rows.
  *
- * Plan-driven path. Mirrors the write path the legacy
- * `apps/api/src/services/uploads.service.ts#confirm` uses for the simple-layout
- * upload flow, but sources records from the parser module's
- * `@portalai/spreadsheet-parsing/replay` output rather than the legacy
- * `record-import.util.ts` pipeline.
+ * Records come from the parser module's `@portalai/spreadsheet-parsing/replay`
+ * output, then bulk-write through `entityRecords.upsertManyBySourceId`.
  *
- * TODO(sync-history): No `sync_history` table exists today (Phase 6 audit).
- * When one lands, insert a row here with `layout_plan_id: planId` so each
- * commit run is auditable.
+ * TODO(sync-history): No `sync_history` table exists today. When one lands,
+ * insert a row here with `layout_plan_id: planId` so each commit run is
+ * auditable.
  */
 
 import { and, eq, inArray } from "drizzle-orm";

@@ -346,9 +346,33 @@ export const RegionConfigurationPanelUI: React.FC<
           width: "100%",
         }}
       >
-        <Typography variant="caption" sx={SECTION_HEADING_SX}>
-          Identity
-        </Typography>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Typography variant="caption" sx={SECTION_HEADING_SX}>
+            Identity
+          </Typography>
+          <SectionHelpUI
+            ariaLabel="What is the target entity?"
+            title={
+              <>
+                <strong>Target entity</strong> is the record type this region
+                produces — one row (or crosstab cell) per record inside that
+                entity.
+                <br />
+                <br />
+                <strong>Multiple regions → same entity.</strong> Point two or
+                more regions at the same target when a single entity&rsquo;s
+                records are split across sheets or laid out in different shapes.
+                Their bindings merge and become a single set of field mappings.
+                <br />
+                <br />
+                <strong>Multiple regions from the same sheet.</strong> One sheet
+                can hold several regions, each pointing at a different target
+                entity — useful when a sheet mixes a header block with one or
+                more data tables, or stacks two distinct tables vertically.
+              </>
+            }
+          />
+        </Stack>
 
         <Stack
           direction={{ xs: "column", sm: "row", lg: "column" }}

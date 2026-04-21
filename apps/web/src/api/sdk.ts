@@ -3,11 +3,13 @@ import { columnDefinitions } from "./column-definitions.api";
 import { connectorDefinitions } from "./connector-definitions.api";
 import { connectorEntities } from "./connector-entities.api";
 import { connectorInstances } from "./connector-instances.api";
+import { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.api";
 import { entityRecords } from "./entity-records.api";
 import { entityGroups } from "./entity-groups.api";
 import { entityTags } from "./entity-tags.api";
 import { entityTagAssignments } from "./entity-tag-assignments.api";
 import { fieldMappings } from "./field-mappings.api";
+import { fileUploads } from "./file-uploads.api";
 import { health } from "./health.api";
 import { jobs } from "./jobs.api";
 import { organizationTools } from "./organization-tools.api";
@@ -17,7 +19,6 @@ import { portals } from "./portals.api";
 import { sse } from "./sse.api";
 import { stationTools } from "./station-tools.api";
 import { stations } from "./stations.api";
-import { uploads } from "./uploads.api";
 
 export { queryKeys } from "./keys";
 
@@ -27,11 +28,13 @@ export const sdk = {
   connectorDefinitions,
   connectorEntities,
   connectorInstances,
+  connectorInstanceLayoutPlans,
   entityGroups,
   entityRecords,
   entityTags,
   entityTagAssignments,
   fieldMappings,
+  fileUploads,
   health,
   jobs,
   organizationTools,
@@ -41,5 +44,4 @@ export const sdk = {
   sse,
   stationTools,
   stations,
-  uploads,
 } as const;

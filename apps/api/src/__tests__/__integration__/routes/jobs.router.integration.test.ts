@@ -164,16 +164,16 @@ describe("Jobs Router — GET /api/jobs", () => {
       .insert(jobs)
       .values([
         createJob(organizationId, { type: "system_check" }),
-        createJob(organizationId, { type: "file_upload" }),
+        createJob(organizationId, { type: "revalidation" }),
       ] as never);
 
     const res = await request(app)
-      .get("/api/jobs?type=file_upload")
+      .get("/api/jobs?type=revalidation")
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(200);
     expect(res.body.payload.jobs).toHaveLength(1);
-    expect(res.body.payload.jobs[0].type).toBe("file_upload");
+    expect(res.body.payload.jobs[0].type).toBe("revalidation");
   });
 
   it("should filter by multiple types (comma-separated)", async () => {
@@ -189,18 +189,18 @@ describe("Jobs Router — GET /api/jobs", () => {
           type: "system_check",
           status: "completed",
         }),
-        createJob(organizationId, { type: "file_upload", status: "pending" }),
+        createJob(organizationId, { type: "revalidation", status: "pending" }),
       ] as never);
 
     const res = await request(app)
-      .get("/api/jobs?type=system_check,file_upload")
+      .get("/api/jobs?type=system_check,revalidation")
       .set("Authorization", "Bearer test-token");
 
     expect(res.status).toBe(200);
     expect(res.body.payload.jobs).toHaveLength(2);
     const types = res.body.payload.jobs.map((j: { type: string }) => j.type);
     expect(types).toContain("system_check");
-    expect(types).toContain("file_upload");
+    expect(types).toContain("revalidation");
   });
 
   it("should compose status and type filters", async () => {
@@ -216,7 +216,7 @@ describe("Jobs Router — GET /api/jobs", () => {
           type: "system_check",
           status: "completed",
         }),
-        createJob(organizationId, { type: "file_upload", status: "completed" }),
+        createJob(organizationId, { type: "revalidation", status: "completed" }),
         createJob(organizationId, { type: "system_check", status: "failed" }),
       ] as never);
 

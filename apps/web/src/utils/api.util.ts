@@ -68,13 +68,22 @@ export const useAuthFetch = () => {
         throw error;
       }
 
+      // FormData payloads must reach the server with the browser-generated
+      // multipart boundary intact — setting Content-Type here would strip it.
+      const isFormData =
+        typeof FormData !== "undefined" && options.body instanceof FormData;
+
+      const headers: Record<string, string> = {
+        ...(options.headers as Record<string, string> | undefined),
+        Authorization: `Bearer ${token}`,
+      };
+      if (!isFormData) {
+        headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+      }
+
       const response = await fetch(resolveApiUrl(url), {
         ...options,
-        headers: {
-          ...options.headers,
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -178,13 +187,19 @@ export const useAuthMutation = <TData, TVariables>({
     mutationFn: async (variables) => {
       const resolvedUrl = typeof url === "function" ? url(variables) : url;
       const bodyPayload = body ? body(variables) : variables;
+      const isFormData =
+        typeof FormData !== "undefined" && bodyPayload instanceof FormData;
       const response = await fetchWithAuth<ApiSuccessResponse<TData>>(
         resolvedUrl,
         {
           ...options,
           method,
           ...(bodyPayload !== undefined && bodyPayload !== null
-            ? { body: JSON.stringify(bodyPayload) }
+            ? {
+                body: isFormData
+                  ? (bodyPayload as BodyInit)
+                  : JSON.stringify(bodyPayload),
+              }
             : {}),
         }
       );

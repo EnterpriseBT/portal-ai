@@ -9,11 +9,23 @@ import type {
 } from "../../../modules/RegionEditor";
 import { ApiError } from "../../../utils/api.util";
 import type { ServerError } from "../../../utils/api.util";
-import type { FileUploadProgress } from "../../../utils/file-upload.util";
 import type {
   FileUploadWorkflowState,
   UploadPhase,
 } from "./file-upload-fixtures.util";
+
+/**
+ * Per-file upload progress shape rendered by the UploadStep. Migrated into
+ * the workflow util in `SPREADSHEET_PARSING.frontend.plan.md` §Phase 6.8
+ * when the legacy `utils/file-upload.util.ts` (and its presign/S3 hook) was
+ * retired.
+ */
+export interface FileUploadProgress {
+  fileName: string;
+  loaded: number;
+  total: number;
+  percent: number;
+}
 
 export const FILE_UPLOAD_WORKFLOW_STEPS: StepConfig[] = [
   { label: "Upload", description: "Select a spreadsheet" },
@@ -23,14 +35,29 @@ export const FILE_UPLOAD_WORKFLOW_STEPS: StepConfig[] = [
 
 export interface FileUploadWorkflowCallbacks {
   parseFile: (files: File[]) => Promise<Workbook>;
-  runInterpret: (regions: RegionDraft[]) => Promise<{
+  createConnectorInstance: (args: {
+    organizationId: string;
+    connectorDefinitionId: string;
+    name: string;
+  }) => Promise<{ connectorInstanceId: string }>;
+  runInterpret: (
+    regions: RegionDraft[],
+    connectorInstanceId: string
+  ) => Promise<{
     regions: RegionDraft[];
     overallConfidence: number;
+    planId: string;
   }>;
   runCommit: (
-    regions: RegionDraft[]
+    regions: RegionDraft[],
+    ids: { connectorInstanceId: string; planId: string }
   ) => Promise<{ connectorInstanceId: string }>;
   onCommitSuccess?: (connectorInstanceId: string) => void;
+}
+
+export interface UseFileUploadWorkflowOptions {
+  organizationId: string;
+  connectorDefinitionId: string;
 }
 
 export interface UseFileUploadWorkflowReturn extends FileUploadWorkflowState {
@@ -62,7 +89,16 @@ const EMPTY_STATE: FileUploadWorkflowState = {
   serverError: null,
   isInterpreting: false,
   isCommitting: false,
+  connectorInstanceId: null,
+  planId: null,
 };
+
+function deriveConnectorInstanceName(files: File[]): string {
+  const filename = files[0]?.name ?? "Upload";
+  const dot = filename.lastIndexOf(".");
+  const base = dot > 0 ? filename.substring(0, dot) : filename;
+  return base.trim() || "Upload";
+}
 
 export function mintRegionId(sheetId: string): string {
   const suffix = Math.random().toString(36).slice(2, 8);
@@ -91,7 +127,8 @@ function mergeFilesByName(existing: File[], incoming: File[]): File[] {
 }
 
 export function useFileUploadWorkflow(
-  callbacks: FileUploadWorkflowCallbacks
+  callbacks: FileUploadWorkflowCallbacks,
+  options: UseFileUploadWorkflowOptions
 ): UseFileUploadWorkflowReturn {
   const [state, setState] = useState<FileUploadWorkflowState>(EMPTY_STATE);
   // Bumped on every reset; in-flight async resolutions check this before
@@ -134,12 +171,27 @@ export function useFileUploadWorkflow(
       );
       const workbook = await callbacks.parseFile(currentFiles);
       if (token !== runTokenRef.current) return;
+
+      // Ensure a backing ConnectorInstance exists before the first interpret.
+      // Reused across re-interpret in the same session.
+      let connectorInstanceId = state.connectorInstanceId;
+      if (!connectorInstanceId) {
+        const created = await callbacks.createConnectorInstance({
+          organizationId: options.organizationId,
+          connectorDefinitionId: options.connectorDefinitionId,
+          name: deriveConnectorInstanceName(currentFiles),
+        });
+        if (token !== runTokenRef.current) return;
+        connectorInstanceId = created.connectorInstanceId;
+      }
+
       setState((prev) => ({
         ...prev,
         uploadPhase: "parsed",
         overallUploadPercent: 100,
         workbook,
         activeSheetId: workbook.sheets[0]?.id ?? null,
+        connectorInstanceId,
         step: 1,
       }));
     } catch (err) {
@@ -150,7 +202,7 @@ export function useFileUploadWorkflow(
         serverError: toServerErrorFromUnknown(err),
       }));
     }
-  }, [callbacks, state.files]);
+  }, [callbacks, options, state.files, state.connectorInstanceId]);
 
   const onActiveSheetChange = useCallback((sheetId: string) => {
     setState((prev) => ({ ...prev, activeSheetId: sheetId }));
@@ -206,6 +258,8 @@ export function useFileUploadWorkflow(
 
   const onInterpret = useCallback(async () => {
     if (state.regions.length === 0) return;
+    if (!state.connectorInstanceId) return;
+    const connectorInstanceId = state.connectorInstanceId;
     const token = ++runTokenRef.current;
     setState((prev) => ({
       ...prev,
@@ -213,13 +267,17 @@ export function useFileUploadWorkflow(
       serverError: null,
     }));
     try {
-      const { regions: nextRegions, overallConfidence } =
-        await callbacks.runInterpret(state.regions);
+      const {
+        regions: nextRegions,
+        overallConfidence,
+        planId,
+      } = await callbacks.runInterpret(state.regions, connectorInstanceId);
       if (token !== runTokenRef.current) return;
       setState((prev) => ({
         ...prev,
         regions: nextRegions,
         overallConfidence,
+        planId,
         isInterpreting: false,
         step: 2,
       }));
@@ -231,9 +289,12 @@ export function useFileUploadWorkflow(
         serverError: toServerErrorFromUnknown(err),
       }));
     }
-  }, [callbacks, state.regions]);
+  }, [callbacks, state.regions, state.connectorInstanceId]);
 
   const onCommit = useCallback(async () => {
+    if (!state.connectorInstanceId || !state.planId) return;
+    const connectorInstanceId = state.connectorInstanceId;
+    const planId = state.planId;
     const token = ++runTokenRef.current;
     setState((prev) => ({
       ...prev,
@@ -241,10 +302,13 @@ export function useFileUploadWorkflow(
       serverError: null,
     }));
     try {
-      const { connectorInstanceId } = await callbacks.runCommit(state.regions);
+      const result = await callbacks.runCommit(state.regions, {
+        connectorInstanceId,
+        planId,
+      });
       if (token !== runTokenRef.current) return;
       setState((prev) => ({ ...prev, isCommitting: false }));
-      callbacks.onCommitSuccess?.(connectorInstanceId);
+      callbacks.onCommitSuccess?.(result.connectorInstanceId);
     } catch (err) {
       if (token !== runTokenRef.current) return;
       setState((prev) => ({
@@ -253,7 +317,7 @@ export function useFileUploadWorkflow(
         serverError: toServerErrorFromUnknown(err),
       }));
     }
-  }, [callbacks, state.regions]);
+  }, [callbacks, state.regions, state.connectorInstanceId, state.planId]);
 
   const goBack = useCallback(() => {
     setState((prev) => {

@@ -43,13 +43,11 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
   },
 }));
 
-// Mock FileAnalysisService.analyze so we don't hit the LLM in integration tests.
+// Mock LayoutPlanInterpretService.analyze so we don't hit the LLM in integration tests.
 const mockAnalyze = jest.fn<(...args: unknown[]) => Promise<LayoutPlan>>();
-jest.unstable_mockModule("../../../services/file-analysis.service.js", () => ({
-  FileAnalysisService: {
+jest.unstable_mockModule("../../../services/layout-plan-interpret.service.js", () => ({
+  LayoutPlanInterpretService: {
     analyze: mockAnalyze,
-    getRecommendations: jest.fn(),
-    heuristicAnalyze: jest.fn(),
     loadCatalog: jest.fn(async () => []),
   },
 }));

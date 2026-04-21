@@ -13,7 +13,7 @@ import {
   POST_INTERPRET_REGIONS,
 } from "../utils/file-upload-fixtures.util";
 import { FILE_UPLOAD_WORKFLOW_STEPS } from "../utils/file-upload-workflow.util";
-import type { FileUploadProgress } from "../../../utils/file-upload.util";
+import type { FileUploadProgress } from "../utils/file-upload-workflow.util";
 
 function makeProps(
   overrides: Partial<FileUploadConnectorWorkflowUIProps> = {}
@@ -40,6 +40,7 @@ function makeProps(
     onSelectRegion: jest.fn(),
     onRegionDraft: jest.fn(),
     onRegionUpdate: jest.fn(),
+    onRegionResize: jest.fn(),
     onRegionDelete: jest.fn(),
     onInterpret: jest.fn(),
 

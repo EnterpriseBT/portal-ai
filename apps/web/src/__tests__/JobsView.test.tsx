@@ -97,7 +97,7 @@ describe("JobsView", () => {
     const job1 = makeJob({ id: "job-1", type: "system_check" });
     const job2 = makeJob({
       id: "job-2",
-      type: "file_upload",
+      type: "revalidation",
       status: "pending",
     });
 
@@ -110,7 +110,7 @@ describe("JobsView", () => {
 
     render(<JobsView />);
     expect(screen.getByText("system_check")).toBeInTheDocument();
-    expect(screen.getByText("file_upload")).toBeInTheDocument();
+    expect(screen.getByText("revalidation")).toBeInTheDocument();
   });
 
   it("should show loading state", () => {

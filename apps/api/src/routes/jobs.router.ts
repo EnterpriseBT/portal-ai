@@ -153,7 +153,7 @@ jobsRouter.post(
  *         name: type
  *         schema:
  *           type: string
- *         description: Comma-separated list of job types to filter by (file_upload, system_check)
+ *         description: Comma-separated list of job types to filter by (system_check, revalidation)
  *       - in: query
  *         name: search
  *         schema:

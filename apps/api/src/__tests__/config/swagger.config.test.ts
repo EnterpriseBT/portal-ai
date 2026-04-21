@@ -15,6 +15,7 @@ import {
   InterpretRequestBodySchema,
   InterpretResponsePayloadSchema,
   LayoutPlanCommitResultSchema,
+  FileUploadParseResponsePayloadSchema,
 } from "@portalai/core/contracts";
 
 import { swaggerSpec } from "../../config/swagger.config.js";
@@ -33,6 +34,7 @@ const REQUIRED_SCHEMA_NAMES = [
   "InterpretRequestBody",
   "InterpretResponsePayload",
   "LayoutPlanCommitResult",
+  "FileUploadParseResponsePayload",
 ] as const;
 
 interface OpenApiSchemaBag {
@@ -70,6 +72,7 @@ describe("swagger spec — spreadsheet-parsing schema registration", () => {
     ["InterpretRequestBody", InterpretRequestBodySchema],
     ["InterpretResponsePayload", InterpretResponsePayloadSchema],
     ["LayoutPlanCommitResult", LayoutPlanCommitResultSchema],
+    ["FileUploadParseResponsePayload", FileUploadParseResponsePayloadSchema],
   ];
 
   it.each(pairs)(
@@ -161,5 +164,18 @@ describe("swagger spec — layout-plan endpoints", () => {
       };
     };
     expect(conflict.content?.["application/json"]?.schema?.allOf).toBeDefined();
+  });
+});
+
+describe("swagger spec — legacy uploads surface is fully removed", () => {
+  const spec = swaggerSpec as OpenApiSchemaBag;
+  const paths = spec.paths ?? {};
+
+  it.each([
+    "/api/uploads/presign",
+    "/api/uploads/{jobId}/process",
+    "/api/uploads/{jobId}/confirm",
+  ])("does not register %s in the spec at all", (path) => {
+    expect(paths[path]).toBeUndefined();
   });
 });

@@ -21,7 +21,7 @@ import {
   FILE_UPLOAD_WORKFLOW_STEPS,
   useFileUploadWorkflow,
 } from "../utils/file-upload-workflow.util";
-import type { FileUploadProgress } from "../../../utils/file-upload.util";
+import type { FileUploadProgress } from "../utils/file-upload-workflow.util";
 import type { RegionDraft } from "../../../modules/RegionEditor";
 
 // ---------------------------------------------------------------------------
@@ -64,6 +64,7 @@ const BASE_ARGS: FileUploadConnectorWorkflowUIProps = {
   onSelectRegion: fn(),
   onRegionDraft: fn(),
   onRegionUpdate: fn(),
+  onRegionResize: fn(),
   onRegionDelete: fn(),
   onInterpret: fn(),
 
@@ -249,28 +250,37 @@ const InteractiveContent: React.FC = () => {
     connectorInstanceId: string;
   } | null>(null);
 
-  const workflow = useFileUploadWorkflow({
-    parseFile: () => delay(DEMO_WORKBOOK),
-    runInterpret: (regions) =>
-      delay({
-        regions: regions.map((r) => ({
-          ...r,
-          confidence: 0.88,
-          columnBindings: POST_INTERPRET_REGIONS[0].columnBindings,
-        })),
-        overallConfidence: 0.88,
-      }),
-    runCommit: (regions) => {
-      void regions;
-      return delay({ connectorInstanceId: "ci_interactive" });
+  const workflow = useFileUploadWorkflow(
+    {
+      parseFile: () => delay(DEMO_WORKBOOK),
+      createConnectorInstance: () =>
+        delay({ connectorInstanceId: "ci_interactive" }),
+      runInterpret: (regions) =>
+        delay({
+          regions: regions.map((r) => ({
+            ...r,
+            confidence: 0.88,
+            columnBindings: POST_INTERPRET_REGIONS[0].columnBindings,
+          })),
+          overallConfidence: 0.88,
+          planId: "plan_interactive",
+        }),
+      runCommit: (regions) => {
+        void regions;
+        return delay({ connectorInstanceId: "ci_interactive" });
+      },
+      onCommitSuccess: (connectorInstanceId) => {
+        setCommittedPayload({
+          regions: workflow.regions,
+          connectorInstanceId,
+        });
+      },
     },
-    onCommitSuccess: (connectorInstanceId) => {
-      setCommittedPayload({
-        regions: workflow.regions,
-        connectorInstanceId,
-      });
-    },
-  });
+    {
+      organizationId: "org_demo",
+      connectorDefinitionId: "cdef_fileupload_demo",
+    }
+  );
 
   return (
     <>
@@ -296,6 +306,9 @@ const InteractiveContent: React.FC = () => {
         onSelectRegion={workflow.onSelectRegion}
         onRegionDraft={workflow.onRegionDraft}
         onRegionUpdate={workflow.onRegionUpdate}
+        onRegionResize={(regionId, nextBounds) =>
+          workflow.onRegionUpdate(regionId, { bounds: nextBounds })
+        }
         onRegionDelete={workflow.onRegionDelete}
         onInterpret={() => {
           void workflow.onInterpret();

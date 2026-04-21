@@ -275,9 +275,9 @@ export const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     term: "Job",
     category: GlossaryCategory.System,
     definition:
-      "A background task — file uploads, syncs, system checks, or revalidations — that the platform runs on your behalf.",
+      "A background task — syncs, system checks, or revalidations — that the platform runs on your behalf.",
     example:
-      "Uploading a large CSV creates a file_upload job that runs in the background while you keep working.",
+      "Re-validating an entity definition spawns a revalidation job that runs in the background while you keep working.",
     relatedTerms: ["Job Status", "Sync"],
     pageRoute: ApplicationRoute.Jobs,
   },

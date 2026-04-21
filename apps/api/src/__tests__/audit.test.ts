@@ -47,6 +47,9 @@ function walkTsFiles(dir: string): string[] {
 
 const apiFiles = walkTsFiles(apiSrcRoot);
 const webFiles = walkTsFiles(webSrcRoot);
+// The audit references its own forbidden strings; exclude it from scans
+// that would otherwise flag itself.
+const AUDIT_SELF = path.resolve(here, "audit.test.ts");
 
 describe("Phase 10 audit — parser module owns spreadsheet-parsing concepts", () => {
   it("no file in apps/api/src/ defines the Orientation union as a local type alias", () => {
@@ -91,12 +94,54 @@ describe("Phase 10 audit — parser module owns spreadsheet-parsing concepts", (
     ]);
   });
 
-  it("csv-parser.util.ts does not export a hasHeader binding", () => {
+  it("legacy csv-parser.util.ts is fully removed", () => {
     const file = path.join(apiSrcRoot, "utils", "csv-parser.util.ts");
-    const text = fs.readFileSync(file, "utf8");
-    expect(text).not.toMatch(
-      /export\s+(?:const|function|type|interface)\s+hasHeader\b/
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it("legacy upload surface is fully removed from apps/api/src/", () => {
+    const removed = [
+      "routes/uploads.router.ts",
+      "services/uploads.service.ts",
+      "services/file-analysis.service.ts",
+      "services/csv-import.service.ts",
+      "services/xlsx-import.service.ts",
+      "services/s3.service.ts",
+      "queues/processors/file-upload.processor.ts",
+      "utils/csv-parser.util.ts",
+      "utils/xlsx-parser.util.ts",
+      "utils/column-stats.util.ts",
+      "utils/heuristic-analyzer.util.ts",
+      "prompts/file-analysis.prompt.ts",
+      "middleware/deprecation.middleware.ts",
+    ];
+    const survivors = removed.filter((p) =>
+      fs.existsSync(path.join(apiSrcRoot, p))
     );
+    expect(survivors).toEqual([]);
+  });
+
+  it("no file in apps/api/src/ references the deleted legacy services", () => {
+    const forbidden = [
+      "uploads.service",
+      "csv-import.service",
+      "xlsx-import.service",
+      "file-analysis.service",
+      "file-upload.processor",
+      "heuristic-analyzer",
+      "column-stats.util",
+      "file-analysis.prompt",
+    ];
+    const offenders: Array<{ file: string; needle: string }> = [];
+    for (const file of apiFiles) {
+      const text = fs.readFileSync(file, "utf8");
+      for (const needle of forbidden) {
+        if (text.includes(needle)) {
+          offenders.push({ file: path.relative(apiSrcRoot, file), needle });
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("no file in apps/api/src/ redeclares a Region, LayoutPlan, SkipRule, ColumnBinding, HeaderStrategy, IdentityStrategy, Warning, DriftReport, Workbook, or ExtractedRecord *type* locally", () => {
