@@ -27,7 +27,10 @@ import { computeChecksum, replay } from "@portalai/spreadsheet-parsing/replay";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
-import { reconcileFieldMappings } from "./field-mappings/reconcile.js";
+import {
+  reconcileFieldMappings,
+  resolveNormalizedKey,
+} from "./field-mappings/reconcile.js";
 import { SystemUtilities } from "../utils/system.util.js";
 import { createLogger } from "../utils/logger.util.js";
 import { db } from "../db/client.js";
@@ -135,8 +138,31 @@ export class LayoutPlanCommitService {
           columnDefinitionId: binding.columnDefinitionId,
           sourceField: sourceFieldFromBinding(binding),
           isPrimaryKey: false,
+          excluded: binding.excluded,
+          normalizedKey: binding.normalizedKey,
+          required: binding.required,
+          defaultValue: binding.defaultValue,
+          format: binding.format,
+          enumValues: binding.enumValues,
+          refEntityKey: binding.refEntityKey,
+          refNormalizedKey: binding.refNormalizedKey,
         });
       }
+    }
+
+    // Precompute per-target normalized-key sets across the whole plan so
+    // reference bindings can validate `refNormalizedKey` against staged
+    // siblings. Excluded bindings contribute no FieldMapping, so they
+    // shouldn't be reachable as ref targets either.
+    const stagedEntityKeys = new Set(bindingsByTarget.keys());
+    const stagedNormalizedKeysByEntityKey = new Map<string, Set<string>>();
+    for (const [targetKey, bucket] of bindingsByTarget.entries()) {
+      const keys = new Set<string>();
+      for (const binding of bucket) {
+        if (binding.excluded === true) continue;
+        keys.add(resolveNormalizedKey(binding, catalogById));
+      }
+      stagedNormalizedKeysByEntityKey.set(targetKey, keys);
     }
 
     // ── 6. Per-target: upsert entity, reconcile mappings, write records ─
@@ -176,6 +202,8 @@ export class LayoutPlanCommitService {
             userId,
             bindings,
             catalogById,
+            stagedEntityKeys,
+            stagedNormalizedKeysByEntityKey,
           },
           tx
         );
@@ -418,6 +446,14 @@ interface PlanBindingWithSource {
   columnDefinitionId: string;
   sourceField: string;
   isPrimaryKey?: boolean;
+  excluded?: boolean;
+  normalizedKey?: string;
+  required?: boolean;
+  defaultValue?: string | null;
+  format?: string | null;
+  enumValues?: string[] | null;
+  refEntityKey?: string | null;
+  refNormalizedKey?: string | null;
 }
 
 function sourceFieldFromBinding(binding: ColumnBinding): string {
