@@ -8,6 +8,10 @@ import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import { RegionReviewCardUI } from "./RegionReviewCard.component";
 import { BindingEditorPopoverUI } from "./BindingEditorPopover.component";
 import { colorForEntity } from "./utils/region-editor-colors.util";
+import {
+  validateBindingDraft,
+  validateRegionBindings,
+} from "./utils/region-editor-validation.util";
 import type {
   ColumnBindingDraft,
   RegionDraft,
@@ -69,19 +73,13 @@ interface EditingState {
   serverError: ServerError | null;
 }
 
-const NORMALIZED_KEY_PATTERN = /^[a-z][a-z0-9_]*$/;
-
-function validateBindingDraft(draft: ColumnBindingDraft): FormErrors {
-  const errors: FormErrors = {};
-  if (draft.excluded) return errors;
-  if (!draft.columnDefinitionId) {
-    errors.columnDefinitionId = "Column definition is required.";
-  }
-  if (draft.normalizedKey && !NORMALIZED_KEY_PATTERN.test(draft.normalizedKey)) {
-    errors.normalizedKey =
-      "Must be lowercase snake_case (letters, digits, underscores; start with a letter).";
-  }
-  return errors;
+function draftValidationContext(
+  binding: ColumnBindingDraft,
+  resolveType?: ReviewStepUIProps["resolveColumnDefinitionType"]
+): Parameters<typeof validateBindingDraft>[1] {
+  return {
+    columnDefinitionType: resolveType?.(binding) ?? undefined,
+  };
 }
 
 export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
@@ -121,12 +119,13 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
       (b) => b.sourceLocator === sourceLocator
     );
     if (!binding) return;
+    const ctx = draftValidationContext(binding, resolveColumnDefinitionType);
     setEditing({
       regionId: region.id,
       sourceLocator,
       anchorEl,
       draft: { ...binding },
-      errors: validateBindingDraft(binding),
+      errors: validateBindingDraft(binding, ctx),
       serverError: null,
     });
   };
@@ -135,10 +134,14 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
     setEditing((prev) => {
       if (!prev) return prev;
       const nextDraft = { ...prev.draft, ...patch };
+      const ctx = draftValidationContext(
+        nextDraft,
+        resolveColumnDefinitionType
+      );
       return {
         ...prev,
         draft: nextDraft,
-        errors: validateBindingDraft(nextDraft),
+        errors: validateBindingDraft(nextDraft, ctx),
       };
     });
     // Mirror an Omit toggle straight into workflow state so the review-side
@@ -211,6 +214,28 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   );
   const hasBlockers = blockers.length > 0;
 
+  // Aggregate binding-level validation errors across all regions. Commit is
+  // blocked until the last one is resolved — the in-popover validator mirrors
+  // the same rules so users never see the Commit-side message without a
+  // matching per-field error on the open popover.
+  const bindingErrorCount = regions.reduce((sum, r) => {
+    const ctx: Record<string, ReturnType<typeof draftValidationContext>> = {};
+    for (const binding of r.columnBindings ?? []) {
+      ctx[binding.sourceLocator] = draftValidationContext(
+        binding,
+        resolveColumnDefinitionType
+      );
+    }
+    const regionErrors = validateRegionBindings(r, ctx);
+    return sum + Object.keys(regionErrors).length;
+  }, 0);
+  const bindingDisabledReason =
+    bindingErrorCount > 0
+      ? `${bindingErrorCount} binding${bindingErrorCount === 1 ? "" : "s"} ha${bindingErrorCount === 1 ? "s" : "ve"} validation errors — fix them before committing.`
+      : null;
+  const effectiveCommitDisabledReason =
+    commitDisabledReason ?? bindingDisabledReason;
+
   return (
     <Stack spacing={2} sx={{ width: "100%", minWidth: 0 }}>
       <Stack
@@ -243,7 +268,9 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
             variant="contained"
             onClick={onCommit}
             disabled={
-              isCommitting || hasBlockers || Boolean(commitDisabledReason)
+              isCommitting ||
+              hasBlockers ||
+              Boolean(effectiveCommitDisabledReason)
             }
           >
             {isCommitting ? "Committing…" : "Commit plan"}
@@ -251,9 +278,9 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
         </Stack>
       </Stack>
 
-      {(hasBlockers || commitDisabledReason) && (
+      {(hasBlockers || effectiveCommitDisabledReason) && (
         <Alert severity="error">
-          {commitDisabledReason ??
+          {effectiveCommitDisabledReason ??
             `${blockers.length} blocker${blockers.length === 1 ? "" : "s"} prevent commit. Resolve below, or cancel and fix the source file.`}
         </Alert>
       )}

@@ -1,7 +1,9 @@
 import {
   hasRegionErrors,
   regionsWithErrors,
+  validateBindingDraft,
   validateRegion,
+  validateRegionBindings,
   validateRegions,
 } from "../utils/region-editor-validation.util";
 import type { RegionDraft } from "../utils/region-editor.types";
@@ -275,5 +277,122 @@ describe("validateRegions — multi-region", () => {
   test("regionsWithErrors returns failing ids in input order", () => {
     const result = validateRegions([bad, good]);
     expect(regionsWithErrors([bad, good], result)).toEqual(["bad"]);
+  });
+});
+
+describe("validateBindingDraft — single binding", () => {
+  const baseBinding = {
+    sourceLocator: "header:Email",
+    columnDefinitionId: "coldef_email",
+    confidence: 0.9,
+  };
+
+  test("accepts a baseline binding with no overrides", () => {
+    expect(validateBindingDraft(baseBinding)).toEqual({});
+  });
+
+  test("flags a normalizedKey that violates the regex", () => {
+    expect(
+      validateBindingDraft({ ...baseBinding, normalizedKey: "Bad Key" })
+    ).toMatchObject({ normalizedKey: expect.any(String) });
+  });
+
+  test("accepts valid normalizedKey overrides", () => {
+    expect(
+      validateBindingDraft({ ...baseBinding, normalizedKey: "email_override" })
+    ).toEqual({});
+  });
+
+  test("flags reference-typed binding without refEntityKey", () => {
+    expect(
+      validateBindingDraft(baseBinding, { columnDefinitionType: "reference" })
+    ).toMatchObject({ refEntityKey: expect.any(String) });
+  });
+
+  test("reference-typed binding with refEntityKey passes", () => {
+    expect(
+      validateBindingDraft(
+        { ...baseBinding, refEntityKey: "customers" },
+        { columnDefinitionType: "reference" }
+      )
+    ).toEqual({});
+  });
+
+  test("does NOT flag excluded bindings for missing columnDefinitionId / refEntityKey", () => {
+    expect(
+      validateBindingDraft(
+        {
+          ...baseBinding,
+          columnDefinitionId: null,
+          excluded: true,
+        },
+        { columnDefinitionType: "reference" }
+      )
+    ).toEqual({});
+  });
+});
+
+describe("validateRegionBindings — cross-binding collisions", () => {
+  function makeBinding(
+    sourceLocator: string,
+    overrides: Partial<
+      import("../utils/region-editor.types").ColumnBindingDraft
+    > = {}
+  ) {
+    return {
+      sourceLocator,
+      columnDefinitionId: `coldef_${sourceLocator}`,
+      confidence: 0.9,
+      ...overrides,
+    };
+  }
+
+  test("returns an empty map when bindings are valid", () => {
+    const region = baseRegion({
+      columnBindings: [
+        makeBinding("header:Email", { normalizedKey: "email" }),
+        makeBinding("header:Name", { normalizedKey: "name" }),
+      ],
+    });
+    expect(validateRegionBindings(region)).toEqual({});
+  });
+
+  test("flags two bindings with the same normalizedKey override", () => {
+    const region = baseRegion({
+      columnBindings: [
+        makeBinding("header:Email", { normalizedKey: "dup_key" }),
+        makeBinding("header:Name", { normalizedKey: "dup_key" }),
+      ],
+    });
+    const errors = validateRegionBindings(region);
+    expect(errors["header:Email"]?.normalizedKey).toMatch(/duplicate/i);
+    expect(errors["header:Name"]?.normalizedKey).toMatch(/duplicate/i);
+  });
+
+  test("excluded bindings don't participate in collision detection", () => {
+    const region = baseRegion({
+      columnBindings: [
+        makeBinding("header:Email", { normalizedKey: "dup_key" }),
+        makeBinding("header:Name", {
+          normalizedKey: "dup_key",
+          excluded: true,
+        }),
+      ],
+    });
+    const errors = validateRegionBindings(region);
+    expect(errors["header:Email"]).toBeUndefined();
+    expect(errors["header:Name"]).toBeUndefined();
+  });
+
+  test("returns errors keyed by sourceLocator for each failing binding", () => {
+    const region = baseRegion({
+      columnBindings: [
+        makeBinding("header:A", { normalizedKey: "Bad Key" }),
+        makeBinding("col:2", { normalizedKey: "good_key" }),
+      ],
+    });
+    const errors = validateRegionBindings(region);
+    expect(errors["header:A"]?.normalizedKey).toBeDefined();
+    expect(errors["col:2"]).toBeUndefined();
   });
 });

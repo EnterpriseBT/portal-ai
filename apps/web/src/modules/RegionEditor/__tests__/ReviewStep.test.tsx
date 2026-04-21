@@ -130,6 +130,48 @@ describe("ReviewStepUI — binding editor popover", () => {
     ).toBeNull();
   });
 
+  test("Commit stays disabled while any binding carries a validation error", () => {
+    const regionWithBadBinding: RegionDraft = {
+      ...region,
+      columnBindings: [
+        {
+          sourceLocator: "header:Email",
+          columnDefinitionId: "coldef_email",
+          columnDefinitionLabel: "Email",
+          confidence: 0.9,
+          // Two bindings with the same override → collision.
+          normalizedKey: "dup_key",
+        },
+        {
+          sourceLocator: "col:3",
+          columnDefinitionId: "coldef_name",
+          columnDefinitionLabel: "Name",
+          confidence: 0.7,
+          normalizedKey: "dup_key",
+        },
+      ],
+    };
+    render(
+      <ReviewStepUI
+        regions={[regionWithBadBinding]}
+        overallConfidence={0.85}
+        onJumpToRegion={jest.fn()}
+        onEditBinding={jest.fn()}
+        onUpdateBinding={jest.fn()}
+        onToggleBindingExcluded={jest.fn()}
+        columnDefinitionSearch={makeSearchStub()}
+        onCommit={jest.fn()}
+        onBack={jest.fn()}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /commit plan/i })
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/bindings have validation errors/i)
+    ).toBeInTheDocument();
+  });
+
   test("falls back to onEditBinding when onUpdateBinding is not provided (legacy)", () => {
     const onEditBinding = jest.fn<(regionId: string, sourceLocator: string) => void>();
     render(

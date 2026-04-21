@@ -67,12 +67,18 @@ export {
 export {
   validateRegion,
   validateRegions,
+  validateBindingDraft,
+  validateRegionBindings,
+  hasAnyBindingErrors,
   hasRegionErrors,
   regionsWithErrors,
 } from "./utils/region-editor-validation.util";
 export type {
   RegionErrors,
   RegionEditorErrors,
+  BindingErrors,
+  BindingValidationContext,
+  RegionBindingErrors,
 } from "./utils/region-editor-validation.util";
 
 export {
