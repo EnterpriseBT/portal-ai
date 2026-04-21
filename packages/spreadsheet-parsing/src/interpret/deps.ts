@@ -52,7 +52,22 @@ export interface InterpretDeps {
    * a real pino instance directly.
    */
   logger?: ParserLogger;
+
+  /**
+   * Max number of LLM calls in flight at once during the per-region stages
+   * (`classify-columns`, `recommend-records-axis-name`). Caps the fan-out so
+   * workbooks with many regions don't spray the provider with unlimited
+   * concurrent requests. Default: `DEFAULT_INTERPRET_CONCURRENCY` (8).
+   */
+  concurrency?: number;
 }
+
+/**
+ * Default value for `InterpretDeps.concurrency`. Picked empirically — enough
+ * parallelism to hide per-call LLM latency for typical workbooks (≤ ~20
+ * regions) while staying well clear of typical Anthropic rate limits.
+ */
+export const DEFAULT_INTERPRET_CONCURRENCY = 8;
 
 export type {
   AxisNameRecommenderFn,

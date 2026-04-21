@@ -144,6 +144,110 @@ describe("classifyColumns — injected classifier override", () => {
     expect(classifications[0].confidence).toBe(0.91);
   });
 
+  it("runs the classifier for multiple regions concurrently, bounded by the concurrency cap", async () => {
+    // Three regions on separate sheets, each needs a classifier call.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: ["A", "B", "C"].map((name) => ({
+          name,
+          dimensions: { rows: 2, cols: 2 },
+          cells: [
+            { row: 1, col: 1, value: "h1" },
+            { row: 1, col: 2, value: "h2" },
+            { row: 2, col: 1, value: "v1" },
+            { row: 2, col: 2, value: "v2" },
+          ],
+        })),
+      },
+      regionHints: ["A", "B", "C"].map((sheet) => ({
+        sheet,
+        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+        targetEntityDefinitionId: `ent-${sheet}`,
+        orientation: "rows-as-records",
+        headerAxis: "row",
+      })),
+    };
+
+    let active = 0;
+    let peak = 0;
+    const injected: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async (cands) => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 10));
+        active--;
+        return cands.map<ColumnClassification>((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId: `cd-${c.sourceHeader}`,
+          confidence: 0.9,
+          rationale: "ai",
+        }));
+      }
+    );
+    let state = detectRegions(createInitialState(input));
+    state = detectHeaders(state);
+    state = await classifyColumns(state, {
+      classifier: injected,
+      columnDefinitionCatalog: DEFAULT_CATALOG,
+      concurrency: 3,
+    });
+    expect(injected).toHaveBeenCalledTimes(3);
+    expect(peak).toBeGreaterThanOrEqual(2); // at least two ran concurrently
+    expect(peak).toBeLessThanOrEqual(3);
+    // Each region still got its own classification set.
+    for (const region of state.detectedRegions) {
+      expect(state.columnClassifications.get(region.id)).toBeTruthy();
+    }
+  });
+
+  it("respects the concurrency cap when it is lower than the region count", async () => {
+    const input: InterpretInput = {
+      workbook: {
+        sheets: Array.from({ length: 6 }, (_, i) => ({
+          name: `S${i}`,
+          dimensions: { rows: 2, cols: 2 },
+          cells: [
+            { row: 1, col: 1, value: "h1" },
+            { row: 1, col: 2, value: "h2" },
+            { row: 2, col: 1, value: "v1" },
+            { row: 2, col: 2, value: "v2" },
+          ],
+        })),
+      },
+      regionHints: Array.from({ length: 6 }, (_, i) => ({
+        sheet: `S${i}`,
+        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+        targetEntityDefinitionId: `ent-${i}`,
+        orientation: "rows-as-records" as const,
+        headerAxis: "row" as const,
+      })),
+    };
+
+    let active = 0;
+    let peak = 0;
+    const injected: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async (cands) => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 10));
+        active--;
+        return cands.map<ColumnClassification>((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId: null,
+          confidence: 0,
+          rationale: "test",
+        }));
+      }
+    );
+    let state = detectRegions(createInitialState(input));
+    state = detectHeaders(state);
+    await classifyColumns(state, { classifier: injected, concurrency: 2 });
+    expect(injected).toHaveBeenCalledTimes(6);
+    expect(peak).toBeLessThanOrEqual(2);
+  });
+
   it("skips classification entirely when headerAxis === 'none' (no headers to classify)", async () => {
     const input: InterpretInput = {
       workbook: {

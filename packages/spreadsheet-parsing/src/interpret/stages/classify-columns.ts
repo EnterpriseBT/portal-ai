@@ -1,5 +1,6 @@
 import type { Region } from "../../plan/index.js";
 import type { Sheet } from "../../workbook/index.js";
+import { DEFAULT_INTERPRET_CONCURRENCY } from "../deps.js";
 import type { InterpretDeps } from "../deps.js";
 import type {
   ClassifierCandidate,
@@ -9,6 +10,7 @@ import type {
   HeaderCandidate,
   InterpretState,
 } from "../types.js";
+import { pLimit } from "../util/p-limit.js";
 
 const SAMPLE_LIMIT = 10;
 
@@ -130,6 +132,13 @@ export async function classifyColumns(
   deps: InterpretDeps = {}
 ): Promise<InterpretState> {
   const next = new Map(state.columnClassifications);
+  const classifier = deps.classifier ?? runBuiltIn;
+  const catalog = deps.columnDefinitionCatalog ?? [];
+
+  // Synchronous prep pass — figure out which regions need an LLM call and
+  // record empty classifications for the rest. Cheap and deterministic.
+  type PendingWork = { regionId: string; candidates: ClassifierCandidate[] };
+  const pending: PendingWork[] = [];
   for (const region of state.detectedRegions) {
     if (headerAxisDisabled(region)) {
       next.set(region.id, []);
@@ -147,15 +156,24 @@ export async function classifyColumns(
       continue;
     }
     const candidates = candidatesFromHeader(best, region, sheet);
-    const classifier = deps.classifier ?? runBuiltIn;
-    const result = await classifier(
-      candidates,
-      deps.columnDefinitionCatalog ?? []
-    );
+    pending.push({ regionId: region.id, candidates });
+  }
+
+  // Fire the classifier across regions in parallel, capped by the shared
+  // concurrency budget. `Promise.all(pending.map(...))` preserves input order
+  // regardless of resolve order, so the final Map mirrors `detectedRegions`.
+  const limit = pLimit(deps.concurrency ?? DEFAULT_INTERPRET_CONCURRENCY);
+  const results = await Promise.all(
+    pending.map((work) =>
+      limit(() => Promise.resolve(classifier(work.candidates, catalog)))
+    )
+  );
+  for (let i = 0; i < pending.length; i++) {
+    const result = results[i];
     const classifications: ColumnClassification[] = Array.isArray(result)
       ? result
       : (result as ClassifierResult).classifications;
-    next.set(region.id, classifications);
+    next.set(pending[i].regionId, classifications);
   }
   return { ...state, columnClassifications: next };
 }

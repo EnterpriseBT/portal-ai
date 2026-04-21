@@ -1,7 +1,9 @@
 import type { Region } from "../../plan/index.js";
 import type { Sheet } from "../../workbook/index.js";
+import { DEFAULT_INTERPRET_CONCURRENCY } from "../deps.js";
 import type { InterpretDeps } from "../deps.js";
 import type { HeaderCandidate, InterpretState } from "../types.js";
+import { pLimit } from "../util/p-limit.js";
 
 const MAX_AXIS_LABELS = 30;
 
@@ -61,26 +63,42 @@ export async function recommendRecordsAxisName(
 ): Promise<InterpretState> {
   const next = new Map(state.recordsAxisNameSuggestions);
   const recommender = deps.axisNameRecommender;
+  if (!recommender) return { ...state, recordsAxisNameSuggestions: next };
+
+  // Synchronous prep pass — collect axis labels for every region that
+  // actually needs a recommendation. Skips pivoted regions with user-supplied
+  // names and non-pivoted regions entirely.
+  type PendingWork = { regionId: string; labels: string[] };
+  const pending: PendingWork[] = [];
   for (const region of state.detectedRegions) {
     if (!isPivoted(region)) continue;
     if (region.recordsAxisName && region.recordsAxisName.source === "user")
       continue;
-    if (!recommender) continue;
-
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
     if (!sheet) continue;
     const headers = state.headerCandidates.get(region.id);
     const best = headers?.[0];
     if (!best) continue;
+    pending.push({
+      regionId: region.id,
+      labels: collectAxisLabelsFromHeader(best, sheet, region),
+    });
+  }
 
-    const labels = collectAxisLabelsFromHeader(best, sheet, region);
-    const raw = await recommender(labels);
+  const limit = pLimit(deps.concurrency ?? DEFAULT_INTERPRET_CONCURRENCY);
+  const results = await Promise.all(
+    pending.map((work) =>
+      limit(() => Promise.resolve(recommender(work.labels)))
+    )
+  );
+  for (let i = 0; i < pending.length; i++) {
+    const raw = results[i];
     const suggestion =
       raw && typeof raw === "object" && "suggestion" in raw
         ? raw.suggestion
         : raw;
     if (suggestion && suggestion.name.trim() !== "") {
-      next.set(region.id, suggestion);
+      next.set(pending[i].regionId, suggestion);
     }
   }
   return { ...state, recordsAxisNameSuggestions: next };

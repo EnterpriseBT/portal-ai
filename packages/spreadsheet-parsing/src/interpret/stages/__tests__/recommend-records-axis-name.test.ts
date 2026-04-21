@@ -118,6 +118,63 @@ describe("recommendRecordsAxisName", () => {
     expect(recommender).not.toHaveBeenCalled();
   });
 
+  it("fans out across pivoted regions concurrently, bounded by the concurrency cap", async () => {
+    // Three pivoted regions, each requiring a recommender call.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: ["A", "B", "C"].map((name) => ({
+          name,
+          dimensions: { rows: 4, cols: 5 },
+          cells: [
+            { row: 1, col: 1, value: "" },
+            { row: 1, col: 2, value: "Jan" },
+            { row: 1, col: 3, value: "Feb" },
+            { row: 1, col: 4, value: "Mar" },
+            { row: 1, col: 5, value: "Apr" },
+            { row: 2, col: 1, value: "Revenue" },
+            { row: 3, col: 1, value: "Cost" },
+            { row: 4, col: 1, value: "Profit" },
+          ],
+        })),
+      },
+      regionHints: ["A", "B", "C"].map((sheet) => ({
+        sheet,
+        bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 5 },
+        targetEntityDefinitionId: `ent-${sheet}`,
+        orientation: "columns-as-records",
+        headerAxis: "row",
+      })),
+    };
+
+    let active = 0;
+    let peak = 0;
+    const recommender: jest.MockedFunction<AxisNameRecommenderFn> = jest.fn(
+      async () => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 10));
+        active--;
+        return { name: "Month", confidence: 0.8 };
+      }
+    );
+
+    let state = detectRegions(createInitialState(input));
+    state = detectHeaders(state);
+    state = await recommendRecordsAxisName(state, {
+      axisNameRecommender: recommender,
+      concurrency: 3,
+    });
+    expect(recommender).toHaveBeenCalledTimes(3);
+    expect(peak).toBeGreaterThanOrEqual(2);
+    expect(peak).toBeLessThanOrEqual(3);
+    for (const region of state.detectedRegions) {
+      expect(state.recordsAxisNameSuggestions.get(region.id)).toEqual({
+        name: "Month",
+        confidence: 0.8,
+      });
+    }
+  });
+
   it("the default recommender returns null (no AI in Phase 3)", async () => {
     let state = detectRegions(createInitialState(pivotedNoNameInput()));
     state = detectHeaders(state);
