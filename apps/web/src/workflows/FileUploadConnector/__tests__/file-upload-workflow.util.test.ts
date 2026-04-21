@@ -647,3 +647,251 @@ describe("useFileUploadWorkflow — atomic commit (deferred persistence)", () =>
     expect(result.current.plan).toBeNull();
   });
 });
+
+describe("useFileUploadWorkflow — binding edits", () => {
+  // Fixtures for binding-edit tests. Two regions on separate sheets so we can
+  // assert cross-region isolation; one binding uses `byHeaderName` locator,
+  // the other uses `byColumnIndex` so both serialisation paths are exercised.
+  const planRegionA = {
+    id: "region-a",
+    sheet: DEMO_WORKBOOK.sheets[0].name,
+    bounds: { startRow: 1, endRow: 4, startCol: 1, endCol: 3 },
+    boundsMode: "absolute" as const,
+    orientation: "rows-as-records" as const,
+    headerAxis: "row" as const,
+    targetEntityDefinitionId: "ent_contact",
+    identityStrategy: { kind: "rowPosition" as const, confidence: 0.9 },
+    columnBindings: [
+      {
+        sourceLocator: { kind: "byHeaderName" as const, name: "Email" },
+        columnDefinitionId: "coldef_email",
+        confidence: 0.9,
+      },
+      {
+        sourceLocator: { kind: "byColumnIndex" as const, col: 3 },
+        columnDefinitionId: "coldef_name",
+        confidence: 0.7,
+      },
+    ],
+    skipRules: [],
+    drift: {
+      headerShiftRows: 0,
+      addedColumns: "halt" as const,
+      removedColumns: { max: 0, action: "halt" as const },
+    },
+    confidence: { region: 0.9, aggregate: 0.85 },
+    warnings: [],
+  };
+  const planRegionB = {
+    ...planRegionA,
+    id: "region-b",
+    sheet: DEMO_WORKBOOK.sheets[1]?.name ?? DEMO_WORKBOOK.sheets[0].name,
+    targetEntityDefinitionId: "ent_order",
+    columnBindings: [
+      {
+        sourceLocator: { kind: "byHeaderName" as const, name: "Total" },
+        columnDefinitionId: "coldef_total",
+        confidence: 0.95,
+      },
+    ],
+  };
+
+  const draftRegionA: RegionDraft = {
+    id: "region-a",
+    sheetId: DEMO_WORKBOOK.sheets[0].id,
+    bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+    orientation: "rows-as-records",
+    headerAxis: "row",
+    targetEntityDefinitionId: "ent_contact",
+    columnBindings: [
+      {
+        sourceLocator: "header:Email",
+        columnDefinitionId: "coldef_email",
+        confidence: 0.9,
+      },
+      {
+        sourceLocator: "col:3",
+        columnDefinitionId: "coldef_name",
+        confidence: 0.7,
+      },
+    ],
+  };
+  const draftRegionB: RegionDraft = {
+    id: "region-b",
+    sheetId: DEMO_WORKBOOK.sheets[1]?.id ?? DEMO_WORKBOOK.sheets[0].id,
+    bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+    orientation: "rows-as-records",
+    headerAxis: "row",
+    targetEntityDefinitionId: "ent_order",
+    columnBindings: [
+      {
+        sourceLocator: "header:Total",
+        columnDefinitionId: "coldef_total",
+        confidence: 0.95,
+      },
+    ],
+  };
+
+  const PLAN: import("@portalai/core/contracts").LayoutPlan = {
+    planVersion: "1.0.0",
+    workbookFingerprint: { sheetNames: [], dimensions: {}, anchorCells: [] },
+    regions: [planRegionA, planRegionB],
+    confidence: {
+      overall: 0.88,
+      perRegion: { "region-a": 0.85, "region-b": 0.9 },
+    },
+  } as unknown as import("@portalai/core/contracts").LayoutPlan;
+
+  async function seedInterpretedState() {
+    const callbacks = makeCallbacks({
+      runInterpret: jest
+        .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
+        .mockResolvedValue({
+          regions: [draftRegionA, draftRegionB],
+          plan: PLAN,
+          overallConfidence: 0.88,
+        }),
+    });
+    const hook = renderHook(() => useFileUploadWorkflow(callbacks));
+    hook.result.current.addFiles([SAMPLE_FILE]);
+    await act(async () => {
+      await hook.result.current.startParse();
+    });
+    act(() => {
+      hook.result.current.onRegionDraft({
+        sheetId: DEMO_WORKBOOK.sheets[0].id,
+        bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+      });
+    });
+    await act(async () => {
+      await hook.result.current.onInterpret();
+    });
+    return hook;
+  }
+
+  test("onToggleBindingExcluded flips the flag on both state.regions and state.plan", async () => {
+    const hook = await seedInterpretedState();
+    act(() =>
+      hook.result.current.onToggleBindingExcluded(
+        "region-a",
+        "header:Email",
+        true
+      )
+    );
+    const region = hook.result.current.regions.find((r) => r.id === "region-a");
+    const draftBinding = region?.columnBindings?.find(
+      (b) => b.sourceLocator === "header:Email"
+    );
+    expect(draftBinding?.excluded).toBe(true);
+
+    const planRegion = hook.result.current.plan?.regions.find(
+      (r) => r.id === "region-a"
+    );
+    const planBinding = planRegion?.columnBindings.find(
+      (b) =>
+        b.sourceLocator.kind === "byHeaderName" &&
+        b.sourceLocator.name === "Email"
+    );
+    expect(planBinding?.excluded).toBe(true);
+  });
+
+  test("onUpdateBinding merges the patch onto both state.regions and state.plan", async () => {
+    const hook = await seedInterpretedState();
+    act(() =>
+      hook.result.current.onUpdateBinding("region-a", "header:Email", {
+        normalizedKey: "email_override",
+        required: true,
+      })
+    );
+    const draftBinding = hook.result.current.regions
+      .find((r) => r.id === "region-a")
+      ?.columnBindings?.find((b) => b.sourceLocator === "header:Email");
+    expect(draftBinding).toMatchObject({
+      normalizedKey: "email_override",
+      required: true,
+    });
+    const planBinding = hook.result.current.plan?.regions
+      .find((r) => r.id === "region-a")
+      ?.columnBindings.find(
+        (b) =>
+          b.sourceLocator.kind === "byHeaderName" &&
+          b.sourceLocator.name === "Email"
+      );
+    expect(planBinding).toMatchObject({
+      normalizedKey: "email_override",
+      required: true,
+    });
+  });
+
+  test("matches binding by serialized sourceLocator for both byHeaderName and byColumnIndex", async () => {
+    const hook = await seedInterpretedState();
+    act(() =>
+      hook.result.current.onToggleBindingExcluded("region-a", "col:3", true)
+    );
+    const draftBinding = hook.result.current.regions
+      .find((r) => r.id === "region-a")
+      ?.columnBindings?.find((b) => b.sourceLocator === "col:3");
+    expect(draftBinding?.excluded).toBe(true);
+
+    const planBinding = hook.result.current.plan?.regions
+      .find((r) => r.id === "region-a")
+      ?.columnBindings.find(
+        (b) => b.sourceLocator.kind === "byColumnIndex" && b.sourceLocator.col === 3
+      );
+    expect(planBinding?.excluded).toBe(true);
+  });
+
+  test("leaves bindings on other regions untouched", async () => {
+    const hook = await seedInterpretedState();
+    act(() =>
+      hook.result.current.onUpdateBinding("region-a", "header:Email", {
+        normalizedKey: "email_override",
+      })
+    );
+    const regionBBinding = hook.result.current.regions
+      .find((r) => r.id === "region-b")
+      ?.columnBindings?.find((b) => b.sourceLocator === "header:Total");
+    expect(regionBBinding).toMatchObject({
+      sourceLocator: "header:Total",
+      columnDefinitionId: "coldef_total",
+    });
+    expect(regionBBinding?.normalizedKey).toBeUndefined();
+  });
+
+  test("is a no-op when regionId is unknown", async () => {
+    const hook = await seedInterpretedState();
+    const before = hook.result.current.regions;
+    act(() =>
+      hook.result.current.onUpdateBinding("region-ghost", "header:Email", {
+        normalizedKey: "x",
+      })
+    );
+    expect(hook.result.current.regions).toBe(before);
+  });
+
+  test("is a no-op when sourceLocator does not match any binding in the region", async () => {
+    const hook = await seedInterpretedState();
+    const before = hook.result.current.regions;
+    act(() =>
+      hook.result.current.onToggleBindingExcluded(
+        "region-a",
+        "header:NoSuchColumn",
+        true
+      )
+    );
+    expect(hook.result.current.regions).toBe(before);
+  });
+
+  test("is a no-op when no plan has been produced yet", () => {
+    const { result } = renderHook(() =>
+      useFileUploadWorkflow(makeCallbacks())
+    );
+    // No interpret has run; state.plan is null.
+    act(() =>
+      result.current.onUpdateBinding("region-a", "header:Email", {
+        normalizedKey: "x",
+      })
+    );
+    expect(result.current.plan).toBeNull();
+  });
+});

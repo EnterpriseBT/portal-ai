@@ -31,7 +31,13 @@ function indexSheets(workbook: Workbook): SheetIndex {
   return { byId, byName };
 }
 
-function serializeLocator(locator: BackendLocator): string {
+/**
+ * Serialise a backend `BindingSourceLocator` to the opaque string form the
+ * frontend uses for `ColumnBindingDraft.sourceLocator`. Exported so the
+ * workflow hook can match drafts against plan bindings without duplicating
+ * the format.
+ */
+export function serializeLocator(locator: BackendLocator): string {
   switch (locator.kind) {
     case "byHeaderName":
       return `header:${locator.name}`;

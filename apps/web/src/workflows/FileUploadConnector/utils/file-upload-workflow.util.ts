@@ -5,6 +5,7 @@ import type { LayoutPlan } from "@portalai/core/contracts";
 
 import type {
   CellBounds,
+  ColumnBindingDraft,
   RegionDraft,
   Workbook,
 } from "../../../modules/RegionEditor";
@@ -14,6 +15,7 @@ import type {
   FileUploadWorkflowState,
   UploadPhase,
 } from "./file-upload-fixtures.util";
+import { serializeLocator } from "./layout-plan-mapping.util";
 
 /**
  * Per-file upload progress shape rendered by the UploadStep. Migrated into
@@ -93,6 +95,16 @@ export interface UseFileUploadWorkflowReturn extends FileUploadWorkflowState {
   onRegionUpdate: (regionId: string, updates: Partial<RegionDraft>) => void;
   onRegionDelete: (regionId: string) => void;
   onJumpToRegion: (regionId: string) => void;
+  onUpdateBinding: (
+    regionId: string,
+    sourceLocator: string,
+    patch: Partial<ColumnBindingDraft>
+  ) => void;
+  onToggleBindingExcluded: (
+    regionId: string,
+    sourceLocator: string,
+    excluded: boolean
+  ) => void;
   onInterpret: () => Promise<void>;
   onSkipToReview: () => void;
   onCommit: () => Promise<void>;
@@ -130,6 +142,39 @@ function toServerErrorFromUnknown(err: unknown): ServerError {
     return { message: err.message, code: "UNKNOWN_ERROR" };
   }
   return { message: "Unknown error", code: "UNKNOWN_ERROR" };
+}
+
+/**
+ * Fields shared between the frontend `ColumnBindingDraft` and the backend
+ * `ColumnBinding`. `patchBinding` filters the incoming patch against this
+ * allowlist before mirroring it into `state.plan` so frontend-only fields
+ * (`columnDefinitionLabel`, `columnDefinitionType`, the string form of
+ * `sourceLocator`) never leak into the commit payload.
+ */
+const PLAN_MIRROR_KEYS = [
+  "columnDefinitionId",
+  "excluded",
+  "normalizedKey",
+  "required",
+  "defaultValue",
+  "format",
+  "enumValues",
+  "refEntityKey",
+  "refNormalizedKey",
+  "confidence",
+  "rationale",
+] as const;
+
+function toPlanPatch(
+  patch: Partial<ColumnBindingDraft>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of PLAN_MIRROR_KEYS) {
+    if (key in patch) {
+      out[key] = (patch as Record<string, unknown>)[key];
+    }
+  }
+  return out;
 }
 
 function mergeFilesByName(existing: File[], incoming: File[]): File[] {
@@ -316,6 +361,80 @@ export function useFileUploadWorkflow(
     });
   }, []);
 
+  /**
+   * Apply `patch` to the matching binding in both `state.regions` (the
+   * draft-side store that drives the editor) and `state.plan` (the source of
+   * truth for commit). Matching is by `regionId` + the string-serialised
+   * `sourceLocator` — same form as `ColumnBindingDraft.sourceLocator`.
+   *
+   * Returns `prev` unchanged when any lookup fails so React skips the rerender.
+   */
+  const patchBinding = useCallback(
+    (
+      prev: FileUploadWorkflowState,
+      regionId: string,
+      sourceLocator: string,
+      patch: Partial<ColumnBindingDraft>
+    ): FileUploadWorkflowState => {
+      const region = prev.regions.find((r) => r.id === regionId);
+      if (!region) return prev;
+      const existingBindings = region.columnBindings ?? [];
+      const bindingIndex = existingBindings.findIndex(
+        (b) => b.sourceLocator === sourceLocator
+      );
+      if (bindingIndex === -1) return prev;
+
+      const nextBindings: ColumnBindingDraft[] = existingBindings.map(
+        (b, i) => (i === bindingIndex ? { ...b, ...patch } : b)
+      );
+      const nextRegions = prev.regions.map((r) =>
+        r.id === regionId ? { ...r, columnBindings: nextBindings } : r
+      );
+
+      // Mirror into the plan so the commit payload reflects the edit.
+      let nextPlan = prev.plan;
+      if (prev.plan) {
+        const planPatch = toPlanPatch(patch);
+        nextPlan = {
+          ...prev.plan,
+          regions: prev.plan.regions.map((planRegion) => {
+            if (planRegion.id !== regionId) return planRegion;
+            return {
+              ...planRegion,
+              columnBindings: planRegion.columnBindings.map((pb) =>
+                serializeLocator(pb.sourceLocator) === sourceLocator
+                  ? { ...pb, ...planPatch }
+                  : pb
+              ),
+            };
+          }),
+        };
+      }
+      return { ...prev, regions: nextRegions, plan: nextPlan };
+    },
+    []
+  );
+
+  const onUpdateBinding = useCallback(
+    (
+      regionId: string,
+      sourceLocator: string,
+      patch: Partial<ColumnBindingDraft>
+    ) => {
+      setState((prev) => patchBinding(prev, regionId, sourceLocator, patch));
+    },
+    [patchBinding]
+  );
+
+  const onToggleBindingExcluded = useCallback(
+    (regionId: string, sourceLocator: string, excluded: boolean) => {
+      setState((prev) =>
+        patchBinding(prev, regionId, sourceLocator, { excluded })
+      );
+    },
+    [patchBinding]
+  );
+
   const onInterpret = useCallback(async () => {
     if (state.regions.length === 0) return;
     const token = ++runTokenRef.current;
@@ -410,6 +529,8 @@ export function useFileUploadWorkflow(
     onRegionUpdate,
     onRegionDelete,
     onJumpToRegion,
+    onUpdateBinding,
+    onToggleBindingExcluded,
     onInterpret,
     onSkipToReview,
     onCommit,
