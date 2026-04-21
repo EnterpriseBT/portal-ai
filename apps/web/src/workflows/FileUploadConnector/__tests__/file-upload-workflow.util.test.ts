@@ -40,7 +40,10 @@ function makeCallbacks(
   return {
     parseFile: jest
       .fn<FileUploadWorkflowCallbacks["parseFile"]>()
-      .mockResolvedValue(DEMO_WORKBOOK),
+      .mockResolvedValue({
+        workbook: DEMO_WORKBOOK,
+        uploadSessionId: "sess_test",
+      }),
     runInterpret: jest
       .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
       .mockResolvedValue({
@@ -117,7 +120,10 @@ describe("useFileUploadWorkflow — startParse", () => {
       await result.current.startParse();
     });
 
-    expect(callbacks.parseFile).toHaveBeenCalledWith([SAMPLE_FILE]);
+    expect(callbacks.parseFile).toHaveBeenCalledWith(
+      [SAMPLE_FILE],
+      expect.objectContaining({ onProgress: expect.any(Function) })
+    );
     expect(result.current.uploadPhase).toBe("parsed");
     expect(result.current.workbook).toBe(DEMO_WORKBOOK);
     expect(result.current.step).toBe(1);
@@ -191,7 +197,10 @@ describe("useFileUploadWorkflow — region editing", () => {
         makeCallbacks({
           parseFile: jest
             .fn<FileUploadWorkflowCallbacks["parseFile"]>()
-            .mockResolvedValue(DEMO_WORKBOOK),
+            .mockResolvedValue({
+              workbook: DEMO_WORKBOOK,
+              uploadSessionId: "sess_test",
+            }),
         })
       )
     );
@@ -479,12 +488,15 @@ describe("useFileUploadWorkflow — reset", () => {
   });
 
   test("reset during an in-flight parse ignores the late resolution", async () => {
-    let resolveParse: (wb: Workbook) => void = () => {};
+    let resolveParse: (payload: {
+      workbook: Workbook;
+      uploadSessionId: string;
+    }) => void = () => {};
     const parseFile = jest
       .fn<FileUploadWorkflowCallbacks["parseFile"]>()
       .mockImplementation(
         () =>
-          new Promise<Workbook>((r) => {
+          new Promise<{ workbook: Workbook; uploadSessionId: string }>((r) => {
             resolveParse = r;
           })
       );
@@ -499,7 +511,10 @@ describe("useFileUploadWorkflow — reset", () => {
     act(() => result.current.reset());
 
     await act(async () => {
-      resolveParse(DEMO_WORKBOOK);
+      resolveParse({
+        workbook: DEMO_WORKBOOK,
+        uploadSessionId: "sess_late",
+      });
       await pending;
     });
 

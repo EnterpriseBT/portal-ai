@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { StepConfig } from "@portalai/core/ui";
 import type { LayoutPlan } from "@portalai/core/contracts";
@@ -28,6 +28,22 @@ export interface FileUploadProgress {
   percent: number;
 }
 
+/**
+ * Progress event reported by the container's `parseFile` callback while the
+ * streaming upload pipeline runs. Surfaced into the hook's `fileProgress`
+ * state so the UploadStep's progress bars reflect real XHR upload events.
+ */
+export interface ParseFileProgressEvent {
+  fileName: string;
+  loaded: number;
+  total: number;
+}
+
+export interface ParseFileOptions {
+  onProgress?: (event: ParseFileProgressEvent) => void;
+  signal?: AbortSignal;
+}
+
 export const FILE_UPLOAD_WORKFLOW_STEPS: StepConfig[] = [
   { label: "Upload", description: "Select a spreadsheet" },
   { label: "Draw regions", description: "Outline records on each sheet" },
@@ -35,7 +51,10 @@ export const FILE_UPLOAD_WORKFLOW_STEPS: StepConfig[] = [
 ];
 
 export interface FileUploadWorkflowCallbacks {
-  parseFile: (files: File[]) => Promise<Workbook>;
+  parseFile: (
+    files: File[],
+    options?: ParseFileOptions
+  ) => Promise<{ workbook: Workbook; uploadSessionId: string }>;
   /**
    * Pure-compute interpret — the server must NOT persist anything here. The
    * returned `plan` is held in memory until commit.
@@ -58,7 +77,12 @@ export interface FileUploadWorkflowCallbacks {
 }
 
 export interface UseFileUploadWorkflowReturn extends FileUploadWorkflowState {
-  fileProgress: Map<string, FileUploadProgress>;
+  /**
+   * Map-shaped view of `state.fileProgress` for callers that want the
+   * existing `Map<string, FileUploadProgress>` API. Derived fresh each render
+   * from the underlying record so the reference stability matches state.
+   */
+  fileProgressMap: Map<string, FileUploadProgress>;
 
   addFiles: (files: File[]) => void;
   removeFile: (filename: string) => void;
@@ -68,7 +92,9 @@ export interface UseFileUploadWorkflowReturn extends FileUploadWorkflowState {
   onRegionDraft: (draft: { sheetId: string; bounds: CellBounds }) => void;
   onRegionUpdate: (regionId: string, updates: Partial<RegionDraft>) => void;
   onRegionDelete: (regionId: string) => void;
+  onJumpToRegion: (regionId: string) => void;
   onInterpret: () => Promise<void>;
+  onSkipToReview: () => void;
   onCommit: () => Promise<void>;
   goBack: () => void;
   reset: () => void;
@@ -79,6 +105,7 @@ const EMPTY_STATE: FileUploadWorkflowState = {
   files: [],
   uploadPhase: "idle",
   overallUploadPercent: 0,
+  fileProgress: {},
   workbook: null,
   regions: [],
   selectedRegionId: null,
@@ -87,6 +114,7 @@ const EMPTY_STATE: FileUploadWorkflowState = {
   isInterpreting: false,
   isCommitting: false,
   plan: null,
+  uploadSessionId: null,
 };
 
 export function mintRegionId(sheetId: string): string {
@@ -122,7 +150,6 @@ export function useFileUploadWorkflow(
   // Bumped on every reset; in-flight async resolutions check this before
   // committing state so a reset mid-parse doesn't resurrect stale state.
   const runTokenRef = useRef(0);
-  const fileProgressRef = useRef<Map<string, FileUploadProgress>>(new Map());
 
   const addFiles = useCallback((next: File[]) => {
     setState((prev) => ({
@@ -143,20 +170,66 @@ export function useFileUploadWorkflow(
     if (currentFiles.length === 0) return;
 
     const token = ++runTokenRef.current;
+    // Seed per-file progress so the UploadStep can render a zeroed bar per
+    // file immediately, rather than popping in only after the first chunk.
+    const seededProgress: FileUploadWorkflowState["fileProgress"] = {};
+    for (const f of currentFiles) {
+      seededProgress[f.name] = {
+        fileName: f.name,
+        loaded: 0,
+        total: f.size,
+        percent: 0,
+      };
+    }
     setState((prev) => ({
       ...prev,
       uploadPhase: "uploading",
       overallUploadPercent: 0,
+      fileProgress: seededProgress,
       serverError: null,
     }));
 
+    const handleProgress = (event: ParseFileProgressEvent): void => {
+      if (token !== runTokenRef.current) return;
+      setState((prev) => {
+        const next = { ...prev.fileProgress };
+        const total = event.total > 0 ? event.total : 1;
+        const percent = Math.min(
+          100,
+          Math.max(0, Math.round((event.loaded / total) * 100))
+        );
+        next[event.fileName] = {
+          fileName: event.fileName,
+          loaded: event.loaded,
+          total: event.total,
+          percent,
+        };
+        let totalLoaded = 0;
+        let totalSize = 0;
+        for (const p of Object.values(next)) {
+          totalLoaded += p.loaded;
+          totalSize += p.total;
+        }
+        const overallUploadPercent =
+          totalSize > 0
+            ? Math.min(
+                100,
+                Math.max(0, Math.round((totalLoaded / totalSize) * 100))
+              )
+            : 0;
+        return {
+          ...prev,
+          fileProgress: next,
+          overallUploadPercent,
+        };
+      });
+    };
+
     try {
-      setState((prev) =>
-        token === runTokenRef.current
-          ? { ...prev, uploadPhase: "parsing", overallUploadPercent: 50 }
-          : prev
+      const { workbook, uploadSessionId } = await callbacks.parseFile(
+        currentFiles,
+        { onProgress: handleProgress }
       );
-      const workbook = await callbacks.parseFile(currentFiles);
       if (token !== runTokenRef.current) return;
 
       setState((prev) => ({
@@ -164,6 +237,7 @@ export function useFileUploadWorkflow(
         uploadPhase: "parsed",
         overallUploadPercent: 100,
         workbook,
+        uploadSessionId,
         activeSheetId: workbook.sheets[0]?.id ?? null,
         step: 1,
       }));
@@ -229,6 +303,19 @@ export function useFileUploadWorkflow(
     }));
   }, []);
 
+  const onJumpToRegion = useCallback((regionId: string) => {
+    setState((prev) => {
+      const target = prev.regions.find((r) => r.id === regionId);
+      if (!target) return prev;
+      return {
+        ...prev,
+        step: 1,
+        selectedRegionId: regionId,
+        activeSheetId: target.sheetId,
+      };
+    });
+  }, []);
+
   const onInterpret = useCallback(async () => {
     if (state.regions.length === 0) return;
     const token = ++runTokenRef.current;
@@ -261,6 +348,13 @@ export function useFileUploadWorkflow(
       }));
     }
   }, [callbacks, state.regions]);
+
+  const onSkipToReview = useCallback(() => {
+    setState((prev) => {
+      if (!prev.plan) return prev;
+      return { ...prev, step: 2 };
+    });
+  }, []);
 
   const onCommit = useCallback(async () => {
     if (!state.plan) return;
@@ -295,13 +389,17 @@ export function useFileUploadWorkflow(
 
   const reset = useCallback(() => {
     runTokenRef.current += 1;
-    fileProgressRef.current = new Map();
     setState(EMPTY_STATE);
   }, []);
 
+  const fileProgressMap = useMemo<Map<string, FileUploadProgress>>(
+    () => new Map(Object.entries(state.fileProgress)),
+    [state.fileProgress]
+  );
+
   return {
     ...state,
-    fileProgress: fileProgressRef.current,
+    fileProgressMap,
 
     addFiles,
     removeFile,
@@ -311,7 +409,9 @@ export function useFileUploadWorkflow(
     onRegionDraft,
     onRegionUpdate,
     onRegionDelete,
+    onJumpToRegion,
     onInterpret,
+    onSkipToReview,
     onCommit,
     goBack,
     reset,

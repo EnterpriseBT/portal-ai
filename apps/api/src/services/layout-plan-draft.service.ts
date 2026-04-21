@@ -92,6 +92,20 @@ export class LayoutPlanDraftService {
     // ── Resolve the workbook (inline body OR cached upload session) ───
     const workbook = await resolveWorkbook(body, organizationId);
 
+    // ── Load the connector definition so the new instance inherits every
+    //    capability its definition supports (future-proof — if a new flag
+    //    is added to the definition schema, the instance picks it up). ──
+    const definition = await DbService.repository.connectorDefinitions.findById(
+      body.connectorDefinitionId
+    );
+    if (!definition) {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_DEFINITION_NOT_FOUND,
+        `Connector definition not found: ${body.connectorDefinitionId}`
+      );
+    }
+
     // ── Create the ConnectorInstance ─────────────────────────────────
     const connectorInstanceId = SystemUtilities.id.v4.generate();
     await DbService.repository.connectorInstances.create({
@@ -100,7 +114,7 @@ export class LayoutPlanDraftService {
       connectorDefinitionId: body.connectorDefinitionId,
       name: body.name,
       status: "active",
-      enabledCapabilityFlags: { sync: true },
+      enabledCapabilityFlags: { ...definition.capabilityFlags },
       config: null,
       credentials: null,
       created: Date.now(),
@@ -195,9 +209,10 @@ export class LayoutPlanDraftService {
 }
 
 /**
- * Resolve the workbook from either the inline-body path or the streaming
- * upload-session path. Exactly one of the two fields is present at runtime
- * (the Zod schema's `refine` guards that); we assert to narrow.
+ * Resolve the workbook for a draft-flow request. The workbook always lives
+ * in the streaming upload session — Redis cache with a transparent S3
+ * re-stream on miss. The inline-body variant was retired in the PR 5
+ * cutover.
  */
 async function resolveWorkbook(
   body:
@@ -205,18 +220,8 @@ async function resolveWorkbook(
     | LayoutPlanCommitDraftRequestBody,
   organizationId: string
 ): Promise<WorkbookData> {
-  if (body.uploadSessionId) {
-    return FileUploadSessionService.resolveWorkbook(
-      body.uploadSessionId,
-      organizationId
-    );
-  }
-  if (body.workbook === undefined || body.workbook === null) {
-    throw new ApiError(
-      400,
-      ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
-      "Missing workbook — provide either `uploadSessionId` or `workbook`"
-    );
-  }
-  return body.workbook as WorkbookData;
+  return FileUploadSessionService.resolveWorkbook(
+    body.uploadSessionId,
+    organizationId
+  );
 }

@@ -2,11 +2,14 @@ import { describe, it, expect } from "@jest/globals";
 
 import type { RegionDraft, Workbook } from "../../../modules/RegionEditor";
 
+import type { LayoutPlan } from "@portalai/core/contracts";
+
 import {
   entityOptionsFromWorkbook,
   mergeStagedEntityOptions,
   overallConfidenceFromPlan,
   planRegionsToDrafts,
+  preserveUserRegionConfig,
   regionDraftsToHints,
   workbookToBackend,
 } from "../utils/layout-plan-mapping.util";
@@ -37,7 +40,7 @@ const makeWorkbook = (): Workbook => ({
 const baseDraft = (overrides: Partial<RegionDraft> = {}): RegionDraft => ({
   id: "r1",
   sheetId: "sheet_a",
-  bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
+  bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 1 },
   orientation: "rows-as-records",
   headerAxis: "row",
   targetEntityDefinitionId: "ent_contact",
@@ -64,7 +67,7 @@ describe("regionDraftsToHints", () => {
     expect(hints[0].targetEntityDefinitionId).toBe("ent_contact");
   });
 
-  it("passes optional axis-name + anchor fields through", () => {
+  it("passes optional axis-name + anchor fields through (anchor converted 0→1-indexed)", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
         recordsAxisName: { name: "Quarter", source: "user" },
@@ -79,10 +82,24 @@ describe("regionDraftsToHints", () => {
         recordsAxisName: "Quarter",
         secondaryRecordsAxisName: "Region",
         cellValueName: "Revenue",
-        axisAnchorCell: { row: 2, col: 1 },
+        axisAnchorCell: { row: 3, col: 2 },
         proposedLabel: "Quarterly fact",
       })
     );
+  });
+
+  it("converts 0-indexed frontend bounds to 1-indexed backend bounds", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 34 },
+      }),
+    ]);
+    expect(hints[0].bounds).toEqual({
+      startRow: 1,
+      endRow: 5,
+      startCol: 1,
+      endCol: 35,
+    });
   });
 
   it("throws when a draft's sheetId cannot be resolved", () => {
@@ -143,6 +160,16 @@ describe("planRegionsToDrafts", () => {
     expect(drafts[0].sheetId).toBe("sheet_a");
   });
 
+  it("converts 1-indexed backend bounds to 0-indexed frontend bounds", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    expect(drafts[0].bounds).toEqual({
+      startRow: 0,
+      endRow: 2,
+      startCol: 0,
+      endCol: 1,
+    });
+  });
+
   it("mints deterministic ids from (sheet, bounds)", () => {
     const first = planRegionsToDrafts(plan, makeWorkbook())[0].id;
     const second = planRegionsToDrafts(plan, makeWorkbook())[0].id;
@@ -172,6 +199,105 @@ describe("planRegionsToDrafts", () => {
     expect(() => planRegionsToDrafts(bad, makeWorkbook())).toThrow(
       /NoSuchSheet/
     );
+  });
+});
+
+describe("preserveUserRegionConfig", () => {
+  const baseRegion: LayoutPlan["regions"][number] = {
+    id: "region-1",
+    sheet: "Alpha",
+    bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
+    boundsMode: "absolute",
+    orientation: "rows-as-records",
+    headerAxis: "row",
+    targetEntityDefinitionId: "ent_contact",
+    identityStrategy: { kind: "rowPosition", confidence: 0.9 },
+    columnBindings: [],
+    skipRules: [],
+    drift: {
+      headerShiftRows: 0,
+      addedColumns: "halt",
+      removedColumns: { max: 0, action: "halt" },
+    },
+    confidence: { region: 0.9, aggregate: 0.85 },
+    warnings: [],
+  };
+  const basePlan: LayoutPlan = {
+    planVersion: "1.0.0",
+    workbookFingerprint: {
+      sheetNames: ["Alpha"],
+      dimensions: { Alpha: { rows: 3, cols: 2 } },
+      anchorCells: [],
+    },
+    regions: [baseRegion],
+    confidence: { overall: 0.85, perRegion: { "region-1": 0.85 } },
+  };
+
+  it("overrides boundsMode with the prior draft's user selection", () => {
+    const result = preserveUserRegionConfig(basePlan, [
+      baseDraft({ boundsMode: "untilEmpty" }),
+    ]);
+    expect(result.regions[0].boundsMode).toBe("untilEmpty");
+  });
+
+  it("copies boundsPattern, untilEmptyTerminatorCount, columnOverrides", () => {
+    const result = preserveUserRegionConfig(basePlan, [
+      baseDraft({
+        boundsMode: "matchesPattern",
+        boundsPattern: "^Totals$",
+        untilEmptyTerminatorCount: 4,
+        columnOverrides: { columnA: "customerName" },
+      }),
+    ]);
+    expect(result.regions[0]).toMatchObject({
+      boundsMode: "matchesPattern",
+      boundsPattern: "^Totals$",
+      untilEmptyTerminatorCount: 4,
+      columnOverrides: { columnA: "customerName" },
+    });
+  });
+
+  it("maps draft skip rules, dropping cellMatches rules without a crossAxisIndex", () => {
+    const result = preserveUserRegionConfig(basePlan, [
+      baseDraft({
+        skipRules: [
+          { kind: "blank" },
+          { kind: "cellMatches", crossAxisIndex: 2, pattern: "^total" },
+          // Mid-edit — no crossAxisIndex yet. Must be dropped so we don't
+          // violate the backend schema's nonnegative-integer requirement.
+          { kind: "cellMatches", crossAxisIndex: undefined, pattern: "X" },
+        ],
+      }),
+    ]);
+    expect(result.regions[0].skipRules).toEqual([
+      { kind: "blank" },
+      { kind: "cellMatches", crossAxisIndex: 2, pattern: "^total" },
+    ]);
+  });
+
+  it("aligns drafts to plan regions by index, skipping drafts without an entity", () => {
+    const twoRegionPlan: LayoutPlan = {
+      ...basePlan,
+      regions: [
+        baseRegion,
+        { ...baseRegion, id: "region-2", bounds: baseRegion.bounds },
+      ],
+    };
+    const result = preserveUserRegionConfig(twoRegionPlan, [
+      baseDraft({ targetEntityDefinitionId: null }), // dropped by filter
+      baseDraft({ boundsMode: "untilEmpty" }),
+      baseDraft({ boundsMode: "matchesPattern", boundsPattern: "END" }),
+    ]);
+    expect(result.regions[0].boundsMode).toBe("untilEmpty");
+    expect(result.regions[1].boundsMode).toBe("matchesPattern");
+    expect(result.regions[1].boundsPattern).toBe("END");
+  });
+
+  it("returns the plan unchanged when no drafts have a target entity", () => {
+    const result = preserveUserRegionConfig(basePlan, [
+      baseDraft({ targetEntityDefinitionId: null }),
+    ]);
+    expect(result).toBe(basePlan);
   });
 });
 

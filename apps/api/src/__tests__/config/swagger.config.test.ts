@@ -15,7 +15,6 @@ import {
   InterpretRequestBodySchema,
   InterpretResponsePayloadSchema,
   LayoutPlanCommitResultSchema,
-  FileUploadParseResponsePayloadSchema,
   LayoutPlanInterpretDraftResponsePayloadSchema,
   LayoutPlanCommitDraftRequestBodySchema,
   LayoutPlanCommitDraftResponsePayloadSchema,
@@ -37,7 +36,6 @@ const REQUIRED_SCHEMA_NAMES = [
   "InterpretRequestBody",
   "InterpretResponsePayload",
   "LayoutPlanCommitResult",
-  "FileUploadParseResponsePayload",
   "LayoutPlanInterpretDraftResponsePayload",
   "LayoutPlanCommitDraftRequestBody",
   "LayoutPlanCommitDraftResponsePayload",
@@ -78,7 +76,6 @@ describe("swagger spec — spreadsheet-parsing schema registration", () => {
     ["InterpretRequestBody", InterpretRequestBodySchema],
     ["InterpretResponsePayload", InterpretResponsePayloadSchema],
     ["LayoutPlanCommitResult", LayoutPlanCommitResultSchema],
-    ["FileUploadParseResponsePayload", FileUploadParseResponsePayloadSchema],
     [
       "LayoutPlanInterpretDraftResponsePayload",
       LayoutPlanInterpretDraftResponsePayloadSchema,

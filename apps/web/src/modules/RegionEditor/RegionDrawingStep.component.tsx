@@ -6,6 +6,7 @@ import {
   Tabs,
   Button,
   Select,
+  CircularProgress,
 } from "@portalai/core/ui";
 import MuiTab from "@mui/material/Tab";
 import MuiChip from "@mui/material/Chip";
@@ -51,6 +52,13 @@ export interface RegionDrawingStepUIProps {
   onRefetchWorkbook?: () => void;
   isInterpreting?: boolean;
   errors?: RegionEditorErrors;
+  /**
+   * When set, an additional "Skip to review" button is shown next to Interpret
+   * so the user can jump back to the last interpretation without re-running it.
+   * Consumers that haven't produced an interpretation yet (or don't support the
+   * skip shortcut) leave this unset.
+   */
+  onSkipToReview?: () => void;
 }
 
 export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
@@ -73,6 +81,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   onRefetchWorkbook,
   isInterpreting = false,
   errors,
+  onSkipToReview,
 }) => {
   const [attemptedInterpret, setAttemptedInterpret] = useState(false);
   const theme = useTheme();
@@ -253,6 +262,8 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
     regions.filter((r) => r.sheetId === sheetId).length;
 
   return (
+    <Box sx={{ position: "relative", width: "100%", minWidth: 0 }}>
+      {isInterpreting && <InterpretingOverlayUI />}
     <Stack
       spacing={2}
       sx={{
@@ -260,7 +271,11 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         maxWidth: "100%",
         minWidth: 0,
         overflow: "hidden",
+        // Disable interaction while the interpreter runs so users don't edit
+        // regions in-flight and desync state.
+        pointerEvents: isInterpreting ? "none" : undefined,
       }}
+      aria-busy={isInterpreting}
     >
       <Stack
         direction="row"
@@ -504,6 +519,15 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         flexWrap="wrap"
         useFlexGap
       >
+        {onSkipToReview && (
+          <Button
+            variant="text"
+            onClick={onSkipToReview}
+            disabled={isInterpreting}
+          >
+            Skip to review
+          </Button>
+        )}
         <Button
           variant="contained"
           onClick={handleInterpret}
@@ -513,5 +537,39 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         </Button>
       </Stack>
     </Stack>
+    </Box>
   );
 };
+
+const InterpretingOverlayUI: React.FC = () => (
+  <Box
+    role="status"
+    aria-live="polite"
+    sx={(theme) => ({
+      position: "absolute",
+      inset: 0,
+      zIndex: theme.zIndex.modal,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor:
+        theme.palette.mode === "dark"
+          ? "rgba(0, 0, 0, 0.6)"
+          : "rgba(255, 255, 255, 0.75)",
+      backdropFilter: "blur(2px)",
+      pointerEvents: "auto",
+    })}
+  >
+    <Stack spacing={2} alignItems="center" sx={{ maxWidth: 420, px: 3 }}>
+      <CircularProgress size={56} />
+      <Typography variant="h6" sx={{ fontWeight: 600, textAlign: "center" }}>
+        Interpreting your spreadsheet…
+      </Typography>
+      <Typography variant="body2" color="text.secondary" textAlign="center">
+        This can take several seconds to a few minutes depending on how much
+        data the interpreter has to analyse. You can safely wait here —
+        navigating away will cancel the run.
+      </Typography>
+    </Stack>
+  </Box>
+);

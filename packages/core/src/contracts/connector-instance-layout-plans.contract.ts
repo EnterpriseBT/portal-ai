@@ -4,7 +4,6 @@ import {
   InterpretationTraceSchema,
   InterpretInputSchema,
   LayoutPlanSchema,
-  WorkbookSchema,
 } from "./spreadsheet-parsing.contract.js";
 
 // ── Request schemas ───────────────────────────────────────────────────────
@@ -103,31 +102,17 @@ export type LayoutPlanCommitResult = z.infer<
 
 /**
  * Body for `POST /api/layout-plans/interpret`. Pure-compute: the server runs
- * `interpret()` and returns the resulting plan without any DB writes.
- *
- * Exactly one workbook source must be provided:
- *   - `uploadSessionId` — resolves to the WorkbookData cached in Redis by a
- *     prior `POST /api/file-uploads/parse` call, falling back to re-streaming
- *     from S3 on cache miss. Preferred for new flows.
- *   - `workbook` — inline sparse-cell JSON. Kept for backward compatibility
- *     while the streaming pipeline rolls out.
+ * `interpret()` and returns the resulting plan without any DB writes. The
+ * workbook is always resolved via the streaming upload session — the server
+ * pulls it from Redis, falling back to re-streaming from S3 on cache miss.
  */
-export const LayoutPlanInterpretDraftRequestBodySchema = z
-  .object({
-    uploadSessionId: z.string().min(1).optional(),
-    workbook: WorkbookSchema.optional(),
-    regionHints: InterpretInputSchema.shape.regionHints,
-    priorPlan: InterpretInputSchema.shape.priorPlan,
-    driftReport: InterpretInputSchema.shape.driftReport,
-    userHints: InterpretInputSchema.shape.userHints,
-  })
-  .refine(
-    (body) => Boolean(body.uploadSessionId) !== Boolean(body.workbook),
-    {
-      message: "Exactly one of `uploadSessionId` or `workbook` must be set",
-      path: ["uploadSessionId"],
-    }
-  );
+export const LayoutPlanInterpretDraftRequestBodySchema = z.object({
+  uploadSessionId: z.string().min(1),
+  regionHints: InterpretInputSchema.shape.regionHints,
+  priorPlan: InterpretInputSchema.shape.priorPlan,
+  driftReport: InterpretInputSchema.shape.driftReport,
+  userHints: InterpretInputSchema.shape.userHints,
+});
 export type LayoutPlanInterpretDraftRequestBody = z.infer<
   typeof LayoutPlanInterpretDraftRequestBodySchema
 >;
@@ -144,21 +129,12 @@ export type LayoutPlanInterpretDraftResponsePayload = z.infer<
  * layout plan row + records in one server-side call. On any failure, the
  * instance and plan row are rolled back so no orphan survives.
  */
-export const LayoutPlanCommitDraftRequestBodySchema = z
-  .object({
-    connectorDefinitionId: z.string().min(1),
-    name: z.string().min(1),
-    plan: LayoutPlanSchema,
-    uploadSessionId: z.string().min(1).optional(),
-    workbook: z.unknown().optional(),
-  })
-  .refine(
-    (body) => Boolean(body.uploadSessionId) !== Boolean(body.workbook),
-    {
-      message: "Exactly one of `uploadSessionId` or `workbook` must be set",
-      path: ["uploadSessionId"],
-    }
-  );
+export const LayoutPlanCommitDraftRequestBodySchema = z.object({
+  connectorDefinitionId: z.string().min(1),
+  name: z.string().min(1),
+  plan: LayoutPlanSchema,
+  uploadSessionId: z.string().min(1),
+});
 export type LayoutPlanCommitDraftRequestBody = z.infer<
   typeof LayoutPlanCommitDraftRequestBodySchema
 >;

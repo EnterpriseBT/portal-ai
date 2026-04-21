@@ -53,6 +53,39 @@ jest.unstable_mockModule(
   })
 );
 
+// In-memory Redis shim — caches the parsed WorkbookData keyed by session id.
+const redisStore = new Map<string, string>();
+jest.unstable_mockModule("../../../utils/redis.util.js", () => ({
+  getRedisClient: () => ({
+    set: async (key: string, value: string): Promise<"OK"> => {
+      redisStore.set(key, value);
+      return "OK";
+    },
+    get: async (key: string): Promise<string | null> =>
+      redisStore.get(key) ?? null,
+    del: async (key: string): Promise<number> => {
+      const existed = redisStore.delete(key);
+      return existed ? 1 : 0;
+    },
+  }),
+  closeRedis: async () => undefined,
+}));
+
+// In-memory S3 — tests never reach the network. `file_uploads` rows still
+// get written so the real resolveWorkbook path (cache-miss fallback)
+// transparently re-streams from this map.
+jest.unstable_mockModule("../../../services/s3.service.js", () => ({
+  S3Service: {
+    createPresignedPutUrl: jest.fn(async () => "https://s3.test/ignore"),
+    getObjectStream: jest.fn(),
+    headObject: jest.fn(async () => ({
+      contentLength: 0,
+      contentType: "text/csv",
+    })),
+    deleteObject: jest.fn(async () => undefined),
+  },
+}));
+
 const { app } = await import("../../../app.js");
 
 const {
@@ -74,7 +107,7 @@ function makeConnectorDefinition(id = generateId()) {
     category: "file",
     authType: "none",
     configSchema: {},
-    capabilityFlags: { sync: true },
+    capabilityFlags: { read: true, write: true },
     isActive: true,
     version: "1.0.0",
     iconUrl: null,
@@ -192,6 +225,41 @@ function makeWorkbook(): WorkbookData {
   };
 }
 
+/**
+ * Seed an upload session — writes one `file_uploads` row + caches the
+ * workbook in the mocked Redis so `FileUploadSessionService.resolveWorkbook`
+ * finds it instantly (cache hit, no S3 stream required).
+ */
+async function seedUploadSession(
+  db: Db,
+  organizationId: string,
+  workbook: WorkbookData
+): Promise<string> {
+  const uploadSessionId = generateId();
+  const uploadId = generateId();
+  await db.insert(schema.fileUploads).values({
+    id: uploadId,
+    organizationId,
+    filename: "test.csv",
+    contentType: "text/csv",
+    sizeBytes: 100,
+    s3Key: `uploads/${organizationId}/${uploadId}/test.csv`,
+    status: "parsed",
+    uploadSessionId,
+    created: now,
+    createdBy: "SYSTEM_TEST",
+    updated: null,
+    updatedBy: null,
+    deleted: null,
+    deletedBy: null,
+  } as never);
+  redisStore.set(
+    `upload-session:${uploadSessionId}`,
+    JSON.stringify(workbook)
+  );
+  return uploadSessionId;
+}
+
 describe("Layout Plans Draft Router", () => {
   let connection!: ReturnType<typeof postgres>;
   let db!: DbClient;
@@ -207,6 +275,7 @@ describe("Layout Plans Draft Router", () => {
 
     await teardownOrg(db as Db);
     mockAnalyze.mockReset();
+    redisStore.clear();
 
     const seed = await seedUserAndOrg(db as Db, AUTH0_ID);
     organizationId = seed.organizationId;
@@ -226,10 +295,16 @@ describe("Layout Plans Draft Router", () => {
       const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
       mockAnalyze.mockResolvedValue(makePlan(emailId, nameId));
 
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
+
       const res = await request(app)
         .post("/api/layout-plans/interpret")
         .set("Authorization", "Bearer test-token")
-        .send({ workbook: makeWorkbook(), regionHints: [] });
+        .send({ uploadSessionId, regionHints: [] });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -259,6 +334,11 @@ describe("Layout Plans Draft Router", () => {
     it("creates the ConnectorInstance + plan row and commits records atomically", async () => {
       const emailId = await seedColumnDefinition(db as Db, organizationId, "email");
       const nameId = await seedColumnDefinition(db as Db, organizationId, "name");
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
 
       const res = await request(app)
         .post("/api/layout-plans/commit")
@@ -267,7 +347,7 @@ describe("Layout Plans Draft Router", () => {
           connectorDefinitionId,
           name: "My CSV upload",
           plan: makePlan(emailId, nameId),
-          workbook: makeWorkbook(),
+          uploadSessionId,
         });
 
       expect(res.status).toBe(200);
@@ -313,6 +393,11 @@ describe("Layout Plans Draft Router", () => {
         },
       ];
 
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
       const res = await request(app)
         .post("/api/layout-plans/commit")
         .set("Authorization", "Bearer test-token")
@@ -320,7 +405,7 @@ describe("Layout Plans Draft Router", () => {
           connectorDefinitionId,
           name: "Should not persist",
           plan: planWithBlocker,
-          workbook: makeWorkbook(),
+          uploadSessionId,
         });
 
       expect(res.status).toBe(409);

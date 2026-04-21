@@ -385,6 +385,53 @@ export const foosRepo = new FoosRepository();
 
 The singleton inherits all base methods (`findById`, `findMany`, `count`, `create`, `createMany`, `update`, `updateWhere`, `updateMany`, `softDelete`, `softDeleteMany`, `hardDelete`, `hardDeleteMany`) with full type safety.
 
+## S3 bucket setup (streaming upload pipeline)
+
+The `FileUploadConnector` pipeline uploads raw bytes directly to S3 via presigned PUT URLs, then streams them back server-side during parse/interpret/commit. The frontend never ships workbook JSON over HTTP.
+
+### Bucket configuration
+
+1. **Create a bucket** named per `UPLOAD_S3_BUCKET` in the target AWS account/region (`UPLOAD_S3_REGION`). Enable default encryption (`SSE-S3`).
+2. **CORS policy** — the browser PUTs directly against presigned URLs, so the bucket must allow cross-origin PUT from the web origin:
+   ```json
+   [
+     {
+       "AllowedMethods": ["PUT"],
+       "AllowedOrigins": ["https://portal.ai", "https://*.portal.ai"],
+       "AllowedHeaders": ["Content-Type", "Content-Length"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3000
+     }
+   ]
+   ```
+3. **Lifecycle rule** — objects under the `uploads/` prefix are short-lived. Set a lifecycle rule that expires them after 24 hours so abandoned uploads (user closed the tab mid-flow) are cleared automatically:
+   ```json
+   {
+     "Rules": [
+       {
+         "ID": "expire-abandoned-uploads",
+         "Status": "Enabled",
+         "Filter": { "Prefix": "uploads/" },
+         "Expiration": { "Days": 1 }
+       }
+     ]
+   }
+   ```
+4. **IAM policy** — the API's execution role needs `s3:PutObject`, `s3:GetObject`, `s3:HeadObject`, `s3:DeleteObject` against `arn:aws:s3:::${UPLOAD_S3_BUCKET}/${UPLOAD_S3_PREFIX}/*`.
+
+### Application-side sweeper
+
+On every cold-start, `FileUploadSessionService.sweepStaleUploads()` soft-deletes `file_uploads` rows older than 24 h in any non-`committed` state and best-effort deletes their S3 objects. The lifecycle rule above is the durability guarantee; the sweeper is a UI-visible cleanup so admin views don't show zombie draft rows.
+
+### Observability
+
+Pino log events from the pipeline (filter on `event:`):
+- `upload.presign.issued` — counts + total declared bytes per presign call.
+- `upload.confirmed` — one per `POST /api/file-uploads/confirm` success.
+- `upload.parse.completed` — `sheetCount`, `fileCount`, `sliced`, `durationMs`.
+- `upload.cache.miss` — fired when `resolveWorkbook` re-streams from S3 because the Redis cache expired (or was evicted).
+- `upload.sweep.started` — startup sweeper with `count` of rows being purged.
+
 ## Authentication
 
 This API uses Auth0 JWT tokens for authentication. Protected routes require a valid JWT token in the Authorization header:

@@ -39,11 +39,10 @@ export const environment = {
     process.env.FILE_UPLOAD_PARSE_MAX_BYTES || String(25 * 1024 * 1024),
     10
   ),
-  // Body-parser cap for `express.json()`. Once the streaming upload plan is
-  // fully rolled out, no legitimate request body exceeds a few KB; this can
-  // drop to a conservative default.
+  // Body-parser cap for `express.json()`. Post-streaming-cutover, no
+  // legitimate request body exceeds a few MB (layout plans + region hints).
   REQUEST_JSON_LIMIT_BYTES: parseInt(
-    process.env.REQUEST_JSON_LIMIT_BYTES || String(100 * 1024 * 1024),
+    process.env.REQUEST_JSON_LIMIT_BYTES || String(4 * 1024 * 1024),
     10
   ),
   // ── S3 streaming upload pipeline

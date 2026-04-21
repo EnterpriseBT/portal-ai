@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { WorkbookSchema } from "./spreadsheet-parsing.contract.js";
-
 // Frontend-facing cell value — the dense 2-D grid the region editor renders
 // from. Booleans / dates are coerced to strings by the backend adapter so the
 // preview is JSON-safe without a custom reviver.
@@ -13,17 +11,6 @@ const SheetDimensionsSchema = z.object({
   rows: z.number().int().min(0),
   cols: z.number().int().min(0),
 });
-
-// ── Phase 0 response: multipart parse
-// (Legacy — kept alongside the streaming path during rollout. Removed in
-// `docs/LARGE_WORKBOOK_STREAMING.plan.md` PR 5 cutover.) ──────────────────
-
-export const FileUploadParseResponsePayloadSchema = z.object({
-  workbook: WorkbookSchema,
-});
-export type FileUploadParseResponsePayload = z.infer<
-  typeof FileUploadParseResponsePayloadSchema
->;
 
 // ── Phase 1: POST /api/file-uploads/presign ──────────────────────────────
 

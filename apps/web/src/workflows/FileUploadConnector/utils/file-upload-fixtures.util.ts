@@ -27,11 +27,24 @@ export const SPREADSHEET_FILE_EXTENSIONS = [
 
 export type UploadPhase = "idle" | "uploading" | "parsing" | "parsed" | "error";
 
+export interface FileUploadProgressEntry {
+  fileName: string;
+  loaded: number;
+  total: number;
+  percent: number;
+}
+
 export interface FileUploadWorkflowState {
   step: 0 | 1 | 2;
   files: File[];
   uploadPhase: UploadPhase;
   overallUploadPercent: number;
+  /**
+   * Per-file upload progress keyed by filename. Populated by the container
+   * via the `parseFile` callback's `onProgress` reporter; re-rendered live so
+   * the UploadStep progress bars update smoothly.
+   */
+  fileProgress: Record<string, FileUploadProgressEntry>;
   workbook: Workbook | null;
   regions: RegionDraft[];
   selectedRegionId: string | null;
@@ -46,6 +59,12 @@ export interface FileUploadWorkflowState {
    * the first successful interpret; null again on reset.
    */
   plan: LayoutPlan | null;
+  /**
+   * Opaque session handle returned by the `parse-session` endpoint; passed
+   * back to `interpret`/`commit` so the server resolves the workbook from
+   * its cache (or re-streams from S3) instead of receiving it inline.
+   */
+  uploadSessionId: string | null;
 }
 
 export const SAMPLE_FILE: File = new File(
@@ -134,6 +153,7 @@ export const IDLE_STATE: FileUploadWorkflowState = {
   files: [],
   uploadPhase: "idle",
   overallUploadPercent: 0,
+  fileProgress: {},
   workbook: null,
   regions: [],
   selectedRegionId: null,
@@ -142,6 +162,7 @@ export const IDLE_STATE: FileUploadWorkflowState = {
   isInterpreting: false,
   isCommitting: false,
   plan: null,
+  uploadSessionId: null,
 };
 
 export const UPLOADING_STATE: FileUploadWorkflowState = {

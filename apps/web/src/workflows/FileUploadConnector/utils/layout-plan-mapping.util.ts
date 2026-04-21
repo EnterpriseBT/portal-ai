@@ -53,6 +53,68 @@ function bindingToDraft(binding: BackendBinding): ColumnBindingDraft {
   };
 }
 
+type BackendSkipRule = BackendRegion["skipRules"][number];
+
+function draftSkipRuleToBackend(
+  rule: NonNullable<RegionDraft["skipRules"]>[number]
+): BackendSkipRule | null {
+  if (rule.kind === "blank") return { kind: "blank" };
+  // Drafts can hold an undefined crossAxisIndex while the user is mid-edit —
+  // those rules are invalid for the backend and must be dropped, not coerced.
+  if (rule.crossAxisIndex === undefined) return null;
+  return {
+    kind: "cellMatches",
+    crossAxisIndex: rule.crossAxisIndex,
+    pattern: rule.pattern,
+    ...(rule.axis ? { axis: rule.axis } : {}),
+  };
+}
+
+/**
+ * Merge user-configured knobs from the prior draft list into a plan freshly
+ * returned from `interpret()`. The interpret RPC today doesn't accept every
+ * configuration field the user can tweak in the editor (boundsMode, skipRules,
+ * …), so without this merge those selections would be clobbered by defaults on
+ * every Interpret click. Matching follows `regionDraftsToHints` — drafts
+ * without a target entity are dropped, and the remaining drafts line up with
+ * the plan's regions by index.
+ */
+export function preserveUserRegionConfig(
+  plan: LayoutPlan,
+  priorDrafts: RegionDraft[]
+): LayoutPlan {
+  const considered = priorDrafts.filter(
+    (d) => d.targetEntityDefinitionId !== null
+  );
+  if (considered.length === 0) return plan;
+
+  return {
+    ...plan,
+    regions: plan.regions.map((region, i) => {
+      const prior = considered[i];
+      if (!prior) return region;
+      const merged: BackendRegion = { ...region };
+      if (prior.boundsMode) merged.boundsMode = prior.boundsMode;
+      if (prior.boundsPattern !== undefined) {
+        merged.boundsPattern = prior.boundsPattern;
+      }
+      if (prior.untilEmptyTerminatorCount !== undefined) {
+        merged.untilEmptyTerminatorCount = prior.untilEmptyTerminatorCount;
+      }
+      if (prior.columnOverrides) {
+        merged.columnOverrides = { ...prior.columnOverrides };
+      }
+      if (prior.skipRules) {
+        const mapped = prior.skipRules
+          .map(draftSkipRuleToBackend)
+          .filter((r): r is BackendSkipRule => r !== null);
+        merged.skipRules = mapped;
+      }
+      return merged;
+    }),
+  };
+}
+
 export function regionDraftsToHints(
   workbook: Workbook,
   drafts: RegionDraft[]
@@ -73,10 +135,10 @@ export function regionDraftsToHints(
     const hint: RegionHint = {
       sheet: sheet.name,
       bounds: {
-        startRow: draft.bounds.startRow,
-        startCol: draft.bounds.startCol,
-        endRow: draft.bounds.endRow,
-        endCol: draft.bounds.endCol,
+        startRow: draft.bounds.startRow + 1,
+        startCol: draft.bounds.startCol + 1,
+        endRow: draft.bounds.endRow + 1,
+        endCol: draft.bounds.endCol + 1,
       },
       targetEntityDefinitionId: draft.targetEntityDefinitionId,
       orientation: draft.orientation,
@@ -94,8 +156,8 @@ export function regionDraftsToHints(
     }
     if (draft.axisAnchorCell) {
       hint.axisAnchorCell = {
-        row: draft.axisAnchorCell.row,
-        col: draft.axisAnchorCell.col,
+        row: draft.axisAnchorCell.row + 1,
+        col: draft.axisAnchorCell.col + 1,
       };
     }
     if (draft.proposedLabel !== undefined) {
@@ -111,6 +173,17 @@ export function regionDraftsToHints(
 function regionId(region: BackendRegion, sheetId: string): string {
   const { startRow, startCol, endRow, endCol } = region.bounds;
   return `${sheetId}-r${startRow}_${startCol}_${endRow}_${endCol}`;
+}
+
+function boundsToFrontend(
+  bounds: BackendRegion["bounds"]
+): RegionDraft["bounds"] {
+  return {
+    startRow: bounds.startRow - 1,
+    endRow: bounds.endRow - 1,
+    startCol: bounds.startCol - 1,
+    endCol: bounds.endCol - 1,
+  };
 }
 
 export function planRegionsToDrafts(
@@ -130,12 +203,7 @@ export function planRegionsToDrafts(
     const draft: RegionDraft = {
       id: regionId(region, sheet.id),
       sheetId: sheet.id,
-      bounds: {
-        startRow: region.bounds.startRow,
-        endRow: region.bounds.endRow,
-        startCol: region.bounds.startCol,
-        endCol: region.bounds.endCol,
-      },
+      bounds: boundsToFrontend(region.bounds),
       orientation: region.orientation,
       headerAxis: region.headerAxis,
       targetEntityDefinitionId: region.targetEntityDefinitionId,
@@ -159,7 +227,34 @@ export function planRegionsToDrafts(
       draft.cellValueName = region.cellValueName;
     }
     if (region.axisAnchorCell) {
-      draft.axisAnchorCell = region.axisAnchorCell;
+      draft.axisAnchorCell = {
+        row: region.axisAnchorCell.row - 1,
+        col: region.axisAnchorCell.col - 1,
+      };
+    }
+    if (region.boundsMode) {
+      draft.boundsMode = region.boundsMode;
+    }
+    if (region.boundsPattern !== undefined) {
+      draft.boundsPattern = region.boundsPattern;
+    }
+    if (region.untilEmptyTerminatorCount !== undefined) {
+      draft.untilEmptyTerminatorCount = region.untilEmptyTerminatorCount;
+    }
+    if (region.columnOverrides) {
+      draft.columnOverrides = { ...region.columnOverrides };
+    }
+    if (region.skipRules.length > 0) {
+      draft.skipRules = region.skipRules.map((rule) =>
+        rule.kind === "blank"
+          ? { kind: "blank" as const }
+          : {
+              kind: "cellMatches" as const,
+              crossAxisIndex: rule.crossAxisIndex,
+              pattern: rule.pattern,
+              ...(rule.axis ? { axis: rule.axis } : {}),
+            }
+      );
     }
     if (region.headerStrategy) {
       draft.headerStrategy = {

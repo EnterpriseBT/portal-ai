@@ -13,10 +13,7 @@ import {
   Typography,
 } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
-import type {
-  InterpretRequestBody,
-  WorkbookData,
-} from "@portalai/core/contracts";
+import type { FileUploadParseSheet } from "@portalai/core/contracts";
 
 import { UploadStep } from "./UploadStep.component";
 import { FileUploadRegionDrawingStepUI } from "./FileUploadRegionDrawingStep.component";
@@ -32,11 +29,12 @@ import {
   mergeStagedEntityOptions,
   overallConfidenceFromPlan,
   planRegionsToDrafts,
+  preserveUserRegionConfig,
   regionDraftsToHints,
-  workbookToBackend,
 } from "./utils/layout-plan-mapping.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
+import { putToS3 } from "../../api/file-uploads.api";
 import type {
   CellBounds,
   CellValue,
@@ -62,46 +60,35 @@ function deriveConnectorInstanceName(files: File[]): string {
 }
 
 /**
- * Convert the backend's sparse `WorkbookData` (1-based cell tuples) into the
- * dense `Workbook` the RegionEditor renders. Deterministic sheet ids are
- * minted from the source filename + sheet name so `regionDraftsToHints` can
- * later map them back by name at the interpret boundary.
+ * Convert the backend's parse-session response — already dense cells per
+ * sheet — into the `Workbook` the RegionEditor renders. For sheets marked
+ * `sliced` (cells omitted to keep the response bounded), we seed an empty
+ * grid; the slice endpoint will populate it on-demand once virtualization +
+ * lazy slicing land (docs/LARGE_WORKBOOK_STREAMING.plan.md §Phase 3b/5a).
  */
-function backendWorkbookToPreview(
-  workbook: WorkbookData,
+function backendParseSheetsToPreview(
+  sheets: FileUploadParseSheet[],
   sourceLabel: string
 ): Workbook {
-  const sheets: SheetPreview[] = workbook.sheets.map((sheet, idx) => {
+  const out: SheetPreview[] = sheets.map((sheet) => {
     const rows = sheet.dimensions.rows;
     const cols = sheet.dimensions.cols;
-    const cells: CellValue[][] = Array.from({ length: rows }, () =>
-      Array.from({ length: cols }, () => "" as CellValue)
+    const cells: CellValue[][] = Array.from({ length: rows }, (_, r) =>
+      Array.from({ length: cols }, (_, c) => {
+        const raw = sheet.cells[r]?.[c];
+        if (raw === undefined || raw === null) return "";
+        return raw as CellValue;
+      })
     );
-    for (const cell of sheet.cells) {
-      const r = cell.row - 1;
-      const c = cell.col - 1;
-      if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
-      const value = cell.value;
-      if (typeof value === "string" || typeof value === "number") {
-        cells[r][c] = value;
-      } else if (value === null) {
-        cells[r][c] = null;
-      } else if (value instanceof Date) {
-        cells[r][c] = value.toISOString();
-      } else if (typeof value === "boolean") {
-        cells[r][c] = value ? "TRUE" : "FALSE";
-      }
-    }
     return {
-      id: `sheet_${idx}_${sheet.name.replace(/\s+/g, "_").toLowerCase()}`,
+      id: sheet.id,
       name: sheet.name,
       rowCount: rows,
       colCount: cols,
       cells,
     };
   });
-
-  return { sheets, sourceLabel };
+  return { sheets: out, sourceLabel };
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +123,11 @@ export interface FileUploadConnectorWorkflowUIProps {
   onRegionDelete: (regionId: string) => void;
   onCreateEntity?: (key: string, label: string) => string;
   onInterpret: () => void;
+  /**
+   * Shortcut back to the review step when a plan already exists. Unset when
+   * no interpretation has run yet, which hides the button.
+   */
+  onSkipToReview?: () => void;
 
   // Review step
   overallConfidence?: number;
@@ -183,6 +175,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   onRegionDelete,
   onCreateEntity,
   onInterpret,
+  onSkipToReview,
   overallConfidence,
   onJumpToRegion,
   onEditBinding,
@@ -237,6 +230,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                   entityOptions={entityOptions}
                   onCreateEntity={onCreateEntity}
                   onInterpret={onInterpret}
+                  onSkipToReview={onSkipToReview}
                   isInterpreting={isInterpreting}
                   errors={errors}
                   serverError={serverError}
@@ -312,10 +306,13 @@ export const FileUploadConnectorWorkflow: React.FC<
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const { mutateAsync: presignMutate } = sdk.fileUploads.presign();
+  const { mutateAsync: confirmMutate } = sdk.fileUploads.confirm();
   const { mutateAsync: parseMutate } = sdk.fileUploads.parse();
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
   const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
   const workbookRef = useRef<Workbook | null>(null);
+  const uploadSessionIdRef = useRef<string | null>(null);
   const filesRef = useRef<File[]>([]);
 
   // User-staged entities created via the region editor's "+ Create new entity"
@@ -334,35 +331,74 @@ export const FileUploadConnectorWorkflow: React.FC<
     []
   );
 
-  const parseFile = useCallback(
-    async (files: File[]) => {
+  const parseFile: FileUploadWorkflowCallbacks["parseFile"] = useCallback(
+    async (files, options) => {
       if (files.length === 0) throw new Error("No file selected");
       filesRef.current = files;
-      const payload = await parseMutate(files);
+
+      // 1) Mint presigned PUT URLs — one row per file in status "pending".
+      const presignPayload = await presignMutate({
+        files: files.map((f) => ({
+          fileName: f.name,
+          contentType: f.type || "application/octet-stream",
+          sizeBytes: f.size,
+        })),
+      });
+
+      // 2) PUT each file directly to S3. XHR progress events feed the hook.
+      await Promise.all(
+        files.map((file, i) =>
+          putToS3(file, presignPayload.uploads[i].putUrl, {
+            onProgress: (loaded, total) =>
+              options?.onProgress?.({ fileName: file.name, loaded, total }),
+            signal: options?.signal,
+          })
+        )
+      );
+
+      // 3) Confirm each upload — backend HEADs S3 + flips row to "uploaded".
+      await Promise.all(
+        presignPayload.uploads.map((u) =>
+          confirmMutate({ uploadId: u.uploadId })
+        )
+      );
+
+      // 4) Stream parse — returns the preview workbook + uploadSessionId.
+      const parsePayload = await parseMutate({
+        uploadIds: presignPayload.uploads.map((u) => u.uploadId),
+      });
+
       const sourceLabel =
-        files.length === 1
-          ? files[0].name
-          : `${files.length} files`;
-      const converted = backendWorkbookToPreview(payload.workbook, sourceLabel);
+        files.length === 1 ? files[0].name : `${files.length} files`;
+      const converted = backendParseSheetsToPreview(
+        parsePayload.sheets,
+        sourceLabel
+      );
       workbookRef.current = converted;
-      return converted;
+      uploadSessionIdRef.current = parsePayload.uploadSessionId;
+      return {
+        workbook: converted,
+        uploadSessionId: parsePayload.uploadSessionId,
+      };
     },
-    [parseMutate]
+    [presignMutate, confirmMutate, parseMutate]
   );
 
   const runInterpret: FileUploadWorkflowCallbacks["runInterpret"] = useCallback(
     async (regions) => {
       const workbook = workbookRef.current;
+      const uploadSessionId = uploadSessionIdRef.current;
       if (!workbook) throw new Error("Workbook not parsed");
-      const body: InterpretRequestBody = {
-        workbook: workbookToBackend(workbook),
+      if (!uploadSessionId) throw new Error("Upload session missing");
+      const res = await interpretMutate({
+        uploadSessionId,
         regionHints: regionDraftsToHints(workbook, regions),
-      };
-      const res = await interpretMutate(body);
+      });
+      const plan = preserveUserRegionConfig(res.plan, regions);
       return {
-        regions: planRegionsToDrafts(res.plan, workbook),
-        plan: res.plan,
-        overallConfidence: overallConfidenceFromPlan(res.plan),
+        regions: planRegionsToDrafts(plan, workbook),
+        plan,
+        overallConfidence: overallConfidenceFromPlan(plan),
       };
     },
     [interpretMutate]
@@ -370,13 +406,13 @@ export const FileUploadConnectorWorkflow: React.FC<
 
   const runCommit: FileUploadWorkflowCallbacks["runCommit"] = useCallback(
     async (plan) => {
-      const workbook = workbookRef.current;
-      if (!workbook) throw new Error("Workbook not parsed");
+      const uploadSessionId = uploadSessionIdRef.current;
+      if (!uploadSessionId) throw new Error("Upload session missing");
       const res = await commitMutate({
         connectorDefinitionId,
         name: deriveConnectorInstanceName(filesRef.current),
         plan,
-        workbook: workbookToBackend(workbook),
+        uploadSessionId,
       });
       await Promise.all(
         [
@@ -414,6 +450,7 @@ export const FileUploadConnectorWorkflow: React.FC<
 
   const handleClose = useCallback(() => {
     workbookRef.current = null;
+    uploadSessionIdRef.current = null;
     filesRef.current = [];
     setStagedEntities([]);
     workflow.reset();
@@ -429,6 +466,42 @@ export const FileUploadConnectorWorkflow: React.FC<
     [workflow.workbook, stagedEntities]
   );
 
+  // The interpret endpoint returns column bindings keyed by columnDefinitionId
+  // — opaque UUIDs. Fetch the org's ColumnDefinition catalog so the review and
+  // region-editor panels can show the human label on each binding chip.
+  const columnDefinitionsQuery = sdk.columnDefinitions.list({
+    limit: 1000,
+    offset: 0,
+    sortBy: "label",
+    sortOrder: "asc",
+  });
+  const columnDefinitionLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    const rows = columnDefinitionsQuery.data?.columnDefinitions ?? [];
+    for (const cd of rows) map[cd.id] = cd.label;
+    return map;
+  }, [columnDefinitionsQuery.data]);
+
+  const regionsWithResolvedLabels = useMemo(() => {
+    if (Object.keys(columnDefinitionLabelMap).length === 0) {
+      return workflow.regions;
+    }
+    return workflow.regions.map((region) => {
+      if (!region.columnBindings || region.columnBindings.length === 0) {
+        return region;
+      }
+      return {
+        ...region,
+        columnBindings: region.columnBindings.map((binding) => {
+          if (!binding.columnDefinitionId) return binding;
+          const label = columnDefinitionLabelMap[binding.columnDefinitionId];
+          if (!label || binding.columnDefinitionLabel) return binding;
+          return { ...binding, columnDefinitionLabel: label };
+        }),
+      };
+    });
+  }, [workflow.regions, columnDefinitionLabelMap]);
+
   return (
     <FileUploadConnectorWorkflowUI
       open={open}
@@ -438,13 +511,13 @@ export const FileUploadConnectorWorkflow: React.FC<
       files={workflow.files}
       onFilesChange={workflow.addFiles}
       uploadPhase={workflow.uploadPhase}
-      fileProgress={workflow.fileProgress}
+      fileProgress={workflow.fileProgressMap}
       overallUploadPercent={workflow.overallUploadPercent}
       onStartParse={() => {
         void workflow.startParse();
       }}
       workbook={workflow.workbook}
-      regions={workflow.regions}
+      regions={regionsWithResolvedLabels}
       selectedRegionId={workflow.selectedRegionId}
       activeSheetId={workflow.activeSheetId}
       entityOptions={entityOptions}
@@ -460,16 +533,15 @@ export const FileUploadConnectorWorkflow: React.FC<
       onInterpret={() => {
         void workflow.onInterpret();
       }}
+      onSkipToReview={workflow.plan ? workflow.onSkipToReview : undefined}
       overallConfidence={workflow.overallConfidence}
-      onJumpToRegion={(regionId) => {
-        workflow.onSelectRegion(regionId);
-      }}
+      onJumpToRegion={workflow.onJumpToRegion}
       onEditBinding={(regionId, _sourceLocator) => {
         // Binding-edit popover not yet wired. Out of scope for this phase —
         // tracked against a follow-up that adds sdk.connectorInstanceLayoutPlans.patch
         // with per-binding mutations. For now, jumping the user to the region
         // on-canvas is the visible affordance.
-        workflow.onSelectRegion(regionId);
+        workflow.onJumpToRegion(regionId);
       }}
       onCommit={() => {
         void workflow.onCommit();

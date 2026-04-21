@@ -251,7 +251,8 @@ const InteractiveContent: React.FC = () => {
   } | null>(null);
 
   const workflow = useFileUploadWorkflow({
-    parseFile: () => delay(DEMO_WORKBOOK),
+    parseFile: async () =>
+      delay({ workbook: DEMO_WORKBOOK, uploadSessionId: "sess_interactive" }),
     runInterpret: (regions) =>
       delay({
         regions: regions.map((r) => ({
@@ -290,7 +291,7 @@ const InteractiveContent: React.FC = () => {
         files={workflow.files}
         onFilesChange={workflow.addFiles}
         uploadPhase={workflow.uploadPhase}
-        fileProgress={workflow.fileProgress}
+        fileProgress={workflow.fileProgressMap}
         overallUploadPercent={workflow.overallUploadPercent}
         onStartParse={() => {
           void workflow.startParse();
@@ -311,9 +312,10 @@ const InteractiveContent: React.FC = () => {
         onInterpret={() => {
           void workflow.onInterpret();
         }}
+        onSkipToReview={workflow.plan ? workflow.onSkipToReview : undefined}
         overallConfidence={workflow.overallConfidence}
-        onJumpToRegion={(regionId) => workflow.onSelectRegion(regionId)}
-        onEditBinding={(regionId) => workflow.onSelectRegion(regionId)}
+        onJumpToRegion={workflow.onJumpToRegion}
+        onEditBinding={(regionId) => workflow.onJumpToRegion(regionId)}
         onCommit={() => {
           void workflow.onCommit();
         }}

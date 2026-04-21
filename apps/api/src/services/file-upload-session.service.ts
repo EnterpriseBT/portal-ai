@@ -19,6 +19,10 @@
 
 import { Readable } from "node:stream";
 
+import { and, inArray, lt } from "drizzle-orm";
+
+import { fileUploads } from "../db/schema/index.js";
+
 import type {
   FileUploadParseSessionResponsePayload,
   FileUploadParseSheet,
@@ -551,6 +555,57 @@ export const FileUploadSessionService = {
     const workbook = await parseUploadsToWorkbook(uploads);
     await WorkbookCacheService.set(uploadSessionId, workbook);
     return workbook;
+  },
+
+  /**
+   * Sweep stale `file_uploads` rows — any row older than
+   * `stalenessMs` in a non-`"committed"` state (`pending`, `uploaded`,
+   * `parsed`, `failed`) is soft-deleted + its S3 object is best-effort
+   * deleted. Called at app startup; safe to invoke more than once.
+   *
+   * The S3 bucket-level lifecycle rule is the durability guarantee; this
+   * sweeper is a fast UI-visible cleanup so abandoned draft rows don't
+   * show up in future admin views.
+   */
+  async sweepStaleUploads(
+    stalenessMs: number = 24 * 60 * 60 * 1000,
+    now: number = Date.now()
+  ): Promise<{ swept: number }> {
+    const cutoff = now - stalenessMs;
+    const staleStatuses: FileUploadSelect["status"][] = [
+      "pending",
+      "uploaded",
+      "parsed",
+      "failed",
+    ];
+    const rows = await DbService.repository.fileUploads.findMany(
+      and(
+        lt(fileUploads.created, cutoff),
+        inArray(fileUploads.status, staleStatuses)
+      )
+    );
+    if (rows.length === 0) return { swept: 0 };
+
+    logger.info(
+      { count: rows.length, cutoff, event: "upload.sweep.started" },
+      "Sweeping stale file_uploads"
+    );
+    for (const row of rows) {
+      S3Service.deleteObject(row.s3Key).catch((err) => {
+        logger.warn(
+          {
+            s3Key: row.s3Key,
+            err: err instanceof Error ? err.message : err,
+          },
+          "Sweeper: failed to delete S3 object"
+        );
+      });
+    }
+    await DbService.repository.fileUploads.softDeleteMany(
+      rows.map((r) => r.id),
+      "SWEEPER"
+    );
+    return { swept: rows.length };
   },
 
   /**

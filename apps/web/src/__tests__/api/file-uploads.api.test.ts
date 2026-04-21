@@ -14,46 +14,37 @@ describe("fileUploads.api", () => {
     mockUseAuthMutation.mockReset();
   });
 
+  describe("presign", () => {
+    it("mutates POST to /api/file-uploads/presign", () => {
+      fileUploads.presign();
+      expect(mockUseAuthMutation).toHaveBeenCalledWith(
+        expect.objectContaining({ url: "/api/file-uploads/presign" })
+      );
+    });
+  });
+
+  describe("confirm", () => {
+    it("mutates POST to /api/file-uploads/confirm", () => {
+      fileUploads.confirm();
+      expect(mockUseAuthMutation).toHaveBeenCalledWith(
+        expect.objectContaining({ url: "/api/file-uploads/confirm" })
+      );
+    });
+  });
+
   describe("parse", () => {
-    it("mutates POST to /api/file-uploads/parse", () => {
+    it("mutates POST to /api/file-uploads/parse with JSON body", () => {
       fileUploads.parse();
       expect(mockUseAuthMutation).toHaveBeenCalledWith(
         expect.objectContaining({
           url: "/api/file-uploads/parse",
         })
       );
-    });
-
-    it("maps a File[] variable into FormData with one 'file' entry per file", () => {
-      fileUploads.parse();
+      // No `body` mapper — the JSON body is the raw variables object.
       const config = mockUseAuthMutation.mock.calls[0]?.[0] as {
-        body?: (files: File[]) => unknown;
+        body?: unknown;
       };
-      expect(typeof config.body).toBe("function");
-
-      const files = [
-        new File(["a"], "first.csv", { type: "text/csv" }),
-        new File(["b"], "second.xlsx", {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }),
-      ];
-      const body = config.body?.(files);
-      expect(body).toBeInstanceOf(FormData);
-      const fd = body as FormData;
-      const fileEntries = fd.getAll("file") as File[];
-      expect(fileEntries).toHaveLength(2);
-      expect(fileEntries[0].name).toBe("first.csv");
-      expect(fileEntries[1].name).toBe("second.xlsx");
-    });
-
-    it("accepts a single-element array", () => {
-      fileUploads.parse();
-      const config = mockUseAuthMutation.mock.calls[0]?.[0] as {
-        body?: (files: File[]) => unknown;
-      };
-      const file = new File(["x"], "only.csv", { type: "text/csv" });
-      const body = config.body?.([file]);
-      expect((body as FormData).getAll("file")).toHaveLength(1);
+      expect(config.body).toBeUndefined();
     });
   });
 });
