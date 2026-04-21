@@ -26,6 +26,15 @@ export const environment = {
   SYSTEM_ID: process.env.SYSTEM_ID,
   // Anthropic configuration
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  // Per-stage model overrides for `interpret()`. Default to Haiku 4.5 — both
+  // stages are narrow, schema-constrained sub-tasks (header→column-definition
+  // match, axis-label→axis-name propose) that Haiku handles in ~1 s each vs.
+  // ~4 s on Sonnet. Env overrides let us roll back to Sonnet without a deploy
+  // if quality regresses on real traffic. Point to any Anthropic model id.
+  INTERPRET_CLASSIFIER_MODEL:
+    process.env.INTERPRET_CLASSIFIER_MODEL || "claude-haiku-4-5-20251001",
+  INTERPRET_AXIS_NAME_MODEL:
+    process.env.INTERPRET_AXIS_NAME_MODEL || "claude-haiku-4-5-20251001",
   // Tavily configuration
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
   // Encryption key for securing sensitive data at rest (base64-encoded, 32 bytes)

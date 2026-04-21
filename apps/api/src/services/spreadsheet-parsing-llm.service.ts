@@ -41,9 +41,22 @@ type GenerateObjectFn = (
 
 export interface CreateInterpretDepsOptions {
   /**
-   * Anthropic model id. Defaults to `AiService.DEFAULT_MODEL`.
+   * Back-compat shortcut: sets both `classifierModel` and
+   * `axisNameRecommenderModel`. Prefer the per-stage options when the two
+   * stages should run on different models.
    */
   model?: string;
+  /**
+   * Anthropic model id for the header-to-column-definition classifier.
+   * Defaults to Haiku 4.5 — the task is a narrow schema-constrained match
+   * that doesn't need Sonnet, and per-call latency drops ~4× at Haiku.
+   */
+  classifierModel?: string;
+  /**
+   * Anthropic model id for the pivoted-region axis-name recommender.
+   * Defaults to Haiku 4.5 for the same reason.
+   */
+  axisNameRecommenderModel?: string;
   /**
    * Test seam — lets tests inject a mocked `generateObject`.
    */
@@ -60,6 +73,8 @@ export interface CreateInterpretDepsOptions {
    */
   columnDefinitionCatalog?: InterpretDeps["columnDefinitionCatalog"];
 }
+
+const DEFAULT_INTERPRET_MODEL = "claude-haiku-4-5-20251001";
 
 export class LlmResponseError extends Error {
   override readonly name = "LlmResponseError" as const;
@@ -86,7 +101,10 @@ export function createInterpretDeps(
   opts: CreateInterpretDepsOptions = {}
 ): InterpretDeps {
   const anthropic = AiService.providers.anthropic;
-  const modelId = opts.model ?? AiService.DEFAULT_MODEL;
+  const classifierModelId =
+    opts.classifierModel ?? opts.model ?? DEFAULT_INTERPRET_MODEL;
+  const axisNameModelId =
+    opts.axisNameRecommenderModel ?? opts.model ?? DEFAULT_INTERPRET_MODEL;
   const gen: GenerateObjectFn = opts.generateObject ?? defaultGenerateObject;
   const logger = opts.logger ?? createLogger({ module: "interpret-llm" });
 
@@ -94,7 +112,7 @@ export function createInterpretDeps(
     const prompt = LlmBridge.buildClassifierPrompt({ candidates, catalog });
     const started = Date.now();
     const result = await gen({
-      model: anthropic(modelId),
+      model: anthropic(classifierModelId),
       prompt,
       schema: LlmBridge.ClassifierResponseSchema,
     });
@@ -106,7 +124,7 @@ export function createInterpretDeps(
           event: "interpret.llm.error",
           stage: "classify",
           issues: parsed.error.issues,
-          modelId,
+          modelId: classifierModelId,
         },
         "classifier response failed schema validation"
       );
@@ -125,7 +143,7 @@ export function createInterpretDeps(
         stage: "classify",
         inputTokens: result.usage?.inputTokens,
         outputTokens: result.usage?.outputTokens,
-        modelId,
+        modelId: classifierModelId,
         latencyMs,
       },
       "interpret classifier call completed"
@@ -140,7 +158,7 @@ export function createInterpretDeps(
         inputTokens: result.usage?.inputTokens,
         outputTokens: result.usage?.outputTokens,
         latencyMs,
-        modelId,
+        modelId: classifierModelId,
       },
     };
   };
@@ -151,7 +169,7 @@ export function createInterpretDeps(
     const prompt = LlmBridge.buildAxisNameRecommenderPrompt({ axisLabels });
     const started = Date.now();
     const result = await gen({
-      model: anthropic(modelId),
+      model: anthropic(axisNameModelId),
       prompt,
       schema: LlmBridge.AxisNameRecommenderResponseSchema,
     });
@@ -165,7 +183,7 @@ export function createInterpretDeps(
           event: "interpret.llm.error",
           stage: "recommend-axis-name",
           issues: parsed.error.issues,
-          modelId,
+          modelId: axisNameModelId,
         },
         "axis-name recommender response failed schema validation"
       );
@@ -184,7 +202,7 @@ export function createInterpretDeps(
         stage: "recommend-axis-name",
         inputTokens: result.usage?.inputTokens,
         outputTokens: result.usage?.outputTokens,
-        modelId,
+        modelId: axisNameModelId,
         latencyMs,
       },
       "interpret axis-name recommender call completed"
@@ -196,7 +214,7 @@ export function createInterpretDeps(
         inputTokens: result.usage?.inputTokens,
         outputTokens: result.usage?.outputTokens,
         latencyMs,
-        modelId,
+        modelId: axisNameModelId,
       },
     };
   };

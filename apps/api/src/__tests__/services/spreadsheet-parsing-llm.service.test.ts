@@ -216,18 +216,119 @@ describe("createInterpretDeps — axisNameRecommender", () => {
 });
 
 describe("createInterpretDeps — configuration", () => {
-  it("respects opts.model and threads it into the generateObject call args", async () => {
+  it("defaults both stages to Haiku 4.5", async () => {
+    const generateObject = jest.fn<GenerateObjectFn>().mockResolvedValue({
+      object: { classifications: [] },
+      usage: {},
+    });
+    const deps = createInterpretDeps({ generateObject });
+    const classifierOut = (await deps.classifier!(candidates, catalog)) as {
+      usage?: { modelId?: string };
+    };
+    generateObject.mockResolvedValueOnce({
+      object: { name: "Month", confidence: 0.8 },
+      usage: {},
+    });
+    const axisOut = (await deps.axisNameRecommender!(["Jan"])) as {
+      usage?: { modelId?: string };
+    };
+    expect(classifierOut.usage?.modelId).toBe("claude-haiku-4-5-20251001");
+    expect(axisOut.usage?.modelId).toBe("claude-haiku-4-5-20251001");
+  });
+
+  it("opts.classifierModel overrides only the classifier stage", async () => {
     const generateObject = jest.fn<GenerateObjectFn>().mockResolvedValue({
       object: { classifications: [] },
       usage: {},
     });
     const deps = createInterpretDeps({
       generateObject,
-      model: "claude-opus-test",
+      classifierModel: "claude-sonnet-4-6",
     });
-    await deps.classifier!(candidates, catalog);
-    const [args] = generateObject.mock.calls[0] ?? [];
-    expect(args).toBeDefined();
+    const classifierOut = (await deps.classifier!(candidates, catalog)) as {
+      usage?: { modelId?: string };
+    };
+    generateObject.mockResolvedValueOnce({
+      object: { name: "Month", confidence: 0.8 },
+      usage: {},
+    });
+    const axisOut = (await deps.axisNameRecommender!(["Jan"])) as {
+      usage?: { modelId?: string };
+    };
+    expect(classifierOut.usage?.modelId).toBe("claude-sonnet-4-6");
+    // Recommender falls back to the shared default.
+    expect(axisOut.usage?.modelId).toBe("claude-haiku-4-5-20251001");
+  });
+
+  it("opts.axisNameRecommenderModel overrides only the recommender stage", async () => {
+    const generateObject = jest.fn<GenerateObjectFn>().mockResolvedValue({
+      object: { classifications: [] },
+      usage: {},
+    });
+    const deps = createInterpretDeps({
+      generateObject,
+      axisNameRecommenderModel: "claude-sonnet-4-6",
+    });
+    const classifierOut = (await deps.classifier!(candidates, catalog)) as {
+      usage?: { modelId?: string };
+    };
+    generateObject.mockResolvedValueOnce({
+      object: { name: "Month", confidence: 0.8 },
+      usage: {},
+    });
+    const axisOut = (await deps.axisNameRecommender!(["Jan"])) as {
+      usage?: { modelId?: string };
+    };
+    expect(classifierOut.usage?.modelId).toBe("claude-haiku-4-5-20251001");
+    expect(axisOut.usage?.modelId).toBe("claude-sonnet-4-6");
+  });
+
+  it("opts.model is a shortcut that sets both stages when per-stage options are absent", async () => {
+    const generateObject = jest.fn<GenerateObjectFn>().mockResolvedValue({
+      object: { classifications: [] },
+      usage: {},
+    });
+    const deps = createInterpretDeps({
+      generateObject,
+      model: "claude-opus-4-7",
+    });
+    const classifierOut = (await deps.classifier!(candidates, catalog)) as {
+      usage?: { modelId?: string };
+    };
+    generateObject.mockResolvedValueOnce({
+      object: { name: "Month", confidence: 0.8 },
+      usage: {},
+    });
+    const axisOut = (await deps.axisNameRecommender!(["Jan"])) as {
+      usage?: { modelId?: string };
+    };
+    expect(classifierOut.usage?.modelId).toBe("claude-opus-4-7");
+    expect(axisOut.usage?.modelId).toBe("claude-opus-4-7");
+  });
+
+  it("per-stage options take precedence over the opts.model shortcut", async () => {
+    const generateObject = jest.fn<GenerateObjectFn>().mockResolvedValue({
+      object: { classifications: [] },
+      usage: {},
+    });
+    const deps = createInterpretDeps({
+      generateObject,
+      model: "claude-opus-4-7",
+      classifierModel: "claude-haiku-4-5-20251001",
+    });
+    const classifierOut = (await deps.classifier!(candidates, catalog)) as {
+      usage?: { modelId?: string };
+    };
+    generateObject.mockResolvedValueOnce({
+      object: { name: "Month", confidence: 0.8 },
+      usage: {},
+    });
+    const axisOut = (await deps.axisNameRecommender!(["Jan"])) as {
+      usage?: { modelId?: string };
+    };
+    expect(classifierOut.usage?.modelId).toBe("claude-haiku-4-5-20251001");
+    // Recommender falls through the shortcut.
+    expect(axisOut.usage?.modelId).toBe("claude-opus-4-7");
   });
 
   it("forwards opts.columnDefinitionCatalog to the InterpretDeps it returns", () => {

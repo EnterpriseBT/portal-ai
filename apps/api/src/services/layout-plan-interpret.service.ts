@@ -11,6 +11,7 @@ import {
   createInterpretDeps,
   type CreateInterpretDepsOptions,
 } from "./spreadsheet-parsing-llm.service.js";
+import { environment } from "../environment.js";
 import { createLogger } from "../utils/logger.util.js";
 
 /**
@@ -31,6 +32,11 @@ export class LayoutPlanInterpretService {
   ): Promise<LayoutPlan> {
     const catalog = await LayoutPlanInterpretService.loadCatalog(orgId);
     const deps = createInterpretDeps({
+      // Env-selected defaults for each stage. Explicit depsOverrides still
+      // win (tests pass a mocked `generateObject` + fixed model ids), so
+      // spreading them last preserves that precedence.
+      classifierModel: environment.INTERPRET_CLASSIFIER_MODEL,
+      axisNameRecommenderModel: environment.INTERPRET_AXIS_NAME_MODEL,
       ...depsOverrides,
       columnDefinitionCatalog: catalog,
       logger:
