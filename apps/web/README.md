@@ -279,7 +279,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { Box } from "@mui/material";
 import { ThemeProvider } from "@portalai/core";
 import { Header } from "../components/Header.component";
-import { useAuthFetch } from "../utils/api.util";
+import { sdk } from "../api/sdk";
 import type { UserProfile } from "@portalai/types";
 ```
 
@@ -334,31 +334,73 @@ This app uses Auth0 for authentication with the following flow:
 1. **Login** - Users are redirected to Auth0 for authentication
 2. **Token Management** - Tokens are stored in localStorage with refresh token support
 3. **Protected Routes** - Routes wrapped in `AuthorizedLayout` require authentication
-4. **API Calls** - Use `useAuthFetch` hook to make authenticated API requests
+4. **API Calls** - Every authenticated request goes through the SDK (see below)
 
-### Using Authenticated API Calls
+## API Calls & SDK
+
+All API calls **must** route through the SDK in `src/api/`. Components never call `fetch`, `useAuthFetch`, or `fetchWithAuth` directly — the SDK is the only path.
+
+### Layout
+
+- `src/api/<domain>.api.ts` — one file per API domain, defining each endpoint as a hook.
+- `src/api/sdk.ts` — aggregates every domain into a single `sdk` object.
+- `src/api/keys.ts` — TanStack Query key factories, re-exported from `sdk.ts` as `queryKeys`.
+
+### Writing endpoints
+
+SDK endpoints are built on the helpers in `src/utils/api.util.ts`. These helpers handle Auth0 token fetching, response unwrapping, and TanStack Query integration — do not reimplement any of this.
+
+- **`useAuthMutation`** — write calls AND imperative reads. For a GET that needs to fire per-invocation (e.g. a viewport-driven fetch), set `method: "GET"`, `body: () => undefined`, and build the URL from variables via `url: (vars) => string`:
+
+  ```typescript
+  // src/api/file-uploads.api.ts
+  import { useAuthMutation } from "../utils/api.util";
+
+  export const fileUploads = {
+    sheetSlice: () =>
+      useAuthMutation<SheetSliceResponse, SheetSliceQuery>({
+        url: (vars) => {
+          const params = new URLSearchParams({
+            uploadSessionId: vars.uploadSessionId,
+            sheetId: vars.sheetId,
+            // …coords
+          });
+          return `/api/file-uploads/sheet-slice?${params}`;
+        },
+        method: "GET",
+        body: () => undefined,
+      }),
+  };
+  ```
+
+- **`useAuthQuery`** — declarative reads keyed by a stable `queryKeys.*` entry. TanStack Query handles caching and invalidation; see *Mutation Cache Invalidation* in the project-level `CLAUDE.md` for invalidation rules.
+
+- **Raw `useAuthFetch`** — reserved for search hooks that populate a bespoke label-map cache. Any other new endpoint should use the helpers above.
+
+### Consuming endpoints
+
+Containers destructure the imperative handle from the SDK hook and pass a narrow callback down to UI components. Pure UI components in `modules/` and `components/` stay context-agnostic — they accept callbacks, never import `sdk`.
 
 ```typescript
-import { useAuthFetch } from "../utils/api.util";
+// Container
+const { mutateAsync: sheetSliceMutate } = sdk.fileUploads.sheetSlice();
+const loadSlice = useCallback(
+  async ({ sheetId, rowStart, rowEnd, colStart, colEnd }) => {
+    const res = await sheetSliceMutate({
+      uploadSessionId: uploadSessionIdRef.current!,
+      sheetId,
+      rowStart,
+      rowEnd,
+      colStart,
+      colEnd,
+    });
+    return res.cells;
+  },
+  [sheetSliceMutate]
+);
 
-const MyComponent = () => {
-  const { fetchWithAuth } = useAuthFetch();
-
-  const fetchData = async () => {
-    const response = await fetchWithAuth("/api/profile");
-    const data = await response.json();
-    return data;
-  };
-
-  // Use with TanStack Query
-  const { data } = useQuery({
-    queryKey: ["profile"],
-    queryFn: async () => {
-      const response = await fetchWithAuth("/api/profile");
-      return response.json();
-    },
-  });
-};
+// Pure UI component (no `sdk` import)
+<SheetCanvasUI loadSlice={loadSlice} … />
 ```
 
 ### Getting Auth0 Tokens for Testing

@@ -5,6 +5,8 @@ import type {
   FileUploadParseSessionResponsePayload,
   FileUploadPresignRequestBody,
   FileUploadPresignResponsePayload,
+  FileUploadSheetSliceRequestQuery,
+  FileUploadSheetSliceResponsePayload,
 } from "@portalai/core/contracts";
 
 import { useAuthMutation } from "../utils/api.util";
@@ -35,6 +37,33 @@ export const fileUploads = {
       FileUploadParseSessionResponsePayload,
       FileUploadParseSessionRequestBody
     >({ url: "/api/file-uploads/parse" }),
+
+  /**
+   * Imperative GET for a cell rectangle on a previously-parsed sheet. Called
+   * by the region-editor canvas as the viewport scrolls over sheets whose
+   * cells were not inlined in the parse response. The caller coalesces /
+   * caches rectangles itself — the (session, sheet, rect) keyspace is
+   * unbounded, so react-query's key-based cache is not a good fit.
+   */
+  sheetSlice: () =>
+    useAuthMutation<
+      FileUploadSheetSliceResponsePayload,
+      FileUploadSheetSliceRequestQuery
+    >({
+      url: (vars) => {
+        const params = new URLSearchParams({
+          uploadSessionId: vars.uploadSessionId,
+          sheetId: vars.sheetId,
+          rowStart: String(vars.rowStart),
+          rowEnd: String(vars.rowEnd),
+          colStart: String(vars.colStart),
+          colEnd: String(vars.colEnd),
+        });
+        return `/api/file-uploads/sheet-slice?${params.toString()}`;
+      },
+      method: "GET",
+      body: () => undefined,
+    }),
 };
 
 export interface PutToS3Options {

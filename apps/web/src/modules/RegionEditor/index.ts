@@ -11,7 +11,7 @@ export { ReviewStepUI } from "./ReviewStep.component";
 export type { ReviewStepUIProps } from "./ReviewStep.component";
 
 export { SheetCanvasUI } from "./SheetCanvas.component";
-export type { SheetCanvasUIProps } from "./SheetCanvas.component";
+export type { LoadSliceFn, SheetCanvasUIProps } from "./SheetCanvas.component";
 
 export { RegionConfigurationPanelUI } from "./RegionConfigurationPanel.component";
 export type { RegionConfigurationPanelUIProps } from "./RegionConfigurationPanel.component";

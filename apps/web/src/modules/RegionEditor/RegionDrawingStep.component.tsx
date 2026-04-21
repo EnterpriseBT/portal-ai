@@ -15,6 +15,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import type { SelectOption } from "@portalai/core/ui";
 
 import { SheetCanvasUI } from "./SheetCanvas.component";
+import type { LoadSliceFn } from "./SheetCanvas.component";
 import { EntityLegendUI } from "./EntityLegend.component";
 import { RegionConfigurationPanelUI } from "./RegionConfigurationPanel.component";
 import { formatBounds } from "./utils/a1-notation.util";
@@ -59,6 +60,12 @@ export interface RegionDrawingStepUIProps {
    * skip shortcut) leave this unset.
    */
   onSkipToReview?: () => void;
+  /**
+   * Forwarded to the SheetCanvas. Required for sheets whose cells were not
+   * inlined in the parse response (large workbooks); omit for workbooks
+   * whose cells arrived inline.
+   */
+  loadSlice?: LoadSliceFn;
 }
 
 export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
@@ -82,6 +89,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   isInterpreting = false,
   errors,
   onSkipToReview,
+  loadSlice,
 }) => {
   const [attemptedInterpret, setAttemptedInterpret] = useState(false);
   const theme = useTheme();
@@ -432,6 +440,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             }
             onRegionResize={onRegionResize}
             maxHeight={isLargeScreen ? "calc(100vh - 400px)" : 420}
+            loadSlice={loadSlice}
           />
         </Box>
         <Box

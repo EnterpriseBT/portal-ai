@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import AnchorIcon from "@mui/icons-material/Anchor";
 import { Box } from "@portalai/core/ui";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 import {
   COL_HEADER_HEIGHT,
@@ -28,9 +29,25 @@ import {
 import type {
   CellBounds,
   CellCoord,
+  CellValue,
   RegionDraft,
   SheetPreview,
 } from "./utils/region-editor.types";
+
+/**
+ * Fetches the cells inside the requested rectangle on the given sheet.
+ * Returned `CellValue[][]` is indexed as `cells[row - rowStart][col - colStart]`.
+ * The caller (canvas) is allowed to ask for rows beyond `sheet.rowCount`; the
+ * backend clamps. A single loader instance serves every sheet in a workbook —
+ * it receives the sheet id per call and closes over the upload session id.
+ */
+export type LoadSliceFn = (args: {
+  sheetId: string;
+  rowStart: number;
+  rowEnd: number;
+  colStart: number;
+  colEnd: number;
+}) => Promise<CellValue[][]>;
 
 export interface SheetCanvasUIProps {
   sheet: SheetPreview;
@@ -43,6 +60,13 @@ export interface SheetCanvasUIProps {
   readOnly?: boolean;
   cellSize?: { width: number; height: number };
   maxHeight?: number | string;
+  /**
+   * When set, rows not already present in `sheet.cells` are treated as
+   * "unloaded" and fetched on demand as they scroll into view. The fetched
+   * cells are cached in-component for the sheet's lifetime. Omit for sheets
+   * whose cells were inlined in the parse response.
+   */
+  loadSlice?: LoadSliceFn;
 }
 
 const DEFAULT_CELL_WIDTH = 96;
@@ -115,6 +139,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   readOnly = false,
   cellSize,
   maxHeight = 420,
+  loadSlice,
 }) => {
   const cellWidth = cellSize?.width ?? DEFAULT_CELL_WIDTH;
   const cellHeight = cellSize?.height ?? DEFAULT_CELL_HEIGHT;
@@ -128,6 +153,30 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     vy: 0,
   });
   const [activeOp, setActiveOp] = useState<ActiveOp | null>(null);
+
+  // Per-canvas slice cache for lazy-loaded sheets. Keyed by row index —
+  // each entry is the row's cells across the full column range. Rests
+  // alongside `sheet.cells` (which may be empty for sliced sheets) without
+  // mutating it; the render path prefers inline cells when present.
+  const [sliceCache, setSliceCache] = useState<Map<number, CellValue[]>>(
+    () => new Map()
+  );
+  const pendingFetchesRef = useRef<Set<string>>(new Set());
+  // Incremented when the sheet identity changes so late-arriving responses
+  // from a previous sheet's fetches can be detected and dropped. Using a
+  // version ref instead of a per-effect cleanup avoids falsely cancelling
+  // a valid in-flight fetch whenever the fetch-trigger effect re-runs for
+  // an unrelated reason (e.g. `virtualItems.length` shifting after the
+  // virtualizer's first post-mount measurement).
+  const sheetVersionRef = useRef(0);
+
+  // Drop the cache (and invalidate in-flight fetches) when the sheet
+  // identity changes — different sheet, different coordinate space.
+  useEffect(() => {
+    sheetVersionRef.current++;
+    setSliceCache(new Map());
+    pendingFetchesRef.current.clear();
+  }, [sheet.id]);
 
   const clientToCell = useCallback(
     (clientX: number, clientY: number): CellCoord | null => {
@@ -488,9 +537,107 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
 
   const gridWidth = ROW_HEADER_WIDTH + cellWidth * sheet.colCount;
 
-  const gridBody = useMemo(() => {
-    const headerCursor = readOnly ? "default" : "pointer";
-    const colHeaderStyle: React.CSSProperties = {
+  // Virtualize the data-row dimension. The sticky column-header row and the
+  // per-row sticky row-header column stay rendered for every visible row;
+  // region overlays are absolutely positioned against the full grid so they
+  // stay at the correct coordinates even when their row is scrolled out of
+  // the virtualized viewport.
+  //
+  // `initialRect` provides a sane default viewport size so that the first
+  // render produces a visible range. The custom `observeElementRect` reads
+  // real `getBoundingClientRect` in production, but falls back to
+  // `initialRect` when a dimension is zero — the case jsdom produces, and
+  // also the case before the scroll element is laid out.
+  const initialRectHeight = typeof maxHeight === "number" ? maxHeight : 600;
+  const initialRect = useMemo(
+    () => ({ width: gridWidth, height: initialRectHeight }),
+    [gridWidth, initialRectHeight]
+  );
+  const rowVirtualizer = useVirtualizer({
+    count: sheet.rowCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => cellHeight,
+    overscan: 8,
+    paddingStart: COL_HEADER_HEIGHT,
+    initialRect,
+    observeElementRect: (instance, cb) => {
+      const el = instance.scrollElement as HTMLElement | null;
+      if (!el) return () => {};
+      const measure = () => {
+        const rect = el.getBoundingClientRect();
+        cb({
+          width: rect.width || initialRect.width,
+          height: rect.height || initialRect.height,
+        });
+      };
+      measure();
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      return () => ro.disconnect();
+    },
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const firstVisibleRow = virtualItems[0]?.index ?? 0;
+  const lastVisibleRow =
+    virtualItems[virtualItems.length - 1]?.index ?? firstVisibleRow;
+
+  // Fetch cells for visible rows whose data isn't already inline or cached.
+  // The fetched rectangle spans the full column range — users scan rows much
+  // more than columns, and the backend's 50k-cell cap comfortably covers a
+  // viewport-height of rows across hundreds of columns. `pendingFetchesRef`
+  // suppresses duplicate requests across re-renders while a fetch is in
+  // flight for the same rectangle.
+  useEffect(() => {
+    if (!loadSlice) return;
+    if (virtualItems.length === 0) return;
+    let anyMissing = false;
+    for (let r = firstVisibleRow; r <= lastVisibleRow; r++) {
+      if (sheet.cells[r] === undefined && !sliceCache.has(r)) {
+        anyMissing = true;
+        break;
+      }
+    }
+    if (!anyMissing) return;
+    const rectKey = `${sheet.id}:${firstVisibleRow}-${lastVisibleRow}`;
+    if (pendingFetchesRef.current.has(rectKey)) return;
+    pendingFetchesRef.current.add(rectKey);
+    const fetchedAtVersion = sheetVersionRef.current;
+    loadSlice({
+      sheetId: sheet.id,
+      rowStart: firstVisibleRow,
+      rowEnd: lastVisibleRow,
+      colStart: 0,
+      colEnd: Math.max(0, sheet.colCount - 1),
+    })
+      .then((cells) => {
+        pendingFetchesRef.current.delete(rectKey);
+        if (fetchedAtVersion !== sheetVersionRef.current) return;
+        setSliceCache((prev) => {
+          const next = new Map(prev);
+          for (let i = 0; i < cells.length; i++) {
+            next.set(firstVisibleRow + i, cells[i] ?? []);
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        pendingFetchesRef.current.delete(rectKey);
+      });
+  }, [
+    loadSlice,
+    firstVisibleRow,
+    lastVisibleRow,
+    sheet.id,
+    sheet.cells,
+    sheet.colCount,
+    sliceCache,
+    virtualItems.length,
+  ]);
+
+  const headerCursor = readOnly ? "default" : "pointer";
+  const colHeaderStyle: React.CSSProperties = useMemo(
+    () => ({
       width: cellWidth,
       height: COL_HEADER_HEIGHT,
       borderRight: "1px solid #e5e7eb",
@@ -504,8 +651,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
       cursor: headerCursor,
-    };
-    const rowHeaderStyle: React.CSSProperties = {
+    }),
+    [cellWidth, headerCursor]
+  );
+  const rowHeaderStyle: React.CSSProperties = useMemo(
+    () => ({
       width: ROW_HEADER_WIDTH,
       height: cellHeight,
       position: "sticky",
@@ -523,8 +673,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       color: "rgba(0,0,0,0.6)",
       boxSizing: "border-box",
       cursor: headerCursor,
-    };
-    const cellStyle: React.CSSProperties = {
+    }),
+    [cellHeight, headerCursor]
+  );
+  const cellStyle: React.CSSProperties = useMemo(
+    () => ({
       width: cellWidth,
       height: cellHeight,
       borderRight: "1px solid #e5e7eb",
@@ -541,76 +694,122 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
       fontSize: 12,
       fontFamily: "monospace",
       boxSizing: "border-box",
-    };
-    const rowStyle: React.CSSProperties = {
-      display: "flex",
-      flexDirection: "row",
-    };
+    }),
+    [cellWidth, cellHeight, readOnly]
+  );
 
-    const colHeaderCells: React.ReactElement[] = [];
+  const colHeaderRow = useMemo(() => {
+    const cells: React.ReactElement[] = [];
     for (let col = 0; col < sheet.colCount; col++) {
-      colHeaderCells.push(
+      cells.push(
         <div key={col} data-col-header={col} style={colHeaderStyle}>
           {colIndexToLetter(col)}
         </div>
       );
     }
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          position: "sticky",
+          top: 0,
+          zIndex: 3,
+          background: "#f3f4f6",
+          width: gridWidth,
+        }}
+      >
+        <div
+          data-corner-header=""
+          style={{
+            width: ROW_HEADER_WIDTH,
+            height: COL_HEADER_HEIGHT,
+            borderRight: "1px solid #e5e7eb",
+            borderBottom: "1px solid #e5e7eb",
+            flex: "0 0 auto",
+            boxSizing: "border-box",
+            cursor: headerCursor,
+            position: "sticky",
+            left: 0,
+            zIndex: 4,
+            background: "#f3f4f6",
+          }}
+          aria-label="Select entire sheet"
+        />
+        {cells}
+      </div>
+    );
+  }, [sheet.colCount, colHeaderStyle, gridWidth, headerCursor]);
 
-    const dataRows: React.ReactElement[] = [];
-    for (let row = 0; row < sheet.rowCount; row++) {
-      const rowCells = sheet.cells[row];
+  const placeholderCellStyle: React.CSSProperties = useMemo(
+    () => ({ ...cellStyle, color: "rgba(0,0,0,0.25)" }),
+    [cellStyle]
+  );
+
+  const renderRow = useCallback(
+    (rowIndex: number, top: number, size: number): React.ReactElement => {
+      const inlineRow = sheet.cells[rowIndex];
+      const cachedRow = sliceCache.get(rowIndex);
+      // "Unloaded" = no inline data, no cached data, and a lazy loader
+      // exists. Without a loader an unloaded row is just empty, not pending.
+      const rowIsUnloaded =
+        inlineRow === undefined && cachedRow === undefined && Boolean(loadSlice);
       const cellEls: React.ReactElement[] = [];
       for (let col = 0; col < sheet.colCount; col++) {
-        const raw = rowCells?.[col];
-        const value =
-          raw === null || raw === undefined || raw === "" ? "" : String(raw);
+        let display = "";
+        if (inlineRow !== undefined) {
+          const raw = inlineRow[col];
+          display =
+            raw === null || raw === undefined || raw === "" ? "" : String(raw);
+        } else if (cachedRow !== undefined) {
+          const raw = cachedRow[col];
+          display =
+            raw === null || raw === undefined || raw === "" ? "" : String(raw);
+        } else if (rowIsUnloaded) {
+          display = "…";
+        }
         cellEls.push(
-          <div key={col} data-testid={`cell-${row}-${col}`} style={cellStyle}>
-            {value}
+          <div
+            key={col}
+            data-testid={`cell-${rowIndex}-${col}`}
+            style={rowIsUnloaded ? placeholderCellStyle : cellStyle}
+            aria-busy={rowIsUnloaded || undefined}
+          >
+            {display}
           </div>
         );
       }
-      dataRows.push(
-        <div key={row} style={rowStyle}>
-          <div data-row-header={row} style={rowHeaderStyle}>
-            {row + 1}
+      return (
+        <div
+          key={rowIndex}
+          style={{
+            position: "absolute",
+            top,
+            left: 0,
+            height: size,
+            width: gridWidth,
+            display: "flex",
+            flexDirection: "row",
+          }}
+        >
+          <div data-row-header={rowIndex} style={rowHeaderStyle}>
+            {rowIndex + 1}
           </div>
           {cellEls}
         </div>
       );
-    }
-
-    return (
-      <>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "row",
-            position: "sticky",
-            top: 0,
-            zIndex: 3,
-            background: "#f3f4f6",
-          }}
-        >
-          <div
-            data-corner-header=""
-            style={{
-              width: ROW_HEADER_WIDTH,
-              height: COL_HEADER_HEIGHT,
-              borderRight: "1px solid #e5e7eb",
-              borderBottom: "1px solid #e5e7eb",
-              flex: "0 0 auto",
-              boxSizing: "border-box",
-              cursor: headerCursor,
-            }}
-            aria-label="Select entire sheet"
-          />
-          {colHeaderCells}
-        </div>
-        {dataRows}
-      </>
-    );
-  }, [sheet, cellWidth, cellHeight, readOnly]);
+    },
+    [
+      sheet.cells,
+      sheet.colCount,
+      cellStyle,
+      placeholderCellStyle,
+      rowHeaderStyle,
+      gridWidth,
+      sliceCache,
+      loadSlice,
+    ]
+  );
 
   return (
     <Box
@@ -651,9 +850,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             width: gridWidth,
             minWidth: "100%",
             display: "block",
+            height: rowVirtualizer.getTotalSize(),
           }}
         >
-          {gridBody}
+          {colHeaderRow}
+          {rowVirtualizer
+            .getVirtualItems()
+            .map((v) => renderRow(v.index, v.start, v.size))}
 
           {(() => {
             const selectedRegion = visibleRegions.find(

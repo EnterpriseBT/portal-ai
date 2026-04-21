@@ -175,5 +175,23 @@ export const queryKeys = {
   },
   fileUploads: {
     root: ["fileUploads"] as const,
+    sheetSlice: (
+      uploadSessionId: string,
+      sheetId: string,
+      rowStart: number,
+      rowEnd: number,
+      colStart: number,
+      colEnd: number
+    ) =>
+      [
+        ...queryKeys.fileUploads.root,
+        "sheetSlice",
+        uploadSessionId,
+        sheetId,
+        rowStart,
+        rowEnd,
+        colStart,
+        colEnd,
+      ] as const,
   },
 };

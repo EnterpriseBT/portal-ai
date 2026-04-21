@@ -40,6 +40,7 @@ import type {
   CellValue,
   ColumnBindingDraft,
   EntityOption,
+  LoadSliceFn,
   RegionDraft,
   RegionEditorErrors,
   SheetPreview,
@@ -64,11 +65,11 @@ function deriveConnectorInstanceName(files: File[]): string {
 }
 
 /**
- * Convert the backend's parse-session response — already dense cells per
- * sheet — into the `Workbook` the RegionEditor renders. For sheets marked
- * `sliced` (cells omitted to keep the response bounded), we seed an empty
- * grid; the slice endpoint will populate it on-demand once virtualization +
- * lazy slicing land (docs/LARGE_WORKBOOK_STREAMING.plan.md §Phase 3b/5a).
+ * Convert the backend's parse-session response into the `Workbook` the
+ * RegionEditor renders. Inlined sheets are flattened into a dense 2D array;
+ * sheets served via the sliced path come back with `cells: []` and stay
+ * empty, so the canvas treats every row as unloaded and fetches via
+ * `loadSlice` as it scrolls.
  */
 function backendParseSheetsToPreview(
   sheets: FileUploadParseSheet[],
@@ -77,13 +78,16 @@ function backendParseSheetsToPreview(
   const out: SheetPreview[] = sheets.map((sheet) => {
     const rows = sheet.dimensions.rows;
     const cols = sheet.dimensions.cols;
-    const cells: CellValue[][] = Array.from({ length: rows }, (_, r) =>
-      Array.from({ length: cols }, (_, c) => {
-        const raw = sheet.cells[r]?.[c];
-        if (raw === undefined || raw === null) return "";
-        return raw as CellValue;
-      })
-    );
+    const cells: CellValue[][] =
+      sheet.cells.length === 0
+        ? []
+        : Array.from({ length: rows }, (_, r) =>
+            Array.from({ length: cols }, (_, c) => {
+              const raw = sheet.cells[r]?.[c];
+              if (raw === undefined || raw === null) return "";
+              return raw as CellValue;
+            })
+          );
     return {
       id: sheet.id,
       name: sheet.name,
@@ -169,6 +173,10 @@ export interface FileUploadConnectorWorkflowUIProps {
   serverError: ServerError | null;
   isInterpreting: boolean;
   isCommitting: boolean;
+
+  // Lazy-loaded cells for sliced sheets. Undefined for workbooks whose cells
+  // were inlined in the parse response.
+  loadSlice?: LoadSliceFn;
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +226,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   serverError,
   isInterpreting,
   isCommitting,
+  loadSlice,
 }) => {
     const isUploadDisabled =
       files.length === 0 ||
@@ -267,6 +276,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                   isInterpreting={isInterpreting}
                   errors={errors}
                   serverError={serverError}
+                  loadSlice={loadSlice}
                 />
               ) : (
                 <Box sx={{ p: 3 }}>
@@ -351,11 +361,33 @@ export const FileUploadConnectorWorkflow: React.FC<
   const { mutateAsync: presignMutate } = sdk.fileUploads.presign();
   const { mutateAsync: confirmMutate } = sdk.fileUploads.confirm();
   const { mutateAsync: parseMutate } = sdk.fileUploads.parse();
+  const { mutateAsync: sheetSliceMutate } = sdk.fileUploads.sheetSlice();
   const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
   const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
   const workbookRef = useRef<Workbook | null>(null);
   const uploadSessionIdRef = useRef<string | null>(null);
   const filesRef = useRef<File[]>([]);
+
+  // Handed to the canvas so sliced sheets can fetch cells on scroll. The
+  // reference closure reads `uploadSessionIdRef.current` per call, so a
+  // single stable callback works across parse → review without needing to
+  // be rebuilt when the session id changes.
+  const loadSlice: LoadSliceFn = useCallback(
+    async ({ sheetId, rowStart, rowEnd, colStart, colEnd }) => {
+      const uploadSessionId = uploadSessionIdRef.current;
+      if (!uploadSessionId) throw new Error("Upload session missing");
+      const res = await sheetSliceMutate({
+        uploadSessionId,
+        sheetId,
+        rowStart,
+        rowEnd,
+        colStart,
+        colEnd,
+      });
+      return res.cells;
+    },
+    [sheetSliceMutate]
+  );
 
   // User-staged entities created via the region editor's "+ Create new entity"
   // affordance. Sheet-derived options always win on key collisions; see
@@ -700,6 +732,7 @@ export const FileUploadConnectorWorkflow: React.FC<
       serverError={workflow.serverError}
       isInterpreting={workflow.isInterpreting}
       isCommitting={workflow.isCommitting}
+      loadSlice={loadSlice}
     />
   );
 };

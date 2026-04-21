@@ -164,6 +164,17 @@ Every form with user input must:
 - `<FormAlert>` uses MUI `<Alert>` which provides `role="alert"` automatically — do not add custom alert roles
 - Searchable select components (`AsyncSearchableSelect`, `SearchableSelect`, etc.) accept `inputRef` for focus management
 
+## API Calls & SDK Helpers (apps/web)
+
+All API calls route through the SDK. No component — view, workflow, module, or primitive — may call `fetch`, `useAuthFetch`, or `fetchWithAuth` directly. The SDK is the only path.
+
+- **Where**: `apps/web/src/api/<domain>.api.ts` defines the endpoints; `apps/web/src/api/sdk.ts` exposes them as `sdk.<domain>.<action>()`. Every network call originates here.
+- **What to use**: SDK endpoints are built on the helpers in `utils/api.util.ts`:
+  - `useAuthMutation` — write calls AND imperative reads. For GET endpoints that must fire per-invocation (e.g. viewport-driven fetches), use `method: "GET"`, `body: () => undefined`, and build the URL from variables via `url: (vars) => string`. Consumers get `mutateAsync` for imperative use.
+  - `useAuthQuery` — declarative reads keyed by a stable `queryKeys.*` entry. React Query handles caching + invalidation.
+- **What to avoid**: hand-rolled `useAuthFetch` + `useCallback` wrappers are the exception, not the rule — reserved for search hooks that populate a bespoke label-map cache. Every other endpoint uses the helpers above so auth-error handling, response unwrapping, and react-query integration stay uniform.
+- **Consumption pattern**: containers destructure the imperative handle (`const { mutateAsync: fooMutate } = sdk.foo.bar()`) and hand a narrow callback down as a prop. Pure UI components in `modules/` and `components/` stay context-agnostic — they accept callbacks, they never import `sdk`.
+
 ## Mutation Cache Invalidation (apps/web)
 
 - Every mutation's `onSuccess` callback must invalidate at minimum its own entity's `.root` query key via `queryClient.invalidateQueries({ queryKey: queryKeys.<entity>.root })`
@@ -319,7 +330,7 @@ Concrete repositories extend `ListOptions` with `include?: string[]` and overrid
 
 ## Authentication
 
-- **Frontend**: Auth0 React SDK — `useAuth0()` for login, `useAuthFetch()` hook for authenticated API calls
+- **Frontend**: Auth0 React SDK — `useAuth0()` for login. All authenticated API calls go through the SDK (`sdk.<domain>.<action>()`) built on `useAuthMutation`/`useAuthQuery`; see *API Calls & SDK Helpers (apps/web)* above.
 - **Backend**: Auth0 JWT middleware — `Authorization: Bearer <token>` header on all `/api/*` routes
 - **Protected routes**: Frontend routes wrapped in `AuthorizedLayout` require authentication
 

@@ -5,6 +5,7 @@ import type { StepConfig } from "@portalai/core/ui";
 import { DriftBannerUI } from "./DriftBanner.component";
 import { RegionDrawingStepUI } from "./RegionDrawingStep.component";
 import { ReviewStepUI } from "./ReviewStep.component";
+import type { LoadSliceFn } from "./SheetCanvas.component";
 import type {
   CellBounds,
   DriftReportPreview,
@@ -53,6 +54,7 @@ export interface RegionEditorUIProps {
 
   driftReport?: DriftReportPreview | null;
   errors?: RegionEditorErrors;
+  loadSlice?: LoadSliceFn;
 }
 
 export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
@@ -85,6 +87,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
   commitDisabledReason,
   driftReport,
   errors,
+  loadSlice,
 }) => {
   return (
     <Box
@@ -121,6 +124,7 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
               onRefetchWorkbook={onRefetchWorkbook}
               isInterpreting={isInterpreting}
               errors={errors}
+              loadSlice={loadSlice}
             />
           </Stack>
         </StepPanel>

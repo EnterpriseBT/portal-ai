@@ -33,3 +33,14 @@ global.IntersectionObserver = class IntersectionObserver {
   }
   unobserve() {}
 } as unknown as typeof IntersectionObserver;
+
+// jsdom doesn't implement ResizeObserver; @tanstack/react-virtual uses it to
+// re-measure scroll-container dimensions. A no-op stub leaves the virtualizer
+// on its `initialRect` forever, which is what tests want — components supply a
+// sane default viewport size so rows render deterministically.
+global.ResizeObserver = class ResizeObserver {
+  constructor(_cb: ResizeObserverCallback) {}
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
