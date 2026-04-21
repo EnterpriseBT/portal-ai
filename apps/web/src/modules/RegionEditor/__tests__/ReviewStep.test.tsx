@@ -130,6 +130,72 @@ describe("ReviewStepUI — binding editor popover", () => {
     ).toBeNull();
   });
 
+  test("opening the popover pre-fills normalizedKey with the derived source name", () => {
+    setup();
+    fireEvent.click(
+      screen.getByRole("button", { name: /edit binding.*header:email/i })
+    );
+    const nk = screen.getByLabelText(/normalized key/i) as HTMLInputElement;
+    expect(nk.value).toBe("email");
+  });
+
+  test("Apply strips normalizedKey from the patch when it equals the derived default", () => {
+    const { onUpdateBinding } = setup();
+    fireEvent.click(
+      screen.getByRole("button", { name: /edit binding.*header:email/i })
+    );
+    // Toggle Required so the patch isn't empty — we want to verify that
+    // normalizedKey is *not* included in the outbound patch when it matches
+    // the derived default (the field value stayed pre-filled).
+    fireEvent.click(screen.getByLabelText(/^required$/i));
+    fireEvent.click(screen.getByRole("button", { name: /^apply$/i }));
+    expect(onUpdateBinding).toHaveBeenCalledTimes(1);
+    const [, , patch] = onUpdateBinding.mock.calls[0];
+    expect(patch).not.toHaveProperty("normalizedKey");
+    expect(patch).toMatchObject({ required: true });
+  });
+
+  test("clearing the normalizedKey input commits as 'no override' (reverts any prior override)", () => {
+    const regionWithOverride: RegionDraft = {
+      ...region,
+      columnBindings: [
+        {
+          sourceLocator: "header:Email",
+          columnDefinitionId: "coldef_email",
+          columnDefinitionLabel: "Email",
+          confidence: 0.9,
+          normalizedKey: "prior_override",
+        },
+      ],
+    };
+    const onUpdateBinding = jest.fn();
+    render(
+      <ReviewStepUI
+        regions={[regionWithOverride]}
+        overallConfidence={0.85}
+        onJumpToRegion={jest.fn()}
+        onEditBinding={jest.fn()}
+        onUpdateBinding={onUpdateBinding}
+        onToggleBindingExcluded={jest.fn()}
+        columnDefinitionSearch={makeSearchStub()}
+        onCommit={jest.fn()}
+        onBack={jest.fn()}
+      />
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /edit binding.*header:email/i })
+    );
+    const nk = screen.getByLabelText(/normalized key/i) as HTMLInputElement;
+    // Clear the field.
+    fireEvent.change(nk, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /^apply$/i }));
+    expect(onUpdateBinding).toHaveBeenCalledWith(
+      "region-a",
+      "header:Email",
+      expect.objectContaining({ normalizedKey: undefined })
+    );
+  });
+
   test("Commit stays disabled while any binding carries a validation error", () => {
     const regionWithBadBinding: RegionDraft = {
       ...region,

@@ -55,9 +55,12 @@ function setup(overrides: Partial<BindingEditorPopoverUIProps> = {}) {
 describe("BindingEditorPopoverUI — rendering", () => {
   test("renders the source locator header for byHeaderName", () => {
     setup({ draft: { ...baseBinding, sourceLocator: "header:Email" } });
-    expect(screen.getByText(/email/i)).toBeInTheDocument();
-    // Header chip marks this as a header-derived locator.
-    expect(screen.getByText(/header/i)).toBeInTheDocument();
+    // Primary header text renders as an h6.
+    expect(
+      screen.getByRole("heading", { level: 6, name: /^email$/i })
+    ).toBeInTheDocument();
+    // "Header" chip marks this as a header-derived locator.
+    expect(screen.getByText(/^header$/i)).toBeInTheDocument();
   });
 
   test("renders the source locator header for byColumnIndex", () => {

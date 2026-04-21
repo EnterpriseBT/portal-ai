@@ -150,6 +150,12 @@ export type {
   ReplayResult,
 } from "@portalai/spreadsheet-parsing";
 
+// ── Normalized-key derivation ─────────────────────────────────────────────
+export {
+  sourceFieldToNormalizedKey,
+  sourceLocatorToNormalizedKey,
+} from "@portalai/spreadsheet-parsing";
+
 // Note: `replay()` lives in the Node-only
 // `@portalai/spreadsheet-parsing/replay` subpath and is **not** re-exported
 // from `@portalai/core/contracts`. Keeping it out of this barrel keeps the

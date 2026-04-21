@@ -93,6 +93,8 @@ const {
   connectorDefinitions,
   connectorInstanceLayoutPlans,
   connectorEntities,
+  entityRecords,
+  fieldMappings,
 } = schema;
 
 type Db = ReturnType<typeof drizzle>;
@@ -379,6 +381,115 @@ describe("Layout Plans Draft Router", () => {
         .from(connectorEntities)
         .where(eq(connectorEntities.connectorInstanceId, payload.connectorInstanceId));
       expect(entities.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("writes entity_records.normalizedData keyed by the same normalizedKey the FieldMapping rows use", async () => {
+      // Seed catalog columns whose `key` differs from the spreadsheet's
+      // header text. The source-derived default `normalizedKey` should
+      // match the header (e.g. "Email Address" → "email_address"), NOT the
+      // catalog's key (e.g. "email"). This regression test guards against
+      // the writeRecords / reconcile key-mismatch bug.
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email",
+        "Email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name",
+        "Name"
+      );
+
+      const workbook: WorkbookData = {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 2, cols: 2 },
+            cells: [
+              { row: 1, col: 1, value: "Email Address" },
+              { row: 1, col: 2, value: "Full Name" },
+              { row: 2, col: 1, value: "alice@example.com" },
+              { row: 2, col: 2, value: "Alice Example" },
+            ],
+          },
+        ],
+      };
+      const plan = makePlan(emailId, nameId);
+      plan.workbookFingerprint = {
+        sheetNames: ["Sheet1"],
+        dimensions: { Sheet1: { rows: 2, cols: 2 } },
+        anchorCells: [
+          { sheet: "Sheet1", row: 1, col: 1, value: "Email Address" },
+        ],
+      };
+      plan.regions[0].bounds = {
+        startRow: 1,
+        startCol: 1,
+        endRow: 2,
+        endCol: 2,
+      };
+      plan.regions[0].columnBindings = [
+        {
+          sourceLocator: { kind: "byHeaderName", name: "Email Address" },
+          columnDefinitionId: emailId,
+          confidence: 0.9,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", name: "Full Name" },
+          columnDefinitionId: nameId,
+          confidence: 0.9,
+        },
+      ];
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        workbook
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/commit")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId,
+          name: "Source-derived keys",
+          plan,
+          uploadSessionId,
+        });
+      expect(res.status).toBe(200);
+      const connectorInstanceId = res.body.payload
+        .connectorInstanceId as string;
+
+      const [entity] = await (db as Db)
+        .select()
+        .from(connectorEntities)
+        .where(eq(connectorEntities.connectorInstanceId, connectorInstanceId));
+      expect(entity).toBeDefined();
+
+      const mappings = await (db as Db)
+        .select()
+        .from(fieldMappings)
+        .where(eq(fieldMappings.connectorEntityId, entity.id));
+      const mappingKeys = new Set(mappings.map((m) => m.normalizedKey));
+      // Source-derived keys, NOT catalog keys.
+      expect(mappingKeys).toEqual(new Set(["email_address", "full_name"]));
+
+      const records = await (db as Db)
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.connectorEntityId, entity.id));
+      expect(records).toHaveLength(1);
+      const normalizedData = records[0].normalizedData as Record<
+        string,
+        unknown
+      >;
+      // The normalizedData must be keyed by the same derivation as the
+      // FieldMapping rows — otherwise the UI renders empty fields.
+      expect(normalizedData).toEqual({
+        email_address: "alice@example.com",
+        full_name: "Alice Example",
+      });
     });
 
     it("rolls back the ConnectorInstance and plan row when commit fails", async () => {

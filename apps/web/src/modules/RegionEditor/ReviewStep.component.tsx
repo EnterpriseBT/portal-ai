@@ -3,6 +3,7 @@ import { Box, Stack, Typography, Button } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import type { ColumnDataType } from "@portalai/core/models";
+import { sourceLocatorToNormalizedKey } from "@portalai/core/contracts";
 
 import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import { RegionReviewCardUI } from "./RegionReviewCard.component";
@@ -12,6 +13,7 @@ import {
   validateBindingDraft,
   validateRegionBindings,
 } from "./utils/region-editor-validation.util";
+import type { RegionBindingErrors } from "./utils/region-editor-validation.util";
 import type {
   ColumnBindingDraft,
   RegionDraft,
@@ -120,12 +122,20 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
     );
     if (!binding) return;
     const ctx = draftValidationContext(binding, resolveColumnDefinitionType);
+    // Pre-populate the field with the same derivation commit uses when no
+    // override is set, so the user sees the effective default instead of a
+    // blank input.
+    const derivedNormalizedKey = sourceLocatorToNormalizedKey(sourceLocator);
+    const initialDraft = {
+      ...binding,
+      normalizedKey: binding.normalizedKey ?? derivedNormalizedKey,
+    };
     setEditing({
       regionId: region.id,
       sourceLocator,
       anchorEl,
-      draft: { ...binding },
-      errors: validateBindingDraft(binding, ctx),
+      draft: initialDraft,
+      errors: validateBindingDraft(initialDraft, ctx),
       serverError: null,
     });
   };
@@ -178,9 +188,20 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
       "refEntityKey",
       "refNormalizedKey",
     ];
+    const derivedNormalizedKey = sourceLocatorToNormalizedKey(
+      editing.sourceLocator
+    );
     for (const k of keys) {
-      const nextValue = editing.draft[k];
+      let nextValue = editing.draft[k];
       const prevValue = original?.[k];
+      if (k === "normalizedKey") {
+        // Empty string or a value equal to the derived default means "no
+        // override" — don't persist a spurious override (and revert any
+        // prior one by patching to undefined).
+        if (nextValue === "" || nextValue === derivedNormalizedKey) {
+          nextValue = undefined;
+        }
+      }
       if (!Object.is(nextValue, prevValue)) {
         (patch as Record<string, unknown>)[k] = nextValue;
       }
@@ -217,8 +238,10 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   // Aggregate binding-level validation errors across all regions. Commit is
   // blocked until the last one is resolved — the in-popover validator mirrors
   // the same rules so users never see the Commit-side message without a
-  // matching per-field error on the open popover.
-  const bindingErrorCount = regions.reduce((sum, r) => {
+  // matching per-field error on the open popover. The per-region map is
+  // also passed to each card so invalid chips render in the error palette.
+  const bindingErrorsByRegion = new Map<string, RegionBindingErrors>();
+  for (const r of regions) {
     const ctx: Record<string, ReturnType<typeof draftValidationContext>> = {};
     for (const binding of r.columnBindings ?? []) {
       ctx[binding.sourceLocator] = draftValidationContext(
@@ -227,8 +250,13 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
       );
     }
     const regionErrors = validateRegionBindings(r, ctx);
-    return sum + Object.keys(regionErrors).length;
-  }, 0);
+    if (Object.keys(regionErrors).length > 0) {
+      bindingErrorsByRegion.set(r.id, regionErrors);
+    }
+  }
+  const bindingErrorCount = Array.from(
+    bindingErrorsByRegion.values()
+  ).reduce((sum, regionErrors) => sum + Object.keys(regionErrors).length, 0);
   const bindingDisabledReason =
     bindingErrorCount > 0
       ? `${bindingErrorCount} binding${bindingErrorCount === 1 ? "" : "s"} ha${bindingErrorCount === 1 ? "s" : "ve"} validation errors — fix them before committing.`
@@ -326,6 +354,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
                   onEditBinding={(sourceLocator, anchorEl) =>
                     handleChipClick(region, sourceLocator, anchorEl)
                   }
+                  bindingErrors={bindingErrorsByRegion.get(region.id)}
                 />
               ))}
             </Stack>

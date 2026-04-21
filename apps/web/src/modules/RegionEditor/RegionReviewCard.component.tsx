@@ -10,6 +10,7 @@ import {
   CONFIDENCE_BAND_COLOR,
 } from "./utils/region-editor-colors.util";
 import type { RegionDraft } from "./utils/region-editor.types";
+import type { RegionBindingErrors } from "./utils/region-editor-validation.util";
 
 export interface RegionReviewCardUIProps {
   region: RegionDraft;
@@ -20,12 +21,19 @@ export interface RegionReviewCardUIProps {
    * the clicked chip (the `ReviewStepUI` binding editor does).
    */
   onEditBinding: (sourceLocator: string, anchorEl: HTMLElement) => void;
+  /**
+   * Per-binding validation errors keyed by serialised `sourceLocator`.
+   * Chips with an entry render in the error palette with an "Invalid" pill
+   * so the user can spot problem bindings without opening each one.
+   */
+  bindingErrors?: RegionBindingErrors;
 }
 
 export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
   region,
   onJump,
   onEditBinding,
+  bindingErrors,
 }) => {
   return (
     <Box
@@ -73,9 +81,14 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
             {region.columnBindings.map((binding) => {
               const band = confidenceBand(binding.confidence);
               const isExcluded = binding.excluded === true;
+              const isInvalid =
+                !isExcluded &&
+                bindingErrors?.[binding.sourceLocator] !== undefined;
               const ariaLabel = isExcluded
                 ? `Excluded — click to edit: ${binding.sourceLocator}`
-                : `Edit binding: ${binding.sourceLocator}`;
+                : isInvalid
+                  ? `Invalid — click to edit: ${binding.sourceLocator}`
+                  : `Edit binding: ${binding.sourceLocator}`;
               return (
                 <Box
                   key={binding.sourceLocator}
@@ -96,8 +109,12 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                     py: 0.25,
                     borderRadius: 16,
                     border: "1px solid",
-                    borderColor: CONFIDENCE_BAND_COLOR[band],
-                    backgroundColor: "background.paper",
+                    borderColor: isInvalid
+                      ? "error.main"
+                      : CONFIDENCE_BAND_COLOR[band],
+                    backgroundColor: isInvalid
+                      ? "error.light"
+                      : "background.paper",
                     cursor: "pointer",
                     fontSize: 12,
                     opacity: isExcluded ? 0.55 : 1,
@@ -119,6 +136,13 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                       size="small"
                       variant="outlined"
                       sx={{ height: 18, textDecoration: "none" }}
+                    />
+                  ) : isInvalid ? (
+                    <MuiChip
+                      label="Invalid"
+                      size="small"
+                      color="error"
+                      sx={{ height: 18 }}
                     />
                   ) : (
                     <Box

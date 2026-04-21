@@ -19,6 +19,7 @@
  */
 
 import { and, eq, inArray } from "drizzle-orm";
+import { sourceFieldToNormalizedKey } from "@portalai/spreadsheet-parsing";
 
 import type {
   ColumnDefinitionSelect,
@@ -79,17 +80,25 @@ export interface ReconcileFieldMappingsInput {
 }
 
 /**
- * Resolve the normalized key for a binding — override wins, falling back to
- * the catalog's `key` and finally to the `columnDefinitionId` when the
- * catalog entry is missing. Exported so `layout-plan-commit.service.ts` can
- * precompute the staged normalized-key map for cross-region ref validation
- * using the same logic reconcile uses.
+ * Resolve the normalized key for a binding — the explicit override wins,
+ * falling back to a name **derived from the source field** (so two bindings
+ * pointing at different columns end up on different `FieldMapping` rows
+ * even when they share a `ColumnDefinition`). `catalogById` is accepted for
+ * parity with existing callers but only used as a last-ditch fallback when
+ * the source field is absent — which shouldn't happen in practice.
+ *
+ * Exported so `layout-plan-commit.service.ts` can precompute the staged
+ * normalized-key map for cross-region ref validation using the same logic
+ * reconcile uses.
  */
 export function resolveNormalizedKey(
   binding: PlanBinding,
   catalogById: Map<string, ColumnDefinitionSelect>
 ): string {
   if (binding.normalizedKey) return binding.normalizedKey;
+  if (binding.sourceField) {
+    return sourceFieldToNormalizedKey(binding.sourceField);
+  }
   return (
     catalogById.get(binding.columnDefinitionId)?.key ??
     binding.columnDefinitionId

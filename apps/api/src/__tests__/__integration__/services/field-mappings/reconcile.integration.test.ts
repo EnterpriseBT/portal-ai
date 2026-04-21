@@ -326,7 +326,7 @@ describe("reconcileFieldMappings — integration", () => {
   // ── Baseline + override happy paths ────────────────────────────────
 
   describe("overrides", () => {
-    it("writes catalog-derived defaults when no overrides are set", async () => {
+    it("writes source-derived defaults when no overrides are set", async () => {
       await reconcileFieldMappings(
         {
           connectorEntityId: subjectEntityId,
@@ -349,6 +349,31 @@ describe("reconcileFieldMappings — integration", () => {
         refEntityKey: null,
         refNormalizedKey: null,
       });
+    });
+
+    it("derives normalizedKey from the source field name (not the catalog key) when no override is set", async () => {
+      // Source is "Customer Name" but the bound ColumnDefinition's key is
+      // "name". Commit should derive "customer_name" from the source, not
+      // fall back to the catalog's key — so two bindings pointing at the
+      // same definition but different source columns produce distinct rows.
+      await reconcileFieldMappings(
+        {
+          connectorEntityId: subjectEntityId,
+          organizationId: orgId,
+          userId,
+          bindings: [
+            {
+              columnDefinitionId: colStringAltId,
+              sourceField: "Customer Name",
+            },
+          ],
+          catalogById,
+        },
+        db
+      );
+      const rows = await readMappings();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].normalizedKey).toBe("customer_name");
     });
 
     it("honors binding.normalizedKey over the catalog key", async () => {

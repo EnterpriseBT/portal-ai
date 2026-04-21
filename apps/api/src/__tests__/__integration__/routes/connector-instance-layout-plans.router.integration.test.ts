@@ -683,11 +683,12 @@ describe("Connector Instance Layout Plans Router", () => {
       // Region 1 binds email + name; region 2 binds email + age. Both target
       // the same entity, so FieldMappings should be deduplicated (3 total,
       // one per distinct columnDefinitionId).
+      // Both regions cover the same 3 columns so drift sees no added/removed
+      // columns. Region 1 contributes {email, name}; Region 2 contributes
+      // {email, name, age}. After dedup by columnDefinitionId the result is
+      // {colEmail, colName, colAge} — 3 FieldMappings, 1 ConnectorEntity.
       const region1 = simpleRegion("r1", "contacts", colEmailId, colNameId, {
-        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
-      });
-      const region2 = simpleRegion("r2", "contacts", colEmailId, colAgeId, {
-        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
         columnBindings: [
           {
             sourceLocator: { kind: "byHeaderName", name: "email" },
@@ -696,6 +697,31 @@ describe("Connector Instance Layout Plans Router", () => {
           },
           {
             sourceLocator: { kind: "byHeaderName", name: "name" },
+            columnDefinitionId: colNameId,
+            confidence: 0.9,
+          },
+          {
+            sourceLocator: { kind: "byHeaderName", name: "age" },
+            columnDefinitionId: colAgeId,
+            confidence: 0.9,
+          },
+        ],
+      });
+      const region2 = simpleRegion("r2", "contacts", colEmailId, colAgeId, {
+        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
+        columnBindings: [
+          {
+            sourceLocator: { kind: "byHeaderName", name: "email" },
+            columnDefinitionId: colEmailId,
+            confidence: 0.9,
+          },
+          {
+            sourceLocator: { kind: "byHeaderName", name: "name" },
+            columnDefinitionId: colNameId,
+            confidence: 0.9,
+          },
+          {
+            sourceLocator: { kind: "byHeaderName", name: "age" },
             columnDefinitionId: colAgeId,
             confidence: 0.9,
           },
@@ -705,7 +731,7 @@ describe("Connector Instance Layout Plans Router", () => {
         planVersion: "1.0.0",
         workbookFingerprint: {
           sheetNames: ["Sheet1"],
-          dimensions: { Sheet1: { rows: 2, cols: 2 } },
+          dimensions: { Sheet1: { rows: 2, cols: 3 } },
           anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "email" }],
         },
         regions: [region1, region2],
@@ -717,12 +743,14 @@ describe("Connector Instance Layout Plans Router", () => {
         sheets: [
           {
             name: "Sheet1",
-            dimensions: { rows: 2, cols: 2 },
+            dimensions: { rows: 2, cols: 3 },
             cells: [
               { row: 1, col: 1, value: "email" },
               { row: 1, col: 2, value: "name" },
+              { row: 1, col: 3, value: "age" },
               { row: 2, col: 1, value: "a@x.com" },
               { row: 2, col: 2, value: "alice" },
+              { row: 2, col: 3, value: "42" },
             ],
           },
         ],

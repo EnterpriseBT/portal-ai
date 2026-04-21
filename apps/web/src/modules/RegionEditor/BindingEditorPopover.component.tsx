@@ -15,6 +15,7 @@ import {
 import type { SelectOption } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import type { ColumnDataType } from "@portalai/core/models";
+import { sourceLocatorToNormalizedKey } from "@portalai/core/contracts";
 
 import type { ColumnBindingDraft } from "./utils/region-editor.types";
 import type { SearchResult } from "../../api/types";
@@ -101,6 +102,10 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
     ? REFERENCE_TYPES.has(columnDefinitionType)
     : false;
   const hasErrors = Object.keys(errors).length > 0;
+  // Default normalized key derives from the source field name. Commit uses
+  // the same derivation when no override is set, so what the user sees here
+  // is what gets written unless they edit it.
+  const derivedNormalizedKey = sourceLocatorToNormalizedKey(draft.sourceLocator);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,18 +189,20 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
 
         <Divider />
 
-        {/* Normalized key */}
+        {/* Normalized key — pre-populated by the parent with the derived
+            source-name default. The field is always a real string so clearing
+            actually clears; the parent's Apply diff treats "matches derived
+            default" as "no override" so commit falls back to the derived
+            default without persisting a spurious user override. */}
         <TextInput
           label="Normalized key"
           value={draft.normalizedKey ?? ""}
-          onChange={(e) =>
-            onChange({ normalizedKey: e.target.value || undefined })
-          }
+          onChange={(e) => onChange({ normalizedKey: e.target.value })}
           disabled={isExcluded}
           error={!!errors.normalizedKey}
           helperText={
             errors.normalizedKey ??
-            "Override the default key (leave blank to use the ColumnDefinition's key)."
+            `Defaults to the normalised source name ("${derivedNormalizedKey}"). Edit to override.`
           }
           slotProps={{
             htmlInput: {

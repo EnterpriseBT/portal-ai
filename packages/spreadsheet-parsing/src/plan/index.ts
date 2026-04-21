@@ -82,6 +82,11 @@ export type {
 export { WarningSchema } from "./warning.schema.js";
 export type { Warning } from "./warning.schema.js";
 
+export {
+  sourceFieldToNormalizedKey,
+  sourceLocatorToNormalizedKey,
+} from "./normalized-key.js";
+
 export { RegionSchema } from "./region.schema.js";
 export type { Region } from "./region.schema.js";
 

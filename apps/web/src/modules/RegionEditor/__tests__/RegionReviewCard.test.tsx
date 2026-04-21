@@ -34,7 +34,10 @@ const makeRegion = (
   ...overrides,
 });
 
-function setup(overrides: Partial<RegionDraft> = {}) {
+function setup(
+  overrides: Partial<RegionDraft> = {},
+  bindingErrors?: import("../utils/region-editor-validation.util").RegionBindingErrors
+) {
   const onJump = jest.fn();
   const onEditBinding =
     jest.fn<(sourceLocator: string, anchorEl: HTMLElement) => void>();
@@ -43,6 +46,7 @@ function setup(overrides: Partial<RegionDraft> = {}) {
       region={makeRegion(overrides)}
       onJump={onJump}
       onEditBinding={onEditBinding}
+      bindingErrors={bindingErrors}
     />
   );
   return { ...utils, onJump, onEditBinding };
@@ -77,5 +81,42 @@ describe("RegionReviewCardUI — excluded chip styling", () => {
     const chip = screen.getByRole("button", { name: /excluded.*col:3/i });
     fireEvent.click(chip);
     expect(onEditBinding).toHaveBeenCalledWith("col:3", chip);
+  });
+});
+
+describe("RegionReviewCardUI — invalid chip styling", () => {
+  test("chips with entries in bindingErrors carry an invalid aria-label + Invalid pill", () => {
+    setup(
+      {},
+      {
+        "header:Email": { normalizedKey: "duplicate override" },
+      }
+    );
+    const invalidChip = screen.getByRole("button", {
+      name: /invalid.*header:email/i,
+    });
+    expect(invalidChip).toBeInTheDocument();
+    // Surfaces an "Invalid" pill next to the chip content so the user can spot
+    // problem bindings without clicking each one.
+    expect(screen.getByText(/^invalid$/i)).toBeInTheDocument();
+  });
+
+  test("non-invalid chips are unaffected when bindingErrors is supplied for others", () => {
+    setup(
+      {},
+      {
+        "header:Email": { normalizedKey: "duplicate override" },
+      }
+    );
+    // The excluded chip is still labelled "Excluded" (takes precedence in
+    // aria-label — excluded bindings don't carry validation errors).
+    expect(
+      screen.getByRole("button", { name: /excluded.*col:3/i })
+    ).toBeInTheDocument();
+  });
+
+  test("no bindingErrors prop → no Invalid pills anywhere", () => {
+    setup();
+    expect(screen.queryByText(/^invalid$/i)).not.toBeInTheDocument();
   });
 });

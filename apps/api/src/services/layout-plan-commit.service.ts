@@ -208,10 +208,26 @@ export class LayoutPlanCommitService {
           tx
         );
 
+        // Build the `columnDefinitionId → normalizedKey` map the record
+        // writer needs so `entity_records.normalizedData` lines up with the
+        // `FieldMapping.normalizedKey` values reconcile wrote. Skip excluded
+        // bindings — they have no FieldMapping row to match.
+        const normalizedKeyByColumnDefId = new Map<string, string>();
+        for (const binding of bindings) {
+          if (binding.excluded === true) continue;
+          if (!normalizedKeyByColumnDefId.has(binding.columnDefinitionId)) {
+            normalizedKeyByColumnDefId.set(
+              binding.columnDefinitionId,
+              resolveNormalizedKey(binding, catalogById)
+            );
+          }
+        }
+
         const counts = await LayoutPlanCommitService.writeRecords(
           entity.id,
           groupRecords,
           catalogById,
+          normalizedKeyByColumnDefId,
           organizationId,
           userId,
           tx
@@ -332,8 +348,11 @@ export class LayoutPlanCommitService {
   /**
    * Write one group's records into `entity_records` via
    * `upsertManyBySourceId`. Translates `ExtractedRecord.fields` (keyed by
-   * columnDefinitionId or axis-name) into `normalizedData` (keyed by
-   * catalog `key` where resolvable, otherwise key falls through). Computes
+   * columnDefinitionId or axis-name) into `normalizedData` keyed by the
+   * binding's resolved `normalizedKey` — the same value reconcile wrote to
+   * `FieldMapping.normalizedKey`, so downstream readers can look the record's
+   * fields up by the mapping's key. Falls back to `catalog.key` / the raw
+   * field name for axis-name entries that have no binding. Computes
    * created / updated / unchanged by comparing against existing rows by
    * (entity, sourceId, checksum).
    */
@@ -341,6 +360,7 @@ export class LayoutPlanCommitService {
     connectorEntityId: string,
     records: ExtractedRecord[],
     catalogById: Map<string, ColumnDefinitionSelect>,
+    normalizedKeyByColumnDefId: Map<string, string>,
     organizationId: string,
     userId: string,
     tx: DbClient
@@ -398,8 +418,13 @@ export class LayoutPlanCommitService {
 
       const normalizedData: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(record.fields)) {
-        const col = catalogById.get(k);
-        const key = col?.key ?? k;
+        // Binding field → use the same normalizedKey reconcile wrote to
+        // FieldMapping. Axis-name field → fall back to the catalog key, then
+        // the raw field name.
+        const key =
+          normalizedKeyByColumnDefId.get(k) ??
+          catalogById.get(k)?.key ??
+          k;
         normalizedData[key] = v;
       }
 
