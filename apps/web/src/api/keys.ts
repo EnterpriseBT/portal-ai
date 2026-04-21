@@ -170,6 +170,9 @@ export const queryKeys = {
         connectorInstanceId,
       ] as const,
   },
+  layoutPlans: {
+    root: ["layoutPlans"] as const,
+  },
   fileUploads: {
     root: ["fileUploads"] as const,
   },

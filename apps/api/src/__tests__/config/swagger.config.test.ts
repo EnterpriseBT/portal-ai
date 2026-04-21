@@ -16,6 +16,9 @@ import {
   InterpretResponsePayloadSchema,
   LayoutPlanCommitResultSchema,
   FileUploadParseResponsePayloadSchema,
+  LayoutPlanInterpretDraftResponsePayloadSchema,
+  LayoutPlanCommitDraftRequestBodySchema,
+  LayoutPlanCommitDraftResponsePayloadSchema,
 } from "@portalai/core/contracts";
 
 import { swaggerSpec } from "../../config/swagger.config.js";
@@ -35,6 +38,9 @@ const REQUIRED_SCHEMA_NAMES = [
   "InterpretResponsePayload",
   "LayoutPlanCommitResult",
   "FileUploadParseResponsePayload",
+  "LayoutPlanInterpretDraftResponsePayload",
+  "LayoutPlanCommitDraftRequestBody",
+  "LayoutPlanCommitDraftResponsePayload",
 ] as const;
 
 interface OpenApiSchemaBag {
@@ -73,6 +79,18 @@ describe("swagger spec — spreadsheet-parsing schema registration", () => {
     ["InterpretResponsePayload", InterpretResponsePayloadSchema],
     ["LayoutPlanCommitResult", LayoutPlanCommitResultSchema],
     ["FileUploadParseResponsePayload", FileUploadParseResponsePayloadSchema],
+    [
+      "LayoutPlanInterpretDraftResponsePayload",
+      LayoutPlanInterpretDraftResponsePayloadSchema,
+    ],
+    [
+      "LayoutPlanCommitDraftRequestBody",
+      LayoutPlanCommitDraftRequestBodySchema,
+    ],
+    [
+      "LayoutPlanCommitDraftResponsePayload",
+      LayoutPlanCommitDraftResponsePayloadSchema,
+    ],
   ];
 
   it.each(pairs)(

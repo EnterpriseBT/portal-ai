@@ -14,11 +14,7 @@ import {
 } from "@portalai/core/ui";
 import type { StepConfig } from "@portalai/core/ui";
 import type {
-  ApiSuccessResponse,
-  CommitLayoutPlanRequestBody,
   InterpretRequestBody,
-  InterpretResponsePayload,
-  LayoutPlanCommitResult,
   WorkbookData,
 } from "@portalai/core/contracts";
 
@@ -41,7 +37,6 @@ import {
 } from "./utils/layout-plan-mapping.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
-import { useAuthFetch } from "../../utils/api.util";
 import type {
   CellBounds,
   CellValue,
@@ -53,6 +48,18 @@ import type {
 } from "../../modules/RegionEditor";
 import type { FileUploadProgress } from "./utils/file-upload-workflow.util";
 import type { ServerError } from "../../utils/api.util";
+
+/**
+ * Derive the ConnectorInstance name from the first uploaded file. Strips the
+ * extension; falls back to `"Upload"` when there are no files or the stripped
+ * base is empty.
+ */
+function deriveConnectorInstanceName(files: File[]): string {
+  const filename = files[0]?.name ?? "Upload";
+  const dot = filename.lastIndexOf(".");
+  const base = dot > 0 ? filename.substring(0, dot) : filename;
+  return base.trim() || "Upload";
+}
 
 /**
  * Convert the backend's sparse `WorkbookData` (1-based cell tuples) into the
@@ -306,9 +313,10 @@ export const FileUploadConnectorWorkflow: React.FC<
   const navigate = useNavigate();
 
   const { mutateAsync: parseMutate } = sdk.fileUploads.parse();
-  const { mutateAsync: createInstanceMutate } = sdk.connectorInstances.create();
-  const { fetchWithAuth } = useAuthFetch();
+  const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
+  const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
   const workbookRef = useRef<Workbook | null>(null);
+  const filesRef = useRef<File[]>([]);
 
   // User-staged entities created via the region editor's "+ Create new entity"
   // affordance. Sheet-derived options always win on key collisions; see
@@ -329,6 +337,7 @@ export const FileUploadConnectorWorkflow: React.FC<
   const parseFile = useCallback(
     async (files: File[]) => {
       if (files.length === 0) throw new Error("No file selected");
+      filesRef.current = files;
       const payload = await parseMutate(files);
       const sourceLabel =
         files.length === 1
@@ -341,62 +350,34 @@ export const FileUploadConnectorWorkflow: React.FC<
     [parseMutate]
   );
 
-  const createConnectorInstance: FileUploadWorkflowCallbacks["createConnectorInstance"] =
-    useCallback(
-      async (args) => {
-        const res = await createInstanceMutate({
-          organizationId: args.organizationId,
-          connectorDefinitionId: args.connectorDefinitionId,
-          name: args.name,
-          status: "active",
-          enabledCapabilityFlags: { sync: true },
-        });
-        return { connectorInstanceId: res.connectorInstance.id };
-      },
-      [createInstanceMutate]
-    );
-
   const runInterpret: FileUploadWorkflowCallbacks["runInterpret"] = useCallback(
-    async (regions, connectorInstanceId) => {
+    async (regions) => {
       const workbook = workbookRef.current;
       if (!workbook) throw new Error("Workbook not parsed");
       const body: InterpretRequestBody = {
         workbook: workbookToBackend(workbook),
         regionHints: regionDraftsToHints(workbook, regions),
       };
-      const res = await fetchWithAuth<ApiSuccessResponse<InterpretResponsePayload>>(
-        `/api/connector-instances/${encodeURIComponent(connectorInstanceId)}/layout-plan/interpret`,
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        }
-      );
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.connectorInstanceLayoutPlans.root,
-      });
+      const res = await interpretMutate(body);
       return {
-        regions: planRegionsToDrafts(res.payload.plan, workbook),
-        overallConfidence: overallConfidenceFromPlan(res.payload.plan),
-        planId: res.payload.planId,
+        regions: planRegionsToDrafts(res.plan, workbook),
+        plan: res.plan,
+        overallConfidence: overallConfidenceFromPlan(res.plan),
       };
     },
-    [fetchWithAuth, queryClient]
+    [interpretMutate]
   );
 
   const runCommit: FileUploadWorkflowCallbacks["runCommit"] = useCallback(
-    async (_regions, ids) => {
+    async (plan) => {
       const workbook = workbookRef.current;
       if (!workbook) throw new Error("Workbook not parsed");
-      const body: CommitLayoutPlanRequestBody = {
+      const res = await commitMutate({
+        connectorDefinitionId,
+        name: deriveConnectorInstanceName(filesRef.current),
+        plan,
         workbook: workbookToBackend(workbook),
-      };
-      await fetchWithAuth<ApiSuccessResponse<LayoutPlanCommitResult>>(
-        `/api/connector-instances/${encodeURIComponent(ids.connectorInstanceId)}/layout-plan/${encodeURIComponent(ids.planId)}/commit`,
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        }
-      );
+      });
       await Promise.all(
         [
           queryKeys.connectorInstances.root,
@@ -408,30 +389,32 @@ export const FileUploadConnectorWorkflow: React.FC<
           queryKeys.connectorInstanceLayoutPlans.root,
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
       );
-      return { connectorInstanceId: ids.connectorInstanceId };
+      return { connectorInstanceId: res.connectorInstanceId };
     },
-    [fetchWithAuth, queryClient]
+    [commitMutate, connectorDefinitionId, queryClient]
   );
 
-  const workflow = useFileUploadWorkflow(
-    {
-      parseFile,
-      createConnectorInstance,
-      runInterpret,
-      runCommit,
-      onCommitSuccess: (connectorInstanceId) => {
-        navigate({
-          to: "/connectors/$connectorInstanceId",
-          params: { connectorInstanceId },
-        });
-        handleClose();
-      },
+  const workflow = useFileUploadWorkflow({
+    parseFile,
+    runInterpret,
+    runCommit,
+    onCommitSuccess: (connectorInstanceId) => {
+      navigate({
+        to: "/connectors/$connectorInstanceId",
+        params: { connectorInstanceId },
+      });
+      handleClose();
     },
-    { organizationId, connectorDefinitionId }
-  );
+  });
+
+  // The organizationId prop is kept for API symmetry with the previous design
+  // but is unused now: the server derives org scope from the authenticated
+  // token. Reference it so TypeScript/ESLint don't flag it unused.
+  void organizationId;
 
   const handleClose = useCallback(() => {
     workbookRef.current = null;
+    filesRef.current = [];
     setStagedEntities([]);
     workflow.reset();
     onClose();

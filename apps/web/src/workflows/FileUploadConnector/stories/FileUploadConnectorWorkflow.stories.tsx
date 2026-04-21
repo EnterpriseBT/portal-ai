@@ -250,37 +250,35 @@ const InteractiveContent: React.FC = () => {
     connectorInstanceId: string;
   } | null>(null);
 
-  const workflow = useFileUploadWorkflow(
-    {
-      parseFile: () => delay(DEMO_WORKBOOK),
-      createConnectorInstance: () =>
-        delay({ connectorInstanceId: "ci_interactive" }),
-      runInterpret: (regions) =>
-        delay({
-          regions: regions.map((r) => ({
-            ...r,
-            confidence: 0.88,
-            columnBindings: POST_INTERPRET_REGIONS[0].columnBindings,
-          })),
-          overallConfidence: 0.88,
-          planId: "plan_interactive",
-        }),
-      runCommit: (regions) => {
-        void regions;
-        return delay({ connectorInstanceId: "ci_interactive" });
-      },
-      onCommitSuccess: (connectorInstanceId) => {
-        setCommittedPayload({
-          regions: workflow.regions,
-          connectorInstanceId,
-        });
-      },
+  const workflow = useFileUploadWorkflow({
+    parseFile: () => delay(DEMO_WORKBOOK),
+    runInterpret: (regions) =>
+      delay({
+        regions: regions.map((r) => ({
+          ...r,
+          confidence: 0.88,
+          columnBindings: POST_INTERPRET_REGIONS[0].columnBindings,
+        })),
+        plan: {
+          planVersion: "1.0.0",
+          workbookFingerprint: {
+            sheetNames: [],
+            dimensions: {},
+            anchorCells: [],
+          },
+          regions: [],
+          confidence: { overall: 0.88, perRegion: {} },
+        } as unknown as import("@portalai/core/contracts").LayoutPlan,
+        overallConfidence: 0.88,
+      }),
+    runCommit: (_plan) => delay({ connectorInstanceId: "ci_interactive" }),
+    onCommitSuccess: (connectorInstanceId) => {
+      setCommittedPayload({
+        regions: workflow.regions,
+        connectorInstanceId,
+      });
     },
-    {
-      organizationId: "org_demo",
-      connectorDefinitionId: "cdef_fileupload_demo",
-    }
-  );
+  });
 
   return (
     <>

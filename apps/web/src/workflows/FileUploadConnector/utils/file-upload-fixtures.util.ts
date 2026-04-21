@@ -1,3 +1,5 @@
+import type { LayoutPlan } from "@portalai/core/contracts";
+
 import type {
   ColumnBindingDraft,
   RegionDraft,
@@ -38,8 +40,12 @@ export interface FileUploadWorkflowState {
   serverError: ServerError | null;
   isInterpreting: boolean;
   isCommitting: boolean;
-  connectorInstanceId: string | null;
-  planId: string | null;
+  /**
+   * Full `LayoutPlan` returned from the interpret call — held in memory so
+   * the commit action can send it to the atomic-commit endpoint. Null until
+   * the first successful interpret; null again on reset.
+   */
+  plan: LayoutPlan | null;
 }
 
 export const SAMPLE_FILE: File = new File(
@@ -135,8 +141,7 @@ export const IDLE_STATE: FileUploadWorkflowState = {
   serverError: null,
   isInterpreting: false,
   isCommitting: false,
-  connectorInstanceId: null,
-  planId: null,
+  plan: null,
 };
 
 export const UPLOADING_STATE: FileUploadWorkflowState = {

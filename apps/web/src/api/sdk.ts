@@ -11,6 +11,7 @@ import { entityTagAssignments } from "./entity-tag-assignments.api";
 import { fieldMappings } from "./field-mappings.api";
 import { fileUploads } from "./file-uploads.api";
 import { health } from "./health.api";
+import { layoutPlans } from "./layout-plans.api";
 import { jobs } from "./jobs.api";
 import { organizationTools } from "./organization-tools.api";
 import { organizations } from "./organizations.api";
@@ -36,6 +37,7 @@ export const sdk = {
   fieldMappings,
   fileUploads,
   health,
+  layoutPlans,
   jobs,
   organizationTools,
   organizations,

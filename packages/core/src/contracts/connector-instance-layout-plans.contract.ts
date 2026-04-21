@@ -93,3 +93,49 @@ export const LayoutPlanCommitResultSchema = z.object({
 export type LayoutPlanCommitResult = z.infer<
   typeof LayoutPlanCommitResultSchema
 >;
+
+// ── Instance-less draft flow ───────────────────────────────────────────────
+// FileUpload and other "new connector" workflows defer ConnectorInstance
+// creation until the user confirms the review step. The server-side interpret
+// becomes pure-compute; commit creates the ConnectorInstance + layout plan
+// row + records atomically, with rollback on failure.
+
+/**
+ * Body for `POST /api/layout-plans/interpret`. Pure-compute: the server runs
+ * `interpret()` and returns the resulting plan without any DB writes.
+ */
+export const LayoutPlanInterpretDraftRequestBodySchema = InterpretInputSchema;
+export type LayoutPlanInterpretDraftRequestBody = z.infer<
+  typeof LayoutPlanInterpretDraftRequestBodySchema
+>;
+
+export const LayoutPlanInterpretDraftResponsePayloadSchema = z.object({
+  plan: LayoutPlanSchema,
+});
+export type LayoutPlanInterpretDraftResponsePayload = z.infer<
+  typeof LayoutPlanInterpretDraftResponsePayloadSchema
+>;
+
+/**
+ * Body for `POST /api/layout-plans/commit`. Creates the ConnectorInstance +
+ * layout plan row + records in one server-side call. On any failure, the
+ * instance and plan row are rolled back so no orphan survives.
+ */
+export const LayoutPlanCommitDraftRequestBodySchema = z.object({
+  connectorDefinitionId: z.string().min(1),
+  name: z.string().min(1),
+  plan: LayoutPlanSchema,
+  workbook: z.unknown(),
+});
+export type LayoutPlanCommitDraftRequestBody = z.infer<
+  typeof LayoutPlanCommitDraftRequestBodySchema
+>;
+
+export const LayoutPlanCommitDraftResponsePayloadSchema = z.object({
+  connectorInstanceId: z.string().min(1),
+  planId: z.string().min(1),
+  recordCounts: LayoutPlanCommitResultSchema.shape.recordCounts,
+});
+export type LayoutPlanCommitDraftResponsePayload = z.infer<
+  typeof LayoutPlanCommitDraftResponsePayloadSchema
+>;

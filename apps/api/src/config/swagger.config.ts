@@ -10,7 +10,10 @@ import {
   InterpretInputSchema,
   InterpretRequestBodySchema,
   InterpretResponsePayloadSchema,
+  LayoutPlanCommitDraftRequestBodySchema,
+  LayoutPlanCommitDraftResponsePayloadSchema,
   LayoutPlanCommitResultSchema,
+  LayoutPlanInterpretDraftResponsePayloadSchema,
   LayoutPlanSchema,
   RegionHintSchema,
   RegionSchema,
@@ -60,6 +63,18 @@ const spreadsheetParsingSchemas: Record<string, unknown> = {
   ),
   FileUploadParseResponsePayload: z.toJSONSchema(
     FileUploadParseResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  LayoutPlanInterpretDraftResponsePayload: z.toJSONSchema(
+    LayoutPlanInterpretDraftResponsePayloadSchema,
+    JSON_SCHEMA_OPTS
+  ),
+  LayoutPlanCommitDraftRequestBody: z.toJSONSchema(
+    LayoutPlanCommitDraftRequestBodySchema,
+    JSON_SCHEMA_OPTS
+  ),
+  LayoutPlanCommitDraftResponsePayload: z.toJSONSchema(
+    LayoutPlanCommitDraftResponsePayloadSchema,
     JSON_SCHEMA_OPTS
   ),
 };

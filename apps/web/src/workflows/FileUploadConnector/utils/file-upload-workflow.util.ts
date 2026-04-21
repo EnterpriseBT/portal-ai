@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { StepConfig } from "@portalai/core/ui";
+import type { LayoutPlan } from "@portalai/core/contracts";
 
 import type {
   CellBounds,
@@ -35,29 +36,25 @@ export const FILE_UPLOAD_WORKFLOW_STEPS: StepConfig[] = [
 
 export interface FileUploadWorkflowCallbacks {
   parseFile: (files: File[]) => Promise<Workbook>;
-  createConnectorInstance: (args: {
-    organizationId: string;
-    connectorDefinitionId: string;
-    name: string;
-  }) => Promise<{ connectorInstanceId: string }>;
-  runInterpret: (
-    regions: RegionDraft[],
-    connectorInstanceId: string
-  ) => Promise<{
+  /**
+   * Pure-compute interpret — the server must NOT persist anything here. The
+   * returned `plan` is held in memory until commit.
+   */
+  runInterpret: (regions: RegionDraft[]) => Promise<{
     regions: RegionDraft[];
+    plan: LayoutPlan;
     overallConfidence: number;
-    planId: string;
   }>;
+  /**
+   * Atomic commit — the server creates the ConnectorInstance, persists the
+   * plan, and writes records in one call. On any server-side failure the
+   * instance + plan row are rolled back, so there's no orphan cleanup to
+   * coordinate on the client.
+   */
   runCommit: (
-    regions: RegionDraft[],
-    ids: { connectorInstanceId: string; planId: string }
+    plan: LayoutPlan
   ) => Promise<{ connectorInstanceId: string }>;
   onCommitSuccess?: (connectorInstanceId: string) => void;
-}
-
-export interface UseFileUploadWorkflowOptions {
-  organizationId: string;
-  connectorDefinitionId: string;
 }
 
 export interface UseFileUploadWorkflowReturn extends FileUploadWorkflowState {
@@ -89,16 +86,8 @@ const EMPTY_STATE: FileUploadWorkflowState = {
   serverError: null,
   isInterpreting: false,
   isCommitting: false,
-  connectorInstanceId: null,
-  planId: null,
+  plan: null,
 };
-
-function deriveConnectorInstanceName(files: File[]): string {
-  const filename = files[0]?.name ?? "Upload";
-  const dot = filename.lastIndexOf(".");
-  const base = dot > 0 ? filename.substring(0, dot) : filename;
-  return base.trim() || "Upload";
-}
 
 export function mintRegionId(sheetId: string): string {
   const suffix = Math.random().toString(36).slice(2, 8);
@@ -127,8 +116,7 @@ function mergeFilesByName(existing: File[], incoming: File[]): File[] {
 }
 
 export function useFileUploadWorkflow(
-  callbacks: FileUploadWorkflowCallbacks,
-  options: UseFileUploadWorkflowOptions
+  callbacks: FileUploadWorkflowCallbacks
 ): UseFileUploadWorkflowReturn {
   const [state, setState] = useState<FileUploadWorkflowState>(EMPTY_STATE);
   // Bumped on every reset; in-flight async resolutions check this before
@@ -163,7 +151,6 @@ export function useFileUploadWorkflow(
     }));
 
     try {
-      // Represent the upload-then-parse transition visibly.
       setState((prev) =>
         token === runTokenRef.current
           ? { ...prev, uploadPhase: "parsing", overallUploadPercent: 50 }
@@ -172,26 +159,12 @@ export function useFileUploadWorkflow(
       const workbook = await callbacks.parseFile(currentFiles);
       if (token !== runTokenRef.current) return;
 
-      // Ensure a backing ConnectorInstance exists before the first interpret.
-      // Reused across re-interpret in the same session.
-      let connectorInstanceId = state.connectorInstanceId;
-      if (!connectorInstanceId) {
-        const created = await callbacks.createConnectorInstance({
-          organizationId: options.organizationId,
-          connectorDefinitionId: options.connectorDefinitionId,
-          name: deriveConnectorInstanceName(currentFiles),
-        });
-        if (token !== runTokenRef.current) return;
-        connectorInstanceId = created.connectorInstanceId;
-      }
-
       setState((prev) => ({
         ...prev,
         uploadPhase: "parsed",
         overallUploadPercent: 100,
         workbook,
         activeSheetId: workbook.sheets[0]?.id ?? null,
-        connectorInstanceId,
         step: 1,
       }));
     } catch (err) {
@@ -202,7 +175,7 @@ export function useFileUploadWorkflow(
         serverError: toServerErrorFromUnknown(err),
       }));
     }
-  }, [callbacks, options, state.files, state.connectorInstanceId]);
+  }, [callbacks, state.files]);
 
   const onActiveSheetChange = useCallback((sheetId: string) => {
     setState((prev) => ({ ...prev, activeSheetId: sheetId }));
@@ -258,8 +231,6 @@ export function useFileUploadWorkflow(
 
   const onInterpret = useCallback(async () => {
     if (state.regions.length === 0) return;
-    if (!state.connectorInstanceId) return;
-    const connectorInstanceId = state.connectorInstanceId;
     const token = ++runTokenRef.current;
     setState((prev) => ({
       ...prev,
@@ -269,15 +240,15 @@ export function useFileUploadWorkflow(
     try {
       const {
         regions: nextRegions,
+        plan,
         overallConfidence,
-        planId,
-      } = await callbacks.runInterpret(state.regions, connectorInstanceId);
+      } = await callbacks.runInterpret(state.regions);
       if (token !== runTokenRef.current) return;
       setState((prev) => ({
         ...prev,
         regions: nextRegions,
+        plan,
         overallConfidence,
-        planId,
         isInterpreting: false,
         step: 2,
       }));
@@ -289,12 +260,11 @@ export function useFileUploadWorkflow(
         serverError: toServerErrorFromUnknown(err),
       }));
     }
-  }, [callbacks, state.regions, state.connectorInstanceId]);
+  }, [callbacks, state.regions]);
 
   const onCommit = useCallback(async () => {
-    if (!state.connectorInstanceId || !state.planId) return;
-    const connectorInstanceId = state.connectorInstanceId;
-    const planId = state.planId;
+    if (!state.plan) return;
+    const plan = state.plan;
     const token = ++runTokenRef.current;
     setState((prev) => ({
       ...prev,
@@ -302,10 +272,7 @@ export function useFileUploadWorkflow(
       serverError: null,
     }));
     try {
-      const result = await callbacks.runCommit(state.regions, {
-        connectorInstanceId,
-        planId,
-      });
+      const result = await callbacks.runCommit(plan);
       if (token !== runTokenRef.current) return;
       setState((prev) => ({ ...prev, isCommitting: false }));
       callbacks.onCommitSuccess?.(result.connectorInstanceId);
@@ -317,7 +284,7 @@ export function useFileUploadWorkflow(
         serverError: toServerErrorFromUnknown(err),
       }));
     }
-  }, [callbacks, state.regions, state.connectorInstanceId, state.planId]);
+  }, [callbacks, state.plan]);
 
   const goBack = useCallback(() => {
     setState((prev) => {
