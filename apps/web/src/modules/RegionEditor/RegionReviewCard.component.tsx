@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Stack, Typography, Button, Divider } from "@portalai/core/ui";
+import MuiChip from "@mui/material/Chip";
 
 import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import { WarningRowUI } from "./WarningRow.component";
@@ -13,7 +14,12 @@ import type { RegionDraft } from "./utils/region-editor.types";
 export interface RegionReviewCardUIProps {
   region: RegionDraft;
   onJump: () => void;
-  onEditBinding: (sourceLocator: string) => void;
+  /**
+   * Fires when a binding chip is clicked. Receives the serialised
+   * sourceLocator and the chip DOM node so callers can anchor a popover to
+   * the clicked chip (the `ReviewStepUI` binding editor does).
+   */
+  onEditBinding: (sourceLocator: string, anchorEl: HTMLElement) => void;
 }
 
 export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
@@ -66,10 +72,22 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {region.columnBindings.map((binding) => {
               const band = confidenceBand(binding.confidence);
+              const isExcluded = binding.excluded === true;
+              const ariaLabel = isExcluded
+                ? `Excluded — click to edit: ${binding.sourceLocator}`
+                : `Edit binding: ${binding.sourceLocator}`;
               return (
                 <Box
                   key={binding.sourceLocator}
-                  onClick={() => onEditBinding(binding.sourceLocator)}
+                  component="button"
+                  type="button"
+                  aria-label={ariaLabel}
+                  onClick={(e) =>
+                    onEditBinding(
+                      binding.sourceLocator,
+                      e.currentTarget as HTMLElement
+                    )
+                  }
                   sx={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -82,6 +100,8 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                     backgroundColor: "background.paper",
                     cursor: "pointer",
                     fontSize: 12,
+                    opacity: isExcluded ? 0.55 : 1,
+                    textDecoration: isExcluded ? "line-through" : "none",
                   }}
                 >
                   <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -93,14 +113,23 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                       binding.columnDefinitionId ??
                       "—"}
                   </Typography>
-                  <Box
-                    sx={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      backgroundColor: CONFIDENCE_BAND_COLOR[band],
-                    }}
-                  />
+                  {isExcluded ? (
+                    <MuiChip
+                      label="Excluded"
+                      size="small"
+                      variant="outlined"
+                      sx={{ height: 18, textDecoration: "none" }}
+                    />
+                  ) : (
+                    <Box
+                      sx={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        backgroundColor: CONFIDENCE_BAND_COLOR[band],
+                      }}
+                    />
+                  )}
                 </Box>
               );
             })}
