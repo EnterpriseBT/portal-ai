@@ -38,12 +38,16 @@ import { putToS3 } from "../../api/file-uploads.api";
 import type {
   CellBounds,
   CellValue,
+  ColumnBindingDraft,
   EntityOption,
   RegionDraft,
   RegionEditorErrors,
   SheetPreview,
   Workbook,
 } from "../../modules/RegionEditor";
+import type { SelectOption } from "@portalai/core/ui";
+import type { ColumnDataType } from "@portalai/core/models";
+import type { SearchResult } from "../../api/types";
 import type { FileUploadProgress } from "./utils/file-upload-workflow.util";
 import type { ServerError } from "../../utils/api.util";
 
@@ -133,6 +137,28 @@ export interface FileUploadConnectorWorkflowUIProps {
   overallConfidence?: number;
   onJumpToRegion: (regionId: string) => void;
   onEditBinding: (regionId: string, sourceLocator: string) => void;
+  onUpdateBinding?: (
+    regionId: string,
+    sourceLocator: string,
+    patch: Partial<ColumnBindingDraft>
+  ) => void;
+  onToggleBindingExcluded?: (
+    regionId: string,
+    sourceLocator: string,
+    excluded: boolean
+  ) => void;
+  columnDefinitionSearch?: SearchResult<SelectOption>;
+  resolveReferenceOptions?: (region: RegionDraft) => SelectOption[];
+  resolveReferenceFieldOptions?: (
+    region: RegionDraft,
+    refEntityKey: string | null | undefined
+  ) => SelectOption[];
+  resolveColumnDefinitionType?: (
+    binding: ColumnBindingDraft
+  ) => ColumnDataType | undefined;
+  resolveColumnDefinitionDescription?: (
+    binding: ColumnBindingDraft
+  ) => string | null | undefined;
   onCommit: () => void;
 
   // Navigation
@@ -179,6 +205,13 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   overallConfidence,
   onJumpToRegion,
   onEditBinding,
+  onUpdateBinding,
+  onToggleBindingExcluded,
+  columnDefinitionSearch,
+  resolveReferenceOptions,
+  resolveReferenceFieldOptions,
+  resolveColumnDefinitionType,
+  resolveColumnDefinitionDescription,
   onCommit,
   onBack,
   errors,
@@ -250,6 +283,15 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                 overallConfidence={overallConfidence}
                 onJumpToRegion={onJumpToRegion}
                 onEditBinding={onEditBinding}
+                onUpdateBinding={onUpdateBinding}
+                onToggleBindingExcluded={onToggleBindingExcluded}
+                columnDefinitionSearch={columnDefinitionSearch}
+                resolveReferenceOptions={resolveReferenceOptions}
+                resolveReferenceFieldOptions={resolveReferenceFieldOptions}
+                resolveColumnDefinitionType={resolveColumnDefinitionType}
+                resolveColumnDefinitionDescription={
+                  resolveColumnDefinitionDescription
+                }
                 onCommit={onCommit}
                 onBack={onBack}
                 isCommitting={isCommitting}
@@ -475,15 +517,24 @@ export const FileUploadConnectorWorkflow: React.FC<
     sortBy: "label",
     sortOrder: "asc",
   });
-  const columnDefinitionLabelMap = useMemo(() => {
-    const map: Record<string, string> = {};
+  const columnDefinitionsById = useMemo(() => {
+    const map = new Map<
+      string,
+      { label: string; type: ColumnDataType; description: string | null }
+    >();
     const rows = columnDefinitionsQuery.data?.columnDefinitions ?? [];
-    for (const cd of rows) map[cd.id] = cd.label;
+    for (const cd of rows) {
+      map.set(cd.id, {
+        label: cd.label,
+        type: cd.type as ColumnDataType,
+        description: cd.description,
+      });
+    }
     return map;
   }, [columnDefinitionsQuery.data]);
 
   const regionsWithResolvedLabels = useMemo(() => {
-    if (Object.keys(columnDefinitionLabelMap).length === 0) {
+    if (columnDefinitionsById.size === 0) {
       return workflow.regions;
     }
     return workflow.regions.map((region) => {
@@ -494,13 +545,106 @@ export const FileUploadConnectorWorkflow: React.FC<
         ...region,
         columnBindings: region.columnBindings.map((binding) => {
           if (!binding.columnDefinitionId) return binding;
-          const label = columnDefinitionLabelMap[binding.columnDefinitionId];
-          if (!label || binding.columnDefinitionLabel) return binding;
-          return { ...binding, columnDefinitionLabel: label };
+          const meta = columnDefinitionsById.get(binding.columnDefinitionId);
+          if (!meta) return binding;
+          return {
+            ...binding,
+            columnDefinitionLabel: binding.columnDefinitionLabel ?? meta.label,
+            columnDefinitionType: binding.columnDefinitionType ?? meta.type,
+          };
         }),
       };
     });
-  }, [workflow.regions, columnDefinitionLabelMap]);
+  }, [workflow.regions, columnDefinitionsById]);
+
+  // Search hooks for the binding editor popover. `columnDefinitions.search`
+  // populates the rebind picker; `connectorEntities.search` populates the
+  // reference editor's DB-target half (staged entities come from `regions`).
+  const columnDefinitionSearch = sdk.columnDefinitions.search();
+  const connectorEntitySearch = sdk.connectorEntities.search();
+
+  const resolveColumnDefinitionType = useCallback(
+    (binding: ColumnBindingDraft): ColumnDataType | undefined => {
+      if (binding.columnDefinitionType) return binding.columnDefinitionType;
+      if (!binding.columnDefinitionId) return undefined;
+      return columnDefinitionsById.get(binding.columnDefinitionId)?.type;
+    },
+    [columnDefinitionsById]
+  );
+
+  const resolveColumnDefinitionDescription = useCallback(
+    (binding: ColumnBindingDraft): string | null | undefined => {
+      if (!binding.columnDefinitionId) return undefined;
+      return columnDefinitionsById.get(binding.columnDefinitionId)?.description;
+    },
+    [columnDefinitionsById]
+  );
+
+  // Reference-target options — staged sibling entities first (prefixed "this
+  // import"), then DB-backed options resolved by the connectorEntity search.
+  const resolveReferenceOptions = useCallback(
+    (currentRegion: RegionDraft): SelectOption[] => {
+      const staged = new Map<string, SelectOption>();
+      for (const r of workflow.regions) {
+        if (!r.targetEntityDefinitionId) continue;
+        if (r.id === currentRegion.id) continue; // self-references disallowed
+        if (staged.has(r.targetEntityDefinitionId)) continue;
+        const label = r.targetEntityLabel ?? r.targetEntityDefinitionId;
+        staged.set(r.targetEntityDefinitionId, {
+          value: r.targetEntityDefinitionId,
+          label: `${label} (this import)`,
+        });
+      }
+      const dbOptions = Object.entries(connectorEntitySearch.labelMap).map(
+        ([value, label]) => ({ value, label: `${label} (existing)` })
+      );
+      const all = [...staged.values(), ...dbOptions];
+      const seen = new Set<string>();
+      return all.filter((opt) => {
+        if (seen.has(String(opt.value))) return false;
+        seen.add(String(opt.value));
+        return true;
+      });
+    },
+    [workflow.regions, connectorEntitySearch.labelMap]
+  );
+
+  const resolveReferenceFieldOptions = useCallback(
+    (
+      _region: RegionDraft,
+      refEntityKey: string | null | undefined
+    ): SelectOption[] => {
+      if (!refEntityKey) return [];
+      // Staged target — derive from sibling region's bindings' normalizedKey
+      // overrides + catalog keys. Commit reconciles with the same logic.
+      const stagedRegion = workflow.regions.find(
+        (r) => r.targetEntityDefinitionId === refEntityKey
+      );
+      if (stagedRegion) {
+        const seen = new Set<string>();
+        const out: SelectOption[] = [];
+        for (const b of stagedRegion.columnBindings ?? []) {
+          if (b.excluded) continue;
+          const key =
+            b.normalizedKey ??
+            (b.columnDefinitionId
+              ? columnDefinitionsById.get(b.columnDefinitionId)?.label ??
+                b.columnDefinitionId
+              : null);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          out.push({ value: key, label: key });
+        }
+        return out;
+      }
+      // DB target — field list isn't loaded synchronously here; fall back to
+      // an empty list so the select is disabled until the server validates.
+      // Commit's reference validation (`LAYOUT_PLAN_INVALID_REFERENCE`) is
+      // the safety net.
+      return [];
+    },
+    [workflow.regions, columnDefinitionsById]
+  );
 
   return (
     <FileUploadConnectorWorkflowUI
@@ -537,12 +681,18 @@ export const FileUploadConnectorWorkflow: React.FC<
       overallConfidence={workflow.overallConfidence}
       onJumpToRegion={workflow.onJumpToRegion}
       onEditBinding={(regionId, _sourceLocator) => {
-        // Binding-edit popover not yet wired. Out of scope for this phase —
-        // tracked against a follow-up that adds sdk.connectorInstanceLayoutPlans.patch
-        // with per-binding mutations. For now, jumping the user to the region
-        // on-canvas is the visible affordance.
+        // Fallback path — only fires when the popover isn't wired (any of
+        // onUpdateBinding / onToggleBindingExcluded / columnDefinitionSearch
+        // missing). The popover-enabled path below owns the affordance now.
         workflow.onJumpToRegion(regionId);
       }}
+      onUpdateBinding={workflow.onUpdateBinding}
+      onToggleBindingExcluded={workflow.onToggleBindingExcluded}
+      columnDefinitionSearch={columnDefinitionSearch}
+      resolveReferenceOptions={resolveReferenceOptions}
+      resolveReferenceFieldOptions={resolveReferenceFieldOptions}
+      resolveColumnDefinitionType={resolveColumnDefinitionType}
+      resolveColumnDefinitionDescription={resolveColumnDefinitionDescription}
       onCommit={() => {
         void workflow.onCommit();
       }}

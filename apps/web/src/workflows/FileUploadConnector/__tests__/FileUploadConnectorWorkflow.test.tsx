@@ -324,3 +324,127 @@ describe("FileUploadConnectorWorkflowUI — pending flags", () => {
     expect(screen.getByRole("button", { name: /committing/i })).toBeDisabled();
   });
 });
+
+describe("FileUploadConnectorWorkflowUI — binding editor wiring", () => {
+  // Local region fixture with canonical locator format ("header:X") so the
+  // binding editor popover can parse it correctly. The POST_INTERPRET_REGIONS
+  // fixture predates the popover and uses a legacy locator shape.
+  const reviewableRegion = {
+    id: "region-a",
+    sheetId: DEMO_WORKBOOK.sheets[0].id,
+    bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+    orientation: "rows-as-records" as const,
+    headerAxis: "row" as const,
+    targetEntityDefinitionId: "ent_contact",
+    targetEntityLabel: "Contacts",
+    confidence: 0.85,
+    columnBindings: [
+      {
+        sourceLocator: "header:Email",
+        columnDefinitionId: "coldef_email",
+        columnDefinitionLabel: "Email",
+        columnDefinitionType: "string" as const,
+        confidence: 0.9,
+      },
+    ],
+    warnings: [],
+  };
+
+  function searchStub() {
+    return {
+      onSearch: jest.fn(async () => []),
+      onSearchPending: false,
+      onSearchError: null,
+      getById: jest.fn(async () => null),
+      getByIdPending: false,
+      getByIdError: null,
+      labelMap: {},
+    };
+  }
+
+  test("clicking a chip opens the popover (new wiring, popover-enabled path)", async () => {
+    const user = userEvent.setup();
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 2,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          regions: [reviewableRegion],
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+          onUpdateBinding: jest.fn(),
+          onToggleBindingExcluded: jest.fn(),
+          columnDefinitionSearch: searchStub(),
+        })}
+      />
+    );
+    const chip = screen.getByRole("button", {
+      name: /edit binding.*header:email/i,
+    });
+    await user.click(chip);
+    expect(
+      document.querySelector('form[aria-label="Edit column binding"]')
+    ).not.toBeNull();
+  });
+
+  test("Apply in the popover fires onUpdateBinding with the normalizedKey patch", async () => {
+    const user = userEvent.setup();
+    const onUpdateBinding = jest.fn();
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 2,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          regions: [reviewableRegion],
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+          onUpdateBinding,
+          onToggleBindingExcluded: jest.fn(),
+          columnDefinitionSearch: searchStub(),
+        })}
+      />
+    );
+    await user.click(
+      screen.getByRole("button", { name: /edit binding.*header:email/i })
+    );
+    const normalizedKey = screen.getByLabelText(
+      /normalized key/i
+    ) as HTMLInputElement;
+    await user.clear(normalizedKey);
+    await user.type(normalizedKey, "email_override");
+    await user.click(screen.getByRole("button", { name: /^apply$/i }));
+    expect(onUpdateBinding).toHaveBeenCalledWith(
+      "region-a",
+      "header:Email",
+      expect.objectContaining({ normalizedKey: "email_override" })
+    );
+  });
+
+  test("falls back to onEditBinding when popover deps are missing (legacy consumers)", async () => {
+    const user = userEvent.setup();
+    const onEditBinding = jest.fn();
+    render(
+      <FileUploadConnectorWorkflowUI
+        {...makeProps({
+          step: 2,
+          workbook: DEMO_WORKBOOK,
+          activeSheetId: DEMO_WORKBOOK.sheets[0].id,
+          regions: [reviewableRegion],
+          files: [SAMPLE_FILE],
+          uploadPhase: "parsed",
+          onEditBinding,
+          // onUpdateBinding / columnDefinitionSearch omitted — legacy path.
+        })}
+      />
+    );
+    await user.click(
+      screen.getByRole("button", { name: /edit binding.*header:email/i })
+    );
+    expect(onEditBinding).toHaveBeenCalledWith("region-a", "header:Email");
+    expect(
+      document.querySelector('form[aria-label="Edit column binding"]')
+    ).toBeNull();
+  });
+});

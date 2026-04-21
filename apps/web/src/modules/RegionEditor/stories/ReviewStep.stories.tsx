@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
+import type { SelectOption } from "@portalai/core/ui";
 
 import { ReviewStepUI } from "../ReviewStep.component";
 import {
@@ -7,6 +8,16 @@ import {
   BLOCKER_REGIONS,
   DRIFT_REGIONS,
 } from "./utils/region-editor-fixtures.util";
+
+const columnDefinitionSearch = {
+  onSearch: async (_q: string) => [] as SelectOption[],
+  onSearchPending: false,
+  onSearchError: null,
+  getById: async (_id: string) => null,
+  getByIdPending: false,
+  getByIdError: null,
+  labelMap: {},
+};
 
 const meta = {
   title: "Modules/RegionEditor/ReviewStepUI",
@@ -71,5 +82,24 @@ export const Committing: Story = {
     onCommit: fn(),
     onBack: fn(),
     isCommitting: true,
+  },
+};
+
+export const WithBindingEditor: Story = {
+  name: "With binding editor (chip click opens the popover)",
+  args: {
+    regions: PROPOSED_REGIONS,
+    overallConfidence: 0.78,
+    onJumpToRegion: fn(),
+    onEditBinding: fn(),
+    // When the popover deps are supplied, chip click opens the editor instead
+    // of firing onEditBinding. See BindingEditorPopover stories for isolated
+    // coverage of the popover contents themselves.
+    onUpdateBinding: fn(),
+    onToggleBindingExcluded: fn(),
+    columnDefinitionSearch,
+    resolveColumnDefinitionType: () => "string" as const,
+    onCommit: fn(),
+    onBack: fn(),
   },
 };
