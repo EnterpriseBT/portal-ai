@@ -23,9 +23,11 @@ import type {
   LayoutPlanInterpretDraftResponsePayload,
 } from "@portalai/core/contracts";
 import { LayoutPlanSchema } from "@portalai/core/contracts";
+import type { WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
+import { FileUploadSessionService } from "./file-upload-session.service.js";
 import { LayoutPlanCommitService } from "./layout-plan-commit.service.js";
 import { LayoutPlanInterpretService } from "./layout-plan-interpret.service.js";
 import { ApiError } from "./http.service.js";
@@ -44,9 +46,10 @@ export class LayoutPlanDraftService {
     userId: string,
     body: LayoutPlanInterpretDraftRequestBody
   ): Promise<LayoutPlanInterpretDraftResponsePayload> {
+    const workbook = await resolveWorkbook(body, organizationId);
     try {
       const plan = await LayoutPlanInterpretService.analyze(
-        body.workbook,
+        workbook,
         body.regionHints ?? [],
         organizationId,
         userId
@@ -85,6 +88,9 @@ export class LayoutPlanDraftService {
       );
     }
     const plan: LayoutPlan = parsedPlan.data;
+
+    // ── Resolve the workbook (inline body OR cached upload session) ───
+    const workbook = await resolveWorkbook(body, organizationId);
 
     // ── Create the ConnectorInstance ─────────────────────────────────
     const connectorInstanceId = SystemUtilities.id.v4.generate();
@@ -140,7 +146,7 @@ export class LayoutPlanDraftService {
         planId,
         organizationId,
         userId,
-        { workbook: body.workbook }
+        { workbook }
       );
     } catch (err) {
       // Tear down both rows so the UI never shows a half-committed
@@ -164,10 +170,53 @@ export class LayoutPlanDraftService {
       throw err;
     }
 
+    // Commit succeeded — if the workbook came from an upload session, mark
+    // it committed + best-effort delete the S3 objects.
+    if (body.uploadSessionId) {
+      FileUploadSessionService.markSessionCommitted(body.uploadSessionId).catch(
+        (err) => {
+          logger.warn(
+            {
+              uploadSessionId: body.uploadSessionId,
+              err: err instanceof Error ? err.message : err,
+            },
+            "Failed to mark upload session committed (non-fatal)"
+          );
+        }
+      );
+    }
+
     return {
       connectorInstanceId,
       planId,
       recordCounts: result.recordCounts,
     };
   }
+}
+
+/**
+ * Resolve the workbook from either the inline-body path or the streaming
+ * upload-session path. Exactly one of the two fields is present at runtime
+ * (the Zod schema's `refine` guards that); we assert to narrow.
+ */
+async function resolveWorkbook(
+  body:
+    | LayoutPlanInterpretDraftRequestBody
+    | LayoutPlanCommitDraftRequestBody,
+  organizationId: string
+): Promise<WorkbookData> {
+  if (body.uploadSessionId) {
+    return FileUploadSessionService.resolveWorkbook(
+      body.uploadSessionId,
+      organizationId
+    );
+  }
+  if (body.workbook === undefined || body.workbook === null) {
+    throw new ApiError(
+      400,
+      ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
+      "Missing workbook — provide either `uploadSessionId` or `workbook`"
+    );
+  }
+  return body.workbook as WorkbookData;
 }

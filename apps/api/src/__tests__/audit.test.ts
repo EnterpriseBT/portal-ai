@@ -106,7 +106,6 @@ describe("Phase 10 audit — parser module owns spreadsheet-parsing concepts", (
       "services/file-analysis.service.ts",
       "services/csv-import.service.ts",
       "services/xlsx-import.service.ts",
-      "services/s3.service.ts",
       "queues/processors/file-upload.processor.ts",
       "utils/csv-parser.util.ts",
       "utils/xlsx-parser.util.ts",
