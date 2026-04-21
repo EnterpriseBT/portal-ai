@@ -8,6 +8,7 @@ import { sourceLocatorToNormalizedKey } from "@portalai/core/contracts";
 import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import { RegionReviewCardUI } from "./RegionReviewCard.component";
 import { BindingEditorPopoverUI } from "./BindingEditorPopover.component";
+import { applyBindingDraftPatch } from "./utils/binding-draft.util";
 import { colorForEntity } from "./utils/region-editor-colors.util";
 import {
   validateBindingDraft,
@@ -143,7 +144,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   const handleDraftChange = (patch: Partial<ColumnBindingDraft>) => {
     setEditing((prev) => {
       if (!prev) return prev;
-      const nextDraft = { ...prev.draft, ...patch };
+      const nextDraft = applyBindingDraftPatch(prev.draft, patch);
       const ctx = draftValidationContext(
         nextDraft,
         resolveColumnDefinitionType

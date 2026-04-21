@@ -597,9 +597,19 @@ export const FileUploadConnectorWorkflow: React.FC<
 
   const resolveColumnDefinitionType = useCallback(
     (binding: ColumnBindingDraft): ColumnDataType | undefined => {
-      if (binding.columnDefinitionType) return binding.columnDefinitionType;
-      if (!binding.columnDefinitionId) return undefined;
-      return columnDefinitionsById.get(binding.columnDefinitionId)?.type;
+      // Prefer a fresh catalog lookup keyed by the currently-selected id so
+      // the returned type always matches the current binding. The cached
+      // `binding.columnDefinitionType` can drift from `columnDefinitionId`
+      // when the user swaps definitions in the popover — treating it as
+      // authoritative surfaced as the binding editor failing to show
+      // reference/enum sub-fields after a rebind.
+      if (binding.columnDefinitionId) {
+        const fromCatalog = columnDefinitionsById.get(
+          binding.columnDefinitionId
+        )?.type;
+        if (fromCatalog) return fromCatalog;
+      }
+      return binding.columnDefinitionType;
     },
     [columnDefinitionsById]
   );
