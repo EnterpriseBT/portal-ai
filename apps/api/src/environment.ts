@@ -32,20 +32,58 @@ export const environment = {
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
-  // Size cap for POST /api/file-uploads/parse. Defaults to 25 MB, per the
-  // frontend plan §Phase 6.1. Override via env when a customer needs a larger
-  // in-memory parse ceiling.
+  // Size cap for the legacy multipart POST /api/file-uploads/parse path.
+  // The streaming pipeline (presigned-URL → S3 → server-side stream) does
+  // not consult this; see UPLOAD_MAX_FILE_SIZE_BYTES instead.
   FILE_UPLOAD_PARSE_MAX_BYTES: parseInt(
     process.env.FILE_UPLOAD_PARSE_MAX_BYTES || String(25 * 1024 * 1024),
     10
   ),
-  // Body-parser cap for `express.json()`. Plan-driven endpoints
-  // (`/layout-plan/interpret`, `/layout-plan/:planId/commit`) accept the
-  // adapted workbook inline as JSON; sparse-cell encoding adds ~30 bytes per
-  // populated cell so the JSON payload can run a few× larger than the source
-  // file. Default sized to comfortably hold a 25 MB upload after expansion.
+  // Body-parser cap for `express.json()`. Once the streaming upload plan is
+  // fully rolled out, no legitimate request body exceeds a few KB; this can
+  // drop to a conservative default.
   REQUEST_JSON_LIMIT_BYTES: parseInt(
     process.env.REQUEST_JSON_LIMIT_BYTES || String(100 * 1024 * 1024),
     10
   ),
+  // ── S3 streaming upload pipeline
+  //    (see docs/LARGE_WORKBOOK_STREAMING.plan.md §Phase 0).
+  UPLOAD_S3_BUCKET: process.env.UPLOAD_S3_BUCKET || "",
+  UPLOAD_S3_REGION: process.env.UPLOAD_S3_REGION || "us-east-1",
+  UPLOAD_S3_PREFIX: process.env.UPLOAD_S3_PREFIX || "uploads",
+  UPLOAD_S3_PRESIGN_EXPIRY_SEC: parseInt(
+    process.env.UPLOAD_S3_PRESIGN_EXPIRY_SEC || "600",
+    10
+  ),
+  UPLOAD_MAX_FILES_PER_SESSION: parseInt(
+    process.env.UPLOAD_MAX_FILES_PER_SESSION || "25",
+    10
+  ),
+  UPLOAD_MAX_FILE_SIZE_BYTES: parseInt(
+    process.env.UPLOAD_MAX_FILE_SIZE_BYTES || String(500 * 1024 * 1024),
+    10
+  ),
+  // Per-sheet cell-count threshold: sheets under it ship inline in the parse
+  // response, over it fall back to the lazy slice endpoint.
+  FILE_UPLOAD_INLINE_CELLS_MAX: parseInt(
+    process.env.FILE_UPLOAD_INLINE_CELLS_MAX || String(1_000_000),
+    10
+  ),
+  // Per-request rectangle cap for GET /api/file-uploads/sheet-slice so a
+  // runaway client can't pull the whole sheet in one call.
+  FILE_UPLOAD_SLICE_CELLS_MAX: parseInt(
+    process.env.FILE_UPLOAD_SLICE_CELLS_MAX || String(50_000),
+    10
+  ),
+  // Redis TTL (seconds) for the parsed-workbook cache keyed by uploadSessionId.
+  FILE_UPLOAD_CACHE_TTL_SEC: parseInt(
+    process.env.FILE_UPLOAD_CACHE_TTL_SEC || String(60 * 60),
+    10
+  ),
+  UPLOAD_ALLOWED_EXTENSIONS: (
+    process.env.UPLOAD_ALLOWED_EXTENSIONS || ".csv,.tsv,.xlsx,.xls"
+  )
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
 };

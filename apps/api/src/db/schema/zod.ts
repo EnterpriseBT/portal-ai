@@ -29,6 +29,7 @@ import { portalResults } from "./portal-results.table.js";
 import { organizationTools } from "./organization-tools.table.js";
 import { stationTools } from "./station-tools.table.js";
 import { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
+import { fileUploads } from "./file-uploads.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -345,3 +346,15 @@ export type ConnectorInstanceLayoutPlanSelect = z.infer<
 export type ConnectorInstanceLayoutPlanInsert = z.infer<
   typeof ConnectorInstanceLayoutPlanInsertSchema
 >;
+
+// ── File Uploads ──────────────────────────────────────────────────────
+
+/** Zod schema for a `file_uploads` row returned by SELECT. */
+export const FileUploadSelectSchema = createSelectSchema(fileUploads);
+
+/** Zod schema for inserting into `file_uploads`. */
+export const FileUploadInsertSchema = createInsertSchema(fileUploads);
+
+/** Inferred types */
+export type FileUploadSelect = z.infer<typeof FileUploadSelectSchema>;
+export type FileUploadInsert = z.infer<typeof FileUploadInsertSchema>;

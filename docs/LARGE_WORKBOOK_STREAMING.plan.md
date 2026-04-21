@@ -309,16 +309,18 @@ Extend the existing `layout-plans.router.integration.test.ts`:
 
 Update the two route blocks + schema registrations.
 
-### Phase 5 — Frontend cutover
+### Phase 5 — Frontend cutover (presign → put → confirm → parse)
 
 **Goal**: browser never ships workbook JSON again. Per-file upload progress comes from real XHR events, not a synthesized "50 % parsing" heuristic.
+
+This is the baseline cutover. Progressive client-side grid population lives in Phases 5a–5c; 5 establishes the pipeline they hook into.
 
 #### 5.1 Red — `apps/web/src/workflows/FileUploadConnector/__tests__/file-upload-workflow.util.test.ts`
 
 New expectations:
 
 - `startParse` pipeline becomes: `presign` → `putToS3` (per file) → `confirm` (per file) → `parse`. Hook state transitions `uploading → parsing → parsed` reflect real wall-clock phases; `overallUploadPercent` is the sum of per-file XHR progress, not a heuristic.
-- Hook state gains `uploadSessionId: string | null` (replaces or complements `workbook: Workbook | null`; workbook becomes the **preview** workbook).
+- Hook state gains `uploadSessionId: string | null`.
 - `runInterpret(regions)` body is `{ uploadSessionId, regionHints }` — no workbook.
 - `runCommit(plan)` body is `{ uploadSessionId, connectorDefinitionId, name, plan }` — no workbook.
 - `reset()` clears `uploadSessionId` (cleanup of the S3 objects is the backend's job via the lifecycle rule + explicit delete on commit).
@@ -327,16 +329,151 @@ New expectations:
 
 1. Extend `sdk.fileUploads`:
    - `presign()` — POST mutation returning `{ uploads: [{uploadId, putUrl, s3Key, expiresAt}] }`.
-   - `putToS3(file, putUrl, { onProgress })` — bare `XMLHttpRequest` (not `fetchWithAuth`) since presigned URLs are bearer-less. Wrap in a hook that exposes the XHR progress event.
+   - `putToS3(file, putUrl, { onProgress, signal })` — bare `XMLHttpRequest` (not `fetchWithAuth`) since presigned URLs are bearer-less. Exposes real progress events + `AbortSignal` for cancel on modal close.
    - `confirm(uploadId)` — POST mutation.
    - `parse({ uploadIds })` — existing method, new body.
-2. Container: `parseFile(files)` orchestrates the four-step pipeline, updating per-file progress between steps. Refactor `FileUploadProgress` so `loaded/total` come from the real XHR upload, not a parser heuristic.
-3. Drop `workbookToBackend` and any inline workbook serialization from the container. Remove the 100 MB `REQUEST_JSON_LIMIT_BYTES` env note from the API once inline workbook payloads are gone (the cap stays; it just rarely matters).
-4. Preview-workbook adapter: `backendWorkbookToPreview` already takes `WorkbookData` — unchanged. The backend just sends fewer cells.
+2. Container: `parseFile(files)` orchestrates the four-step pipeline, updating per-file progress between steps. `FileUploadProgress.loaded/total` come from real XHR events.
+3. Drop `workbookToBackend` and any inline workbook serialization from the container. `REQUEST_JSON_LIMIT_BYTES` can fall back to a conservative default once this lands.
 
 #### 5.3 Storybook
 
 `Interactive` story: replace the `parseFile: () => delay(DEMO_WORKBOOK)` stub with a multi-step fake that simulates presign → put → confirm → parse. Makes the story match the real UX (visible upload progress).
+
+---
+
+### Phase 5a — `SheetCanvas` virtualization (prerequisite for streaming grid)
+
+**Goal**: the region-editor grid renders only cells in (or near) the viewport. Required before any streaming grid population makes sense — today's `SheetCanvas` emits `rowCount × colCount` DOM nodes in a flat loop, which becomes the bottleneck long before streaming helps.
+
+#### 5a.1 Red — `SheetCanvas.test.tsx`
+
+- Rendering a 50 000-row × 30-col sheet creates at most `OVERSCAN × colCount` visible cell nodes (tens, not hundreds of thousands).
+- Scrolling the container shifts which rows render; cells in the scrolled-to region mount on demand.
+- All existing interactions still work across the virtualized scroll: pointer-down-drag from row 10 to row 8 000 produces a region with `startRow=10, endRow=8000` even if most of the intermediate cells were never mounted.
+- Sticky column-header row stays pinned across scrolls.
+- Sticky row-header column stays pinned across horizontal scrolls.
+- Auto-scroll during drag still works; pulling the pointer toward the top/bottom edge advances the viewport.
+- Overlay `RegionOverlayUI` is pinned to the *grid*, not the viewport — a region whose bounds are off-screen still has its overlay present in the DOM at the correct coordinates so it's visible when the user scrolls there.
+
+#### 5a.2 Green
+
+1. Row-level virtualization via `@tanstack/react-virtual` (already an indirect dep via MUI; lightweight; fits well for fixed-height rows).
+2. Column-level virtualization defer — real workbooks rarely exceed a few hundred columns; row count is the dominant scale dimension. A future extension if we see >500-col sheets in the wild.
+3. Refactor the `gridBody` useMemo to:
+   - Keep sticky col-header row (not virtualized).
+   - Virtualize the data-row loop. The virtualizer yields `{ index, start, size }` per visible row; we render only those.
+4. Update `computeMovedBounds` / `computeResizedBounds` usage — nothing changes because they operate on coordinates, not DOM nodes.
+5. Region overlay: switch from absolute-positioned divs on top of every region to a single absolutely-positioned layer sized to the full grid dimensions. Overlays for off-screen regions render but are painted far above/below the current scroll — cheap.
+
+#### 5a.3 Storybook / stories
+
+Add a `LargeSheet` story in the RegionEditor stories that seeds a 100 000-row fixture. Scrolling it should stay smooth (>= 50 fps on a mid-range laptop). This is the subjective smoke test the phase closes on.
+
+---
+
+### Phase 5b — Client-side streaming parse for CSV/TSV
+
+**Goal**: for delimited text files, rows appear in the grid *during* the S3 upload rather than after. First cells visible in ~100 ms on a 100 MB file; user can start drawing regions immediately.
+
+#### 5b.1 Red — `utils/client-streaming-parse.util.test.ts`
+
+- `streamParseCsv(file)` yields row batches asynchronously; a 10 000-row fixture produces multiple batches before the input stream closes.
+- Each batch appends to the sheet's `cells` array (tested at hook level): after the first flush, `result.current.workbook.sheets[0].cells.length > 0 && < rowCount`. After the stream closes, `length === rowCount`.
+- Delimiter detection: commas, semicolons, tabs, and pipes all parse correctly (mirrors backend adapter behaviour).
+- Encoding: UTF-8 is the default; a flag exposes Latin-1 fallback to match the backend's chardet-driven decoding. Mismatch between client and server is accepted — server parse is source-of-truth, client is UX.
+- Abort: calling the returned `cancel()` mid-stream stops parsing, does not flush any more rows, and never throws.
+- Row limits: a safety valve at `CLIENT_PARSE_MAX_ROWS` (default `5_000_000`) halts parsing and leaves `workbook.sheets[i].truncated = true` for the UI to flag.
+
+#### 5b.2 Green
+
+1. New util `utils/client-streaming-parse.util.ts`:
+   - Uses `file.stream().pipeThrough(new TextDecoderStream(encoding))`.
+   - CSV parser: tiny hand-rolled streaming CSV reader (handles quotes, embedded newlines, escapes). Papa Parse would work; I lean toward ~80 lines of hand-written code to avoid a dependency for something this small.
+   - Emits `{ rows: CellValue[][], sheetId }` batches every `FLUSH_EVERY_ROWS` (default 500) or every 16 ms (whichever first) via a `WritableStream`-based consumer.
+2. Hook change: `startParse` concurrently runs `uploadAndStreamParse(files)` which:
+   - For each file, starts XHR upload + client-streaming parse from the same `File` handle. These don't share the byte stream (PUT needs the whole file body; would need `tee()` + duplex fetch — not universally supported). Instead the `File` is read twice, once by XHR (as a Blob body) and once by the parse pipe via `file.stream()`. The browser caches `File` bytes in memory or on disk so this is cheap.
+   - Appends each parse batch to `state.workbook.sheets[i].cells` via a merged `setState`. Skips the "parsed" backend-preview hydration for files we've already parsed client-side.
+3. After all uploads finish and `confirm` succeeds: call `sdk.fileUploads.parse({ uploadIds })` to register the session server-side. The response's cell data is discarded client-side (the client's progressive grid is the source of truth for the editor); we only keep `uploadSessionId`.
+4. **Fallback**: if client parse throws mid-stream (bad bytes, unexpected encoding), swallow the error and fall back to the server-side parse response exactly as Phase 5 wired it. The grid re-populates from the server's authoritative parse. User sees "Parsing on server…" briefly.
+
+#### 5b.3 Storybook
+
+Add a `CSVStreamingInteractive` story. Uses a 100 000-row in-memory CSV blob; demonstrates the progressive fill.
+
+---
+
+### Phase 5c — Client-side streaming parse for XLSX (Web Worker)
+
+**Goal**: same progressive-fill UX for XLSX workbooks. Required for v1 — the FileUpload connector is used for XLSX at least as much as CSV, and users shouldn't get a worse experience on the richer format.
+
+XLSX is a ZIP of XML. Unlike CSV it can't be parsed truly one byte at a time — the ZIP central directory and `sharedStrings.xml` must be present before cell values are interpretable. The practical shape:
+
+1. **Upload + parse run in parallel on the main page**, like CSV.
+2. **Parsing runs in a Web Worker** so the main thread stays responsive even while the parser crunches through the full workbook.
+3. **The worker emits rows in batches** as it walks each sheet's `sheet<n>.xml`. The user sees cells fill in sheet-by-sheet, top-to-bottom, just like the CSV path — the lag is "parse initialisation" (reading the string table) rather than "full block".
+4. **Cold-start time on a 25 MB XLSX is single-digit seconds**, during which the upload is progressing. Once the string table loads, cells stream in sub-second.
+
+#### 5c.1 Red — `utils/client-streaming-parse.util.test.ts` (extended)
+
+- `streamParseXlsx(file)` parses a multi-sheet XLSX fixture (built via the existing `xlsx-fixtures.util` in the API tests, imported into web tests via the shared `node:stream`→`Blob` shim) and emits row batches per sheet.
+- Multiple sheets appear in `workbook.sheets[]` in their XLSX workbook order.
+- Password-protected XLSX rejects cleanly (error state, no partial grid).
+- Rich text / formula result / date cells are coerced the same way the server-side adapter does them: dates → ISO strings, booleans → `"TRUE"`/`"FALSE"`, numbers → numeric, nulls/empties → `""`.
+- Worker lifecycle: spawning the worker is lazy (no worker created if no XLSX file is uploaded). `cancel()` calls `worker.terminate()`; no stuck workers after modal close.
+- Worker message shape: `{ type: "sheet-start", sheet: { id, name, rowCount?, colCount? } }` | `{ type: "rows", sheetId, rows: CellValue[][] }` | `{ type: "sheet-end", sheetId }` | `{ type: "done" }` | `{ type: "error", message }`.
+
+#### 5c.2 Green
+
+1. Library choice: **SheetJS (`xlsx`)** compiled for the worker. It isn't a true stream parser — it reads the full ZIP then iterates cells — but combined with a worker and row-batch posting, the user perception is streaming. The library is well-tested on browser fixtures, handles the messy edge cases (merged cells, shared strings, date serial numbers), and the cost is about 200 KB gzipped worker bundle. Documented explicitly so reviewers know why we picked buffered-parse-in-worker over true-streaming-in-main-thread.
+   - **Alternative considered**: custom ZIP streaming + XML SAX. Correct in theory, pile of edge cases in practice (sharedStrings at end of file, inconsistent inflate order). Not worth the maintenance.
+2. Worker file at `apps/web/src/workflows/FileUploadConnector/workers/xlsx-parse.worker.ts`, built via Vite's `?worker` import so the bundler handles the worker entry.
+3. Main-thread util `streamParseXlsx(file, { signal, onBatch })`:
+   ```ts
+   const worker = new XlsxParseWorker();
+   file.arrayBuffer().then((buf) => worker.postMessage(buf, [buf]));
+   worker.onmessage = (e) => dispatch(e.data);
+   signal.addEventListener("abort", () => worker.terminate());
+   ```
+4. Batch size: `XLSX_BATCH_ROWS` (default 500) — the worker accumulates and posts every N rows. Avoids postMessage overhead on each cell.
+5. Hook integration: `uploadAndStreamParse` dispatches by file extension:
+   - `.csv` / `.tsv` → `streamParseCsv`
+   - `.xlsx` / `.xls` → `streamParseXlsx`
+   - Any other supported extension → error out of the pipeline before presign.
+6. **Same fallback as CSV**: worker error → drop to server-side parse response.
+
+#### 5c.3 UX note
+
+During the ~1–3s XLSX worker cold start, the upload is running. Show:
+- Phase 1: per-file upload progress bar (driven by XHR).
+- Phase 2: "Parsing `<filename>`…" with a smaller spinner per file once upload finishes but worker is still initialising.
+- Phase 3: sheet tabs populate as `sheet-start` events arrive; cells fill per batch.
+
+Matches the streaming pipe from CSV without pretending XLSX bytes can be trickled directly into the grid.
+
+#### 5c.4 Storybook
+
+Add an `XlsxStreamingInteractive` story with a multi-sheet XLSX fixture. Scripted with a fake worker that replays pre-captured batch messages so the story is deterministic; the real worker is only used in the dev server.
+
+---
+
+### Phase 5d — Abort + failure handling for streaming parse
+
+**Goal**: no matter how the user exits mid-stream, nothing leaks — XHR aborts, workers terminate, state resets.
+
+#### 5d.1 Red
+
+- Close the modal while CSV stream is in flight: `AbortController.abort()` fires, XHR cancels, parse pipe closes, no further `setState` runs after the close.
+- Close the modal while XLSX worker is parsing: `worker.terminate()` fires, no orphan worker remains, no further `onmessage` events are handled.
+- Interrupt mid-stream (simulated network error during upload): pipeline resets to `uploadPhase: "error"`, user sees the error, can retry.
+- Concurrent files: aborting during multi-file upload cancels *all* in-flight uploads and parses.
+
+#### 5d.2 Green
+
+1. Shared `AbortController` per upload session; `handleClose` calls `.abort()` before resetting hook state.
+2. Hook's existing `runTokenRef` gates late-arriving parse batches (same mechanism the reset guard already uses).
+3. Worker lifecycle: one worker per XLSX file, tracked in a `workersRef: Set<Worker>`. `handleClose` iterates and terminates.
+
+---
 
 ### Phase 6 — Lifecycle, cleanup, observability
 
@@ -378,10 +515,12 @@ New expectations:
 
 Compatibility with the current inline-workbook flow isn't required — this is a new connector path, not a public API. We cut over wholesale in a single feature branch:
 
-- PR 1 (backend): Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4. Endpoints live under feature flag `ENABLE_STREAMING_UPLOAD=true` initially. Phase 3b ships as a stub returning 501 unless real-world fixtures trip the inline cap.
-- PR 2 (frontend): Phase 5. Flipped on behind the same flag; stories drive the Interactive demo.
-- PR 3 (cutover): remove the flag, delete the inline-workbook code paths in `layout-plans.router.ts` and the frontend container, enable the S3 lifecycle rule.
-- PR 4 (housekeeping): Phase 6 observability + docs. If the stub from Phase 3b hasn't fielded a 501 in production by now, promote it to a real implementation here; otherwise it stays deferred.
+- **PR 1 (backend)**: Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4. Endpoints live under feature flag `ENABLE_STREAMING_UPLOAD=true` initially. Phase 3b ships as a stub returning 501 unless real-world fixtures trip the inline cap.
+- **PR 2 (frontend pipeline)**: Phase 5. Baseline presign/put/confirm/parse pipeline replaces the multipart path. Flipped on behind the same flag; stories drive the Interactive demo. Grid still loads from the backend parse response.
+- **PR 3 (grid virtualization)**: Phase 5a. Required before streaming parse is useful; safe to land independently since it's a pure internal refactor of `SheetCanvas`.
+- **PR 4 (streaming parse)**: Phase 5b + 5c + 5d together. CSV and XLSX streaming are both required for v1 so they ship in one PR — the shared abort/fallback code path and hook integration are one refactor, not three.
+- **PR 5 (cutover)**: remove the feature flag, delete the inline-workbook code paths in `layout-plans.router.ts` and the frontend container, enable the S3 lifecycle rule.
+- **PR 6 (housekeeping)**: Phase 6 observability + docs. If the stub from Phase 3b hasn't fielded a 501 in production by now, promote it to a real implementation here; otherwise it stays deferred.
 
 Each PR ends green on `type-check` + `test:unit` + `test:integration`.
 
@@ -389,14 +528,22 @@ Each PR ends green on `type-check` + `test:unit` + `test:integration`.
 
 - `curl -H Content-Length: 50_000_000 /api/layout-plans/interpret` never runs — the endpoint's largest realistic body is a few KB (region hints).
 - `POST /api/file-uploads/presign` + S3 PUT upload a 500 MB CSV in under a minute on a typical connection; interpret + commit complete in seconds without re-transferring bytes.
-- `REQUEST_JSON_LIMIT_BYTES` can be dropped back to a conservative default (say 2 MB) since no body legitimately exceeds that anymore.
-- Integration tests cover success, cache-miss, cross-org rejection, and rollback for every new endpoint.
+- Users can drag a region across any row/column of any sheet, regardless of the sheet's total size. Sliced sheets fetch cells lazily behind the scenes; no rectangle is out of reach.
+- **CSV**: first cells visible in the grid within 500 ms of drop on a 100 MB file; additional rows fill in progressively during upload.
+- **XLSX**: first cells visible within 3 seconds on a 25 MB workbook; all sheets' tabs appear as the worker reaches them; additional rows fill in progressively per sheet.
+- **Region-editor responsiveness**: 100 000-row sheet scrolls at ≥ 50 fps on a mid-range laptop (validates Phase 5a virtualization).
+- **Abort hygiene**: closing the modal mid-stream terminates all XHR uploads and Web Workers in under 100 ms; the browser's DevTools show zero orphan workers after close.
+- `REQUEST_JSON_LIMIT_BYTES` on the API can stay at its conservative default (say 2 MB) — the parse response is the only legitimate >2 MB body left, and it has its own ceiling via `FILE_UPLOAD_INLINE_CELLS_MAX`.
+- Integration tests cover success, cache-miss, cross-org rejection, rollback, and sliced-sheet fetch for every new endpoint. Frontend tests cover CSV + XLSX streaming parse (happy path, abort, fallback-to-server-parse).
 - `docs/SPREADSHEET_PARSING.backend.spec.md` updated: the sync-integration section swaps "inline workbook" for "uploadSessionId".
 
-## Appendix — schema decisions considered + rejected
+## Appendix — decisions considered + rejected
 
 - **Stream the workbook as NDJSON over a persistent connection**: simpler than S3 but tangles transport with semantics and forces the browser to keep the connection open through the LLM call. Rejected.
 - **Let the interpret/commit endpoints accept both inline and S3-backed bodies via a discriminated union**: doubles the test matrix with no real benefit; cutover is cheaper than coexistence.
-- **Parse in a BullMQ worker instead of synchronously**: parse is fast enough on current fixtures (<2 s for 25 MB); async parse adds a polling UX we don't need yet. Revisit if customer files push beyond that bound.
+- **Parse XLSX in the main thread instead of a Web Worker**: xlsx libraries are CPU-heavy and will block pointer events during scroll / region-draw. Worker is non-optional if we want the progressive grid to feel responsive.
+- **True byte-streaming XLSX parser (custom ZIP inflate + XML SAX)**: theoretically cleaner than buffered-parse-in-worker, but handling `sharedStrings.xml` arriving after the sheets + partial inflate + merged cells across compressed chunks is a maintenance sink for marginal latency win. Deferred until we see a workbook big enough that worker cold-start dominates total time.
+- **`tee()` the file stream for simultaneous upload + parse**: tempting but `fetch(url, { body: readableStream, duplex: "half" })` isn't universally supported and `file.stream()` can only be consumed once. Reading the `File` handle twice (once for XHR body, once for `file.stream()`) works in every browser and the OS caches the underlying bytes.
+- **Parse in a BullMQ worker instead of synchronously (server)**: parse is fast enough on current fixtures (<2 s for 25 MB); async parse adds a polling UX we don't need yet. Revisit if customer files push beyond that bound.
 - **Cache parsed workbooks in Postgres `file_uploads.parsed_workbook` column instead of Redis**: durable but bloats the row; Redis with re-parse fallback is simpler and bounds the store.
 - **Use S3 server-side encryption (SSE-KMS)**: yes, default to SSE-S3 on the bucket; SSE-KMS if compliance asks for it later. Not in scope for this plan but listed so reviewers know it's deliberate.

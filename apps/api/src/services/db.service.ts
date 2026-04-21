@@ -29,6 +29,7 @@ import {
   organizationToolsRepo,
   stationToolsRepo,
   connectorInstanceLayoutPlansRepo,
+  fileUploadsRepo,
 } from "../db/index.js";
 import {
   Repository,
@@ -102,6 +103,7 @@ export class DbService {
       organizationTools: organizationToolsRepo,
       stationTools: stationToolsRepo,
       connectorInstanceLayoutPlans: connectorInstanceLayoutPlansRepo,
+      fileUploads: fileUploadsRepo,
     };
   }
 }

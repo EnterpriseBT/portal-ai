@@ -27,6 +27,7 @@ export { portalResults, portalResultTypeEnum } from "./portal-results.table.js";
 export { organizationTools } from "./organization-tools.table.js";
 export { stationTools } from "./station-tools.table.js";
 export { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
+export { fileUploads } from "./file-uploads.table.js";
 
 /** Drizzle-zod derived schemas for runtime validation */
 export * from "./zod.js";
