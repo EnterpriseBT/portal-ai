@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Portal.ai — SSM-managed bastion for private RDS access
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  InstanceType:
+    Type: String
+    Default: t4g.nano
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+
+Resources:
+  # ── IAM ──────────────────────────────────────────────────
+  BastionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-bastion-role"
+
+  BastionInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BastionRole
+
+  # ── Security Group ───────────────────────────────────────
+  # No inbound rules — SSM uses outbound-only connections
+  # via the NAT gateway to AWS service endpoints.
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "portalai-${Environment} bastion (SSM egress only)"
+      VpcId: !ImportValue
+        Fn::Sub: "${Environment}-VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-bastion-sg"
+
+  # ── Instance ─────────────────────────────────────────────
+  BastionInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref BastionInstanceProfile
+      SubnetId: !ImportValue
+        Fn::Sub: "${Environment}-PrivateSubnet1"
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "portalai-${Environment}-bastion"
+
+# ── Exports ──────────────────────────────────────────────
+Outputs:
+  BastionInstanceId:
+    Value: !Ref BastionInstance
+    Export:
+      Name: !Sub "${Environment}-BastionInstanceId"

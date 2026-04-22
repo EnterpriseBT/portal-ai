@@ -63,6 +63,15 @@ jobs:
             --parameter-overrides Environment=dev \
             --no-fail-on-empty-changeset
 
+      - name: Deploy bastion stack
+        run: |
+          aws cloudformation deploy \
+            --stack-name portalai-dev-bastion \
+            --template-file infra/cloudformation/bastion.yml \
+            --parameter-overrides Environment=dev \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+
       - name: Deploy cache stack
         run: |
           aws cloudformation deploy \
