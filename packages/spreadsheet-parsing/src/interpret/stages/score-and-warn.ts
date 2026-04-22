@@ -4,23 +4,7 @@ import {
   type Warning,
 } from "../../plan/index.js";
 import type { InterpretState, RegionConfidence } from "../types.js";
-
-function isPivoted(region: Region): boolean {
-  if (region.orientation === "cells-as-records") return true;
-  if (
-    region.orientation === "columns-as-records" &&
-    region.headerAxis === "row"
-  ) {
-    return true;
-  }
-  if (
-    region.orientation === "rows-as-records" &&
-    region.headerAxis === "column"
-  ) {
-    return true;
-  }
-  return false;
-}
+import { isPivoted } from "./pivoted.util.js";
 
 function emitWarning(
   warnings: Warning[],

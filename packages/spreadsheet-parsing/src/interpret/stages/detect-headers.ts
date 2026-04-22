@@ -1,6 +1,7 @@
 import type { Region } from "../../plan/index.js";
 import type { Sheet, WorkbookCell } from "../../workbook/index.js";
 import type { HeaderCandidate, InterpretState } from "../types.js";
+import { fieldNamesAxis } from "./pivoted.util.js";
 
 const NUMERIC_RE = /^-?\d+(?:\.\d+)?$/;
 
@@ -70,10 +71,12 @@ function collectColLabels(
 }
 
 function candidatesForRegion(region: Region, sheet: Sheet): HeaderCandidate[] {
-  const { bounds, headerAxis } = region;
-  if (headerAxis === "none") return [];
-
-  const scanAxis: "row" | "column" = headerAxis === "row" ? "row" : "column";
+  const { bounds } = region;
+  // The header detection scans the **field-names** axis — for non-pivoted
+  // regions that's `headerAxis`, for pivoted regions it's the orthogonal
+  // axis (headerAxis carries records-axis labels in that case, not fields).
+  const scanAxis = fieldNamesAxis(region);
+  if (!scanAxis) return [];
   const candidates: HeaderCandidate[] = [];
 
   if (scanAxis === "row") {

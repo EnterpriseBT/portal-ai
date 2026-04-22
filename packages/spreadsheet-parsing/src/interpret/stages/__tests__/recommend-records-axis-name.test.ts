@@ -118,6 +118,58 @@ describe("recommendRecordsAxisName", () => {
     expect(recommender).not.toHaveBeenCalled();
   });
 
+  it("reads records-axis labels from headerAxis direction, not from detect-headers (pivoted cols-as-records + row)", async () => {
+    // detect-headers now scans the field-names axis for pivoted regions —
+    // the recommender must still get the records-axis labels (Q1..Q4) from
+    // the `headerAxis` line, excluding the anchor cell "metric".
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 5, cols: 5 },
+            cells: [
+              { row: 1, col: 1, value: "metric" },
+              { row: 1, col: 2, value: "Q1" },
+              { row: 1, col: 3, value: "Q2" },
+              { row: 1, col: 4, value: "Q3" },
+              { row: 1, col: 5, value: "Q4" },
+              { row: 2, col: 1, value: "revenue" },
+              { row: 3, col: 1, value: "cost" },
+              { row: 4, col: 1, value: "profit" },
+              { row: 5, col: 1, value: "headcount" },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
+          targetEntityDefinitionId: "metrics",
+          orientation: "columns-as-records",
+          headerAxis: "row",
+        },
+      ],
+    };
+    const recommender: jest.MockedFunction<AxisNameRecommenderFn> = jest.fn(
+      async () => ({ name: "Quarter", confidence: 0.9 })
+    );
+    let state = detectRegions(createInitialState(input));
+    state = detectHeaders(state);
+    state = await recommendRecordsAxisName(state, {
+      axisNameRecommender: recommender,
+    });
+    expect(recommender).toHaveBeenCalledTimes(1);
+    const [labels] = recommender.mock.calls[0];
+    expect(labels).toEqual(["Q1", "Q2", "Q3", "Q4"]);
+    const regionId = state.detectedRegions[0].id;
+    expect(state.recordsAxisNameSuggestions.get(regionId)).toEqual({
+      name: "Quarter",
+      confidence: 0.9,
+    });
+  });
+
   it("fans out across pivoted regions concurrently, bounded by the concurrency cap", async () => {
     // Three pivoted regions, each requiring a recommender call.
     const input: InterpretInput = {

@@ -215,13 +215,26 @@ export function regionDraftsToHints(
       headerAxis: draft.headerAxis,
     };
 
-    if (draft.recordsAxisName?.name) {
+    // Only forward axis names the user has explicitly confirmed. The
+    // `anchor-cell` and `ai` sources are tentative placeholders shown in the
+    // editor — forwarding them would trip `detectRegions` into stamping
+    // `source: "user"` on the backend, which suppresses the axis-name
+    // recommender. The recommender's job is exactly to propose a name from
+    // the records-axis labels, so we leave that slot empty when the user
+    // hasn't committed to a value.
+    if (
+      draft.recordsAxisName?.name &&
+      draft.recordsAxisName.source === "user"
+    ) {
       hint.recordsAxisName = draft.recordsAxisName.name;
     }
-    if (draft.secondaryRecordsAxisName?.name) {
+    if (
+      draft.secondaryRecordsAxisName?.name &&
+      draft.secondaryRecordsAxisName.source === "user"
+    ) {
       hint.secondaryRecordsAxisName = draft.secondaryRecordsAxisName.name;
     }
-    if (draft.cellValueName?.name) {
+    if (draft.cellValueName?.name && draft.cellValueName.source === "user") {
       hint.cellValueName = draft.cellValueName.name;
     }
     if (draft.axisAnchorCell) {

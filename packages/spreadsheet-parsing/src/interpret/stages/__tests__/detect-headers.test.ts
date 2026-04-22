@@ -169,6 +169,106 @@ describe("detectHeaders", () => {
     expect(state.headerCandidates.get(regionId)).toEqual([]);
   });
 
+  it("scans the orthogonal axis for pivoted columns-as-records + headerAxis:row", () => {
+    // Shape: column 1 carries the field names (rowLabels-style); row 1 is
+    // the records-axis label row (Q1..Q4). With headerAxis=row, the region
+    // is pivoted — detect-headers should find column 1 as the field-names
+    // axis rather than scoring row 1 as a header.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 5, cols: 5 },
+            cells: [
+              { row: 1, col: 1, value: "metric" },
+              { row: 1, col: 2, value: "Q1" },
+              { row: 1, col: 3, value: "Q2" },
+              { row: 1, col: 4, value: "Q3" },
+              { row: 1, col: 5, value: "Q4" },
+              { row: 2, col: 1, value: "revenue" },
+              { row: 3, col: 1, value: "cost" },
+              { row: 4, col: 1, value: "profit" },
+              { row: 5, col: 1, value: "headcount" },
+              { row: 2, col: 2, value: 10000 },
+              { row: 3, col: 2, value: 5000 },
+              { row: 4, col: 2, value: 5000 },
+              { row: 5, col: 2, value: 12 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
+          targetEntityDefinitionId: "pivoted-metrics",
+          orientation: "columns-as-records",
+          headerAxis: "row",
+        },
+      ],
+    };
+    const state = runWith(input);
+    const regionId = state.detectedRegions[0].id;
+    const best = state.headerCandidates.get(regionId)![0];
+    expect(best.axis).toBe("column");
+    expect(best.index).toBe(1);
+    expect(best.labels).toEqual([
+      "metric",
+      "revenue",
+      "cost",
+      "profit",
+      "headcount",
+    ]);
+  });
+
+  it("scans the orthogonal axis for pivoted rows-as-records + headerAxis:column", () => {
+    // Shape: row 1 carries field names; column 1 carries records-axis
+    // labels (Q1..Q4 per row). Pivoted — detect-headers should find row 1.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 5, cols: 3 },
+            cells: [
+              { row: 1, col: 1, value: "quarter" },
+              { row: 1, col: 2, value: "revenue" },
+              { row: 1, col: 3, value: "cost" },
+              { row: 2, col: 1, value: "Q1" },
+              { row: 2, col: 2, value: 10000 },
+              { row: 2, col: 3, value: 5000 },
+              { row: 3, col: 1, value: "Q2" },
+              { row: 3, col: 2, value: 12000 },
+              { row: 3, col: 3, value: 6000 },
+              { row: 4, col: 1, value: "Q3" },
+              { row: 4, col: 2, value: 14000 },
+              { row: 4, col: 3, value: 7000 },
+              { row: 5, col: 1, value: "Q4" },
+              { row: 5, col: 2, value: 16000 },
+              { row: 5, col: 3, value: 8000 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 3 },
+          targetEntityDefinitionId: "pivoted-rows",
+          orientation: "rows-as-records",
+          headerAxis: "column",
+        },
+      ],
+    };
+    const state = runWith(input);
+    const regionId = state.detectedRegions[0].id;
+    const best = state.headerCandidates.get(regionId)![0];
+    expect(best.axis).toBe("row");
+    expect(best.index).toBe(1);
+    expect(best.labels).toEqual(["quarter", "revenue", "cost"]);
+  });
+
   it("is deterministic across repeated runs", () => {
     const first = runWith(simpleInput());
     const second = runWith(simpleInput());

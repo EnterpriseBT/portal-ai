@@ -248,6 +248,68 @@ describe("classifyColumns — injected classifier override", () => {
     expect(peak).toBeLessThanOrEqual(2);
   });
 
+  it("excludes the axis-anchor cell from classifier candidates for pivoted regions", async () => {
+    // Pivoted columns-as-records + headerAxis:row. Field names live in
+    // column 1 (revenue/cost/profit/headcount); the anchor cell at (1,1)
+    // holds the records-axis name "metric" — that's an axis NAME, not a
+    // field name, so the classifier must not receive it as a candidate.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 5, cols: 5 },
+            cells: [
+              { row: 1, col: 1, value: "metric" },
+              { row: 1, col: 2, value: "Q1" },
+              { row: 1, col: 3, value: "Q2" },
+              { row: 1, col: 4, value: "Q3" },
+              { row: 1, col: 5, value: "Q4" },
+              { row: 2, col: 1, value: "revenue" },
+              { row: 3, col: 1, value: "cost" },
+              { row: 4, col: 1, value: "profit" },
+              { row: 5, col: 1, value: "headcount" },
+              { row: 2, col: 2, value: 10000 },
+              { row: 3, col: 2, value: 5000 },
+              { row: 4, col: 2, value: 5000 },
+              { row: 5, col: 2, value: 12 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
+          targetEntityDefinitionId: "pivoted-metrics",
+          orientation: "columns-as-records",
+          headerAxis: "row",
+        },
+      ],
+    };
+    const injected: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async (cands) =>
+        cands.map<ColumnClassification>((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId: `coldef-${c.sourceHeader}`,
+          confidence: 0.9,
+          rationale: "test",
+        }))
+    );
+    let state = detectRegions(createInitialState(input));
+    state = detectHeaders(state);
+    state = await classifyColumns(state, { classifier: injected });
+
+    const regionId = state.detectedRegions[0].id;
+    const classifications = state.columnClassifications.get(regionId)!;
+    const headers = classifications.map((c) => c.sourceHeader);
+    // Field names — none of the row-1 axis labels (metric/Q1/Q2/Q3/Q4).
+    expect(headers).toEqual(["revenue", "cost", "profit", "headcount"]);
+    expect(headers).not.toContain("metric");
+    expect(headers).not.toContain("Q1");
+  });
+
   it("skips classification entirely when headerAxis === 'none' (no headers to classify)", async () => {
     const input: InterpretInput = {
       workbook: {

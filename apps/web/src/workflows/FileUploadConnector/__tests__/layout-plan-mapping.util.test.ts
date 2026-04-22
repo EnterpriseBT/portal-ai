@@ -88,6 +88,28 @@ describe("regionDraftsToHints", () => {
     );
   });
 
+  it("does not forward anchor-cell auto-populated axis names (they're tentative)", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        recordsAxisName: { name: "metric", source: "anchor-cell" },
+        axisAnchorCell: { row: 0, col: 0 },
+      }),
+    ]);
+    // `recordsAxisName` absent from the hint so the backend's AI recommender
+    // can run instead of treating the placeholder as a confirmed user value.
+    expect(hints[0]).not.toHaveProperty("recordsAxisName");
+    expect(hints[0].axisAnchorCell).toEqual({ row: 1, col: 1 });
+  });
+
+  it("does not forward AI-suggested axis names (awaiting user confirmation)", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        recordsAxisName: { name: "Quarter", source: "ai", confidence: 0.82 },
+      }),
+    ]);
+    expect(hints[0]).not.toHaveProperty("recordsAxisName");
+  });
+
   it("converts 0-indexed frontend bounds to 1-indexed backend bounds", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({

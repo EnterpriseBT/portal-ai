@@ -11,6 +11,7 @@ import type {
   InterpretState,
 } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
+import { isPivoted } from "./pivoted.util.js";
 
 const SAMPLE_LIMIT = 10;
 
@@ -32,8 +33,17 @@ function candidatesFromHeader(
   sheet: Sheet
 ): ClassifierCandidate[] {
   const out: ClassifierCandidate[] = [];
+  // For pivoted regions, the axis-anchor cell holds the records-axis name
+  // (e.g. "Month") — not a field name. Skip it so the classifier doesn't
+  // try to match it against a ColumnDefinition.
+  const pivoted = isPivoted(region);
+  const anchor = region.axisAnchorCell ?? {
+    row: region.bounds.startRow,
+    col: region.bounds.startCol,
+  };
   if (header.axis === "row") {
     for (let col = region.bounds.startCol; col <= region.bounds.endCol; col++) {
+      if (pivoted && col === anchor.col) continue;
       const headerCell = sheet.cell(header.index, col);
       const sourceHeader =
         headerCell && headerCell.value !== null ? String(headerCell.value) : "";
@@ -52,6 +62,7 @@ function candidatesFromHeader(
     }
   } else {
     for (let row = region.bounds.startRow; row <= region.bounds.endRow; row++) {
+      if (pivoted && row === anchor.row) continue;
       const headerCell = sheet.cell(row, header.index);
       const sourceHeader =
         headerCell && headerCell.value !== null ? String(headerCell.value) : "";

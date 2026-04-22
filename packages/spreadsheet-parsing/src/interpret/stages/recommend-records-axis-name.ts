@@ -2,48 +2,40 @@ import type { Region } from "../../plan/index.js";
 import type { Sheet } from "../../workbook/index.js";
 import { DEFAULT_INTERPRET_CONCURRENCY } from "../deps.js";
 import type { InterpretDeps } from "../deps.js";
-import type { HeaderCandidate, InterpretState } from "../types.js";
+import type { InterpretState } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
+import { isPivoted } from "./pivoted.util.js";
 
 const MAX_AXIS_LABELS = 30;
 
-function isPivoted(region: Region): boolean {
-  if (region.orientation === "cells-as-records") return true;
-  if (
-    region.orientation === "columns-as-records" &&
-    region.headerAxis === "row"
-  ) {
-    return true;
-  }
-  if (
-    region.orientation === "rows-as-records" &&
-    region.headerAxis === "column"
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function collectAxisLabelsFromHeader(
-  header: HeaderCandidate,
-  sheet: Sheet,
-  region: Region
-): string[] {
-  const labels = header.labels.slice();
-  // The axis-name anchor cell (top-left) is *not* an axis label; drop it.
+/**
+ * Collect the records-axis labels for a pivoted region. These live on the
+ * `headerAxis` line (the row/col that carries per-record identifiers like
+ * `Jan, Feb, Mar`), with the axis-anchor cell excluded because that cell
+ * holds the records-axis **name** ("Month"), not a label. Decoupled from
+ * the detect-headers stage because that stage now scans the field-names
+ * axis (orthogonal) for pivoted regions and would hand us the wrong labels.
+ */
+function collectRecordsAxisLabels(region: Region, sheet: Sheet): string[] {
   const anchor = region.axisAnchorCell ?? {
     row: region.bounds.startRow,
     col: region.bounds.startCol,
   };
-  if (header.axis === "row" && header.index === anchor.row) {
-    // Drop the cell at anchor.col — the column offset within the labels array
-    // is (anchor.col - region.bounds.startCol).
-    const idx = anchor.col - region.bounds.startCol;
-    if (idx >= 0 && idx < labels.length) labels.splice(idx, 1);
-  }
-  if (header.axis === "column" && header.index === anchor.col) {
-    const idx = anchor.row - region.bounds.startRow;
-    if (idx >= 0 && idx < labels.length) labels.splice(idx, 1);
+  const labels: string[] = [];
+  if (region.headerAxis === "row") {
+    const row = anchor.row;
+    for (let c = region.bounds.startCol; c <= region.bounds.endCol; c++) {
+      if (c === anchor.col) continue;
+      const cell = sheet.cell(row, c);
+      if (cell && cell.value !== null) labels.push(String(cell.value));
+    }
+  } else if (region.headerAxis === "column") {
+    const col = anchor.col;
+    for (let r = region.bounds.startRow; r <= region.bounds.endRow; r++) {
+      if (r === anchor.row) continue;
+      const cell = sheet.cell(r, col);
+      if (cell && cell.value !== null) labels.push(String(cell.value));
+    }
   }
   return labels
     .map((l) => l.trim())
@@ -76,13 +68,9 @@ export async function recommendRecordsAxisName(
       continue;
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
     if (!sheet) continue;
-    const headers = state.headerCandidates.get(region.id);
-    const best = headers?.[0];
-    if (!best) continue;
-    pending.push({
-      regionId: region.id,
-      labels: collectAxisLabelsFromHeader(best, sheet, region),
-    });
+    const labels = collectRecordsAxisLabels(region, sheet);
+    if (labels.length === 0) continue;
+    pending.push({ regionId: region.id, labels });
   }
 
   const limit = pLimit(deps.concurrency ?? DEFAULT_INTERPRET_CONCURRENCY);
