@@ -970,3 +970,214 @@ describe("extractRecords — segmented (matrix id 4b: pivoted cols + multi-segme
     ).toEqual(["Jan", "Feb", "Mar"]);
   });
 });
+
+// ── Matrix id 1a — classic tidy under segmentation (round-trip) ────────────
+// Proves the segmented encoding is a faithful superset of the
+// non-segmented shape. A region with all-field positions and zero
+// pivotSegments must emit the same records as the classic path.
+describe("extractRecords — segmentation round-trip (matrix id 1a)", () => {
+  function tidyWorkbook() {
+    return makeWorkbook({
+      sheets: [
+        {
+          name: "Contacts",
+          dimensions: { rows: 3, cols: 3 },
+          cells: [
+            { row: 1, col: 1, value: "email" },
+            { row: 1, col: 2, value: "name" },
+            { row: 1, col: 3, value: "age" },
+            { row: 2, col: 1, value: "a@x.com" },
+            { row: 2, col: 2, value: "alice" },
+            { row: 2, col: 3, value: 30 },
+            { row: 3, col: 1, value: "b@x.com" },
+            { row: 3, col: 2, value: "bob" },
+            { row: 3, col: 3, value: 25 },
+          ],
+        },
+      ],
+    });
+  }
+
+  function classicTidyRegion(): Region {
+    return {
+      id: "r-1a",
+      sheet: "Contacts",
+      bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
+      boundsMode: "absolute",
+      targetEntityDefinitionId: "contacts",
+      orientation: "rows-as-records",
+      headerAxis: "row",
+      headerStrategy: {
+        kind: "row",
+        locator: { kind: "row", sheet: "Contacts", row: 1 },
+        confidence: 1,
+      },
+      identityStrategy: {
+        kind: "column",
+        sourceLocator: { kind: "column", sheet: "Contacts", col: 1 },
+        confidence: 1,
+      },
+      columnBindings: [
+        {
+          sourceLocator: { kind: "byHeaderName", name: "email" },
+          columnDefinitionId: "col-email",
+          confidence: 1,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", name: "name" },
+          columnDefinitionId: "col-name",
+          confidence: 1,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", name: "age" },
+          columnDefinitionId: "col-age",
+          confidence: 1,
+        },
+      ],
+      skipRules: [],
+      drift: {
+        headerShiftRows: 0,
+        addedColumns: "halt",
+        removedColumns: { max: 0, action: "halt" },
+      },
+      confidence: { region: 1, aggregate: 1 },
+      warnings: [],
+    };
+  }
+
+  function segmentedTidyRegion(): Region {
+    return {
+      ...classicTidyRegion(),
+      positionRoles: [
+        { kind: "field" },
+        { kind: "field" },
+        { kind: "field" },
+      ],
+      pivotSegments: [],
+    };
+  }
+
+  it("emits one statics-only record per data row (no segments)", () => {
+    const records = extractRecords(
+      segmentedTidyRegion(),
+      tidyWorkbook().sheets[0]
+    );
+    expect(records).toHaveLength(2);
+    expect(records[0].fields).toEqual({
+      "col-email": "a@x.com",
+      "col-name": "alice",
+      "col-age": 30,
+    });
+    expect(records[1].fields).toEqual({
+      "col-email": "b@x.com",
+      "col-name": "bob",
+      "col-age": 25,
+    });
+  });
+
+  it("produces the same fields and source-ids as the classic path", () => {
+    const wb = tidyWorkbook();
+    const classic = extractRecords(classicTidyRegion(), wb.sheets[0]);
+    const segmented = extractRecords(segmentedTidyRegion(), wb.sheets[0]);
+    expect(segmented).toHaveLength(classic.length);
+    for (let i = 0; i < classic.length; i++) {
+      expect(segmented[i].fields).toEqual(classic[i].fields);
+      expect(segmented[i].sourceId).toBe(classic[i].sourceId);
+    }
+  });
+});
+
+// ── Matrix id 2a — classic transposed tidy under segmentation (round-trip) ──
+describe("extractRecords — segmentation round-trip (matrix id 2a)", () => {
+  function tidyColsWorkbook() {
+    return makeWorkbook({
+      sheets: [
+        {
+          name: "Contacts",
+          dimensions: { rows: 3, cols: 3 },
+          cells: [
+            { row: 1, col: 1, value: "email" },
+            { row: 2, col: 1, value: "name" },
+            { row: 3, col: 1, value: "age" },
+            { row: 1, col: 2, value: "a@x.com" },
+            { row: 2, col: 2, value: "alice" },
+            { row: 3, col: 2, value: 30 },
+            { row: 1, col: 3, value: "b@x.com" },
+            { row: 2, col: 3, value: "bob" },
+            { row: 3, col: 3, value: 25 },
+          ],
+        },
+      ],
+    });
+  }
+
+  function classicTidyColsRegion(): Region {
+    return {
+      id: "r-2a",
+      sheet: "Contacts",
+      bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
+      boundsMode: "absolute",
+      targetEntityDefinitionId: "contacts",
+      orientation: "columns-as-records",
+      headerAxis: "column",
+      headerStrategy: {
+        kind: "column",
+        locator: { kind: "column", sheet: "Contacts", col: 1 },
+        confidence: 1,
+      },
+      identityStrategy: {
+        kind: "column",
+        sourceLocator: { kind: "row", sheet: "Contacts", row: 1 },
+        confidence: 1,
+      },
+      columnBindings: [
+        {
+          sourceLocator: { kind: "byHeaderName", name: "email" },
+          columnDefinitionId: "col-email",
+          confidence: 1,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", name: "name" },
+          columnDefinitionId: "col-name",
+          confidence: 1,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", name: "age" },
+          columnDefinitionId: "col-age",
+          confidence: 1,
+        },
+      ],
+      skipRules: [],
+      drift: {
+        headerShiftRows: 0,
+        addedColumns: "halt",
+        removedColumns: { max: 0, action: "halt" },
+      },
+      confidence: { region: 1, aggregate: 1 },
+      warnings: [],
+    };
+  }
+
+  function segmentedTidyColsRegion(): Region {
+    return {
+      ...classicTidyColsRegion(),
+      positionRoles: [
+        { kind: "field" },
+        { kind: "field" },
+        { kind: "field" },
+      ],
+      pivotSegments: [],
+    };
+  }
+
+  it("produces the same fields as the classic path for columns-as-records", () => {
+    const wb = tidyColsWorkbook();
+    const classic = extractRecords(classicTidyColsRegion(), wb.sheets[0]);
+    const segmented = extractRecords(segmentedTidyColsRegion(), wb.sheets[0]);
+    expect(segmented).toHaveLength(classic.length);
+    for (let i = 0; i < classic.length; i++) {
+      expect(segmented[i].fields).toEqual(classic[i].fields);
+      expect(segmented[i].sourceId).toBe(classic[i].sourceId);
+    }
+  });
+});

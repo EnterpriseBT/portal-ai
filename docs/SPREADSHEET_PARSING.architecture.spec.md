@@ -178,6 +178,18 @@ When `orientation === "cells-as-records"`, both axes carry dimension labels and 
 
 Each extracted record has three fields whose keys are the three names above and whose values are `(row-label, col-label, cell-value)` respectively. Validation treats all three as blockers when missing; the same `PIVOTED_REGION_MISSING_AXIS_NAME` warning code is reused, with the `locator` distinguishing which axis is missing.
 
+## Region segmentation (Phase 1)
+
+A region may optionally carry two fields — `positionRoles` (one entry per header-axis position) and `pivotSegments` (named records-axes plus value-field declarations). They generalize the single-axis pivoted shape above into an N-segment model where a single header line can mix static fields with multiple independently-named pivot axes.
+
+- Each entry in `positionRoles` is tagged `field` (a column-bound static), `pivotLabel` (a label for one of the declared `pivotSegments`), or `skip` (ignored; e.g. a Total column).
+- Each `pivotSegment` has an `id`, an `axisName` (field name for the label), and a `valueFieldName` (field name for each position's cell value). Sources (`user` / `ai` / `anchor-cell`) carry provenance analogous to `recordsAxisName`.
+- Schema refinements on `RegionSchema` enforce: `positionRoles` length matches the header-line length (column span for `headerAxis:row`, row span for `headerAxis:column`); every `pivotLabel.segmentId` resolves to a declared `pivotSegment`; every declared segment is referenced by at least one position; and `cells-as-records` rejects segmentation outright with `SEGMENTED_CROSSTAB_NOT_SUPPORTED`.
+- Record generation: for each entity-unit the replay engine collects statics from `field`-role positions, then for each declared segment emits one record per matching `pivotLabel` position — its `fields` are the statics plus `{ [segment.axisName]: headerLabel, [segment.valueFieldName]: cellValue }`. Source-ids combine the base identity-strategy result with `::segmentId::label`; plans with zero segments emit one statics-only record per entity-unit and keep the base source-id unchanged, so segmented and classic (non-pivoted) encodings round-trip.
+- Orientation symmetry: the emit loop is driven by `headerAxis` (row vs. column), so pivoted variants (`rows-as-records + headerAxis:column`, `columns-as-records + headerAxis:row`) share the same layout code as their non-pivoted siblings — `orientation` only affects the base source-id format.
+
+Phase 1 ships the schema + replay only; `interpret` stages and the UI role strip land in later phases. Until then, segmented plans reach the pipeline through direct API construction or hand-crafted fixtures. See `docs/REGION_CONFIG.schema_replay.spec.md` for the full spec and `docs/REGION_CONFIG.schema_replay.plan.md` for the TDD walkthrough.
+
 ## v1 declarative surface
 
 Surface variants kept and deferred in v1. The interpreter must recognize deferred shapes and emit `blocker` warnings rather than half-supporting them.

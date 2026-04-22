@@ -140,6 +140,21 @@ export function extractSegmentedRecords(
       col: ctx.col,
     });
 
+    if (segments.length === 0) {
+      // No-segments case — emit one statics-only record per entity-unit.
+      // This is the segmented encoding of today's classic non-pivoted
+      // region (matrix ids 1a / 2a); source-id matches the classic path
+      // so segmented and non-segmented plans round-trip identically.
+      records.push({
+        regionId: region.id,
+        targetEntityDefinitionId: region.targetEntityDefinitionId,
+        sourceId: baseSourceId,
+        checksum: computeChecksum(statics),
+        fields: statics,
+      });
+      continue;
+    }
+
     for (const segment of segments) {
       dispatch.positions.forEach((position, i) => {
         const role = positionRoles[i];
