@@ -6,6 +6,7 @@ import type {
 } from "../plan/index.js";
 import type { CellValue, Sheet, WorkbookCell } from "../workbook/types.js";
 import { computeChecksum } from "./checksum.js";
+import { extractSegmentedRecords } from "./extract-segmented-records.js";
 import { deriveSourceId } from "./identity.js";
 import { resolveHeaders, type HeaderLayout } from "./resolve-headers.js";
 import { resolveRegionBounds, type ResolvedBounds } from "./resolve-bounds.js";
@@ -154,6 +155,13 @@ export function extractRecords(
   region: Region,
   sheet: Sheet
 ): ExtractedRecord[] {
+  // Segmented regions (see docs/REGION_CONFIG.schema_replay.spec.md) own
+  // their own emit loop because the record count per entity-unit depends on
+  // position roles and per-segment pivotLabel counts.
+  if (region.positionRoles && region.pivotSegments) {
+    return extractSegmentedRecords(region, sheet);
+  }
+
   const bounds = resolveRegionBounds(region, sheet);
   const headers = resolveHeaders(region, sheet, bounds);
   const records: ExtractedRecord[] = [];

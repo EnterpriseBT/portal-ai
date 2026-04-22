@@ -32,6 +32,26 @@ const AxisAnchorCellSchema = z.object({
   col: z.number().int().min(1),
 });
 
+export const AxisPositionRoleSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("field") }),
+  z.object({
+    kind: z.literal("pivotLabel"),
+    segmentId: z.string().min(1),
+  }),
+  z.object({ kind: z.literal("skip") }),
+]);
+export type AxisPositionRole = z.infer<typeof AxisPositionRoleSchema>;
+
+export const PivotSegmentSchema = z.object({
+  id: z.string().min(1),
+  axisName: z.string().min(1),
+  axisNameSource: z.enum(["user", "ai", "anchor-cell"]),
+  valueFieldName: z.string().min(1),
+  valueFieldNameSource: z.enum(["user", "ai", "anchor-cell"]),
+  valueColumnDefinitionId: z.string().min(1).optional(),
+});
+export type PivotSegment = z.infer<typeof PivotSegmentSchema>;
+
 const RegionObjectSchema = z.object({
   id: z.string().min(1),
   sheet: z.string().min(1),
@@ -57,6 +77,8 @@ const RegionObjectSchema = z.object({
     aggregate: z.number().min(0).max(1),
   }),
   warnings: z.array(WarningSchema),
+  positionRoles: z.array(AxisPositionRoleSchema).optional(),
+  pivotSegments: z.array(PivotSegmentSchema).optional(),
 });
 
 export const RegionSchema = RegionObjectSchema.superRefine((region, ctx) => {
@@ -108,6 +130,66 @@ export const RegionSchema = RegionObjectSchema.superRefine((region, ctx) => {
       code: "custom",
       message: "headerStrategy is required when headerAxis is not 'none'",
       path: ["headerStrategy"],
+    });
+  }
+
+  // ── Segmentation refinements ──────────────────────────────────────────
+  // Crosstab exemption: `cells-as-records` does not support segmentation in
+  // v1 (see docs/REGION_CONFIG.schema_replay.spec.md). Segmented crosstab
+  // stays deferred to v2 — Zod rejects here so a malformed plan can't slip
+  // past earlier pipeline stages that do not yet understand segmentation.
+  if (
+    region.orientation === "cells-as-records" &&
+    ((region.positionRoles?.length ?? 0) > 0 ||
+      (region.pivotSegments?.length ?? 0) > 0)
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "SEGMENTED_CROSSTAB_NOT_SUPPORTED",
+      path: ["positionRoles"],
+    });
+  }
+
+  // positionRoles length must match the header-line length so every
+  // position has exactly one role.
+  if (region.positionRoles && region.headerAxis !== "none") {
+    const expected =
+      region.headerAxis === "row"
+        ? region.bounds.endCol - region.bounds.startCol + 1
+        : region.bounds.endRow - region.bounds.startRow + 1;
+    if (region.positionRoles.length !== expected) {
+      ctx.addIssue({
+        code: "custom",
+        message: `positionRoles length ${region.positionRoles.length} does not match header-line length ${expected}`,
+        path: ["positionRoles"],
+      });
+    }
+  }
+
+  // Every pivotLabel.segmentId must resolve to a declared pivotSegment,
+  // and every pivotSegment must be referenced by at least one position.
+  if (region.positionRoles && region.pivotSegments) {
+    const declared = new Set(region.pivotSegments.map((s) => s.id));
+    const referenced = new Set<string>();
+    region.positionRoles.forEach((role, i) => {
+      if (role.kind !== "pivotLabel") return;
+      referenced.add(role.segmentId);
+      if (!declared.has(role.segmentId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `positionRoles[${i}].segmentId "${role.segmentId}" is not declared in pivotSegments`,
+          path: ["positionRoles", i, "segmentId"],
+        });
+      }
+    });
+    region.pivotSegments.forEach((segment, i) => {
+      if (!referenced.has(segment.id)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `pivotSegments[${i}].id "${segment.id}" is not referenced by any position`,
+          path: ["pivotSegments", i, "id"],
+        });
+      }
     });
   }
 });

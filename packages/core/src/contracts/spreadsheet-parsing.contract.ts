@@ -33,12 +33,16 @@ export {
   LayoutPlanSchema,
   InterpretationTraceSchema,
   RegionSchema,
+  AxisPositionRoleSchema,
+  PivotSegmentSchema,
   WorkbookFingerprintSchema as LayoutPlanWorkbookFingerprintSchema,
 } from "@portalai/spreadsheet-parsing";
 export type {
   LayoutPlan,
   InterpretationTrace,
   Region,
+  AxisPositionRole,
+  PivotSegment,
 } from "@portalai/spreadsheet-parsing";
 
 // ── Enums ─────────────────────────────────────────────────────────────────

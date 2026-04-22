@@ -87,8 +87,16 @@ export {
   sourceLocatorToNormalizedKey,
 } from "./normalized-key.js";
 
-export { RegionSchema } from "./region.schema.js";
-export type { Region } from "./region.schema.js";
+export {
+  AxisPositionRoleSchema,
+  PivotSegmentSchema,
+  RegionSchema,
+} from "./region.schema.js";
+export type {
+  AxisPositionRole,
+  PivotSegment,
+  Region,
+} from "./region.schema.js";
 
 export { WorkbookFingerprintSchema } from "./workbook-fingerprint.schema.js";
 export type { WorkbookFingerprint } from "./workbook-fingerprint.schema.js";
