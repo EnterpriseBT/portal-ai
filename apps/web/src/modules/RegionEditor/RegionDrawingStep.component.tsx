@@ -49,6 +49,14 @@ export interface RegionDrawingStepUIProps {
   onAcceptProposedIdentity?: (regionId: string) => void;
   onKeepPriorIdentity?: (regionId: string) => void;
   onCreateEntity?: (key: string, label: string) => string;
+  /**
+   * C2 async validator forwarded to the "+ Create new entity" dialog in the
+   * configuration panel. Returns `{ ok: false, ownedBy }` when the chosen
+   * key is already owned by another connector in this org.
+   */
+  validateEntityKey?: (
+    key: string
+  ) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>;
   onInterpret: () => void;
   onRefetchWorkbook?: () => void;
   isInterpreting?: boolean;
@@ -84,6 +92,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
   onCreateEntity,
+  validateEntityKey,
   onInterpret,
   onRefetchWorkbook,
   isInterpreting = false,
@@ -492,6 +501,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                 : undefined
             }
             onCreateEntity={onCreateEntity}
+            validateEntityKey={validateEntityKey}
           />
         </Box>
       </Stack>

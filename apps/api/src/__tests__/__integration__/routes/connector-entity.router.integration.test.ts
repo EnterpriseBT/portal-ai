@@ -132,11 +132,16 @@ function createConnEntity(
 /** Seed a connector definition + instance and return their IDs. */
 async function seedConnectorInstance(
   db: ReturnType<typeof drizzle>,
-  organizationId: string
+  organizationId: string,
+  instanceOverrides?: Partial<Record<string, unknown>>
 ) {
   const def = createConnectorDefinition();
   await db.insert(connectorDefinitions).values(def as never);
-  const instance = createConnectorInstance(def.id, organizationId);
+  const instance = createConnectorInstance(
+    def.id,
+    organizationId,
+    instanceOverrides
+  );
   await db.insert(connectorInstances).values(instance as never);
   return { connectorDefinitionId: def.id, connectorInstanceId: instance.id };
 }
@@ -303,6 +308,37 @@ describe("Connector Entity Router", () => {
       expect(res.body.payload.connectorEntities[0].label).toBe(
         "Instance A Entity"
       );
+    });
+
+    it("returns each entity with its owning connectorInstance when include=connectorInstance (C2)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const { connectorInstanceId } = await seedConnectorInstance(
+        db as ReturnType<typeof drizzle>,
+        organizationId,
+        { name: "CRM Export" }
+      );
+
+      const entity = createConnEntity(organizationId, connectorInstanceId, {
+        key: "contacts",
+        label: "Contacts",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity as never);
+
+      const res = await request(app)
+        .get("/api/connector-entities?include=connectorInstance")
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorEntities).toHaveLength(1);
+      const returned = res.body.payload.connectorEntities[0];
+      expect(returned.connectorInstance).toBeDefined();
+      expect(returned.connectorInstance.id).toBe(connectorInstanceId);
+      expect(returned.connectorInstance.name).toBe("CRM Export");
     });
 
     it("should return nested fieldMappings with columnDefinition when include=fieldMappings", async () => {

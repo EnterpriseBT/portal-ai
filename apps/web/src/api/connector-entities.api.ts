@@ -9,6 +9,7 @@ import type {
   ConnectorEntityImpactResponsePayload,
   ConnectorEntityListRequestQuery,
   ConnectorEntityListResponsePayload,
+  ConnectorEntityListWithInstanceResponsePayload,
   ConnectorEntityListWithMappingsResponsePayload,
   ConnectorEntityPatchRequestBody,
   ConnectorEntityPatchResponsePayload,
@@ -104,18 +105,41 @@ export const connectorEntities = {
       item: ConnectorEntity
     ) => TOption;
     const [labelMap, setLabelMap] = useState<Record<string, string>>({});
+    // C2: track the owning connectorInstance name per entity id so callers
+    // can render it in pickers without re-fetching.
+    const [metaMap, setMetaMap] = useState<
+      Record<string, Record<string, string>>
+    >({});
 
     const searchMutation = useMutation<TOption[], ApiError, string>({
       mutationFn: async (query: string) => {
-        const params: Record<string, string> = { ...options?.defaultParams };
+        const params: Record<string, string> = {
+          include: "connectorInstance",
+          ...options?.defaultParams,
+        };
         if (query) params.search = query;
         const res = await fetchWithAuth<
-          ApiSuccessResponse<ConnectorEntityListResponsePayload>
+          ApiSuccessResponse<ConnectorEntityListWithInstanceResponsePayload>
         >(buildUrl(CONNECTOR_ENTITIES_URL, params));
-        const mapped = res.payload.connectorEntities.map(mapFn);
+        const mapped = res.payload.connectorEntities.map((e) =>
+          mapFn(e as ConnectorEntity)
+        );
         setLabelMap((prev) => {
           const next = { ...prev };
           for (const opt of mapped) next[String(opt.value)] = opt.label;
+          return next;
+        });
+        setMetaMap((prev) => {
+          const next = { ...prev };
+          for (const e of res.payload.connectorEntities) {
+            const name = e.connectorInstance?.name;
+            if (name) {
+              next[e.id] = {
+                ...(next[e.id] ?? {}),
+                connectorInstanceName: name,
+              };
+            }
+          }
           return next;
         });
         return mapped;
@@ -144,6 +168,7 @@ export const connectorEntities = {
       getByIdPending: getByIdMutation.isPending,
       getByIdError: getByIdMutation.error,
       labelMap,
+      metaMap,
     };
   },
 };

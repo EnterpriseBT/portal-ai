@@ -699,5 +699,59 @@ describe("reconcileFieldMappings — integration", () => {
       );
       expect(await readMappings()).toHaveLength(0);
     });
+
+    // ── C2 guarantee ──────────────────────────────────────────────
+    // The `dbRefEntity*` seed above already sits in a *different*
+    // connector instance from the subject entity. Under C2 the org-wide
+    // unique `(organization_id, key)` index guarantees one match, so
+    // these tests verify reference resolution has no ambiguity.
+    describe("C2 — cross-connector reference resolution", () => {
+      it("resolves refEntityKey to an entity owned by a different connector in the same org", async () => {
+        await reconcileFieldMappings(
+          {
+            connectorEntityId: subjectEntityId,
+            organizationId: orgId,
+            userId,
+            bindings: [
+              {
+                columnDefinitionId: colReferenceId,
+                sourceField: "customer_id",
+                refEntityKey: dbRefEntityKey,
+                refNormalizedKey: "id",
+              },
+            ],
+            catalogById,
+          },
+          db
+        );
+        const rows = await readMappings();
+        expect(rows).toHaveLength(1);
+        expect(rows[0].refEntityKey).toBe(dbRefEntityKey);
+        expect(rows[0].refNormalizedKey).toBe("id");
+      });
+
+      it("errors LAYOUT_PLAN_INVALID_REFERENCE when the key doesn't exist anywhere in the org (regression)", async () => {
+        const run = reconcileFieldMappings(
+          {
+            connectorEntityId: subjectEntityId,
+            organizationId: orgId,
+            userId,
+            bindings: [
+              {
+                columnDefinitionId: colReferenceId,
+                sourceField: "customer_id",
+                refEntityKey: "never_seen",
+                refNormalizedKey: "id",
+              },
+            ],
+            catalogById,
+          },
+          db
+        );
+        await expect(run).rejects.toMatchObject({
+          code: ApiCode.LAYOUT_PLAN_INVALID_REFERENCE,
+        });
+      });
+    });
   });
 });

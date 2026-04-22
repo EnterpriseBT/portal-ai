@@ -100,3 +100,85 @@ describe("NewEntityDialogUI", () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe("NewEntityDialogUI — C2 org-wide key pre-check", () => {
+  async function flushMicrotasks() {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+
+  test("shows an inline error + blocks submit when the chosen key is already owned by another connector", async () => {
+    const onSubmit = jest.fn<(key: string, label: string) => void>();
+    const validateKey = jest.fn<
+      (key: string) => Promise<
+        { ok: true } | { ok: false; ownedBy?: string }
+      >
+    >(async () => ({ ok: false, ownedBy: "CRM Export" }));
+
+    render(
+      <NewEntityDialogUI
+        open
+        onClose={jest.fn()}
+        onSubmit={onSubmit}
+        existingKeys={[]}
+        validateKey={validateKey}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: "Order" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(validateKey).toHaveBeenCalledWith("order");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText(/already used by CRM Export/i)).toBeInTheDocument();
+  });
+
+  test("submit proceeds when the async check resolves ok", async () => {
+    const onSubmit = jest.fn<(key: string, label: string) => void>();
+    const validateKey = jest.fn<
+      (key: string) => Promise<
+        { ok: true } | { ok: false; ownedBy?: string }
+      >
+    >(async () => ({ ok: true }));
+
+    render(
+      <NewEntityDialogUI
+        open
+        onClose={jest.fn()}
+        onSubmit={onSubmit}
+        existingKeys={[]}
+        validateKey={validateKey}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: "Order" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(validateKey).toHaveBeenCalledWith("order");
+    expect(onSubmit).toHaveBeenCalledWith("order", "Order");
+  });
+
+  test("without validateKey, behavior is unchanged (backwards-compat)", () => {
+    const onSubmit = jest.fn<(key: string, label: string) => void>();
+    render(
+      <NewEntityDialogUI
+        open
+        onClose={jest.fn()}
+        onSubmit={onSubmit}
+        existingKeys={[]}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/label/i), {
+      target: { value: "Order" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+    expect(onSubmit).toHaveBeenCalledWith("order", "Order");
+  });
+});

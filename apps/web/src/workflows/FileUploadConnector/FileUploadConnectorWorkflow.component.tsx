@@ -130,6 +130,9 @@ export interface FileUploadConnectorWorkflowUIProps {
   onRegionResize: (regionId: string, nextBounds: CellBounds) => void;
   onRegionDelete: (regionId: string) => void;
   onCreateEntity?: (key: string, label: string) => string;
+  validateEntityKey?: (
+    key: string
+  ) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>;
   onInterpret: () => void;
   /**
    * Shortcut back to the review step when a plan already exists. Unset when
@@ -208,6 +211,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   onRegionResize,
   onRegionDelete,
   onCreateEntity,
+  validateEntityKey,
   onInterpret,
   onSkipToReview,
   overallConfidence,
@@ -271,6 +275,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                   onRegionDelete={onRegionDelete}
                   entityOptions={entityOptions}
                   onCreateEntity={onCreateEntity}
+                  validateEntityKey={validateEntityKey}
                   onInterpret={onInterpret}
                   onSkipToReview={onSkipToReview}
                   isInterpreting={isInterpreting}
@@ -622,6 +627,25 @@ export const FileUploadConnectorWorkflow: React.FC<
     [columnDefinitionsById]
   );
 
+  // C2 pre-check: before staging a newly-created entity, make sure no
+  // other connector in this org already owns the chosen key. Reuses the
+  // connectorEntity search SDK (org-scoped by auth) so callers don't
+  // need to re-fetch at commit time.
+  const validateEntityKey = useCallback(
+    async (
+      key: string
+    ): Promise<{ ok: true } | { ok: false; ownedBy?: string }> => {
+      const results = await connectorEntitySearch.onSearch(key);
+      // Search is key|label ilike; filter to exact key match.
+      const exact = results.find((r) => String(r.value) === key);
+      if (!exact) return { ok: true };
+      const metaMap = connectorEntitySearch.metaMap ?? {};
+      const ownedBy = metaMap[String(exact.value)]?.connectorInstanceName;
+      return { ok: false, ownedBy };
+    },
+    [connectorEntitySearch]
+  );
+
   // Reference-target options — staged sibling entities first (prefixed "this
   // import"), then DB-backed options resolved by the connectorEntity search.
   const resolveReferenceOptions = useCallback(
@@ -637,8 +661,18 @@ export const FileUploadConnectorWorkflow: React.FC<
           label: `${label} (this import)`,
         });
       }
+      // DB-backed options: C2 surfaces the owning connector's name via
+      // `metaMap.connectorInstanceName` so the picker can disambiguate
+      // across connectors within the same org.
+      const metaMap = connectorEntitySearch.metaMap ?? {};
       const dbOptions = Object.entries(connectorEntitySearch.labelMap).map(
-        ([value, label]) => ({ value, label: `${label} (existing)` })
+        ([value, label]) => {
+          const connectorName = metaMap[value]?.connectorInstanceName;
+          const suffix = connectorName
+            ? ` (existing · ${connectorName})`
+            : " (existing)";
+          return { value, label: `${label}${suffix}` };
+        }
       );
       const all = [...staged.values(), ...dbOptions];
       const seen = new Set<string>();
@@ -648,7 +682,11 @@ export const FileUploadConnectorWorkflow: React.FC<
         return true;
       });
     },
-    [workflow.regions, connectorEntitySearch.labelMap]
+    [
+      workflow.regions,
+      connectorEntitySearch.labelMap,
+      connectorEntitySearch.metaMap,
+    ]
   );
 
   const resolveReferenceFieldOptions = useCallback(
@@ -716,6 +754,7 @@ export const FileUploadConnectorWorkflow: React.FC<
       }
       onRegionDelete={workflow.onRegionDelete}
       onCreateEntity={handleCreateEntity}
+      validateEntityKey={validateEntityKey}
       onInterpret={() => {
         void workflow.onInterpret();
       }}

@@ -7,7 +7,6 @@
 
 import { eq, and, inArray, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import type { IndexColumn } from "drizzle-orm/pg-core";
 
 import {
   connectorEntities,
@@ -22,6 +21,8 @@ import {
   type ListOptions,
 } from "./base.repository.js";
 import { entityTagAssignmentsRepo } from "./entity-tag-assignments.repository.js";
+import { ApiCode } from "../../constants/api-codes.constants.js";
+import { ApiError } from "../../services/http.service.js";
 import type {
   ConnectorEntitySelect,
   ConnectorEntityInsert,
@@ -214,30 +215,55 @@ export class ConnectorEntitiesRepository extends Repository<
   }
 
   /**
-   * Insert a connector entity or update it if a row with the same
-   * `(connector_instance_id, key)` already exists. Returns the resulting row.
+   * Insert a connector entity or update it when the same connector instance
+   * already owns this `(organization_id, key)`. Under C2 the key is unique
+   * per organization, so a collision from a *different* connector in the
+   * same org is a hard error — throws
+   * `CONNECTOR_ENTITY_KEY_IN_USE_BY_OTHER_CONNECTOR`.
    */
   async upsertByKey(
     data: ConnectorEntityInsert,
     client: DbClient = db
   ): Promise<ConnectorEntitySelect> {
-    const [row] = await (client as typeof db)
-      .insert(this.table)
-      .values(data as never)
-      .onConflictDoUpdate({
-        target: [
-          connectorEntities.connectorInstanceId,
-          connectorEntities.key,
-        ] as IndexColumn[],
-        targetWhere: isNull(connectorEntities.deleted),
-        set: {
-          label: data.label,
-          updated: data.updated ?? Date.now(),
-          updatedBy: data.updatedBy,
-        } as never,
-      })
+    const [existing] = (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(connectorEntities.organizationId, data.organizationId),
+          eq(connectorEntities.key, data.key),
+          isNull(connectorEntities.deleted)
+        )
+      )
+      .limit(1)) as ConnectorEntitySelect[];
+
+    if (!existing) {
+      const [row] = await (client as typeof db)
+        .insert(this.table)
+        .values(data as never)
+        .returning();
+      return row as ConnectorEntitySelect;
+    }
+
+    if (existing.connectorInstanceId !== data.connectorInstanceId) {
+      throw new ApiError(
+        400,
+        ApiCode.CONNECTOR_ENTITY_KEY_IN_USE_BY_OTHER_CONNECTOR,
+        `Entity key "${data.key}" is already used by connector "${existing.connectorInstanceId}" in this org.`,
+        { conflictingConnectorInstanceId: existing.connectorInstanceId }
+      );
+    }
+
+    const [updated] = await (client as typeof db)
+      .update(this.table)
+      .set({
+        label: data.label,
+        updated: data.updated ?? Date.now(),
+        updatedBy: data.updatedBy,
+      } as never)
+      .where(eq(connectorEntities.id, existing.id))
       .returning();
-    return row as ConnectorEntitySelect;
+    return updated as ConnectorEntitySelect;
   }
 }
 

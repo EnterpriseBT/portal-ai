@@ -143,6 +143,18 @@ Consequences:
 
 Before this change the section documented a merge semantic where regions sharing a target key combined into one entity. That no longer applies — the rule and its rollout are documented in `docs/REGION_CONFIG.c1_one_region_per_entity.spec.md`.
 
+## Entity key — org-wide uniqueness
+
+**`ConnectorEntity.key` is unique per organization** (enforced by the partial index `UNIQUE(organization_id, key) WHERE deleted IS NULL` on `connector_entities`). Each connector still owns its own entities; the constraint is a **lookup-space guarantee** so that any `FieldMapping.refEntityKey` resolves to exactly one entity org-wide — no first-row-wins, no cross-connector ambiguity.
+
+Collisions surface at three layers:
+
+- Repository — `connectorEntitiesRepo.upsertByKey` pre-selects by `(organization_id, key)`; updates the existing row when the same connector owns it, and throws `ApiError(400, CONNECTOR_ENTITY_KEY_IN_USE_BY_OTHER_CONNECTOR, …)` when another connector in the same org already owns it.
+- API — commit flows bubble that error through the route as a 400.
+- Editor — the "+ Create new entity" dialog awaits an optional async `validateKey` (wired from the file-upload workflow container to `sdk.connectorEntities.search`) so the user sees the owning connector's name inline before the Create action fires; the entity picker renders DB-backed options as `<label> — <connectorInstanceName>` via `include=connectorInstance` on the list endpoint.
+
+Soft-deleted keys free up for reuse because the index is partial on `deleted IS NULL`. Cross-org scoping is unchanged — different organizations can freely share keys. See `docs/REGION_CONFIG.c2_org_unique_entity_key.spec.md`.
+
 ## Pivoted regions
 
 A region is *pivoted* when records run across one axis while field names run along the other. For pivoted regions:

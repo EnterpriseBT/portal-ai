@@ -244,6 +244,74 @@ describe("RegionConfigurationPanelUI", () => {
     );
   });
 
+  describe("C2 picker labels", () => {
+    test("DB-backed options render as '<label> — <connectorInstanceName>' when provided", () => {
+      const options: EntityOption[] = [
+        {
+          value: "ent_a",
+          label: "Contact",
+          source: "db",
+          connectorInstanceName: "CRM Export",
+        },
+      ];
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: "ent_a" })}
+          entityOptions={options}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/Contact\s+—\s+CRM Export/)).toBeInTheDocument();
+    });
+
+    test("DB-backed options without connectorInstanceName render as plain label", () => {
+      const options: EntityOption[] = [
+        { value: "ent_a", label: "Contact", source: "db" },
+      ];
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: "ent_a" })}
+          entityOptions={options}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      // No "— <connector>" suffix appears anywhere in the rendered output.
+      expect(screen.queryByText(/Contact\s+—/)).not.toBeInTheDocument();
+    });
+
+    test("staged options are unaffected by the connector suffix", () => {
+      const options: EntityOption[] = [
+        {
+          value: "ent_draft",
+          label: "Lead",
+          source: "staged",
+          // even if a connectorInstanceName slipped in, staged wins
+          connectorInstanceName: "should-not-render",
+        },
+      ];
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: "ent_draft" })}
+          entityOptions={options}
+          entityOrder={["ent_draft"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/Lead\s+—\s+new/)).toBeInTheDocument();
+      expect(
+        screen.queryByText(/should-not-render/)
+      ).not.toBeInTheDocument();
+    });
+  });
+
   test("staged entities render with a '— new' suffix", () => {
     const options: EntityOption[] = [
       ...ENTITY_OPTIONS,

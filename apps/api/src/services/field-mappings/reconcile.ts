@@ -18,7 +18,7 @@
  *   that drop or exclude a binding also drop the corresponding mapping).
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { sourceFieldToNormalizedKey } from "@portalai/spreadsheet-parsing";
 
 import type {
@@ -289,6 +289,11 @@ export async function reconcileFieldMappings(
  * org-scoped entity identified by `key`, or `null` when no such entity
  * exists. Results are cached per-call via the shared `cache` map so a plan
  * referencing the same target multiple times only hits the DB once.
+ *
+ * Under C2 `(organization_id, key)` is unique (partial index on `deleted
+ * IS NULL`), so at most one entity matches — `.limit(1)` is a
+ * belt-and-braces guard, not a disambiguator. See
+ * `docs/REGION_CONFIG.c2_org_unique_entity_key.spec.md`.
  */
 async function lookupDbEntityNormalizedKeys(
   client: DbClient,
@@ -305,7 +310,8 @@ async function lookupDbEntityNormalizedKeys(
     .where(
       and(
         eq(connectorEntities.organizationId, organizationId),
-        eq(connectorEntities.key, entityKey)
+        eq(connectorEntities.key, entityKey),
+        isNull(connectorEntities.deleted)
       )
     )
     .limit(1);

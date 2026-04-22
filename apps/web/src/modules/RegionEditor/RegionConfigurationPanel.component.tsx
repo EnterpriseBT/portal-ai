@@ -74,6 +74,14 @@ export interface RegionConfigurationPanelUIProps {
    * region per entity) at selection time.
    */
   claimedEntityKeys?: Set<string>;
+  /**
+   * C2 async validator forwarded to the "+ Create new entity" dialog.
+   * Returns `{ ok: false, ownedBy }` when the chosen key is already owned
+   * by another connector in this org so the dialog can block Create.
+   */
+  validateEntityKey?: (
+    key: string
+  ) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>;
 }
 
 const SECTION_HEADING_SX = {
@@ -99,6 +107,7 @@ export const RegionConfigurationPanelUI: React.FC<
   driftProposedIdentityLabel,
   onCreateEntity,
   claimedEntityKeys,
+  validateEntityKey,
 }) => {
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
 
@@ -461,6 +470,7 @@ export const RegionConfigurationPanelUI: React.FC<
           onClose={() => setNewEntityDialogOpen(false)}
           existingKeys={existingKeys}
           initialLabel={region.proposedLabel ?? ""}
+          validateKey={validateEntityKey}
           onSubmit={(key, label) => {
             const nextValue = onCreateEntity(key, label);
             onUpdate({
@@ -906,12 +916,18 @@ function buildSelectOptions(
 ): SelectOption[] {
   return options.map((o) => ({
     value: o.value,
-    label: o.source === "staged" ? `${o.label} — new` : o.label,
+    label: formatEntityOptionLabel(o),
     disabled:
       claimedEntityKeys !== undefined &&
       claimedEntityKeys.has(o.value) &&
       o.value !== currentTarget,
   }));
+}
+
+function formatEntityOptionLabel(o: EntityOption): string {
+  if (o.source === "staged") return `${o.label} — new`;
+  if (o.connectorInstanceName) return `${o.label} — ${o.connectorInstanceName}`;
+  return o.label;
 }
 
 function deriveLegendKinds(region: RegionDraft): DecorationKind[] {

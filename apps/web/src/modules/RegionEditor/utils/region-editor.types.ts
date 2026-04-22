@@ -205,6 +205,13 @@ export type EntityOption = {
   value: string;
   label: string;
   source: "db" | "staged";
+  /**
+   * C2: for `source === "db"` options the owning connector instance's
+   * display name, so the entity picker can show which connector already
+   * owns the key (rendered as `<label> — <connectorInstanceName>`).
+   * Staged options leave this undefined.
+   */
+  connectorInstanceName?: string;
 };
 
 export type DriftReportPreview = {

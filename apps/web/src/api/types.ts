@@ -25,4 +25,11 @@ export interface SearchResult<TOption extends SelectOption = SelectOption> {
   getByIdPending: boolean;
   getByIdError: ApiError | null;
   labelMap: Record<string, string>;
+  /**
+   * Optional metadata map populated alongside `labelMap` when the
+   * underlying endpoint returns extra context. `connectorEntities.search`
+   * uses it to surface the owning connector's name (keyed by entity id)
+   * when `include=connectorInstance` is part of the request.
+   */
+  metaMap?: Record<string, Record<string, string>>;
 }

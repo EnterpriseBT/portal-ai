@@ -20,6 +20,15 @@ export interface NewEntityDialogUIProps {
   existingKeys: string[];
   /** Optional seed for the Label field. */
   initialLabel?: string;
+  /**
+   * C2 org-wide pre-check. When provided, the dialog awaits this async
+   * validator on submit (after the synchronous Zod check passes) and
+   * surfaces any collision inline — the key is already owned by another
+   * connector in the org — before calling `onSubmit`.
+   */
+  validateKey?: (
+    key: string
+  ) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>;
 }
 
 const KEY_PATTERN = /^[a-z][a-z0-9_]*$/;
@@ -57,6 +66,7 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
   onSubmit,
   existingKeys,
   initialLabel = "",
+  validateKey,
 }) => {
   const [label, setLabel] = useState(initialLabel);
   const [key, setKey] = useState(slugify(initialLabel));
@@ -100,10 +110,25 @@ export const NewEntityDialogUI: React.FC<NewEntityDialogUIProps> = ({
     return false;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    onSubmit(key.trim(), label.trim());
+    const trimmedKey = key.trim();
+    const trimmedLabel = label.trim();
+    if (validateKey) {
+      const result = await validateKey(trimmedKey);
+      if (!result.ok) {
+        const ownedBy = result.ownedBy ?? "another connector";
+        setErrors((prev) => ({
+          ...prev,
+          key: `Key is already used by ${ownedBy} in this org.`,
+        }));
+        setTouched((t) => ({ ...t, key: true }));
+        setTimeout(() => focusFirstInvalidField(), 0);
+        return;
+      }
+    }
+    onSubmit(trimmedKey, trimmedLabel);
     onClose();
   };
 
