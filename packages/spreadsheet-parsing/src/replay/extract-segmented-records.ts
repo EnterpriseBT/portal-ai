@@ -1,8 +1,8 @@
 import type { ExtractedRecord, Region } from "../plan/index.js";
 import type { CellValue, Sheet, WorkbookCell } from "../workbook/types.js";
 import { computeChecksum } from "./checksum.js";
-import { deriveSourceId } from "./identity.js";
-import { resolveRegionBounds } from "./resolve-bounds.js";
+import { deriveSourceId, type IdentityContext } from "./identity.js";
+import { resolveRegionBounds, type ResolvedBounds } from "./resolve-bounds.js";
 import { resolveHeaders, type HeaderLayout } from "./resolve-headers.js";
 
 function cellValue(cell: WorkbookCell | undefined): CellValue {
@@ -23,6 +23,70 @@ function unsupported(region: Region): Error {
 }
 
 /**
+ * Orientation-agnostic accessors produced by `buildDispatch`. The emit loop
+ * iterates `entityUnits × positions` and asks the accessors for concrete
+ * values, so it doesn't care whether entity-units are sheet rows or columns.
+ */
+interface Dispatch {
+  entityUnits: number[];
+  positions: number[];
+  cellValueAt: (entityUnit: number, position: number) => CellValue;
+  headerLabelAt: (position: number) => string;
+  identityCtxFor: (entityUnit: number) => Pick<IdentityContext, "row" | "col">;
+}
+
+function buildDispatch(
+  region: Region,
+  sheet: Sheet,
+  bounds: ResolvedBounds,
+  headers: HeaderLayout
+): Dispatch {
+  // The emit loop is driven by `headerAxis`: it tells us which axis the
+  // per-position header labels live on, and therefore which axis the entity
+  // units iterate across (the perpendicular one). `orientation` is an
+  // orthogonal flag that only influences `deriveSourceId` — pivoted variants
+  // (rows-as-records + headerAxis:column, columns-as-records + headerAxis:row)
+  // fall out naturally because they share layout with the non-pivoted case on
+  // the same `headerAxis`.
+  if (region.headerAxis === "row") {
+    const headerRow = headers.direction === "row" ? headers.index : bounds.startRow;
+    const dataStart = Math.max(bounds.startRow, headerRow + 1);
+    const entityUnits = range(dataStart, bounds.endRow);
+    const positions = range(bounds.startCol, bounds.endCol);
+    return {
+      entityUnits,
+      positions,
+      cellValueAt: (row, col) => cellValue(sheet.cell(row, col)),
+      headerLabelAt: (col) => cellText(sheet.cell(headerRow, col)),
+      identityCtxFor: (row) => ({ row, col: 0 }),
+    };
+  }
+
+  if (region.headerAxis === "column") {
+    const headerCol =
+      headers.direction === "column" ? headers.index : bounds.startCol;
+    const dataStart = Math.max(bounds.startCol, headerCol + 1);
+    const entityUnits = range(dataStart, bounds.endCol);
+    const positions = range(bounds.startRow, bounds.endRow);
+    return {
+      entityUnits,
+      positions,
+      cellValueAt: (col, row) => cellValue(sheet.cell(row, col)),
+      headerLabelAt: (row) => cellText(sheet.cell(row, headerCol)),
+      identityCtxFor: (col) => ({ row: 0, col }),
+    };
+  }
+
+  throw unsupported(region);
+}
+
+function range(startInclusive: number, endInclusive: number): number[] {
+  const out: number[] = [];
+  for (let i = startInclusive; i <= endInclusive; i++) out.push(i);
+  return out;
+}
+
+/**
  * Segmented replay for regions carrying `positionRoles` + `pivotSegments`.
  *
  * Phase-1 scope (see docs/REGION_CONFIG.schema_replay.spec.md): linear
@@ -40,65 +104,48 @@ export function extractSegmentedRecords(
 
   const bounds = resolveRegionBounds(region, sheet);
   const headers = resolveHeaders(region, sheet, bounds);
+  const dispatch = buildDispatch(region, sheet, bounds, headers);
 
-  // Phase C: rows-as-records + headerAxis:row. Other combinations throw
-  // until later phases wire them up.
-  if (region.orientation === "rows-as-records" && region.headerAxis === "row") {
-    return emitRowsWithRowHeader(region, sheet, bounds.endRow, bounds.startRow, bounds.startCol, bounds.endCol, headers);
-  }
+  const positionRoles = region.positionRoles;
+  const segments = region.pivotSegments;
 
-  throw unsupported(region);
-}
-
-function emitRowsWithRowHeader(
-  region: Region,
-  sheet: Sheet,
-  endRow: number,
-  startRow: number,
-  startCol: number,
-  endCol: number,
-  headers: HeaderLayout
-): ExtractedRecord[] {
-  const records: ExtractedRecord[] = [];
-  // Field positions → columnDefinitionId, populated from columnBindings.
-  const bindingByCol = new Map<number, string>();
+  // Map header-axis position → columnDefinitionId for field-role statics.
+  const bindingByPosition = new Map<number, string>();
   for (const binding of region.columnBindings) {
-    const col =
+    const coord =
       binding.sourceLocator.kind === "byColumnIndex"
         ? binding.sourceLocator.col
         : headers.coordByLabel.get(binding.sourceLocator.name);
-    if (col !== undefined) bindingByCol.set(col, binding.columnDefinitionId);
+    if (coord !== undefined)
+      bindingByPosition.set(coord, binding.columnDefinitionId);
   }
 
-  const headerRow = headers.direction === "row" ? headers.index : startRow;
-  const dataStart = Math.max(startRow, headerRow + 1);
+  const records: ExtractedRecord[] = [];
 
-  const positionRoles = region.positionRoles!;
-  const segments = region.pivotSegments!;
-
-  for (let row = dataStart; row <= endRow; row++) {
+  for (const entityUnit of dispatch.entityUnits) {
     const statics: Record<string, CellValue> = {};
-    for (let c = startCol; c <= endCol; c++) {
-      const role = positionRoles[c - startCol];
-      if (role.kind !== "field") continue;
-      const columnDefinitionId = bindingByCol.get(c);
-      if (!columnDefinitionId) continue;
-      statics[columnDefinitionId] = cellValue(sheet.cell(row, c));
-    }
+    dispatch.positions.forEach((position, i) => {
+      const role = positionRoles[i];
+      if (role.kind !== "field") return;
+      const columnDefinitionId = bindingByPosition.get(position);
+      if (!columnDefinitionId) return;
+      statics[columnDefinitionId] = dispatch.cellValueAt(entityUnit, position);
+    });
 
+    const ctx = dispatch.identityCtxFor(entityUnit);
     const baseSourceId = deriveSourceId(region.identityStrategy, {
       sheet,
       orientation: region.orientation,
-      row,
-      col: 0,
+      row: ctx.row,
+      col: ctx.col,
     });
 
     for (const segment of segments) {
-      for (let c = startCol; c <= endCol; c++) {
-        const role = positionRoles[c - startCol];
-        if (role.kind !== "pivotLabel" || role.segmentId !== segment.id) continue;
-        const label = cellText(sheet.cell(headerRow, c));
-        const value = cellValue(sheet.cell(row, c));
+      dispatch.positions.forEach((position, i) => {
+        const role = positionRoles[i];
+        if (role.kind !== "pivotLabel" || role.segmentId !== segment.id) return;
+        const label = dispatch.headerLabelAt(position);
+        const value = dispatch.cellValueAt(entityUnit, position);
         const fields: Record<string, CellValue> = {
           ...statics,
           [segment.axisName]: label,
@@ -111,7 +158,7 @@ function emitRowsWithRowHeader(
           checksum: computeChecksum(fields),
           fields,
         });
-      }
+      });
     }
   }
 
