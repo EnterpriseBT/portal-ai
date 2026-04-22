@@ -117,7 +117,7 @@ describe("planRegionsToDrafts", () => {
   const plan = {
     regions: [
       {
-        id: "ignored_by_mapper",
+        id: "region-1-Alpha-1x1",
         sheet: "Alpha",
         bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
         boundsMode: "absolute" as const,
@@ -146,7 +146,7 @@ describe("planRegionsToDrafts", () => {
     ],
     confidence: {
       overall: 0.85,
-      perRegion: { ignored_by_mapper: 0.85 },
+      perRegion: { "region-1-Alpha-1x1": 0.85 },
     },
   } as unknown as Parameters<typeof planRegionsToDrafts>[0];
 
@@ -170,11 +170,9 @@ describe("planRegionsToDrafts", () => {
     });
   });
 
-  it("mints deterministic ids from (sheet, bounds)", () => {
-    const first = planRegionsToDrafts(plan, makeWorkbook())[0].id;
-    const second = planRegionsToDrafts(plan, makeWorkbook())[0].id;
-    expect(first).toBe(second);
-    expect(first).toContain("sheet_a");
+  it("preserves the plan region's id so drafts and plan.regions match by id", () => {
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    expect(drafts[0].id).toBe(plan.regions[0].id);
   });
 
   it("maps backend ColumnBinding locators into frontend string sourceLocators", () => {

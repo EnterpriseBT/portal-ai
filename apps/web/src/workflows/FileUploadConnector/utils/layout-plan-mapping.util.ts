@@ -240,11 +240,6 @@ export function regionDraftsToHints(
   return hints;
 }
 
-function regionId(region: BackendRegion, sheetId: string): string {
-  const { startRow, startCol, endRow, endCol } = region.bounds;
-  return `${sheetId}-r${startRow}_${startCol}_${endRow}_${endCol}`;
-}
-
 function boundsToFrontend(
   bounds: BackendRegion["bounds"]
 ): RegionDraft["bounds"] {
@@ -271,7 +266,14 @@ export function planRegionsToDrafts(
     }
 
     const draft: RegionDraft = {
-      id: regionId(region, sheet.id),
+      // Reuse the plan region's id so `state.regions[i].id` matches
+      // `state.plan.regions[j].id` — the workflow hook's `patchBinding`
+      // relies on this match to mirror per-binding edits (Omit, rebind,
+      // overrides) into the commit payload. Without it, toggling Omit
+      // updates only the draft, the plan still ships `excluded: undefined`,
+      // and the backend rejects with `LAYOUT_PLAN_INVALID_REFERENCE` for
+      // reference-typed bindings the user meant to drop.
+      id: region.id,
       sheetId: sheet.id,
       bounds: boundsToFrontend(region.bounds),
       orientation: region.orientation,
