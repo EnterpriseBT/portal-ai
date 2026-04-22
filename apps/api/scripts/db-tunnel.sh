@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# db-tunnel.sh - Open an SSM port-forwarding tunnel to the staging RDS instance
-# through a running ECS task, then optionally run database operations.
+# db-tunnel.sh - Open an SSM port-forwarding tunnel to the RDS instance
+# through the dedicated bastion host, then optionally run database operations.
 #
 # Usage:
-#   ./infra/scripts/db-tunnel.sh [command]
+#   ./scripts/db-tunnel.sh [command]
 #
 # Commands:
 #   tunnel      Open the tunnel only (default). Stays open until Ctrl+C.
@@ -14,15 +14,16 @@
 #   psql        Open an interactive psql session through the tunnel.
 #
 # Prerequisites:
-#   - AWS CLI v2 with session-manager-plugin installed
+#   - AWS CLI v2 with session-manager-plugin installed (preinstalled in the
+#     project dev container; see /workspace/Dockerfile)
 #   - aws credentials configured for the target account
 #   - psql (PostgreSQL client) installed for reset/psql commands
 #
 # Environment:
 #   ENV             Target environment (default: dev)
 #   LOCAL_PORT      Local port for the tunnel (default: 15432)
-#   CLUSTER         ECS cluster name override
-#   SERVICE         ECS service name override
+#   CLUSTER         ECS cluster name override (only used by seed commands)
+#   SERVICE         ECS service name override (only used by seed commands)
 
 set -euo pipefail
 
@@ -33,6 +34,8 @@ ENV="${ENV:-dev}"
 LOCAL_PORT="${LOCAL_PORT:-15432}"
 CLUSTER="${CLUSTER:-portalai-${ENV}}"
 SERVICE="${SERVICE:-portalai-api-${ENV}}"
+BASTION_STACK="portalai-${ENV}-bastion"
+BASTION_EXPORT_NAME="${ENV}-BastionInstanceId"
 SECRET_ID="portalai/${ENV}/database-url"
 REGION="us-east-1"
 
@@ -42,10 +45,19 @@ TUNNEL_LOG=$(mktemp)
 # ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
+# The tunnel runs under `setsid` so `aws ssm start-session` and its
+# `session-manager-plugin` child share a process group whose PGID equals
+# TUNNEL_PID. Signaling just the aws parent leaves the plugin reparented to
+# init and squatting on the local port, so we signal the whole group instead.
 cleanup() {
   if [[ -n "$TUNNEL_PID" ]] && kill -0 "$TUNNEL_PID" 2>/dev/null; then
-    echo "Closing SSM tunnel (pid $TUNNEL_PID)..."
-    kill "$TUNNEL_PID" 2>/dev/null || true
+    echo "Closing SSM tunnel (pgid $TUNNEL_PID)..."
+    kill -TERM "-$TUNNEL_PID" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      kill -0 "-$TUNNEL_PID" 2>/dev/null || break
+      sleep 0.2
+    done
+    kill -KILL "-$TUNNEL_PID" 2>/dev/null || true
     wait "$TUNNEL_PID" 2>/dev/null || true
   fi
   rm -f "$TUNNEL_LOG"
@@ -64,6 +76,13 @@ check_deps() {
   done
 }
 
+# URL-decode a string (Secrets Manager stores the DATABASE_URL with the
+# password percent-encoded, but PGPASSWORD expects the raw value).
+urldecode() {
+  local s="${1//+/ }"
+  printf '%b' "${s//%/\\x}"
+}
+
 # Retrieve the DATABASE_URL from Secrets Manager and parse it
 fetch_db_url() {
   log "Fetching DATABASE_URL from Secrets Manager ($SECRET_ID)..."
@@ -74,38 +93,28 @@ fetch_db_url() {
     --region "$REGION") || fail "Could not retrieve secret $SECRET_ID"
 
   # Parse components: postgresql://user:password@host:port/dbname?params
-  DB_USER=$(echo "$DB_URL" | sed -n 's|postgresql://\([^:]*\):.*|\1|p')
-  DB_PASS=$(echo "$DB_URL" | sed -n 's|postgresql://[^:]*:\(.*\)@[^@]*|\1|p' | sed 's|?.*||')
+  DB_USER=$(urldecode "$(echo "$DB_URL" | sed -n 's|postgresql://\([^:]*\):.*|\1|p')")
+  DB_PASS=$(urldecode "$(echo "$DB_URL" | sed -n 's|postgresql://[^:]*:\(.*\)@[^@]*|\1|p' | sed 's|?.*||')")
   DB_HOST=$(echo "$DB_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
   DB_PORT=$(echo "$DB_URL" | sed -n 's|.*:\([0-9]*\)/.*|\1|p')
-  DB_NAME=$(echo "$DB_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+  DB_NAME=$(urldecode "$(echo "$DB_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')")
 
   LOCAL_DB_URL="postgresql://${DB_USER}:${DB_PASS}@localhost:${LOCAL_PORT}/${DB_NAME}?sslmode=require"
 }
 
-# Find a running ECS task and extract identifiers for SSM
-resolve_ecs_target() {
-  log "Resolving ECS task in cluster=$CLUSTER service=$SERVICE..."
+# Resolve the bastion EC2 instance ID from the CloudFormation stack output
+resolve_bastion_target() {
+  log "Resolving bastion instance from stack=$BASTION_STACK..."
 
-  TASK_ARN=$(aws ecs list-tasks \
-    --cluster "$CLUSTER" \
-    --service-name "$SERVICE" \
-    --query 'taskArns[0]' \
+  SSM_TARGET=$(aws cloudformation describe-stacks \
+    --stack-name "$BASTION_STACK" \
+    --query "Stacks[0].Outputs[?ExportName=='${BASTION_EXPORT_NAME}'].OutputValue" \
     --output text \
-    --region "$REGION") || fail "Could not list tasks"
+    --region "$REGION") || fail "Could not describe stack $BASTION_STACK"
 
-  [[ "$TASK_ARN" == "None" || -z "$TASK_ARN" ]] && fail "No running tasks found in $SERVICE"
+  [[ -z "$SSM_TARGET" || "$SSM_TARGET" == "None" ]] && \
+    fail "No bastion instance found. Is the $BASTION_STACK stack deployed?"
 
-  TASK_ID=$(echo "$TASK_ARN" | awk -F/ '{print $NF}')
-
-  RUNTIME_ID=$(aws ecs describe-tasks \
-    --cluster "$CLUSTER" \
-    --tasks "$TASK_ARN" \
-    --query 'tasks[0].containers[0].runtimeId' \
-    --output text \
-    --region "$REGION") || fail "Could not describe task $TASK_ARN"
-
-  SSM_TARGET="ecs:${CLUSTER}_${TASK_ID}_${RUNTIME_ID}"
   log "SSM target: $SSM_TARGET"
 }
 
@@ -113,7 +122,9 @@ resolve_ecs_target() {
 start_tunnel() {
   log "Starting SSM tunnel (localhost:${LOCAL_PORT} -> ${DB_HOST}:${DB_PORT})..."
 
-  aws ssm start-session \
+  # `setsid` makes aws the session leader of a new process group, so the
+  # cleanup trap can kill the whole group (including session-manager-plugin).
+  setsid aws ssm start-session \
     --target "$SSM_TARGET" \
     --document-name AWS-StartPortForwardingSessionToRemoteHost \
     --parameters "{\"host\":[\"${DB_HOST}\"],\"portNumber\":[\"${DB_PORT}\"],\"localPortNumber\":[\"${LOCAL_PORT}\"]}" \
@@ -229,7 +240,7 @@ main() {
   case "$cmd" in
     tunnel)
       fetch_db_url
-      resolve_ecs_target
+      resolve_bastion_target
       start_tunnel
       log "Tunnel open at localhost:${LOCAL_PORT}. Press Ctrl+C to close."
       log ""
@@ -241,7 +252,7 @@ main() {
     reset)
       command -v psql >/dev/null || fail "'psql' is required for reset"
       fetch_db_url
-      resolve_ecs_target
+      resolve_bastion_target
       start_tunnel
       do_reset
       ;;
@@ -253,7 +264,7 @@ main() {
     reset-seed)
       command -v psql >/dev/null || fail "'psql' is required for reset"
       fetch_db_url
-      resolve_ecs_target
+      resolve_bastion_target
       start_tunnel
       do_reset
       do_seed
@@ -262,7 +273,7 @@ main() {
     psql)
       command -v psql >/dev/null || fail "'psql' is required"
       fetch_db_url
-      resolve_ecs_target
+      resolve_bastion_target
       start_tunnel
       log "Opening interactive psql session..."
       run_psql

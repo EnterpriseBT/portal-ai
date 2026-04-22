@@ -288,6 +288,65 @@ npm run db:push        # pushes schema directly (dev convenience)
 - `npm run db:studio` — Open Drizzle Studio GUI
 - `npm run db:seed` — Seed the database
 
+### Connecting to the dev database
+
+The `portalai-dev` RDS instance lives in private subnets and has no public endpoint. Tunnel through the SSM-managed bastion (`infra/cloudformation/bastion.yml`) using `scripts/db-tunnel.sh`:
+
+```
+./scripts/db-tunnel.sh tunnel       # open tunnel on localhost:15432; Ctrl+C to close
+./scripts/db-tunnel.sh psql         # interactive psql through the tunnel
+./scripts/db-tunnel.sh reset        # truncate all tables (destructive)
+./scripts/db-tunnel.sh seed         # run db:seed:ci as a one-off ECS task
+./scripts/db-tunnel.sh reset-seed   # truncate, then seed
+```
+
+Point SQLTools / Drizzle Studio / any PostgreSQL client at `localhost:15432`. Credentials come from `portalai/dev/database-url` in Secrets Manager; the script fetches and prints them on tunnel start.
+
+The dev container (`/workspace/Dockerfile`) ships with `aws-cli`, `session-manager-plugin`, and `postgresql-client` preinstalled — no local setup required. AWS credentials must have `ssm:StartSession` on the bastion instance; the bastion itself is created/updated by the `Deploy bastion stack` step in `.github/workflows/deploy-dev.yml`.
+
+Override via env vars: `ENV=dev LOCAL_PORT=15432 ./scripts/db-tunnel.sh ...`.
+
+#### Using SQLTools alongside `db-tunnel.sh`
+
+Keep a long-lived tunnel open for your SQLTools session, and run any destructive script (`reset`, `reset-seed`, `psql`) on a different local port so the two don't fight over `15432`.
+
+1. **Open the persistent tunnel** in a dedicated terminal and leave it running:
+
+   ```
+   ./scripts/db-tunnel.sh tunnel
+   ```
+
+2. **Configure SQLTools** to point at the tunnel. Add a connection to `.vscode/settings.json` (or use the SQLTools UI):
+
+   ```jsonc
+   {
+     "sqltools.connections": [
+       {
+         "name": "portalai-dev (tunnel)",
+         "driver": "PostgreSQL",
+         "server": "localhost",
+         "port": 15432,
+         "database": "portal_ai",
+         "username": "portalai",
+         "askForPassword": true,
+         "pgOptions": { "ssl": { "rejectUnauthorized": false } }
+       }
+     ]
+   }
+   ```
+
+   RDS requires TLS, so `ssl` must be enabled. Paste the password from the `PGPASSWORD=...` hint the tunnel prints on startup.
+
+3. **Run destructive commands on a second port** so they don't collide with the SQLTools tunnel:
+
+   ```
+   LOCAL_PORT=15433 ./scripts/db-tunnel.sh reset-seed
+   ```
+
+   After `reset-seed`, reconnect in SQLTools (the Refresh icon on the connection) — its pooled connections still reference the pre-truncate snapshot.
+
+If a run ever dies uncleanly, check for orphan plugins with `ps -ef | grep session-manager-plugin` and kill any that are no longer a child of an `aws` process.
+
 ## Repositories
 
 Every Drizzle table gets a corresponding repository class that extends the generic `Repository<TTable, TSelect, TInsert>` base class. The base class provides type-safe CRUD operations with built-in soft-delete awareness — all reads and updates automatically skip rows where `deleted IS NOT NULL`.
