@@ -18,17 +18,19 @@ interface SampleFile {
 
 const SAMPLE_FILES: SampleFile[] = [
   {
-    label: "sample-contacts.csv",
-    description: "Single-entity CSV (comma-delimited, UTF-8, header row)",
-    href: "/samples/sample-contacts.csv",
-    downloadName: "sample-contacts.csv",
+    label: "region-segmentation-matrix.csv",
+    description:
+      "Every region-config permutation (orientation × headerAxis × role pattern) in one CSV",
+    href: "/samples/region-segmentation-matrix.csv",
+    downloadName: "region-segmentation-matrix.csv",
     icon: <DescriptionOutlinedIcon fontSize="small" color="action" />,
   },
   {
-    label: "sample-data.xlsx",
-    description: "Multi-sheet workbook (Contacts, Companies, Deals)",
-    href: "/samples/sample-data.xlsx",
-    downloadName: "sample-data.xlsx",
+    label: "region-segmentation-matrix.xlsx",
+    description:
+      "Same permutation matrix, one permutation per sheet — easier to draw against",
+    href: "/samples/region-segmentation-matrix.xlsx",
+    downloadName: "region-segmentation-matrix.xlsx",
     icon: <TableChartOutlinedIcon fontSize="small" color="action" />,
   },
 ];

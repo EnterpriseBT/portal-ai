@@ -8,22 +8,27 @@ describe("SampleFiles", () => {
     expect(screen.getByText(/recommended layout/i)).toBeInTheDocument();
   });
 
-  it("renders a CSV sample link pointing at /samples/sample-contacts.csv", () => {
+  it("renders the region-segmentation-matrix CSV link", () => {
     render(<SampleFiles />);
-    const csvLink = screen.getByRole("link", { name: "sample-contacts.csv" });
-    expect(csvLink).toHaveAttribute("href", "/samples/sample-contacts.csv");
-    expect(csvLink).toHaveAttribute("download", "sample-contacts.csv");
+    const link = screen.getByRole("link", {
+      name: "region-segmentation-matrix.csv",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/samples/region-segmentation-matrix.csv"
+    );
+    expect(link).toHaveAttribute("download", "region-segmentation-matrix.csv");
   });
 
-  it("renders an XLSX sample link pointing at /samples/sample-data.xlsx", () => {
+  it("renders the region-segmentation-matrix XLSX link", () => {
     render(<SampleFiles />);
-    const xlsxLink = screen.getByRole("link", { name: "sample-data.xlsx" });
-    expect(xlsxLink).toHaveAttribute("href", "/samples/sample-data.xlsx");
-    expect(xlsxLink).toHaveAttribute("download", "sample-data.xlsx");
-  });
-
-  it("describes the XLSX sample as multi-sheet", () => {
-    render(<SampleFiles />);
-    expect(screen.getByText(/Multi-sheet/i)).toBeInTheDocument();
+    const link = screen.getByRole("link", {
+      name: "region-segmentation-matrix.xlsx",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/samples/region-segmentation-matrix.xlsx"
+    );
+    expect(link).toHaveAttribute("download", "region-segmentation-matrix.xlsx");
   });
 });
