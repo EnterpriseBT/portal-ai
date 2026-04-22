@@ -299,6 +299,49 @@ describe("RegionConfigurationPanelUI", () => {
     ).toBeInTheDocument();
   });
 
+  describe("C1 entity picker", () => {
+    function openPicker() {
+      const select = screen.getByRole("combobox", { name: /target entity/i });
+      fireEvent.mouseDown(select);
+    }
+
+    test("disables options claimed by other regions", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: null })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={[]}
+          siblingsInSameEntity={0}
+          claimedEntityKeys={new Set(["ent_a"])}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      openPicker();
+      const contactOption = screen.getByRole("option", { name: /Contact/i });
+      expect(contactOption).toHaveAttribute("aria-disabled", "true");
+      const dealOption = screen.getByRole("option", { name: /Deal/i });
+      expect(dealOption).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    test("keeps the currently-editing region's own target selectable", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: "ent_b" })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_b"]}
+          siblingsInSameEntity={0}
+          claimedEntityKeys={new Set(["ent_b"])}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      openPicker();
+      const dealOption = screen.getByRole("option", { name: /Deal/i });
+      expect(dealOption).not.toHaveAttribute("aria-disabled", "true");
+    });
+  });
+
   test("renders an Identity help tooltip next to the section heading", () => {
     render(
       <RegionConfigurationPanelUI

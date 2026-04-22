@@ -47,6 +47,50 @@ function baseProps(
   } as React.ComponentProps<typeof RegionDrawingStepUI>;
 }
 
+describe("RegionDrawingStepUI — C1 claimed entity keys", () => {
+  test("disables entity-picker options claimed by a sibling region", () => {
+    // Two regions: r1 (currently editing, unbound) and r2 (binds ent_a).
+    // The panel's entity picker should show ent_a as disabled.
+    const editing = baseRegion({ id: "r1", targetEntityDefinitionId: null });
+    const sibling = baseRegion({ id: "r2", targetEntityDefinitionId: "ent_a" });
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          regions: [editing, sibling],
+          selectedRegionId: "r1",
+          entityOptions: [
+            { value: "ent_a", label: "Contact", source: "db" },
+            { value: "ent_b", label: "Deal", source: "db" },
+          ],
+        })}
+      />
+    );
+    const select = screen.getByRole("combobox", { name: /target entity/i });
+    fireEvent.mouseDown(select);
+    const claimed = screen.getByRole("option", { name: /Contact/i });
+    expect(claimed).toHaveAttribute("aria-disabled", "true");
+    const free = screen.getByRole("option", { name: /Deal/i });
+    expect(free).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  test("keeps the currently-editing region's own claim selectable", () => {
+    const editing = baseRegion({ id: "r1", targetEntityDefinitionId: "ent_a" });
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          regions: [editing],
+          selectedRegionId: "r1",
+          entityOptions: [{ value: "ent_a", label: "Contact", source: "db" }],
+        })}
+      />
+    );
+    const select = screen.getByRole("combobox", { name: /target entity/i });
+    fireEvent.mouseDown(select);
+    const own = screen.getByRole("option", { name: /Contact/i });
+    expect(own).not.toHaveAttribute("aria-disabled", "true");
+  });
+});
+
 describe("RegionDrawingStepUI — keyboard delete", () => {
   test("pressing Delete removes the selected region", () => {
     const onRegionDelete = jest.fn();
@@ -198,6 +242,33 @@ describe("RegionDrawingStepUI — interpret validation", () => {
     expect(alert).toHaveTextContent(/2 regions have validation errors/i);
     expect(alert).toHaveTextContent(/First region/);
     expect(alert).toHaveTextContent(/Second region/);
+  });
+
+  test("clicking Interpret is blocked when two regions share a target (C1 duplicate)", () => {
+    const onInterpret = jest.fn();
+    const first = baseRegion({
+      id: "r1",
+      proposedLabel: "Region 1",
+      targetEntityDefinitionId: "ent_a",
+    });
+    const second = baseRegion({
+      id: "r2",
+      proposedLabel: "Region 2",
+      targetEntityDefinitionId: "ent_a",
+    });
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          onInterpret,
+          regions: [first, second],
+          selectedRegionId: null,
+        })}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /interpret/i }));
+    expect(onInterpret).not.toHaveBeenCalled();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/2 regions have validation errors/i);
   });
 
   test("invalid-region chip jumps selection to that region", () => {

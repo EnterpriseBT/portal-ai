@@ -46,12 +46,32 @@ function computeRegionConfidence(
 }
 
 /**
+ * C1: each target may appear on at most one region; the second region
+ * claiming a target carries the blocker so the UI can point at the offender.
+ */
+function duplicateTargetRegionIds(regions: readonly Region[]): Set<string> {
+  const seenTargets = new Map<string, string>();
+  const duplicates = new Set<string>();
+  for (const region of regions) {
+    if (!region.targetEntityDefinitionId) continue;
+    const prior = seenTargets.get(region.targetEntityDefinitionId);
+    if (prior !== undefined && prior !== region.id) {
+      duplicates.add(region.id);
+    } else {
+      seenTargets.set(region.targetEntityDefinitionId, region.id);
+    }
+  }
+  return duplicates;
+}
+
+/**
  * Stage 8 — consolidate per-stage signals into the plan's `confidence` fields
  * and emit structured `Warning`s on each region. The warning severity map
  * from `DEFAULT_WARNING_SEVERITY` is the module-level default; consumers can
  * override at the UI layer via a `WarningPolicy` (Phase 4+).
  */
 export function scoreAndWarn(state: InterpretState): InterpretState {
+  const duplicateTargets = duplicateTargetRegionIds(state.detectedRegions);
   const detectedRegions: Region[] = state.detectedRegions.map((region) => {
     const warnings: Warning[] = [...region.warnings];
     const headers = state.headerCandidates.get(region.id) ?? [];
@@ -59,6 +79,15 @@ export function scoreAndWarn(state: InterpretState): InterpretState {
     const classificationsResolved = classifications.filter(
       (c) => c.columnDefinitionId !== null
     ).length;
+
+    // ── DUPLICATE_ENTITY_TARGET (blocker) ────────────────────────────────
+    if (duplicateTargets.has(region.id)) {
+      emitWarning(
+        warnings,
+        "DUPLICATE_ENTITY_TARGET",
+        `Two regions target the same entity "${region.targetEntityDefinitionId}" — each entity must be produced by at most one region.`
+      );
+    }
 
     // ── ROW_POSITION_IDENTITY ────────────────────────────────────────────
     if (region.identityStrategy.kind === "rowPosition") {

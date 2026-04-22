@@ -663,7 +663,12 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(records[0].normalizedData).toHaveProperty("name");
     });
 
-    it("merges two regions that share a targetEntityDefinitionId into one ConnectorEntity", async () => {
+    it("rejects plans where two regions share a targetEntityDefinitionId (C1)", async () => {
+      // Historical semantic: regions sharing a target merged into a single
+      // entity. Under C1 (see docs/REGION_CONFIG.c1_one_region_per_entity.spec.md)
+      // each target must map to exactly one region — so the commit service
+      // rejects the plan up-front with LAYOUT_PLAN_DUPLICATE_ENTITY before
+      // touching the DB.
       const colEmailId = await seedColumnDefinition(
         db as Db,
         organizationId,
@@ -674,64 +679,14 @@ describe("Connector Instance Layout Plans Router", () => {
         organizationId,
         "name"
       );
-      const colAgeId = await seedColumnDefinition(
-        db as Db,
-        organizationId,
-        "age"
-      );
 
-      // Region 1 binds email + name; region 2 binds email + age. Both target
-      // the same entity, so FieldMappings should be deduplicated (3 total,
-      // one per distinct columnDefinitionId).
-      // Both regions cover the same 3 columns so drift sees no added/removed
-      // columns. Region 1 contributes {email, name}; Region 2 contributes
-      // {email, name, age}. After dedup by columnDefinitionId the result is
-      // {colEmail, colName, colAge} — 3 FieldMappings, 1 ConnectorEntity.
-      const region1 = simpleRegion("r1", "contacts", colEmailId, colNameId, {
-        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
-        columnBindings: [
-          {
-            sourceLocator: { kind: "byHeaderName", name: "email" },
-            columnDefinitionId: colEmailId,
-            confidence: 0.9,
-          },
-          {
-            sourceLocator: { kind: "byHeaderName", name: "name" },
-            columnDefinitionId: colNameId,
-            confidence: 0.9,
-          },
-          {
-            sourceLocator: { kind: "byHeaderName", name: "age" },
-            columnDefinitionId: colAgeId,
-            confidence: 0.9,
-          },
-        ],
-      });
-      const region2 = simpleRegion("r2", "contacts", colEmailId, colAgeId, {
-        bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
-        columnBindings: [
-          {
-            sourceLocator: { kind: "byHeaderName", name: "email" },
-            columnDefinitionId: colEmailId,
-            confidence: 0.9,
-          },
-          {
-            sourceLocator: { kind: "byHeaderName", name: "name" },
-            columnDefinitionId: colNameId,
-            confidence: 0.9,
-          },
-          {
-            sourceLocator: { kind: "byHeaderName", name: "age" },
-            columnDefinitionId: colAgeId,
-            confidence: 0.9,
-          },
-        ],
-      });
+      const region1 = simpleRegion("r1", "contacts", colEmailId, colNameId);
+      const region2 = simpleRegion("r2", "contacts", colEmailId, colNameId);
       const plan: LayoutPlan = {
         planVersion: "1.0.0",
         workbookFingerprint: {
           sheetNames: ["Sheet1"],
-          dimensions: { Sheet1: { rows: 2, cols: 3 } },
+          dimensions: { Sheet1: { rows: 3, cols: 2 } },
           anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "email" }],
         },
         regions: [region1, region2],
@@ -739,40 +694,23 @@ describe("Connector Instance Layout Plans Router", () => {
       };
       const planId = await insertPlanRow(db as Db, plan);
 
-      const simpleWorkbook: WorkbookData = {
-        sheets: [
-          {
-            name: "Sheet1",
-            dimensions: { rows: 2, cols: 3 },
-            cells: [
-              { row: 1, col: 1, value: "email" },
-              { row: 1, col: 2, value: "name" },
-              { row: 1, col: 3, value: "age" },
-              { row: 2, col: 1, value: "a@x.com" },
-              { row: 2, col: 2, value: "alice" },
-              { row: 2, col: 3, value: "42" },
-            ],
-          },
-        ],
-      };
-
       const res = await request(app)
         .post(
           `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
         )
         .set("Authorization", "Bearer test-token")
-        .send({ workbook: simpleWorkbook });
+        .send({ workbook: makeWorkbook() });
 
-      expect(res.status).toBe(200);
-      // One entity even though two regions contributed.
-      expect(res.body.payload.connectorEntityIds).toHaveLength(1);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY);
 
+      // No entity or mapping rows should have been written.
+      const entities = await (db as Db)
+        .select()
+        .from(schema.connectorEntities);
+      expect(entities).toHaveLength(0);
       const mappings = await (db as Db).select().from(schema.fieldMappings);
-      // email, name, age — 3 deduplicated mappings.
-      const uniqueColumnDefIds = new Set(
-        mappings.map((m) => m.columnDefinitionId)
-      );
-      expect(uniqueColumnDefIds.size).toBe(3);
+      expect(mappings).toHaveLength(0);
     });
 
     it("creates separate ConnectorEntities for distinct targetEntityDefinitionIds", async () => {

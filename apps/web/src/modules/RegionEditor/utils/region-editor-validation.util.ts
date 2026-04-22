@@ -198,6 +198,10 @@ export function validateRegion(region: RegionDraft): RegionErrors {
 /**
  * Validate every region in a list. Returns a keyed error map — regions that
  * pass validation are absent from the result.
+ *
+ * Also runs a cross-region pass: under C1 (one region per entity) two regions
+ * binding to the same `targetEntityDefinitionId` would merge at commit; we
+ * flag both offenders here so the UI can present the conflict before Commit.
  */
 export function validateRegions(regions: RegionDraft[]): RegionEditorErrors {
   const all: RegionEditorErrors = {};
@@ -207,6 +211,24 @@ export function validateRegions(regions: RegionDraft[]): RegionEditorErrors {
       all[region.id] = errors;
     }
   }
+
+  const idsByTarget = new Map<string, string[]>();
+  for (const region of regions) {
+    if (!region.targetEntityDefinitionId) continue;
+    const list = idsByTarget.get(region.targetEntityDefinitionId) ?? [];
+    list.push(region.id);
+    idsByTarget.set(region.targetEntityDefinitionId, list);
+  }
+  for (const [, ids] of idsByTarget) {
+    if (ids.length < 2) continue;
+    for (const id of ids) {
+      const existing = all[id] ?? {};
+      existing.targetEntityDefinitionId =
+        "This entity is already bound to another region in this upload.";
+      all[id] = existing;
+    }
+  }
+
   return all;
 }
 

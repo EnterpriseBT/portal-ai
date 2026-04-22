@@ -67,6 +67,13 @@ export interface RegionConfigurationPanelUIProps {
    * entity in its local state and making it available via `entityOptions`.
    */
   onCreateEntity?: (key: string, label: string) => string;
+  /**
+   * Entity ids already bound to a region in this upload. Options whose value
+   * appears in this set — except for the currently-editing region's own
+   * target — render as disabled in the picker, surfacing the C1 rule (one
+   * region per entity) at selection time.
+   */
+  claimedEntityKeys?: Set<string>;
 }
 
 const SECTION_HEADING_SX = {
@@ -91,12 +98,14 @@ export const RegionConfigurationPanelUI: React.FC<
   onKeepPriorIdentity,
   driftProposedIdentityLabel,
   onCreateEntity,
+  claimedEntityKeys,
 }) => {
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
 
+  const currentTarget = region?.targetEntityDefinitionId ?? null;
   const selectOptions = useMemo<SelectOption[]>(
-    () => buildSelectOptions(entityOptions),
-    [entityOptions]
+    () => buildSelectOptions(entityOptions, claimedEntityKeys, currentTarget),
+    [entityOptions, claimedEntityKeys, currentTarget]
   );
   const existingKeys = useMemo(
     () => entityOptions.map((o) => o.value),
@@ -890,10 +899,18 @@ export const RegionConfigurationPanelUI: React.FC<
   );
 };
 
-function buildSelectOptions(options: EntityOption[]): SelectOption[] {
+function buildSelectOptions(
+  options: EntityOption[],
+  claimedEntityKeys: Set<string> | undefined,
+  currentTarget: string | null
+): SelectOption[] {
   return options.map((o) => ({
     value: o.value,
     label: o.source === "staged" ? `${o.label} — new` : o.label,
+    disabled:
+      claimedEntityKeys !== undefined &&
+      claimedEntityKeys.has(o.value) &&
+      o.value !== currentTarget,
   }));
 }
 

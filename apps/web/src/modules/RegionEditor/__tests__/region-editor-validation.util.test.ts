@@ -280,6 +280,36 @@ describe("validateRegions — multi-region", () => {
   });
 });
 
+describe("validateRegions — C1 duplicate-target detection", () => {
+  test("attaches targetEntityDefinitionId error on both regions when two share a target", () => {
+    const a = baseRegion({ id: "r1", targetEntityDefinitionId: "contacts" });
+    const b = baseRegion({ id: "r2", targetEntityDefinitionId: "contacts" });
+    const errors = validateRegions([a, b]);
+    expect(errors["r1"]?.targetEntityDefinitionId).toMatch(/already/i);
+    expect(errors["r2"]?.targetEntityDefinitionId).toMatch(/already/i);
+  });
+
+  test("does not flag regions with targetEntityDefinitionId === null", () => {
+    const a = baseRegion({ id: "r1", targetEntityDefinitionId: null });
+    const b = baseRegion({ id: "r2", targetEntityDefinitionId: null });
+    const errors = validateRegions([a, b]);
+    // Both rows will have a "target entity required" error — but neither
+    // should carry the duplicate-target phrasing.
+    expect(errors["r1"]?.targetEntityDefinitionId).not.toMatch(/already/i);
+    expect(errors["r2"]?.targetEntityDefinitionId).not.toMatch(/already/i);
+  });
+
+  test("flags only the duplicates when three regions exist and two share a target", () => {
+    const a = baseRegion({ id: "a", targetEntityDefinitionId: "contacts" });
+    const b = baseRegion({ id: "b", targetEntityDefinitionId: "deals" });
+    const c = baseRegion({ id: "c", targetEntityDefinitionId: "contacts" });
+    const errors = validateRegions([a, b, c]);
+    expect(errors["a"]?.targetEntityDefinitionId).toMatch(/already/i);
+    expect(errors["b"]).toBeUndefined();
+    expect(errors["c"]?.targetEntityDefinitionId).toMatch(/already/i);
+  });
+});
+
 describe("validateBindingDraft — single binding", () => {
   const baseBinding = {
     sourceLocator: "header:Email",

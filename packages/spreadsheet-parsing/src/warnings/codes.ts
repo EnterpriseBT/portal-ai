@@ -14,6 +14,7 @@ export const WARNING_CODES = [
   "ROW_POSITION_IDENTITY",
   "UNSUPPORTED_LAYOUT_SHAPE",
   "RECORDS_AXIS_VALUE_RENAMED",
+  "DUPLICATE_ENTITY_TARGET",
 ] as const;
 
 export const WarningCodeEnum = z.enum(WARNING_CODES);
@@ -57,4 +58,5 @@ export const DEFAULT_WARNING_SEVERITY: Record<WarningCode, WarningSeverity> = {
   ROW_POSITION_IDENTITY: "warn",
   UNSUPPORTED_LAYOUT_SHAPE: "blocker",
   RECORDS_AXIS_VALUE_RENAMED: "warn",
+  DUPLICATE_ENTITY_TARGET: "blocker",
 };

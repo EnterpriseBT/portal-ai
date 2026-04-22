@@ -86,6 +86,9 @@ export class LayoutPlanCommitService {
     // even consulted when the plan is known-broken.
     LayoutPlanCommitService.assertNoBlockerWarnings(plan);
 
+    // ── 2b. C1 — each target may appear on at most one region ────────
+    LayoutPlanCommitService.assertUniqueEntityTargets(plan);
+
     // ── 2. Validate + run replay ──────────────────────────────────────
     const wb = LayoutPlanCommitService.validateWorkbook(body.workbook);
 
@@ -116,6 +119,9 @@ export class LayoutPlanCommitService {
     );
 
     // ── 5. Group records + bindings by targetEntityDefinitionId ────────
+    //    Under C1 each target yields exactly one region; the grouping is
+    //    kept for downstream per-entity write coordination (entity upsert,
+    //    reconcile, record writes).
     const recordsByTarget = new Map<string, ExtractedRecord[]>();
     for (const record of records) {
       const bucket =
@@ -252,6 +258,21 @@ export class LayoutPlanCommitService {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────
+
+  private static assertUniqueEntityTargets(plan: LayoutPlan): void {
+    const seen = new Set<string>();
+    for (const region of plan.regions) {
+      if (!region.targetEntityDefinitionId) continue;
+      if (seen.has(region.targetEntityDefinitionId)) {
+        throw new ApiError(
+          400,
+          ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY,
+          `Plan contains multiple regions targeting entity "${region.targetEntityDefinitionId}". Each entity must be produced by exactly one region.`
+        );
+      }
+      seen.add(region.targetEntityDefinitionId);
+    }
+  }
 
   private static assertNoBlockerWarnings(plan: LayoutPlan): void {
     const blockerWarnings: Array<{

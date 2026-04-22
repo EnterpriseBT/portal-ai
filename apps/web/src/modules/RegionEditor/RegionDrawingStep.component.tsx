@@ -97,6 +97,18 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   const activeSheet =
     workbook.sheets.find((s) => s.id === activeSheetId) ?? workbook.sheets[0];
 
+  // C1: one region per entity — surface existing claims in the entity picker
+  // so users can't accidentally bind a second region to the same target.
+  const claimedEntityKeys = useMemo(() => {
+    const out = new Set<string>();
+    for (const region of regions) {
+      if (region.targetEntityDefinitionId) {
+        out.add(region.targetEntityDefinitionId);
+      }
+    }
+    return out;
+  }, [regions]);
+
   const entityOrder = useMemo(() => {
     const seen = new Set<string>();
     const order: string[] = [];
@@ -458,6 +470,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             entityOptions={entityOptions}
             entityOrder={entityOrder}
             siblingsInSameEntity={siblingsInSameEntity}
+            claimedEntityKeys={claimedEntityKeys}
             errors={panelErrors}
             onUpdate={(updates) =>
               selectedRegion && onRegionUpdate(selectedRegion.id, updates)

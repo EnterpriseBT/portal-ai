@@ -124,20 +124,24 @@ Two operations consume the plan:
 1. **Replay** — deterministic. Given a workbook and a plan, extract records. No LLM call.
 2. **Replan** — invoked only when replay detects drift beyond tolerance. Produces a new plan version; changes that affect `source_id` derivation require user confirmation before the sync commits.
 
-## Region → entity merge model
+## Region → entity 1:1 mapping
 
-Regions are the unit of interpretation. A region represents **either a whole entity or a partial entity**. The `targetEntityDefinitionId` is the entity key.
+Regions are the unit of interpretation. A region represents **exactly one entity**. The `targetEntityDefinitionId` is the entity key.
 
-**Regions that share the same entity key merge into one entity.** Their extracted records are unioned under that entity. Consequences:
+**Each target may appear on at most one region within a connector instance.** Duplicates are rejected at three layers:
 
-- One sheet can populate multiple entities (distinct target IDs).
-- One entity can be assembled from multiple regions (same target ID, possibly across sheets).
-- AI field-mapping / column classification runs **once per merged entity** — after all regions targeting it have been defined and configured — not once per region. This keeps the mapping coherent across contributing regions.
-- At the connector level, `ConnectorEntity` is 1:1 with `targetEntityDefinitionId` within a connector instance; it owns N regions.
-- `FieldMapping` rows belong to the merged entity, not to individual regions.
-- `entity_records` writes resolve per merged entity; regions are the extraction unit, not the persistence unit.
+- Parser — the interpreter emits `DUPLICATE_ENTITY_TARGET` (blocker severity) on the second region claiming a target. Commit is blocked upstream by the blocker-warnings gate.
+- API — `POST /api/layout-plans/commit` (and the connector-instance-scoped variant) returns `400 LAYOUT_PLAN_DUPLICATE_ENTITY` if the submitted plan carries duplicate targets, before any DB writes.
+- Editor — `validateRegions` in `apps/web/src/modules/RegionEditor/utils/region-editor-validation.util.ts` flags both offending regions, and the entity picker disables options already claimed by another region in the same upload.
 
-This breaks the prior `FileUploadConnector` convention of "one entity per sheet / one entity per file." The parser emits regions with `targetEntityDefinitionId`; the connector groups-and-merges by that key when materializing.
+Consequences:
+
+- One sheet can still populate multiple entities (distinct target IDs across its regions).
+- At the connector level, `ConnectorEntity` is 1:1 with `targetEntityDefinitionId` within a connector instance, and 1:1 with the region that produced it.
+- `FieldMapping` rows belong to the one region/entity that owns them; there is no cross-region merge.
+- `entity_records` writes resolve per region — region is both the extraction unit and the persistence unit.
+
+Before this change the section documented a merge semantic where regions sharing a target key combined into one entity. That no longer applies — the rule and its rollout are documented in `docs/REGION_CONFIG.c1_one_region_per_entity.spec.md`.
 
 ## Pivoted regions
 

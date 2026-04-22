@@ -544,5 +544,93 @@ describe("Layout Plans Draft Router", () => {
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
     });
+
+    describe("C1 duplicate-target guard", () => {
+      it("returns 400 LAYOUT_PLAN_DUPLICATE_ENTITY when the plan has two regions with the same targetEntityDefinitionId", async () => {
+        const emailId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "email"
+        );
+        const nameId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "name"
+        );
+        const uploadSessionId = await seedUploadSession(
+          db as Db,
+          organizationId,
+          makeWorkbook()
+        );
+
+        const plan = makePlan(emailId, nameId);
+        // Duplicate the single region with a new id — both still target
+        // "contacts". (The plan schema rejects identical ids.)
+        plan.regions = [
+          plan.regions[0],
+          { ...plan.regions[0], id: "r2" },
+        ];
+
+        const res = await request(app)
+          .post("/api/layout-plans/commit")
+          .set("Authorization", "Bearer test-token")
+          .send({
+            connectorDefinitionId,
+            name: "Duplicate target",
+            plan,
+            uploadSessionId,
+          });
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_DUPLICATE_ENTITY);
+
+        // No rows should survive the outer rollback.
+        const stray = await (db as Db)
+          .select()
+          .from(connectorInstances)
+          .where(eq(connectorInstances.name, "Duplicate target"));
+        expect(stray).toHaveLength(0);
+        const strayPlans = await (db as Db)
+          .select()
+          .from(connectorInstanceLayoutPlans);
+        expect(strayPlans).toHaveLength(0);
+        const strayEntities = await (db as Db).select().from(connectorEntities);
+        expect(strayEntities).toHaveLength(0);
+        const strayMappings = await (db as Db).select().from(fieldMappings);
+        expect(strayMappings).toHaveLength(0);
+      });
+
+      it("succeeds when the plan has one region per distinct target", async () => {
+        // Regression — baseline shape still passes.
+        const emailId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "email"
+        );
+        const nameId = await seedColumnDefinition(
+          db as Db,
+          organizationId,
+          "name"
+        );
+        const uploadSessionId = await seedUploadSession(
+          db as Db,
+          organizationId,
+          makeWorkbook()
+        );
+
+        const res = await request(app)
+          .post("/api/layout-plans/commit")
+          .set("Authorization", "Bearer test-token")
+          .send({
+            connectorDefinitionId,
+            name: "Distinct targets baseline",
+            plan: makePlan(emailId, nameId),
+            uploadSessionId,
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.payload.connectorInstanceId).toBeDefined();
+      });
+    });
   });
 });
