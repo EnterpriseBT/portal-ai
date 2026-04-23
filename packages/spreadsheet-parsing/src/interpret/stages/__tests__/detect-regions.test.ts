@@ -35,8 +35,7 @@ describe("detectRegions", () => {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ]);
     const state = detectRegions(createInitialState(input));
@@ -44,15 +43,13 @@ describe("detectRegions", () => {
     const region = state.detectedRegions[0];
     expect(region.sheet).toBe("Sheet1");
     expect(region.targetEntityDefinitionId).toBe("contacts");
-    expect(region.orientation).toBe("rows-as-records");
-    expect(region.headerAxis).toBe("row");
+    expect(region.headerAxes).toEqual(["row"]);
     expect(region.bounds).toEqual({
       startRow: 1,
       startCol: 1,
       endRow: 3,
       endCol: 2,
     });
-    // Region id must be stable, non-empty, and unique per hint.
     expect(region.id).toMatch(/.+/);
   });
 
@@ -62,15 +59,13 @@ describe("detectRegions", () => {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
         targetEntityDefinitionId: "a",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
       {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 3, endRow: 3, endCol: 3 },
         targetEntityDefinitionId: "b",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ]);
     const state = detectRegions(createInitialState(input));
@@ -79,33 +74,57 @@ describe("detectRegions", () => {
     expect(ids.size).toBe(2);
   });
 
-  it("forwards recordsAxisName / secondaryRecordsAxisName / cellValueName from hints as user-sourced", () => {
+  it("forwards segmentsByAxis / cellValueField / axisAnchorCell from hints", () => {
     const input = makeInput([
       {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
         targetEntityDefinitionId: "crosstab",
-        orientation: "cells-as-records",
-        headerAxis: "row",
-        recordsAxisName: "Quarter",
-        secondaryRecordsAxisName: "Region",
-        cellValueName: "Revenue",
+        headerAxes: ["row", "column"],
+        segmentsByAxis: {
+          row: [
+            { kind: "skip", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "region",
+              axisName: "Region",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+          column: [
+            { kind: "skip", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "quarter",
+              axisName: "Quarter",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+        },
+        cellValueField: { name: "Revenue", nameSource: "user" },
+        axisAnchorCell: { row: 1, col: 1 },
       },
     ]);
     const state = detectRegions(createInitialState(input));
     const region = state.detectedRegions[0];
-    expect(region.recordsAxisName).toEqual({
-      name: "Quarter",
-      source: "user",
+    expect(region.segmentsByAxis?.row?.[1]).toMatchObject({
+      kind: "pivot",
+      axisName: "Region",
     });
-    expect(region.secondaryRecordsAxisName).toEqual({
-      name: "Region",
-      source: "user",
+    expect(region.segmentsByAxis?.column?.[1]).toMatchObject({
+      kind: "pivot",
+      axisName: "Quarter",
     });
-    expect(region.cellValueName).toEqual({ name: "Revenue", source: "user" });
+    expect(region.cellValueField).toEqual({
+      name: "Revenue",
+      nameSource: "user",
+    });
+    expect(region.axisAnchorCell).toEqual({ row: 1, col: 1 });
   });
 
-  it("throws UNSUPPORTED_LAYOUT_SHAPE when no hints are supplied (auto-detect deferred to Phase 4)", () => {
+  it("throws UNSUPPORTED_LAYOUT_SHAPE when no hints are supplied", () => {
     const input = makeInput(undefined);
     expect(() => detectRegions(createInitialState(input))).toThrow(
       /UNSUPPORTED_LAYOUT_SHAPE/
@@ -125,8 +144,7 @@ describe("detectRegions", () => {
         sheet: "Ghost",
         bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
         targetEntityDefinitionId: "x",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ]);
     expect(() => detectRegions(createInitialState(input))).toThrow(/Ghost/i);

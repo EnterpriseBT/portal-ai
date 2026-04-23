@@ -18,7 +18,9 @@ export function createInitialState(input: InterpretInput): InterpretState {
     headerCandidates: new Map(),
     identityCandidates: new Map(),
     columnClassifications: new Map(),
-    recordsAxisNameSuggestions: new Map(),
+    segmentAxisNameSuggestions: new Map(),
+    segmentsByRegion: new Map(),
+    cellValueFieldByRegion: new Map(),
     confidence: new Map(),
     warnings: [],
   };

@@ -43,8 +43,7 @@ function input(): InterpretInput {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ],
   };

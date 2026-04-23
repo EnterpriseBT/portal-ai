@@ -37,8 +37,7 @@ function contactsInput(): InterpretInput {
         sheet: "Contacts",
         bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ],
   };
@@ -52,7 +51,11 @@ describe("interpret() — orchestration", () => {
         { id: "col-name", label: "Name", normalizedKey: "name" },
       ],
     });
-    expect(LayoutPlanSchema.safeParse(plan).success).toBe(true);
+    const result = LayoutPlanSchema.safeParse(plan);
+    if (!result.success) {
+      throw new Error(JSON.stringify(result.error.issues, null, 2));
+    }
+    expect(result.success).toBe(true);
     expect(plan.regions).toHaveLength(1);
     expect(plan.regions[0].columnBindings.length).toBeGreaterThan(0);
   });
@@ -79,19 +82,19 @@ describe("interpret() — orchestration", () => {
     expect(ids.every((id) => id?.startsWith("override-"))).toBe(true);
   });
 
-  it("emits PIVOTED_REGION_MISSING_AXIS_NAME when a pivoted region is hinted without a name and the axis-name recommender is disabled", async () => {
+  it("emits PIVOTED_REGION_MISSING_AXIS_NAME when a pivoted region is hinted with an unresolved anchor-cell axisName", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
           {
             name: "Sheet1",
-            dimensions: { rows: 3, cols: 3 },
+            dimensions: { rows: 2, cols: 3 },
             cells: [
-              { row: 1, col: 1, value: "" },
               { row: 1, col: 2, value: "Jan" },
               { row: 1, col: 3, value: "Feb" },
               { row: 2, col: 1, value: "Revenue" },
-              { row: 3, col: 1, value: "Cost" },
+              { row: 2, col: 2, value: 100 },
+              { row: 2, col: 3, value: 200 },
             ],
           },
         ],
@@ -99,10 +102,22 @@ describe("interpret() — orchestration", () => {
       regionHints: [
         {
           sheet: "Sheet1",
-          bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
           targetEntityDefinitionId: "monthly",
-          orientation: "columns-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              { kind: "skip", positionCount: 1 },
+              {
+                kind: "pivot",
+                id: "month-seg",
+                axisName: "month",
+                axisNameSource: "anchor-cell",
+                positionCount: 2,
+              },
+            ],
+          },
+          cellValueField: { name: "revenue", nameSource: "user" },
         },
       ],
     };

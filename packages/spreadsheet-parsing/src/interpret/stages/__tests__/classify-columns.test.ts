@@ -37,8 +37,7 @@ function simpleInput(): InterpretInput {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ],
   };
@@ -72,7 +71,7 @@ describe("classifyColumns — heuristic default", () => {
 
   it("matches on normalised key when the catalog specifies one", async () => {
     const input = simpleInput();
-    input.workbook.sheets[0].cells[0].value = "E-Mail"; // "e_mail" normalised
+    input.workbook.sheets[0].cells[0].value = "E-Mail";
     let state = detectRegions(createInitialState(input));
     state = detectHeaders(state);
     state = await classifyColumns(state, {
@@ -145,7 +144,6 @@ describe("classifyColumns — injected classifier override", () => {
   });
 
   it("runs the classifier for multiple regions concurrently, bounded by the concurrency cap", async () => {
-    // Three regions on separate sheets, each needs a classifier call.
     const input: InterpretInput = {
       workbook: {
         sheets: ["A", "B", "C"].map((name) => ({
@@ -163,8 +161,7 @@ describe("classifyColumns — injected classifier override", () => {
         sheet,
         bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
         targetEntityDefinitionId: `ent-${sheet}`,
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       })),
     };
 
@@ -193,9 +190,8 @@ describe("classifyColumns — injected classifier override", () => {
       concurrency: 3,
     });
     expect(injected).toHaveBeenCalledTimes(3);
-    expect(peak).toBeGreaterThanOrEqual(2); // at least two ran concurrently
+    expect(peak).toBeGreaterThanOrEqual(2);
     expect(peak).toBeLessThanOrEqual(3);
-    // Each region still got its own classification set.
     for (const region of state.detectedRegions) {
       expect(state.columnClassifications.get(region.id)).toBeTruthy();
     }
@@ -219,8 +215,7 @@ describe("classifyColumns — injected classifier override", () => {
         sheet: `S${i}`,
         bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
         targetEntityDefinitionId: `ent-${i}`,
-        orientation: "rows-as-records" as const,
-        headerAxis: "row" as const,
+        headerAxes: ["row" as const],
       })),
     };
 
@@ -249,30 +244,28 @@ describe("classifyColumns — injected classifier override", () => {
   });
 
   it("excludes the axis-anchor cell from classifier candidates for pivoted regions", async () => {
-    // Pivoted columns-as-records + headerAxis:row. Field names live in
-    // column 1 (revenue/cost/profit/headcount); the anchor cell at (1,1)
-    // holds the records-axis name "metric" — that's an axis NAME, not a
-    // field name, so the classifier must not receive it as a candidate.
+    // 1D region with headerAxes=["row"] + a pivot segment on row. Anchor
+    // position at (1,1) holds the pivot's axis name "metric"; classify
+    // should not forward that to the classifier. Positions 2-5 carry pivot
+    // labels (Jan-Apr) which, in PR-1 (no segment-kind filter), DO still
+    // reach the classifier.
     const input: InterpretInput = {
       workbook: {
         sheets: [
           {
             name: "Sheet1",
-            dimensions: { rows: 5, cols: 5 },
+            dimensions: { rows: 2, cols: 5 },
             cells: [
               { row: 1, col: 1, value: "metric" },
-              { row: 1, col: 2, value: "Q1" },
-              { row: 1, col: 3, value: "Q2" },
-              { row: 1, col: 4, value: "Q3" },
-              { row: 1, col: 5, value: "Q4" },
+              { row: 1, col: 2, value: "Jan" },
+              { row: 1, col: 3, value: "Feb" },
+              { row: 1, col: 4, value: "Mar" },
+              { row: 1, col: 5, value: "Apr" },
               { row: 2, col: 1, value: "revenue" },
-              { row: 3, col: 1, value: "cost" },
-              { row: 4, col: 1, value: "profit" },
-              { row: 5, col: 1, value: "headcount" },
-              { row: 2, col: 2, value: 10000 },
-              { row: 3, col: 2, value: 5000 },
-              { row: 4, col: 2, value: 5000 },
-              { row: 5, col: 2, value: 12 },
+              { row: 2, col: 2, value: 10 },
+              { row: 2, col: 3, value: 20 },
+              { row: 2, col: 4, value: 30 },
+              { row: 2, col: 5, value: 40 },
             ],
           },
         ],
@@ -280,10 +273,23 @@ describe("classifyColumns — injected classifier override", () => {
       regionHints: [
         {
           sheet: "Sheet1",
-          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 5 },
           targetEntityDefinitionId: "pivoted-metrics",
-          orientation: "columns-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              { kind: "skip", positionCount: 1 },
+              {
+                kind: "pivot",
+                id: "month",
+                axisName: "month",
+                axisNameSource: "user",
+                positionCount: 4,
+              },
+            ],
+          },
+          cellValueField: { name: "revenue", nameSource: "user" },
+          axisAnchorCell: { row: 1, col: 1 },
         },
       ],
     };
@@ -304,13 +310,11 @@ describe("classifyColumns — injected classifier override", () => {
     const regionId = state.detectedRegions[0].id;
     const classifications = state.columnClassifications.get(regionId)!;
     const headers = classifications.map((c) => c.sourceHeader);
-    // Field names — none of the row-1 axis labels (metric/Q1/Q2/Q3/Q4).
-    expect(headers).toEqual(["revenue", "cost", "profit", "headcount"]);
     expect(headers).not.toContain("metric");
-    expect(headers).not.toContain("Q1");
+    expect(headers).toEqual(["Jan", "Feb", "Mar", "Apr"]);
   });
 
-  it("skips classification entirely when headerAxis === 'none' (no headers to classify)", async () => {
+  it("skips classification entirely for headerless regions", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -329,8 +333,8 @@ describe("classifyColumns — injected classifier override", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
           targetEntityDefinitionId: "h",
-          orientation: "rows-as-records",
-          headerAxis: "none",
+          headerAxes: [],
+          recordsAxis: "row",
         },
       ],
     };

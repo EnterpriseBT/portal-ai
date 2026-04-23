@@ -1,35 +1,48 @@
-import type { Region } from "../../plan/index.js";
+import type { AxisMember, Region, Segment } from "../../plan/index.js";
 import type { Sheet } from "../../workbook/index.js";
 import { DEFAULT_INTERPRET_CONCURRENCY } from "../deps.js";
 import type { InterpretDeps } from "../deps.js";
 import type { InterpretState } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
-import { isPivoted } from "./pivoted.util.js";
 
 const MAX_AXIS_LABELS = 30;
 
+type PivotSegment = Extract<Segment, { kind: "pivot" }>;
+
+function firstPivotSegment(region: Region): {
+  segment: PivotSegment;
+  axis: AxisMember;
+} | null {
+  for (const axis of ["row", "column"] as const) {
+    for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+      if (seg.kind === "pivot") return { segment: seg, axis };
+    }
+  }
+  return null;
+}
+
 /**
- * Collect the records-axis labels for a pivoted region. These live on the
- * `headerAxis` line (the row/col that carries per-record identifiers like
- * `Jan, Feb, Mar`), with the axis-anchor cell excluded because that cell
- * holds the records-axis **name** ("Month"), not a label. Decoupled from
- * the detect-headers stage because that stage now scans the field-names
- * axis (orthogonal) for pivoted regions and would hand us the wrong labels.
+ * Collect the pivot segment's labels along its header axis, skipping the
+ * axis-anchor position (which holds the axis *name*, not a label).
  */
-function collectRecordsAxisLabels(region: Region, sheet: Sheet): string[] {
+function collectPivotLabels(
+  region: Region,
+  sheet: Sheet,
+  axis: AxisMember
+): string[] {
   const anchor = region.axisAnchorCell ?? {
     row: region.bounds.startRow,
     col: region.bounds.startCol,
   };
   const labels: string[] = [];
-  if (region.headerAxis === "row") {
+  if (axis === "row") {
     const row = anchor.row;
     for (let c = region.bounds.startCol; c <= region.bounds.endCol; c++) {
       if (c === anchor.col) continue;
       const cell = sheet.cell(row, c);
       if (cell && cell.value !== null) labels.push(String(cell.value));
     }
-  } else if (region.headerAxis === "column") {
+  } else {
     const col = anchor.col;
     for (let r = region.bounds.startRow; r <= region.bounds.endRow; r++) {
       if (r === anchor.row) continue;
@@ -44,33 +57,30 @@ function collectRecordsAxisLabels(region: Region, sheet: Sheet): string[] {
 }
 
 /**
- * Stage 5 — only fires for pivoted regions that do not already carry a
- * user-supplied `recordsAxisName`. Calls the injected recommender (LLM-backed
- * in Phase 4); default returns null (no recommendation), which leaves the
- * plan unchanged and lets `score-and-warn` decide whether to block the plan.
+ * Stage 5 — fires for each pivot-bearing region whose pivot segment does not
+ * already carry a user-supplied `axisName`. Calls the injected recommender
+ * once per eligible pivot segment; default returns null which leaves the
+ * region unchanged. Suggestions are keyed by pivot-segment id.
  */
 export async function recommendRecordsAxisName(
   state: InterpretState,
   deps: InterpretDeps = {}
 ): Promise<InterpretState> {
-  const next = new Map(state.recordsAxisNameSuggestions);
+  const next = new Map(state.segmentAxisNameSuggestions);
   const recommender = deps.axisNameRecommender;
-  if (!recommender) return { ...state, recordsAxisNameSuggestions: next };
+  if (!recommender) return { ...state, segmentAxisNameSuggestions: next };
 
-  // Synchronous prep pass — collect axis labels for every region that
-  // actually needs a recommendation. Skips pivoted regions with user-supplied
-  // names and non-pivoted regions entirely.
-  type PendingWork = { regionId: string; labels: string[] };
+  type PendingWork = { segmentId: string; labels: string[] };
   const pending: PendingWork[] = [];
   for (const region of state.detectedRegions) {
-    if (!isPivoted(region)) continue;
-    if (region.recordsAxisName && region.recordsAxisName.source === "user")
-      continue;
+    const pivot = firstPivotSegment(region);
+    if (!pivot) continue;
+    if (pivot.segment.axisNameSource === "user") continue;
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
     if (!sheet) continue;
-    const labels = collectRecordsAxisLabels(region, sheet);
+    const labels = collectPivotLabels(region, sheet, pivot.axis);
     if (labels.length === 0) continue;
-    pending.push({ regionId: region.id, labels });
+    pending.push({ segmentId: pivot.segment.id, labels });
   }
 
   const limit = pLimit(deps.concurrency ?? DEFAULT_INTERPRET_CONCURRENCY);
@@ -86,8 +96,8 @@ export async function recommendRecordsAxisName(
         ? raw.suggestion
         : raw;
     if (suggestion && suggestion.name.trim() !== "") {
-      next.set(pending[i].regionId, suggestion);
+      next.set(pending[i].segmentId, suggestion);
     }
   }
-  return { ...state, recordsAxisNameSuggestions: next };
+  return { ...state, segmentAxisNameSuggestions: next };
 }

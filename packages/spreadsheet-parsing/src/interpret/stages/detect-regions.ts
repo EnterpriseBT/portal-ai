@@ -1,33 +1,22 @@
 import type { Region, RegionHint } from "../../plan/index.js";
 import type { InterpretState } from "../types.js";
 
-/**
- * Deterministic, counter-based region id generator. Phase 3 does not require
- * UUIDs — region ids are consumed as opaque strings by downstream stages and
- * the orchestrator. Phase 6's DB repository may swap this for UUIDs at the
- * commit boundary.
- */
 function regionIdFromHint(hint: RegionHint, index: number): string {
   return `region-${index + 1}-${hint.sheet}-${hint.bounds.startRow}x${hint.bounds.startCol}`;
 }
 
 /**
- * Skeleton region produced from a hint. `detect-headers`, `detect-identity`,
- * `classify-columns`, and `propose-bindings` progressively fill in the rest.
- * Phase 3's orchestrator doesn't need every field populated at this point;
- * the final assembly happens in `propose-bindings`.
+ * Skeleton region produced from a hint. Later stages fill in
+ * `headerStrategyByAxis`, `identityStrategy`, `columnBindings`, and any
+ * segment/`cellValueField` fields not already carried on the hint.
  */
 function skeletonRegionFromHint(hint: RegionHint, index: number): Region {
-  const now = Date.now();
-  void now;
   const region: Region = {
     id: regionIdFromHint(hint, index),
     sheet: hint.sheet,
     bounds: { ...hint.bounds },
-    boundsMode: "absolute",
     targetEntityDefinitionId: hint.targetEntityDefinitionId,
-    orientation: hint.orientation,
-    headerAxis: hint.headerAxis,
+    headerAxes: hint.headerAxes,
     identityStrategy: { kind: "rowPosition", confidence: 0 },
     columnBindings: [],
     skipRules: [],
@@ -39,17 +28,24 @@ function skeletonRegionFromHint(hint: RegionHint, index: number): Region {
     confidence: { region: 0, aggregate: 0 },
     warnings: [],
   };
-  if (hint.recordsAxisName) {
-    region.recordsAxisName = { name: hint.recordsAxisName, source: "user" };
-  }
-  if (hint.secondaryRecordsAxisName) {
-    region.secondaryRecordsAxisName = {
-      name: hint.secondaryRecordsAxisName,
-      source: "user",
+  if (hint.segmentsByAxis) {
+    region.segmentsByAxis = {
+      row: hint.segmentsByAxis.row
+        ? hint.segmentsByAxis.row.map((s) => ({ ...s }))
+        : undefined,
+      column: hint.segmentsByAxis.column
+        ? hint.segmentsByAxis.column.map((s) => ({ ...s }))
+        : undefined,
     };
   }
-  if (hint.cellValueName) {
-    region.cellValueName = { name: hint.cellValueName, source: "user" };
+  if (hint.cellValueField) {
+    region.cellValueField = { ...hint.cellValueField };
+  }
+  if (hint.recordsAxis !== undefined) {
+    region.recordsAxis = hint.recordsAxis;
+  }
+  if (hint.recordAxisTerminator) {
+    region.recordAxisTerminator = { ...hint.recordAxisTerminator };
   }
   if (hint.axisAnchorCell) {
     region.axisAnchorCell = { ...hint.axisAnchorCell };
@@ -59,14 +55,13 @@ function skeletonRegionFromHint(hint: RegionHint, index: number): Region {
 
 /**
  * Stage 1 — populate `detectedRegions` from hints. Auto-detect without hints
- * is a Phase 4 feature; for now, absence of hints raises
- * `UNSUPPORTED_LAYOUT_SHAPE`.
+ * is a later-phase feature; absence of hints raises `UNSUPPORTED_LAYOUT_SHAPE`.
  */
 export function detectRegions(state: InterpretState): InterpretState {
   const hints = state.input.regionHints;
   if (!hints || hints.length === 0) {
     throw new Error(
-      "UNSUPPORTED_LAYOUT_SHAPE: regionHints are required (auto-detect lands in Phase 4)"
+      "UNSUPPORTED_LAYOUT_SHAPE: regionHints are required (auto-detect lands in a later phase)"
     );
   }
 

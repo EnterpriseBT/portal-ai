@@ -41,8 +41,7 @@ function uniqueColumnInput(): InterpretInput {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ],
   };
@@ -64,7 +63,6 @@ describe("detectIdentity", () => {
   });
 
   it("falls back to rowPosition when no single column AND no pair of columns produce unique keys", () => {
-    // Every (team, member) pair is duplicated — no single or composite key is unique.
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -91,8 +89,7 @@ describe("detectIdentity", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 2 },
           targetEntityDefinitionId: "team-members",
-          orientation: "rows-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
         },
       ],
     };
@@ -128,23 +125,19 @@ describe("detectIdentity", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
           targetEntityDefinitionId: "team-members",
-          orientation: "rows-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
         },
       ],
     };
     const state = runPipeline(input);
     const regionId = state.detectedRegions[0].id;
     const candidates = state.identityCandidates.get(regionId)!;
-    const compositeOrPosition = candidates[0].strategy.kind;
-    // Composite must be present in the candidate list even if rowPosition
-    // edges it; the caller (propose-bindings) picks between them.
+    const topKind = candidates[0].strategy.kind;
     expect(candidates.some((c) => c.strategy.kind === "composite")).toBe(true);
-    // And the top candidate is either composite or rowPosition (never column).
-    expect(["composite", "rowPosition"]).toContain(compositeOrPosition);
+    expect(["composite", "rowPosition"]).toContain(topKind);
   });
 
-  it("assigns confidence 0 when headerAxis === 'none' and emits only rowPosition", () => {
+  it("emits only rowPosition for a headerless records-are-columns region", () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -165,8 +158,8 @@ describe("detectIdentity", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
           targetEntityDefinitionId: "headerless",
-          orientation: "rows-as-records",
-          headerAxis: "none",
+          headerAxes: [],
+          recordsAxis: "column",
         },
       ],
     };

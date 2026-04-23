@@ -1,4 +1,8 @@
-import type { IdentityStrategy, Region } from "../../plan/index.js";
+import {
+  recordsAxisOf,
+  type IdentityStrategy,
+  type Region,
+} from "../../plan/index.js";
 import type { Sheet } from "../../workbook/index.js";
 import type {
   HeaderCandidate,
@@ -38,17 +42,22 @@ function candidatesForRegion(
   sheet: Sheet,
   headerCandidates: HeaderCandidate[] | undefined
 ): IdentityCandidate[] {
-  const { bounds, headerAxis, sheet: sheetName } = region;
-  const rowHeader =
-    headerAxis === "row" && headerCandidates && headerCandidates.length > 0
-      ? headerCandidates[0]
-      : undefined;
+  const { bounds, sheet: sheetName } = region;
+
+  // Column-based identity only makes sense when records iterate rows — i.e.,
+  // 1D with a row header, or a 2D crosstab (which also iterates rows as
+  // records in today's sense). For records-are-columns or headerless-column,
+  // we skip column identity.
+  const recAxis = recordsAxisOf(region);
+  const admitsColumnIdentity =
+    recAxis === "row" || region.headerAxes.length === 2;
+
+  const rowHeader = headerCandidates?.find((c) => c.axis === "row");
   const headerRow = rowHeader?.index ?? bounds.startRow - 1;
 
   const out: IdentityCandidate[] = [];
 
-  // Only rows-as-records (or cells-as-records) admit column-based identity.
-  if (headerAxis !== "none" && region.orientation !== "columns-as-records") {
+  if (admitsColumnIdentity) {
     for (let c = bounds.startCol; c <= bounds.endCol; c++) {
       const values = collectDataValuesInColumn(
         sheet,
@@ -111,8 +120,6 @@ function candidatesForRegion(
     }
   }
 
-  // rowPosition is always a (poor) last resort — always emits a warning at
-  // score-and-warn time. Lower score than any real candidate.
   out.push({
     strategy: { kind: "rowPosition", confidence: 0.3 },
     score: 0.3,
@@ -126,8 +133,8 @@ function candidatesForRegion(
 
 /**
  * Stage 3 — populate `identityCandidates` per region. Prefers single unique
- * column > composite 2-column key > rowPosition fallback. Actual warning
- * emission for `rowPosition` lives in `score-and-warn`.
+ * column > composite 2-column key > rowPosition fallback. `rowPosition`
+ * warning emission happens in `score-and-warn`.
  */
 export function detectIdentity(state: InterpretState): InterpretState {
   const next = new Map(state.identityCandidates);

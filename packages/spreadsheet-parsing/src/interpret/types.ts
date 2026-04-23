@@ -6,9 +6,12 @@
  */
 
 import type {
+  AxisMember,
+  CellValueField,
   IdentityStrategy,
   Region,
   RegionHint,
+  Segment,
   Warning,
 } from "../plan/index.js";
 import type { Workbook } from "../workbook/index.js";
@@ -16,11 +19,12 @@ import type { Workbook } from "../workbook/index.js";
 /**
  * A candidate header row/column discovered by `detect-headers`, scored so
  * `propose-bindings` can pick the best one. The heuristic default produces
- * one or more candidates per region; the Phase 4 LLM stage can override.
+ * one or more candidates per (region, axis); the Phase 4 LLM stage can
+ * override.
  */
 export interface HeaderCandidate {
-  /** Axis this candidate describes — matches the region's `headerAxis`. */
-  axis: "row" | "column";
+  /** Axis this candidate describes — one of the region's declared header axes. */
+  axis: AxisMember;
   /** 1-based sheet index of the header row (when axis === "row") or column. */
   index: number;
   /** Extracted header labels in reading order. Empty slots become `""`. */
@@ -86,18 +90,19 @@ export interface InterpretState {
   headerCandidates: Map<string, HeaderCandidate[]>;
   identityCandidates: Map<string, IdentityCandidate[]>;
   columnClassifications: Map<string, ColumnClassification[]>;
-  recordsAxisNameSuggestions: Map<string, RecordsAxisNameSuggestion>;
+  /** Keyed by pivot segment id (not region id). */
+  segmentAxisNameSuggestions: Map<string, RecordsAxisNameSuggestion>;
+  /** Seeded from hints; propose-bindings writes segments onto the region. */
+  segmentsByRegion: Map<
+    string,
+    { row?: Segment[]; column?: Segment[] } | undefined
+  >;
+  cellValueFieldByRegion: Map<string, CellValueField | undefined>;
   reconcileDiff?: ReconcileDiff;
   confidence: Map<string, RegionConfidence>;
   warnings: Warning[];
 }
 
-/**
- * Narrow view of `InterpretInput` for stage consumption — the adapted
- * Workbook handle replaces the serialisable shape from the input contract so
- * stage functions can call `sheet.cell(r, c)` without reconstructing
- * accessors per stage.
- */
 export interface InterpretInputView {
   regionHints?: RegionHint[];
   priorPlan?: import("../plan/index.js").LayoutPlan;
@@ -120,11 +125,6 @@ export interface ColumnDefinitionCatalogEntry {
   type?: string;
 }
 
-/**
- * Token + latency summary that LLM-backed deps optionally report alongside
- * their functional result so `interpret()` can emit
- * `interpret.stage.completed` and `interpret.cost.summary` events.
- */
 export interface LlmUsage {
   inputTokens?: number;
   outputTokens?: number;
@@ -132,24 +132,11 @@ export interface LlmUsage {
   modelId?: string;
 }
 
-/**
- * Rich return shape for the classifier — mirrors the legacy `ColumnClassification[]`
- * as an optional upgrade path. Consumers (api-side factories) that want to
- * contribute to `interpret()`'s cost summary return the object form; consumers
- * that don't care just return the array.
- */
 export interface ClassifierResult {
   classifications: ColumnClassification[];
   usage?: LlmUsage;
 }
 
-/**
- * Injectable classifier — resolves source headers to `ColumnDefinition` ids.
- * The default built-in classifier does exact + normalised-key matching only;
- * Phase 4 replaces the default with an LLM-backed implementation without
- * touching stage code. Return either the plain `ColumnClassification[]` or
- * the object form that includes `usage` for observability.
- */
 export type ClassifierFn = (
   candidates: ClassifierCandidate[],
   catalog: ColumnDefinitionCatalogEntry[]
@@ -158,19 +145,11 @@ export type ClassifierFn = (
   | ColumnClassification[]
   | ClassifierResult;
 
-/**
- * Rich return shape for axis-name recommender.
- */
 export interface AxisNameRecommenderResult {
   suggestion: RecordsAxisNameSuggestion | null;
   usage?: LlmUsage;
 }
 
-/**
- * Injectable axis-name recommender — invoked only for pivoted regions whose
- * user has not supplied a `recordsAxisName`. The default built-in returns
- * `null` (no recommendation); Phase 4 wires the narrow AI sub-call.
- */
 export type AxisNameRecommenderFn = (
   axisLabels: string[]
 ) =>
@@ -179,11 +158,6 @@ export type AxisNameRecommenderFn = (
   | null
   | AxisNameRecommenderResult;
 
-/**
- * Minimal structured logger the parser module can emit into without depending
- * on Pino. Consumers (`apps/api`) wire a real pino instance — the call shape
- * `(obj, msg?) => void` matches pino's signature.
- */
 export interface ParserLogger {
   info(obj: Record<string, unknown>, msg?: string): void;
   warn(obj: Record<string, unknown>, msg?: string): void;

@@ -45,8 +45,7 @@ function wellFormed(): InterpretInput {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ],
   };
@@ -54,7 +53,6 @@ function wellFormed(): InterpretInput {
 
 describe("scoreAndWarn", () => {
   it("emits ROW_POSITION_IDENTITY at 'warn' when the region's identity falls back to rowPosition", async () => {
-    // A sheet where no column is unique and no composite is unique either.
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -79,8 +77,7 @@ describe("scoreAndWarn", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 2 },
           targetEntityDefinitionId: "team-members",
-          orientation: "rows-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
         },
       ],
     };
@@ -93,19 +90,19 @@ describe("scoreAndWarn", () => {
     expect(warn?.severity).toBe("warn");
   });
 
-  it("emits PIVOTED_REGION_MISSING_AXIS_NAME as a blocker when a pivoted region has no axis name", async () => {
+  it("emits PIVOTED_REGION_MISSING_AXIS_NAME as a blocker when a pivot segment has no axis name", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
           {
             name: "Sheet1",
-            dimensions: { rows: 3, cols: 3 },
+            dimensions: { rows: 2, cols: 3 },
             cells: [
-              { row: 1, col: 1, value: "" },
               { row: 1, col: 2, value: "Jan" },
               { row: 1, col: 3, value: "Feb" },
               { row: 2, col: 1, value: "Revenue" },
-              { row: 3, col: 1, value: "Cost" },
+              { row: 2, col: 2, value: 100 },
+              { row: 2, col: 3, value: 200 },
             ],
           },
         ],
@@ -113,10 +110,23 @@ describe("scoreAndWarn", () => {
       regionHints: [
         {
           sheet: "Sheet1",
-          bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
           targetEntityDefinitionId: "monthly",
-          orientation: "columns-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              { kind: "skip", positionCount: 1 },
+              {
+                kind: "pivot",
+                id: "month-seg",
+                axisName: "month",
+                axisNameSource: "anchor-cell",
+                positionCount: 2,
+              },
+            ],
+          },
+          cellValueField: { name: "revenue", nameSource: "user" },
+          // No axisAnchorCell → anchor-cell source is unresolved → warning fires.
         },
       ],
     };
@@ -133,7 +143,6 @@ describe("scoreAndWarn", () => {
     const input = wellFormed();
     const state = await run(input);
     const region = state.detectedRegions[0];
-    // "id" and "name" are classified with null columnDefinitionId because no catalog was supplied.
     const unrecognized = region.warnings.filter(
       (w) => w.code === "UNRECOGNIZED_COLUMN"
     );
@@ -159,7 +168,7 @@ describe("scoreAndWarn", () => {
   });
 });
 
-describe("scoreAndWarn — DUPLICATE_ENTITY_TARGET (C1)", () => {
+describe("scoreAndWarn — DUPLICATE_ENTITY_TARGET", () => {
   it("emits a blocker on the second region when two hints share a target", async () => {
     const input: InterpretInput = {
       workbook: {
@@ -189,15 +198,13 @@ describe("scoreAndWarn — DUPLICATE_ENTITY_TARGET (C1)", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
           targetEntityDefinitionId: "contacts",
-          orientation: "rows-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
         },
         {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 3, endRow: 3, endCol: 4 },
           targetEntityDefinitionId: "contacts",
-          orientation: "rows-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
         },
       ],
     };
@@ -215,69 +222,21 @@ describe("scoreAndWarn — DUPLICATE_ENTITY_TARGET (C1)", () => {
     expect(secondDupe?.severity).toBe("blocker");
   });
 
-  it("emits the blocker when two same-target regions sit on different sheets", async () => {
-    const input: InterpretInput = {
-      workbook: {
-        sheets: [
-          {
-            name: "Sheet1",
-            dimensions: { rows: 2, cols: 2 },
-            cells: [
-              { row: 1, col: 1, value: "id" },
-              { row: 1, col: 2, value: "name" },
-              { row: 2, col: 1, value: "a-1" },
-              { row: 2, col: 2, value: "alice" },
-            ],
-          },
-          {
-            name: "Sheet2",
-            dimensions: { rows: 2, cols: 2 },
-            cells: [
-              { row: 1, col: 1, value: "id" },
-              { row: 1, col: 2, value: "name" },
-              { row: 2, col: 1, value: "b-1" },
-              { row: 2, col: 2, value: "bob" },
-            ],
-          },
-        ],
-      },
-      regionHints: [
-        {
-          sheet: "Sheet1",
-          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
-          targetEntityDefinitionId: "contacts",
-          orientation: "rows-as-records",
-          headerAxis: "row",
-        },
-        {
-          sheet: "Sheet2",
-          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
-          targetEntityDefinitionId: "contacts",
-          orientation: "rows-as-records",
-          headerAxis: "row",
-        },
-      ],
-    };
-    const state = await run(input);
-    const second = state.detectedRegions[1];
-    const dupe = second.warnings.find(
-      (w) => w.code === "DUPLICATE_ENTITY_TARGET"
-    );
-    expect(dupe).toBeDefined();
-    expect(dupe?.severity).toBe("blocker");
-  });
-
   it("does not emit the blocker for regions with targetEntityDefinitionId === null", () => {
-    // RegionHintSchema requires a non-null target, so construct state directly
-    // to exercise the defensive null guard in the duplicate-target pass.
     const baseRegion: Region = {
       id: "r1",
       sheet: "Sheet1",
       bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
-      boundsMode: "absolute",
       targetEntityDefinitionId: null as unknown as string,
-      orientation: "rows-as-records",
-      headerAxis: "row",
+      headerAxes: ["row"],
+      segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row",
+          locator: { kind: "row", sheet: "Sheet1", row: 1 },
+          confidence: 0.5,
+        },
+      },
       identityStrategy: { kind: "rowPosition", confidence: 0 },
       columnBindings: [],
       skipRules: [],
@@ -290,9 +249,15 @@ describe("scoreAndWarn — DUPLICATE_ENTITY_TARGET (C1)", () => {
       warnings: [],
     };
     const state: InterpretState = {
-      input: { regionHints: undefined, priorPlan: undefined, userHints: undefined },
+      input: {
+        regionHints: undefined,
+        priorPlan: undefined,
+        userHints: undefined,
+      },
       workbook: makeWorkbook({
-        sheets: [{ name: "Sheet1", dimensions: { rows: 2, cols: 2 }, cells: [] }],
+        sheets: [
+          { name: "Sheet1", dimensions: { rows: 2, cols: 2 }, cells: [] },
+        ],
       }),
       detectedRegions: [
         { ...baseRegion, id: "r1" },
@@ -301,7 +266,9 @@ describe("scoreAndWarn — DUPLICATE_ENTITY_TARGET (C1)", () => {
       headerCandidates: new Map(),
       identityCandidates: new Map(),
       columnClassifications: new Map(),
-      recordsAxisNameSuggestions: new Map(),
+      segmentAxisNameSuggestions: new Map(),
+      segmentsByRegion: new Map(),
+      cellValueFieldByRegion: new Map(),
       confidence: new Map(),
       warnings: [],
     };

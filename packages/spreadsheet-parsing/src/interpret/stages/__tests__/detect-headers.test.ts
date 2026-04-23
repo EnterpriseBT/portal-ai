@@ -35,8 +35,7 @@ function simpleInput(): InterpretInput {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
       },
     ],
   };
@@ -64,13 +63,10 @@ describe("detectHeaders", () => {
             name: "Sheet1",
             dimensions: { rows: 4, cols: 3 },
             cells: [
-              // Row 1: a single merged title — single non-empty cell, low score.
               { row: 1, col: 1, value: "My Spreadsheet" },
-              // Row 2: three distinct, non-numeric labels — header-y.
               { row: 2, col: 1, value: "name" },
               { row: 2, col: 2, value: "age" },
               { row: 2, col: 3, value: "email" },
-              // Rows 3–4: data with numbers mixed in.
               { row: 3, col: 1, value: "alice" },
               { row: 3, col: 2, value: 30 },
               { row: 3, col: 3, value: "a@x.com" },
@@ -86,8 +82,7 @@ describe("detectHeaders", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
           targetEntityDefinitionId: "contacts",
-          orientation: "rows-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
         },
       ],
     };
@@ -98,7 +93,7 @@ describe("detectHeaders", () => {
     expect(best.labels).toEqual(["name", "age", "email"]);
   });
 
-  it("produces a column-axis candidate when headerAxis === 'column'", () => {
+  it("produces a column-axis candidate when headerAxes = ['column']", () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -106,7 +101,6 @@ describe("detectHeaders", () => {
             name: "Sheet1",
             dimensions: { rows: 3, cols: 3 },
             cells: [
-              // Column 1 is the label column; cols 2–3 are data.
               { row: 1, col: 1, value: "Name" },
               { row: 2, col: 1, value: "Age" },
               { row: 3, col: 1, value: "Email" },
@@ -125,8 +119,7 @@ describe("detectHeaders", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
           targetEntityDefinitionId: "contacts",
-          orientation: "columns-as-records",
-          headerAxis: "column",
+          headerAxes: ["column"],
         },
       ],
     };
@@ -138,7 +131,7 @@ describe("detectHeaders", () => {
     expect(best.labels).toEqual(["Name", "Age", "Email"]);
   });
 
-  it("skips header detection when headerAxis === 'none'", () => {
+  it("skips header detection for headerless regions", () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -159,8 +152,8 @@ describe("detectHeaders", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
           targetEntityDefinitionId: "headerless",
-          orientation: "rows-as-records",
-          headerAxis: "none",
+          headerAxes: [],
+          recordsAxis: "row",
         },
       ],
     };
@@ -169,84 +162,30 @@ describe("detectHeaders", () => {
     expect(state.headerCandidates.get(regionId)).toEqual([]);
   });
 
-  it("scans the orthogonal axis for pivoted columns-as-records + headerAxis:row", () => {
-    // Shape: column 1 carries the field names (rowLabels-style); row 1 is
-    // the records-axis label row (Q1..Q4). With headerAxis=row, the region
-    // is pivoted — detect-headers should find column 1 as the field-names
-    // axis rather than scoring row 1 as a header.
+  it("returns both row-axis and column-axis candidates for a 2D crosstab hint", () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
           {
             name: "Sheet1",
-            dimensions: { rows: 5, cols: 5 },
+            dimensions: { rows: 4, cols: 4 },
             cells: [
-              { row: 1, col: 1, value: "metric" },
-              { row: 1, col: 2, value: "Q1" },
-              { row: 1, col: 3, value: "Q2" },
-              { row: 1, col: 4, value: "Q3" },
-              { row: 1, col: 5, value: "Q4" },
-              { row: 2, col: 1, value: "revenue" },
-              { row: 3, col: 1, value: "cost" },
-              { row: 4, col: 1, value: "profit" },
-              { row: 5, col: 1, value: "headcount" },
-              { row: 2, col: 2, value: 10000 },
-              { row: 3, col: 2, value: 5000 },
-              { row: 4, col: 2, value: 5000 },
-              { row: 5, col: 2, value: 12 },
-            ],
-          },
-        ],
-      },
-      regionHints: [
-        {
-          sheet: "Sheet1",
-          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
-          targetEntityDefinitionId: "pivoted-metrics",
-          orientation: "columns-as-records",
-          headerAxis: "row",
-        },
-      ],
-    };
-    const state = runWith(input);
-    const regionId = state.detectedRegions[0].id;
-    const best = state.headerCandidates.get(regionId)![0];
-    expect(best.axis).toBe("column");
-    expect(best.index).toBe(1);
-    expect(best.labels).toEqual([
-      "metric",
-      "revenue",
-      "cost",
-      "profit",
-      "headcount",
-    ]);
-  });
-
-  it("scans the orthogonal axis for pivoted rows-as-records + headerAxis:column", () => {
-    // Shape: row 1 carries field names; column 1 carries records-axis
-    // labels (Q1..Q4 per row). Pivoted — detect-headers should find row 1.
-    const input: InterpretInput = {
-      workbook: {
-        sheets: [
-          {
-            name: "Sheet1",
-            dimensions: { rows: 5, cols: 3 },
-            cells: [
-              { row: 1, col: 1, value: "quarter" },
-              { row: 1, col: 2, value: "revenue" },
-              { row: 1, col: 3, value: "cost" },
+              { row: 1, col: 1, value: "Quarter" },
+              { row: 1, col: 2, value: "North" },
+              { row: 1, col: 3, value: "South" },
+              { row: 1, col: 4, value: "East" },
               { row: 2, col: 1, value: "Q1" },
-              { row: 2, col: 2, value: 10000 },
-              { row: 2, col: 3, value: 5000 },
+              { row: 2, col: 2, value: 100 },
+              { row: 2, col: 3, value: 110 },
+              { row: 2, col: 4, value: 120 },
               { row: 3, col: 1, value: "Q2" },
-              { row: 3, col: 2, value: 12000 },
-              { row: 3, col: 3, value: 6000 },
+              { row: 3, col: 2, value: 200 },
+              { row: 3, col: 3, value: 210 },
+              { row: 3, col: 4, value: 220 },
               { row: 4, col: 1, value: "Q3" },
-              { row: 4, col: 2, value: 14000 },
-              { row: 4, col: 3, value: 7000 },
-              { row: 5, col: 1, value: "Q4" },
-              { row: 5, col: 2, value: 16000 },
-              { row: 5, col: 3, value: 8000 },
+              { row: 4, col: 2, value: 300 },
+              { row: 4, col: 3, value: 310 },
+              { row: 4, col: 4, value: 320 },
             ],
           },
         ],
@@ -254,19 +193,20 @@ describe("detectHeaders", () => {
       regionHints: [
         {
           sheet: "Sheet1",
-          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 3 },
-          targetEntityDefinitionId: "pivoted-rows",
-          orientation: "rows-as-records",
-          headerAxis: "column",
+          bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 4 },
+          targetEntityDefinitionId: "crosstab",
+          headerAxes: ["row", "column"],
+          axisAnchorCell: { row: 1, col: 1 },
         },
       ],
     };
     const state = runWith(input);
     const regionId = state.detectedRegions[0].id;
-    const best = state.headerCandidates.get(regionId)![0];
-    expect(best.axis).toBe("row");
-    expect(best.index).toBe(1);
-    expect(best.labels).toEqual(["quarter", "revenue", "cost"]);
+    const candidates = state.headerCandidates.get(regionId);
+    expect(candidates).toBeDefined();
+    const axes = new Set(candidates!.map((c) => c.axis));
+    expect(axes.has("row")).toBe(true);
+    expect(axes.has("column")).toBe(true);
   });
 
   it("is deterministic across repeated runs", () => {

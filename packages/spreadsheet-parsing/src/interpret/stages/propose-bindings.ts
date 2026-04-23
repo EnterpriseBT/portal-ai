@@ -1,13 +1,16 @@
 import type {
+  AxisMember,
   ColumnBinding,
   HeaderStrategy,
   Region,
+  Segment,
 } from "../../plan/index.js";
 import type {
   ColumnClassification,
   HeaderCandidate,
   IdentityCandidate,
   InterpretState,
+  RecordsAxisNameSuggestion,
 } from "../types.js";
 
 function headerStrategyFromCandidate(
@@ -29,22 +32,39 @@ function headerStrategyFromCandidate(
 }
 
 function bindingsFromClassifications(
+  region: Region,
   classifications: ColumnClassification[],
-  headerAxis: Region["headerAxis"]
+  headerAxis: AxisMember | null
 ): ColumnBinding[] {
   const out: ColumnBinding[] = [];
   for (const c of classifications) {
     if (c.columnDefinitionId === null) continue;
-    if (headerAxis === "none") {
+    if (headerAxis === null) {
+      // Headerless region: use byPositionIndex along the records-axis's
+      // opposite. `sourceCol` is the absolute sheet coord along the header
+      // axis of the classifier (which for headerless falls back to row
+      // iteration); convert to an axis-relative 1-based index.
+      const axis: AxisMember =
+        region.recordsAxis === "row" ? "column" : "row";
+      const start =
+        axis === "row" ? region.bounds.startCol : region.bounds.startRow;
       out.push({
-        sourceLocator: { kind: "byColumnIndex", col: c.sourceCol },
+        sourceLocator: {
+          kind: "byPositionIndex",
+          axis,
+          index: c.sourceCol - start + 1,
+        },
         columnDefinitionId: c.columnDefinitionId,
         confidence: c.confidence,
         rationale: c.rationale,
       });
     } else {
       out.push({
-        sourceLocator: { kind: "byHeaderName", name: c.sourceHeader },
+        sourceLocator: {
+          kind: "byHeaderName",
+          axis: headerAxis,
+          name: c.sourceHeader,
+        },
         columnDefinitionId: c.columnDefinitionId,
         confidence: c.confidence,
         rationale: c.rationale,
@@ -63,46 +83,117 @@ function pickIdentity(
   return candidates[0].strategy;
 }
 
+function positionSpan(region: Region, axis: AxisMember): number {
+  return axis === "row"
+    ? region.bounds.endCol - region.bounds.startCol + 1
+    : region.bounds.endRow - region.bounds.startRow + 1;
+}
+
 /**
- * Stage 6 — assemble the final `Region[]`. Pulls:
- *   - the top header candidate → `headerStrategy`
- *   - classifications → `columnBindings`
- *   - identity candidates → `identityStrategy`
- *   - axis-name suggestions → `recordsAxisName` (with `source: "ai"`) when
- *     the user hasn't supplied a name
- *
- * Confidence roll-up lives in `score-and-warn`, so this stage leaves
- * `region.confidence` at its initial zeros.
+ * Ensure segmentsByAxis is populated for every declared header axis.
+ * PR-1 behavior: hints may carry segments; if absent, synthesize a single
+ * field segment spanning the full axis. Pivoted regions inherit their
+ * pivot/skip segmentation from the hint.
+ */
+function ensureSegments(region: Region): Region["segmentsByAxis"] {
+  const next: Region["segmentsByAxis"] = { ...region.segmentsByAxis };
+  for (const axis of region.headerAxes) {
+    if (next?.[axis] && next[axis]!.length > 0) continue;
+    const span = positionSpan(region, axis);
+    const seg: Segment = { kind: "field", positionCount: span };
+    if (axis === "row") next.row = [seg];
+    else next.column = [seg];
+  }
+  return next;
+}
+
+/**
+ * Propagate AI-recommended axis names onto matching pivot segments that
+ * weren't user-supplied.
+ */
+function applyAxisNameSuggestions(
+  region: Region,
+  suggestions: Map<string, RecordsAxisNameSuggestion>
+): Region["segmentsByAxis"] {
+  const apply = (segs: Segment[] | undefined): Segment[] | undefined => {
+    if (!segs) return segs;
+    return segs.map((s) => {
+      if (s.kind !== "pivot") return s;
+      const suggestion = suggestions.get(s.id);
+      if (!suggestion) return s;
+      if (s.axisNameSource === "user") return s;
+      return {
+        ...s,
+        axisName: suggestion.name,
+        axisNameSource: "ai",
+      };
+    });
+  };
+  return {
+    row: apply(region.segmentsByAxis?.row),
+    column: apply(region.segmentsByAxis?.column),
+  };
+}
+
+/**
+ * Stage 6 — assemble the final region shape. Writes:
+ *   - `headerStrategyByAxis[axis]` for every declared header axis
+ *   - `columnBindings` from classifications (axis-scoped locators)
+ *   - `identityStrategy` from the best candidate
+ *   - `segmentsByAxis` for every declared axis (hints preserved; default
+ *     field-segment synthesised for tidy regions)
+ *   - Propagates AI axis-name suggestions onto pivot segments
  */
 export function proposeBindings(state: InterpretState): InterpretState {
   const detectedRegions: Region[] = state.detectedRegions.map((region) => {
     const headers = state.headerCandidates.get(region.id) ?? [];
     const identities = state.identityCandidates.get(region.id);
     const classifications = state.columnClassifications.get(region.id) ?? [];
-    const bestHeader = headers[0];
-    const suggestion = state.recordsAxisNameSuggestions.get(region.id);
 
-    const next: Region = {
+    let next: Region = {
       ...region,
-      columnBindings: bindingsFromClassifications(
-        classifications,
-        region.headerAxis
-      ),
       identityStrategy: pickIdentity(identities),
     };
 
-    if (region.headerAxis !== "none" && bestHeader) {
-      next.headerStrategy = headerStrategyFromCandidate(region, bestHeader);
+    // Header strategy per declared axis — pick the top candidate on each axis.
+    if (region.headerAxes.length > 0) {
+      const strategyByAxis: Region["headerStrategyByAxis"] = {
+        ...region.headerStrategyByAxis,
+      };
+      for (const axis of region.headerAxes) {
+        if (strategyByAxis?.[axis]) continue;
+        const best = headers.find((h) => h.axis === axis);
+        if (!best) continue;
+        strategyByAxis[axis] = headerStrategyFromCandidate(region, best);
+      }
+      next = { ...next, headerStrategyByAxis: strategyByAxis };
     }
 
-    // Records-axis name: hint (user) > suggestion (ai) > anchor-cell > nothing.
-    if (!next.recordsAxisName && suggestion) {
-      next.recordsAxisName = {
-        name: suggestion.name,
-        source: "ai",
-        confidence: suggestion.confidence,
-      };
-    }
+    // Segments — fill in missing axes with a default field segment.
+    next = { ...next, segmentsByAxis: ensureSegments(next) };
+
+    // Apply AI axis-name suggestions to pivot segments (keyed by segment id).
+    next = {
+      ...next,
+      segmentsByAxis: applyAxisNameSuggestions(
+        next,
+        state.segmentAxisNameSuggestions
+      ),
+    };
+
+    // Column bindings — 1D regions only. Crosstab binding assembly is
+    // deferred to later phases since interpret() doesn't produce crosstabs
+    // in PR-1.
+    const scanAxis: AxisMember | null =
+      next.headerAxes.length === 1 ? next.headerAxes[0] : null;
+    next = {
+      ...next,
+      columnBindings: bindingsFromClassifications(
+        next,
+        classifications,
+        scanAxis
+      ),
+    };
 
     return next;
   });

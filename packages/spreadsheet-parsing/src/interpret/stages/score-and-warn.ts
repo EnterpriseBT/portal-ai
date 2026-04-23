@@ -1,10 +1,10 @@
 import {
   DEFAULT_WARNING_SEVERITY,
   type Region,
+  type Segment,
   type Warning,
 } from "../../plan/index.js";
 import type { InterpretState, RegionConfidence } from "../types.js";
-import { isPivoted } from "./pivoted.util.js";
 
 function emitWarning(
   warnings: Warning[],
@@ -20,11 +20,6 @@ function emitWarning(
   });
 }
 
-/**
- * Weighted mean of binding confidences, weighted by field coverage
- * (1.0 when every header has a classification; lower when many are null).
- * Falls back to 0 when the region has no classifications at all.
- */
 function computeRegionConfidence(
   region: Region,
   classificationsCount: number,
@@ -45,10 +40,6 @@ function computeRegionConfidence(
   return { region: regionScore, aggregate };
 }
 
-/**
- * C1: each target may appear on at most one region; the second region
- * claiming a target carries the blocker so the UI can point at the offender.
- */
 function duplicateTargetRegionIds(regions: readonly Region[]): Set<string> {
   const seenTargets = new Map<string, string>();
   const duplicates = new Set<string>();
@@ -64,11 +55,30 @@ function duplicateTargetRegionIds(regions: readonly Region[]): Set<string> {
   return duplicates;
 }
 
+function pivotSegments(region: Region): Segment[] {
+  const out: Segment[] = [];
+  for (const axis of ["row", "column"] as const) {
+    for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+      if (seg.kind === "pivot") out.push(seg);
+    }
+  }
+  return out;
+}
+
+function segmentMissingAxisName(segment: Segment, region: Region): boolean {
+  if (segment.kind !== "pivot") return false;
+  if (segment.axisName === "") return true;
+  if (segment.axisNameSource === "anchor-cell") {
+    // Anchor-cell sourced names require an axis anchor; missing/empty anchor
+    // is treated as unresolved.
+    if (!region.axisAnchorCell) return true;
+  }
+  return false;
+}
+
 /**
  * Stage 8 — consolidate per-stage signals into the plan's `confidence` fields
- * and emit structured `Warning`s on each region. The warning severity map
- * from `DEFAULT_WARNING_SEVERITY` is the module-level default; consumers can
- * override at the UI layer via a `WarningPolicy` (Phase 4+).
+ * and emit structured `Warning`s on each region.
  */
 export function scoreAndWarn(state: InterpretState): InterpretState {
   const duplicateTargets = duplicateTargetRegionIds(state.detectedRegions);
@@ -108,28 +118,25 @@ export function scoreAndWarn(state: InterpretState): InterpretState {
     }
 
     // ── PIVOTED_REGION_MISSING_AXIS_NAME (blocker) ───────────────────────
-    if (isPivoted(region) && !region.recordsAxisName) {
+    // Fires per pivot segment whose axis name isn't resolved. Crosstab regions
+    // also require `cellValueField.name` to be set.
+    for (const seg of pivotSegments(region)) {
+      if (seg.kind !== "pivot") continue;
+      if (segmentMissingAxisName(seg, region)) {
+        emitWarning(
+          warnings,
+          "PIVOTED_REGION_MISSING_AXIS_NAME",
+          `Pivot segment "${seg.id}" missing axis name — required before commit.`
+        );
+      }
+    }
+    const hasPivot = pivotSegments(region).length > 0;
+    if (hasPivot && !region.cellValueField) {
       emitWarning(
         warnings,
         "PIVOTED_REGION_MISSING_AXIS_NAME",
-        "Pivoted region requires a records-axis name before it can commit."
+        "Pivoted region missing cell-value field."
       );
-    }
-    if (region.orientation === "cells-as-records") {
-      if (!region.secondaryRecordsAxisName) {
-        emitWarning(
-          warnings,
-          "PIVOTED_REGION_MISSING_AXIS_NAME",
-          "Crosstab region missing secondary axis name."
-        );
-      }
-      if (!region.cellValueName) {
-        emitWarning(
-          warnings,
-          "PIVOTED_REGION_MISSING_AXIS_NAME",
-          "Crosstab region missing cell-value name."
-        );
-      }
     }
 
     // ── UNRECOGNIZED_COLUMN (info) ───────────────────────────────────────
@@ -154,7 +161,6 @@ export function scoreAndWarn(state: InterpretState): InterpretState {
     return { ...region, warnings, confidence };
   });
 
-  // Roll up state.confidence map for the orchestrator's use.
   const confidenceMap = new Map<string, RegionConfidence>();
   for (const r of detectedRegions) confidenceMap.set(r.id, r.confidence);
 

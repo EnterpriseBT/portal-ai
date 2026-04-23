@@ -1,4 +1,4 @@
-import type { Region } from "../../plan/index.js";
+import type { AxisMember, Region } from "../../plan/index.js";
 import type { Sheet } from "../../workbook/index.js";
 import { DEFAULT_INTERPRET_CONCURRENCY } from "../deps.js";
 import type { InterpretDeps } from "../deps.js";
@@ -23,8 +23,11 @@ function normalise(text: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-function headerAxisDisabled(region: Region): boolean {
-  return region.headerAxis === "none";
+function fieldNameHeaderAxis(region: Region): AxisMember | null {
+  // Today's pipeline produces 1D regions only; the single declared header
+  // axis is the one classify-columns scans.
+  if (region.headerAxes.length === 1) return region.headerAxes[0];
+  return null;
 }
 
 function candidatesFromHeader(
@@ -33,9 +36,9 @@ function candidatesFromHeader(
   sheet: Sheet
 ): ClassifierCandidate[] {
   const out: ClassifierCandidate[] = [];
-  // For pivoted regions, the axis-anchor cell holds the records-axis name
-  // (e.g. "Month") — not a field name. Skip it so the classifier doesn't
-  // try to match it against a ColumnDefinition.
+  // For pivoted regions, the axis-anchor cell holds the pivot segment's
+  // axis name (e.g. "Month") — not a field name. Skip it so the classifier
+  // doesn't try to match it against a ColumnDefinition.
   const pivoted = isPivoted(region);
   const anchor = region.axisAnchorCell ?? {
     row: region.bounds.startRow,
@@ -128,15 +131,6 @@ async function runBuiltIn(
 
 /**
  * Stage 4 — classify each region's header cells to a `ColumnDefinition` id.
- *
- * The built-in default does heuristic exact/normalised-key matching only —
- * per the `heuristic_vs_ai` memory, semantic matching is the AI prompt's job.
- * Consumers wire a real `ClassifierFn` in Phase 4 without touching this stage.
- *
- * The classifier dep may return either a plain `ColumnClassification[]` or the
- * richer `ClassifierResult` shape (with `usage` for observability). The
- * orchestrator wraps the dep so stages see the plain-array form and the
- * `usage` is intercepted for the `interpret.stage.completed` log event.
  */
 export async function classifyColumns(
   state: InterpretState,
@@ -146,12 +140,11 @@ export async function classifyColumns(
   const classifier = deps.classifier ?? runBuiltIn;
   const catalog = deps.columnDefinitionCatalog ?? [];
 
-  // Synchronous prep pass — figure out which regions need an LLM call and
-  // record empty classifications for the rest. Cheap and deterministic.
   type PendingWork = { regionId: string; candidates: ClassifierCandidate[] };
   const pending: PendingWork[] = [];
   for (const region of state.detectedRegions) {
-    if (headerAxisDisabled(region)) {
+    const scanAxis = fieldNameHeaderAxis(region);
+    if (!scanAxis) {
       next.set(region.id, []);
       continue;
     }
@@ -161,7 +154,7 @@ export async function classifyColumns(
       continue;
     }
     const headers = state.headerCandidates.get(region.id);
-    const best = headers?.[0];
+    const best = headers?.find((c) => c.axis === scanAxis);
     if (!best) {
       next.set(region.id, []);
       continue;
@@ -170,9 +163,6 @@ export async function classifyColumns(
     pending.push({ regionId: region.id, candidates });
   }
 
-  // Fire the classifier across regions in parallel, capped by the shared
-  // concurrency budget. `Promise.all(pending.map(...))` preserves input order
-  // regardless of resolve order, so the final Map mirrors `detectedRegions`.
   const limit = pLimit(deps.concurrency ?? DEFAULT_INTERPRET_CONCURRENCY);
   const results = await Promise.all(
     pending.map((work) =>

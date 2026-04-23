@@ -13,7 +13,7 @@ function pivotedNoNameInput(): InterpretInput {
       sheets: [
         {
           name: "Sheet1",
-          dimensions: { rows: 5, cols: 5 },
+          dimensions: { rows: 4, cols: 5 },
           cells: [
             { row: 1, col: 1, value: "" },
             { row: 1, col: 2, value: "Jan" },
@@ -32,15 +32,28 @@ function pivotedNoNameInput(): InterpretInput {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 5 },
         targetEntityDefinitionId: "monthly",
-        orientation: "columns-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [
+            { kind: "skip", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "month-seg",
+              axisName: "month",
+              axisNameSource: "anchor-cell",
+              positionCount: 4,
+            },
+          ],
+        },
+        cellValueField: { name: "revenue", nameSource: "user" },
+        axisAnchorCell: { row: 1, col: 1 },
       },
     ],
   };
 }
 
 describe("recommendRecordsAxisName", () => {
-  it("invokes the injected recommender only for pivoted regions with no user-supplied recordsAxisName", async () => {
+  it("invokes the injected recommender only for pivot segments with no user-supplied axisName", async () => {
     const recommender: jest.MockedFunction<AxisNameRecommenderFn> = jest.fn(
       async () => ({
         name: "Month",
@@ -52,15 +65,14 @@ describe("recommendRecordsAxisName", () => {
     state = await recommendRecordsAxisName(state, {
       axisNameRecommender: recommender,
     });
-    const regionId = state.detectedRegions[0].id;
     expect(recommender).toHaveBeenCalledTimes(1);
-    expect(state.recordsAxisNameSuggestions.get(regionId)).toEqual({
+    expect(state.segmentAxisNameSuggestions.get("month-seg")).toEqual({
       name: "Month",
       confidence: 0.8,
     });
   });
 
-  it("forwards the axis labels to the recommender (bounded sample)", async () => {
+  it("forwards the axis labels to the recommender (anchor cell excluded)", async () => {
     const recommender: jest.MockedFunction<AxisNameRecommenderFn> = jest.fn(
       async () => null
     );
@@ -71,7 +83,7 @@ describe("recommendRecordsAxisName", () => {
     expect(labels).toEqual(["Jan", "Feb", "Mar", "Apr"]);
   });
 
-  it("skips invocation when the region is not pivoted (rows-as-records + headerAxis 'row')", async () => {
+  it("skips invocation when the region has no pivot segment (tidy)", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -92,8 +104,7 @@ describe("recommendRecordsAxisName", () => {
           sheet: "Sheet1",
           bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
           targetEntityDefinitionId: "x",
-          orientation: "rows-as-records",
-          headerAxis: "row",
+          headerAxes: ["row"],
         },
       ],
     };
@@ -104,13 +115,16 @@ describe("recommendRecordsAxisName", () => {
       axisNameRecommender: recommender,
     });
     expect(recommender).not.toHaveBeenCalled();
-    const regionId = state.detectedRegions[0].id;
-    expect(state.recordsAxisNameSuggestions.get(regionId)).toBeUndefined();
+    expect(state.segmentAxisNameSuggestions.size).toBe(0);
   });
 
-  it("skips invocation when the user already supplied a recordsAxisName via hint", async () => {
+  it("skips invocation when the pivot segment's axisNameSource is 'user'", async () => {
     const input = pivotedNoNameInput();
-    input.regionHints![0].recordsAxisName = "Month";
+    const seg = input.regionHints![0].segmentsByAxis!.row![1];
+    if (seg.kind === "pivot") {
+      seg.axisNameSource = "user";
+      seg.axisName = "Month";
+    }
     const recommender = jest.fn(async () => null);
     let state = detectRegions(createInitialState(input));
     state = detectHeaders(state);
@@ -118,60 +132,7 @@ describe("recommendRecordsAxisName", () => {
     expect(recommender).not.toHaveBeenCalled();
   });
 
-  it("reads records-axis labels from headerAxis direction, not from detect-headers (pivoted cols-as-records + row)", async () => {
-    // detect-headers now scans the field-names axis for pivoted regions —
-    // the recommender must still get the records-axis labels (Q1..Q4) from
-    // the `headerAxis` line, excluding the anchor cell "metric".
-    const input: InterpretInput = {
-      workbook: {
-        sheets: [
-          {
-            name: "Sheet1",
-            dimensions: { rows: 5, cols: 5 },
-            cells: [
-              { row: 1, col: 1, value: "metric" },
-              { row: 1, col: 2, value: "Q1" },
-              { row: 1, col: 3, value: "Q2" },
-              { row: 1, col: 4, value: "Q3" },
-              { row: 1, col: 5, value: "Q4" },
-              { row: 2, col: 1, value: "revenue" },
-              { row: 3, col: 1, value: "cost" },
-              { row: 4, col: 1, value: "profit" },
-              { row: 5, col: 1, value: "headcount" },
-            ],
-          },
-        ],
-      },
-      regionHints: [
-        {
-          sheet: "Sheet1",
-          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
-          targetEntityDefinitionId: "metrics",
-          orientation: "columns-as-records",
-          headerAxis: "row",
-        },
-      ],
-    };
-    const recommender: jest.MockedFunction<AxisNameRecommenderFn> = jest.fn(
-      async () => ({ name: "Quarter", confidence: 0.9 })
-    );
-    let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = await recommendRecordsAxisName(state, {
-      axisNameRecommender: recommender,
-    });
-    expect(recommender).toHaveBeenCalledTimes(1);
-    const [labels] = recommender.mock.calls[0];
-    expect(labels).toEqual(["Q1", "Q2", "Q3", "Q4"]);
-    const regionId = state.detectedRegions[0].id;
-    expect(state.recordsAxisNameSuggestions.get(regionId)).toEqual({
-      name: "Quarter",
-      confidence: 0.9,
-    });
-  });
-
   it("fans out across pivoted regions concurrently, bounded by the concurrency cap", async () => {
-    // Three pivoted regions, each requiring a recommender call.
     const input: InterpretInput = {
       workbook: {
         sheets: ["A", "B", "C"].map((name) => ({
@@ -189,12 +150,25 @@ describe("recommendRecordsAxisName", () => {
           ],
         })),
       },
-      regionHints: ["A", "B", "C"].map((sheet) => ({
+      regionHints: ["A", "B", "C"].map((sheet, i) => ({
         sheet,
         bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 5 },
         targetEntityDefinitionId: `ent-${sheet}`,
-        orientation: "columns-as-records",
-        headerAxis: "row",
+        headerAxes: ["row" as const],
+        segmentsByAxis: {
+          row: [
+            { kind: "skip" as const, positionCount: 1 },
+            {
+              kind: "pivot" as const,
+              id: `seg-${i}`,
+              axisName: "month",
+              axisNameSource: "anchor-cell" as const,
+              positionCount: 4,
+            },
+          ],
+        },
+        cellValueField: { name: "revenue", nameSource: "user" as const },
+        axisAnchorCell: { row: 1, col: 1 },
       })),
     };
 
@@ -219,19 +193,18 @@ describe("recommendRecordsAxisName", () => {
     expect(recommender).toHaveBeenCalledTimes(3);
     expect(peak).toBeGreaterThanOrEqual(2);
     expect(peak).toBeLessThanOrEqual(3);
-    for (const region of state.detectedRegions) {
-      expect(state.recordsAxisNameSuggestions.get(region.id)).toEqual({
+    for (let i = 0; i < 3; i++) {
+      expect(state.segmentAxisNameSuggestions.get(`seg-${i}`)).toEqual({
         name: "Month",
         confidence: 0.8,
       });
     }
   });
 
-  it("the default recommender returns null (no AI in Phase 3)", async () => {
+  it("the default recommender (absent) produces no suggestions", async () => {
     let state = detectRegions(createInitialState(pivotedNoNameInput()));
     state = detectHeaders(state);
     state = await recommendRecordsAxisName(state, {});
-    const regionId = state.detectedRegions[0].id;
-    expect(state.recordsAxisNameSuggestions.get(regionId)).toBeUndefined();
+    expect(state.segmentAxisNameSuggestions.size).toBe(0);
   });
 });

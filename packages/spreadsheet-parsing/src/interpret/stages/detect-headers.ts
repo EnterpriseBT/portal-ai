@@ -1,7 +1,6 @@
-import type { Region } from "../../plan/index.js";
+import type { AxisMember, Region } from "../../plan/index.js";
 import type { Sheet, WorkbookCell } from "../../workbook/index.js";
 import type { HeaderCandidate, InterpretState } from "../types.js";
-import { fieldNamesAxis } from "./pivoted.util.js";
 
 const NUMERIC_RE = /^-?\d+(?:\.\d+)?$/;
 
@@ -19,10 +18,6 @@ function cellLabel(cell: WorkbookCell | undefined): string {
  *   2. Fraction of cells that are non-numeric strings.
  *   3. Distinct values — a header row rarely repeats a label.
  *   4. At least two cells — a single-cell row is more likely a title.
- *
- * The score is a weighted sum in [0, 1]; relative ranking is what matters,
- * not absolute calibration. Consumers compare scores across candidates for
- * the same region only.
  */
 function scoreHeaderRow(labels: string[]): number {
   if (labels.length === 0) return 0;
@@ -70,21 +65,20 @@ function collectColLabels(
   return labels;
 }
 
-function candidatesForRegion(region: Region, sheet: Sheet): HeaderCandidate[] {
+function candidatesForAxis(
+  region: Region,
+  sheet: Sheet,
+  axis: AxisMember
+): HeaderCandidate[] {
   const { bounds } = region;
-  // The header detection scans the **field-names** axis — for non-pivoted
-  // regions that's `headerAxis`, for pivoted regions it's the orthogonal
-  // axis (headerAxis carries records-axis labels in that case, not fields).
-  const scanAxis = fieldNamesAxis(region);
-  if (!scanAxis) return [];
-  const candidates: HeaderCandidate[] = [];
+  const out: HeaderCandidate[] = [];
 
-  if (scanAxis === "row") {
+  if (axis === "row") {
     for (let r = bounds.startRow; r <= bounds.endRow; r++) {
       const labels = collectRowLabels(sheet, r, bounds.startCol, bounds.endCol);
       const score = scoreHeaderRow(labels);
       if (score > 0) {
-        candidates.push({
+        out.push({
           axis: "row",
           index: r,
           labels,
@@ -100,7 +94,7 @@ function candidatesForRegion(region: Region, sheet: Sheet): HeaderCandidate[] {
       const labels = collectColLabels(sheet, c, bounds.startRow, bounds.endRow);
       const score = scoreHeaderRow(labels);
       if (score > 0) {
-        candidates.push({
+        out.push({
           axis: "column",
           index: c,
           labels,
@@ -113,15 +107,14 @@ function candidatesForRegion(region: Region, sheet: Sheet): HeaderCandidate[] {
     }
   }
 
-  // Highest score first; tie-break by earlier index (closer to top-left).
-  candidates.sort((a, b) => b.score - a.score || a.index - b.index);
-  return candidates;
+  out.sort((a, b) => b.score - a.score || a.index - b.index);
+  return out;
 }
 
 /**
- * Stage 2 — populate `headerCandidates` per region. Skipped for regions whose
- * `headerAxis === "none"`. The Phase 4 LLM stage can override this stage's
- * output but the heuristic is the default for Mode A snapshot uploads.
+ * Stage 2 — populate `headerCandidates` per region. Scans every axis in
+ * `region.headerAxes` and merges the per-axis candidate lists (already sorted
+ * by score within an axis). Skipped for headerless regions.
  */
 export function detectHeaders(state: InterpretState): InterpretState {
   const next = new Map(state.headerCandidates);
@@ -131,7 +124,11 @@ export function detectHeaders(state: InterpretState): InterpretState {
       next.set(region.id, []);
       continue;
     }
-    next.set(region.id, candidatesForRegion(region, sheet));
+    const merged: HeaderCandidate[] = [];
+    for (const axis of region.headerAxes) {
+      merged.push(...candidatesForAxis(region, sheet, axis));
+    }
+    next.set(region.id, merged);
   }
   return { ...state, headerCandidates: next };
 }

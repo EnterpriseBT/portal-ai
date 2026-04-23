@@ -63,8 +63,21 @@ function pivotedInput(): InterpretInput {
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 4 },
         targetEntityDefinitionId: "monthly",
-        orientation: "columns-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [
+            { kind: "skip", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "month-seg",
+              axisName: "month",
+              axisNameSource: "anchor-cell",
+              positionCount: 3,
+            },
+          ],
+        },
+        cellValueField: { name: "revenue", nameSource: "user" },
+        axisAnchorCell: { row: 1, col: 1 },
       },
     ],
   };
