@@ -1,25 +1,5 @@
 import { z } from "zod";
 
-export const ORIENTATIONS = [
-  "rows-as-records",
-  "columns-as-records",
-  "cells-as-records",
-] as const;
-export const OrientationEnum = z.enum(ORIENTATIONS);
-export type Orientation = z.infer<typeof OrientationEnum>;
-
-export const HEADER_AXES = ["row", "column", "none"] as const;
-export const HeaderAxisEnum = z.enum(HEADER_AXES);
-export type HeaderAxis = z.infer<typeof HeaderAxisEnum>;
-
-export const BOUNDS_MODES = [
-  "absolute",
-  "untilEmpty",
-  "matchesPattern",
-] as const;
-export const BoundsModeEnum = z.enum(BOUNDS_MODES);
-export type BoundsMode = z.infer<typeof BoundsModeEnum>;
-
 export const AXIS_NAME_SOURCES = ["user", "ai", "anchor-cell"] as const;
 export const AxisNameSourceEnum = z.enum(AXIS_NAME_SOURCES);
 export type AxisNameSource = z.infer<typeof AxisNameSourceEnum>;
@@ -36,7 +16,10 @@ export const IDENTITY_STRATEGY_KINDS = [
 export const IdentityStrategyKindEnum = z.enum(IDENTITY_STRATEGY_KINDS);
 export type IdentityStrategyKind = z.infer<typeof IdentityStrategyKindEnum>;
 
-export const BINDING_SOURCE_KINDS = ["byHeaderName", "byColumnIndex"] as const;
+export const BINDING_SOURCE_KINDS = [
+  "byHeaderName",
+  "byPositionIndex",
+] as const;
 export const BindingSourceKindEnum = z.enum(BINDING_SOURCE_KINDS);
 export type BindingSourceKind = z.infer<typeof BindingSourceKindEnum>;
 
@@ -48,6 +31,19 @@ export const SKIP_RULE_AXES = ["row", "column"] as const;
 export const SkipRuleAxisEnum = z.enum(SKIP_RULE_AXES);
 export type SkipRuleAxis = z.infer<typeof SkipRuleAxisEnum>;
 
+/** Region axis membership: "row" = header is a row of cells; "column" = header is a column of cells. */
+export const AXIS_MEMBERS = ["row", "column"] as const;
+export const AxisMemberEnum = z.enum(AXIS_MEMBERS);
+export type AxisMember = z.infer<typeof AxisMemberEnum>;
+
+export const SEGMENT_KINDS = ["field", "pivot", "skip"] as const;
+export const SegmentKindEnum = z.enum(SEGMENT_KINDS);
+export type SegmentKind = z.infer<typeof SegmentKindEnum>;
+
+export const TERMINATOR_KINDS = ["untilBlank", "matchesPattern"] as const;
+export const TerminatorKindEnum = z.enum(TERMINATOR_KINDS);
+export type TerminatorKind = z.infer<typeof TerminatorKindEnum>;
+
 export const DRIFT_ACTIONS = ["halt", "auto-apply"] as const;
 export const DriftActionEnum = z.enum(DRIFT_ACTIONS);
 export type DriftAction = z.infer<typeof DriftActionEnum>;
@@ -56,5 +52,5 @@ export const DRIFT_SEVERITIES = ["none", "info", "warn", "blocker"] as const;
 export const DriftSeverityEnum = z.enum(DRIFT_SEVERITIES);
 export type DriftSeverity = z.infer<typeof DriftSeverityEnum>;
 
-/** Consecutive unskippable blank records that terminate an `untilEmpty` region. */
-export const DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT = 2;
+/** Default consecutive-blank count for `untilBlank` terminators. */
+export const DEFAULT_UNTIL_BLANK_COUNT = 2;

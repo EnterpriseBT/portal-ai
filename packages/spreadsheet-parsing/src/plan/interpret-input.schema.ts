@@ -1,10 +1,20 @@
 import { z } from "zod";
 
 import { WorkbookSchema } from "../workbook/schema.js";
-import { HeaderAxisEnum, OrientationEnum } from "./enums.js";
+import { AxisMemberEnum } from "./enums.js";
 import { LayoutPlanSchema } from "./layout-plan.schema.js";
 import { DriftReportSchema } from "./drift.schema.js";
+import {
+  CellValueFieldSchema,
+  SegmentSchema,
+  TerminatorSchema,
+} from "./region.schema.js";
 
+/**
+ * A region hint mirrors the final `Region` shape, but carries only the pieces
+ * a caller (UI / auto-detect) can determine upfront. Everything else (header
+ * strategy per axis, identity, bindings) is filled in by interpret().
+ */
 export const RegionHintSchema = z.object({
   sheet: z.string().min(1),
   bounds: z.object({
@@ -14,11 +24,16 @@ export const RegionHintSchema = z.object({
     endCol: z.number().int().min(1),
   }),
   targetEntityDefinitionId: z.string().min(1),
-  orientation: OrientationEnum,
-  headerAxis: HeaderAxisEnum,
-  recordsAxisName: z.string().min(1).optional(),
-  secondaryRecordsAxisName: z.string().min(1).optional(),
-  cellValueName: z.string().min(1).optional(),
+  headerAxes: z.array(AxisMemberEnum).max(2).default([]),
+  segmentsByAxis: z
+    .object({
+      row: z.array(SegmentSchema).optional(),
+      column: z.array(SegmentSchema).optional(),
+    })
+    .optional(),
+  cellValueField: CellValueFieldSchema.optional(),
+  recordsAxis: AxisMemberEnum.optional(),
+  recordAxisTerminator: TerminatorSchema.optional(),
   axisAnchorCell: z
     .object({
       row: z.number().int().min(1),

@@ -1,12 +1,12 @@
 export {
-  ORIENTATIONS,
-  OrientationEnum,
-  HEADER_AXES,
-  HeaderAxisEnum,
-  BOUNDS_MODES,
-  BoundsModeEnum,
   AXIS_NAME_SOURCES,
   AxisNameSourceEnum,
+  AXIS_MEMBERS,
+  AxisMemberEnum,
+  SEGMENT_KINDS,
+  SegmentKindEnum,
+  TERMINATOR_KINDS,
+  TerminatorKindEnum,
   HEADER_STRATEGY_KINDS,
   HeaderStrategyKindEnum,
   IDENTITY_STRATEGY_KINDS,
@@ -21,13 +21,13 @@ export {
   DriftActionEnum,
   DRIFT_SEVERITIES,
   DriftSeverityEnum,
-  DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT,
+  DEFAULT_UNTIL_BLANK_COUNT,
 } from "./enums.js";
 export type {
-  Orientation,
-  HeaderAxis,
-  BoundsMode,
   AxisNameSource,
+  AxisMember,
+  SegmentKind,
+  TerminatorKind,
   HeaderStrategyKind,
   IdentityStrategyKind,
   BindingSourceKind,
@@ -88,13 +88,19 @@ export {
 } from "./normalized-key.js";
 
 export {
-  AxisPositionRoleSchema,
-  PivotSegmentSchema,
+  TerminatorSchema,
+  SegmentSchema,
+  CellValueFieldSchema,
   RegionSchema,
+  isCrosstab,
+  isPivoted,
+  isDynamic,
+  recordsAxisOf,
 } from "./region.schema.js";
 export type {
-  AxisPositionRole,
-  PivotSegment,
+  Terminator,
+  Segment,
+  CellValueField,
   Region,
 } from "./region.schema.js";
 

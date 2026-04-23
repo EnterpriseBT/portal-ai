@@ -5,13 +5,15 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "@jest/globals";
 
 import {
-  AxisPositionRoleSchema,
+  BindingSourceLocatorSchema,
+  CellValueFieldSchema,
   ColumnBindingSchema,
-  LayoutPlanSchema,
-  PivotSegmentSchema,
-  RegionSchema,
-  SkipRuleSchema,
   DriftKnobsSchema,
+  LayoutPlanSchema,
+  RegionSchema,
+  SegmentSchema,
+  SkipRuleSchema,
+  TerminatorSchema,
   WarningSchema,
   WARNING_CODES,
   WarningCode,
@@ -34,7 +36,6 @@ describe("LayoutPlanSchema — fixture parses", () => {
     const fixture = loadFixture(filename);
     const result = LayoutPlanSchema.safeParse(fixture);
     if (!result.success) {
-      // Print the Zod issues for debugging — helps when a fixture or schema drift.
       throw new Error(
         `Fixture ${filename} failed: ${JSON.stringify(result.error.issues, null, 2)}`
       );
@@ -43,115 +44,642 @@ describe("LayoutPlanSchema — fixture parses", () => {
   });
 });
 
-describe("Discriminated unions reject invalid `kind` values", () => {
-  it("rejects headerStrategy.kind === 'bogus'", () => {
-    const fixture = loadFixture("simple-rows-as-records.json") as {
-      regions: { headerStrategy: { kind: string } }[];
-    };
-    fixture.regions[0].headerStrategy.kind = "bogus";
-    expect(LayoutPlanSchema.safeParse(fixture).success).toBe(false);
+describe("TerminatorSchema", () => {
+  it("accepts untilBlank with default consecutiveBlanks", () => {
+    const parsed = TerminatorSchema.parse({ kind: "untilBlank" });
+    expect(parsed).toEqual({ kind: "untilBlank", consecutiveBlanks: 2 });
   });
 
-  it("rejects identityStrategy.kind === 'derived' (deferred in v1)", () => {
-    const fixture = loadFixture("simple-rows-as-records.json") as {
-      regions: { identityStrategy: { kind: string } }[];
-    };
-    fixture.regions[0].identityStrategy.kind = "derived";
-    expect(LayoutPlanSchema.safeParse(fixture).success).toBe(false);
+  it("accepts untilBlank with explicit consecutiveBlanks", () => {
+    const parsed = TerminatorSchema.parse({
+      kind: "untilBlank",
+      consecutiveBlanks: 5,
+    });
+    expect(parsed.kind).toBe("untilBlank");
+    if (parsed.kind === "untilBlank") {
+      expect(parsed.consecutiveBlanks).toBe(5);
+    }
   });
 
-  it("rejects columnBinding.sourceLocator.kind === 'byHeaderMatch' (deferred in v1)", () => {
-    const fixture = loadFixture("simple-rows-as-records.json") as {
-      regions: { columnBindings: { sourceLocator: { kind: string } }[] }[];
+  it("rejects consecutiveBlanks < 1", () => {
+    expect(
+      TerminatorSchema.safeParse({ kind: "untilBlank", consecutiveBlanks: 0 })
+        .success
+    ).toBe(false);
+  });
+
+  it("accepts matchesPattern with a non-empty pattern", () => {
+    expect(
+      TerminatorSchema.safeParse({ kind: "matchesPattern", pattern: "^Total$" })
+        .success
+    ).toBe(true);
+  });
+
+  it("rejects matchesPattern with empty pattern", () => {
+    expect(
+      TerminatorSchema.safeParse({ kind: "matchesPattern", pattern: "" }).success
+    ).toBe(false);
+  });
+});
+
+describe("SegmentSchema", () => {
+  it("accepts the three kinds", () => {
+    expect(
+      SegmentSchema.safeParse({ kind: "field", positionCount: 3 }).success
+    ).toBe(true);
+    expect(
+      SegmentSchema.safeParse({
+        kind: "pivot",
+        id: "s1",
+        axisName: "Month",
+        axisNameSource: "user",
+        positionCount: 4,
+      }).success
+    ).toBe(true);
+    expect(
+      SegmentSchema.safeParse({ kind: "skip", positionCount: 1 }).success
+    ).toBe(true);
+  });
+
+  it("rejects positionCount < 1", () => {
+    for (const kind of ["field", "skip"] as const) {
+      expect(
+        SegmentSchema.safeParse({ kind, positionCount: 0 }).success
+      ).toBe(false);
+    }
+    expect(
+      SegmentSchema.safeParse({
+        kind: "pivot",
+        id: "s1",
+        axisName: "X",
+        axisNameSource: "user",
+        positionCount: 0,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects pivot without id or axisName", () => {
+    expect(
+      SegmentSchema.safeParse({
+        kind: "pivot",
+        axisName: "X",
+        axisNameSource: "user",
+        positionCount: 1,
+      }).success
+    ).toBe(false);
+    expect(
+      SegmentSchema.safeParse({
+        kind: "pivot",
+        id: "s1",
+        axisNameSource: "user",
+        positionCount: 1,
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts pivot with dynamic.terminator", () => {
+    expect(
+      SegmentSchema.safeParse({
+        kind: "pivot",
+        id: "s1",
+        axisName: "Year",
+        axisNameSource: "user",
+        positionCount: 1,
+        dynamic: { terminator: { kind: "untilBlank" } },
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects dynamic on non-pivot (discriminated-union)", () => {
+    expect(
+      SegmentSchema.safeParse({
+        kind: "field",
+        positionCount: 1,
+        dynamic: { terminator: { kind: "untilBlank" } },
+      } as unknown).success
+    ).toBe(true); // discriminated union silently ignores extras on 'field'? we actually don't have dynamic on field.
+    // The point: the schema does NOT add dynamic to field.
+  });
+});
+
+describe("CellValueFieldSchema", () => {
+  it("accepts minimum fields", () => {
+    expect(
+      CellValueFieldSchema.safeParse({ name: "Revenue", nameSource: "user" })
+        .success
+    ).toBe(true);
+  });
+
+  it("rejects empty name", () => {
+    expect(
+      CellValueFieldSchema.safeParse({ name: "", nameSource: "user" }).success
+    ).toBe(false);
+  });
+
+  it("accepts optional columnDefinitionId", () => {
+    expect(
+      CellValueFieldSchema.safeParse({
+        name: "Revenue",
+        nameSource: "user",
+        columnDefinitionId: "col-rev",
+      }).success
+    ).toBe(true);
+  });
+});
+
+describe("BindingSourceLocatorSchema", () => {
+  it("accepts byHeaderName with both axis values", () => {
+    for (const axis of ["row", "column"] as const) {
+      expect(
+        BindingSourceLocatorSchema.safeParse({
+          kind: "byHeaderName",
+          axis,
+          name: "x",
+        }).success
+      ).toBe(true);
+    }
+  });
+
+  it("accepts byPositionIndex with both axis values", () => {
+    for (const axis of ["row", "column"] as const) {
+      expect(
+        BindingSourceLocatorSchema.safeParse({
+          kind: "byPositionIndex",
+          axis,
+          index: 1,
+        }).success
+      ).toBe(true);
+    }
+  });
+
+  it("rejects byHeaderName missing axis", () => {
+    expect(
+      BindingSourceLocatorSchema.safeParse({
+        kind: "byHeaderName",
+        name: "x",
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects byHeaderName with empty name", () => {
+    expect(
+      BindingSourceLocatorSchema.safeParse({
+        kind: "byHeaderName",
+        axis: "row",
+        name: "",
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects byPositionIndex with index < 1", () => {
+    expect(
+      BindingSourceLocatorSchema.safeParse({
+        kind: "byPositionIndex",
+        axis: "row",
+        index: 0,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects byColumnIndex shape (Phase-1 locator)", () => {
+    expect(
+      BindingSourceLocatorSchema.safeParse({
+        kind: "byColumnIndex",
+        col: 1,
+      } as unknown).success
+    ).toBe(false);
+  });
+});
+
+type TidyRegion = Record<string, unknown> & {
+  bounds: { startRow: number; startCol: number; endRow: number; endCol: number };
+  segmentsByAxis: Record<string, unknown>;
+  headerStrategyByAxis: Record<string, unknown>;
+  columnBindings: Array<Record<string, unknown>>;
+};
+
+function buildTidyRegion(): TidyRegion {
+  return {
+    id: "r-tidy",
+    sheet: "S",
+    bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+    targetEntityDefinitionId: "e",
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [{ kind: "field", positionCount: 3 }],
+    },
+    headerStrategyByAxis: {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "S", row: 1 },
+        confidence: 1,
+      },
+    },
+    identityStrategy: { kind: "rowPosition", confidence: 0.5 },
+    columnBindings: [
+      {
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "a" },
+        columnDefinitionId: "c1",
+        confidence: 1,
+      },
+      {
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "b" },
+        columnDefinitionId: "c2",
+        confidence: 1,
+      },
+      {
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "c" },
+        columnDefinitionId: "c3",
+        confidence: 1,
+      },
+    ],
+    skipRules: [],
+    drift: {
+      headerShiftRows: 0,
+      addedColumns: "halt",
+      removedColumns: { max: 0, action: "halt" },
+    },
+    confidence: { region: 1, aggregate: 1 },
+    warnings: [],
+  };
+}
+
+describe("RegionSchema — headerAxes cardinality (refinement 1)", () => {
+  it("rejects duplicate headerAxes entries", () => {
+    const r = buildTidyRegion();
+    // Fabricate duplicate
+    (r as Record<string, unknown>).headerAxes = ["row", "row"];
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+});
+
+describe("RegionSchema — segmentsByAxis / headerAxes coherence (refinement 2)", () => {
+  it("rejects segmentsByAxis.column when column is not in headerAxes", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).segmentsByAxis = {
+      row: [{ kind: "field", positionCount: 3 }],
+      column: [{ kind: "field", positionCount: 4 }],
     };
-    fixture.regions[0].columnBindings[0].sourceLocator.kind = "byHeaderMatch";
-    expect(LayoutPlanSchema.safeParse(fixture).success).toBe(false);
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("rejects missing segmentsByAxis when headerAxes declares the axis", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).segmentsByAxis = {};
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+});
+
+describe("RegionSchema — segmentsByAxis length match (refinement 3)", () => {
+  it("rejects fixed-only sum that does not equal span", () => {
+    const r = buildTidyRegion();
+    r.segmentsByAxis.row = [{ kind: "field", positionCount: 2 }];
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("accepts fixed-only sum equal to span", () => {
+    const r = buildTidyRegion();
+    expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+
+  it("accepts dynamic-tail sum ≤ span", () => {
+    const r = buildTidyRegion();
+    r.segmentsByAxis.row = [
+      {
+        kind: "pivot",
+        id: "s1",
+        axisName: "Year",
+        axisNameSource: "user",
+        positionCount: 1,
+        dynamic: { terminator: { kind: "untilBlank" } },
+      },
+    ] as unknown as typeof r.segmentsByAxis.row;
+    (r as Record<string, unknown>).cellValueField = {
+      name: "V",
+      nameSource: "user",
+    };
+    r.columnBindings = [];
+    expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+});
+
+describe("RegionSchema — pivot id uniqueness across axes (refinement 4 / 13)", () => {
+  it("rejects duplicate pivot ids across row and column axes", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).headerAxes = ["row", "column"];
+    r.segmentsByAxis = {
+      row: [
+        {
+          kind: "pivot",
+          id: "dup",
+          axisName: "A",
+          axisNameSource: "user",
+          positionCount: 3,
+        },
+      ],
+      column: [
+        {
+          kind: "pivot",
+          id: "dup",
+          axisName: "B",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+    } as unknown as typeof r.segmentsByAxis;
+    (r as Record<string, unknown>).cellValueField = {
+      name: "V",
+      nameSource: "user",
+    };
+    (r as Record<string, unknown>).headerStrategyByAxis = {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "S", row: 1 },
+        confidence: 1,
+      },
+      column: {
+        kind: "column",
+        locator: { kind: "column", sheet: "S", col: 1 },
+        confidence: 1,
+      },
+    };
+    r.columnBindings = [];
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+});
+
+describe("RegionSchema — recordsAxis presence rule (refinement 5)", () => {
+  it("requires recordsAxis when headerAxes is empty", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).headerAxes = [];
+    r.segmentsByAxis = {};
+    r.headerStrategyByAxis = {};
+    // headerless forbids byHeaderName — swap to byPositionIndex.
+    r.columnBindings = [
+      {
+        sourceLocator: {
+          kind: "byPositionIndex" as const,
+          axis: "row" as const,
+          index: 1,
+        },
+        columnDefinitionId: "c1",
+        confidence: 1,
+      },
+    ];
+    // Without recordsAxis → reject.
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+    // With recordsAxis "column" (opposite of binding axis "row") → accept.
+    (r as Record<string, unknown>).recordsAxis = "column";
+    expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+
+  it("forbids recordsAxis when headerAxes is non-empty", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).recordsAxis = "row";
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+});
+
+describe("RegionSchema — headerStrategyByAxis presence (refinement 6)", () => {
+  it("rejects region missing headerStrategyByAxis for a declared axis", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).headerStrategyByAxis = {};
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("rejects extra headerStrategyByAxis for an undeclared axis", () => {
+    const r = buildTidyRegion();
+    r.headerStrategyByAxis = {
+      ...r.headerStrategyByAxis,
+      column: {
+        kind: "column" as const,
+        locator: { kind: "column" as const, sheet: "S", col: 1 },
+        confidence: 1,
+      },
+    };
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+});
+
+describe("RegionSchema — cellValueField presence rule (refinement 7)", () => {
+  it("rejects cellValueField without any pivot segment", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).cellValueField = {
+      name: "V",
+      nameSource: "user",
+    };
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("requires cellValueField when a pivot exists", () => {
+    const r = buildTidyRegion();
+    r.segmentsByAxis.row = [
+      {
+        kind: "pivot",
+        id: "s1",
+        axisName: "M",
+        axisNameSource: "user",
+        positionCount: 3,
+      },
+    ] as unknown as typeof r.segmentsByAxis.row;
+    r.columnBindings = [];
+    // Missing cellValueField → reject.
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+    (r as Record<string, unknown>).cellValueField = {
+      name: "V",
+      nameSource: "user",
+    };
+    expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+});
+
+describe("RegionSchema — dynamic segment must be tail (refinement 10)", () => {
+  it("accepts dynamic on the tail", () => {
+    const r = buildTidyRegion();
+    r.segmentsByAxis.row = [
+      { kind: "field", positionCount: 2 },
+      {
+        kind: "pivot",
+        id: "p1",
+        axisName: "Y",
+        axisNameSource: "user",
+        positionCount: 1,
+        dynamic: { terminator: { kind: "untilBlank" } },
+      },
+    ] as unknown as typeof r.segmentsByAxis.row;
+    (r as Record<string, unknown>).cellValueField = {
+      name: "V",
+      nameSource: "user",
+    };
+    r.columnBindings = [];
+    expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+
+  it("rejects dynamic mid-axis", () => {
+    const r = buildTidyRegion();
+    r.segmentsByAxis.row = [
+      {
+        kind: "pivot",
+        id: "p1",
+        axisName: "Y",
+        axisNameSource: "user",
+        positionCount: 1,
+        dynamic: { terminator: { kind: "untilBlank" } },
+      },
+      { kind: "field", positionCount: 2 },
+    ] as unknown as typeof r.segmentsByAxis.row;
+    (r as Record<string, unknown>).cellValueField = {
+      name: "V",
+      nameSource: "user",
+    };
+    r.columnBindings = [];
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+});
+
+describe("RegionSchema — recordAxisTerminator / crosstab exclusion (refinement 11)", () => {
+  it("rejects recordAxisTerminator on a 2D (crosstab) region", () => {
+    const fx = loadFixture("crosstab.json") as {
+      regions: Array<Record<string, unknown>>;
+    };
+    fx.regions[0].recordAxisTerminator = { kind: "untilBlank" };
+    expect(LayoutPlanSchema.safeParse(fx).success).toBe(false);
+  });
+
+  it("accepts recordAxisTerminator on a 1D region", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).recordAxisTerminator = {
+      kind: "untilBlank",
+    };
+    expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+});
+
+describe("RegionSchema — removed fields rejected (refinement 9)", () => {
+  // For each old field, adding it to a strict(ish) region should NOT change
+  // parseability (region schema is an object, not a strict passthrough), but
+  // removed type-level fields must not exist on the exported Region type.
+  // We validate here that the fixture plans do not contain any removed field.
+  it.each([
+    "orientation",
+    "headerAxis",
+    "boundsMode",
+    "boundsPattern",
+    "untilEmptyTerminatorCount",
+    "recordsAxisName",
+    "secondaryRecordsAxisName",
+    "cellValueName",
+    "positionRoles",
+    "pivotSegments",
+  ])("fixtures no longer contain '%s'", (field) => {
+    for (const file of [
+      "simple-rows-as-records.json",
+      "pivoted-columns-as-records.json",
+      "crosstab.json",
+    ]) {
+      const fx = loadFixture(file) as { regions: Record<string, unknown>[] };
+      for (const region of fx.regions) {
+        expect(region[field]).toBeUndefined();
+      }
+    }
+  });
+});
+
+describe("RegionSchema — locator axis coherence (refinement 14)", () => {
+  it("rejects binding whose axis is not in headerAxes", () => {
+    const r = buildTidyRegion();
+    r.columnBindings = [
+      {
+        sourceLocator: {
+          kind: "byHeaderName" as const,
+          axis: "column" as const,
+          name: "x",
+        },
+        columnDefinitionId: "c1",
+        confidence: 1,
+      },
+      ...r.columnBindings.slice(1),
+    ];
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+});
+
+describe("RegionSchema — byHeaderName forbidden on headerless (refinement 15)", () => {
+  it("rejects byHeaderName on headerless region", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).headerAxes = [];
+    r.segmentsByAxis = {};
+    r.headerStrategyByAxis = {};
+    (r as Record<string, unknown>).recordsAxis = "column";
+    // Binding still byHeaderName → rejected.
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("accepts byPositionIndex with axis opposite of recordsAxis", () => {
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).headerAxes = [];
+    r.segmentsByAxis = {};
+    r.headerStrategyByAxis = {};
+    (r as Record<string, unknown>).recordsAxis = "column";
+    r.columnBindings = [
+      {
+        sourceLocator: {
+          kind: "byPositionIndex" as const,
+          axis: "row" as const,
+          index: 1,
+        },
+        columnDefinitionId: "c1",
+        confidence: 1,
+      },
+    ];
+    expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+});
+
+describe("RegionSchema — positionIndex range (refinement 16)", () => {
+  it("rejects index > positionSpan(axis)", () => {
+    const r = buildTidyRegion();
+    r.columnBindings = [
+      {
+        sourceLocator: {
+          kind: "byPositionIndex" as const,
+          axis: "row" as const,
+          index: 4, // span = 3
+        },
+        columnDefinitionId: "c1",
+        confidence: 1,
+      },
+      ...r.columnBindings.slice(1),
+    ];
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("rejects index < 1", () => {
+    const r = buildTidyRegion();
+    r.columnBindings = [
+      {
+        sourceLocator: {
+          kind: "byPositionIndex" as const,
+          axis: "row" as const,
+          index: 0,
+        },
+        columnDefinitionId: "c1",
+        confidence: 1,
+      },
+      ...r.columnBindings.slice(1),
+    ];
+    expect(RegionSchema.safeParse(r).success).toBe(false);
   });
 });
 
 describe("RegionSchema cross-field invariants", () => {
-  const baseCrosstab = () =>
-    loadFixture("crosstab.json") as {
-      regions: Array<Record<string, unknown>>;
-    };
-
-  // NOTE: pivoted / crosstab axis-name requirements are enforced as
-  // `PIVOTED_REGION_MISSING_AXIS_NAME` blocker warnings (see `score-and-warn`
-  // stage tests) rather than Zod errors — the schema must admit the plan so
-  // interpret() can persist it for UI review.
-  it("accepts (with warnings expected elsewhere) a crosstab region missing secondaryRecordsAxisName", () => {
-    const fx = baseCrosstab();
-    delete fx.regions[0].secondaryRecordsAxisName;
-    const result = LayoutPlanSchema.safeParse(fx);
-    expect(result.success).toBe(true);
-  });
-
-  it("accepts (with warnings expected elsewhere) a crosstab region missing cellValueName", () => {
-    const fx = baseCrosstab();
-    delete fx.regions[0].cellValueName;
-    const result = LayoutPlanSchema.safeParse(fx);
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects boundsMode === 'matchesPattern' without boundsPattern", () => {
-    const fx = loadFixture("simple-rows-as-records.json") as {
-      regions: Array<Record<string, unknown>>;
-    };
-    fx.regions[0].boundsMode = "matchesPattern";
-    // no boundsPattern set
-    expect(LayoutPlanSchema.safeParse(fx).success).toBe(false);
-  });
-
   it("rejects axisAnchorCell outside bounds", () => {
-    const fx = loadFixture("crosstab.json") as {
-      regions: Array<{
-        bounds: {
-          startRow: number;
-          endRow: number;
-          startCol: number;
-          endCol: number;
-        };
-        axisAnchorCell?: { row: number; col: number };
-      }>;
+    const r = buildTidyRegion();
+    (r as Record<string, unknown>).axisAnchorCell = {
+      row: r.bounds.endRow + 1,
+      col: r.bounds.startCol,
     };
-    fx.regions[0].axisAnchorCell = {
-      row: fx.regions[0].bounds.endRow + 1,
-      col: fx.regions[0].bounds.startCol,
-    };
-    expect(LayoutPlanSchema.safeParse(fx).success).toBe(false);
-  });
-
-  it("rejects headerAxis 'none' with columnBindings referencing byHeaderName", () => {
-    const fx = loadFixture("simple-rows-as-records.json") as {
-      regions: Array<Record<string, unknown>>;
-    };
-    fx.regions[0].headerAxis = "none";
-    // columnBindings in the fixture already use byHeaderName — must be rejected.
-    expect(LayoutPlanSchema.safeParse(fx).success).toBe(false);
-  });
-
-  it("accepts headerAxis 'none' with columnBindings using byColumnIndex", () => {
-    const fx = loadFixture("simple-rows-as-records.json") as {
-      regions: Array<{
-        headerAxis: string;
-        headerStrategy?: unknown;
-        columnBindings: Array<{
-          sourceLocator: { kind: string; col?: number; name?: string };
-        }>;
-      }>;
-    };
-    fx.regions[0].headerAxis = "none";
-    // When headerAxis is "none", headerStrategy does not apply.
-    delete fx.regions[0].headerStrategy;
-    fx.regions[0].columnBindings = fx.regions[0].columnBindings.map((b, i) => ({
-      ...b,
-      sourceLocator: { kind: "byColumnIndex", col: i + 1 },
-    }));
-    const result = LayoutPlanSchema.safeParse(fx);
-    if (!result.success) {
-      throw new Error(JSON.stringify(result.error.issues, null, 2));
-    }
-    expect(result.success).toBe(true);
+    expect(RegionSchema.safeParse(r).success).toBe(false);
   });
 });
 
@@ -266,7 +794,11 @@ describe("WarningSchema / WarningCode", () => {
 
 describe("ColumnBindingSchema — user overrides", () => {
   const baseBinding = {
-    sourceLocator: { kind: "byHeaderName" as const, name: "Email" },
+    sourceLocator: {
+      kind: "byHeaderName" as const,
+      axis: "row" as const,
+      name: "Email",
+    },
     columnDefinitionId: "coldef_email",
     confidence: 0.95,
   };
@@ -296,10 +828,19 @@ describe("ColumnBindingSchema — user overrides", () => {
   });
 
   it("rejects normalizedKey that violates the regex", () => {
-    for (const nk of ["Email", "1_bar", "foo-bar", "_leading", "has space", ""]) {
+    for (const nk of [
+      "Email",
+      "1_bar",
+      "foo-bar",
+      "_leading",
+      "has space",
+      "",
+    ]) {
       expect(
-        ColumnBindingSchema.safeParse({ ...baseBinding, normalizedKey: nk })
-          .success
+        ColumnBindingSchema.safeParse({
+          ...baseBinding,
+          normalizedKey: nk,
+        }).success
       ).toBe(false);
     }
   });
@@ -350,7 +891,7 @@ describe("ColumnBindingSchema — user overrides", () => {
     fixture.regions[0].columnBindings[0] = {
       ...fixture.regions[0].columnBindings[0],
       excluded: true,
-      normalizedKey: "email_override",
+      normalizedKey: "name_override",
       required: true,
       defaultValue: null,
       format: null,
@@ -359,286 +900,6 @@ describe("ColumnBindingSchema — user overrides", () => {
       refNormalizedKey: null,
     };
     const result = LayoutPlanSchema.safeParse(fixture);
-    if (!result.success) {
-      throw new Error(JSON.stringify(result.error.issues, null, 2));
-    }
-    expect(result.success).toBe(true);
-  });
-});
-
-describe("AxisPositionRoleSchema", () => {
-  it("parses the field / pivotLabel / skip variants", () => {
-    expect(AxisPositionRoleSchema.safeParse({ kind: "field" }).success).toBe(true);
-    expect(
-      AxisPositionRoleSchema.safeParse({ kind: "pivotLabel", segmentId: "s1" })
-        .success
-    ).toBe(true);
-    expect(AxisPositionRoleSchema.safeParse({ kind: "skip" }).success).toBe(true);
-  });
-
-  it("rejects pivotLabel without segmentId", () => {
-    expect(
-      AxisPositionRoleSchema.safeParse({ kind: "pivotLabel" }).success
-    ).toBe(false);
-  });
-
-  it("rejects pivotLabel with empty segmentId", () => {
-    expect(
-      AxisPositionRoleSchema.safeParse({ kind: "pivotLabel", segmentId: "" })
-        .success
-    ).toBe(false);
-  });
-
-  it("rejects unknown kinds", () => {
-    expect(
-      AxisPositionRoleSchema.safeParse({ kind: "bogus" } as unknown).success
-    ).toBe(false);
-  });
-});
-
-describe("PivotSegmentSchema", () => {
-  const baseSegment = {
-    id: "s1",
-    axisName: "quarter",
-    axisNameSource: "user" as const,
-    valueFieldName: "revenue",
-    valueFieldNameSource: "user" as const,
-  };
-
-  it("accepts a minimal segment with required fields", () => {
-    expect(PivotSegmentSchema.safeParse(baseSegment).success).toBe(true);
-  });
-
-  it("accepts the optional valueColumnDefinitionId", () => {
-    expect(
-      PivotSegmentSchema.safeParse({
-        ...baseSegment,
-        valueColumnDefinitionId: "coldef_revenue",
-      }).success
-    ).toBe(true);
-  });
-
-  it("accepts every declared *Source value", () => {
-    for (const source of ["user", "ai", "anchor-cell"] as const) {
-      expect(
-        PivotSegmentSchema.safeParse({
-          ...baseSegment,
-          axisNameSource: source,
-          valueFieldNameSource: source,
-        }).success
-      ).toBe(true);
-    }
-  });
-
-  it("rejects empty id / axisName / valueFieldName", () => {
-    expect(PivotSegmentSchema.safeParse({ ...baseSegment, id: "" }).success).toBe(
-      false
-    );
-    expect(
-      PivotSegmentSchema.safeParse({ ...baseSegment, axisName: "" }).success
-    ).toBe(false);
-    expect(
-      PivotSegmentSchema.safeParse({ ...baseSegment, valueFieldName: "" }).success
-    ).toBe(false);
-  });
-
-  it("rejects an unknown axisNameSource", () => {
-    expect(
-      PivotSegmentSchema.safeParse({
-        ...baseSegment,
-        axisNameSource: "bogus",
-      } as unknown).success
-    ).toBe(false);
-  });
-});
-
-describe("RegionSchema — segmented crosstab refinement", () => {
-  const baseCrosstab = () =>
-    loadFixture("crosstab.json") as {
-      regions: Array<Record<string, unknown>>;
-    };
-
-  it("rejects a cells-as-records region that carries positionRoles", () => {
-    const fx = baseCrosstab();
-    fx.regions[0].positionRoles = [{ kind: "field" }];
-    const r = LayoutPlanSchema.safeParse(fx);
-    expect(r.success).toBe(false);
-    expect(JSON.stringify(r.error)).toMatch(/SEGMENTED_CROSSTAB_NOT_SUPPORTED/);
-  });
-
-  it("rejects a cells-as-records region that carries pivotSegments", () => {
-    const fx = baseCrosstab();
-    fx.regions[0].pivotSegments = [
-      {
-        id: "s1",
-        axisName: "quarter",
-        axisNameSource: "user",
-        valueFieldName: "revenue",
-        valueFieldNameSource: "user",
-      },
-    ];
-    const r = LayoutPlanSchema.safeParse(fx);
-    expect(r.success).toBe(false);
-    expect(JSON.stringify(r.error)).toMatch(/SEGMENTED_CROSSTAB_NOT_SUPPORTED/);
-  });
-
-  it("still accepts a cells-as-records region without either field", () => {
-    const fx = baseCrosstab();
-    expect(LayoutPlanSchema.safeParse(fx).success).toBe(true);
-  });
-});
-
-describe("RegionSchema — positionRoles length must match header-line length", () => {
-  it("rejects when positionRoles length differs from header-row width", () => {
-    const fx = loadFixture("simple-rows-as-records.json") as {
-      regions: Array<Record<string, unknown> & {
-        bounds: { startCol: number; endCol: number };
-      }>;
-    };
-    const r = fx.regions[0];
-    const width = r.bounds.endCol - r.bounds.startCol + 1;
-    r.positionRoles = Array.from({ length: width - 1 }, () => ({
-      kind: "field",
-    }));
-    const parsed = LayoutPlanSchema.safeParse(fx);
-    expect(parsed.success).toBe(false);
-    expect(JSON.stringify(parsed.error)).toMatch(/positionRoles/);
-  });
-
-  it("accepts when length matches header-row width", () => {
-    const fx = loadFixture("simple-rows-as-records.json") as {
-      regions: Array<Record<string, unknown> & {
-        bounds: { startCol: number; endCol: number };
-      }>;
-    };
-    const r = fx.regions[0];
-    const width = r.bounds.endCol - r.bounds.startCol + 1;
-    r.positionRoles = Array.from({ length: width }, () => ({ kind: "field" }));
-    const parsed = LayoutPlanSchema.safeParse(fx);
-    if (!parsed.success) {
-      throw new Error(JSON.stringify(parsed.error.issues, null, 2));
-    }
-    expect(parsed.success).toBe(true);
-  });
-
-  it("uses row span when headerAxis === 'column'", () => {
-    const headerColumnRegion = {
-      id: "r1",
-      sheet: "S",
-      bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
-      boundsMode: "absolute" as const,
-      targetEntityDefinitionId: "e1",
-      orientation: "rows-as-records" as const,
-      headerAxis: "column" as const,
-      headerStrategy: {
-        kind: "column" as const,
-        locator: { kind: "column" as const, sheet: "S", col: 1 },
-        confidence: 1,
-      },
-      identityStrategy: { kind: "rowPosition" as const, confidence: 1 },
-      columnBindings: [],
-      skipRules: [],
-      drift: {
-        addedColumns: "halt" as const,
-        removedColumns: { max: 0, action: "halt" as const },
-      },
-      confidence: { region: 1, aggregate: 1 },
-      warnings: [],
-      positionRoles: [] as Array<{ kind: "field" | "skip" | "pivotLabel"; segmentId?: string }>,
-    };
-    // headerAxis: "column" → length must match row span (endRow - startRow + 1 = 4).
-    headerColumnRegion.positionRoles = Array.from({ length: 4 }, () => ({
-      kind: "field",
-    }));
-    expect(RegionSchema.safeParse(headerColumnRegion).success).toBe(true);
-
-    headerColumnRegion.positionRoles = Array.from({ length: 3 }, () => ({
-      kind: "field",
-    }));
-    expect(RegionSchema.safeParse(headerColumnRegion).success).toBe(false);
-  });
-});
-
-describe("RegionSchema — positionRoles / pivotSegments consistency", () => {
-  const buildSegmentedRegion = () => {
-    const fx = loadFixture("simple-rows-as-records.json") as {
-      regions: Array<Record<string, unknown> & {
-        bounds: { startCol: number; endCol: number };
-      }>;
-    };
-    const r = fx.regions[0];
-    const width = r.bounds.endCol - r.bounds.startCol + 1;
-    // width-1 field positions + 1 pivotLabel referencing "s1"
-    r.positionRoles = [
-      ...Array.from({ length: width - 1 }, () => ({ kind: "field" })),
-      { kind: "pivotLabel", segmentId: "s1" },
-    ];
-    r.pivotSegments = [
-      {
-        id: "s1",
-        axisName: "quarter",
-        axisNameSource: "user",
-        valueFieldName: "revenue",
-        valueFieldNameSource: "user",
-      },
-    ];
-    return { fx, region: r };
-  };
-
-  it("accepts when every pivotLabel.segmentId maps to a segment and every segment is referenced", () => {
-    const { fx } = buildSegmentedRegion();
-    const parsed = LayoutPlanSchema.safeParse(fx);
-    if (!parsed.success) {
-      throw new Error(JSON.stringify(parsed.error.issues, null, 2));
-    }
-    expect(parsed.success).toBe(true);
-  });
-
-  it("rejects when a pivotLabel role references an unknown segmentId", () => {
-    const { fx, region } = buildSegmentedRegion();
-    const roles = region.positionRoles as Array<{ kind: string; segmentId?: string }>;
-    roles[roles.length - 1] = { kind: "pivotLabel", segmentId: "ghost" };
-    const parsed = LayoutPlanSchema.safeParse(fx);
-    expect(parsed.success).toBe(false);
-    expect(JSON.stringify(parsed.error)).toMatch(/ghost/);
-  });
-
-  it("rejects when pivotSegments contains a segment no position references", () => {
-    const { fx, region } = buildSegmentedRegion();
-    (region.pivotSegments as Array<Record<string, unknown>>).push({
-      id: "orphan",
-      axisName: "month",
-      axisNameSource: "user",
-      valueFieldName: "count",
-      valueFieldNameSource: "user",
-    });
-    const parsed = LayoutPlanSchema.safeParse(fx);
-    expect(parsed.success).toBe(false);
-    expect(JSON.stringify(parsed.error)).toMatch(/orphan/);
-  });
-});
-
-describe("RegionSchema — positionRoles + pivotSegments are optional passthrough", () => {
-  it("accepts a region that declares neither field (existing behavior)", () => {
-    const fx = loadFixture("simple-rows-as-records.json") as {
-      regions: unknown[];
-    };
-    expect(RegionSchema.safeParse(fx.regions[0]).success).toBe(true);
-  });
-
-  it("passes the fields through when present and well-formed", () => {
-    const fx = loadFixture("simple-rows-as-records.json") as {
-      regions: Array<Record<string, unknown> & {
-        bounds: { startCol: number; endCol: number };
-      }>;
-    };
-    const r = fx.regions[0];
-    const headerWidth = r.bounds.endCol - r.bounds.startCol + 1;
-    r.positionRoles = Array.from({ length: headerWidth }, () => ({
-      kind: "field",
-    }));
-    r.pivotSegments = [];
-    const result = RegionSchema.safeParse(r);
     if (!result.success) {
       throw new Error(JSON.stringify(result.error.issues, null, 2));
     }

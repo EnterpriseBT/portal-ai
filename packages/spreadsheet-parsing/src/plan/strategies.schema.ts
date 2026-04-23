@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { AxisMemberEnum } from "./enums.js";
 import { LocatorSchema } from "./locator.schema.js";
 
 // ── Header strategy ────────────────────────────────────────────────────────
@@ -62,17 +63,20 @@ export type IdentityStrategy = z.infer<typeof IdentityStrategySchema>;
 
 const ByHeaderNameLocatorSchema = z.object({
   kind: z.literal("byHeaderName"),
+  axis: AxisMemberEnum,
   name: z.string().min(1),
 });
 
-const ByColumnIndexLocatorSchema = z.object({
-  kind: z.literal("byColumnIndex"),
-  col: z.number().int().min(1),
+const ByPositionIndexLocatorSchema = z.object({
+  kind: z.literal("byPositionIndex"),
+  axis: AxisMemberEnum,
+  /** 1-based ordinal along the axis's position list (not a sheet col/row). */
+  index: z.number().int().min(1),
 });
 
 export const BindingSourceLocatorSchema = z.discriminatedUnion("kind", [
   ByHeaderNameLocatorSchema,
-  ByColumnIndexLocatorSchema,
+  ByPositionIndexLocatorSchema,
 ]);
 
 export type BindingSourceLocator = z.infer<typeof BindingSourceLocatorSchema>;
