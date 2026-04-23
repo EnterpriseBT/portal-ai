@@ -139,12 +139,19 @@ describe("classifyLabel", () => {
 ```ts
 export type LabelTag = "quarter" | "month" | "year" | "date" | "skip" | "field";
 
-const PATTERNS: ReadonlyArray<{ tag: LabelTag; regex: RegExp; axisName: string }> = [
-  { tag: "quarter", regex: /^(FY\d{2})?Q[1-4]$/i, axisName: "quarter" },
-  { tag: "month",   regex: /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)$/i, axisName: "month" },
-  { tag: "year",    regex: /^(20\d{2}|FY\d{2})$/, axisName: "year" },
-  { tag: "date",    regex: /^\d{4}-\d{2}-\d{2}$/, axisName: "date" },
-  { tag: "skip",    regex: /^total$/i, axisName: "" },
+interface Pattern {
+  tag: LabelTag;
+  regex: RegExp;
+  axisName: string;
+  dynamic: boolean; // true when the label set is open-ended
+}
+
+const PATTERNS: ReadonlyArray<Pattern> = [
+  { tag: "quarter", regex: /^(FY\d{2})?Q[1-4]$/i, axisName: "quarter", dynamic: false },
+  { tag: "month",   regex: /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)$/i, axisName: "month", dynamic: false },
+  { tag: "year",    regex: /^(20\d{2}|FY\d{2})$/, axisName: "year", dynamic: true },
+  { tag: "date",    regex: /^\d{4}-\d{2}-\d{2}$/, axisName: "date", dynamic: true },
+  { tag: "skip",    regex: /^total$/i, axisName: "", dynamic: false },
 ];
 
 export function classifyLabel(label: string): LabelTag {
@@ -155,11 +162,24 @@ export function classifyLabel(label: string): LabelTag {
 export function axisNameFor(tag: LabelTag): string | null {
   return PATTERNS.find((p) => p.tag === tag)?.axisName ?? null;
 }
+
+export function dynamicForTag(tag: LabelTag): boolean {
+  return PATTERNS.find((p) => p.tag === tag)?.dynamic ?? false;
+}
 ```
 
 Per the heuristic-vs-AI memory: stay generic. No
 schema-specific name guessing, no field-value sampling — those
 are LLM responsibilities.
+
+**Dynamic tagging rationale.** Quarter and month are fixed enums
+(4 and 12 positions respectively); the heuristic never outputs a
+dynamic quarter/month segment. Year and ISO-date are open-ended;
+the heuristic attaches `dynamic: { terminator: { kind:
+"untilBlank" } }` when the segment ends up at axis tail. If a
+year/date segment is mid-axis (rare), the dynamic flag is
+dropped at clustering time (refinement 10 would otherwise
+reject).
 
 ### Phase C — `detect-segments` stage
 
@@ -169,15 +189,24 @@ are LLM responsibilities.
 expected `{ headerAxes, segmentsByAxis, cellValueField }`. IDs:
 
 - `1a` — tidy all-static
-- `1b` — pivot all
+- `1b` — pivot all (fixed: quarter or month)
 - `1c` — 2 pivots no statics
 - `1d` — statics + 1 pivot
 - `1e` — statics + 2 pivots (canonical)
 - `1f` — statics + 1 pivot + skip
+- `1g` — statics + dynamic year segment at tail (new fixture —
+  exercises tail-only dynamic)
 - `2a` – `2f` — column-axis versions
+- `2g` — column-axis dynamic tail (mirror of 1g)
 - `3b`, `4b` — pivoted base multi-segment
-- `crosstab-sales-leads` — 2D (both axes)
+- `crosstab-sales-leads` — 2D (both axes), both pivots fixed
+- `crosstab-sales-by-year` — 2D with dynamic year on one axis
+  (exercises dynamic extension inside a crosstab)
 - `headerless-rows` — no header axis (stage is a no-op)
+
+For fixtures 1g / 2g / crosstab-sales-by-year, the expected
+`pivotSegments[*].dynamic` entry is
+`{ terminator: { kind: "untilBlank", consecutiveBlanks: 2 } }`.
 
 `detect-segments.test.ts`:
 
@@ -242,6 +271,12 @@ export function detectSegments(state: InterpretState): InterpretState {
   from `axisNameFor(tag)`, `axisNameSource: "ai"`.
 - `skip` runs → `kind: "skip"`.
 - `field` runs → `kind: "field"`.
+- **Dynamic tagging**: after clustering, if the last segment on
+  an axis is a pivot segment with `dynamicForTag(tag) === true`,
+  attach `dynamic: { terminator: { kind: "untilBlank",
+  consecutiveBlanks: 2 } }`. Non-tail open-ended pivot segments
+  (rare) stay non-dynamic — refinement 10 forbids mid-axis
+  dynamics.
 
 `seedCellValueField`:
 

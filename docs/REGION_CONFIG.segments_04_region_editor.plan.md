@@ -20,12 +20,14 @@ editor UX churn lands.
 - Pure-function segment operations:
   `addFieldSegment`, `removeSegment`, `splitSegment`,
   `convertSegmentKind`, `addHeaderAxis`, `removeHeaderAxis`,
-  `setCellValueField`.
+  `setCellValueField`, `setSegmentDynamic`,
+  `setRecordAxisTerminator`.
 - UI wire-up: segment chips per axis, inline edit for pivot
-  segments (axis name input), crosstab toggle.
+  segments (axis name + dynamic toggle + terminator form),
+  crosstab toggle, record-axis extent control.
 - Delete obsolete editor inputs:
   `recordsAxisName` / `secondaryRecordsAxisName` / `cellValueName`
-  fields, orientation dropdown.
+  fields, orientation dropdown, `boundsMode` picker.
 - Tests for each pure operation + a component-level interaction
   test per composable flow.
 
@@ -34,6 +36,7 @@ Out of scope:
 - Parser / API changes (landed in PR-1..PR-3).
 - Drag-to-reorder segments (follow-up).
 - Segment-rename drift handling (follow-up).
+- Mid-axis dynamic segments — refinement 10 forbids them.
 
 ## Pre-flight
 
@@ -72,29 +75,53 @@ Files touched:
 describe("splitSegment", () => {
   it("splits a field segment at an offset into two field segments", () => { /* … */ });
   it("rejects an offset outside the segment", () => { /* throws */ });
+  it("rejects splitting a dynamic segment (would create mid-axis dynamic)", () => { /* … */ });
 });
 
 describe("convertSegmentKind", () => {
   it("field → pivot inserts an axisName with source 'user'", () => { /* … */ });
-  it("pivot → field removes the pivot metadata", () => { /* … */ });
-  it("any → skip preserves positionCount", () => { /* … */ });
+  it("pivot → field removes the pivot metadata (including dynamic)", () => { /* … */ });
+  it("any → skip preserves positionCount and drops dynamic/axisName", () => { /* … */ });
 });
 
 describe("addHeaderAxis", () => {
   it("promotes a 1D region to crosstab with a default skip segment at the intersection", () => { /* … */ });
   it("is a no-op when the axis is already present", () => { /* … */ });
+  it("leaves existing byHeaderName bindings (axis:'row') untouched when promoting to 2D", () => {
+    // Adding a "column" header axis shouldn't retarget row-axis bindings.
+  });
 });
 
 describe("removeHeaderAxis", () => {
   it("collapses a crosstab to 1D and drops that axis's segments", () => { /* … */ });
   it("removes pivot segments on the removed axis from cellValueField scope", () => { /* … */ });
+  it("drops any columnBinding whose sourceLocator.axis matches the removed axis", () => {
+    // Bindings tied to the removed axis would fail refinement 14 otherwise.
+  });
 });
 
-describe("addFieldSegment / removeSegment", () => { /* … */ });
+describe("addFieldSegment / removeSegment", () => {
+  it("merges adjacent same-kind segments after removal", () => { /* … */ });
+  it("rejects removing the only segment on an axis without headerAxes collapse", () => { /* … */ });
+});
 
 describe("setCellValueField", () => {
   it("creates cellValueField when the first pivot segment appears", () => { /* … */ });
   it("removes cellValueField when the last pivot segment disappears", () => { /* … */ });
+});
+
+describe("setSegmentDynamic", () => {
+  it("attaches dynamic { terminator: untilBlank } to a tail pivot segment", () => { /* … */ });
+  it("removes dynamic when the terminator argument is null", () => { /* … */ });
+  it("rejects enabling dynamic on a non-tail segment (refinement 10)", () => { /* throws */ });
+  it("rejects enabling dynamic on a field or skip segment", () => { /* throws */ });
+  it("rejects a second dynamic segment on the same axis", () => { /* throws */ });
+});
+
+describe("setRecordAxisTerminator", () => {
+  it("attaches recordAxisTerminator on a 1D region", () => { /* … */ });
+  it("attaches recordAxisTerminator on a headerless region with recordsAxis set", () => { /* … */ });
+  it("rejects on a 2D region (refinement 11)", () => { /* throws */ });
 });
 ```
 
@@ -106,7 +133,7 @@ confirms schema-validity via `RegionSchema.safeParse`.
 `utils/segment-ops.util.ts`:
 
 ```ts
-import type { Region, Segment } from "@portalai/core/contracts";
+import type { Region, Segment, Terminator } from "@portalai/core/contracts";
 
 export function splitSegment(region: Region, axis: "row" | "column", segmentIndex: number, offset: number): Region { /* … */ }
 
@@ -119,15 +146,32 @@ export function addFieldSegment(region: Region, axis: "row" | "column", atIndex:
 export function removeSegment(region: Region, axis: "row" | "column", segmentIndex: number): Region { /* merges with adjacent if same kind */ }
 
 export function setCellValueField(region: Region, field: Region["cellValueField"]): Region { /* auto-drops when no pivot */ }
+
+export function setSegmentDynamic(
+  region: Region,
+  axis: "row" | "column",
+  segmentIndex: number,
+  terminator: Terminator | null,
+): Region { /* throws if not tail pivot; removes dynamic when terminator === null */ }
+
+export function setRecordAxisTerminator(
+  region: Region,
+  terminator: Terminator | null,
+): Region { /* throws on 2D; removes when null */ }
 ```
 
 All return a new `Region` (immutable pattern). Each function is
 responsible for maintaining schema invariants — in particular:
 
-- Positions cover the full axis span after edits.
+- Positions cover the full axis span after edits (sum
+  `positionCount` equals span; dynamic tail segments can be
+  below the span-sum floor as the terminator claims extra at
+  replay).
 - `cellValueField` exists iff any pivot segment exists (auto-sync).
 - `headerStrategyByAxis` gets added/removed alongside
   `addHeaderAxis` / `removeHeaderAxis`.
+- Dynamic lives only on tail pivot segments (refinement 10).
+- `recordAxisTerminator` never on 2D (refinement 11).
 
 ### Phase B — Default region on draw
 
@@ -137,14 +181,15 @@ responsible for maintaining schema invariants — in particular:
 
 ```ts
 describe("defaultRegionForBounds", () => {
-  it("emits classic tidy: headerAxes=['row'], one field segment, byHeaderName bindings across row 1", () => {
+  it("emits classic tidy: headerAxes=['row'], one field segment, byHeaderName bindings with axis:'row' across row 1", () => {
     const region = defaultRegionForBounds({ sheet: "S1", startRow: 1, startCol: 1, endRow: 10, endCol: 4 }, { /* entity + sheet refs */ });
     expect(region.headerAxes).toEqual(["row"]);
     expect(region.segmentsByAxis?.row).toEqual([{ kind: "field", positionCount: 4 }]);
     expect(region.columnBindings).toHaveLength(4);
-    expect(region.columnBindings.every((b) => b.sourceLocator.kind === "byHeaderName")).toBe(true);
+    expect(region.columnBindings.every((b) =>
+      b.sourceLocator.kind === "byHeaderName" && b.sourceLocator.axis === "row"
+    )).toBe(true);
     expect(region.cellValueField).toBeUndefined();
-    expect(region.pivotSegments).toBeUndefined();
     expect(region.recordsAxis).toBeUndefined();
   });
 
@@ -166,7 +211,6 @@ export function defaultRegionForBounds(
     id: nanoid(),
     sheet,
     bounds,
-    boundsMode: "absolute",
     targetEntityDefinitionId,
     headerAxes: ["row"],
     segmentsByAxis: { row: [{ kind: "field", positionCount }] },
@@ -184,9 +228,12 @@ export function defaultRegionForBounds(
 ```
 
 `proposedBindings` come from the caller reading row 1 cells of the
-sheet — each becomes a `byHeaderName` binding with a placeholder
-`columnDefinitionId`. The user picks the real definition in the
-configuration step.
+sheet — each becomes a `byHeaderName { axis: "row", name: <cell
+value> }` binding with a placeholder `columnDefinitionId`. The
+user picks the real definition in the configuration step. The
+explicit `axis: "row"` matters even in the 1D default case — the
+schema requires it (refinement 14) and users adding a second
+header axis later shouldn't silently break existing bindings.
 
 ### Phase C — SegmentStrip + SegmentEditPopover components
 
@@ -204,8 +251,26 @@ Render `SegmentStripUI` with seeded props; assert:
 
 - For `kind: "pivot"`, renders an `axisName` input and wires
   `onChangeAxisName(value)`.
-- Conversion buttons emit
-  `onConvert(toKind)`.
+- For `kind: "pivot"` when the segment is the tail segment on
+  its axis, renders a "Can this segment grow?" toggle. When on,
+  reveals a terminator form:
+  - Kind selector (`untilBlank` / `matchesPattern`).
+  - For `untilBlank`: a `consecutiveBlanks` number input (default 2).
+  - For `matchesPattern`: a `pattern` regex input with a
+    lightweight validity check.
+  - Wires `onToggleDynamic(on: boolean)` and
+    `onChangeTerminator(t: Terminator)`.
+- Non-tail pivot segments do not render the dynamic toggle
+  (refinement 10 would reject it) — the UI enforces this by
+  construction.
+- Conversion buttons emit `onConvert(toKind)`. Converting away
+  from `pivot` drops dynamic; converting into `pivot` doesn't
+  auto-enable dynamic (the user opts in).
+
+A sibling `RecordAxisTerminatorPopoverUI` exposes the same
+terminator form at the region level, gated on `!isCrosstab` and
+a valid `recordsAxisOf`. Visible as a small "Extent" control
+near the region's bounds handles.
 
 Per the component-file policy, `*UI` components are pure
 presentational; the containers wire hooks and pass callbacks.
@@ -232,6 +297,12 @@ Update component tests for `RegionConfigurationPanel`:
 - Add assertions for `SegmentStrip` rendering + a `cellValueField`
   name input when the region has any pivot segment.
 - Add assertion that `orientation` dropdown is gone.
+- Add assertion that `boundsMode` picker is gone (replaced by
+  record-axis terminator control + per-segment dynamic toggles).
+- Add assertion that the "Extent" control renders for 1D /
+  headerless regions and not for crosstabs.
+- Add assertion that the dynamic-tail badge renders on a pivot
+  segment chip when `segment.dynamic` is set.
 
 #### D2. Green — replace UI
 
@@ -310,6 +381,17 @@ inputs.
   region-level `cellValueField`.
 - `orientation` dropdown — derived from `headerAxes` + (for
   headerless) `recordsAxis`.
+- `boundsMode` picker — replaced by record-axis extent control +
+  per-segment dynamic toggles.
+
+## Added editor affordances
+
+- Dynamic-segment toggle on tail pivot chips with a terminator
+  form (untilBlank consecutiveBlanks / matchesPattern regex).
+- Region-level "Extent" control for 1D / headerless regions,
+  exposing the same terminator form for the record axis.
+- Dynamic-tail visual badge on segment chips so users can see at
+  a glance which segments can grow.
 
 ## Test plan
 

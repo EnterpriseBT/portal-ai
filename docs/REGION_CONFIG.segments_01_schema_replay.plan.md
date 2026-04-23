@@ -85,42 +85,144 @@ Downstream consumers migrated:
 
 Extend `packages/spreadsheet-parsing/src/plan/__tests__/schemas.test.ts`:
 
+- `describe("TerminatorSchema", …)` — `untilBlank` (with default
+  `consecutiveBlanks`) and `matchesPattern` variants; reject
+  `consecutiveBlanks < 1`; reject empty `pattern`.
 - `describe("SegmentSchema", …)` — three kinds; reject
-  `positionCount < 1`; reject pivot without id / axisName.
+  `positionCount < 1`; reject pivot without id / axisName; accept
+  pivot with `dynamic: { terminator: … }`; reject `dynamic` on
+  field / skip (discriminated-union enforces this).
 - `describe("RegionSchema — headerAxes cardinality (refinement 1)", …)`.
 - `describe("RegionSchema — segmentsByAxis / headerAxes coherence (refinement 2)", …)`.
-- `describe("RegionSchema — segmentsByAxis length match (refinement 3)", …)`.
+- `describe("RegionSchema — segmentsByAxis length match (refinement 3)", …)`
+  — fixed-only sum equals span; dynamic-tail sum ≤ span; tail
+  claims at least one position.
 - `describe("RegionSchema — pivot id uniqueness across axes (refinement 4)", …)`.
 - `describe("RegionSchema — recordsAxis presence rule (refinement 5)", …)`.
 - `describe("RegionSchema — headerStrategyByAxis presence (refinement 6)", …)`.
 - `describe("RegionSchema — cellValueField presence rule (refinement 7)", …)`.
+- `describe("RegionSchema — dynamic segment must be tail (refinement 10)", …)`
+  — dynamic at tail accepted; dynamic mid-axis rejected; two dynamic
+  segments on one axis rejected.
+- `describe("RegionSchema — recordAxisTerminator / crosstab exclusion (refinement 11)", …)`
+  — `recordAxisTerminator` rejected on 2D; accepted on 1D;
+  accepted on headerless.
 - `describe("RegionSchema — removed fields rejected (refinement 9)", …)`
-  with `it.each` over every removed field name.
+  with `it.each` over every removed field name:
+  `orientation`, `headerAxis`, `boundsMode`, `boundsPattern`,
+  `untilEmptyTerminatorCount`, `recordsAxisName`,
+  `secondaryRecordsAxisName`, `cellValueName`, `positionRoles`,
+  `pivotSegments`. Also asserts that a binding locator of kind
+  `byColumnIndex` (Phase-1 shape) is rejected — superseded by
+  `byPositionIndex`.
+- `describe("BindingSourceLocatorSchema", …)`:
+  - `byHeaderName { axis: "row" | "column", name }` — both axes
+    parse.
+  - `byPositionIndex { axis: "row" | "column", index }` — both
+    axes parse; reject `index < 1`; reject missing `axis`.
+  - Reject `byHeaderName` missing `axis`.
+  - Reject `byHeaderName { name: "" }`.
+- `describe("RegionSchema — locator axis coherence (refinement 14)", …)`
+  — a binding whose `sourceLocator.axis` is not in
+  `region.headerAxes` is rejected (for non-headerless regions).
+- `describe("RegionSchema — byHeaderName forbidden on headerless (refinement 15)", …)`
+  — headerless regions reject `byHeaderName` locators; accept
+  `byPositionIndex` with `axis` = opposite of `recordsAxis`.
+- `describe("RegionSchema — positionIndex range (refinement 16)", …)`
+  — `index: 0` rejected; `index > positionSpan(axis)` rejected;
+  in-range accepted.
 
-Delete Phase-1 tests that rely on the removed fields.
+Delete Phase-1 tests that rely on the removed fields or on the
+`byColumnIndex` locator shape.
 
 Expect failure — schema doesn't know the new shape yet.
 
 #### A2. Green — rewrite `region.schema.ts`
 
-Implement `SegmentSchema`, `CellValueFieldSchema`,
-`RegionObjectSchema` per the index's § Final schema. Nine
-refinements inside the `superRefine`.
+Implement `TerminatorSchema`, `SegmentSchema`,
+`CellValueFieldSchema`, `RegionObjectSchema` per the index's §
+Final schema. Refinements 1–16 inside the `superRefine`.
+
+Rewrite `strategies.schema.ts`'s `BindingSourceLocatorSchema`:
+
+```ts
+const ByHeaderNameLocatorSchema = z.object({
+  kind: z.literal("byHeaderName"),
+  axis: z.enum(["row", "column"]),
+  name: z.string().min(1),
+});
+
+const ByPositionIndexLocatorSchema = z.object({
+  kind: z.literal("byPositionIndex"),
+  axis: z.enum(["row", "column"]),
+  index: z.number().int().min(1),
+});
+
+export const BindingSourceLocatorSchema = z.discriminatedUnion("kind", [
+  ByHeaderNameLocatorSchema,
+  ByPositionIndexLocatorSchema,
+]);
+```
+
+Delete the old `ByColumnIndexLocatorSchema` (Phase-1 shape).
+Update `BINDING_SOURCE_KINDS` in `enums.ts` from
+`["byHeaderName", "byColumnIndex"]` to
+`["byHeaderName", "byPositionIndex"]`.
+
+Key refinement implementations:
+
+- **3 (length match with dynamic)**: per axis, partition segments
+  into `fixed` and `dynamic`. If no dynamic segment:
+  `Σ positionCount === span`. If dynamic tail present:
+  `Σ positionCount ≤ span` AND `Σ fixed ≤ span − 1` (the dynamic
+  tail claims ≥ 1 position).
+- **10 (dynamic tail-only)**: walk each axis's segments; if any
+  segment carries `dynamic`, it must be the last one AND there
+  must be at most one dynamic segment on that axis.
+- **11 (`recordAxisTerminator` forbidden on crosstab)**: when
+  `region.headerAxes.length === 2` and `region.recordAxisTerminator`
+  is defined, add issue.
+- **12 (implicit)**: falls out of refinement 5 since
+  `recordAxisTerminator` is only meaningful when a record axis
+  exists.
+- **14 (locator axis coherence)**: for every binding, if
+  `headerAxes.length > 0` then `binding.sourceLocator.axis ∈
+  headerAxes`; emit a well-pathed issue pointing at the
+  offending locator.
+- **15 (no byHeaderName on headerless)**: when `headerAxes` is
+  empty, reject any `byHeaderName` locator; allow
+  `byPositionIndex` only with `axis` equal to the opposite of
+  `recordsAxis`.
+- **16 (position index range)**: compute
+  `positionSpan("row") = endCol − startCol + 1` and
+  `positionSpan("column") = endRow − startRow + 1`; reject
+  locators with `index` outside `[1, positionSpan(axis)]`.
 
 Delete:
-- `AxisPositionRoleSchema` (Phase-1)
-- `PivotSegmentSchema` (Phase-1 shape)
-- `SEGMENTED_CROSSTAB_NOT_SUPPORTED` refinement
-- The old length-match / consistency refinements
+
+- `AxisPositionRoleSchema` (Phase-1).
+- `PivotSegmentSchema` (Phase-1 shape).
+- `SEGMENTED_CROSSTAB_NOT_SUPPORTED` refinement.
+- The old length-match / consistency refinements.
+- The `boundsMode === "matchesPattern"` requires `boundsPattern`
+  refinement (`boundsMode` is gone).
+- The `boundsMode`-based length logic anywhere else in the file.
 
 Re-run A1 — green.
 
 #### A3. Green — enums + barrel + core contracts
 
-- `enums.ts`: drop `"cells-as-records"` from `ORIENTATIONS` (and
-  delete `Orientation` type). Drop `"none"` from `HEADER_AXES`.
+- `enums.ts`: **delete entirely** `ORIENTATIONS` /
+  `OrientationEnum` / `Orientation` type, `HEADER_AXES` /
+  `HeaderAxisEnum` / `HeaderAxis` type, and `BOUNDS_MODES` /
+  `BoundsModeEnum` / `BoundsMode` type. All three collapse under
+  the new schema (`headerAxes` is an inline enum; orientation
+  becomes derivable; `boundsMode` disappears along with
+  `untilEmpty` / `matchesPattern`).
 - `plan/index.ts`: export `SegmentSchema`, `Segment`,
-  `CellValueFieldSchema`, `CellValueField`. Remove the old exports.
+  `CellValueFieldSchema`, `CellValueField`, `TerminatorSchema`,
+  `Terminator`. Remove the old exports (including the deleted
+  enum exports).
 - `packages/core/src/contracts/spreadsheet-parsing.contract.ts`:
   mirror.
 
@@ -132,13 +234,35 @@ Re-run A1 — green.
 #### A5. Migrate fixture plans
 
 - `simple-rows-as-records.json` — `headerAxes: ["row"]`, one field
-  segment spanning every column.
+  segment spanning every column. No `recordAxisTerminator` (the
+  fixture historically used absolute bounds).
 - `pivoted-columns-as-records.json` — `headerAxes: ["column"]`,
   one pivot segment named `Month`; region-level
-  `cellValueField: { name: "Revenue", nameSource: "user" }`.
+  `cellValueField: { name: "Revenue", nameSource: "user" }`. If the
+  fixture's Month segment is meant to extend indefinitely, attach
+  `dynamic: { terminator: { kind: "untilBlank" } }` — otherwise
+  leave it fixed. Default to fixed for round-trip parity with
+  pre-PR behavior.
 - `crosstab.json` — `headerAxes: ["row", "column"]`, one pivot
   segment per axis with a `skip` segment at each axis's corner
-  position, `cellValueField` present.
+  position, `cellValueField` present. No `recordAxisTerminator`
+  (2D; refinement 11).
+- If any fixture previously used `boundsMode: "untilEmpty"` or
+  `"matchesPattern"`, migrate to `recordAxisTerminator` with the
+  matching terminator shape. Grep:
+  `rg '"boundsMode"' packages/spreadsheet-parsing/src/__tests__/fixtures/`
+  and convert each.
+- **Binding-locator migration**: every fixture using
+  `"byColumnIndex"` / `"col"` renames to
+  `"byPositionIndex"` / `"index"` with an explicit
+  `"axis": "row"` (for 1D regions with a row-header axis — the
+  typical Phase-1 case). Grep:
+  `rg '"byColumnIndex"' packages/ apps/` and convert each.
+- Every `byHeaderName` locator in fixtures gains
+  `"axis": "row"` (1D default) or `"axis": "column"` (1D pivoted
+  with a column header). For the crosstab fixture, the two new
+  field-segment bindings take `axis: "row"` and `axis: "column"`
+  respectively per the "Quarterly revenue by company" example.
 
 #### A6. Run
 
@@ -160,33 +284,124 @@ Delete `cells-as-records.test.ts`; move its cases into
 cells-as-records)" `describe` block. Include the user's
 sales-leads-by-industry-per-month example as a canonical fixture.
 
-#### B2. Green — unified emit
+#### B2. Green — unified emit with effective-bounds computation
 
 Rename `extract-segmented-records.ts` → `extract-records.ts`
 (atomic with importer updates; delete the old
-`extract-records.ts`). The single function dispatches on
-`headerAxes.length`:
+`extract-records.ts`). The single function:
 
-- `0` (headerless): emit one record per entity-unit (direction
-  from `recordsAxis`) via `columnBindings` with `byColumnIndex`.
-- `1`: walk axis segments; statics-only emits one record per
-  entity-unit; pivot-bearing emits one record per (entity-unit ×
-  pivot position) with segment `axisName` + `cellValueField` in
-  `fields`.
-- `2`: Cartesian product of the two axes' pivot-label positions.
-  One record per cell; `cellValueField` mandatory.
+1. Computes `effectiveBounds` from `region.bounds` by applying
+   `recordAxisTerminator` (if set) and each axis's dynamic tail
+   segment (if set).
+2. Computes `effectiveSegmentsByAxis` — every segment unchanged
+   except the dynamic tail on each axis, whose `positionCount` is
+   bumped to the count claimed by the terminator scan.
+3. Dispatches on `headerAxes.length`:
+   - `0` (headerless): emit one record per entity-unit
+     (direction from `recordsAxis`) via `columnBindings` with
+     `byColumnIndex`, across the effective record-axis extent.
+   - `1`: walk effective axis segments; statics-only emits one
+     record per entity-unit; pivot-bearing emits one record per
+     (entity-unit × pivot position) with segment `axisName` +
+     `cellValueField` in `fields`.
+   - `2`: Cartesian product of the two axes' effective pivot-label
+     positions. One record per cell; `cellValueField` mandatory.
 
 Helper signatures:
 
 ```ts
+function computeEffectiveBounds(
+  region: Region,
+  sheet: Sheet,
+): { bounds: ResolvedBounds; segmentsByAxis: { row?: Segment[]; column?: Segment[] } };
+
+function scanTerminator(
+  terminator: Terminator,
+  sheet: Sheet,
+  axis: "row" | "column",
+  startCoord: number,  // first position to examine
+  crossCoordStart: number,
+  crossCoordEnd: number,
+  sheetEdge: number,   // dimensions.rows or dimensions.cols
+): number;             // returns last-claimed coord along `axis`
+
 function expandSegmentsToPositions(
   segments: Segment[],
   startCoord: number,
 ): Array<{ segment: Segment; offsetInSegment: number; coord: number }>;
 
-function cartesianCellSet(region: Region, bounds: ResolvedBounds, sheet: Sheet):
-  Iterable<{ row: number; col: number; axisPositions: Position[] }>;
+function cartesianCellSet(
+  region: Region,
+  effective: { bounds: ResolvedBounds; segmentsByAxis: {...} },
+  sheet: Sheet,
+): Iterable<{ row: number; col: number; axisPositions: Position[] }>;
 ```
+
+**`scanTerminator` semantics** (axis = "column" case; "row" is
+symmetric):
+
+- For `untilBlank`: walk cols starting from `startCoord`,
+  inspecting every cell at each cross-coord in
+  `[crossCoordStart, crossCoordEnd]`. A "blank cell at col c" =
+  every inspected cell in that col is empty. Stop after
+  `consecutiveBlanks` blanks in a row; return the last non-blank
+  col. If no blanks, return `sheetEdge`.
+- For `matchesPattern`: walk cols; stop when a cell at any
+  cross-coord matches the pattern; return col − 1.
+
+**`ruleMatchesRecord` dispatch** for skip rules is rewritten to
+key on `headerAxes.length` + `recordsAxisOf(region)` instead of
+`orientation`:
+
+- 1D / headerless: per-record scan (row for records-axis "row",
+  col for "column"). Identical to today once the orientation
+  lookup is replaced by the derived helper.
+- 2D: per-cell evaluation. `blank` = the cell is empty.
+  `cellMatches` reads the `axis` field to pick the cross-axis
+  cell reference.
+
+**Record-axis extension for 1D record axis.** When
+`recordAxisTerminator` is set, extend `effectiveBounds.endRow`
+(records-axis "row") or `effectiveBounds.endCol` ("column") by
+scanning past `bounds.end*` until the terminator fires.
+
+**Binding resolution under the new locator shape.** Replay's
+header-label-to-coord resolver dispatches on `locator.axis`:
+
+```ts
+function resolveBindingCoord(
+  locator: BindingSourceLocator,
+  region: Region,
+  sheet: Sheet,
+  bounds: ResolvedBounds,
+): { axis: "row" | "column"; coord: number } | undefined {
+  if (locator.kind === "byPositionIndex") {
+    // Axis-relative; convert to a sheet coord.
+    const start = locator.axis === "row" ? bounds.startCol : bounds.startRow;
+    return { axis: locator.axis, coord: start + locator.index - 1 };
+  }
+  // byHeaderName — look up the label on the header line for locator.axis.
+  const headerIndex = headerStrategyFor(region, locator.axis);
+  if (headerIndex === undefined) return undefined;
+  const labels = readHeaderLineLabels(region, locator.axis, sheet, headerIndex);
+  const offset = labels.findIndex((l) => l === locator.name);
+  if (offset < 0) return undefined;
+  const start = locator.axis === "row" ? bounds.startCol : bounds.startRow;
+  return { axis: locator.axis, coord: start + offset };
+}
+```
+
+In the emit loop, for a field-position's binding:
+- If the binding's `axis` matches the row-header axis (cells run
+  across cols), read the cell at `(entityRow, coord)` for 1D, or
+  `(record's col-header-axis row, coord)` for 2D.
+- If the binding's `axis` matches the col-header axis (cells run
+  down rows), read the cell at `(coord, entityCol)` for 1D, or
+  `(coord, record's row-header-axis col)` for 2D.
+
+The axis-aware resolution is what makes 2D static-on-both-axes
+regions work naturally — the same "Quarterly revenue by company"
+shape from the design docs round-trips end-to-end.
 
 #### B3. Refactor — `resolve-headers.ts`
 
