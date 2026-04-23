@@ -2,6 +2,8 @@ import { describe, it, expect } from "@jest/globals";
 
 import type { InterpretInput } from "../../plan/index.js";
 import { LayoutPlanSchema } from "../../plan/index.js";
+import { makeSheetAccessor } from "../../workbook/helpers.js";
+import { extractRecords } from "../../replay/extract-records.js";
 import { interpret } from "../index.js";
 
 function cloneInput(input: InterpretInput): InterpretInput {
@@ -82,6 +84,56 @@ describe("interpret() — orchestration", () => {
     expect(ids.every((id) => id?.startsWith("override-"))).toBe(true);
   });
 
+  it("feeds contacts plan through extractRecords — 3 records with expected column-def fields", async () => {
+    const input = contactsInput();
+    const plan = await interpret(input, {
+      columnDefinitionCatalog: [
+        { id: "col-email", label: "Email", normalizedKey: "email" },
+        { id: "col-name", label: "Name", normalizedKey: "name" },
+        { id: "col-age", label: "Age", normalizedKey: "age" },
+      ],
+    });
+    const sheet = makeSheetAccessor(input.workbook.sheets[0]);
+    const records = extractRecords(plan.regions[0], sheet);
+    expect(records).toHaveLength(3);
+    expect(records.every((r) => r.targetEntityDefinitionId === "contacts")).toBe(
+      true
+    );
+    expect(records.every((r) => r.regionId === plan.regions[0].id)).toBe(true);
+    expect(records.map((r) => r.fields["col-email"])).toEqual([
+      "a@x.com",
+      "b@x.com",
+      "c@x.com",
+    ]);
+    expect(records.map((r) => r.fields["col-name"])).toEqual([
+      "alice",
+      "bob",
+      "carol",
+    ]);
+    expect(records.map((r) => r.fields["col-age"])).toEqual([30, 25, 40]);
+  });
+
+  it("injected classifier round-trips through extractRecords — overrides appear as field keys", async () => {
+    const input = contactsInput();
+    const plan = await interpret(input, {
+      classifier: async (candidates) =>
+        candidates.map((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId: `override-${c.sourceHeader}`,
+          confidence: 0.99,
+          rationale: "injected",
+        })),
+      columnDefinitionCatalog: [{ id: "x", label: "x" }],
+    });
+    const sheet = makeSheetAccessor(input.workbook.sheets[0]);
+    const records = extractRecords(plan.regions[0], sheet);
+    expect(records).toHaveLength(3);
+    expect(records[0].fields["override-email"]).toBe("a@x.com");
+    expect(records[0].fields["override-name"]).toBe("alice");
+    expect(records[0].fields["override-age"]).toBe(30);
+  });
+
   it("emits PIVOTED_REGION_MISSING_AXIS_NAME when a pivoted region is hinted with an unresolved anchor-cell axisName", async () => {
     const input: InterpretInput = {
       workbook: {
@@ -129,5 +181,15 @@ describe("interpret() — orchestration", () => {
         w.severity === "blocker"
     );
     expect(blocker).toBeDefined();
+
+    // Replay-bridge: the hinted pivot still emits one record per label even
+    // when axis-name resolution produces a blocker warning.
+    const sheet = makeSheetAccessor(input.workbook.sheets[0]);
+    const records = extractRecords(region, sheet);
+    expect(records).toHaveLength(2);
+    expect(records.every((r) => r.targetEntityDefinitionId === "monthly")).toBe(
+      true
+    );
+    expect(records.map((r) => r.fields.revenue)).toEqual([100, 200]);
   });
 });
