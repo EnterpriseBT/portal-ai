@@ -18,19 +18,19 @@ interface SampleFile {
 
 const SAMPLE_FILES: SampleFile[] = [
   {
-    label: "region-segmentation-matrix.csv",
+    label: "supported_layouts.csv",
     description:
       "Every region-config permutation (orientation × headerAxis × role pattern) in one CSV",
-    href: "/samples/region-segmentation-matrix.csv",
-    downloadName: "region-segmentation-matrix.csv",
+    href: "/samples/supported_layouts.csv",
+    downloadName: "supported_layouts.csv",
     icon: <DescriptionOutlinedIcon fontSize="small" color="action" />,
   },
   {
-    label: "region-segmentation-matrix.xlsx",
+    label: "supported_layouts.xlsx",
     description:
       "Same permutation matrix, one permutation per sheet — easier to draw against",
-    href: "/samples/region-segmentation-matrix.xlsx",
-    downloadName: "region-segmentation-matrix.xlsx",
+    href: "/samples/supported_layouts.xlsx",
+    downloadName: "supported_layouts.xlsx",
     icon: <TableChartOutlinedIcon fontSize="small" color="action" />,
   },
 ];
