@@ -10,10 +10,18 @@ function makeRegion(overrides: Partial<Region> = {}): Region {
     id: "r1",
     sheet: "Sheet1",
     bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 3 },
-    boundsMode: "absolute",
     targetEntityDefinitionId: "contacts",
-    orientation: "rows-as-records",
-    headerAxis: "row",
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [{ kind: "field", positionCount: 3 }],
+    },
+    headerStrategyByAxis: {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "Sheet1", row: 1 },
+        confidence: 0.9,
+      },
+    },
     identityStrategy: { kind: "rowPosition", confidence: 0 },
     columnBindings: [],
     skipRules: [],
@@ -29,7 +37,7 @@ function makeRegion(overrides: Partial<Region> = {}): Region {
 }
 
 describe("resolveRegionBounds", () => {
-  describe("absolute", () => {
+  describe("no terminator", () => {
     it("returns the literal bounds unchanged", () => {
       const sheet = makeSheetAccessor({
         name: "Sheet1",
@@ -38,7 +46,9 @@ describe("resolveRegionBounds", () => {
       });
       const region = makeRegion({
         bounds: { startRow: 2, startCol: 2, endRow: 5, endCol: 5 },
-        boundsMode: "absolute",
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 4 }],
+        },
       });
       const resolved = resolveRegionBounds(region, sheet);
       expect(resolved).toEqual({
@@ -50,7 +60,7 @@ describe("resolveRegionBounds", () => {
     });
   });
 
-  describe("untilEmpty", () => {
+  describe("recordAxisTerminator — untilBlank", () => {
     const sheetData: SheetData = {
       name: "Sheet1",
       dimensions: { rows: 10, cols: 3 },
@@ -63,29 +73,31 @@ describe("resolveRegionBounds", () => {
         { row: 3, col: 2, value: 2 },
         { row: 4, col: 1, value: "c" },
         { row: 4, col: 2, value: 3 },
-        // Rows 5 and 6 are empty → terminator (default count 2)
-        { row: 7, col: 1, value: "d" }, // this should NOT be included
+        // Rows 5 and 6 empty → default terminator fires after 2 blanks.
+        { row: 7, col: 1, value: "d" }, // NOT included with default.
       ],
     };
     const sheet = makeSheetAccessor(sheetData);
 
-    it("expands the region until untilEmptyTerminatorCount consecutive blank rows (default 2)", () => {
+    it("expands endRow until `consecutiveBlanks` blank lines (default 2)", () => {
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
-        boundsMode: "untilEmpty",
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+        recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
       });
       const resolved = resolveRegionBounds(region, sheet);
       expect(resolved.endRow).toBe(4);
     });
 
-    it("respects a custom untilEmptyTerminatorCount", () => {
+    it("respects a custom consecutiveBlanks count", () => {
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
-        boundsMode: "untilEmpty",
-        untilEmptyTerminatorCount: 3,
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+        recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 3 },
       });
       const resolved = resolveRegionBounds(region, sheet);
-      // With terminator count = 3, rows 5-6-7 aren't enough (row 7 has data) — expands to include row 7 and beyond until 3 blanks.
+      // Terminator requires 3 consecutive blanks; rows 5-6 are only 2, so
+      // expansion continues to include row 7 and any further blanks.
       expect(resolved.endRow).toBeGreaterThanOrEqual(7);
     });
 
@@ -102,14 +114,15 @@ describe("resolveRegionBounds", () => {
       const smallSheet = makeSheetAccessor(smallSheetData);
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
-        boundsMode: "untilEmpty",
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+        recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
       });
       const resolved = resolveRegionBounds(region, smallSheet);
       expect(resolved.endRow).toBeLessThanOrEqual(3);
     });
   });
 
-  describe("matchesPattern", () => {
+  describe("recordAxisTerminator — matchesPattern", () => {
     const sheetData: SheetData = {
       name: "Sheet1",
       dimensions: { rows: 10, cols: 2 },
@@ -123,11 +136,11 @@ describe("resolveRegionBounds", () => {
     };
     const sheet = makeSheetAccessor(sheetData);
 
-    it("expands the region until the first row whose leading cell matches the boundsPattern regex", () => {
+    it("expands endRow until the leading cell matches the pattern", () => {
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
-        boundsMode: "matchesPattern",
-        boundsPattern: "^Total$",
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+        recordAxisTerminator: { kind: "matchesPattern", pattern: "^Total$" },
       });
       const resolved = resolveRegionBounds(region, sheet);
       expect(resolved.endRow).toBe(3);
@@ -136,8 +149,11 @@ describe("resolveRegionBounds", () => {
     it("falls back to the sheet bound when no row matches", () => {
       const region = makeRegion({
         bounds: { startRow: 1, startCol: 1, endRow: 1, endCol: 2 },
-        boundsMode: "matchesPattern",
-        boundsPattern: "^NeverMatches$",
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+        recordAxisTerminator: {
+          kind: "matchesPattern",
+          pattern: "^NeverMatches$",
+        },
       });
       const resolved = resolveRegionBounds(region, sheet);
       expect(resolved.endRow).toBe(sheet.dimensions.rows);

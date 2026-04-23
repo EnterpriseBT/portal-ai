@@ -17,14 +17,17 @@ function contactsPlan(): LayoutPlan {
         id: "r1",
         sheet: "Contacts",
         bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
-        boundsMode: "absolute",
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
-        headerStrategy: {
-          kind: "row",
-          locator: { kind: "row", sheet: "Contacts", row: 1 },
-          confidence: 0.95,
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 3 }],
+        },
+        headerStrategyByAxis: {
+          row: {
+            kind: "row",
+            locator: { kind: "row", sheet: "Contacts", row: 1 },
+            confidence: 0.95,
+          },
         },
         identityStrategy: {
           kind: "column",
@@ -33,17 +36,17 @@ function contactsPlan(): LayoutPlan {
         },
         columnBindings: [
           {
-            sourceLocator: { kind: "byHeaderName", name: "email" },
+            sourceLocator: { kind: "byHeaderName", axis: "row", name: "email" },
             columnDefinitionId: "col-email",
             confidence: 0.9,
           },
           {
-            sourceLocator: { kind: "byHeaderName", name: "name" },
+            sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
             columnDefinitionId: "col-name",
             confidence: 0.9,
           },
           {
-            sourceLocator: { kind: "byHeaderName", name: "age" },
+            sourceLocator: { kind: "byHeaderName", axis: "row", name: "age" },
             columnDefinitionId: "col-age",
             confidence: 0.9,
           },
@@ -123,7 +126,6 @@ describe("replay() — orchestration", () => {
     });
     plan.confidence.perRegion["ghost"] = 0;
     const result = replay(plan, contactsWorkbookData);
-    // r1 emits 3 records; ghost contributes none.
     expect(result.records).toHaveLength(3);
   });
 

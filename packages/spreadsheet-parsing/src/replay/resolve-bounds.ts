@@ -1,6 +1,9 @@
 import {
-  DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT,
+  DEFAULT_UNTIL_BLANK_COUNT,
+  recordsAxisOf,
+  type AxisMember,
   type Region,
+  type Terminator,
 } from "../plan/index.js";
 import type { Sheet, WorkbookCell } from "../workbook/types.js";
 
@@ -11,19 +14,6 @@ export interface ResolvedBounds {
   endCol: number;
 }
 
-function isRowBlank(
-  sheet: Sheet,
-  row: number,
-  startCol: number,
-  endCol: number
-): boolean {
-  for (let c = startCol; c <= endCol; c++) {
-    const cell = sheet.cell(row, c);
-    if (cell && cell.value !== null && cell.value !== "") return false;
-  }
-  return true;
-}
-
 function cellText(cell: WorkbookCell | undefined): string {
   if (!cell || cell.value === null) return "";
   if (cell.value instanceof Date) return cell.value.toISOString();
@@ -31,72 +21,118 @@ function cellText(cell: WorkbookCell | undefined): string {
   return String(cell.value);
 }
 
+function isLineBlank(
+  sheet: Sheet,
+  axis: AxisMember,
+  coord: number,
+  crossStart: number,
+  crossEnd: number
+): boolean {
+  if (axis === "row") {
+    for (let c = crossStart; c <= crossEnd; c++) {
+      if (cellText(sheet.cell(coord, c)) !== "") return false;
+    }
+    return true;
+  }
+  for (let r = crossStart; r <= crossEnd; r++) {
+    if (cellText(sheet.cell(r, coord)) !== "") return false;
+  }
+  return true;
+}
+
+function firstCellText(
+  sheet: Sheet,
+  axis: AxisMember,
+  coord: number,
+  crossStart: number
+): string {
+  return axis === "row"
+    ? cellText(sheet.cell(coord, crossStart))
+    : cellText(sheet.cell(crossStart, coord));
+}
+
 /**
- * Expand a region's row bounds downward until a terminator is reached.
- * Terminator = `untilEmptyTerminatorCount` consecutive blank rows
- * (default = `DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT`, i.e. 2).
+ * Extend a bound outward along `axis` until the terminator fires. Returns the
+ * last coord to include (a data line, not the terminator itself).
  *
- * Returns the last **non-blank** row reached before the terminator (so the
- * returned `endRow` is always a data row, not a blank).
+ * - `untilBlank`: walk coords; count consecutive blank lines; stop after
+ *   `consecutiveBlanks` blanks; return the last non-blank coord. If no blank
+ *   line is found, return the sheet edge.
+ * - `matchesPattern`: walk coords; stop when the leading cell matches the
+ *   pattern; return the coord before the match. If no match, return the sheet
+ *   edge.
  */
-function expandUntilEmpty(region: Region, sheet: Sheet): ResolvedBounds {
-  const terminator =
-    region.untilEmptyTerminatorCount ?? DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT;
-  const { startRow, startCol, endCol } = region.bounds;
-  const sheetMax = sheet.dimensions.rows;
-
-  let lastDataRow = region.bounds.endRow;
-  let blanks = 0;
-  for (let r = region.bounds.endRow + 1; r <= sheetMax; r++) {
-    if (isRowBlank(sheet, r, startCol, endCol)) {
-      blanks++;
-      if (blanks >= terminator) break;
-    } else {
-      blanks = 0;
-      lastDataRow = r;
+function extendAlongAxis(
+  terminator: Terminator,
+  sheet: Sheet,
+  axis: AxisMember,
+  startCoord: number,
+  crossStart: number,
+  crossEnd: number,
+  sheetEdge: number
+): number {
+  if (terminator.kind === "untilBlank") {
+    const needed = terminator.consecutiveBlanks ?? DEFAULT_UNTIL_BLANK_COUNT;
+    let lastData = startCoord - 1;
+    let blanks = 0;
+    for (let c = startCoord; c <= sheetEdge; c++) {
+      if (isLineBlank(sheet, axis, c, crossStart, crossEnd)) {
+        blanks++;
+        if (blanks >= needed) break;
+      } else {
+        blanks = 0;
+        lastData = c;
+      }
+    }
+    return lastData;
+  }
+  const re = new RegExp(terminator.pattern);
+  for (let c = startCoord; c <= sheetEdge; c++) {
+    if (re.test(firstCellText(sheet, axis, c, crossStart))) {
+      return c - 1;
     }
   }
-  return { startRow, startCol, endRow: lastDataRow, endCol };
+  return sheetEdge;
 }
 
 /**
- * Expand a region's row bounds downward until a row whose leading cell
- * (`startCol`) matches `boundsPattern`. The matching row is *not* included
- * — it's a terminator marker. When no row matches, the region extends to
- * the sheet's declared row dimension.
- */
-function expandUntilPattern(region: Region, sheet: Sheet): ResolvedBounds {
-  const { startRow, startCol, endCol } = region.bounds;
-  if (!region.boundsPattern) {
-    return { ...region.bounds };
-  }
-  const re = new RegExp(region.boundsPattern);
-  const sheetMax = sheet.dimensions.rows;
-  let endRow = sheetMax;
-  for (let r = region.bounds.endRow + 1; r <= sheetMax; r++) {
-    const firstCell = cellText(sheet.cell(r, startCol));
-    if (re.test(firstCell)) {
-      endRow = r - 1;
-      break;
-    }
-  }
-  return { startRow, startCol, endRow, endCol };
-}
-
-/**
- * Resolve a region's `bounds` against the workbook. `absolute` returns the
- * literal range; `untilEmpty` and `matchesPattern` expand rowwise.
+ * Resolve a region's bounds against the workbook. If `recordAxisTerminator`
+ * is set, extend the records-axis bound outward; otherwise return the literal
+ * bounds. Only single-axis extension is applied here; per-axis dynamic tail
+ * segments are handled by the extract pipeline.
  */
 export function resolveRegionBounds(
   region: Region,
   sheet: Sheet
 ): ResolvedBounds {
-  switch (region.boundsMode) {
-    case "absolute":
-      return { ...region.bounds };
-    case "untilEmpty":
-      return expandUntilEmpty(region, sheet);
-    case "matchesPattern":
-      return expandUntilPattern(region, sheet);
+  const bounds: ResolvedBounds = { ...region.bounds };
+  if (!region.recordAxisTerminator) return bounds;
+
+  const recordsAxis = recordsAxisOf(region);
+  if (!recordsAxis) return bounds;
+
+  if (recordsAxis === "row") {
+    bounds.endRow = extendAlongAxis(
+      region.recordAxisTerminator,
+      sheet,
+      "row",
+      bounds.endRow + 1,
+      bounds.startCol,
+      bounds.endCol,
+      sheet.dimensions.rows
+    );
+    if (bounds.endRow < region.bounds.endRow) bounds.endRow = region.bounds.endRow;
+  } else {
+    bounds.endCol = extendAlongAxis(
+      region.recordAxisTerminator,
+      sheet,
+      "column",
+      bounds.endCol + 1,
+      bounds.startRow,
+      bounds.endRow,
+      sheet.dimensions.cols
+    );
+    if (bounds.endCol < region.bounds.endCol) bounds.endCol = region.bounds.endCol;
   }
+  return bounds;
 }

@@ -9,14 +9,17 @@ function contactsRegion(overrides: Partial<Region> = {}): Region {
     id: "r1",
     sheet: "Sheet1",
     bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
-    boundsMode: "absolute",
     targetEntityDefinitionId: "contacts",
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    headerStrategy: {
-      kind: "row",
-      locator: { kind: "row", sheet: "Sheet1", row: 1 },
-      confidence: 0.9,
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [{ kind: "field", positionCount: 3 }],
+    },
+    headerStrategyByAxis: {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "Sheet1", row: 1 },
+        confidence: 0.9,
+      },
     },
     identityStrategy: {
       kind: "column",
@@ -25,17 +28,17 @@ function contactsRegion(overrides: Partial<Region> = {}): Region {
     },
     columnBindings: [
       {
-        sourceLocator: { kind: "byHeaderName", name: "email" },
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "email" },
         columnDefinitionId: "col-email",
         confidence: 0.9,
       },
       {
-        sourceLocator: { kind: "byHeaderName", name: "name" },
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
         columnDefinitionId: "col-name",
         confidence: 0.9,
       },
       {
-        sourceLocator: { kind: "byHeaderName", name: "age" },
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "age" },
         columnDefinitionId: "col-age",
         confidence: 0.8,
       },
@@ -87,7 +90,7 @@ describe("detectRegionDrift — added-columns", () => {
             { row: 1, col: 1, value: "email" },
             { row: 1, col: 2, value: "name" },
             { row: 1, col: 3, value: "age" },
-            { row: 1, col: 4, value: "unexpected" }, // new column
+            { row: 1, col: 4, value: "unexpected" },
             { row: 2, col: 1, value: "a@x.com" },
             { row: 2, col: 2, value: "alice" },
             { row: 2, col: 3, value: 30 },
@@ -98,6 +101,9 @@ describe("detectRegionDrift — added-columns", () => {
     });
     const region = contactsRegion({
       bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 4 },
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 4 }],
+      },
     });
     const drift = detectRegionDrift(region, wb.sheets[0]);
     expect(drift.kinds).toContain("added-columns");
@@ -127,6 +133,9 @@ describe("detectRegionDrift — added-columns", () => {
     });
     const region = contactsRegion({
       bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 4 },
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 4 }],
+      },
       drift: {
         headerShiftRows: 0,
         addedColumns: "auto-apply",
@@ -148,7 +157,6 @@ describe("detectRegionDrift — removed-columns", () => {
           dimensions: { rows: 2, cols: 2 },
           cells: [
             { row: 1, col: 1, value: "email" },
-            // "name" and "age" columns gone
             { row: 2, col: 1, value: "a@x.com" },
           ],
         },
@@ -156,6 +164,9 @@ describe("detectRegionDrift — removed-columns", () => {
     });
     const region = contactsRegion({
       bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 2 }],
+      },
       drift: {
         headerShiftRows: 0,
         addedColumns: "halt",
@@ -175,7 +186,6 @@ describe("detectRegionDrift — removed-columns", () => {
           dimensions: { rows: 2, cols: 2 },
           cells: [
             { row: 1, col: 1, value: "email" },
-            // "name" gone (1 removed, max=1 → within tolerance)
             { row: 2, col: 1, value: "a@x.com" },
           ],
         },
@@ -183,14 +193,17 @@ describe("detectRegionDrift — removed-columns", () => {
     });
     const region = contactsRegion({
       bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 2 }],
+      },
       columnBindings: [
         {
-          sourceLocator: { kind: "byHeaderName", name: "email" },
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "email" },
           columnDefinitionId: "col-email",
           confidence: 0.9,
         },
         {
-          sourceLocator: { kind: "byHeaderName", name: "name" },
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
           columnDefinitionId: "col-name",
           confidence: 0.9,
         },
@@ -217,7 +230,6 @@ describe("detectRegionDrift — identity column", () => {
             { row: 1, col: 1, value: "email" },
             { row: 1, col: 2, value: "name" },
             { row: 1, col: 3, value: "age" },
-            // row 2 col 1 blank
             { row: 2, col: 2, value: "alice" },
             { row: 2, col: 3, value: 30 },
             { row: 3, col: 1, value: "b@x.com" },
@@ -247,7 +259,7 @@ describe("detectRegionDrift — identity column", () => {
             { row: 2, col: 1, value: "a@x.com" },
             { row: 2, col: 2, value: "alice" },
             { row: 2, col: 3, value: 30 },
-            { row: 3, col: 1, value: "a@x.com" }, // duplicate
+            { row: 3, col: 1, value: "a@x.com" },
             { row: 3, col: 2, value: "bob" },
             { row: 3, col: 3, value: 25 },
           ],
@@ -265,38 +277,37 @@ describe("detectRegionDrift — identity column", () => {
   });
 });
 
-describe("detectRegionDrift — records-axis rename", () => {
-  it("emits records-axis-value-renamed and sets identityChanging=true regardless of drift knobs", () => {
-    // Compare the pivoted region's current axis labels to the plan's
-    // records-axis anchor label — if the anchor value differs from the prior
-    // anchor, that's an axis rename.
-    const priorRegion = {
+describe("detectRegionDrift — records-axis anchor rename", () => {
+  it("emits records-axis-value-renamed when a pivot segment's anchor-cell axisName has changed in the workbook", () => {
+    const priorRegion: Region = {
       ...contactsRegion(),
-      orientation: "columns-as-records" as const,
-      headerAxis: "column" as const,
-      recordsAxisName: {
-        name: "Month",
-        source: "anchor-cell" as const,
-        confidence: 0.9,
+      headerAxes: ["column"],
+      segmentsByAxis: {
+        column: [
+          {
+            kind: "pivot",
+            id: "month",
+            axisName: "Month",
+            axisNameSource: "anchor-cell",
+            positionCount: 2,
+          },
+        ],
       },
+      cellValueField: { name: "Revenue", nameSource: "user" },
       axisAnchorCell: { row: 1, col: 1 },
-      headerStrategy: {
-        kind: "rowLabels" as const,
-        locator: { kind: "column" as const, sheet: "Sheet1", col: 1 },
-        confidence: 0.9,
-      },
-      bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 4 },
-      columnBindings: [
-        {
-          sourceLocator: { kind: "byHeaderName" as const, name: "Revenue" },
-          columnDefinitionId: "col-revenue",
+      headerStrategyByAxis: {
+        column: {
+          kind: "rowLabels",
+          locator: { kind: "column", sheet: "Sheet1", col: 1 },
           confidence: 0.9,
         },
-      ],
+      },
+      bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 4 },
+      columnBindings: [],
       drift: {
         headerShiftRows: 0,
-        addedColumns: "auto-apply" as const,
-        removedColumns: { max: 10, action: "auto-apply" as const },
+        addedColumns: "auto-apply",
+        removedColumns: { max: 10, action: "auto-apply" },
       },
     };
     const wb = makeWorkbook({

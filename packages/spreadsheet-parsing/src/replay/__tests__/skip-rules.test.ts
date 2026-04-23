@@ -9,19 +9,22 @@ function baseRegion(overrides: Partial<Region> = {}): Region {
     id: "r1",
     sheet: "Sheet1",
     bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 3 },
-    boundsMode: "absolute",
     targetEntityDefinitionId: "contacts",
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    headerStrategy: {
-      kind: "row",
-      locator: { kind: "row", sheet: "Sheet1", row: 1 },
-      confidence: 0.9,
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [{ kind: "field", positionCount: 3 }],
+    },
+    headerStrategyByAxis: {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "Sheet1", row: 1 },
+        confidence: 0.9,
+      },
     },
     identityStrategy: { kind: "rowPosition", confidence: 0.3 },
     columnBindings: [
       {
-        sourceLocator: { kind: "byHeaderName", name: "name" },
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
         columnDefinitionId: "col-name",
         confidence: 0.9,
       },
@@ -39,7 +42,7 @@ function baseRegion(overrides: Partial<Region> = {}): Region {
 }
 
 describe("extractRecords — skip rules", () => {
-  it("blank rule drops rows whose cells are all empty (rows-as-records)", () => {
+  it("blank rule drops rows whose cells are all empty (records-are-rows)", () => {
     const wb = makeWorkbook({
       sheets: [
         {
@@ -87,7 +90,6 @@ describe("extractRecords — skip rules", () => {
     });
     const region = baseRegion({
       bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
-      // crossAxisIndex is 0-based absolute index; col 1 is index 0.
       skipRules: [
         { kind: "cellMatches", crossAxisIndex: 0, pattern: "^Total$" },
       ],
@@ -109,7 +111,6 @@ describe("extractRecords — skip rules", () => {
             { row: 2, col: 1, value: "alice" },
             { row: 2, col: 2, value: "hi" },
             { row: 3, col: 1, value: "bob" },
-            // row 3 col 2 is absent → empty
             { row: 4, col: 1, value: "carol" },
             { row: 4, col: 2, value: "hello" },
           ],
@@ -118,7 +119,9 @@ describe("extractRecords — skip rules", () => {
     });
     const region = baseRegion({
       bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 2 },
-      // Match rows with empty cell at col 2 (index 1).
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 2 }],
+      },
       skipRules: [{ kind: "cellMatches", crossAxisIndex: 1, pattern: "^$" }],
     });
     const records = extractRecords(region, wb.sheets[0]);
@@ -150,15 +153,46 @@ describe("extractRecords — skip rules", () => {
       ],
     });
     const region: Region = {
-      ...baseRegion({
-        orientation: "cells-as-records",
-        recordsAxisName: { name: "Quarter", source: "user" },
-        secondaryRecordsAxisName: { name: "Letter", source: "user" },
-        cellValueName: { name: "Value", source: "user" },
-        axisAnchorCell: { row: 1, col: 1 },
-        bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 4 },
-        columnBindings: [],
-      }),
+      ...baseRegion(),
+      headerAxes: ["row", "column"],
+      bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 4 },
+      segmentsByAxis: {
+        row: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "letter",
+            axisName: "Letter",
+            axisNameSource: "user",
+            positionCount: 3,
+          },
+        ],
+        column: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "quarter",
+            axisName: "Quarter",
+            axisNameSource: "user",
+            positionCount: 2,
+          },
+        ],
+      },
+      cellValueField: { name: "Value", nameSource: "user" },
+      axisAnchorCell: { row: 1, col: 1 },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row",
+          locator: { kind: "row", sheet: "Sheet1", row: 1 },
+          confidence: 0.9,
+        },
+        column: {
+          kind: "column",
+          locator: { kind: "column", sheet: "Sheet1", col: 1 },
+          confidence: 0.9,
+        },
+      },
+      columnBindings: [],
       skipRules: [
         {
           kind: "cellMatches",
@@ -169,8 +203,6 @@ describe("extractRecords — skip rules", () => {
       ],
     };
     const records = extractRecords(region, wb.sheets[0]);
-    // Q1 × Total and Q2 × Total (cols matching Total) should be skipped.
-    // Remaining: Q1×A, Q1×B, Q2×A, Q2×B → 4 records
     expect(records).toHaveLength(4);
     for (const r of records) {
       expect(r.fields.Letter).not.toBe("Total");

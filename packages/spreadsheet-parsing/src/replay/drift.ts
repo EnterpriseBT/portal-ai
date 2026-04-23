@@ -1,11 +1,13 @@
-import type {
-  DriftKind,
-  DriftReport,
-  Region,
-  RegionDrift,
+import {
+  recordsAxisOf,
+  type DriftKind,
+  type DriftReport,
+  type Region,
+  type RegionDrift,
+  type Segment,
 } from "../plan/index.js";
 import type { Sheet, WorkbookCell } from "../workbook/types.js";
-import { resolveHeaders } from "./resolve-headers.js";
+import { resolveHeaders, type HeaderLayout } from "./resolve-headers.js";
 import { resolveRegionBounds } from "./resolve-bounds.js";
 
 type Severity = "none" | "info" | "warn" | "blocker";
@@ -35,16 +37,36 @@ interface DriftDetail {
   renamedAnchor?: { prior: string; current: string };
 }
 
+function firstHeaderLayout(
+  region: Region,
+  sheet: Sheet,
+  bounds: { startRow: number; startCol: number; endRow: number; endCol: number }
+): HeaderLayout | undefined {
+  for (const axis of region.headerAxes) {
+    const layout = resolveHeaders(region, axis, sheet, bounds);
+    if (layout) return layout;
+  }
+  return undefined;
+}
+
+function pivotSegmentsWithAnchor(region: Region): Segment[] {
+  const out: Segment[] = [];
+  for (const axis of ["row", "column"] as const) {
+    for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+      if (seg.kind === "pivot" && seg.axisNameSource === "anchor-cell") {
+        out.push(seg);
+      }
+    }
+  }
+  return out;
+}
+
 /**
- * Evaluate drift for a single region against the current workbook. Returns a
- * `RegionDrift` populated with the kinds observed, a `withinTolerance` flag
- * computed against the region's own drift knobs, and a pre-computed
- * severity/identityChanging pair inside `details` so `rollUpDrift` can
- * aggregate without needing region context.
+ * Evaluate drift for a single region against the current workbook.
  */
 export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
   const bounds = resolveRegionBounds(region, sheet);
-  const headers = resolveHeaders(region, sheet, bounds);
+  const header = firstHeaderLayout(region, sheet, bounds);
   const kinds: DriftKind[] = [];
   const detail: DriftDetail = {
     severity: "none",
@@ -58,7 +80,16 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
   // ── Removed columns ────────────────────────────────────────────────────
   for (const binding of region.columnBindings) {
     if (binding.sourceLocator.kind === "byHeaderName") {
-      if (!headers.coordByLabel.has(binding.sourceLocator.name)) {
+      const axisHeader = resolveHeaders(
+        region,
+        binding.sourceLocator.axis,
+        sheet,
+        bounds
+      );
+      if (
+        !axisHeader ||
+        !axisHeader.coordByLabel.has(binding.sourceLocator.name)
+      ) {
         detail.removedColumns.push(binding.sourceLocator.name);
       }
     }
@@ -66,15 +97,19 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
   if (detail.removedColumns.length > 0) kinds.push("removed-columns");
 
   // ── Added columns ──────────────────────────────────────────────────────
-  if (headers.direction !== "none") {
+  if (header) {
     const boundNames = new Set(
       region.columnBindings
-        .filter((b) => b.sourceLocator.kind === "byHeaderName")
+        .filter(
+          (b) =>
+            b.sourceLocator.kind === "byHeaderName" &&
+            b.sourceLocator.axis === header.axis
+        )
         .map((b) =>
           b.sourceLocator.kind === "byHeaderName" ? b.sourceLocator.name : ""
         )
     );
-    for (const label of headers.labels) {
+    for (const label of header.labels) {
       if (label === "") continue;
       if (!boundNames.has(label)) {
         detail.addedColumns.push(label);
@@ -83,15 +118,16 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
     if (detail.addedColumns.length > 0) kinds.push("added-columns");
   }
 
-  // ── Identity column checks (rows-as-records with column identity only) ─
+  // ── Identity column checks (records-are-rows with column identity only) ─
+  const recAxis = recordsAxisOf(region);
   if (
-    region.orientation === "rows-as-records" &&
+    recAxis === "row" &&
     region.identityStrategy.kind === "column" &&
     region.identityStrategy.sourceLocator.kind === "column"
   ) {
     const idCol = region.identityStrategy.sourceLocator.col;
     const headerRow =
-      headers.direction === "row" ? headers.index : bounds.startRow - 1;
+      header?.axis === "row" ? header.index : bounds.startRow - 1;
     const seen = new Map<string, number>();
     for (let r = headerRow + 1; r <= bounds.endRow; r++) {
       const txt = cellText(sheet.cell(r, idCol));
@@ -110,21 +146,21 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
     if (duplicates > 0) kinds.push("duplicate-identity-values");
   }
 
-  // ── Records-axis anchor rename (pivoted / crosstab regions) ────────────
-  if (
-    region.recordsAxisName &&
-    region.recordsAxisName.source === "anchor-cell" &&
-    region.axisAnchorCell
-  ) {
+  // ── Records-axis anchor rename (pivoted regions with anchor-cell source) ─
+  if (region.axisAnchorCell) {
     const anchorText = cellText(
       sheet.cell(region.axisAnchorCell.row, region.axisAnchorCell.col)
     );
-    if (anchorText !== "" && anchorText !== region.recordsAxisName.name) {
-      detail.renamedAnchor = {
-        prior: region.recordsAxisName.name,
-        current: anchorText,
-      };
-      kinds.push("records-axis-value-renamed");
+    for (const seg of pivotSegmentsWithAnchor(region)) {
+      if (seg.kind !== "pivot") continue;
+      if (anchorText !== "" && anchorText !== seg.axisName) {
+        detail.renamedAnchor = {
+          prior: seg.axisName,
+          current: anchorText,
+        };
+        kinds.push("records-axis-value-renamed");
+        break;
+      }
     }
   }
 
@@ -152,8 +188,6 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
     withinTolerance = false;
   }
 
-  // Pre-compute severity + identityChanging at detect time so rollUpDrift
-  // doesn't need the region context again.
   for (const kind of kinds) {
     detail.severity = maxSeverity(
       detail.severity,
@@ -171,13 +205,8 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
 }
 
 function kindIsIdentityChanging(kind: DriftKind): boolean {
-  // Records-axis rename always changes identity (spec).
   if (kind === "records-axis-value-renamed") return true;
   if (kind === "duplicate-identity-values") return true;
-  // Removed-columns only counts as identity-changing when it affects the
-  // identity strategy's columns (not covered by the simple header diff here);
-  // for Phase 5 we treat removed identity-column blanks as identity-changing
-  // separately via `identity-column-has-blanks`.
   if (kind === "identity-column-has-blanks") return true;
   return false;
 }
@@ -204,11 +233,6 @@ function kindSeverity(
   return "info";
 }
 
-/**
- * Roll up per-region drifts into a plan-level `DriftReport`. Severity and
- * identityChanging are pre-computed at `detectRegionDrift()` time inside
- * `drift.details` so this function doesn't need region context.
- */
 export function rollUpDrift(regionDrifts: RegionDrift[]): DriftReport {
   let severity: Severity = "none";
   let identityChanging = false;
@@ -220,8 +244,6 @@ export function rollUpDrift(regionDrifts: RegionDrift[]): DriftReport {
       if (detail.identityChanging) identityChanging = true;
       continue;
     }
-    // Fallback for synthetic drifts built by tests without going through
-    // `detectRegionDrift()` — use the kind's default severity.
     for (const kind of rd.kinds) {
       severity = maxSeverity(
         severity,

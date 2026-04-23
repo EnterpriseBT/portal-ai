@@ -37,7 +37,6 @@ describe("deriveSourceId", () => {
     };
     const id = deriveSourceId(strategy, {
       sheet,
-      orientation: "rows-as-records",
       row: 2,
       col: 0,
     });
@@ -56,7 +55,6 @@ describe("deriveSourceId", () => {
     };
     const id = deriveSourceId(strategy, {
       sheet,
-      orientation: "rows-as-records",
       row: 3,
       col: 0,
     });
@@ -67,7 +65,6 @@ describe("deriveSourceId", () => {
     const strategy: IdentityStrategy = { kind: "rowPosition", confidence: 0.3 };
     const id = deriveSourceId(strategy, {
       sheet,
-      orientation: "rows-as-records",
       row: 4,
       col: 0,
     });
@@ -78,7 +75,6 @@ describe("deriveSourceId", () => {
     const strategy: IdentityStrategy = { kind: "rowPosition", confidence: 0.3 };
     const id = deriveSourceId(strategy, {
       sheet,
-      orientation: "columns-as-records",
       row: 0,
       col: 3,
     });
@@ -89,7 +85,6 @@ describe("deriveSourceId", () => {
     const strategy: IdentityStrategy = { kind: "rowPosition", confidence: 0.3 };
     const id = deriveSourceId(strategy, {
       sheet,
-      orientation: "cells-as-records",
       row: 3,
       col: 2,
     });
@@ -112,7 +107,6 @@ describe("deriveSourceId", () => {
     };
     const id = deriveSourceId(strategy, {
       sheet: sparseSheet,
-      orientation: "rows-as-records",
       row: 2,
       col: 0,
     });
@@ -135,7 +129,6 @@ describe("deriveSourceId", () => {
     };
     const id = deriveSourceId(strategy, {
       sheet: dateSheet,
-      orientation: "rows-as-records",
       row: 2,
       col: 0,
     });

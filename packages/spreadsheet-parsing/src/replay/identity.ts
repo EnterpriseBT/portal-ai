@@ -1,9 +1,8 @@
-import type { IdentityStrategy, Locator, Orientation } from "../plan/index.js";
+import type { IdentityStrategy, Locator } from "../plan/index.js";
 import type { CellValue, Sheet } from "../workbook/types.js";
 
 export interface IdentityContext {
   sheet: Sheet;
-  orientation: Orientation;
   /** 1-based row of the record being emitted. 0 when not applicable. */
   row: number;
   /** 1-based column of the record being emitted. 0 when not applicable. */
@@ -26,7 +25,6 @@ function readLocatorValue(locator: Locator, ctx: IdentityContext): string {
     case "cell":
       return cellText(ctx.sheet.cell(locator.row, locator.col)?.value ?? null);
     case "range":
-      // Range locators on an identity strategy are ill-formed; fall back to empty.
       return "";
   }
 }
@@ -34,11 +32,10 @@ function readLocatorValue(locator: Locator, ctx: IdentityContext): string {
 /**
  * Derive a stable `source_id` for a record being emitted by `replay()`.
  *
- * The `rowPosition` strategy is orientation-aware: records along the row
- * axis use `row-{n}`, along the column axis use `col-{n}`, and crosstab
- * cells use `cell-{r}-{c}`. These positions are stable as long as the
- * region's bounds don't change; drift detection catches bounds changes
- * before commit.
+ * `rowPosition` derives from which coords are populated:
+ * - both row and col → `cell-{r}-{c}` (2D crosstab)
+ * - col only       → `col-{c}` (columns-as-records)
+ * - row only       → `row-{r}` (rows-as-records)
  */
 export function deriveSourceId(
   strategy: IdentityStrategy,
@@ -52,9 +49,8 @@ export function deriveSourceId(
         .map((l) => readLocatorValue(l, ctx))
         .join(strategy.joiner);
     case "rowPosition":
-      if (ctx.orientation === "cells-as-records")
-        return `cell-${ctx.row}-${ctx.col}`;
-      if (ctx.orientation === "columns-as-records") return `col-${ctx.col}`;
+      if (ctx.row > 0 && ctx.col > 0) return `cell-${ctx.row}-${ctx.col}`;
+      if (ctx.col > 0) return `col-${ctx.col}`;
       return `row-${ctx.row}`;
   }
 }

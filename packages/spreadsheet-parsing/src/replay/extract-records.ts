@@ -1,15 +1,22 @@
-import type {
-  ColumnBinding,
-  ExtractedRecord,
-  Region,
-  SkipRule,
+import {
+  DEFAULT_UNTIL_BLANK_COUNT,
+  recordsAxisOf,
+  type AxisMember,
+  type BindingSourceLocator,
+  type ColumnBinding,
+  type ExtractedRecord,
+  type Region,
+  type Segment,
+  type SkipRule,
+  type Terminator,
 } from "../plan/index.js";
 import type { CellValue, Sheet, WorkbookCell } from "../workbook/types.js";
 import { computeChecksum } from "./checksum.js";
-import { extractSegmentedRecords } from "./extract-segmented-records.js";
-import { deriveSourceId } from "./identity.js";
+import { deriveSourceId, type IdentityContext } from "./identity.js";
 import { resolveHeaders, type HeaderLayout } from "./resolve-headers.js";
 import { resolveRegionBounds, type ResolvedBounds } from "./resolve-bounds.js";
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function cellValue(cell: WorkbookCell | undefined): CellValue {
   return cell ? cell.value : null;
@@ -22,229 +29,603 @@ function cellText(cell: WorkbookCell | undefined): string {
   return String(cell.value);
 }
 
+function oppositeAxis(axis: AxisMember): AxisMember {
+  return axis === "row" ? "column" : "row";
+}
+
+function startCoordAlong(axis: AxisMember, bounds: ResolvedBounds): number {
+  // "Start coord along a header axis" = the first cross-axis position.
+  // axis=row → positions index columns → start at startCol.
+  // axis=column → positions index rows → start at startRow.
+  return axis === "row" ? bounds.startCol : bounds.startRow;
+}
+
+function endCoordAlong(axis: AxisMember, bounds: ResolvedBounds): number {
+  return axis === "row" ? bounds.endCol : bounds.endRow;
+}
+
+function setEndCoordAlong(
+  bounds: ResolvedBounds,
+  axis: AxisMember,
+  value: number
+): void {
+  if (axis === "row") {
+    bounds.endCol = value;
+  } else {
+    bounds.endRow = value;
+  }
+}
+
+// ── Terminator scan (for dynamic tail segments) ────────────────────────────
+
+/**
+ * Walk a header axis starting at `startCoord` until `terminator` fires.
+ * Returns the last coord claimed by the dynamic segment (inclusive).
+ * `axis` is the header axis whose positions we are extending.
+ */
+function scanTerminator(
+  terminator: Terminator,
+  sheet: Sheet,
+  axis: AxisMember,
+  startCoord: number,
+  crossStart: number,
+  crossEnd: number,
+  sheetEdge: number
+): number {
+  const isBlankLine = (coord: number): boolean => {
+    if (axis === "row") {
+      for (let r = crossStart; r <= crossEnd; r++) {
+        if (cellText(sheet.cell(r, coord)) !== "") return false;
+      }
+      return true;
+    }
+    for (let c = crossStart; c <= crossEnd; c++) {
+      if (cellText(sheet.cell(coord, c)) !== "") return false;
+    }
+    return true;
+  };
+
+  const firstCell = (coord: number): string =>
+    axis === "row"
+      ? cellText(sheet.cell(crossStart, coord))
+      : cellText(sheet.cell(coord, crossStart));
+
+  if (terminator.kind === "untilBlank") {
+    const needed = terminator.consecutiveBlanks ?? DEFAULT_UNTIL_BLANK_COUNT;
+    let lastData = startCoord - 1;
+    let blanks = 0;
+    for (let c = startCoord; c <= sheetEdge; c++) {
+      if (isBlankLine(c)) {
+        blanks++;
+        if (blanks >= needed) break;
+      } else {
+        blanks = 0;
+        lastData = c;
+      }
+    }
+    return lastData;
+  }
+  const re = new RegExp(terminator.pattern);
+  for (let c = startCoord; c <= sheetEdge; c++) {
+    if (re.test(firstCell(c))) return c - 1;
+  }
+  return sheetEdge;
+}
+
+// ── Effective axis state (bounds + segments per axis) ──────────────────────
+
+interface EffectiveAxisState {
+  bounds: ResolvedBounds;
+  segmentsByAxis: { row?: Segment[]; column?: Segment[] };
+}
+
+/**
+ * Apply per-axis dynamic-tail segment extensions on top of the
+ * terminator-extended bounds from `resolveRegionBounds`. For each axis with a
+ * dynamic tail segment, scan the sheet past the tail's fixed floor until the
+ * terminator fires; update both the segment's `positionCount` and the
+ * corresponding bound.
+ */
+function computeEffective(
+  region: Region,
+  sheet: Sheet,
+  baseBounds: ResolvedBounds
+): EffectiveAxisState {
+  const bounds: ResolvedBounds = { ...baseBounds };
+  const result: EffectiveAxisState = {
+    bounds,
+    segmentsByAxis: {},
+  };
+
+  for (const axis of ["row", "column"] as const) {
+    const segs = region.segmentsByAxis?.[axis];
+    if (!segs || segs.length === 0) continue;
+
+    // Check for a dynamic tail segment.
+    const tail = segs[segs.length - 1];
+    const isDynamicPivot =
+      tail.kind === "pivot" && tail.dynamic !== undefined;
+
+    if (!isDynamicPivot) {
+      result.segmentsByAxis[axis] = segs.slice();
+      continue;
+    }
+
+    const fixedCount = segs
+      .slice(0, -1)
+      .reduce((acc, s) => acc + s.positionCount, 0);
+    const headerStart = startCoordAlong(axis, bounds);
+    const tailStart = headerStart + fixedCount;
+    const crossStart =
+      axis === "row" ? bounds.startRow : bounds.startCol;
+    const crossEnd =
+      axis === "row" ? bounds.endRow : bounds.endCol;
+    const sheetEdge =
+      axis === "row" ? sheet.dimensions.cols : sheet.dimensions.rows;
+
+    const tailSeg = tail as Extract<Segment, { kind: "pivot" }>;
+    const scannedEnd = scanTerminator(
+      tailSeg.dynamic!.terminator,
+      sheet,
+      axis,
+      tailStart,
+      crossStart,
+      crossEnd,
+      sheetEdge
+    );
+    const dynamicCount = Math.max(
+      tailSeg.positionCount,
+      scannedEnd - tailStart + 1
+    );
+
+    const newTail: Segment = { ...tailSeg, positionCount: dynamicCount };
+    const nextSegs = segs.slice(0, -1).concat(newTail);
+    result.segmentsByAxis[axis] = nextSegs;
+
+    // Extend bounds along the header axis to cover the dynamic tail.
+    const newEnd = tailStart + dynamicCount - 1;
+    if (newEnd > endCoordAlong(axis, bounds)) {
+      setEndCoordAlong(bounds, axis, newEnd);
+    }
+  }
+
+  return result;
+}
+
+// ── Segments → per-position expansion ──────────────────────────────────────
+
+interface ExpandedPosition {
+  segment: Segment;
+  offsetInSegment: number;
+  /** Sheet coord: col for axis=row, row for axis=column. */
+  coord: number;
+}
+
+function expandSegmentsToPositions(
+  segments: Segment[],
+  startCoord: number
+): ExpandedPosition[] {
+  const out: ExpandedPosition[] = [];
+  let coord = startCoord;
+  for (const segment of segments) {
+    for (let offset = 0; offset < segment.positionCount; offset++) {
+      out.push({ segment, offsetInSegment: offset, coord });
+      coord++;
+    }
+  }
+  return out;
+}
+
+// ── Binding resolution ─────────────────────────────────────────────────────
+
+interface ResolvedBindingCoord {
+  axis: AxisMember;
+  coord: number;
+}
+
+function resolveBindingCoord(
+  locator: BindingSourceLocator,
+  sheet: Sheet,
+  bounds: ResolvedBounds,
+  headersByAxis: { row?: HeaderLayout; column?: HeaderLayout }
+): ResolvedBindingCoord | undefined {
+  if (locator.kind === "byPositionIndex") {
+    const start = startCoordAlong(locator.axis, bounds);
+    return { axis: locator.axis, coord: start + locator.index - 1 };
+  }
+  const headers = headersByAxis[locator.axis];
+  if (!headers) return undefined;
+  const coord = headers.coordByLabel.get(locator.name);
+  if (coord === undefined) return undefined;
+  return { axis: locator.axis, coord };
+}
+
+/**
+ * Given a resolved binding coord and the two "record coords" (row, col that
+ * identify the record/cell being emitted), return the cell to read.
+ *
+ * - axis=row: coord is a column; we cross with the record's row.
+ * - axis=column: coord is a row; we cross with the record's column.
+ */
+function readBindingCell(
+  binding: ResolvedBindingCoord,
+  recordRow: number,
+  recordCol: number,
+  sheet: Sheet
+): CellValue {
+  if (binding.axis === "row") {
+    return cellValue(sheet.cell(recordRow, binding.coord));
+  }
+  return cellValue(sheet.cell(binding.coord, recordCol));
+}
+
+// ── Skip rule evaluation ───────────────────────────────────────────────────
+
 function ruleMatchesRecord(
   rule: SkipRule,
-  recordAxisIndex: number,
-  secondaryAxisIndex: number,
-  sheet: Sheet,
   region: Region,
-  bounds: ResolvedBounds
+  sheet: Sheet,
+  bounds: ResolvedBounds,
+  recordRow: number,
+  recordCol: number
 ): boolean {
+  const numAxes = region.headerAxes.length;
   if (rule.kind === "blank") {
-    if (region.orientation === "rows-as-records") {
+    if (numAxes === 2) {
+      return cellText(sheet.cell(recordRow, recordCol)) === "";
+    }
+    // 1D / headerless: whole line blank.
+    const recAxis = recordsAxisOf(region);
+    if (recAxis === "row" || (numAxes === 1 && region.headerAxes[0] === "row")) {
       for (let c = bounds.startCol; c <= bounds.endCol; c++) {
-        if (cellText(sheet.cell(recordAxisIndex, c)) !== "") return false;
+        if (cellText(sheet.cell(recordRow, c)) !== "") return false;
       }
       return true;
     }
-    if (region.orientation === "columns-as-records") {
-      for (let r = bounds.startRow; r <= bounds.endRow; r++) {
-        if (cellText(sheet.cell(r, recordAxisIndex)) !== "") return false;
-      }
-      return true;
+    // records iterate cols → line is a column.
+    for (let r = bounds.startRow; r <= bounds.endRow; r++) {
+      if (cellText(sheet.cell(r, recordCol)) !== "") return false;
     }
-    // cells-as-records: check the single cell
-    return cellText(sheet.cell(recordAxisIndex, secondaryAxisIndex)) === "";
+    return true;
   }
 
   // cellMatches
   const re = new RegExp(rule.pattern);
-  if (region.orientation === "cells-as-records") {
+  if (numAxes === 2) {
     const axis = rule.axis ?? "row";
     if (axis === "row") {
-      const cell = cellText(
-        sheet.cell(recordAxisIndex, rule.crossAxisIndex + 1)
-      );
-      return re.test(cell);
+      return re.test(cellText(sheet.cell(recordRow, rule.crossAxisIndex + 1)));
     }
-    const cell = cellText(
-      sheet.cell(rule.crossAxisIndex + 1, secondaryAxisIndex)
+    return re.test(cellText(sheet.cell(rule.crossAxisIndex + 1, recordCol)));
+  }
+  // 1D / headerless
+  const headerAxis = region.headerAxes[0];
+  if (headerAxis === "row" || (numAxes === 0 && region.recordsAxis === "row")) {
+    return re.test(cellText(sheet.cell(recordRow, rule.crossAxisIndex + 1)));
+  }
+  return re.test(cellText(sheet.cell(rule.crossAxisIndex + 1, recordCol)));
+}
+
+// ── Headerless emit ────────────────────────────────────────────────────────
+
+function extractHeaderless(
+  region: Region,
+  sheet: Sheet,
+  bounds: ResolvedBounds
+): ExtractedRecord[] {
+  const recordsAxis = region.recordsAxis!;
+  const out: ExtractedRecord[] = [];
+
+  const iterStart =
+    recordsAxis === "row" ? bounds.startRow : bounds.startCol;
+  const iterEnd = recordsAxis === "row" ? bounds.endRow : bounds.endCol;
+
+  for (let coord = iterStart; coord <= iterEnd; coord++) {
+    const recordRow = recordsAxis === "row" ? coord : 0;
+    const recordCol = recordsAxis === "column" ? coord : 0;
+    if (
+      region.skipRules.some((rule) =>
+        ruleMatchesRecord(rule, region, sheet, bounds, recordRow, recordCol)
+      )
+    ) {
+      continue;
+    }
+    const fields: Record<string, unknown> = {};
+    for (const binding of region.columnBindings) {
+      const resolved = resolveBindingCoord(binding.sourceLocator, sheet, bounds, {});
+      if (!resolved) continue;
+      fields[binding.columnDefinitionId] = readBindingCell(
+        resolved,
+        recordRow,
+        recordCol,
+        sheet
+      );
+    }
+    out.push(buildRecord(region, recordRow, recordCol, sheet, fields));
+  }
+  return out;
+}
+
+// ── 1D emit (segmented; statics-only is a degenerate segmented case) ───────
+
+function extract1D(
+  region: Region,
+  sheet: Sheet,
+  effective: EffectiveAxisState
+): ExtractedRecord[] {
+  const headerAxis = region.headerAxes[0];
+  const headers = resolveHeaders(region, headerAxis, sheet, effective.bounds);
+  const headersByAxis: { row?: HeaderLayout; column?: HeaderLayout } = {};
+  if (headers) headersByAxis[headerAxis] = headers;
+
+  const segments = effective.segmentsByAxis[headerAxis] ?? [];
+  const positions = expandSegmentsToPositions(
+    segments,
+    startCoordAlong(headerAxis, effective.bounds)
+  );
+  const hasPivot = segments.some((s) => s.kind === "pivot");
+
+  // Determine entity-unit iteration axis. Records iterate along the opposite
+  // (cross) axis of the header line: for headerAxis="row" (row of labels),
+  // each record = one row excluding the header row.
+  const entityAxis = headerAxis;
+  const entityStart =
+    entityAxis === "row" ? effective.bounds.startRow : effective.bounds.startCol;
+  const entityEnd =
+    entityAxis === "row" ? effective.bounds.endRow : effective.bounds.endCol;
+  const headerIndex = headers?.index;
+  const entityFirst =
+    headerIndex !== undefined
+      ? Math.max(entityStart, headerIndex + 1)
+      : entityStart;
+
+  const out: ExtractedRecord[] = [];
+
+  // Pre-resolve columnBindings once — statics map: position coord → colDefId.
+  const staticsByPosition = new Map<number, string>();
+  for (const binding of region.columnBindings) {
+    const resolved = resolveBindingCoord(
+      binding.sourceLocator,
+      sheet,
+      effective.bounds,
+      headersByAxis
     );
-    return re.test(cell);
+    if (!resolved) continue;
+    staticsByPosition.set(resolved.coord, binding.columnDefinitionId);
   }
-  if (region.orientation === "rows-as-records") {
-    const cell = cellText(sheet.cell(recordAxisIndex, rule.crossAxisIndex + 1));
-    return re.test(cell);
+
+  for (let entity = entityFirst; entity <= entityEnd; entity++) {
+    const recordRow = entityAxis === "row" ? entity : 0;
+    const recordCol = entityAxis === "column" ? entity : 0;
+
+    if (
+      region.skipRules.some((rule) =>
+        ruleMatchesRecord(rule, region, sheet, effective.bounds, recordRow, recordCol)
+      )
+    ) {
+      continue;
+    }
+
+    // Collect statics by walking only field-segment positions. Using the
+    // binding map keyed by coord keeps statics-only (all-field) and mixed
+    // shapes unified.
+    const statics: Record<string, unknown> = {};
+    for (const position of positions) {
+      if (position.segment.kind !== "field") continue;
+      const colDefId = staticsByPosition.get(position.coord);
+      if (!colDefId) continue;
+      statics[colDefId] =
+        entityAxis === "row"
+          ? cellValue(sheet.cell(entity, position.coord))
+          : cellValue(sheet.cell(position.coord, entity));
+    }
+
+    const identityCtx: IdentityContext = {
+      sheet,
+      row: recordRow,
+      col: recordCol,
+    };
+    const baseSourceId = deriveSourceId(region.identityStrategy, identityCtx);
+
+    if (!hasPivot) {
+      // All-field or statics-only region. Emit one record per entity.
+      out.push(
+        finalizeRecord(region, recordRow, recordCol, sheet, baseSourceId, statics)
+      );
+      continue;
+    }
+
+    // Pivot-bearing region. Emit one record per pivot-label position per
+    // entity. Skip "skip" and "field" positions.
+    for (const position of positions) {
+      if (position.segment.kind !== "pivot") continue;
+      const segment = position.segment;
+      const label =
+        entityAxis === "row"
+          ? cellText(sheet.cell(headers!.index, position.coord))
+          : cellText(sheet.cell(position.coord, headers!.index));
+      const value =
+        entityAxis === "row"
+          ? cellValue(sheet.cell(entity, position.coord))
+          : cellValue(sheet.cell(position.coord, entity));
+      const cellValueName = region.cellValueField!.name;
+      const fields: Record<string, unknown> = {
+        ...statics,
+        [segment.axisName]: label,
+        [cellValueName]: value,
+      };
+      const sourceId = `${baseSourceId}::${segment.id}::${label}`;
+      out.push(
+        finalizeRecord(region, recordRow, recordCol, sheet, sourceId, fields)
+      );
+    }
   }
-  // columns-as-records
-  const cell = cellText(sheet.cell(rule.crossAxisIndex + 1, recordAxisIndex));
-  return re.test(cell);
+  return out;
 }
 
-function headerCoordForBinding(
-  binding: ColumnBinding,
-  headers: HeaderLayout
-): number | undefined {
-  if (binding.sourceLocator.kind === "byColumnIndex") {
-    return binding.sourceLocator.col;
-  }
-  return headers.coordByLabel.get(binding.sourceLocator.name);
-}
+// ── 2D emit (crosstab) ─────────────────────────────────────────────────────
 
-function extractFromRowRecord(
+function extract2D(
   region: Region,
   sheet: Sheet,
-  bounds: ResolvedBounds,
-  headers: HeaderLayout,
-  row: number
-): Record<string, unknown> {
-  const fields: Record<string, unknown> = {};
+  effective: EffectiveAxisState
+): ExtractedRecord[] {
+  const rowHeaders = resolveHeaders(region, "row", sheet, effective.bounds);
+  const colHeaders = resolveHeaders(region, "column", sheet, effective.bounds);
+  const headersByAxis: { row?: HeaderLayout; column?: HeaderLayout } = {};
+  if (rowHeaders) headersByAxis.row = rowHeaders;
+  if (colHeaders) headersByAxis.column = colHeaders;
+
+  const rowSegments = effective.segmentsByAxis.row ?? [];
+  const colSegments = effective.segmentsByAxis.column ?? [];
+  const rowPositions = expandSegmentsToPositions(
+    rowSegments,
+    effective.bounds.startCol
+  );
+  const colPositions = expandSegmentsToPositions(
+    colSegments,
+    effective.bounds.startRow
+  );
+
+  const cellValueFieldName = region.cellValueField?.name;
+
+  // Statics bindings resolve once; on 2D, the binding's axis determines which
+  // record-coord it crosses (entityRow for axis=row; entityCol for axis=column).
+  interface ResolvedStatic {
+    colDefId: string;
+    resolved: ResolvedBindingCoord;
+  }
+  const statics: ResolvedStatic[] = [];
   for (const binding of region.columnBindings) {
-    const col = headerCoordForBinding(binding, headers);
-    if (col === undefined) continue;
-    fields[binding.columnDefinitionId] = cellValue(sheet.cell(row, col));
+    const resolved = resolveBindingCoord(
+      binding.sourceLocator,
+      sheet,
+      effective.bounds,
+      headersByAxis
+    );
+    if (!resolved) continue;
+    statics.push({ colDefId: binding.columnDefinitionId, resolved });
   }
-  return fields;
+
+  const out: ExtractedRecord[] = [];
+  for (const rp of rowPositions) {
+    // rp.coord is a col; the row-header row provides labels.
+    for (const cp of colPositions) {
+      // cp.coord is a row.
+      const cellRow = cp.coord;
+      const cellCol = rp.coord;
+
+      // Skip positions whose segment is "skip" on either axis.
+      if (rp.segment.kind === "skip" || cp.segment.kind === "skip") continue;
+
+      if (
+        region.skipRules.some((rule) =>
+          ruleMatchesRecord(rule, region, sheet, effective.bounds, cellRow, cellCol)
+        )
+      ) {
+        continue;
+      }
+
+      const fields: Record<string, unknown> = {};
+
+      // Statics: read each binding using (cellRow, cellCol) as record coords.
+      for (const s of statics) {
+        fields[s.colDefId] = readBindingCell(s.resolved, cellRow, cellCol, sheet);
+      }
+
+      // Row-axis pivot contribution: label from row-header at this col.
+      if (rp.segment.kind === "pivot" && rowHeaders) {
+        fields[rp.segment.axisName] = cellText(
+          sheet.cell(rowHeaders.index, rp.coord)
+        );
+      }
+      // Column-axis pivot contribution: label from col-header at this row.
+      if (cp.segment.kind === "pivot" && colHeaders) {
+        fields[cp.segment.axisName] = cellText(
+          sheet.cell(cp.coord, colHeaders.index)
+        );
+      }
+      // Cell value
+      if (cellValueFieldName) {
+        fields[cellValueFieldName] = cellValue(sheet.cell(cellRow, cellCol));
+      }
+
+      out.push(
+        finalizeRecord(region, cellRow, cellCol, sheet, undefined, fields)
+      );
+    }
+  }
+  return out;
 }
 
-function extractFromColumnRecord(
-  region: Region,
-  sheet: Sheet,
-  bounds: ResolvedBounds,
-  headers: HeaderLayout,
-  col: number
-): Record<string, unknown> {
-  const fields: Record<string, unknown> = {};
-  for (const binding of region.columnBindings) {
-    const coord = headerCoordForBinding(binding, headers);
-    if (coord === undefined) continue;
-    // For columns-as-records, coordByLabel maps to a row index.
-    fields[binding.columnDefinitionId] = cellValue(sheet.cell(coord, col));
-  }
-  // Attach records-axis label (from the axis anchor row).
-  if (region.recordsAxisName) {
-    const axisRow = region.axisAnchorCell?.row ?? bounds.startRow;
-    fields[region.recordsAxisName.name] = cellValue(sheet.cell(axisRow, col));
-  }
-  return fields;
-}
+// ── Record finalization ────────────────────────────────────────────────────
 
-function extractFromCrosstabCell(
+function buildRecord(
   region: Region,
+  recordRow: number,
+  recordCol: number,
   sheet: Sheet,
-  bounds: ResolvedBounds,
-  row: number,
-  col: number
-): Record<string, unknown> {
-  const fields: Record<string, unknown> = {};
-  const anchor = region.axisAnchorCell ?? {
-    row: bounds.startRow,
-    col: bounds.startCol,
+  fields: Record<string, unknown>
+): ExtractedRecord {
+  const sourceId = deriveSourceId(region.identityStrategy, {
+    sheet,
+    row: recordRow,
+    col: recordCol,
+  });
+  return {
+    regionId: region.id,
+    targetEntityDefinitionId: region.targetEntityDefinitionId,
+    sourceId,
+    checksum: computeChecksum(fields),
+    fields,
   };
-  if (region.recordsAxisName) {
-    fields[region.recordsAxisName.name] = cellValue(
-      sheet.cell(row, anchor.col)
-    );
-  }
-  if (region.secondaryRecordsAxisName) {
-    fields[region.secondaryRecordsAxisName.name] = cellValue(
-      sheet.cell(anchor.row, col)
-    );
-  }
-  if (region.cellValueName) {
-    fields[region.cellValueName.name] = cellValue(sheet.cell(row, col));
-  }
-  return fields;
 }
+
+function finalizeRecord(
+  region: Region,
+  recordRow: number,
+  recordCol: number,
+  sheet: Sheet,
+  sourceIdOverride: string | undefined,
+  fields: Record<string, unknown>
+): ExtractedRecord {
+  const sourceId =
+    sourceIdOverride !== undefined
+      ? sourceIdOverride
+      : deriveSourceId(region.identityStrategy, {
+          sheet,
+          row: recordRow,
+          col: recordCol,
+        });
+  return {
+    regionId: region.id,
+    targetEntityDefinitionId: region.targetEntityDefinitionId,
+    sourceId,
+    checksum: computeChecksum(fields),
+    fields,
+  };
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Walk a region and emit one `ExtractedRecord` per record slot, honouring
- * orientation, skip rules, identity strategy, and axis-name attachment.
+ * Walk a region and emit one `ExtractedRecord` per record slot. The emit is
+ * unified across tidy (0 or 1 header axis, no pivot), pivoted (1 header axis
+ * with a pivot segment), and crosstab (2 header axes); each dispatch reads
+ * identical inputs — bounds, segments, bindings — so segmented and tidy plans
+ * round-trip to the same records.
  */
 export function extractRecords(
   region: Region,
   sheet: Sheet
 ): ExtractedRecord[] {
-  // Segmented regions (see docs/REGION_CONFIG.schema_replay.spec.md) own
-  // their own emit loop because the record count per entity-unit depends on
-  // position roles and per-segment pivotLabel counts.
-  if (region.positionRoles && region.pivotSegments) {
-    return extractSegmentedRecords(region, sheet);
-  }
+  const baseBounds = resolveRegionBounds(region, sheet);
+  const numAxes = region.headerAxes.length;
 
-  const bounds = resolveRegionBounds(region, sheet);
-  const headers = resolveHeaders(region, sheet, bounds);
-  const records: ExtractedRecord[] = [];
+  if (numAxes === 0) return extractHeaderless(region, sheet, baseBounds);
 
-  const emit = (
-    row: number,
-    col: number,
-    fields: Record<string, unknown>
-  ): void => {
-    const sourceId = deriveSourceId(region.identityStrategy, {
-      sheet,
-      orientation: region.orientation,
-      row,
-      col,
-    });
-    records.push({
-      regionId: region.id,
-      targetEntityDefinitionId: region.targetEntityDefinitionId,
-      sourceId,
-      checksum: computeChecksum(fields),
-      fields,
-    });
-  };
+  const effective = computeEffective(region, sheet, baseBounds);
 
-  if (region.orientation === "rows-as-records") {
-    const headerRow = headers.direction === "row" ? headers.index : undefined;
-    const startRow =
-      headerRow !== undefined
-        ? Math.max(bounds.startRow, headerRow + 1)
-        : bounds.startRow;
-    for (let row = startRow; row <= bounds.endRow; row++) {
-      if (
-        region.skipRules.some((rule) =>
-          ruleMatchesRecord(rule, row, 0, sheet, region, bounds)
-        )
-      ) {
-        continue;
-      }
-      emit(row, 0, extractFromRowRecord(region, sheet, bounds, headers, row));
-    }
-    return records;
-  }
-
-  if (region.orientation === "columns-as-records") {
-    const headerCol =
-      headers.direction === "column" ? headers.index : undefined;
-    const startCol =
-      headerCol !== undefined
-        ? Math.max(bounds.startCol, headerCol + 1)
-        : bounds.startCol;
-    for (let col = startCol; col <= bounds.endCol; col++) {
-      if (
-        region.skipRules.some((rule) =>
-          ruleMatchesRecord(rule, col, 0, sheet, region, bounds)
-        )
-      ) {
-        continue;
-      }
-      emit(
-        0,
-        col,
-        extractFromColumnRecord(region, sheet, bounds, headers, col)
-      );
-    }
-    return records;
-  }
-
-  // cells-as-records
-  const anchor = region.axisAnchorCell ?? {
-    row: bounds.startRow,
-    col: bounds.startCol,
-  };
-  for (let row = anchor.row + 1; row <= bounds.endRow; row++) {
-    for (let col = anchor.col + 1; col <= bounds.endCol; col++) {
-      if (
-        region.skipRules.some((rule) =>
-          ruleMatchesRecord(rule, row, col, sheet, region, bounds)
-        )
-      ) {
-        continue;
-      }
-      emit(row, col, extractFromCrosstabCell(region, sheet, bounds, row, col));
-    }
-  }
-  return records;
+  if (numAxes === 1) return extract1D(region, sheet, effective);
+  return extract2D(region, sheet, effective);
 }

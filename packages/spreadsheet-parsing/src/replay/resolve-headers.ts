@@ -1,20 +1,23 @@
-import type { Region } from "../plan/index.js";
+import type { AxisMember, Region } from "../plan/index.js";
 import type { Sheet, WorkbookCell } from "../workbook/types.js";
 import type { ResolvedBounds } from "./resolve-bounds.js";
 
-export type HeaderAxisDirection = "row" | "column" | "none";
-
 export interface HeaderLayout {
-  direction: HeaderAxisDirection;
-  /** 1-based sheet index of the header slice (row or column). */
+  /**
+   * The axis the header occupies (matches the `axis` passed in): "row" means
+   * labels live along a single row; "column" means labels live along a single
+   * column.
+   */
+  axis: AxisMember;
+  /** 1-based sheet index of the header line (row if axis=row, col if axis=column). */
   index: number;
   /**
-   * Map from header-label → the sheet coordinate where data values for that
-   * label live. For rows-as-records this is a column index; for
-   * columns-as-records with rowLabels this is a row index.
+   * Label → sheet coord along the cross-axis where data for that label lives.
+   * - axis=row: coord is a column index.
+   * - axis=column: coord is a row index.
    */
   coordByLabel: Map<string, number>;
-  /** Observed labels (sorted by their offset in the region). */
+  /** Observed labels in position order. */
   labels: string[];
 }
 
@@ -26,32 +29,24 @@ function cellText(cell: WorkbookCell | undefined): string {
 }
 
 /**
- * Compute the header layout for a region given the resolved bounds. Returns
- * the axis and index of the header slice plus a label→coord map the extractor
- * uses to resolve `byHeaderName` bindings.
- *
- * For `headerAxis === "none"` returns a direction: "none" layout with an
- * empty map; consumers should use `byColumnIndex` bindings in that case.
+ * Compute the header layout for a region on a specific axis. Returns
+ * `undefined` when the region declares no header on that axis (headerless
+ * region, or crosstab called with an axis not in `headerAxes`).
  */
 export function resolveHeaders(
   region: Region,
+  axis: AxisMember,
   sheet: Sheet,
   bounds: ResolvedBounds
-): HeaderLayout {
-  if (region.headerAxis === "none" || !region.headerStrategy) {
-    return {
-      direction: "none",
-      index: 0,
-      coordByLabel: new Map(),
-      labels: [],
-    };
-  }
+): HeaderLayout | undefined {
+  const strategy = region.headerStrategyByAxis?.[axis];
+  if (!strategy) return undefined;
 
-  const strategy = region.headerStrategy;
   const coordByLabel = new Map<string, number>();
   const labels: string[] = [];
 
-  if (strategy.kind === "row") {
+  if (axis === "row") {
+    // Header lives on one row; labels span columns.
     const row =
       strategy.locator.kind === "row"
         ? strategy.locator.row
@@ -65,28 +60,10 @@ export function resolveHeaders(
         coordByLabel.set(label, c);
       }
     }
-    return { direction: "row", index: row, coordByLabel, labels };
+    return { axis: "row", index: row, coordByLabel, labels };
   }
 
-  if (strategy.kind === "column") {
-    const col =
-      strategy.locator.kind === "column"
-        ? strategy.locator.col
-        : strategy.locator.kind === "cell"
-          ? strategy.locator.col
-          : bounds.startCol;
-    for (let r = bounds.startRow; r <= bounds.endRow; r++) {
-      const label = cellText(sheet.cell(r, col));
-      labels.push(label);
-      if (label !== "" && !coordByLabel.has(label)) {
-        coordByLabel.set(label, r);
-      }
-    }
-    return { direction: "column", index: col, coordByLabel, labels };
-  }
-
-  // "rowLabels" — field names live in a column; each row's first cell is
-  // a field name for columns-as-records records.
+  // axis === "column": header lives in one column; labels span rows.
   const col =
     strategy.locator.kind === "column"
       ? strategy.locator.col
@@ -100,5 +77,5 @@ export function resolveHeaders(
       coordByLabel.set(label, r);
     }
   }
-  return { direction: "column", index: col, coordByLabel, labels };
+  return { axis: "column", index: col, coordByLabel, labels };
 }

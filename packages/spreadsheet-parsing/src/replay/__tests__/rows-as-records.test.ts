@@ -9,14 +9,17 @@ function contactsRegion(): Region {
     id: "r1",
     sheet: "Contacts",
     bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
-    boundsMode: "absolute",
     targetEntityDefinitionId: "contacts",
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    headerStrategy: {
-      kind: "row",
-      locator: { kind: "row", sheet: "Contacts", row: 1 },
-      confidence: 0.95,
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [{ kind: "field", positionCount: 3 }],
+    },
+    headerStrategyByAxis: {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "Contacts", row: 1 },
+        confidence: 0.95,
+      },
     },
     identityStrategy: {
       kind: "column",
@@ -25,17 +28,17 @@ function contactsRegion(): Region {
     },
     columnBindings: [
       {
-        sourceLocator: { kind: "byHeaderName", name: "email" },
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "email" },
         columnDefinitionId: "col-email",
         confidence: 0.9,
       },
       {
-        sourceLocator: { kind: "byHeaderName", name: "name" },
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
         columnDefinitionId: "col-name",
         confidence: 0.9,
       },
       {
-        sourceLocator: { kind: "byColumnIndex", col: 3 },
+        sourceLocator: { kind: "byPositionIndex", axis: "row", index: 3 },
         columnDefinitionId: "col-age",
         confidence: 0.8,
       },
@@ -76,7 +79,7 @@ function contactsWorkbook() {
   });
 }
 
-describe("extractRecords — rows-as-records", () => {
+describe("extractRecords — 1D headerAxes:['row'] (records-are-rows)", () => {
   it("emits one record per data row with fields keyed by ColumnDefinition id", () => {
     const records = extractRecords(
       contactsRegion(),
@@ -122,20 +125,22 @@ describe("extractRecords — rows-as-records", () => {
     expect(swapped[0].checksum).toBe(baseline[0].checksum);
   });
 
-  it("resolves byColumnIndex bindings when headerAxis is 'none'", () => {
+  it("resolves byPositionIndex bindings for a headerless region", () => {
     const headerless: Region = {
       ...contactsRegion(),
-      headerAxis: "none",
-      headerStrategy: undefined,
+      headerAxes: [],
+      recordsAxis: "row",
+      segmentsByAxis: undefined,
+      headerStrategyByAxis: undefined,
       bounds: { startRow: 2, startCol: 1, endRow: 4, endCol: 3 },
       columnBindings: [
         {
-          sourceLocator: { kind: "byColumnIndex", col: 1 },
+          sourceLocator: { kind: "byPositionIndex", axis: "row", index: 1 },
           columnDefinitionId: "col-email",
           confidence: 0.7,
         },
         {
-          sourceLocator: { kind: "byColumnIndex", col: 2 },
+          sourceLocator: { kind: "byPositionIndex", axis: "row", index: 2 },
           columnDefinitionId: "col-name",
           confidence: 0.7,
         },
@@ -149,12 +154,11 @@ describe("extractRecords — rows-as-records", () => {
     });
   });
 
-  it("skips header row even when iterating the full region bounds", () => {
+  it("skips the header row even when iterating the full region bounds", () => {
     const records = extractRecords(
       contactsRegion(),
       contactsWorkbook().sheets[0]
     );
-    // No record should carry the header-row values.
     for (const r of records) {
       expect(r.fields["col-email"]).not.toBe("email");
     }

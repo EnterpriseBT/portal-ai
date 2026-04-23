@@ -4,31 +4,46 @@ import type { Region } from "../../plan/index.js";
 import { makeWorkbook } from "../../workbook/helpers.js";
 import { extractRecords } from "../extract-records.js";
 
+// The old "columns-as-records (pivoted)" shape — records are columns; each
+// column carries a `Month` label from row 1, plus Revenue and Cost read by
+// row-labels on column 1. Under the new schema this is:
+//   - headerAxes: ["column"] (labels live in a column — col 1)
+//   - segmentsByAxis.column: skip row 1 (Month anchor), 2 field positions.
+//   - Identity = rowPosition → "col-{N}".
 function monthlyRegion(): Region {
   return {
     id: "monthly-r1",
     sheet: "Monthly",
     bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 5 },
-    boundsMode: "absolute",
     targetEntityDefinitionId: "monthly-metrics",
-    orientation: "columns-as-records",
-    headerAxis: "column",
-    recordsAxisName: { name: "Month", source: "user" },
+    headerAxes: ["column"],
+    segmentsByAxis: {
+      column: [
+        { kind: "skip", positionCount: 1 },
+        { kind: "field", positionCount: 2 },
+      ],
+    },
     axisAnchorCell: { row: 1, col: 1 },
-    headerStrategy: {
-      kind: "rowLabels",
-      locator: { kind: "column", sheet: "Monthly", col: 1 },
-      confidence: 0.9,
+    headerStrategyByAxis: {
+      column: {
+        kind: "rowLabels",
+        locator: { kind: "column", sheet: "Monthly", col: 1 },
+        confidence: 0.9,
+      },
     },
     identityStrategy: { kind: "rowPosition", confidence: 0.3 },
     columnBindings: [
       {
-        sourceLocator: { kind: "byHeaderName", name: "Revenue" },
+        sourceLocator: {
+          kind: "byHeaderName",
+          axis: "column",
+          name: "Revenue",
+        },
         columnDefinitionId: "col-revenue",
         confidence: 0.9,
       },
       {
-        sourceLocator: { kind: "byHeaderName", name: "Cost" },
+        sourceLocator: { kind: "byHeaderName", axis: "column", name: "Cost" },
         columnDefinitionId: "col-cost",
         confidence: 0.9,
       },
@@ -72,7 +87,7 @@ function monthlyWorkbook() {
   });
 }
 
-describe("extractRecords — columns-as-records (pivoted)", () => {
+describe("extractRecords — 1D headerAxes:['column'] (records-are-columns)", () => {
   it("emits one record per data column (Jan, Feb, Mar, Apr)", () => {
     const records = extractRecords(
       monthlyRegion(),
@@ -81,7 +96,7 @@ describe("extractRecords — columns-as-records (pivoted)", () => {
     expect(records).toHaveLength(4);
   });
 
-  it("keys each record's fields by ColumnDefinition id for non-axis fields", () => {
+  it("keys each record's fields by ColumnDefinition id for row-labeled fields", () => {
     const records = extractRecords(
       monthlyRegion(),
       monthlyWorkbook().sheets[0]
@@ -91,18 +106,7 @@ describe("extractRecords — columns-as-records (pivoted)", () => {
     expect(records[2].fields["col-revenue"]).toBe(130);
   });
 
-  it("attaches the records-axis label under recordsAxisName.name on every record", () => {
-    const records = extractRecords(
-      monthlyRegion(),
-      monthlyWorkbook().sheets[0]
-    );
-    expect(records[0].fields["Month"]).toBe("Jan");
-    expect(records[1].fields["Month"]).toBe("Feb");
-    expect(records[2].fields["Month"]).toBe("Mar");
-    expect(records[3].fields["Month"]).toBe("Apr");
-  });
-
-  it("falls back to col-{N} source_id for rowPosition identity in pivoted orientation", () => {
+  it("falls back to col-{N} source_id for rowPosition identity with records-are-columns", () => {
     const records = extractRecords(
       monthlyRegion(),
       monthlyWorkbook().sheets[0]
