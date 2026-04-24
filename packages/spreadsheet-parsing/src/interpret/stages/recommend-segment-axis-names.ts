@@ -5,6 +5,7 @@ import type { InterpretDeps } from "../deps.js";
 import type { InterpretState } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
 import { readHeaderLineLabels } from "./header-line.util.js";
+import { resolveEffectiveSegments } from "./pivoted.util.js";
 
 const MAX_AXIS_LABELS = 30;
 
@@ -64,7 +65,10 @@ export async function recommendSegmentAxisNames(
   const pending: Pending[] = [];
 
   for (const region of state.detectedRegions) {
-    const segmentsByAxis = state.segmentsByRegion.get(region.id);
+    const segmentsByAxis = resolveEffectiveSegments(
+      region,
+      state.segmentsByRegion.get(region.id)
+    );
     if (!segmentsByAxis) continue;
     const sheet = state.workbook.sheets.find((s) => s.name === region.sheet);
     if (!sheet) continue;

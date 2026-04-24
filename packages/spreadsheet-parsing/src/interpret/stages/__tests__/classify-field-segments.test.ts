@@ -206,6 +206,59 @@ describe("classifyFieldSegments — filters non-field positions", () => {
     expect(state.columnClassifications.get(regionId)).toEqual([]);
   });
 
+  it("skips classification when the hint pins a user-sourced pivot over positions detect-segments would otherwise tag as field", async () => {
+    // Regression for the pivot-binding bug: ISO-datetime header labels
+    // (`2026-01-01T00:00:00.000Z`) don't match detect-segments' date regex,
+    // so detect-segments clusters them as a `field` segment. When the hint
+    // pins those positions as a user-sourced pivot, classify-field-segments
+    // must honor the hint — otherwise the stage emits one bogus columnBinding
+    // per datetime header.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 2, cols: 3 },
+            cells: [
+              { row: 1, col: 1, value: "2026-01-01T00:00:00.000Z" },
+              { row: 1, col: 2, value: "2026-02-01T00:00:00.000Z" },
+              { row: 1, col: 3, value: "2026-03-01T00:00:00.000Z" },
+              { row: 2, col: 1, value: 100 },
+              { row: 2, col: 2, value: 200 },
+              { row: 2, col: 3, value: 300 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
+          targetEntityDefinitionId: "revenue",
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              {
+                kind: "pivot",
+                id: "pivot-1",
+                axisName: "timestamp",
+                axisNameSource: "user",
+                positionCount: 3,
+              },
+            ],
+          },
+          cellValueField: { name: "amount", nameSource: "user" },
+        },
+      ],
+    };
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
+    const prepared = runUpToDetectSegments(input);
+    const state = await classifyFieldSegments(prepared, { classifier: spy });
+    expect(spy).not.toHaveBeenCalled();
+    const regionId = state.detectedRegions[0].id;
+    expect(state.columnClassifications.get(regionId)).toEqual([]);
+  });
+
   it("iterates both axes on 2D regions and merges field candidates", async () => {
     // Crosstab with a one-position field segment on each axis (the anchor
     // position), plus a pivot. classify should pass the field positions

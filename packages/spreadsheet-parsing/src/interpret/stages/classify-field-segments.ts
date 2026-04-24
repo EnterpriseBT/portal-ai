@@ -14,6 +14,7 @@ import {
   headerLineCoords,
   readHeaderLineLabels,
 } from "./header-line.util.js";
+import { resolveEffectiveSegments } from "./pivoted.util.js";
 
 const SAMPLE_LIMIT = 10;
 
@@ -171,7 +172,10 @@ export async function classifyFieldSegments(
       next.set(region.id, []);
       continue;
     }
-    const segmentsByAxis = state.segmentsByRegion.get(region.id);
+    const segmentsByAxis = resolveEffectiveSegments(
+      region,
+      state.segmentsByRegion.get(region.id)
+    );
     const candidates: ClassifierCandidate[] = [];
     for (const axis of region.headerAxes) {
       const segments = segmentsByAxis?.[axis];

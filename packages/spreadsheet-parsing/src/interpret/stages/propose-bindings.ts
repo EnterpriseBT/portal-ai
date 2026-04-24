@@ -12,6 +12,7 @@ import type {
   InterpretState,
   RecordsAxisNameSuggestion,
 } from "../types.js";
+import { resolveEffectiveSegments } from "./pivoted.util.js";
 
 function headerStrategyFromCandidate(
   region: Region,
@@ -107,25 +108,6 @@ function ensureSegments(region: Region): Region["segmentsByAxis"] {
   return next;
 }
 
-function hasAnySegments(
-  segments: { row?: Segment[]; column?: Segment[] } | undefined
-): boolean {
-  if (!segments) return false;
-  return Boolean(segments.row?.length || segments.column?.length);
-}
-
-function hintHasUserSourcedPivot(
-  segments: { row?: Segment[]; column?: Segment[] } | undefined
-): boolean {
-  if (!segments) return false;
-  for (const axis of ["row", "column"] as const) {
-    for (const seg of segments[axis] ?? []) {
-      if (seg.kind === "pivot" && seg.axisNameSource === "user") return true;
-    }
-  }
-  return false;
-}
-
 /**
  * Per-segment axis-name precedence. `axisNameSource === "user"` wins
  * outright — neither the recommender nor the heuristic can overwrite it.
@@ -196,12 +178,12 @@ export function proposeBindings(state: InterpretState): InterpretState {
     // adopt the detect-segments output, falling back to the PR-1 adapter
     // (field segment per declared axis) when the stage didn't run for
     // this region (e.g. headerless).
-    const hintSegments = region.segmentsByAxis;
-    const computedSegments = state.segmentsByRegion.get(region.id);
-    if (hintHasUserSourcedPivot(hintSegments)) {
-      next = { ...next, segmentsByAxis: hintSegments };
-    } else if (hasAnySegments(computedSegments)) {
-      next = { ...next, segmentsByAxis: computedSegments };
+    const effective = resolveEffectiveSegments(
+      region,
+      state.segmentsByRegion.get(region.id)
+    );
+    if (effective) {
+      next = { ...next, segmentsByAxis: effective };
     } else {
       next = { ...next, segmentsByAxis: ensureSegments(next) };
     }
