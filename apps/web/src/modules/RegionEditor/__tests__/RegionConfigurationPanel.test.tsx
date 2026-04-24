@@ -123,106 +123,209 @@ describe("RegionConfigurationPanelUI", () => {
     expect(screen.getByText(/Target entity is required/i)).toBeInTheDocument();
   });
 
-  test("shows pivoted records-axis input when columns-as-records + headerAxis:row", () => {
-    render(
-      <RegionConfigurationPanelUI
-        region={baseRegion({
-          orientation: "columns-as-records",
-          headerAxis: "row",
-        })}
-        entityOptions={ENTITY_OPTIONS}
-        entityOrder={["ent_a"]}
-        siblingsInSameEntity={0}
-        onUpdate={jest.fn()}
-        onDelete={jest.fn()}
-      />
-    );
-    expect(screen.getByText(/Records-axis name/i)).toBeInTheDocument();
-    expect(
-      screen.getByPlaceholderText(/Month, Region, Year/i)
-    ).toBeInTheDocument();
-  });
+  describe("PR-4 segment UI", () => {
+    function segmentedRegion(
+      overrides: Partial<RegionDraft> = {}
+    ): RegionDraft {
+      return baseRegion({
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 4 }],
+        },
+        ...overrides,
+      });
+    }
 
-  test("crosstab orientation shows row/col axis and cell-value-name inputs", () => {
-    render(
-      <RegionConfigurationPanelUI
-        region={baseRegion({
-          orientation: "cells-as-records",
-          headerAxis: "row",
-        })}
-        entityOptions={ENTITY_OPTIONS}
-        entityOrder={["ent_a"]}
-        siblingsInSameEntity={0}
-        onUpdate={jest.fn()}
-        onDelete={jest.fn()}
-      />
-    );
-    expect(screen.getByText(/Row-axis name/i)).toBeInTheDocument();
-    expect(screen.getByText(/Column-axis name/i)).toBeInTheDocument();
-    expect(screen.getByText(/Cell value name/i)).toBeInTheDocument();
-  });
-
-  test("field-names editor appears when headerAxis is 'none'", () => {
-    const region = baseRegion({
-      headerAxis: "none",
-      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+    test("renders a SegmentStrip with one chip per segment", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(screen.getByLabelText(/row segment strip/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /edit row segment 1 \(field\)/i })
+      ).toBeInTheDocument();
     });
-    render(
-      <RegionConfigurationPanelUI
-        region={region}
-        entityOptions={ENTITY_OPTIONS}
-        entityOrder={["ent_a"]}
-        siblingsInSameEntity={0}
-        onUpdate={jest.fn()}
-        onDelete={jest.fn()}
-      />
-    );
-    expect(screen.getByText(/Field names/i)).toBeInTheDocument();
-    expect(screen.getByText("columnA")).toBeInTheDocument();
-    expect(screen.getByText("columnB")).toBeInTheDocument();
-    expect(screen.getByText("columnC")).toBeInTheDocument();
-  });
 
-  test("stop-pattern input appears when boundsMode is matchesPattern", () => {
-    render(
-      <RegionConfigurationPanelUI
-        region={baseRegion({ boundsMode: "matchesPattern" })}
-        entityOptions={ENTITY_OPTIONS}
-        entityOrder={["ent_a"]}
-        siblingsInSameEntity={0}
-        onUpdate={jest.fn()}
-        onDelete={jest.fn()}
-      />
-    );
-    expect(screen.getByLabelText(/Stop pattern/i)).toBeInTheDocument();
-  });
+    test("renders the cell-value-field name input when a pivot segment exists", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            segmentsByAxis: {
+              row: [
+                {
+                  kind: "pivot",
+                  id: "p1",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 4,
+                },
+              ],
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      const input = screen.getByLabelText(/cell-value field name/i);
+      expect(input).toHaveValue("Revenue");
+    });
 
-  test("terminator input appears only for untilEmpty bounds mode", () => {
-    const { rerender } = render(
-      <RegionConfigurationPanelUI
-        region={baseRegion({ boundsMode: "absolute" })}
-        entityOptions={ENTITY_OPTIONS}
-        entityOrder={["ent_a"]}
-        siblingsInSameEntity={0}
-        onUpdate={jest.fn()}
-        onDelete={jest.fn()}
-      />
-    );
-    expect(
-      screen.queryByLabelText(/Terminator count/i)
-    ).not.toBeInTheDocument();
+    test("does not render the cell-value-field input when no pivot segments exist", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByLabelText(/cell-value field name/i)
+      ).not.toBeInTheDocument();
+    });
 
-    rerender(
-      <RegionConfigurationPanelUI
-        region={baseRegion({ boundsMode: "untilEmpty" })}
-        entityOptions={ENTITY_OPTIONS}
-        entityOrder={["ent_a"]}
-        siblingsInSameEntity={0}
-        onUpdate={jest.fn()}
-        onDelete={jest.fn()}
-      />
-    );
-    expect(screen.getByLabelText(/Terminator count/i)).toBeInTheDocument();
+    test("renders an 'Add column axis' button when only the row axis is present", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: /add column header axis/i })
+      ).toBeInTheDocument();
+    });
+
+    test("renders an Extent control for 1D regions and hides it for crosstabs", () => {
+      const { rerender } = render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: /extent: fixed bounds/i })
+      ).toBeInTheDocument();
+
+      rerender(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            headerAxes: ["row", "column"],
+            segmentsByAxis: {
+              row: [
+                { kind: "skip", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "p1",
+                  axisName: "Region",
+                  axisNameSource: "user",
+                  positionCount: 3,
+                },
+              ],
+              column: [
+                { kind: "skip", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "p2",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 3,
+                },
+              ],
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /extent:/i })
+      ).not.toBeInTheDocument();
+    });
+
+    test("surfaces dynamic-tail state in the chip label when segment.dynamic is set", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            segmentsByAxis: {
+              row: [
+                {
+                  kind: "pivot",
+                  id: "p1",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 4,
+                  dynamic: {
+                    terminator: {
+                      kind: "untilBlank",
+                      consecutiveBlanks: 2,
+                    },
+                  },
+                },
+              ],
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/quarter · 4 · ∞/i)).toBeInTheDocument();
+    });
+
+    test("no longer renders the orientation dropdown or boundsMode toggle", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      // Pre-PR-4 headings that should be gone.
+      expect(screen.queryByText(/^Orientation$/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Header axis$/)).not.toBeInTheDocument();
+      // The per-kind buttons from the ToggleRow are gone too.
+      expect(
+        screen.queryByRole("button", { name: /^Fixed$/ })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Until empty/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^Rows$/ })
+      ).not.toBeInTheDocument();
+    });
   });
 
   test("toggling the blank skip rule adds and removes a rule", () => {

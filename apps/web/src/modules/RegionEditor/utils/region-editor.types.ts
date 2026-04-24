@@ -19,10 +19,14 @@
  */
 
 import type {
+  AxisMember,
+  CellValueField,
   HeaderStrategyKind,
   IdentityStrategyKind,
   RecordsAxisName,
+  Segment,
   SkipRuleAxis,
+  Terminator,
   WarningCode,
   WarningSeverity,
 } from "@portalai/core/contracts";
@@ -30,10 +34,14 @@ import type { ColumnDataType } from "@portalai/core/models";
 
 // ── Re-export canonical enum types so existing imports keep resolving ────
 export type {
+  AxisMember,
+  CellValueField,
   HeaderStrategyKind,
   IdentityStrategyKind,
   RecordsAxisName,
+  Segment,
   SkipRule,
+  Terminator,
   WarningCode,
   WarningSeverity,
 } from "@portalai/core/contracts";
@@ -154,6 +162,24 @@ export type RegionDraft = {
   recordsAxisName?: RecordsAxisName;
   secondaryRecordsAxisName?: RecordsAxisName;
   cellValueName?: RecordsAxisName;
+  /**
+   * PR-4 segment model (transitional — coexists with `orientation` +
+   * `headerAxis` + `recordsAxisName` until the workflow integration in the
+   * next PR removes those). When present the RegionConfigurationPanel
+   * drives itself off these fields and ignores the legacy orientation
+   * inputs; helpers like `orientationFromDraft` pick the segment model
+   * first and fall back to the legacy fields when segments are unset.
+   */
+  headerAxes?: AxisMember[];
+  segmentsByAxis?: { row?: Segment[]; column?: Segment[] };
+  cellValueField?: CellValueField;
+  recordAxisTerminator?: Terminator;
+  /**
+   * Records axis for headerless regions (required by the canonical schema's
+   * refinement 5 when `headerAxes.length === 0`). Optional on the draft
+   * because the user can build up toward a headerless shape incrementally.
+   */
+  recordsAxis?: AxisMember;
   /**
    * Optional override for the axis-name anchor cell. When unset, the anchor
    * defaults to the top-left of the region — `(bounds.startRow, bounds.startCol)`.

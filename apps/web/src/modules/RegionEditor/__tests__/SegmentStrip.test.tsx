@@ -10,7 +10,9 @@ import {
 
 function setup(overrides: Partial<SegmentStripUIProps> = {}) {
   const onEditSegment =
-    jest.fn<(axis: AxisMember, segmentIndex: number) => void>();
+    jest.fn<
+      (axis: AxisMember, segmentIndex: number, anchor: HTMLElement) => void
+    >();
   const onAddSegment = jest.fn<(axis: AxisMember) => void>();
   const onAddHeaderAxis = jest.fn<(otherAxis: AxisMember) => void>();
   const baseSegments: Segment[] = [
@@ -70,12 +72,16 @@ describe("SegmentStripUI", () => {
     expect(screen.getByText(/q · 2 · ∞/i)).toBeInTheDocument();
   });
 
-  it("clicking a chip calls onEditSegment(axis, index)", () => {
+  it("clicking a chip calls onEditSegment(axis, index, anchor)", () => {
     const { onEditSegment } = setup();
     fireEvent.click(
       screen.getByRole("button", { name: /edit row segment 2/i })
     );
-    expect(onEditSegment).toHaveBeenCalledWith("row", 1);
+    expect(onEditSegment).toHaveBeenCalledTimes(1);
+    const [axis, idx, anchor] = onEditSegment.mock.calls[0];
+    expect(axis).toBe("row");
+    expect(idx).toBe(1);
+    expect(anchor).toBeInstanceOf(HTMLElement);
   });
 
   it("clicking Add segment calls onAddSegment(axis)", () => {

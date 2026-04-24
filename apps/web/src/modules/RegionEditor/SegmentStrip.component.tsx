@@ -11,7 +11,11 @@ export interface SegmentStripUIProps {
   /** Optional uppercase section label (e.g. "Row axis"). When omitted a
    *  sensible default derived from `axis` is used. */
   axisLabel?: string;
-  onEditSegment: (axis: AxisMember, segmentIndex: number) => void;
+  onEditSegment: (
+    axis: AxisMember,
+    segmentIndex: number,
+    anchor: HTMLElement
+  ) => void;
   onAddSegment: (axis: AxisMember) => void;
   /**
    * Provided only when the *other* axis isn't already a header axis — the
@@ -86,7 +90,9 @@ export const SegmentStripUI: React.FC<SegmentStripUIProps> = ({
               }
               color={segmentChipColor(seg)}
               variant={seg.kind === "skip" ? "outlined" : "filled"}
-              onClick={() => onEditSegment(axis, i)}
+              onClick={(e) =>
+                onEditSegment(axis, i, e.currentTarget as HTMLElement)
+              }
               aria-label={`Edit ${axis} segment ${i + 1} (${seg.kind})`}
             />
           );

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Box,
   Stack,
@@ -11,13 +11,20 @@ import {
 } from "@portalai/core/ui";
 import { IconName } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
+import type {
+  AxisMember,
+  CellValueField,
+  Segment,
+  Terminator,
+} from "@portalai/core/contracts";
 
 import { CellPositionInputUI } from "./CellPositionInput.component";
-import { FieldNameEditorUI } from "./FieldNameEditor.component";
 import { NewEntityDialogUI } from "./NewEntityDialog.component";
+import { RecordAxisTerminatorPopoverUI } from "./RecordAxisTerminatorPopover.component";
 import { SectionHelpUI } from "./SectionHelp.component";
+import { SegmentEditPopoverUI } from "./SegmentEditPopover.component";
+import { SegmentStripUI } from "./SegmentStrip.component";
 import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
-import { ToggleRowUI } from "./ToggleRow.component";
 import { formatBounds } from "./utils/a1-notation.util";
 import {
   colorForEntity,
@@ -27,26 +34,27 @@ import {
 import {
   DECORATION_COLOR,
   DECORATION_LABEL,
-  anchorCellValue,
   type DecorationKind,
 } from "./utils/region-editor-decorations.util";
-import {
-  type BoundsModeDraft,
-  type EntityOption,
-  type RegionDraft,
-  type SheetPreview,
+import type {
+  EntityOption,
+  RegionDraft,
+  SheetPreview,
 } from "./utils/region-editor.types";
 import {
+  isDraftCrosstab,
+  isDraftPivoted,
   orientationArrow,
   orientationArrowLabel,
+  orientationFromDraft,
 } from "./utils/region-orientation.util";
 
 export interface RegionConfigurationPanelUIProps {
   region: RegionDraft | null;
   /**
-   * The sheet the region is drawn on. When provided, a pivoted region with a
-   * non-blank string at its axis-anchor cell auto-populates `recordsAxisName`
-   * with `source: "anchor-cell"` so the user doesn't have to retype it.
+   * The sheet the region is drawn on. Retained from the pre-PR-4 panel for
+   * downstream consumers that still pass it; the panel no longer reads it
+   * (anchor-cell axis-name auto-fill moves to the workflow in PR-5).
    */
   sheet?: SheetPreview;
   entityOptions: EntityOption[];
@@ -55,30 +63,18 @@ export interface RegionConfigurationPanelUIProps {
   errors?: import("./utils/region-editor-validation.util").RegionErrors;
   onUpdate: (updates: Partial<RegionDraft>) => void;
   onDelete: () => void;
+  /**
+   * Retained for workflow-level callers; the PR-4 panel no longer exposes a
+   * "Suggest axis name" button at the region level — suggestion moves to
+   * the per-segment popover in a follow-up. Passing this prop is a no-op
+   * for now and its presence does not surface any affordance.
+   */
   onSuggestAxisName?: () => void;
   onAcceptProposedIdentity?: () => void;
   onKeepPriorIdentity?: () => void;
   driftProposedIdentityLabel?: string;
-  /**
-   * When provided, the panel exposes a "Create new entity" affordance. The
-   * callback receives a user-chosen key + label and must return the value the
-   * panel should write back into `region.targetEntityDefinitionId` (typically
-   * the key itself). The consuming workflow is responsible for staging the
-   * entity in its local state and making it available via `entityOptions`.
-   */
   onCreateEntity?: (key: string, label: string) => string;
-  /**
-   * Entity ids already bound to a region in this upload. Options whose value
-   * appears in this set — except for the currently-editing region's own
-   * target — render as disabled in the picker, surfacing the C1 rule (one
-   * region per entity) at selection time.
-   */
   claimedEntityKeys?: Set<string>;
-  /**
-   * C2 async validator forwarded to the "+ Create new entity" dialog.
-   * Returns `{ ok: false, ownedBy }` when the chosen key is already owned
-   * by another connector in this org so the dialog can block Create.
-   */
   validateEntityKey?: (
     key: string
   ) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>;
@@ -90,18 +86,67 @@ const SECTION_HEADING_SX = {
   color: "text.secondary",
 } as const;
 
+type EditingSegment = { axis: AxisMember; index: number };
+
+// ── Pure segment manipulation on the draft ───────────────────────────────
+
+function axisSegments(region: RegionDraft, axis: AxisMember): Segment[] {
+  return region.segmentsByAxis?.[axis] ?? [];
+}
+
+function axisSpan(region: RegionDraft, axis: AxisMember): number {
+  const { startRow, startCol, endRow, endCol } = region.bounds;
+  return axis === "row" ? endCol - startCol + 1 : endRow - startRow + 1;
+}
+
+function writeSegments(
+  region: RegionDraft,
+  axis: AxisMember,
+  segments: Segment[]
+): Partial<RegionDraft> {
+  return {
+    segmentsByAxis: { ...(region.segmentsByAxis ?? {}), [axis]: segments },
+  };
+}
+
+function hasAnyPivot(region: RegionDraft): boolean {
+  for (const axis of ["row", "column"] as const) {
+    if (axisSegments(region, axis).some((s) => s.kind === "pivot")) return true;
+  }
+  return false;
+}
+
+function withPivotSync(
+  region: RegionDraft,
+  updates: Partial<RegionDraft>
+): Partial<RegionDraft> {
+  const projected: RegionDraft = { ...region, ...updates };
+  const pivot = hasAnyPivot(projected);
+  if (pivot && !projected.cellValueField) {
+    return { ...updates, cellValueField: { name: "value", nameSource: "user" } };
+  }
+  if (!pivot && projected.cellValueField) {
+    return { ...updates, cellValueField: undefined };
+  }
+  return updates;
+}
+
+function defaultTerminator(): Terminator {
+  return { kind: "untilBlank", consecutiveBlanks: 2 };
+}
+
+// ── Component ────────────────────────────────────────────────────────────
+
 export const RegionConfigurationPanelUI: React.FC<
   RegionConfigurationPanelUIProps
 > = ({
   region,
-  sheet,
   entityOptions,
   entityOrder,
   siblingsInSameEntity,
   errors = {},
   onUpdate,
   onDelete,
-  onSuggestAxisName,
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
   driftProposedIdentityLabel,
@@ -110,6 +155,11 @@ export const RegionConfigurationPanelUI: React.FC<
   validateEntityKey,
 }) => {
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
+  const [editingSegment, setEditingSegment] =
+    useState<EditingSegment | null>(null);
+  const [segmentAnchor, setSegmentAnchor] = useState<HTMLElement | null>(null);
+  const [extentOpen, setExtentOpen] = useState(false);
+  const [extentAnchor, setExtentAnchor] = useState<HTMLElement | null>(null);
 
   const currentTarget = region?.targetEntityDefinitionId ?? null;
   const selectOptions = useMemo<SelectOption[]>(
@@ -120,39 +170,6 @@ export const RegionConfigurationPanelUI: React.FC<
     () => entityOptions.map((o) => o.value),
     [entityOptions]
   );
-
-  // Auto-propose `recordsAxisName` from the anchor cell when:
-  //   - the region is pivoted, AND
-  //   - the user hasn't supplied a name (or an existing `anchor-cell` source is
-  //     now stale because the anchor cell changed), AND
-  //   - the anchor cell has a non-blank string value.
-  // Keeps `source: "user"` / `source: "ai"` names untouched — users stay in control.
-  const proposedFromAnchor =
-    region && sheet ? anchorCellValue(region, sheet) : null;
-  const regionIsPivoted =
-    !!region &&
-    (region.orientation === "cells-as-records" ||
-      (region.orientation === "columns-as-records" &&
-        region.headerAxis === "row") ||
-      (region.orientation === "rows-as-records" &&
-        region.headerAxis === "column"));
-  const existingAxisName = region?.recordsAxisName;
-  useEffect(() => {
-    if (!region || !regionIsPivoted || !proposedFromAnchor) return;
-    const current = existingAxisName;
-    if (!current) {
-      onUpdate({
-        recordsAxisName: { name: proposedFromAnchor, source: "anchor-cell" },
-      });
-    } else if (
-      current.source === "anchor-cell" &&
-      current.name !== proposedFromAnchor
-    ) {
-      onUpdate({
-        recordsAxisName: { name: proposedFromAnchor, source: "anchor-cell" },
-      });
-    }
-  }, [region, regionIsPivoted, proposedFromAnchor, existingAxisName, onUpdate]);
 
   if (!region) {
     return (
@@ -177,22 +194,157 @@ export const RegionConfigurationPanelUI: React.FC<
     );
   }
 
-  const crosstab = region.orientation === "cells-as-records";
-  const headerless = region.headerAxis === "none";
-  const legendKinds = deriveLegendKinds(region);
-  const pivoted =
-    crosstab ||
-    (region.orientation === "columns-as-records" &&
-      region.headerAxis === "row") ||
-    (region.orientation === "rows-as-records" &&
-      region.headerAxis === "column");
-  const needsAxisName = pivoted && !region.recordsAxisName?.name;
-  const needsSecondaryAxisName =
-    crosstab && !region.secondaryRecordsAxisName?.name;
-  const needsCellValueName = crosstab && !region.cellValueName?.name;
+  const orientation = orientationFromDraft(region);
+  const crosstab = isDraftCrosstab(region);
+  const pivoted = isDraftPivoted(region);
+  const legendKinds = deriveLegendKinds(region, crosstab);
+  const headerAxes = region.headerAxes ?? [];
+  const canAddSecondAxis = headerAxes.length === 1;
   const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
   const band = confidenceBand(region.confidence);
   const driftFlagged = Boolean(region.drift?.flagged);
+
+  const editingAxis = editingSegment?.axis;
+  const editingSeg: Segment | null =
+    editingSegment
+      ? (axisSegments(region, editingSegment.axis)[editingSegment.index] ?? null)
+      : null;
+  const editingIsTail = editingSegment
+    ? editingSegment.index === axisSegments(region, editingSegment.axis).length - 1
+    : false;
+
+  const closeSegmentEditor = () => {
+    setEditingSegment(null);
+    setSegmentAnchor(null);
+  };
+
+  const handleEditSegment = (
+    axis: AxisMember,
+    index: number,
+    anchor: HTMLElement
+  ) => {
+    setSegmentAnchor(anchor);
+    setEditingSegment({ axis, index });
+  };
+
+  const handleAddSegment = (axis: AxisMember) => {
+    const segments = [...axisSegments(region, axis)];
+    const positionCount = 1;
+    segments.push({ kind: "field", positionCount });
+    const merged = coalesceSegments(segments);
+    const span = axisSpan(region, axis);
+    onUpdate({
+      ...writeSegments(region, axis, merged),
+      bounds: expandBoundsAlongAxis(region.bounds, axis, span + positionCount),
+    });
+  };
+
+  const handleAddHeaderAxis = (otherAxis: AxisMember) => {
+    if (headerAxes.includes(otherAxis)) return;
+    const span = axisSpan(region, otherAxis);
+    const nextAxes: AxisMember[] = [...headerAxes, otherAxis];
+    onUpdate({
+      headerAxes: nextAxes,
+      segmentsByAxis: {
+        ...(region.segmentsByAxis ?? {}),
+        [otherAxis]: [{ kind: "skip", positionCount: span }],
+      },
+    });
+  };
+
+  const handleRemoveHeaderAxis = (axis: AxisMember) => {
+    if (!headerAxes.includes(axis) || headerAxes.length < 2) return;
+    const nextAxes = headerAxes.filter((a) => a !== axis);
+    const nextSegs = { ...(region.segmentsByAxis ?? {}) };
+    delete nextSegs[axis];
+    const updates = withPivotSync(
+      { ...region, headerAxes: nextAxes, segmentsByAxis: nextSegs },
+      { headerAxes: nextAxes, segmentsByAxis: nextSegs }
+    );
+    onUpdate(updates);
+  };
+
+  const handleConvertSegment = (toKind: Segment["kind"]) => {
+    if (!editingSegment) return;
+    const { axis, index } = editingSegment;
+    const segments = [...axisSegments(region, axis)];
+    const seg = segments[index];
+    if (!seg) return;
+    let replacement: Segment;
+    if (toKind === "field") {
+      replacement = { kind: "field", positionCount: seg.positionCount };
+    } else if (toKind === "skip") {
+      replacement = { kind: "skip", positionCount: seg.positionCount };
+    } else {
+      const existingName = seg.kind === "pivot" ? seg.axisName : "";
+      replacement = {
+        kind: "pivot",
+        id: seg.kind === "pivot" ? seg.id : mintPivotId(region),
+        axisName: existingName,
+        axisNameSource: seg.kind === "pivot" ? seg.axisNameSource : "user",
+        positionCount: seg.positionCount,
+      };
+    }
+    segments[index] = replacement;
+    const merged = coalesceSegments(segments);
+    const updates = withPivotSync(region, writeSegments(region, axis, merged));
+    onUpdate(updates);
+  };
+
+  const handleChangeAxisName = (value: string) => {
+    if (!editingSegment) return;
+    const { axis, index } = editingSegment;
+    const segments = [...axisSegments(region, axis)];
+    const seg = segments[index];
+    if (seg?.kind !== "pivot") return;
+    segments[index] = { ...seg, axisName: value, axisNameSource: "user" };
+    onUpdate(writeSegments(region, axis, segments));
+  };
+
+  const handleToggleDynamic = (on: boolean) => {
+    if (!editingSegment) return;
+    const { axis, index } = editingSegment;
+    const segments = [...axisSegments(region, axis)];
+    const seg = segments[index];
+    if (seg?.kind !== "pivot") return;
+    if (on) {
+      segments[index] = { ...seg, dynamic: { terminator: defaultTerminator() } };
+    } else {
+      const { dynamic: _drop, ...rest } = seg;
+      segments[index] = rest;
+    }
+    onUpdate(writeSegments(region, axis, segments));
+  };
+
+  const handleChangeSegmentTerminator = (terminator: Terminator) => {
+    if (!editingSegment) return;
+    const { axis, index } = editingSegment;
+    const segments = [...axisSegments(region, axis)];
+    const seg = segments[index];
+    if (seg?.kind !== "pivot") return;
+    segments[index] = { ...seg, dynamic: { terminator } };
+    onUpdate(writeSegments(region, axis, segments));
+  };
+
+  const handleChangeCellValueFieldName = (value: string) => {
+    const current: CellValueField = region.cellValueField ?? {
+      name: "",
+      nameSource: "user",
+    };
+    onUpdate({
+      cellValueField: { ...current, name: value, nameSource: "user" },
+    });
+  };
+
+  const handleToggleExtent = (on: boolean) => {
+    onUpdate({
+      recordAxisTerminator: on ? defaultTerminator() : undefined,
+    });
+  };
+
+  const handleChangeRecordAxisTerminator = (terminator: Terminator) => {
+    onUpdate({ recordAxisTerminator: terminator });
+  };
 
   return (
     <Box
@@ -256,11 +408,11 @@ export const RegionConfigurationPanelUI: React.FC<
         <Typography variant="caption" color="text.secondary">
           <Box
             component="span"
-            aria-label={orientationArrowLabel(region.orientation)}
-            title={orientationArrowLabel(region.orientation)}
+            aria-label={orientationArrowLabel(orientation)}
+            title={orientationArrowLabel(orientation)}
             sx={{ display: "inline-block", fontWeight: 700, mr: 0.5 }}
           >
-            {orientationArrow(region.orientation)}
+            {orientationArrow(orientation)}
           </Box>
           {formatBounds(region.bounds)} ·{" "}
           {region.bounds.endRow - region.bounds.startRow + 1} rows ·{" "}
@@ -488,256 +640,72 @@ export const RegionConfigurationPanelUI: React.FC<
           Shape
         </Typography>
 
-        <Stack spacing={1}>
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Typography variant="caption" sx={SECTION_HEADING_SX}>
-              Orientation
-            </Typography>
-            <SectionHelpUI
-              ariaLabel="What is orientation?"
-              title={
-                <>
-                  <strong>Rows:</strong> each row is a record — the most common
-                  table shape.
-                  <br />
-                  <strong>Columns:</strong> each column is a record — use when
-                  the data is pivoted sideways (field names down the left).
-                  <br />
-                  <strong>Cells (crosstab):</strong> every cell in the region is
-                  a record, indexed by its row and column label (e.g. revenue by
-                  month × region).
-                </>
-              }
-            />
-          </Stack>
-          <ToggleRowUI
-            value={region.orientation}
-            onChange={(v) => onUpdate({ orientation: v })}
-            options={[
-              { value: "rows-as-records", label: "Rows" },
-              { value: "columns-as-records", label: "Columns" },
-              { value: "cells-as-records", label: "Cells (crosstab)" },
-            ]}
-          />
-        </Stack>
-
-        {!crosstab && (
-          <Stack spacing={1}>
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Typography variant="caption" sx={SECTION_HEADING_SX}>
-                Header axis
-              </Typography>
-              <SectionHelpUI
-                ariaLabel="What is the header axis?"
-                title={
-                  <>
-                    <strong>Row:</strong> the top row of the region holds the
-                    field names (headers along the top).
-                    <br />
-                    <strong>Column:</strong> the left-most column of the region
-                    holds the field names (headers down the left).
-                    <br />
-                    <strong>None:</strong> the region has no header — field
-                    names are auto-generated from position and can be overridden
-                    below.
-                  </>
-                }
-              />
-            </Stack>
-            <ToggleRowUI
-              value={region.headerAxis}
-              onChange={(v) => onUpdate({ headerAxis: v })}
-              options={[
-                { value: "row", label: "Row" },
-                { value: "column", label: "Column" },
-                { value: "none", label: "None" },
-              ]}
-            />
-            {region.headerAxis !== "none" && (
-              <Typography variant="caption" color="text.secondary">
-                Blank rows between headers and data are skipped automatically.
-              </Typography>
-            )}
-          </Stack>
+        {headerAxes.length === 0 && (
+          <Typography variant="caption" color="text.secondary">
+            This region has no header axis. Field names are derived from
+            position — the Review step surfaces per-field overrides.
+          </Typography>
         )}
 
-        {headerless && !crosstab && (
-          <Stack spacing={1}>
-            <Typography variant="caption" sx={SECTION_HEADING_SX}>
-              Field names
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Auto-generated from position. Override any name below.
-            </Typography>
-            <FieldNameEditorUI region={region} onUpdate={onUpdate} />
-          </Stack>
+        {headerAxes.includes("row") && (
+          <SegmentStripUI
+            axis="row"
+            segments={axisSegments(region, "row")}
+            axisLabel="Row axis"
+            onEditSegment={handleEditSegment}
+            onAddSegment={handleAddSegment}
+            onAddHeaderAxis={
+              canAddSecondAxis && !headerAxes.includes("column")
+                ? handleAddHeaderAxis
+                : undefined
+            }
+          />
+        )}
+
+        {headerAxes.includes("column") && (
+          <SegmentStripUI
+            axis="column"
+            segments={axisSegments(region, "column")}
+            axisLabel="Column axis"
+            onEditSegment={handleEditSegment}
+            onAddSegment={handleAddSegment}
+            onAddHeaderAxis={
+              canAddSecondAxis && !headerAxes.includes("row")
+                ? handleAddHeaderAxis
+                : undefined
+            }
+          />
+        )}
+
+        {crosstab && (
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => handleRemoveHeaderAxis("column")}
+            sx={{ alignSelf: "flex-start" }}
+          >
+            Collapse crosstab (remove column axis)
+          </Button>
         )}
 
         {pivoted && (
-          <Stack spacing={1}>
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Typography variant="caption" sx={SECTION_HEADING_SX}>
-                {crosstab ? "Row-axis name" : "Records-axis name"}
-              </Typography>
-              <SectionHelpUI
-                ariaLabel={
-                  crosstab
-                    ? "What is the row-axis name?"
-                    : "What is the records-axis name?"
-                }
-                title={
-                  crosstab ? (
-                    <>
-                      Name the dimension whose <em>values</em> run down the rows
-                      of the crosstab (e.g. <em>Month</em> when months label the
-                      rows). It becomes a field on every extracted record.
-                    </>
-                  ) : (
-                    <>
-                      When a region is pivoted (field names run along the header
-                      axis rather than the record axis), the record-axis labels
-                      themselves become the values of a field — this name labels
-                      that field. For example, if each column is a record and
-                      years label the columns, the records-axis name might be{" "}
-                      <em>Year</em>.
-                    </>
-                  )
-                }
-              />
-            </Stack>
-            <Stack direction="row" spacing={1} alignItems="flex-start">
-              <TextInput
-                size="small"
-                fullWidth
-                value={region.recordsAxisName?.name ?? ""}
-                onChange={(e) =>
-                  onUpdate({
-                    recordsAxisName: e.target.value
-                      ? { name: e.target.value, source: "user" }
-                      : undefined,
-                  })
-                }
-                placeholder={
-                  crosstab ? "e.g. Quarter, Region" : "e.g. Month, Region, Year"
-                }
-                required
-                error={needsAxisName}
-                helperText={
-                  needsAxisName
-                    ? crosstab
-                      ? "Required — names the row dimension"
-                      : "Required for pivoted regions"
-                    : undefined
-                }
-                slotProps={{ htmlInput: { "aria-invalid": needsAxisName } }}
-              />
-              {onSuggestAxisName && !region.recordsAxisName?.name && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={onSuggestAxisName}
-                >
-                  Suggest
-                </Button>
-              )}
-            </Stack>
-            {region.recordsAxisName?.source === "ai" && (
-              <Typography variant="caption" sx={{ color: "warning.dark" }}>
-                AI suggestion — confirm before continuing.
-              </Typography>
-            )}
-            {region.recordsAxisName?.source === "anchor-cell" && (
-              <Typography variant="caption" color="text.secondary">
-                Read from anchor cell — edit to override.
-              </Typography>
-            )}
-          </Stack>
-        )}
-
-        {crosstab && (
-          <Stack spacing={1}>
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Typography variant="caption" sx={SECTION_HEADING_SX}>
-                Column-axis name
-              </Typography>
-              <SectionHelpUI
-                ariaLabel="What is the column-axis name?"
-                title={
-                  <>
-                    Name the dimension whose <em>values</em> run across the
-                    columns of the crosstab (e.g. <em>Region</em> when regions
-                    label the columns). It becomes a field on every extracted
-                    record.
-                  </>
-                }
-              />
-            </Stack>
-            <TextInput
-              size="small"
-              fullWidth
-              value={region.secondaryRecordsAxisName?.name ?? ""}
-              onChange={(e) =>
-                onUpdate({
-                  secondaryRecordsAxisName: e.target.value
-                    ? { name: e.target.value, source: "user" }
-                    : undefined,
-                })
-              }
-              placeholder="e.g. Month, Category"
-              required
-              error={needsSecondaryAxisName}
-              helperText={
-                needsSecondaryAxisName
-                  ? "Required — names the column dimension"
-                  : undefined
-              }
-              slotProps={{
-                htmlInput: { "aria-invalid": needsSecondaryAxisName },
-              }}
-            />
-          </Stack>
-        )}
-
-        {crosstab && (
-          <Stack spacing={1}>
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Typography variant="caption" sx={SECTION_HEADING_SX}>
-                Cell value name
-              </Typography>
-              <SectionHelpUI
-                ariaLabel="What is the cell value name?"
-                title={
-                  <>
-                    Name the field that holds each cell&apos;s <em>value</em> in
-                    the crosstab (e.g. <em>Revenue</em> when cells contain
-                    dollar amounts). Every extracted record has this field
-                    alongside the row- and column-axis fields.
-                  </>
-                }
-              />
-            </Stack>
-            <TextInput
-              size="small"
-              fullWidth
-              value={region.cellValueName?.name ?? ""}
-              onChange={(e) =>
-                onUpdate({
-                  cellValueName: e.target.value
-                    ? { name: e.target.value, source: "user" }
-                    : undefined,
-                })
-              }
-              placeholder="e.g. Revenue, Headcount, Amount"
-              required
-              error={needsCellValueName}
-              helperText={
-                needsCellValueName
-                  ? "Required — names the field that holds each cell's value"
-                  : `Each extracted record will have fields: ${region.recordsAxisName?.name ?? "<row axis>"} · ${region.secondaryRecordsAxisName?.name ?? "<col axis>"} · ${region.cellValueName?.name ?? "<cell value>"}`
-              }
-              slotProps={{ htmlInput: { "aria-invalid": needsCellValueName } }}
-            />
-          </Stack>
+          <TextInput
+            size="small"
+            fullWidth
+            label="Cell-value field name"
+            value={region.cellValueField?.name ?? ""}
+            onChange={(e) => handleChangeCellValueFieldName(e.target.value)}
+            placeholder="e.g. Revenue, Headcount, Amount"
+            required
+            error={Boolean(errors.cellValueField)}
+            helperText={
+              errors.cellValueField ??
+              "Each extracted record has a field by this name holding the cell value."
+            }
+            slotProps={{
+              htmlInput: { "aria-invalid": Boolean(errors.cellValueField) },
+            }}
+          />
         )}
 
         {pivoted && (
@@ -827,53 +795,61 @@ export const RegionConfigurationPanelUI: React.FC<
           Extent & skip rules
         </Typography>
 
-        <Stack spacing={1}>
-          <Typography variant="caption" sx={SECTION_HEADING_SX}>
-            Extent
-          </Typography>
-          <ToggleRowUI<BoundsModeDraft>
-            value={region.boundsMode ?? "absolute"}
-            onChange={(v) =>
-              onUpdate({
-                boundsMode: v,
-                boundsPattern:
-                  v === "matchesPattern"
-                    ? (region.boundsPattern ?? "")
-                    : undefined,
-              })
-            }
-            options={[
-              { value: "absolute", label: "Fixed" },
-              { value: "untilEmpty", label: "Until empty" },
-              { value: "matchesPattern", label: "Matches pattern" },
-            ]}
-          />
-          <Typography variant="caption" color="text.secondary">
-            {extentDescription(
-              region.orientation,
-              region.boundsMode ?? "absolute"
-            )}
-          </Typography>
-          {region.boundsMode === "matchesPattern" && (
-            <TextInput
-              size="small"
-              fullWidth
-              value={region.boundsPattern ?? ""}
-              onChange={(e) => onUpdate({ boundsPattern: e.target.value })}
-              placeholder="Regex or literal (e.g. ^Total$)"
-              label="Stop pattern"
-              required
-              error={Boolean(errors.boundsPattern)}
-              helperText={
-                errors.boundsPattern ??
-                "Region ends at the first record matching this pattern."
+        {!crosstab && (
+          <Stack spacing={1}>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Typography variant="caption" sx={SECTION_HEADING_SX}>
+                Extent
+              </Typography>
+              <SectionHelpUI
+                ariaLabel="What controls the region extent?"
+                title={
+                  <>
+                    By default the region ends at the drawn bounds. Open the
+                    Extent control to let the record axis grow until a
+                    terminator is hit (N blanks in a row, or a cell matching
+                    a pattern). Crosstabs keep fixed bounds (refinement 11).
+                  </>
+                }
+              />
+            </Stack>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={(e) => {
+                  setExtentAnchor(e.currentTarget);
+                  setExtentOpen(true);
+                }}
+              >
+                {region.recordAxisTerminator
+                  ? `Extent: grows until ${
+                      region.recordAxisTerminator.kind === "untilBlank"
+                        ? `${region.recordAxisTerminator.consecutiveBlanks} blanks`
+                        : `/${region.recordAxisTerminator.pattern}/`
+                    }`
+                  : "Extent: fixed bounds"}
+              </Button>
+            </Stack>
+            <RecordAxisTerminatorPopoverUI
+              open={extentOpen}
+              anchorEl={extentAnchor}
+              recordsAxis={
+                headerAxes.length === 1
+                  ? headerAxes[0] === "row"
+                    ? "column"
+                    : "row"
+                  : region.headerAxes?.length === 0 && region.recordsAxis
+                    ? region.recordsAxis
+                    : "row"
               }
-              slotProps={{
-                htmlInput: { "aria-invalid": Boolean(errors.boundsPattern) },
-              }}
+              terminator={region.recordAxisTerminator}
+              onToggle={handleToggleExtent}
+              onChangeTerminator={handleChangeRecordAxisTerminator}
+              onClose={() => setExtentOpen(false)}
             />
-          )}
-        </Stack>
+          </Stack>
+        )}
 
         <SkipAndTerminatorEditorUI
           region={region}
@@ -881,6 +857,21 @@ export const RegionConfigurationPanelUI: React.FC<
           errors={errors}
         />
       </Stack>
+
+      {editingSegment && editingSeg && editingAxis !== undefined && (
+        <SegmentEditPopoverUI
+          open={editingSegment !== null}
+          anchorEl={segmentAnchor}
+          axis={editingAxis}
+          segment={editingSeg}
+          isTail={editingIsTail}
+          onChangeAxisName={handleChangeAxisName}
+          onToggleDynamic={handleToggleDynamic}
+          onChangeTerminator={handleChangeSegmentTerminator}
+          onConvert={handleConvertSegment}
+          onClose={closeSegmentEditor}
+        />
+      )}
 
       {band !== "none" && (
         <Stack
@@ -930,16 +921,25 @@ function formatEntityOptionLabel(o: EntityOption): string {
   return o.label;
 }
 
-function deriveLegendKinds(region: RegionDraft): DecorationKind[] {
+function deriveLegendKinds(
+  region: RegionDraft,
+  crosstab: boolean
+): DecorationKind[] {
   const kinds: DecorationKind[] = [];
-  if (
-    region.orientation !== "cells-as-records" &&
-    (region.headerAxis === "row" || region.headerAxis === "column")
-  ) {
-    kinds.push("header");
-  }
-  if (region.orientation === "cells-as-records") {
+  const axes = region.headerAxes ?? [];
+  if (crosstab) {
     kinds.push("rowAxisLabel", "colAxisLabel");
+  } else if (axes.length === 1) {
+    kinds.push("header");
+  } else if (axes.length === 0) {
+    // Legacy fallback: use the pre-PR-4 orientation fields.
+    if (region.orientation !== "cells-as-records" &&
+        (region.headerAxis === "row" || region.headerAxis === "column")) {
+      kinds.push("header");
+    }
+    if (region.orientation === "cells-as-records") {
+      kinds.push("rowAxisLabel", "colAxisLabel");
+    }
   }
   if (region.skipRules && region.skipRules.length > 0) {
     kinds.push("skipped");
@@ -947,17 +947,53 @@ function deriveLegendKinds(region: RegionDraft): DecorationKind[] {
   return kinds;
 }
 
-function extentDescription(
-  orientation: RegionDraft["orientation"],
-  mode: BoundsModeDraft
-): string {
-  const axis = orientation === "rows-as-records" ? "row" : "column";
-  switch (mode) {
-    case "absolute":
-      return "Region ends at the drawn bounds.";
-    case "untilEmpty":
-      return `Region extends until the first completely empty ${axis}.`;
-    case "matchesPattern":
-      return `Region stops at the first ${axis} whose identity cell matches the stop pattern. That record and everything after it is excluded.`;
+function coalesceSegments(segments: Segment[]): Segment[] {
+  const out: Segment[] = [];
+  for (const seg of segments) {
+    const tail = out[out.length - 1];
+    if (!tail || tail.kind !== seg.kind) {
+      out.push(seg);
+      continue;
+    }
+    if (tail.kind === "field" && seg.kind === "field") {
+      out[out.length - 1] = {
+        kind: "field",
+        positionCount: tail.positionCount + seg.positionCount,
+      };
+      continue;
+    }
+    if (tail.kind === "skip" && seg.kind === "skip") {
+      out[out.length - 1] = {
+        kind: "skip",
+        positionCount: tail.positionCount + seg.positionCount,
+      };
+      continue;
+    }
+    out.push(seg);
   }
+  return out;
+}
+
+function expandBoundsAlongAxis(
+  bounds: RegionDraft["bounds"],
+  axis: AxisMember,
+  newSpan: number
+): RegionDraft["bounds"] {
+  const { startRow, startCol, endRow, endCol } = bounds;
+  if (axis === "row") {
+    return { startRow, startCol, endRow, endCol: startCol + newSpan - 1 };
+  }
+  return { startRow, startCol, endRow: startRow + newSpan - 1, endCol };
+}
+
+function mintPivotId(region: RegionDraft): string {
+  const existing = new Set<string>();
+  for (const axis of ["row", "column"] as const) {
+    for (const s of axisSegments(region, axis)) {
+      if (s.kind === "pivot") existing.add(s.id);
+    }
+  }
+  let i = 1;
+  while (existing.has(`pivot-${i}`)) i++;
+  return `pivot-${i}`;
 }
