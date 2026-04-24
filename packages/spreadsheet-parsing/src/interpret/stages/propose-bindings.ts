@@ -90,10 +90,10 @@ function positionSpan(region: Region, axis: AxisMember): number {
 }
 
 /**
- * Ensure segmentsByAxis is populated for every declared header axis.
- * PR-1 behavior: hints may carry segments; if absent, synthesize a single
- * field segment spanning the full axis. Pivoted regions inherit their
- * pivot/skip segmentation from the hint.
+ * Fallback segmentsByAxis when detect-segments didn't produce an entry for
+ * the region (e.g. headerless). Mirrors the PR-1 adapter: synthesize a
+ * single field segment spanning the full axis for every declared header
+ * axis, preserving anything the hint pre-seeded.
  */
 function ensureSegments(region: Region): Region["segmentsByAxis"] {
   const next: Region["segmentsByAxis"] = { ...region.segmentsByAxis };
@@ -105,6 +105,13 @@ function ensureSegments(region: Region): Region["segmentsByAxis"] {
     else next.column = [seg];
   }
   return next;
+}
+
+function hasAnySegments(
+  segments: { row?: Segment[]; column?: Segment[] } | undefined
+): boolean {
+  if (!segments) return false;
+  return Boolean(segments.row?.length || segments.column?.length);
 }
 
 /**
@@ -169,8 +176,22 @@ export function proposeBindings(state: InterpretState): InterpretState {
       next = { ...next, headerStrategyByAxis: strategyByAxis };
     }
 
-    // Segments — fill in missing axes with a default field segment.
-    next = { ...next, segmentsByAxis: ensureSegments(next) };
+    // Segments — prefer the detect-segments output; fall back to the PR-1
+    // adapter (field segment per declared axis) when the stage didn't run
+    // for this region (e.g. headerless).
+    const computedSegments = state.segmentsByRegion.get(region.id);
+    if (hasAnySegments(computedSegments)) {
+      next = { ...next, segmentsByAxis: computedSegments };
+    } else {
+      next = { ...next, segmentsByAxis: ensureSegments(next) };
+    }
+
+    // cellValueField — adopt the detect-segments seed unless the hint
+    // supplied a user-sourced name (user wins over heuristic).
+    const computedCellValueField = state.cellValueFieldByRegion.get(region.id);
+    if (computedCellValueField && next.cellValueField?.nameSource !== "user") {
+      next = { ...next, cellValueField: computedCellValueField };
+    }
 
     // Apply AI axis-name suggestions to pivot segments (keyed by segment id).
     next = {

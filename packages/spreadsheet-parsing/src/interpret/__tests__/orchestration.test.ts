@@ -134,7 +134,7 @@ describe("interpret() — orchestration", () => {
     expect(records[0].fields["override-age"]).toBe(30);
   });
 
-  it("emits PIVOTED_REGION_MISSING_AXIS_NAME when a pivoted region is hinted with an unresolved anchor-cell axisName", async () => {
+  it("detect-segments classifies Jan/Feb as a month pivot and preserves the hint's user-supplied cellValueField", async () => {
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -157,33 +157,30 @@ describe("interpret() — orchestration", () => {
           bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
           targetEntityDefinitionId: "monthly",
           headerAxes: ["row"],
-          segmentsByAxis: {
-            row: [
-              { kind: "skip", positionCount: 1 },
-              {
-                kind: "pivot",
-                id: "month-seg",
-                axisName: "month",
-                axisNameSource: "anchor-cell",
-                positionCount: 2,
-              },
-            ],
-          },
           cellValueField: { name: "revenue", nameSource: "user" },
         },
       ],
     };
     const plan = await interpret(input);
     const region = plan.regions[0];
-    const blocker = region.warnings.find(
-      (w) =>
-        w.code === "PIVOTED_REGION_MISSING_AXIS_NAME" &&
-        w.severity === "blocker"
-    );
-    expect(blocker).toBeDefined();
 
-    // Replay-bridge: the hinted pivot still emits one record per label even
-    // when axis-name resolution produces a blocker warning.
+    expect(region.segmentsByAxis?.row).toEqual([
+      { kind: "field", positionCount: 1 },
+      {
+        kind: "pivot",
+        id: "segment_month_row",
+        axisName: "month",
+        axisNameSource: "ai",
+        positionCount: 2,
+      },
+    ]);
+    // User-supplied cellValueField wins over the heuristic ai seed.
+    expect(region.cellValueField).toEqual({
+      name: "revenue",
+      nameSource: "user",
+    });
+
+    // Replay-bridge: the heuristic pivot emits one record per label.
     const sheet = makeSheetAccessor(input.workbook.sheets[0]);
     const records = extractRecords(region, sheet);
     expect(records).toHaveLength(2);

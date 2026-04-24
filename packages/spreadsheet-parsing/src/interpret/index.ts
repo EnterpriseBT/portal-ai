@@ -7,6 +7,7 @@ import { classifyColumns } from "./stages/classify-columns.js";
 import { detectHeaders } from "./stages/detect-headers.js";
 import { detectIdentity } from "./stages/detect-identity.js";
 import { detectRegions } from "./stages/detect-regions.js";
+import { detectSegments } from "./stages/detect-segments.js";
 import { proposeBindings } from "./stages/propose-bindings.js";
 import { recommendRecordsAxisName } from "./stages/recommend-records-axis-name.js";
 import { reconcileWithPrior } from "./stages/reconcile-with-prior.js";
@@ -163,6 +164,7 @@ export async function interpret(
   state = detectRegions(state);
   state = detectHeaders(state);
   state = detectIdentity(state);
+  state = detectSegments(state);
   state = await classifyColumns(state, wrappedDeps);
   emitStageCompleted(logger, "classify-columns", classifierUsage);
   state = await recommendRecordsAxisName(state, wrappedDeps);
