@@ -8,27 +8,21 @@ describe("SampleFiles", () => {
     expect(screen.getByText(/recommended layout/i)).toBeInTheDocument();
   });
 
-  it("renders the region-segmentation-matrix CSV link", () => {
+  it("renders the supported-layouts CSV link", () => {
     render(<SampleFiles />);
     const link = screen.getByRole("link", {
-      name: "region-segmentation-matrix.csv",
+      name: "supported_layouts.csv",
     });
-    expect(link).toHaveAttribute(
-      "href",
-      "/samples/region-segmentation-matrix.csv"
-    );
-    expect(link).toHaveAttribute("download", "region-segmentation-matrix.csv");
+    expect(link).toHaveAttribute("href", "/samples/supported_layouts.csv");
+    expect(link).toHaveAttribute("download", "supported_layouts.csv");
   });
 
-  it("renders the region-segmentation-matrix XLSX link", () => {
+  it("renders the supported-layouts XLSX link", () => {
     render(<SampleFiles />);
     const link = screen.getByRole("link", {
-      name: "region-segmentation-matrix.xlsx",
+      name: "supported_layouts.xlsx",
     });
-    expect(link).toHaveAttribute(
-      "href",
-      "/samples/region-segmentation-matrix.xlsx"
-    );
-    expect(link).toHaveAttribute("download", "region-segmentation-matrix.xlsx");
+    expect(link).toHaveAttribute("href", "/samples/supported_layouts.xlsx");
+    expect(link).toHaveAttribute("download", "supported_layouts.xlsx");
   });
 });
