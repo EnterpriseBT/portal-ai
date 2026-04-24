@@ -723,7 +723,9 @@ export const EXPECTATIONS: Record<MatrixId, Expectation> = {
       ],
     },
     cellValueField: { name: "Sales", nameSource: "anchor-cell" },
-    recordCount: 16,
+    // 5 row-positions × 5 col-positions: extract2D emits a record for every
+    // non-skip pair, including field × field and field × pivot combinations.
+    recordCount: 25,
   },
   "crosstab-sales-by-year": {
     segmentsByAxis: {
@@ -738,7 +740,9 @@ export const EXPECTATIONS: Record<MatrixId, Expectation> = {
     },
     // Anchor cell resolves blank → fall back to the ai "value" seed.
     cellValueField: AI_VALUE,
-    recordCount: 12,
+    // 4 row-positions × 5 col-positions (dynamic year segment stays at
+    // floor=3 since there are no additional year columns to scan into).
+    recordCount: 20,
   },
   "headerless-rows": {
     // detect-segments is a no-op for headerless regions.

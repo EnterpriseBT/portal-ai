@@ -1,5 +1,10 @@
 import { describe, it, expect } from "@jest/globals";
 
+import {
+  EXPECTATIONS,
+  MATRIX_IDS,
+  matrixInput,
+} from "../../__tests__/fixtures/segment-expectations.js";
 import type { InterpretInput } from "../../plan/index.js";
 import { LayoutPlanSchema } from "../../plan/index.js";
 import { makeSheetAccessor } from "../../workbook/helpers.js";
@@ -189,4 +194,28 @@ describe("interpret() — orchestration", () => {
     );
     expect(records.map((r) => r.fields.revenue)).toEqual([100, 200]);
   });
+});
+
+describe("interpret() — detect-segments wired", () => {
+  it.each([...MATRIX_IDS])(
+    "produces the expected plan for %s",
+    async (id) => {
+      const input = matrixInput(id);
+      const plan = await interpret(input);
+      const region = plan.regions[0]!;
+      const expected = EXPECTATIONS[id];
+
+      expect(region.segmentsByAxis).toEqual(expected.segmentsByAxis);
+
+      if (expected.cellValueField) {
+        expect(region.cellValueField).toEqual(expected.cellValueField);
+      } else {
+        expect(region.cellValueField).toBeUndefined();
+      }
+
+      const sheet = makeSheetAccessor(input.workbook.sheets[0]);
+      const records = extractRecords(region, sheet);
+      expect(records).toHaveLength(expected.recordCount);
+    }
+  );
 });

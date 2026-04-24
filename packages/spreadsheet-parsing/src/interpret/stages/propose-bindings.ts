@@ -136,10 +136,10 @@ function applyAxisNameSuggestions(
       };
     });
   };
-  return {
-    row: apply(region.segmentsByAxis?.row),
-    column: apply(region.segmentsByAxis?.column),
-  };
+  const row = apply(region.segmentsByAxis?.row);
+  const column = apply(region.segmentsByAxis?.column);
+  if (!row && !column) return undefined;
+  return { row, column };
 }
 
 /**
