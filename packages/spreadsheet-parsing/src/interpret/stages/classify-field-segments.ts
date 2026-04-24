@@ -10,6 +10,7 @@ import type {
   InterpretState,
 } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
+import { heuristicMatch } from "./classifier-heuristic.util.js";
 import {
   headerLineCoords,
   readHeaderLineLabels,
@@ -17,14 +18,6 @@ import {
 import { resolveEffectiveSegments } from "./pivoted.util.js";
 
 const SAMPLE_LIMIT = 10;
-
-function normalise(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
 
 function collectSamples(
   region: Region,
@@ -89,33 +82,6 @@ function candidatesForAxisFieldSegments(
     offset += segment.positionCount;
   }
   return out;
-}
-
-function heuristicMatch(
-  candidate: ClassifierCandidate,
-  catalog: ColumnDefinitionCatalogEntry[]
-): ColumnClassification {
-  const needle = normalise(candidate.sourceHeader);
-  for (const entry of catalog) {
-    const label = normalise(entry.label);
-    const key = entry.normalizedKey ? normalise(entry.normalizedKey) : null;
-    if (label === needle || key === needle) {
-      return {
-        sourceHeader: candidate.sourceHeader,
-        sourceCol: candidate.sourceCol,
-        columnDefinitionId: entry.id,
-        confidence: 0.75,
-        rationale: "heuristic-exact-or-normalized-match",
-      };
-    }
-  }
-  return {
-    sourceHeader: candidate.sourceHeader,
-    sourceCol: candidate.sourceCol,
-    columnDefinitionId: null,
-    confidence: 0,
-    rationale: "heuristic-no-match",
-  };
 }
 
 async function runBuiltIn(

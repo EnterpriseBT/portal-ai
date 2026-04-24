@@ -129,8 +129,12 @@ describe("interpret() — observability", () => {
       (r) => r.payload.event === "interpret.cost.summary"
     );
     expect(summary).toBeDefined();
-    expect(summary?.payload.totalInputTokens).toBe(120);
-    expect(summary?.payload.totalOutputTokens).toBe(15);
+    // Classifier fires twice for pivoted regions: once in
+    // classify-field-segments and once in classify-logical-fields (pivot
+    // axisName + cellValueField). The stub returns the same usage shape
+    // on every call, so the cost summary doubles.
+    expect(summary?.payload.totalInputTokens).toBe(240);
+    expect(summary?.payload.totalOutputTokens).toBe(30);
     expect(typeof summary?.payload.totalLatencyMs).toBe("number");
   });
 
@@ -179,8 +183,9 @@ describe("interpret() — observability", () => {
     const summary = records.find(
       (r) => r.payload.event === "interpret.cost.summary"
     );
-    expect(summary?.payload.totalInputTokens).toBe(130);
-    expect(summary?.payload.totalOutputTokens).toBe(14);
+    // 2× classify (field-segments + logical-fields) + 1× recommender.
+    expect(summary?.payload.totalInputTokens).toBe(230);
+    expect(summary?.payload.totalOutputTokens).toBe(24);
   });
 
   it("still logs cost.summary even when the classifier returns the plain-array form (no usage)", async () => {

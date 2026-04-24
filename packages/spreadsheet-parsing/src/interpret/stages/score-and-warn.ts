@@ -131,6 +131,21 @@ export function scoreAndWarn(state: InterpretState): InterpretState {
       }
     }
 
+    // ── SEGMENT_NOT_BOUND (warn, per pivot segment) ──────────────────────
+    // Parallel to CELL_VALUE_FIELD_NOT_BOUND but for the axis side of the
+    // pivot: classify-logical-fields tries to bind the segment's axisName to
+    // a ColumnDefinition; when it can't, the review UI needs to prompt.
+    for (const seg of pivotSegments(region)) {
+      if (seg.kind !== "pivot") continue;
+      if (!seg.columnDefinitionId) {
+        emitWarning(
+          warnings,
+          "SEGMENT_NOT_BOUND",
+          `Pivot segment "${seg.id}" (axisName "${seg.axisName}") has no columnDefinitionId — bind one to describe the axis field.`
+        );
+      }
+    }
+
     // ── CELL_VALUE_FIELD_NOT_BOUND (warn, region-level) ──────────────────
     // A pivot-bearing region needs `cellValueField` to describe the value
     // each emitted cell carries; if the user hasn't bound it to a concrete

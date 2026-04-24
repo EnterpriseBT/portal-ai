@@ -46,6 +46,7 @@ export const SegmentSchema = z.discriminatedUnion("kind", [
     axisNameSource: z.enum(["user", "ai", "anchor-cell"]),
     positionCount: z.number().int().min(1),
     dynamic: z.object({ terminator: TerminatorSchema }).optional(),
+    columnDefinitionId: z.string().min(1).optional(),
   }),
   z.object({
     kind: z.literal("skip"),

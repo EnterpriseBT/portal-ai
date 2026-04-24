@@ -4,6 +4,7 @@ import { PLAN_VERSION } from "../plan-version.js";
 import { computeWorkbookFingerprint } from "../workbook/index.js";
 import type { InterpretDeps } from "./deps.js";
 import { classifyFieldSegments } from "./stages/classify-field-segments.js";
+import { classifyLogicalFields } from "./stages/classify-logical-fields.js";
 import { detectHeaders } from "./stages/detect-headers.js";
 import { detectIdentity } from "./stages/detect-identity.js";
 import { detectRegions } from "./stages/detect-regions.js";
@@ -170,6 +171,10 @@ export async function interpret(
   state = await recommendSegmentAxisNames(state, wrappedDeps);
   emitStageCompleted(logger, "recommend-segment-axis-names", recommenderUsage);
   state = proposeBindings(state);
+  // classify-logical-fields shares the same classifier dep; its usage rolls
+  // into `classifierUsage` and surfaces in `interpret.cost.summary` rather
+  // than a per-stage completion event.
+  state = await classifyLogicalFields(state, wrappedDeps);
   state = reconcileWithPrior(state);
   state = scoreAndWarn(state);
   const plan = assemblePlan(state);
