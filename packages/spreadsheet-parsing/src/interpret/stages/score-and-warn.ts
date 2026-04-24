@@ -117,26 +117,40 @@ export function scoreAndWarn(state: InterpretState): InterpretState {
       );
     }
 
-    // ── PIVOTED_REGION_MISSING_AXIS_NAME (blocker) ───────────────────────
-    // Fires per pivot segment whose axis name isn't resolved. Crosstab regions
-    // also require `cellValueField.name` to be set.
+    // ── SEGMENT_MISSING_AXIS_NAME (blocker, per pivot segment) ───────────
+    // One warning per pivot segment whose axis name isn't resolved (user
+    // hasn't named it and anchor-cell lookup failed).
     for (const seg of pivotSegments(region)) {
       if (seg.kind !== "pivot") continue;
       if (segmentMissingAxisName(seg, region)) {
         emitWarning(
           warnings,
-          "PIVOTED_REGION_MISSING_AXIS_NAME",
+          "SEGMENT_MISSING_AXIS_NAME",
           `Pivot segment "${seg.id}" missing axis name — required before commit.`
         );
       }
     }
+
+    // ── CELL_VALUE_FIELD_NOT_BOUND (warn, region-level) ──────────────────
+    // A pivot-bearing region needs `cellValueField` to describe the value
+    // each emitted cell carries; if the user hasn't bound it to a concrete
+    // ColumnDefinition yet, surface a soft warning so the review UI can
+    // prompt for one.
     const hasPivot = pivotSegments(region).length > 0;
-    if (hasPivot && !region.cellValueField) {
-      emitWarning(
-        warnings,
-        "PIVOTED_REGION_MISSING_AXIS_NAME",
-        "Pivoted region missing cell-value field."
-      );
+    if (hasPivot) {
+      if (!region.cellValueField) {
+        emitWarning(
+          warnings,
+          "CELL_VALUE_FIELD_NOT_BOUND",
+          "Pivoted region missing cell-value field — bind a ColumnDefinition to describe the cell value."
+        );
+      } else if (!region.cellValueField.columnDefinitionId) {
+        emitWarning(
+          warnings,
+          "CELL_VALUE_FIELD_NOT_BOUND",
+          `cellValueField "${region.cellValueField.name}" has no columnDefinitionId — bind one to describe the cell value.`
+        );
+      }
     }
 
     // ── UNRECOGNIZED_COLUMN (info) ───────────────────────────────────────

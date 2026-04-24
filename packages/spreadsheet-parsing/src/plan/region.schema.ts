@@ -135,7 +135,7 @@ function hasPivotSegment(segments: Segment[] | undefined): boolean {
 
 export const RegionSchema = RegionObjectSchema.superRefine((region, ctx) => {
   // NOTE: per-pivot axis-name requirements are enforced as
-  // `PIVOTED_REGION_MISSING_AXIS_NAME` blocker warnings in `score-and-warn`,
+  // `SEGMENT_MISSING_AXIS_NAME` blocker warnings in `score-and-warn`,
   // not as Zod errors. The schema admits plans with blocker warnings so
   // interpret() can persist them and the review UI can present them.
 

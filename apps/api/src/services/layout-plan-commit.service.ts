@@ -81,7 +81,7 @@ export class LayoutPlanCommitService {
 
     // ── 2a. Blocker-warnings gate ─────────────────────────────────────
     // Regions the interpreter flagged with blocker-severity warnings
-    // (e.g. PIVOTED_REGION_MISSING_AXIS_NAME) must be edited via PATCH
+    // (e.g. SEGMENT_MISSING_AXIS_NAME) must be edited via PATCH
     // before commit. Short-circuits before replay so the workbook isn't
     // even consulted when the plan is known-broken.
     LayoutPlanCommitService.assertNoBlockerWarnings(plan);

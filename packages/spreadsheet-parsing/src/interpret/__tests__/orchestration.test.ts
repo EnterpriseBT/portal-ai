@@ -216,6 +216,51 @@ describe("interpret() — detect-segments wired", () => {
       const sheet = makeSheetAccessor(input.workbook.sheets[0]);
       const records = extractRecords(region, sheet);
       expect(records).toHaveLength(expected.recordCount);
+
+      // PR-3 invariants: every pivot segment carries a non-empty axisName
+      // (either the heuristic's pattern default or a recommender suggestion),
+      // the deleted PIVOTED_REGION_MISSING_AXIS_NAME blocker never appears,
+      // and SEGMENT_MISSING_AXIS_NAME fires only for pivots the heuristic
+      // couldn't name (none in these fixtures).
+      for (const axis of ["row", "column"] as const) {
+        for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+          if (seg.kind === "pivot") {
+            expect(seg.axisName).not.toBe("");
+          }
+        }
+      }
+      expect(
+        region.warnings.some(
+          (w) => w.code === ("PIVOTED_REGION_MISSING_AXIS_NAME" as string)
+        )
+      ).toBe(false);
+      expect(
+        region.warnings.some((w) => w.code === "SEGMENT_MISSING_AXIS_NAME")
+      ).toBe(false);
     }
   );
+
+  it("applies the recommender's axis name to detect-segments pivot segments", async () => {
+    // 1e canonical input: two heuristic-detected pivot segments (quarter +
+    // month). The recommender overrides both default ("quarter" / "month")
+    // with injected names, and the result propagates to the final region.
+    const input = matrixInput("1e");
+    const plan = await interpret(input, {
+      axisNameRecommender: async (labels) => ({
+        name: labels[0].startsWith("Q") ? "fiscalQuarter" : "calendarMonth",
+        confidence: 0.9,
+      }),
+    });
+    const row = plan.regions[0]!.segmentsByAxis?.row ?? [];
+    const quarter = row.find(
+      (s) => s.kind === "pivot" && s.id === "segment_quarter_row"
+    );
+    const month = row.find(
+      (s) => s.kind === "pivot" && s.id === "segment_month_row"
+    );
+    expect(quarter?.kind === "pivot" && quarter.axisName).toBe("fiscalQuarter");
+    expect(quarter?.kind === "pivot" && quarter.axisNameSource).toBe("ai");
+    expect(month?.kind === "pivot" && month.axisName).toBe("calendarMonth");
+    expect(month?.kind === "pivot" && month.axisNameSource).toBe("ai");
+  });
 });

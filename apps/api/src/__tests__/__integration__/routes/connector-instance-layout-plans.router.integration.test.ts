@@ -1103,7 +1103,7 @@ describe("Connector Instance Layout Plans Router", () => {
       const region = simpleRegion("r1", "contacts", colEmailId, colNameId, {
         warnings: [
           {
-            code: "PIVOTED_REGION_MISSING_AXIS_NAME",
+            code: "SEGMENT_MISSING_AXIS_NAME",
             severity: "blocker",
             message: "Pivoted region is missing a records-axis name.",
           },
@@ -1131,7 +1131,7 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(res.status).toBe(409);
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_BLOCKER_WARNINGS);
       expect(res.body.details?.codes).toContain(
-        "PIVOTED_REGION_MISSING_AXIS_NAME"
+        "SEGMENT_MISSING_AXIS_NAME"
       );
       expect(res.body.details?.warnings).toHaveLength(1);
 
@@ -1180,7 +1180,7 @@ describe("Connector Instance Layout Plans Router", () => {
             confidence: { region: 0.8, aggregate: 0.8 },
             warnings: [
               {
-                code: "PIVOTED_REGION_MISSING_AXIS_NAME",
+                code: "SEGMENT_MISSING_AXIS_NAME",
                 severity: "blocker",
                 message:
                   "Pivoted region requires a records-axis name before it can commit.",
@@ -1211,7 +1211,7 @@ describe("Connector Instance Layout Plans Router", () => {
         .set("Authorization", "Bearer test-token");
       expect(getRes.status).toBe(200);
       expect(getRes.body.payload.plan.regions[0].warnings[0].code).toBe(
-        "PIVOTED_REGION_MISSING_AXIS_NAME"
+        "SEGMENT_MISSING_AXIS_NAME"
       );
       expect(getRes.body.payload.plan.regions[0].warnings[0].severity).toBe(
         "blocker"

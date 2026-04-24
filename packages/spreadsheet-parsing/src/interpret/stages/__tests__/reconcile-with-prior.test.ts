@@ -5,8 +5,9 @@ import { createInitialState } from "../../state.js";
 import { detectRegions } from "../detect-regions.js";
 import { detectHeaders } from "../detect-headers.js";
 import { detectIdentity } from "../detect-identity.js";
-import { classifyColumns } from "../classify-columns.js";
-import { recommendRecordsAxisName } from "../recommend-records-axis-name.js";
+import { detectSegments } from "../detect-segments.js";
+import { classifyFieldSegments } from "../classify-field-segments.js";
+import { recommendSegmentAxisNames } from "../recommend-segment-axis-names.js";
 import { proposeBindings } from "../propose-bindings.js";
 import { reconcileWithPrior } from "../reconcile-with-prior.js";
 
@@ -14,8 +15,9 @@ async function buildAssembledState(input: InterpretInput) {
   let state = detectRegions(createInitialState(input));
   state = detectHeaders(state);
   state = detectIdentity(state);
-  state = await classifyColumns(state, {});
-  state = await recommendRecordsAxisName(state, {});
+  state = detectSegments(state);
+  state = await classifyFieldSegments(state, {});
+  state = await recommendSegmentAxisNames(state, {});
   state = proposeBindings(state);
   return state;
 }

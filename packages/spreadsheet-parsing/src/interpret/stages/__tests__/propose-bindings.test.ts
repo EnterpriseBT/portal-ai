@@ -6,8 +6,9 @@ import { createInitialState } from "../../state.js";
 import { detectRegions } from "../detect-regions.js";
 import { detectHeaders } from "../detect-headers.js";
 import { detectIdentity } from "../detect-identity.js";
-import { classifyColumns } from "../classify-columns.js";
-import { recommendRecordsAxisName } from "../recommend-records-axis-name.js";
+import { detectSegments } from "../detect-segments.js";
+import { classifyFieldSegments } from "../classify-field-segments.js";
+import { recommendSegmentAxisNames } from "../recommend-segment-axis-names.js";
 import { proposeBindings } from "../propose-bindings.js";
 
 function simpleInput(): InterpretInput {
@@ -46,13 +47,14 @@ async function runThrough(input: InterpretInput) {
   let state = detectRegions(createInitialState(input));
   state = detectHeaders(state);
   state = detectIdentity(state);
-  state = await classifyColumns(state, {
+  state = detectSegments(state);
+  state = await classifyFieldSegments(state, {
     columnDefinitionCatalog: [
       { id: "col-email", label: "Email", normalizedKey: "email" },
       { id: "col-name", label: "Name", normalizedKey: "name" },
     ],
   });
-  state = await recommendRecordsAxisName(state, {});
+  state = await recommendSegmentAxisNames(state, {});
   state = proposeBindings(state);
   return state;
 }
@@ -184,8 +186,9 @@ describe("proposeBindings", () => {
     let state = detectRegions(createInitialState(input));
     state = detectHeaders(state);
     state = detectIdentity(state);
-    state = await classifyColumns(state, {});
-    state = await recommendRecordsAxisName(state, {
+    state = detectSegments(state);
+    state = await classifyFieldSegments(state, {});
+    state = await recommendSegmentAxisNames(state, {
       axisNameRecommender: () => ({ name: "Month", confidence: 0.8 }),
     });
     state = proposeBindings(state);

@@ -34,6 +34,12 @@ function makeCapturingLogger(): {
   };
 }
 
+// Statics + pivot layout. detect-segments clusters row 1 into
+// field(1) + pivot(month, 3); classifyFieldSegments fires on the
+// single "name" field candidate and recommend-axis-names fires for
+// the pivot segment (hint pre-seeds segmentsByAxis with an
+// anchor-cell source, so the recommender picks it up before
+// proposeBindings overwrites the region with the heuristic output).
 function pivotedInput(): InterpretInput {
   return {
     workbook: {
@@ -42,7 +48,7 @@ function pivotedInput(): InterpretInput {
           name: "Sheet1",
           dimensions: { rows: 3, cols: 4 },
           cells: [
-            { row: 1, col: 1, value: "" },
+            { row: 1, col: 1, value: "name" },
             { row: 1, col: 2, value: "Jan" },
             { row: 1, col: 3, value: "Feb" },
             { row: 1, col: 4, value: "Mar" },
@@ -66,7 +72,7 @@ function pivotedInput(): InterpretInput {
         headerAxes: ["row"],
         segmentsByAxis: {
           row: [
-            { kind: "skip", positionCount: 1 },
+            { kind: "field", positionCount: 1 },
             {
               kind: "pivot",
               id: "month-seg",
@@ -111,7 +117,7 @@ describe("interpret() — observability", () => {
     const stageEvent = records.find(
       (r) =>
         r.payload.event === "interpret.stage.completed" &&
-        r.payload.stage === "classify-columns"
+        r.payload.stage === "classify-field-segments"
     );
     expect(stageEvent).toBeDefined();
     expect(stageEvent?.payload.inputTokens).toBe(120);
@@ -128,7 +134,7 @@ describe("interpret() — observability", () => {
     expect(typeof summary?.payload.totalLatencyMs).toBe("number");
   });
 
-  it("emits a stage event for recommend-records-axis-name when the recommender reports usage", async () => {
+  it("emits a stage event for recommend-segment-axis-names when the recommender reports usage", async () => {
     const recommender: AxisNameRecommenderFn = async () => ({
       suggestion: { name: "Month", confidence: 0.8 },
       usage: { inputTokens: 40, outputTokens: 5, latencyMs: 20 },
@@ -143,7 +149,7 @@ describe("interpret() — observability", () => {
     const stageEvent = records.find(
       (r) =>
         r.payload.event === "interpret.stage.completed" &&
-        r.payload.stage === "recommend-records-axis-name"
+        r.payload.stage === "recommend-segment-axis-names"
     );
     expect(stageEvent).toBeDefined();
     expect(stageEvent?.payload.inputTokens).toBe(40);

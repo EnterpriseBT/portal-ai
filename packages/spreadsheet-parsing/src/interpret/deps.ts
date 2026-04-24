@@ -31,10 +31,10 @@ export interface InterpretDeps {
   columnDefinitionCatalog?: ColumnDefinitionCatalogEntry[];
 
   /**
-   * Narrow AI sub-call for pivoted-region axis-name recommendations. Default:
-   * returns `null` (no recommendation), which leaves `recordsAxisName`
-   * unfilled and triggers `PIVOTED_REGION_MISSING_AXIS_NAME` unless the user
-   * supplied one via hints.
+   * Narrow AI sub-call for pivoted-segment axis-name recommendations.
+   * Default: returns `null` (no recommendation), which leaves the pivot
+   * segment's `axisName` unresolved and triggers `SEGMENT_MISSING_AXIS_NAME`
+   * unless the user supplied one via hints.
    */
   axisNameRecommender?: AxisNameRecommenderFn;
 
@@ -42,8 +42,8 @@ export interface InterpretDeps {
    * Optional structured logger for observability. When supplied, `interpret()`
    * emits:
    *   - `interpret.stage.completed` per stage that reported `usage` from its
-   *     DI return value (currently `classify-columns` and
-   *     `recommend-records-axis-name`), with `stage`, `latencyMs`, and token
+   *     DI return value (currently `classify-field-segments` and
+   *     `recommend-segment-axis-names`), with `stage`, `latencyMs`, and token
    *     counts when the dep provided them.
    *   - `interpret.cost.summary` once at the end with aggregated totals.
    *
@@ -55,7 +55,7 @@ export interface InterpretDeps {
 
   /**
    * Max number of LLM calls in flight at once during the per-region stages
-   * (`classify-columns`, `recommend-records-axis-name`). Caps the fan-out so
+   * (`classify-field-segments`, `recommend-segment-axis-names`). Caps the fan-out so
    * workbooks with many regions don't spray the provider with unlimited
    * concurrent requests. Default: `DEFAULT_INTERPRET_CONCURRENCY` (8).
    */

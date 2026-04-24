@@ -509,7 +509,7 @@ describe("Layout Plans Draft Router", () => {
       const planWithBlocker = makePlan(emailId, nameId);
       planWithBlocker.regions[0].warnings = [
         {
-          code: "PIVOTED_REGION_MISSING_AXIS_NAME",
+          code: "SEGMENT_MISSING_AXIS_NAME",
           severity: "blocker",
           message: "Synthetic blocker for rollback test",
         },

@@ -2,14 +2,26 @@ import { describe, it, expect, jest } from "@jest/globals";
 
 import type { InterpretInput } from "../../../plan/index.js";
 import { createInitialState } from "../../state.js";
-import { detectRegions } from "../detect-regions.js";
+import type { InterpretState } from "../../types.js";
+import { classifyFieldSegments } from "../classify-field-segments.js";
 import { detectHeaders } from "../detect-headers.js";
-import { classifyColumns } from "../classify-columns.js";
+import { detectIdentity } from "../detect-identity.js";
+import { detectRegions } from "../detect-regions.js";
+import { detectSegments } from "../detect-segments.js";
 import type {
   ClassifierFn,
   ColumnClassification,
   ColumnDefinitionCatalogEntry,
 } from "../../types.js";
+
+function runUpToDetectSegments(input: InterpretInput): InterpretState {
+  let state = createInitialState(input);
+  state = detectRegions(state);
+  state = detectHeaders(state);
+  state = detectIdentity(state);
+  state = detectSegments(state);
+  return state;
+}
 
 function simpleInput(): InterpretInput {
   return {
@@ -53,11 +65,10 @@ const DEFAULT_CATALOG: ColumnDefinitionCatalogEntry[] = [
   { id: "col-phone", label: "Phone", normalizedKey: "phone" },
 ];
 
-describe("classifyColumns — heuristic default", () => {
+describe("classifyFieldSegments — heuristic default", () => {
   it("matches on exact header equality (case-insensitive)", async () => {
-    let state = detectRegions(createInitialState(simpleInput()));
-    state = detectHeaders(state);
-    state = await classifyColumns(state, {
+    const prepared = runUpToDetectSegments(simpleInput());
+    const state = await classifyFieldSegments(prepared, {
       columnDefinitionCatalog: DEFAULT_CATALOG,
     });
     const regionId = state.detectedRegions[0].id;
@@ -72,9 +83,8 @@ describe("classifyColumns — heuristic default", () => {
   it("matches on normalised key when the catalog specifies one", async () => {
     const input = simpleInput();
     input.workbook.sheets[0].cells[0].value = "E-Mail";
-    let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = await classifyColumns(state, {
+    const prepared = runUpToDetectSegments(input);
+    const state = await classifyFieldSegments(prepared, {
       columnDefinitionCatalog: [
         { id: "col-email", label: "Email", normalizedKey: "e_mail" },
       ],
@@ -88,9 +98,8 @@ describe("classifyColumns — heuristic default", () => {
   });
 
   it("returns null columnDefinitionId when no catalog entry matches", async () => {
-    let state = detectRegions(createInitialState(simpleInput()));
-    state = detectHeaders(state);
-    state = await classifyColumns(state, {
+    const prepared = runUpToDetectSegments(simpleInput());
+    const state = await classifyFieldSegments(prepared, {
       columnDefinitionCatalog: DEFAULT_CATALOG,
     });
     const regionId = state.detectedRegions[0].id;
@@ -100,9 +109,8 @@ describe("classifyColumns — heuristic default", () => {
   });
 
   it("returns null columnDefinitionId for every header when no catalog is supplied", async () => {
-    let state = detectRegions(createInitialState(simpleInput()));
-    state = detectHeaders(state);
-    state = await classifyColumns(state, {});
+    const prepared = runUpToDetectSegments(simpleInput());
+    const state = await classifyFieldSegments(prepared, {});
     const regionId = state.detectedRegions[0].id;
     const classifications = state.columnClassifications.get(regionId)!;
     expect(classifications.every((c) => c.columnDefinitionId === null)).toBe(
@@ -111,7 +119,143 @@ describe("classifyColumns — heuristic default", () => {
   });
 });
 
-describe("classifyColumns — injected classifier override", () => {
+describe("classifyFieldSegments — filters non-field positions", () => {
+  it("passes only field-segment positions to the classifier", async () => {
+    // Workbook: row 1 = "name, industry, Q1, Q2, Q3" — detect-segments
+    // clusters this as field(2) + pivot(quarter, 3). Only name + industry
+    // should reach the classifier.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 2, cols: 5 },
+            cells: [
+              { row: 1, col: 1, value: "name" },
+              { row: 1, col: 2, value: "industry" },
+              { row: 1, col: 3, value: "Q1" },
+              { row: 1, col: 4, value: "Q2" },
+              { row: 1, col: 5, value: "Q3" },
+              { row: 2, col: 1, value: "Apple" },
+              { row: 2, col: 2, value: "Tech" },
+              { row: 2, col: 3, value: 10 },
+              { row: 2, col: 4, value: 20 },
+              { row: 2, col: 5, value: 30 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 5 },
+          targetEntityDefinitionId: "companies",
+          headerAxes: ["row"],
+        },
+      ],
+    };
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
+    const prepared = runUpToDetectSegments(input);
+    await classifyFieldSegments(prepared, {
+      classifier: spy,
+      columnDefinitionCatalog: [],
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [candidates] = spy.mock.calls[0]!;
+    expect(candidates.map((c) => c.sourceHeader)).toEqual([
+      "name",
+      "industry",
+    ]);
+  });
+
+  it("short-circuits the classifier when no field-segment positions exist", async () => {
+    // Matrix id 1b: row 1 = "Q1, Q2, Q3" — detect-segments makes a single
+    // pivot(quarter, 3) segment with no field positions, so the classifier
+    // must not fire.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 2, cols: 3 },
+            cells: [
+              { row: 1, col: 1, value: "Q1" },
+              { row: 1, col: 2, value: "Q2" },
+              { row: 1, col: 3, value: "Q3" },
+              { row: 2, col: 1, value: 10 },
+              { row: 2, col: 2, value: 20 },
+              { row: 2, col: 3, value: 30 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
+          targetEntityDefinitionId: "revenue",
+          headerAxes: ["row"],
+        },
+      ],
+    };
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
+    const prepared = runUpToDetectSegments(input);
+    const state = await classifyFieldSegments(prepared, { classifier: spy });
+    expect(spy).not.toHaveBeenCalled();
+    const regionId = state.detectedRegions[0].id;
+    expect(state.columnClassifications.get(regionId)).toEqual([]);
+  });
+
+  it("iterates both axes on 2D regions and merges field candidates", async () => {
+    // Crosstab with a one-position field segment on each axis (the anchor
+    // position), plus a pivot. classify should pass the field positions
+    // from both axes to the classifier in one merged call.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 5, cols: 5 },
+            cells: [
+              { row: 1, col: 1, value: "Sales" },
+              { row: 1, col: 2, value: "Jan" },
+              { row: 1, col: 3, value: "Feb" },
+              { row: 1, col: 4, value: "Mar" },
+              { row: 1, col: 5, value: "Apr" },
+              { row: 2, col: 1, value: "Q1" },
+              { row: 3, col: 1, value: "Q2" },
+              { row: 4, col: 1, value: "Q3" },
+              { row: 5, col: 1, value: "Q4" },
+              // body cells omitted — classifier only reads the header line.
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
+          targetEntityDefinitionId: "crosstab",
+          headerAxes: ["row", "column"],
+          axisAnchorCell: { row: 1, col: 1 },
+        },
+      ],
+    };
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
+    const prepared = runUpToDetectSegments(input);
+    await classifyFieldSegments(prepared, { classifier: spy });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [candidates] = spy.mock.calls[0]!;
+    // "Sales" shows up twice — once as the row-axis field at col 1 and once
+    // as the column-axis field at row 1 — because both axes share the
+    // anchor position and detect-segments clusters it into a field segment
+    // on each axis.
+    const headers = candidates.map((c) => c.sourceHeader).sort();
+    expect(headers).toEqual(["Sales", "Sales"]);
+  });
+});
+
+describe("classifyFieldSegments — injected classifier override", () => {
   it("delegates entirely to the injected ClassifierFn when one is provided", async () => {
     const injected: jest.MockedFunction<ClassifierFn> = jest.fn(
       async (cands) => {
@@ -124,9 +268,8 @@ describe("classifyColumns — injected classifier override", () => {
         }));
       }
     );
-    let state = detectRegions(createInitialState(simpleInput()));
-    state = detectHeaders(state);
-    state = await classifyColumns(state, {
+    const prepared = runUpToDetectSegments(simpleInput());
+    const state = await classifyFieldSegments(prepared, {
       classifier: injected,
       columnDefinitionCatalog: DEFAULT_CATALOG,
     });
@@ -182,9 +325,8 @@ describe("classifyColumns — injected classifier override", () => {
         }));
       }
     );
-    let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = await classifyColumns(state, {
+    const prepared = runUpToDetectSegments(input);
+    const state = await classifyFieldSegments(prepared, {
       classifier: injected,
       columnDefinitionCatalog: DEFAULT_CATALOG,
       concurrency: 3,
@@ -236,82 +378,13 @@ describe("classifyColumns — injected classifier override", () => {
         }));
       }
     );
-    let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    await classifyColumns(state, { classifier: injected, concurrency: 2 });
+    const prepared = runUpToDetectSegments(input);
+    await classifyFieldSegments(prepared, {
+      classifier: injected,
+      concurrency: 2,
+    });
     expect(injected).toHaveBeenCalledTimes(6);
     expect(peak).toBeLessThanOrEqual(2);
-  });
-
-  it("excludes the axis-anchor cell from classifier candidates for pivoted regions", async () => {
-    // 1D region with headerAxes=["row"] + a pivot segment on row. Anchor
-    // position at (1,1) holds the pivot's axis name "metric"; classify
-    // should not forward that to the classifier. Positions 2-5 carry pivot
-    // labels (Jan-Apr) which, in PR-1 (no segment-kind filter), DO still
-    // reach the classifier.
-    const input: InterpretInput = {
-      workbook: {
-        sheets: [
-          {
-            name: "Sheet1",
-            dimensions: { rows: 2, cols: 5 },
-            cells: [
-              { row: 1, col: 1, value: "metric" },
-              { row: 1, col: 2, value: "Jan" },
-              { row: 1, col: 3, value: "Feb" },
-              { row: 1, col: 4, value: "Mar" },
-              { row: 1, col: 5, value: "Apr" },
-              { row: 2, col: 1, value: "revenue" },
-              { row: 2, col: 2, value: 10 },
-              { row: 2, col: 3, value: 20 },
-              { row: 2, col: 4, value: 30 },
-              { row: 2, col: 5, value: 40 },
-            ],
-          },
-        ],
-      },
-      regionHints: [
-        {
-          sheet: "Sheet1",
-          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 5 },
-          targetEntityDefinitionId: "pivoted-metrics",
-          headerAxes: ["row"],
-          segmentsByAxis: {
-            row: [
-              { kind: "skip", positionCount: 1 },
-              {
-                kind: "pivot",
-                id: "month",
-                axisName: "month",
-                axisNameSource: "user",
-                positionCount: 4,
-              },
-            ],
-          },
-          cellValueField: { name: "revenue", nameSource: "user" },
-          axisAnchorCell: { row: 1, col: 1 },
-        },
-      ],
-    };
-    const injected: jest.MockedFunction<ClassifierFn> = jest.fn(
-      async (cands) =>
-        cands.map<ColumnClassification>((c) => ({
-          sourceHeader: c.sourceHeader,
-          sourceCol: c.sourceCol,
-          columnDefinitionId: `coldef-${c.sourceHeader}`,
-          confidence: 0.9,
-          rationale: "test",
-        }))
-    );
-    let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = await classifyColumns(state, { classifier: injected });
-
-    const regionId = state.detectedRegions[0].id;
-    const classifications = state.columnClassifications.get(regionId)!;
-    const headers = classifications.map((c) => c.sourceHeader);
-    expect(headers).not.toContain("metric");
-    expect(headers).toEqual(["Jan", "Feb", "Mar", "Apr"]);
   });
 
   it("skips classification entirely for headerless regions", async () => {
@@ -339,9 +412,10 @@ describe("classifyColumns — injected classifier override", () => {
       ],
     };
     const injected = jest.fn(async () => []);
-    let state = detectRegions(createInitialState(input));
-    state = detectHeaders(state);
-    state = await classifyColumns(state, { classifier: injected });
+    const prepared = runUpToDetectSegments(input);
+    const state = await classifyFieldSegments(prepared, {
+      classifier: injected,
+    });
     const regionId = state.detectedRegions[0].id;
     expect(state.columnClassifications.get(regionId)).toEqual([]);
     expect(injected).not.toHaveBeenCalled();

@@ -114,9 +114,24 @@ function hasAnySegments(
   return Boolean(segments.row?.length || segments.column?.length);
 }
 
+function hintHasUserSourcedPivot(
+  segments: { row?: Segment[]; column?: Segment[] } | undefined
+): boolean {
+  if (!segments) return false;
+  for (const axis of ["row", "column"] as const) {
+    for (const seg of segments[axis] ?? []) {
+      if (seg.kind === "pivot" && seg.axisNameSource === "user") return true;
+    }
+  }
+  return false;
+}
+
 /**
- * Propagate AI-recommended axis names onto matching pivot segments that
- * weren't user-supplied.
+ * Per-segment axis-name precedence. `axisNameSource === "user"` wins
+ * outright — neither the recommender nor the heuristic can overwrite it.
+ * For every other pivot segment, the recommender's suggestion (keyed by
+ * segment id) overrides the heuristic default; absent that, the heuristic
+ * output passes through unchanged.
  */
 function applyAxisNameSuggestions(
   region: Region,
@@ -126,9 +141,9 @@ function applyAxisNameSuggestions(
     if (!segs) return segs;
     return segs.map((s) => {
       if (s.kind !== "pivot") return s;
+      if (s.axisNameSource === "user") return s;
       const suggestion = suggestions.get(s.id);
       if (!suggestion) return s;
-      if (s.axisNameSource === "user") return s;
       return {
         ...s,
         axisName: suggestion.name,
@@ -176,11 +191,16 @@ export function proposeBindings(state: InterpretState): InterpretState {
       next = { ...next, headerStrategyByAxis: strategyByAxis };
     }
 
-    // Segments — prefer the detect-segments output; fall back to the PR-1
-    // adapter (field segment per declared axis) when the stage didn't run
-    // for this region (e.g. headerless).
+    // Segments — hints with an explicit user-sourced pivot win outright
+    // (users pinning an axisName opt out of the heuristic). Otherwise
+    // adopt the detect-segments output, falling back to the PR-1 adapter
+    // (field segment per declared axis) when the stage didn't run for
+    // this region (e.g. headerless).
+    const hintSegments = region.segmentsByAxis;
     const computedSegments = state.segmentsByRegion.get(region.id);
-    if (hasAnySegments(computedSegments)) {
+    if (hintHasUserSourcedPivot(hintSegments)) {
+      next = { ...next, segmentsByAxis: hintSegments };
+    } else if (hasAnySegments(computedSegments)) {
       next = { ...next, segmentsByAxis: computedSegments };
     } else {
       next = { ...next, segmentsByAxis: ensureSegments(next) };

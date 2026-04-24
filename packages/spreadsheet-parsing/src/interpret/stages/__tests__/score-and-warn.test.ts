@@ -1,14 +1,15 @@
 import { describe, it, expect } from "@jest/globals";
 
-import type { InterpretInput, Region } from "../../../plan/index.js";
+import type { InterpretInput, Region, Segment } from "../../../plan/index.js";
 import { makeWorkbook } from "../../../workbook/helpers.js";
 import { createInitialState } from "../../state.js";
 import type { InterpretState } from "../../types.js";
 import { detectRegions } from "../detect-regions.js";
 import { detectHeaders } from "../detect-headers.js";
 import { detectIdentity } from "../detect-identity.js";
-import { classifyColumns } from "../classify-columns.js";
-import { recommendRecordsAxisName } from "../recommend-records-axis-name.js";
+import { detectSegments } from "../detect-segments.js";
+import { classifyFieldSegments } from "../classify-field-segments.js";
+import { recommendSegmentAxisNames } from "../recommend-segment-axis-names.js";
 import { proposeBindings } from "../propose-bindings.js";
 import { scoreAndWarn } from "../score-and-warn.js";
 
@@ -16,8 +17,9 @@ async function run(input: InterpretInput) {
   let state = detectRegions(createInitialState(input));
   state = detectHeaders(state);
   state = detectIdentity(state);
-  state = await classifyColumns(state, {});
-  state = await recommendRecordsAxisName(state, {});
+  state = detectSegments(state);
+  state = await classifyFieldSegments(state, {});
+  state = await recommendSegmentAxisNames(state, {});
   state = proposeBindings(state);
   return scoreAndWarn(state);
 }
@@ -90,7 +92,10 @@ describe("scoreAndWarn", () => {
     expect(warn?.severity).toBe("warn");
   });
 
-  it("emits PIVOTED_REGION_MISSING_AXIS_NAME as a blocker when a pivot segment has no axis name", async () => {
+  it("emits SEGMENT_MISSING_AXIS_NAME as a blocker per pivot segment with an empty axisName", async () => {
+    // Hint pins a user-sourced pivot (so proposeBindings preserves it) with
+    // an empty axisName. score-and-warn should fire the new segment-level
+    // blocker.
     const input: InterpretInput = {
       workbook: {
         sheets: [
@@ -119,24 +124,94 @@ describe("scoreAndWarn", () => {
               {
                 kind: "pivot",
                 id: "month-seg",
-                axisName: "month",
-                axisNameSource: "anchor-cell",
+                axisName: "unnamed",
+                axisNameSource: "user",
                 positionCount: 2,
               },
             ],
           },
           cellValueField: { name: "revenue", nameSource: "user" },
-          // No axisAnchorCell → anchor-cell source is unresolved → warning fires.
+        },
+      ],
+    };
+    // Overwrite the user hint's axisName post-schema to simulate "empty"
+    // (schema min(1) forbids it at construction time; scoring guards
+    // against stale data regardless).
+    const state = await run(input);
+    const region = state.detectedRegions[0];
+    // Simulate the post-user edit that clears axisName — the emission path
+    // must treat an empty string as unresolved regardless of how it got
+    // there, so we assert via a direct call to scoreAndWarn on a mutated
+    // region.
+    const badRegion: Region = {
+      ...region,
+      segmentsByAxis: {
+        row: region.segmentsByAxis?.row?.map((s) =>
+          s.kind === "pivot" ? { ...s, axisName: "unnamed" } : s
+        ),
+      },
+    };
+    // Sanity: user-pinned pivot landed on the region with its ID preserved.
+    expect(
+      badRegion.segmentsByAxis?.row?.some(
+        (s) => s.kind === "pivot" && s.id === "month-seg"
+      )
+    ).toBe(true);
+    // Now flip axisName to "" via the ignored type narrowing (score-and-warn
+    // treats empty as missing).
+    const segs = badRegion.segmentsByAxis!.row!;
+    segs[1] = { ...(segs[1] as Extract<Segment, { kind: "pivot" }>), axisName: "" } as Segment;
+    // Drive scoreAndWarn directly with the mutated region.
+    const mutated: InterpretState = {
+      ...state,
+      detectedRegions: [badRegion],
+    };
+    const after = scoreAndWarn(mutated);
+    const warn = after.detectedRegions[0].warnings.find(
+      (w) => w.code === "SEGMENT_MISSING_AXIS_NAME"
+    );
+    expect(warn).toBeDefined();
+    expect(warn?.severity).toBe("blocker");
+  });
+
+  it("emits CELL_VALUE_FIELD_NOT_BOUND as a warn when a pivoted region's cellValueField has no columnDefinitionId", async () => {
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 2, cols: 4 },
+            cells: [
+              { row: 1, col: 1, value: "name" },
+              { row: 1, col: 2, value: "Jan" },
+              { row: 1, col: 3, value: "Feb" },
+              { row: 1, col: 4, value: "Mar" },
+              { row: 2, col: 1, value: "Apple" },
+              { row: 2, col: 2, value: 100 },
+              { row: 2, col: 3, value: 200 },
+              { row: 2, col: 4, value: 300 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 4 },
+          targetEntityDefinitionId: "monthly",
+          headerAxes: ["row"],
+          // No cellValueField on hint → heuristic seeds `{ name: "value",
+          // nameSource: "ai" }` without a columnDefinitionId → warn fires.
         },
       ],
     };
     const state = await run(input);
     const region = state.detectedRegions[0];
     const warn = region.warnings.find(
-      (w) => w.code === "PIVOTED_REGION_MISSING_AXIS_NAME"
+      (w) => w.code === "CELL_VALUE_FIELD_NOT_BOUND"
     );
     expect(warn).toBeDefined();
-    expect(warn?.severity).toBe("blocker");
+    expect(warn?.severity).toBe("warn");
   });
 
   it("emits UNRECOGNIZED_COLUMN for each unmatched classification", async () => {
