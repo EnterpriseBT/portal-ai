@@ -11,6 +11,10 @@ import type {
   InterpretState,
 } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
+import {
+  headerLineCoords,
+  readHeaderLineLabels,
+} from "./header-line.util.js";
 import { isPivoted } from "./pivoted.util.js";
 
 const SAMPLE_LIMIT = 10;
@@ -44,44 +48,35 @@ function candidatesFromHeader(
     row: region.bounds.startRow,
     col: region.bounds.startCol,
   };
-  if (header.axis === "row") {
-    for (let col = region.bounds.startCol; col <= region.bounds.endCol; col++) {
-      if (pivoted && col === anchor.col) continue;
-      const headerCell = sheet.cell(header.index, col);
-      const sourceHeader =
-        headerCell && headerCell.value !== null ? String(headerCell.value) : "";
-      const samples: string[] = [];
+  const anchorCoord = header.axis === "row" ? anchor.col : anchor.row;
+  const coords = headerLineCoords(region, header.axis, region.bounds);
+  const labels = readHeaderLineLabels(region, header.axis, sheet, header.index);
+  for (let i = 0; i < coords.length; i++) {
+    const coord = coords[i];
+    if (pivoted && coord === anchorCoord) continue;
+    const sourceHeader = labels[i];
+    if (sourceHeader === "") continue;
+    const samples: string[] = [];
+    if (header.axis === "row") {
       for (
         let r = header.index + 1;
         r <= region.bounds.endRow && samples.length < SAMPLE_LIMIT;
         r++
       ) {
-        const c = sheet.cell(r, col);
+        const c = sheet.cell(r, coord);
         if (c && c.value !== null) samples.push(String(c.value));
       }
-      if (sourceHeader !== "") {
-        out.push({ sourceHeader, sourceCol: col, samples });
-      }
-    }
-  } else {
-    for (let row = region.bounds.startRow; row <= region.bounds.endRow; row++) {
-      if (pivoted && row === anchor.row) continue;
-      const headerCell = sheet.cell(row, header.index);
-      const sourceHeader =
-        headerCell && headerCell.value !== null ? String(headerCell.value) : "";
-      const samples: string[] = [];
+    } else {
       for (
         let c = header.index + 1;
         c <= region.bounds.endCol && samples.length < SAMPLE_LIMIT;
         c++
       ) {
-        const cell = sheet.cell(row, c);
+        const cell = sheet.cell(coord, c);
         if (cell && cell.value !== null) samples.push(String(cell.value));
       }
-      if (sourceHeader !== "") {
-        out.push({ sourceHeader, sourceCol: row, samples });
-      }
     }
+    out.push({ sourceHeader, sourceCol: coord, samples });
   }
   return out;
 }

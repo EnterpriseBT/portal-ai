@@ -4,6 +4,10 @@ import { DEFAULT_INTERPRET_CONCURRENCY } from "../deps.js";
 import type { InterpretDeps } from "../deps.js";
 import type { InterpretState } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
+import {
+  headerLineCoords,
+  readHeaderLineLabels,
+} from "./header-line.util.js";
 
 const MAX_AXIS_LABELS = 30;
 
@@ -34,26 +38,18 @@ function collectPivotLabels(
     row: region.bounds.startRow,
     col: region.bounds.startCol,
   };
-  const labels: string[] = [];
-  if (axis === "row") {
-    const row = anchor.row;
-    for (let c = region.bounds.startCol; c <= region.bounds.endCol; c++) {
-      if (c === anchor.col) continue;
-      const cell = sheet.cell(row, c);
-      if (cell && cell.value !== null) labels.push(String(cell.value));
-    }
-  } else {
-    const col = anchor.col;
-    for (let r = region.bounds.startRow; r <= region.bounds.endRow; r++) {
-      if (r === anchor.row) continue;
-      const cell = sheet.cell(r, col);
-      if (cell && cell.value !== null) labels.push(String(cell.value));
-    }
+  const headerIndex = axis === "row" ? anchor.row : anchor.col;
+  const anchorCoord = axis === "row" ? anchor.col : anchor.row;
+  const coords = headerLineCoords(region, axis, region.bounds);
+  const labels = readHeaderLineLabels(region, axis, sheet, headerIndex);
+  const out: string[] = [];
+  for (let i = 0; i < coords.length; i++) {
+    if (coords[i] === anchorCoord) continue;
+    if (labels[i] === "") continue;
+    out.push(labels[i]);
+    if (out.length >= MAX_AXIS_LABELS) break;
   }
-  return labels
-    .map((l) => l.trim())
-    .filter((l) => l !== "")
-    .slice(0, MAX_AXIS_LABELS);
+  return out;
 }
 
 /**
