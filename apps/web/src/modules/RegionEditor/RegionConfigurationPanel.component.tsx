@@ -21,11 +21,13 @@ import type {
 import { CellPositionInputUI } from "./CellPositionInput.component";
 import { NewEntityDialogUI } from "./NewEntityDialog.component";
 import { RecordAxisTerminatorPopoverUI } from "./RecordAxisTerminatorPopover.component";
+import { RecordsPreviewDialogUI } from "./RecordsPreviewDialog.component";
 import { SectionHelpUI } from "./SectionHelp.component";
 import { SegmentEditPopoverUI } from "./SegmentEditPopover.component";
 import { SegmentStripUI } from "./SegmentStrip.component";
 import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
 import { formatBounds } from "./utils/a1-notation.util";
+import { buildPreviewRecords } from "./utils/preview-records.util";
 import {
   colorForEntity,
   confidenceBand,
@@ -64,6 +66,14 @@ export interface RegionConfigurationPanelUIProps {
   validateEntityKey?: (
     key: string
   ) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>;
+  /**
+   * The sheet that owns the selected region. When provided, the Shape
+   * section surfaces a "Preview records" button that opens a dialog
+   * rendering the current region configuration as a table of extracted
+   * records (with placeholders for unlabelled headers). Omit when the
+   * sheet data isn't available — the button is hidden.
+   */
+  regionSheet?: import("./utils/region-editor.types").SheetPreview;
 }
 
 const SECTION_HEADING_SX = {
@@ -139,6 +149,7 @@ export const RegionConfigurationPanelUI: React.FC<
   onCreateEntity,
   claimedEntityKeys,
   validateEntityKey,
+  regionSheet,
 }) => {
   const [newEntityDialogOpen, setNewEntityDialogOpen] = useState(false);
   const [editingSegment, setEditingSegment] =
@@ -146,6 +157,7 @@ export const RegionConfigurationPanelUI: React.FC<
   const [segmentAnchor, setSegmentAnchor] = useState<HTMLElement | null>(null);
   const [extentOpen, setExtentOpen] = useState(false);
   const [extentAnchor, setExtentAnchor] = useState<HTMLElement | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const currentTarget = region?.targetEntityDefinitionId ?? null;
   const selectOptions = useMemo<SelectOption[]>(
@@ -155,6 +167,13 @@ export const RegionConfigurationPanelUI: React.FC<
   const existingKeys = useMemo(
     () => entityOptions.map((o) => o.value),
     [entityOptions]
+  );
+  // Compute the records preview at the top level so the hook order stays
+  // stable — `buildPreviewRecords` is a no-op when region or sheet are null.
+  const previewResult = useMemo(
+    () =>
+      region && regionSheet ? buildPreviewRecords(region, regionSheet) : null,
+    [region, regionSheet]
   );
 
   if (!region) {
@@ -186,6 +205,7 @@ export const RegionConfigurationPanelUI: React.FC<
   const legendKinds = deriveLegendKinds(region, crosstab);
   const headerAxes = region.headerAxes ?? [];
   const canAddSecondAxis = headerAxes.length === 1;
+  const canPreview = !!regionSheet;
   const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
   const band = confidenceBand(region.confidence);
   const driftFlagged = Boolean(region.drift?.flagged);
@@ -213,27 +233,71 @@ export const RegionConfigurationPanelUI: React.FC<
     setEditingSegment({ axis, index });
   };
 
-  const handleAddSegment = (axis: AxisMember) => {
+  const handleAddSegment = (axis: AxisMember, kind: Segment["kind"]) => {
     const segments = [...axisSegments(region, axis)];
     const positionCount = 1;
-    segments.push({ kind: "field", positionCount });
-    const merged = coalesceSegments(segments);
-    const span = axisSpan(region, axis);
-    onUpdate({
-      ...writeSegments(region, axis, merged),
-      bounds: expandBoundsAlongAxis(region.bounds, axis, span + positionCount),
-    });
+    // The region's bounds are user-owned; adding a segment never grows them.
+    // Instead, the new segment takes one position from a "donor" segment —
+    // the rightmost segment with positionCount > 1. If no donor exists the
+    // add is a no-op (the UI disables the buttons to match this).
+    let donorIndex = -1;
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (segments[i].positionCount > 1) {
+        donorIndex = i;
+        break;
+      }
+    }
+    if (donorIndex === -1) return;
+    const donor = segments[donorIndex];
+    segments[donorIndex] = {
+      ...donor,
+      positionCount: donor.positionCount - 1,
+    };
+    // Insert before any dynamic-tail pivot so refinement 10 (dynamic pivot
+    // must be the tail) keeps holding. Otherwise append at the end.
+    const tailIndex = segments.length - 1;
+    const tail = segments[tailIndex];
+    const insertAt =
+      tail && tail.kind === "pivot" && tail.dynamic ? tailIndex : segments.length;
+    const newSegment: Segment =
+      kind === "pivot"
+        ? {
+            kind: "pivot",
+            id: mintPivotId(region),
+            axisName: "",
+            axisNameSource: "user",
+            positionCount,
+          }
+        : kind === "skip"
+          ? { kind: "skip", positionCount }
+          : { kind: "field", positionCount };
+    // Intentionally skip coalesceSegments here — an explicit "Add" should
+    // always produce a visible new chip, even if the adjacent segment is the
+    // same kind. Coalescing still happens on explicit conversions.
+    segments.splice(insertAt, 0, newSegment);
+    const updates = withPivotSync(
+      region,
+      writeSegments(region, axis, segments)
+    );
+    onUpdate(updates);
   };
 
   const handleAddHeaderAxis = (otherAxis: AxisMember) => {
     if (headerAxes.includes(otherAxis)) return;
     const span = axisSpan(region, otherAxis);
     const nextAxes: AxisMember[] = [...headerAxes, otherAxis];
+    // First axis: seed with a full-span field segment (classic tidy default).
+    // Second axis (crosstab promotion): seed with a skip so the user opts in
+    // to pivoting deliberately at the intersection.
+    const seed: Segment =
+      headerAxes.length === 0
+        ? { kind: "field", positionCount: span }
+        : { kind: "skip", positionCount: span };
     onUpdate({
       headerAxes: nextAxes,
       segmentsByAxis: {
         ...(region.segmentsByAxis ?? {}),
-        [otherAxis]: [{ kind: "skip", positionCount: span }],
+        [otherAxis]: [seed],
       },
     });
   };
@@ -310,6 +374,53 @@ export const RegionConfigurationPanelUI: React.FC<
     if (seg?.kind !== "pivot") return;
     segments[index] = { ...seg, dynamic: { terminator } };
     onUpdate(writeSegments(region, axis, segments));
+  };
+
+  const handleRemoveSegmentAt = (axis: AxisMember, index: number) => {
+    const segments = [...axisSegments(region, axis)];
+    const seg = segments[index];
+    if (!seg) return;
+    // Bounds stay user-owned — deletes never shrink the region. When the
+    // axis has more than one segment, donate the removed segment's
+    // positionCount to an adjacent neighbour (prefer the previous one).
+    // When it's the last segment, collapse the whole axis back out:
+    // headerAxes drops this axis entirely and the region becomes 1D (or
+    // fully headerless, if it was already 1D).
+    let updates: Partial<RegionDraft>;
+    if (segments.length === 1) {
+      const nextAxes = headerAxes.filter((a) => a !== axis);
+      const nextSegs = { ...(region.segmentsByAxis ?? {}) };
+      delete nextSegs[axis];
+      updates = withPivotSync(
+        { ...region, headerAxes: nextAxes, segmentsByAxis: nextSegs },
+        { headerAxes: nextAxes, segmentsByAxis: nextSegs }
+      );
+    } else {
+      const donate = seg.positionCount;
+      segments.splice(index, 1);
+      const recipientIdx = index > 0 ? index - 1 : 0;
+      const recipient = segments[recipientIdx];
+      segments[recipientIdx] = {
+        ...recipient,
+        positionCount: recipient.positionCount + donate,
+      };
+      const merged = coalesceSegments(segments);
+      updates = withPivotSync(region, writeSegments(region, axis, merged));
+    }
+    onUpdate(updates);
+    // Close the popover if it happened to be open on the removed segment.
+    if (
+      editingSegment &&
+      editingSegment.axis === axis &&
+      editingSegment.index === index
+    ) {
+      closeSegmentEditor();
+    }
+  };
+
+  const handleRemoveEditingSegment = () => {
+    if (!editingSegment) return;
+    handleRemoveSegmentAt(editingSegment.axis, editingSegment.index);
   };
 
   const handleChangeCellValueFieldName = (value: string) => {
@@ -622,15 +733,60 @@ export const RegionConfigurationPanelUI: React.FC<
       <Divider sx={{ gridColumn: "1 / -1" }} />
 
       <Stack spacing={2}>
-        <Typography variant="caption" sx={SECTION_HEADING_SX}>
-          Shape
-        </Typography>
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          justifyContent="space-between"
+          flexWrap="wrap"
+          useFlexGap
+        >
+          <Typography variant="caption" sx={SECTION_HEADING_SX}>
+            Shape
+          </Typography>
+          {canPreview && (
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => setPreviewOpen(true)}
+              sx={{ textTransform: "none" }}
+            >
+              Preview records
+            </Button>
+          )}
+        </Stack>
 
         {headerAxes.length === 0 && (
-          <Typography variant="caption" color="text.secondary">
-            This region has no header axis. Field names are derived from
-            position — the Review step surfaces per-field overrides.
-          </Typography>
+          <Stack spacing={1}>
+            <Typography variant="caption" color="text.secondary">
+              This region has no header axis. Add one to carve it into
+              labelled segments, or leave it headerless — field names will be
+              derived from position and the Review step surfaces per-field
+              overrides.
+            </Typography>
+            <Stack
+              direction="row"
+              spacing={1}
+              flexWrap="wrap"
+              useFlexGap
+              alignItems="center"
+            >
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => handleAddHeaderAxis("row")}
+              >
+                + Add row axis
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => handleAddHeaderAxis("column")}
+              >
+                + Add column axis
+              </Button>
+            </Stack>
+          </Stack>
         )}
 
         {headerAxes.includes("row") && (
@@ -638,8 +794,10 @@ export const RegionConfigurationPanelUI: React.FC<
             axis="row"
             segments={axisSegments(region, "row")}
             axisLabel="Row axis"
+            axisStart={region.bounds.startCol}
             onEditSegment={handleEditSegment}
             onAddSegment={handleAddSegment}
+            onRemoveSegment={handleRemoveSegmentAt}
             onAddHeaderAxis={
               canAddSecondAxis && !headerAxes.includes("column")
                 ? handleAddHeaderAxis
@@ -653,8 +811,10 @@ export const RegionConfigurationPanelUI: React.FC<
             axis="column"
             segments={axisSegments(region, "column")}
             axisLabel="Column axis"
+            axisStart={region.bounds.startRow}
             onEditSegment={handleEditSegment}
             onAddSegment={handleAddSegment}
+            onRemoveSegment={handleRemoveSegmentAt}
             onAddHeaderAxis={
               canAddSecondAxis && !headerAxes.includes("row")
                 ? handleAddHeaderAxis
@@ -855,7 +1015,26 @@ export const RegionConfigurationPanelUI: React.FC<
           onToggleDynamic={handleToggleDynamic}
           onChangeTerminator={handleChangeSegmentTerminator}
           onConvert={handleConvertSegment}
+          onRemove={handleRemoveEditingSegment}
           onClose={closeSegmentEditor}
+        />
+      )}
+
+      {canPreview && (
+        <RecordsPreviewDialogUI
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          preview={previewResult}
+          entityLabel={
+            region.proposedLabel ??
+            region.targetEntityLabel ??
+            (region.targetEntityDefinitionId
+              ? (entityOptions.find(
+                  (o) => o.value === region.targetEntityDefinitionId
+                )?.label ?? undefined)
+              : undefined)
+          }
+          sheetName={regionSheet?.name}
         />
       )}
 
@@ -951,17 +1130,6 @@ function coalesceSegments(segments: Segment[]): Segment[] {
   return out;
 }
 
-function expandBoundsAlongAxis(
-  bounds: RegionDraft["bounds"],
-  axis: AxisMember,
-  newSpan: number
-): RegionDraft["bounds"] {
-  const { startRow, startCol, endRow, endCol } = bounds;
-  if (axis === "row") {
-    return { startRow, startCol, endRow, endCol: startCol + newSpan - 1 };
-  }
-  return { startRow, startCol, endRow: startRow + newSpan - 1, endCol };
-}
 
 function mintPivotId(region: RegionDraft): string {
   const existing = new Set<string>();

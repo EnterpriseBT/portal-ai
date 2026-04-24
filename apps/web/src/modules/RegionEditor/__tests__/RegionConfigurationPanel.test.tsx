@@ -299,6 +299,176 @@ describe("RegionConfigurationPanelUI", () => {
       expect(screen.getByText(/quarter · 4 · ∞/i)).toBeInTheDocument();
     });
 
+    test("headerless region surfaces Add row/column axis buttons and seeds a full-span field segment", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      // Both axis-promotion buttons appear for a headerless region.
+      const addRow = screen.getByRole("button", { name: /\+ add row axis/i });
+      const addCol = screen.getByRole("button", { name: /\+ add column axis/i });
+      expect(addRow).toBeInTheDocument();
+      expect(addCol).toBeInTheDocument();
+      fireEvent.click(addRow);
+      // Seeds headerAxes=["row"] with a full-span field segment (4 cols wide).
+      expect(onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headerAxes: ["row"],
+          segmentsByAxis: expect.objectContaining({
+            row: [{ kind: "field", positionCount: 4 }],
+          }),
+        })
+      );
+    });
+
+    test("adding a segment donates from the tail and keeps region bounds fixed", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            segmentsByAxis: { row: [{ kind: "field", positionCount: 4 }] },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /add row skip segment/i })
+      );
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const payload = onUpdate.mock.calls[0][0] as Partial<RegionDraft>;
+      expect(payload.segmentsByAxis?.row).toEqual([
+        { kind: "field", positionCount: 3 },
+        { kind: "skip", positionCount: 1 },
+      ]);
+      // Bounds are user-owned — the panel must not touch them when adding.
+      expect(payload.bounds).toBeUndefined();
+    });
+
+    test("adding a segment inserts before a dynamic-tail pivot and donates from a prior segment", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            segmentsByAxis: {
+              row: [
+                { kind: "field", positionCount: 3 },
+                {
+                  kind: "pivot",
+                  id: "p1",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 1,
+                  dynamic: {
+                    terminator: {
+                      kind: "untilBlank",
+                      consecutiveBlanks: 2,
+                    },
+                  },
+                },
+              ],
+              // Pivot present → cellValueField is required by the draft shape.
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /add row skip segment/i })
+      );
+      const payload = onUpdate.mock.calls[0][0] as Partial<RegionDraft>;
+      const nextRow = payload.segmentsByAxis!.row!;
+      // Dynamic pivot stays the tail (refinement 10).
+      expect(nextRow[nextRow.length - 1].kind).toBe("pivot");
+      // Donor is the field segment (walked from the tail, first with count > 1).
+      expect(nextRow[0]).toEqual({ kind: "field", positionCount: 2 });
+      // New skip inserts just before the dynamic pivot.
+      expect(nextRow[1]).toEqual({ kind: "skip", positionCount: 1 });
+      expect(payload.bounds).toBeUndefined();
+    });
+
+    test("delete-segment donates positions to the previous neighbour and keeps bounds fixed", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 4 },
+            segmentsByAxis: {
+              row: [
+                { kind: "field", positionCount: 3 },
+                { kind: "skip", positionCount: 2 },
+              ],
+            },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /edit row segment 2 \(skip\)/i })
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /^delete segment$/i })
+      );
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const payload = onUpdate.mock.calls[0][0] as Partial<RegionDraft>;
+      // The skip's two positions fold into the preceding field segment; bounds stay put.
+      expect(payload.segmentsByAxis?.row).toEqual([
+        { kind: "field", positionCount: 5 },
+      ]);
+      expect(payload.bounds).toBeUndefined();
+    });
+
+    test("delete-segment on the only segment of an axis collapses that axis back out", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /edit row segment 1 \(field\)/i })
+      );
+      const deleteBtn = screen.getByRole("button", {
+        name: /^delete segment$/i,
+      });
+      expect(deleteBtn).toBeEnabled();
+      fireEvent.click(deleteBtn);
+      const payload = onUpdate.mock.calls[0][0] as Partial<RegionDraft>;
+      // Axis collapses: headerAxes drops "row" entirely and segmentsByAxis.row is gone.
+      expect(payload.headerAxes).toEqual([]);
+      expect(payload.segmentsByAxis).toBeDefined();
+      expect(payload.segmentsByAxis?.row).toBeUndefined();
+      expect(payload.bounds).toBeUndefined();
+    });
+
     test("no longer renders the orientation dropdown or boundsMode toggle", () => {
       render(
         <RegionConfigurationPanelUI

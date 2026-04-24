@@ -24,7 +24,11 @@ import {
 import {
   DECORATION_BACKGROUND_IMAGE,
   DECORATION_COLOR,
+  SEGMENT_OVERLAY_BACKGROUND_IMAGE,
+  SEGMENT_OVERLAY_BORDER,
+  SEGMENT_OVERLAY_COLOR,
   computeRegionDecorations,
+  computeSegmentOverlays,
 } from "./utils/region-editor-decorations.util";
 import type {
   CellBounds,
@@ -57,6 +61,20 @@ export interface SheetCanvasUIProps {
   onRegionSelect: (regionId: string | null) => void;
   onRegionDraft: (bounds: CellBounds) => void;
   onRegionResize?: (regionId: string, nextBounds: CellBounds) => void;
+  /**
+   * Invoked when the user drags a segment-divider and redistributes
+   * positions between two adjacent segments on `axis`. `newLeft`/`newRight`
+   * are the resulting positionCounts for segments at `segmentIndex` and
+   * `segmentIndex + 1`; both are guaranteed ≥ 1 and sum to the original
+   * combined span (bounds are never changed by this op).
+   */
+  onSegmentResize?: (
+    regionId: string,
+    axis: "row" | "column",
+    segmentIndex: number,
+    newLeft: number,
+    newRight: number
+  ) => void;
   readOnly?: boolean;
   cellSize?: { width: number; height: number };
   maxHeight?: number | string;
@@ -90,6 +108,20 @@ type ActiveOp =
       regionId: string;
       originalBounds: CellBounds;
       pointerStart: CellCoord;
+      current: CellCoord;
+    }
+  | {
+      kind: "resizeSegment";
+      regionId: string;
+      axis: "row" | "column";
+      /** Left/top segment of the pair; right/bottom is segmentIndex + 1. */
+      segmentIndex: number;
+      originalLeft: number;
+      originalRight: number;
+      /** Combined span (originalLeft + originalRight) — invariant during drag. */
+      combined: number;
+      /** Start offset of the pair along the axis (cell index). */
+      pairStart: number;
       current: CellCoord;
     };
 
@@ -136,6 +168,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   onRegionSelect,
   onRegionDraft,
   onRegionResize,
+  onSegmentResize,
   readOnly = false,
   cellSize,
   maxHeight = 420,
@@ -227,6 +260,11 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         return { ...op, current: coord };
       }
       if (op.kind === "move") {
+        if (op.current.row === coord.row && op.current.col === coord.col)
+          return op;
+        return { ...op, current: coord };
+      }
+      if (op.kind === "resizeSegment") {
         if (op.current.row === coord.row && op.current.col === coord.col)
           return op;
         return { ...op, current: coord };
@@ -387,6 +425,14 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         e.preventDefault();
         onRegionSelect(regionId);
         if (readOnly || !onRegionResize) return;
+        // Once a region carries segments, its bounds are locked — moving it
+        // would silently invalidate positionCount totals. The click still
+        // selects, but no move op starts.
+        const target = regions.find((r) => r.id === regionId);
+        const hasSegments =
+          (target?.segmentsByAxis?.row?.length ?? 0) > 0 ||
+          (target?.segmentsByAxis?.column?.length ?? 0) > 0;
+        if (hasSegments) return;
         capturePointer(e);
         const coord = clientToCell(e.clientX, e.clientY) ?? {
           row: originalBounds.startRow,
@@ -400,7 +446,14 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           current: coord,
         });
       },
-    [readOnly, onRegionResize, onRegionSelect, capturePointer, clientToCell]
+    [
+      readOnly,
+      onRegionResize,
+      onRegionSelect,
+      capturePointer,
+      clientToCell,
+      regions,
+    ]
   );
 
   const handleResizeStart = useCallback(
@@ -425,6 +478,42 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     [readOnly, clientToCell, capturePointer]
   );
 
+  const handleSegmentDividerPointerDown = useCallback(
+    (args: {
+      regionId: string;
+      axis: "row" | "column";
+      segmentIndex: number;
+      originalLeft: number;
+      originalRight: number;
+      pairStart: number;
+    }) =>
+      (e: React.PointerEvent) => {
+        if (readOnly || !onSegmentResize) return;
+        e.stopPropagation();
+        e.preventDefault();
+        capturePointer(e);
+        // The pointer's initial cell may be at the divider boundary; seed
+        // `current` to the axis-index of the existing split so no move is
+        // recorded if the user releases without dragging.
+        const initialCoord = clientToCell(e.clientX, e.clientY) ?? {
+          row: 0,
+          col: 0,
+        };
+        setActiveOp({
+          kind: "resizeSegment",
+          regionId: args.regionId,
+          axis: args.axis,
+          segmentIndex: args.segmentIndex,
+          originalLeft: args.originalLeft,
+          originalRight: args.originalRight,
+          combined: args.originalLeft + args.originalRight,
+          pairStart: args.pairStart,
+          current: initialCoord,
+        });
+      },
+    [readOnly, onSegmentResize, capturePointer, clientToCell]
+  );
+
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!activeOp) return;
@@ -436,10 +525,14 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     [activeOp, clientToCell, applyPointerCoord, updateAutoScroll]
   );
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
     stopAutoScroll();
     lastPointerRef.current = null;
     if (!activeOp) return;
+    // Refresh the op's `current` from the final pointer event so
+    // pointerUp-without-an-intervening-pointerMove (or a stale React
+    // closure) still lands at the right cell.
+    const releaseCoord = clientToCell(e.clientX, e.clientY);
     if (activeOp.kind === "draw") {
       const bounds = normalizeBounds(activeOp.start, activeOp.end);
       const isSingleClick =
@@ -492,13 +585,33 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
         );
         onRegionResize?.(activeOp.regionId, next);
       }
+    } else if (activeOp.kind === "resizeSegment") {
+      const finalCoord = releaseCoord ?? activeOp.current;
+      const axisIdx =
+        activeOp.axis === "row" ? finalCoord.col : finalCoord.row;
+      const newLeft = Math.max(
+        1,
+        Math.min(activeOp.combined - 1, axisIdx - activeOp.pairStart)
+      );
+      const newRight = activeOp.combined - newLeft;
+      if (newLeft !== activeOp.originalLeft) {
+        onSegmentResize?.(
+          activeOp.regionId,
+          activeOp.axis,
+          activeOp.segmentIndex,
+          newLeft,
+          newRight
+        );
+      }
     }
     setActiveOp(null);
   }, [
     activeOp,
+    clientToCell,
     onRegionDraft,
     onRegionResize,
     onRegionSelect,
+    onSegmentResize,
     regions,
     sheet.id,
     sheet.rowCount,
@@ -863,8 +976,51 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               (r) => r.id === selectedRegionId
             );
             if (!selectedRegion) return null;
-            const decorations = computeRegionDecorations(selectedRegion, sheet);
-            return decorations.map((d, i) => {
+            // Project the in-progress segment-divider drag into the region so
+            // overlays and decorations reflect the prospective split live.
+            let previewRegion = selectedRegion;
+            if (
+              activeOp?.kind === "resizeSegment" &&
+              activeOp.regionId === selectedRegion.id
+            ) {
+              const axisIdx =
+                activeOp.axis === "row"
+                  ? activeOp.current.col
+                  : activeOp.current.row;
+              const newLeft = Math.max(
+                1,
+                Math.min(
+                  activeOp.combined - 1,
+                  axisIdx - activeOp.pairStart
+                )
+              );
+              const newRight = activeOp.combined - newLeft;
+              const segs = [
+                ...(selectedRegion.segmentsByAxis?.[activeOp.axis] ?? []),
+              ];
+              const left = segs[activeOp.segmentIndex];
+              const right = segs[activeOp.segmentIndex + 1];
+              if (left && right) {
+                segs[activeOp.segmentIndex] = {
+                  ...left,
+                  positionCount: newLeft,
+                };
+                segs[activeOp.segmentIndex + 1] = {
+                  ...right,
+                  positionCount: newRight,
+                };
+                previewRegion = {
+                  ...selectedRegion,
+                  segmentsByAxis: {
+                    ...(selectedRegion.segmentsByAxis ?? {}),
+                    [activeOp.axis]: segs,
+                  },
+                };
+              }
+            }
+            const segmentOverlays = computeSegmentOverlays(previewRegion);
+            const decorations = computeRegionDecorations(previewRegion, sheet);
+            const decorationEls = decorations.map((d, i) => {
               const dLeft = ROW_HEADER_WIDTH + d.bounds.startCol * cellWidth;
               const dTop = COL_HEADER_HEIGHT + d.bounds.startRow * cellHeight;
               const dWidth =
@@ -938,6 +1094,200 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 </Box>
               );
             });
+            const segmentEls = segmentOverlays.map((o) => {
+              const sLeft =
+                ROW_HEADER_WIDTH + o.bounds.startCol * cellWidth;
+              const sTop = COL_HEADER_HEIGHT + o.bounds.startRow * cellHeight;
+              const sWidth =
+                (o.bounds.endCol - o.bounds.startCol + 1) * cellWidth;
+              const sHeight =
+                (o.bounds.endRow - o.bounds.startRow + 1) * cellHeight;
+              const badgeLabel = `${o.segmentIndex + 1}`;
+              const kindLabel =
+                o.kind === "field"
+                  ? "Field"
+                  : o.kind === "pivot"
+                    ? "Pivot"
+                    : "Skip";
+              const titleParts = [
+                `${o.axis} axis segment ${badgeLabel} (${kindLabel})`,
+              ];
+              if (o.label) titleParts.push(o.label);
+              if (o.dynamic) titleParts.push("grows");
+              // Anchor the badge per axis so the corner cell of a crosstab
+              // (where row-axis segment #1 and column-axis segment #1
+              // occupy the same cell) doesn't stack them on top of each
+              // other. Row-axis badges ride the top-right of their cell;
+              // column-axis badges ride the bottom-left. The top-left
+              // quadrant stays free for the orange pivot-anchor marker.
+              const isRow = o.axis === "row";
+              return (
+                <Box
+                  key={`seg-${o.axis}-${o.segmentIndex}`}
+                  data-testid={`segment-overlay-${o.axis}-${o.segmentIndex}`}
+                  title={titleParts.join(" — ")}
+                  aria-label={titleParts.join(" — ")}
+                  sx={{
+                    position: "absolute",
+                    left: sLeft,
+                    top: sTop,
+                    width: sWidth,
+                    height: sHeight,
+                    backgroundColor: SEGMENT_OVERLAY_COLOR[o.kind],
+                    backgroundImage: SEGMENT_OVERLAY_BACKGROUND_IMAGE[o.kind],
+                    border: "1.5px solid",
+                    borderColor: SEGMENT_OVERLAY_BORDER[o.kind],
+                    pointerEvents: "none",
+                    // Sit above the generic header decorations (z=4) so the
+                    // per-segment colour wins visually, but below the region
+                    // overlay/chrome (z=5+).
+                    zIndex: 4.5 as unknown as number,
+                    display: "flex",
+                    alignItems: isRow ? "flex-start" : "flex-end",
+                    justifyContent: isRow ? "flex-end" : "flex-start",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    component="span"
+                    sx={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "3px",
+                      minWidth: 16,
+                      height: 16,
+                      // Margins keep the badge off the cell edge on the
+                      // axis-appropriate side.
+                      mt: isRow ? "2px" : 0,
+                      mr: isRow ? "2px" : 0,
+                      mb: isRow ? 0 : "2px",
+                      ml: isRow ? 0 : "2px",
+                      px: "4px",
+                      borderRadius: "3px",
+                      backgroundColor: SEGMENT_OVERLAY_BORDER[o.kind],
+                      color: "#fff",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      letterSpacing: 0.2,
+                      whiteSpace: "nowrap",
+                      textOverflow: "ellipsis",
+                      overflow: "hidden",
+                      maxWidth: "95%",
+                    }}
+                  >
+                    {badgeLabel}
+                    {o.label && (
+                      <Box
+                        component="span"
+                        sx={{
+                          fontWeight: 600,
+                          fontStyle: "italic",
+                          pl: "2px",
+                        }}
+                      >
+                        {o.label}
+                      </Box>
+                    )}
+                    {o.dynamic && (
+                      <Box
+                        component="span"
+                        sx={{ fontWeight: 700, pl: "2px" }}
+                        aria-hidden
+                      >
+                        ∞
+                      </Box>
+                    )}
+                  </Box>
+                </Box>
+              );
+            });
+            // Drag handles between adjacent segments, one per axis. They let
+            // the user rebalance positionCount within the region without
+            // resizing the region itself.
+            const dividerEls: React.ReactElement[] = [];
+            const addAxisDividers = (axis: "row" | "column") => {
+              if (!onSegmentResize) return;
+              const segs = previewRegion.segmentsByAxis?.[axis] ?? [];
+              if (segs.length < 2) return;
+              const baseOffsetAxis =
+                axis === "row"
+                  ? previewRegion.bounds.startCol
+                  : previewRegion.bounds.startRow;
+              let offset = 0;
+              for (let i = 0; i < segs.length - 1; i++) {
+                offset += segs[i].positionCount;
+                const dividerAxisIdx = baseOffsetAxis + offset;
+                const handleSize = 8;
+                let handleLeft: number;
+                let handleTop: number;
+                let handleWidth: number;
+                let handleHeight: number;
+                if (axis === "row") {
+                  handleLeft =
+                    ROW_HEADER_WIDTH + dividerAxisIdx * cellWidth - handleSize / 2;
+                  handleTop =
+                    COL_HEADER_HEIGHT +
+                    previewRegion.bounds.startRow * cellHeight;
+                  handleWidth = handleSize;
+                  handleHeight = cellHeight;
+                } else {
+                  handleLeft =
+                    ROW_HEADER_WIDTH +
+                    previewRegion.bounds.startCol * cellWidth;
+                  handleTop =
+                    COL_HEADER_HEIGHT +
+                    dividerAxisIdx * cellHeight -
+                    handleSize / 2;
+                  handleWidth = cellWidth;
+                  handleHeight = handleSize;
+                }
+                dividerEls.push(
+                  <Box
+                    key={`divider-${axis}-${i}`}
+                    data-testid={`segment-divider-${axis}-${i}`}
+                    aria-label={`Resize ${axis} segments ${i + 1} and ${i + 2}`}
+                    onPointerDown={handleSegmentDividerPointerDown({
+                      regionId: previewRegion.id,
+                      axis,
+                      segmentIndex: i,
+                      originalLeft: segs[i].positionCount,
+                      originalRight: segs[i + 1].positionCount,
+                      pairStart:
+                        baseOffsetAxis + offset - segs[i].positionCount,
+                    })}
+                    sx={{
+                      position: "absolute",
+                      left: handleLeft,
+                      top: handleTop,
+                      width: handleWidth,
+                      height: handleHeight,
+                      cursor: axis === "row" ? "ew-resize" : "ns-resize",
+                      // Must sit above the selected-region overlay (z=6) so
+                      // hover cursor and pointerdown land on the divider
+                      // instead of the overlay that covers the header band.
+                      zIndex: 8,
+                      touchAction: "none",
+                      // A subtle always-on tint hints at the drag affordance;
+                      // it intensifies on hover/focus for clearer feedback.
+                      backgroundColor: "rgba(37, 99, 235, 0.28)",
+                      "&:hover, &:focus-visible": {
+                        backgroundColor: "rgba(37, 99, 235, 0.75)",
+                      },
+                    }}
+                  />
+                );
+              }
+            };
+            addAxisDividers("row");
+            addAxisDividers("column");
+            return (
+              <>
+                {decorationEls}
+                {segmentEls}
+                {dividerEls}
+              </>
+            );
           })()}
 
           {visibleRegions.map((region) => {
@@ -963,6 +1313,13 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 sheet.colCount
               );
             }
+            // Once a region has any segment on any axis, its bounds are
+            // locked: a bounds change would silently invalidate the
+            // positionCount math the user tuned. Segment-divider drag is the
+            // intended way to rebalance positions within the locked frame.
+            const hasSegments =
+              (region.segmentsByAxis?.row?.length ?? 0) > 0 ||
+              (region.segmentsByAxis?.column?.length ?? 0) > 0;
             return (
               <RegionOverlayUI
                 key={region.id}
@@ -970,8 +1327,10 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 bounds={previewBounds}
                 entityOrder={entityOrder}
                 selected={region.id === selectedRegionId}
-                resizable={!readOnly && Boolean(onRegionResize)}
-                movable={!readOnly && Boolean(onRegionResize)}
+                resizable={
+                  !readOnly && !hasSegments && Boolean(onRegionResize)
+                }
+                movable={!readOnly && !hasSegments && Boolean(onRegionResize)}
                 cellWidth={cellWidth}
                 cellHeight={cellHeight}
                 onBodyPointerDown={handleRegionBodyPointerDown}

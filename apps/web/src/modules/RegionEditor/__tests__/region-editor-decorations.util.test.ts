@@ -2,6 +2,7 @@ import {
   activeDecorationKinds,
   anchorCellValue,
   computeRegionDecorations,
+  computeSegmentOverlays,
 } from "../utils/region-editor-decorations.util";
 import type {
   CellBounds,
@@ -693,6 +694,168 @@ describe("anchorCellValue", () => {
       bounds: { startRow: 3, endRow: 3, startCol: 0, endCol: 1 },
     });
     expect(anchorCellValue(region, s)).toBe(null);
+  });
+});
+
+describe("computeSegmentOverlays", () => {
+  test("returns no overlays for a headerless region", () => {
+    const region: RegionDraft = {
+      id: "r",
+      sheetId: "s",
+      targetEntityDefinitionId: "ent_a",
+      bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 3 },
+      headerAxes: [],
+      recordsAxis: "column",
+    };
+    expect(computeSegmentOverlays(region)).toEqual([]);
+  });
+
+  test("row-axis segments paint the top header row, one overlay per segment", () => {
+    const region: RegionDraft = {
+      id: "r",
+      sheetId: "s",
+      targetEntityDefinitionId: "ent_a",
+      bounds: { startRow: 2, endRow: 10, startCol: 1, endCol: 5 },
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [
+          { kind: "field", positionCount: 2 },
+          { kind: "skip", positionCount: 1 },
+          { kind: "field", positionCount: 2 },
+        ],
+      },
+    };
+    const overlays = computeSegmentOverlays(region);
+    expect(overlays).toHaveLength(3);
+    expect(overlays[0]).toMatchObject({
+      axis: "row",
+      segmentIndex: 0,
+      kind: "field",
+      bounds: { startRow: 2, endRow: 2, startCol: 1, endCol: 2 },
+    });
+    expect(overlays[1]).toMatchObject({
+      axis: "row",
+      segmentIndex: 1,
+      kind: "skip",
+      bounds: { startRow: 2, endRow: 2, startCol: 3, endCol: 3 },
+    });
+    expect(overlays[2]).toMatchObject({
+      axis: "row",
+      segmentIndex: 2,
+      kind: "field",
+      bounds: { startRow: 2, endRow: 2, startCol: 4, endCol: 5 },
+    });
+  });
+
+  test("pivot overlays include the axisName and a dynamic flag when the pivot grows", () => {
+    const region: RegionDraft = {
+      id: "r",
+      sheetId: "s",
+      targetEntityDefinitionId: "ent_a",
+      bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [
+          {
+            kind: "pivot",
+            id: "p1",
+            axisName: "Quarter",
+            axisNameSource: "user",
+            positionCount: 3,
+            dynamic: { terminator: { kind: "untilBlank", consecutiveBlanks: 2 } },
+          },
+        ],
+      },
+    };
+    const overlays = computeSegmentOverlays(region);
+    expect(overlays).toHaveLength(1);
+    expect(overlays[0]).toMatchObject({
+      axis: "row",
+      kind: "pivot",
+      label: "Quarter",
+      dynamic: true,
+    });
+  });
+
+  test("falls back to (unnamed) when a pivot has no axisName yet", () => {
+    const region: RegionDraft = {
+      id: "r",
+      sheetId: "s",
+      targetEntityDefinitionId: "ent_a",
+      bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 0 },
+      headerAxes: ["column"],
+      segmentsByAxis: {
+        column: [
+          {
+            kind: "pivot",
+            id: "p1",
+            axisName: "",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+      },
+    };
+    expect(computeSegmentOverlays(region)[0]).toMatchObject({
+      axis: "column",
+      kind: "pivot",
+      label: "(unnamed)",
+      dynamic: false,
+    });
+  });
+
+  test("crosstab emits overlays on both axes", () => {
+    const region: RegionDraft = {
+      id: "r",
+      sheetId: "s",
+      targetEntityDefinitionId: "ent_a",
+      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 4 },
+      headerAxes: ["row", "column"],
+      segmentsByAxis: {
+        row: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "p1",
+            axisName: "Region",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+        column: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "p2",
+            axisName: "Quarter",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+      },
+    };
+    const overlays = computeSegmentOverlays(region);
+    expect(overlays.filter((o) => o.axis === "row")).toHaveLength(2);
+    expect(overlays.filter((o) => o.axis === "column")).toHaveLength(2);
+    // Row-axis segments paint the top row; column-axis segments paint the left column.
+    const rowPivot = overlays.find(
+      (o) => o.axis === "row" && o.kind === "pivot"
+    )!;
+    expect(rowPivot.bounds).toEqual({
+      startRow: 0,
+      endRow: 0,
+      startCol: 1,
+      endCol: 4,
+    });
+    const colPivot = overlays.find(
+      (o) => o.axis === "column" && o.kind === "pivot"
+    )!;
+    expect(colPivot.bounds).toEqual({
+      startRow: 1,
+      endRow: 4,
+      startCol: 0,
+      endCol: 0,
+    });
   });
 });
 

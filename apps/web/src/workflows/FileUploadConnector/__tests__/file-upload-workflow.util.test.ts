@@ -188,6 +188,10 @@ describe("useFileUploadWorkflow — region editing", () => {
     });
     expect(draft.id).toBeTruthy();
     expect(result.current.selectedRegionId).toBe(draft.id);
+    // A freshly-drawn region is headerless so its bounds stay editable
+    // until the user opts in to a header axis from the config panel.
+    expect(draft.headerAxes ?? []).toEqual([]);
+    expect(draft.segmentsByAxis).toBeUndefined();
   });
 
   test("onRegionUpdate merges the patch on the matching region", () => {

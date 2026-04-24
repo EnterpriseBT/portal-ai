@@ -124,6 +124,173 @@ describe("SheetCanvasUI", () => {
     expect(screen.queryByText(/↖/)).not.toBeInTheDocument();
   });
 
+  test("selected region with multiple segments renders a numbered overlay per segment", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 5, startCol: 0, endCol: 3 },
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [
+          { kind: "field", positionCount: 2 },
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "p1",
+            axisName: "Quarter",
+            axisNameSource: "user",
+            positionCount: 1,
+          },
+        ],
+      },
+      targetEntityDefinitionId: "ent_a",
+    };
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[region]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+      />
+    );
+    // One overlay per row-axis segment, each with its 1-based number and
+    // kind surfaced in aria-label / title for hover/ally affordance.
+    expect(screen.getByTestId("segment-overlay-row-0")).toHaveAttribute(
+      "aria-label",
+      expect.stringMatching(/row axis segment 1 \(Field\)/i)
+    );
+    expect(screen.getByTestId("segment-overlay-row-1")).toHaveAttribute(
+      "aria-label",
+      expect.stringMatching(/row axis segment 2 \(Skip\)/i)
+    );
+    const pivotOverlay = screen.getByTestId("segment-overlay-row-2");
+    expect(pivotOverlay).toHaveAttribute(
+      "aria-label",
+      expect.stringMatching(/row axis segment 3 \(Pivot\) — Quarter/i)
+    );
+    // Pivot overlay surfaces the axis name inline.
+    expect(pivotOverlay).toHaveTextContent(/Quarter/);
+  });
+
+  test("regions with segments lock the resize handles", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 3 },
+      headerAxes: ["row"],
+      segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
+      targetEntityDefinitionId: "ent_a",
+    };
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[region]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+        onRegionResize={jest.fn()}
+      />
+    );
+    // No resize handles are rendered when a region carries segments.
+    expect(screen.queryByLabelText(/resize region/i)).not.toBeInTheDocument();
+  });
+
+  test("a headerless region (no segments) still renders resize handles", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 3 },
+      targetEntityDefinitionId: "ent_a",
+    };
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[region]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+        onRegionResize={jest.fn()}
+      />
+    );
+    expect(screen.getAllByLabelText(/resize region/i).length).toBeGreaterThan(0);
+  });
+
+  test("dragging a segment divider fires onSegmentResize with redistributed counts", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 3, startCol: 0, endCol: 3 },
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [
+          { kind: "field", positionCount: 2 },
+          { kind: "skip", positionCount: 2 },
+        ],
+      },
+      targetEntityDefinitionId: "ent_a",
+    };
+    const onSegmentResize = jest.fn();
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[region]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+        onSegmentResize={onSegmentResize}
+      />
+    );
+    const divider = screen.getByTestId("segment-divider-row-0");
+    // clientToCell converts clientX → col via (clientX - rect.left - ROW_HEADER_WIDTH) / cellWidth
+    // where rect.left is 0 in jsdom, ROW_HEADER_WIDTH=44, cellWidth=96. So col=3
+    // for any clientX in [332, 428).
+    fireEvent.pointerDown(divider, {
+      pointerId: 1,
+      clientX: 44 + 2 * 96 + 48,
+      clientY: 24 + 1 * 28 + 14,
+    });
+    fireEvent.pointerMove(divider, {
+      pointerId: 1,
+      clientX: 44 + 3 * 96 + 48,
+      clientY: 24 + 1 * 28 + 14,
+    });
+    fireEvent.pointerUp(divider, {
+      pointerId: 1,
+      clientX: 44 + 3 * 96 + 48,
+      clientY: 24 + 1 * 28 + 14,
+    });
+    expect(onSegmentResize).toHaveBeenCalledWith("r1", "row", 0, 3, 1);
+  });
+
+  test("segment overlays only render for the selected region", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 3 },
+      headerAxes: ["row"],
+      segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
+      targetEntityDefinitionId: "ent_a",
+    };
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[region]}
+        entityOrder={["ent_a"]}
+        selectedRegionId={null}
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+      />
+    );
+    expect(
+      screen.queryByTestId("segment-overlay-row-0")
+    ).not.toBeInTheDocument();
+  });
+
   test("readOnly suppresses drag-to-draw", () => {
     const onDraft = jest.fn();
     render(

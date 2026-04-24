@@ -13,7 +13,8 @@ function setup(overrides: Partial<SegmentStripUIProps> = {}) {
     jest.fn<
       (axis: AxisMember, segmentIndex: number, anchor: HTMLElement) => void
     >();
-  const onAddSegment = jest.fn<(axis: AxisMember) => void>();
+  const onAddSegment =
+    jest.fn<(axis: AxisMember, kind: Segment["kind"]) => void>();
   const onAddHeaderAxis = jest.fn<(otherAxis: AxisMember) => void>();
   const baseSegments: Segment[] = [
     { kind: "field", positionCount: 3 },
@@ -50,13 +51,17 @@ describe("SegmentStripUI", () => {
     expect(
       screen.getByRole("button", { name: /edit row segment 3 \(skip\)/i })
     ).toBeInTheDocument();
-    // Pivot chip surfaces the axis name and positionCount.
-    expect(screen.getByText(/quarter · 2/i)).toBeInTheDocument();
-    // Field chip surfaces kind + positionCount.
-    expect(screen.getByText(/field · 3/i)).toBeInTheDocument();
+    // Pivot chip surfaces the axis name; field/skip chips surface their kind
+    // label. Counts render as ×N.
+    expect(screen.getByText("Quarter")).toBeInTheDocument();
+    expect(screen.getByText("Field")).toBeInTheDocument();
+    expect(screen.getByText("Skip")).toBeInTheDocument();
+    expect(screen.getByText("×3")).toBeInTheDocument();
+    expect(screen.getByText("×2")).toBeInTheDocument();
+    expect(screen.getByText("×1")).toBeInTheDocument();
   });
 
-  it("renders a ∞ suffix on dynamic pivot chips", () => {
+  it("marks dynamic pivot chips as growing", () => {
     setup({
       segments: [
         {
@@ -69,7 +74,40 @@ describe("SegmentStripUI", () => {
         },
       ],
     });
+    // Visible cue for sighted users.
+    expect(screen.getByText(/grows/i)).toBeInTheDocument();
+    // Legacy "· ∞" suffix is kept for screen readers.
     expect(screen.getByText(/q · 2 · ∞/i)).toBeInTheDocument();
+  });
+
+  it("renders a cell-range badge when axisStart is provided", () => {
+    setup({
+      axis: "row",
+      axisStart: 1,
+      segments: [
+        { kind: "field", positionCount: 3 },
+        { kind: "skip", positionCount: 1 },
+      ],
+    });
+    // Row-axis segments starting at column 1 (B): field covers B–D, skip covers E.
+    expect(screen.getByText(/B–D/)).toBeInTheDocument();
+    expect(screen.getByText(/^E$/)).toBeInTheDocument();
+  });
+
+  it("renders row numbers for column-axis cell-range", () => {
+    setup({
+      axis: "column",
+      axisStart: 2,
+      segments: [{ kind: "field", positionCount: 2 }],
+    });
+    // Column-axis segments starting at row 2 (1-indexed row 3): covers rows 3–4.
+    expect(screen.getByText(/3–4/)).toBeInTheDocument();
+  });
+
+  it("omits the cell-range badge when axisStart is not provided", () => {
+    setup({ axis: "row" });
+    // No stray A–Z range text should appear in any chip.
+    expect(screen.queryByText(/^[A-Z]–[A-Z]$/)).not.toBeInTheDocument();
   });
 
   it("clicking a chip calls onEditSegment(axis, index, anchor)", () => {
@@ -84,12 +122,77 @@ describe("SegmentStripUI", () => {
     expect(anchor).toBeInstanceOf(HTMLElement);
   });
 
-  it("clicking Add segment calls onAddSegment(axis)", () => {
+  it("renders a per-kind add button that forwards onAddSegment(axis, kind)", () => {
     const { onAddSegment } = setup({ axis: "column" });
     fireEvent.click(
-      screen.getByRole("button", { name: /add column segment/i })
+      screen.getByRole("button", { name: /add column field segment/i })
     );
-    expect(onAddSegment).toHaveBeenCalledWith("column");
+    expect(onAddSegment).toHaveBeenLastCalledWith("column", "field");
+    fireEvent.click(
+      screen.getByRole("button", { name: /add column pivot segment/i })
+    );
+    expect(onAddSegment).toHaveBeenLastCalledWith("column", "pivot");
+    fireEvent.click(
+      screen.getByRole("button", { name: /add column skip segment/i })
+    );
+    expect(onAddSegment).toHaveBeenLastCalledWith("column", "skip");
+  });
+
+  it("disables add buttons when every segment already occupies a single position", () => {
+    const { onAddSegment } = setup({
+      segments: [
+        { kind: "field", positionCount: 1 },
+        { kind: "skip", positionCount: 1 },
+      ],
+    });
+    const fieldBtn = screen.getByRole("button", {
+      name: /add row field segment/i,
+    });
+    expect(fieldBtn).toBeDisabled();
+    fireEvent.click(fieldBtn);
+    expect(onAddSegment).not.toHaveBeenCalled();
+  });
+
+  it("keeps add buttons enabled when at least one segment has spare positions", () => {
+    setup({
+      segments: [
+        { kind: "field", positionCount: 1 },
+        { kind: "skip", positionCount: 2 },
+      ],
+    });
+    expect(
+      screen.getByRole("button", { name: /add row field segment/i })
+    ).toBeEnabled();
+  });
+
+  it("renders a delete X on each chip that fires onRemoveSegment without opening the popover", () => {
+    const onRemoveSegment =
+      jest.fn<(axis: AxisMember, index: number) => void>();
+    const { onEditSegment } = setup({ onRemoveSegment });
+    const deleteBtn = screen.getByLabelText(/delete row segment 2/i);
+    fireEvent.click(deleteBtn);
+    expect(onRemoveSegment).toHaveBeenCalledWith("row", 1);
+    // The chip's own click handler should not have run.
+    expect(onEditSegment).not.toHaveBeenCalled();
+  });
+
+  it("renders the delete X even when the axis has only one segment", () => {
+    const onRemoveSegment =
+      jest.fn<(axis: AxisMember, index: number) => void>();
+    setup({
+      segments: [{ kind: "field", positionCount: 3 }],
+      onRemoveSegment,
+    });
+    const deleteBtn = screen.getByLabelText(/delete row segment 1/i);
+    fireEvent.click(deleteBtn);
+    expect(onRemoveSegment).toHaveBeenCalledWith("row", 0);
+  });
+
+  it("omits the delete X when onRemoveSegment is not provided", () => {
+    setup({ onRemoveSegment: undefined });
+    expect(
+      screen.queryByLabelText(/delete row segment/i)
+    ).not.toBeInTheDocument();
   });
 
   it("renders the Add header axis button and emits onAddHeaderAxis(otherAxis) when provided", () => {

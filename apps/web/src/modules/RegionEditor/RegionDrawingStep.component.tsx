@@ -382,7 +382,18 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
       >
         <Tabs
           value={activeSheet.id}
-          onChange={(_e, v) => onActiveSheetChange(v as string)}
+          onChange={(_e, v) => {
+            const nextSheetId = v as string;
+            onActiveSheetChange(nextSheetId);
+            // Auto-focus a region on the newly-active sheet so the config
+            // panel always reflects the tab the user is looking at. If the
+            // sheet has no regions, clear the selection to avoid showing a
+            // config panel for an off-tab region.
+            const firstRegionForSheet = regions.find(
+              (r) => r.sheetId === nextSheetId
+            );
+            onSelectRegion(firstRegionForSheet?.id ?? null);
+          }}
           variant="scrollable"
           scrollButtons="auto"
           allowScrollButtonsMobile
@@ -455,6 +466,33 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
               onRegionDraft({ sheetId: activeSheet.id, bounds })
             }
             onRegionResize={onRegionResize}
+            onSegmentResize={(
+              regionId,
+              axis,
+              segmentIndex,
+              newLeft,
+              newRight
+            ) => {
+              const region = regions.find((r) => r.id === regionId);
+              if (!region) return;
+              const axisSegs = [
+                ...(region.segmentsByAxis?.[axis] ?? []),
+              ];
+              const left = axisSegs[segmentIndex];
+              const right = axisSegs[segmentIndex + 1];
+              if (!left || !right) return;
+              axisSegs[segmentIndex] = { ...left, positionCount: newLeft };
+              axisSegs[segmentIndex + 1] = {
+                ...right,
+                positionCount: newRight,
+              };
+              onRegionUpdate(regionId, {
+                segmentsByAxis: {
+                  ...(region.segmentsByAxis ?? {}),
+                  [axis]: axisSegs,
+                },
+              });
+            }}
             maxHeight={isLargeScreen ? "calc(100vh - 400px)" : 420}
             loadSlice={loadSlice}
           />
@@ -475,6 +513,11 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
             siblingsInSameEntity={siblingsInSameEntity}
             claimedEntityKeys={claimedEntityKeys}
             errors={panelErrors}
+            regionSheet={
+              selectedRegion
+                ? workbook.sheets.find((s) => s.id === selectedRegion.sheetId)
+                : undefined
+            }
             onUpdate={(updates) =>
               selectedRegion && onRegionUpdate(selectedRegion.id, updates)
             }

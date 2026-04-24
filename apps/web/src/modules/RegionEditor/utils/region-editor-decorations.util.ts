@@ -365,3 +365,99 @@ export function activeDecorationKinds(
   for (const d of decorations) set.add(d.kind);
   return Array.from(set);
 }
+
+// ── Segment overlays ──────────────────────────────────────────────────────
+
+export type SegmentOverlayKind = "field" | "pivot" | "skip";
+
+export interface SegmentOverlay {
+  axis: "row" | "column";
+  /** 0-based index of this segment inside its axis's segments[] array. */
+  segmentIndex: number;
+  kind: SegmentOverlayKind;
+  bounds: CellBounds;
+  /** Optional descriptive label — for pivots this is the pivot's axisName. */
+  label?: string;
+  /** True when this is a dynamic-tail pivot that grows until a terminator. */
+  dynamic?: boolean;
+}
+
+/** Strong segment-band fills keyed by kind. Opacity is bumped over the
+ *  subdued header/axis-label decorations so segments remain readable when
+ *  they layer on top of them. */
+export const SEGMENT_OVERLAY_COLOR: Record<SegmentOverlayKind, string> = {
+  field: "rgba(37, 99, 235, 0.32)",
+  pivot: "rgba(147, 51, 234, 0.32)",
+  skip: "rgba(100, 116, 139, 0.22)",
+};
+
+/** Secondary styling for the skip overlay — the same diagonal stripes used
+ *  for the canonical "skipped" decoration so the two read as related. */
+export const SEGMENT_OVERLAY_BACKGROUND_IMAGE: Partial<
+  Record<SegmentOverlayKind, string>
+> = {
+  skip: "repeating-linear-gradient(45deg, rgba(100,116,139,0.38) 0 5px, transparent 5px 10px)",
+};
+
+/** Overlay border colour for each kind — matches the chip tone so grid and
+ *  chip read as the same element. */
+export const SEGMENT_OVERLAY_BORDER: Record<SegmentOverlayKind, string> = {
+  field: "rgba(37, 99, 235, 0.75)",
+  pivot: "rgba(147, 51, 234, 0.75)",
+  skip: "rgba(100, 116, 139, 0.55)",
+};
+
+/**
+ * Emit one overlay per segment on each header axis of the region. Row-axis
+ * segments paint the first row of the region (the row-header band); column-axis
+ * segments paint the first column. Segments only render on declared header
+ * axes — a 1D region along a single axis returns overlays for that axis only;
+ * a crosstab returns overlays for both; a headerless region returns none.
+ */
+export function computeSegmentOverlays(region: RegionDraft): SegmentOverlay[] {
+  const overlays: SegmentOverlay[] = [];
+  const axes = region.headerAxes ?? [];
+  if (axes.length === 0) return overlays;
+
+  const { bounds, segmentsByAxis } = region;
+
+  for (const axis of axes) {
+    const segments = segmentsByAxis?.[axis] ?? [];
+    if (segments.length === 0) continue;
+    let offset = 0;
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const count = seg.positionCount;
+      let segBounds: CellBounds;
+      if (axis === "row") {
+        segBounds = {
+          startRow: bounds.startRow,
+          endRow: bounds.startRow,
+          startCol: bounds.startCol + offset,
+          endCol: bounds.startCol + offset + count - 1,
+        };
+      } else {
+        segBounds = {
+          startRow: bounds.startRow + offset,
+          endRow: bounds.startRow + offset + count - 1,
+          startCol: bounds.startCol,
+          endCol: bounds.startCol,
+        };
+      }
+      const isPivot = seg.kind === "pivot";
+      const label = isPivot
+        ? seg.axisName.trim() || "(unnamed)"
+        : undefined;
+      overlays.push({
+        axis,
+        segmentIndex: i,
+        kind: seg.kind,
+        bounds: segBounds,
+        label,
+        dynamic: isPivot && !!seg.dynamic,
+      });
+      offset += count;
+    }
+  }
+  return overlays;
+}

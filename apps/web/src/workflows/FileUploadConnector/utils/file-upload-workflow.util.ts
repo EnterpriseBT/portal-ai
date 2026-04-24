@@ -306,15 +306,15 @@ export function useFileUploadWorkflow(
 
   const onRegionDraft = useCallback(
     (draft: { sheetId: string; bounds: CellBounds }) => {
-      const span = Math.max(1, draft.bounds.endCol - draft.bounds.startCol + 1);
+      // Regions are drafted headerless: bounds are user-owned and no segment
+      // is seeded. The user opts in to a header axis explicitly from the
+      // config panel — that moment also locks the region's bounds, so the
+      // auto-default here could otherwise lock the region before the user
+      // has finished framing it.
       const newRegion: RegionDraft = {
         id: mintRegionId(draft.sheetId),
         sheetId: draft.sheetId,
         bounds: draft.bounds,
-        headerAxes: ["row"],
-        segmentsByAxis: {
-          row: [{ kind: "field", positionCount: span }],
-        },
         targetEntityDefinitionId: null,
       };
       setState((prev) => ({

@@ -44,3 +44,44 @@ global.ResizeObserver = class ResizeObserver {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
+
+// jsdom does not implement PointerEvent — testing-library's fireEvent
+// silently falls back to a plain Event and drops clientX/Y/pointerId. Code
+// that reads those off a synthetic onPointerDown/Move/Up event would then
+// see `undefined` and produce NaN coordinates. Polyfilling with a subclass
+// of MouseEvent preserves clientX/Y and lets pointer tests exercise the
+// actual interaction paths.
+if (typeof window !== "undefined" && !("PointerEvent" in window)) {
+  class PolyfillPointerEvent extends MouseEvent {
+    pointerId: number;
+    pointerType: string;
+    isPrimary: boolean;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 1;
+      this.pointerType = init.pointerType ?? "mouse";
+      this.isPrimary = init.isPrimary ?? true;
+    }
+  }
+  (window as unknown as { PointerEvent: typeof PolyfillPointerEvent }).PointerEvent =
+    PolyfillPointerEvent;
+  (global as unknown as { PointerEvent: typeof PolyfillPointerEvent }).PointerEvent =
+    PolyfillPointerEvent;
+}
+
+// setPointerCapture / releasePointerCapture aren't implemented on jsdom
+// Elements either; stubs keep the drag handlers from throwing.
+if (typeof Element !== "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {};
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+}

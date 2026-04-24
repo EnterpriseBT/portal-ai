@@ -47,6 +47,69 @@ function baseProps(
   } as React.ComponentProps<typeof RegionDrawingStepUI>;
 }
 
+describe("RegionDrawingStepUI — sheet tab selection", () => {
+  const SHEET_2 = {
+    id: "s2",
+    name: "Sheet 2",
+    rowCount: 4,
+    colCount: 3,
+    cells: Array.from({ length: 4 }, () =>
+      Array.from({ length: 3 }, () => "")
+    ),
+  };
+  const TWO_SHEET_WORKBOOK: Workbook = { sheets: [SHEET, SHEET_2] };
+
+  test("switching to a sheet with regions auto-selects that sheet's first region", () => {
+    const onActiveSheetChange = jest.fn();
+    const onSelectRegion = jest.fn();
+    const s1Region = baseRegion({ id: "r1", sheetId: "s1" });
+    const s2First = baseRegion({ id: "r2a", sheetId: "s2" });
+    const s2Second = baseRegion({ id: "r2b", sheetId: "s2" });
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          workbook: TWO_SHEET_WORKBOOK,
+          regions: [s1Region, s2First, s2Second],
+          activeSheetId: "s1",
+          selectedRegionId: "r1",
+          onActiveSheetChange,
+          onSelectRegion,
+        })}
+      />
+    );
+    const sheet2Tab = screen
+      .getAllByRole("tab")
+      .find((t) => t.textContent?.includes("Sheet 2"));
+    fireEvent.click(sheet2Tab!);
+    expect(onActiveSheetChange).toHaveBeenCalledWith("s2");
+    expect(onSelectRegion).toHaveBeenCalledWith("r2a");
+  });
+
+  test("switching to a sheet with no regions clears the selection", () => {
+    const onActiveSheetChange = jest.fn();
+    const onSelectRegion = jest.fn();
+    const s1Region = baseRegion({ id: "r1", sheetId: "s1" });
+    render(
+      <RegionDrawingStepUI
+        {...baseProps({
+          workbook: TWO_SHEET_WORKBOOK,
+          regions: [s1Region],
+          activeSheetId: "s1",
+          selectedRegionId: "r1",
+          onActiveSheetChange,
+          onSelectRegion,
+        })}
+      />
+    );
+    const sheet2Tab = screen
+      .getAllByRole("tab")
+      .find((t) => t.textContent?.includes("Sheet 2"));
+    fireEvent.click(sheet2Tab!);
+    expect(onActiveSheetChange).toHaveBeenCalledWith("s2");
+    expect(onSelectRegion).toHaveBeenCalledWith(null);
+  });
+});
+
 describe("RegionDrawingStepUI — C1 claimed entity keys", () => {
   test("disables entity-picker options claimed by a sibling region", () => {
     // Two regions: r1 (currently editing, unbound) and r2 (binds ent_a).

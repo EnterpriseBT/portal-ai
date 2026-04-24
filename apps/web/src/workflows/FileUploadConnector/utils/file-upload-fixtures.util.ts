@@ -85,42 +85,54 @@ const SECOND_REGION = SAMPLE_REGIONS[1];
 const GREEN_BINDINGS: ColumnBindingDraft[] = [
   {
     sourceLocator: "region_revenue_rows_as_obs!col:0",
-    columnDefinitionId: "cd_region",
-    columnDefinitionLabel: "Region",
+    columnDefinitionId: "cd_employee_id",
+    columnDefinitionLabel: "Employee ID",
     confidence: 0.94,
   },
   {
     sourceLocator: "region_revenue_rows_as_obs!col:1",
-    columnDefinitionId: "cd_quarter",
-    columnDefinitionLabel: "Quarter",
+    columnDefinitionId: "cd_name",
+    columnDefinitionLabel: "Name",
     confidence: 0.91,
   },
   {
     sourceLocator: "region_revenue_rows_as_obs!col:2",
-    columnDefinitionId: "cd_revenue",
-    columnDefinitionLabel: "Revenue",
+    columnDefinitionId: "cd_department",
+    columnDefinitionLabel: "Department",
     confidence: 0.88,
+  },
+  {
+    sourceLocator: "region_revenue_rows_as_obs!col:3",
+    columnDefinitionId: "cd_salary",
+    columnDefinitionLabel: "Salary",
+    confidence: 0.89,
+  },
+  {
+    sourceLocator: "region_revenue_rows_as_obs!col:4",
+    columnDefinitionId: "cd_hire_date",
+    columnDefinitionLabel: "Hire date",
+    confidence: 0.86,
   },
 ];
 
 const MIXED_BINDINGS: ColumnBindingDraft[] = [
   {
-    sourceLocator: "region_revenue_cols_as_obs!row:3",
-    columnDefinitionId: "cd_region",
-    columnDefinitionLabel: "Region",
+    sourceLocator: "region_revenue_cols_as_obs!row:2",
+    columnDefinitionId: "cd_employee_id",
+    columnDefinitionLabel: "Employee ID",
     confidence: 0.89,
   },
   {
-    sourceLocator: "region_revenue_cols_as_obs!row:4",
-    columnDefinitionId: "cd_quarter",
-    columnDefinitionLabel: "Quarter",
+    sourceLocator: "region_revenue_cols_as_obs!row:3",
+    columnDefinitionId: "cd_name",
+    columnDefinitionLabel: "Name",
     confidence: 0.72,
-    rationale: "Header cell 'Quarter' has low similarity to canonical tokens.",
+    rationale: "Header cell 'name' has low similarity to canonical tokens.",
   },
   {
-    sourceLocator: "region_revenue_cols_as_obs!row:5",
-    columnDefinitionId: "cd_revenue",
-    columnDefinitionLabel: "Revenue",
+    sourceLocator: "region_revenue_cols_as_obs!row:4",
+    columnDefinitionId: "cd_department",
+    columnDefinitionLabel: "Department",
     confidence: 0.87,
   },
 ];

@@ -179,3 +179,30 @@ describe("SegmentEditPopoverUI — convert buttons", () => {
     expect(skipBtn).toBeDisabled();
   });
 });
+
+describe("SegmentEditPopoverUI — delete button", () => {
+  it("does not render the delete button when onRemove is not provided", () => {
+    setup();
+    expect(
+      screen.queryByRole("button", { name: /delete segment/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders and fires onRemove when onRemove is provided", () => {
+    const onRemove = jest.fn();
+    setup({ onRemove });
+    const btn = screen.getByRole("button", { name: /delete segment/i });
+    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the delete button when canRemove is false", () => {
+    const onRemove = jest.fn();
+    setup({ onRemove, canRemove: false });
+    const btn = screen.getByRole("button", { name: /delete segment/i });
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+});

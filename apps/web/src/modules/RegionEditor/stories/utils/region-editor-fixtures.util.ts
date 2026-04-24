@@ -6,20 +6,25 @@ import type {
   Workbook,
 } from "../../utils/region-editor.types";
 
+/**
+ * Storybook workbook. The six shape-showcase sheets mirror the layouts in
+ * `/public/samples/supported_layouts.xlsx` so stories and the live sample
+ * file tell the same story. The "Headerless" and "GL fact (large)" sheets
+ * are synthetic — they exist to exercise headerless extraction and
+ * edge-scroll drawing across a large sheet, and are deliberately left as-is.
+ */
+
 export const ENTITY_OPTIONS: EntityOption[] = [
+  { value: "ent_employee", label: "Employee", source: "db" },
+  { value: "ent_employee_col", label: "Employee (transposed)", source: "db" },
+  { value: "ent_monthly_sales", label: "Monthly sales", source: "db" },
+  { value: "ent_ticket", label: "Ticket", source: "db" },
+  { value: "ent_account_revenue", label: "Account revenue", source: "db" },
+  { value: "ent_company_revenue", label: "Company revenue", source: "db" },
+  { value: "ent_product_quarter_revenue", label: "Product × Quarter revenue", source: "db" },
   { value: "ent_contact", label: "Contact", source: "db" },
   { value: "ent_deal", label: "Deal", source: "db" },
-  { value: "ent_revenue", label: "Revenue", source: "db" },
-  { value: "ent_revenue_transposed", label: "Revenue (transposed)", source: "db" },
-  { value: "ent_revenue_crosstab", label: "Revenue (crosstab)", source: "db" },
-  { value: "ent_account", label: "Account", source: "db" },
-  { value: "ent_headcount", label: "Headcount", source: "db" },
-  { value: "ent_product", label: "Product", source: "db" },
   { value: "ent_invoice", label: "Invoice", source: "db" },
-  { value: "ent_sales_rep", label: "Sales rep", source: "db" },
-  { value: "ent_department", label: "Department", source: "db" },
-  { value: "ent_department_transposed", label: "Department (transposed)", source: "db" },
-  { value: "ent_department_messy", label: "Department (messy quarters)", source: "db" },
   { value: "ent_note", label: "Note", source: "db" },
 ];
 
@@ -36,300 +41,271 @@ function write(cells: Cell[][], r: number, c: number, values: Cell[]): void {
 }
 
 // ----------------------------------------------------------------------------
-// Unified demo dataset — the same quarterly revenue numbers are reshaped across
-// sheets 1–4 so a demo can compare how each orientation/headerAxis combination
-// interprets the same underlying observations.
+// Sheet 1 — Single axis · Row orientation · Static headers (employees flat).
+//   Mirrors "Single Axis Static - Table 1" in supported_layouts.xlsx.
 // ----------------------------------------------------------------------------
 
-const UNIFIED_REGION_NAMES = ["North America", "EMEA", "APAC", "LATAM"];
-const UNIFIED_QUARTERS = ["Q1 2025", "Q2 2025", "Q3 2025", "Q4 2025"];
-const UNIFIED_REVENUE: number[][] = [
-  [120000, 135000, 148000, 152000], // North America
-  [82000, 89000, 91000, 95000], // EMEA
-  [45000, 52000, 61000, 68000], // APAC
-  [22000, 28000, 31000, 35000], // LATAM
-];
+function buildSingleAxisStaticRowSheet(): SheetPreview {
+  const cells = blank(10, 5);
 
-// ----------------------------------------------------------------------------
-// Sheet 1: "Row tables" — rows-as-records + headerAxis: row
-//   Flat fact table: one row per (region, quarter) observation, headers on top.
-// ----------------------------------------------------------------------------
-
-function buildRowTablesSheet(): SheetPreview {
-  const cells = blank(22, 5);
-
-  cells[0][0] =
-    "Same data as Column tables, Mixed axes, Crosstab — rows-as-records, header row";
-  cells[2][0] = "Quarterly revenue (flat fact, one row per observation)";
-  write(cells, 3, 0, ["Region", "Quarter", "Revenue"]);
-
-  let r = 4;
-  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
-    for (let q = 0; q < UNIFIED_QUARTERS.length; q++) {
-      write(cells, r, 0, [
-        UNIFIED_REGION_NAMES[i],
-        UNIFIED_QUARTERS[q],
-        UNIFIED_REVENUE[i][q],
-      ]);
-      r++;
-    }
-  }
+  cells[0][0] = "Single axis · Row orientation · Static headers";
+  cells[1][0] =
+    "Each row = one record. Headers are fixed field names across columns.";
+  write(cells, 2, 0, [
+    "employee_id",
+    "name",
+    "department",
+    "salary",
+    "hire_date",
+  ]);
+  write(cells, 3, 0, [101, "Alice Nguyen", "Engineering", 95000, "2021-03-15"]);
+  write(cells, 4, 0, [102, "Bob Okafor", "Marketing", 72000, "2020-07-01"]);
+  write(cells, 5, 0, [103, "Carol Singh", "Engineering", 105000, "2019-11-22"]);
+  write(cells, 6, 0, [104, "David Liu", "HR", 68000, "2022-01-10"]);
+  write(cells, 7, 0, [105, "Eva Martínez", "Marketing", 76000, "2023-05-18"]);
 
   return {
     id: "sheet_row_tables",
-    name: "Row tables",
-    rowCount: 22,
+    name: "Single axis · Row · Static",
+    rowCount: 10,
     colCount: 5,
     cells,
   };
 }
 
 // ----------------------------------------------------------------------------
-// Sheet 2: "Column tables" — columns-as-records + headerAxis: column
-//   Same observations, transposed: one column per observation, field labels in
-//   column A.
+// Sheet 2 — Single axis · Column orientation · Static headers (employees
+// transposed). Mirrors "Single Axis Static - Table 1-1".
 // ----------------------------------------------------------------------------
 
-function buildColumnTablesSheet(): SheetPreview {
-  const cells = blank(10, 18);
+function buildSingleAxisStaticColSheet(): SheetPreview {
+  const cells = blank(8, 6);
 
-  cells[0][0] =
-    "Same data as Row tables — columns-as-records, header column (transposed flat fact)";
-  cells[2][0] = "Quarterly revenue (one column per observation)";
-  cells[3][0] = "Region";
-  cells[4][0] = "Quarter";
-  cells[5][0] = "Revenue";
-
-  let c = 1;
-  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
-    for (let q = 0; q < UNIFIED_QUARTERS.length; q++) {
-      cells[3][c] = UNIFIED_REGION_NAMES[i];
-      cells[4][c] = UNIFIED_QUARTERS[q];
-      cells[5][c] = UNIFIED_REVENUE[i][q];
-      c++;
-    }
-  }
+  cells[0][0] = "Single axis · Column orientation · Static headers";
+  cells[1][0] =
+    "Each column = one record. Headers are fixed field names down column A.";
+  write(cells, 2, 0, ["employee_id", 101, 102, 103, 104, 105]);
+  write(cells, 3, 0, [
+    "name",
+    "Alice Nguyen",
+    "Bob Okafor",
+    "Carol Singh",
+    "David Liu",
+    "Eva Martínez",
+  ]);
+  write(cells, 4, 0, [
+    "department",
+    "Engineering",
+    "Marketing",
+    "Engineering",
+    "HR",
+    "Marketing",
+  ]);
+  write(cells, 5, 0, ["salary", 95000, 72000, 105000, 68000, 76000]);
+  write(cells, 6, 0, [
+    "hire_date",
+    "2021-03-15",
+    "2020-07-01",
+    "2019-11-22",
+    "2022-01-10",
+    "2023-05-18",
+  ]);
 
   return {
     id: "sheet_column_tables",
-    name: "Column tables",
-    rowCount: 10,
-    colCount: 18,
-    cells,
-  };
-}
-
-// ----------------------------------------------------------------------------
-// Sheet 3: "Mixed axes" — the two less-common orientation/headerAxis combos.
-//   Same four regions as elsewhere, but the fields are heterogeneous region
-//   attributes (Manager / Headcount / HQ / Currency). Heterogeneous fields
-//   make the pivoted shape visually distinct from a crosstab, because the
-//   rows/columns label *named attributes* rather than values of an axis.
-// ----------------------------------------------------------------------------
-
-const UNIFIED_REGION_FIELDS = ["Manager", "Headcount", "HQ", "Currency"];
-const UNIFIED_REGION_ATTRS: Cell[][] = [
-  ["Priya", 120, "New York", "USD"], // North America
-  ["Hans", 82, "London", "EUR"], // EMEA
-  ["Yuki", 45, "Singapore", "SGD"], // APAC
-  ["Diego", 22, "São Paulo", "BRL"], // LATAM
-];
-
-function buildMixedAxesSheet(): SheetPreview {
-  const cells = blank(20, 7);
-
-  cells[0][0] =
-    "Same regions, heterogeneous attributes — two pivot permutations";
-
-  // Variant A: rows-as-records + headerAxis: column
-  //   Col A identifies each record (region); row 3 labels the attribute columns.
-  //   The header cell above col A is left blank — the identity axis has no
-  //   built-in name, the user supplies one via recordsAxisName.
-  cells[2][0] =
-    "rows-as-records + headerAxis: column — col A = region identity (unlabeled); row 3 = attribute labels";
-  for (let f = 0; f < UNIFIED_REGION_FIELDS.length; f++) {
-    cells[3][1 + f] = UNIFIED_REGION_FIELDS[f];
-  }
-  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
-    cells[4 + i][0] = UNIFIED_REGION_NAMES[i];
-    for (let f = 0; f < UNIFIED_REGION_FIELDS.length; f++) {
-      cells[4 + i][1 + f] = UNIFIED_REGION_ATTRS[i][f];
-    }
-  }
-
-  // Variant B: columns-as-records + headerAxis: row
-  //   Row 12 identifies each record (region); col A labels the attribute rows.
-  //   The leftmost cell of row 12 is left blank — the identity axis has no
-  //   built-in name, the user supplies one via recordsAxisName.
-  cells[10][0] =
-    "columns-as-records + headerAxis: row — row 12 = region identity (unlabeled); col A = attribute labels";
-  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
-    cells[12][1 + i] = UNIFIED_REGION_NAMES[i];
-  }
-  for (let f = 0; f < UNIFIED_REGION_FIELDS.length; f++) {
-    cells[13 + f][0] = UNIFIED_REGION_FIELDS[f];
-    for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
-      cells[13 + f][1 + i] = UNIFIED_REGION_ATTRS[i][f];
-    }
-  }
-
-  return {
-    id: "sheet_mixed_axes",
-    name: "Mixed axes",
-    rowCount: 20,
-    colCount: 7,
-    cells,
-  };
-}
-
-// ----------------------------------------------------------------------------
-// Sheet 4: "Crosstab" — cells-as-records.
-//   Same observations laid out as a 2D pivot: regions down, quarters across.
-// ----------------------------------------------------------------------------
-
-function buildCrosstabSheet(): SheetPreview {
-  const cells = blank(10, 7);
-
-  cells[0][0] = "Same data — cells-as-records (2D crosstab)";
-  cells[2][0] = "Revenue by region × quarter (fixed 4×4)";
-
-  for (let q = 0; q < UNIFIED_QUARTERS.length; q++) {
-    cells[3][1 + q] = UNIFIED_QUARTERS[q];
-  }
-  for (let i = 0; i < UNIFIED_REGION_NAMES.length; i++) {
-    cells[4 + i][0] = UNIFIED_REGION_NAMES[i];
-    for (let q = 0; q < UNIFIED_QUARTERS.length; q++) {
-      cells[4 + i][1 + q] = UNIFIED_REVENUE[i][q];
-    }
-  }
-
-  return {
-    id: "sheet_crosstab",
-    name: "Crosstab",
-    rowCount: 10,
-    colCount: 7,
-    cells,
-  };
-}
-
-// ----------------------------------------------------------------------------
-// Sheet 5a: "Messy pipeline" — row-oriented data that needs skip rules to extract cleanly
-// ----------------------------------------------------------------------------
-
-function buildMessyPipelineSheet(): SheetPreview {
-  const cells = blank(30, 6);
-
-  cells[0][0] = "Global pipeline report — messy export with section separators";
-  cells[1][0] = "Generated 2026-04-17";
-  // Row 2 intentionally blank (gap between title and header).
-
-  write(cells, 3, 0, ["Account", "Owner", "Stage", "Amount", "Close"]);
-  // Row 4 intentionally blank (aesthetic gap between header and data).
-
-  write(cells, 5, 0, ["— NA Region —"]);
-  write(cells, 6, 0, ["Acme", "Priya", "Closed Won", 48000, "2026-03-01"]);
-  write(cells, 7, 0, [
-    "Beta Industries",
-    "Marco",
-    "Negotiation",
-    17000,
-    "2026-04-22",
-  ]);
-  write(cells, 8, 0, ["Chai & Co", "Priya", "Proposal", 22500, "2026-05-10"]);
-  // Blank row to test single-blank skip (terminator=2 so this doesn't end things).
-  // Row 9 intentionally blank.
-  write(cells, 10, 0, ["Delta Labs", "Sara", "Discovery", 8000, "2026-06-01"]);
-  write(cells, 11, 0, ["Subtotal", "", "", 95500, ""]); // cellMatches rule: ^Subtotal$
-  // Row 12 intentionally blank (aesthetic separator between regions).
-
-  write(cells, 13, 0, ["— EMEA Region —"]);
-  write(cells, 14, 0, [
-    "Epsilon GmbH",
-    "Hans",
-    "Closed Won",
-    32000,
-    "2026-03-14",
-  ]);
-  write(cells, 15, 0, [
-    "Foxtrot SARL",
-    "Claire",
-    "Proposal",
-    12000,
-    "2026-05-03",
-  ]);
-  write(cells, 16, 0, [
-    "Gamma PLC",
-    "Hans",
-    "Negotiation",
-    41000,
-    "2026-04-28",
-  ]);
-  write(cells, 17, 0, ["Subtotal", "", "", 85000, ""]);
-  // Row 18 blank.
-
-  write(cells, 19, 0, ["— APAC Region —"]);
-  write(cells, 20, 0, ["Hotel KK", "Yuki", "Closed Lost", 0, "2026-02-14"]);
-  write(cells, 21, 0, ["Indigo Pte", "Yuki", "Proposal", 19000, "2026-05-18"]);
-  write(cells, 22, 0, ["Subtotal", "", "", 19000, ""]);
-  // Rows 23, 24 both blank — terminator=2 fires here.
-  write(cells, 25, 0, ["Report footer — should not be extracted"]);
-  cells[26][0] = "Contact sales-ops for corrections";
-
-  return {
-    id: "sheet_messy_pipeline",
-    name: "Messy pipeline",
-    rowCount: 30,
+    name: "Single axis · Column · Static",
+    rowCount: 8,
     colCount: 6,
     cells,
   };
 }
 
 // ----------------------------------------------------------------------------
-// Sheet 5b: "Messy quarters" — column-oriented data where skip rules skip columns
+// Sheet 3 — Single axis · Row orientation · Dynamic headers (monthly sales).
+//   Mirrors "Single Axis Dynamic - Table 1". The header row carries value
+//   labels (month names) rather than field names — the user names the axis
+//   and the measure in the config panel.
 // ----------------------------------------------------------------------------
 
-function buildMessyQuartersSheet(): SheetPreview {
-  const cells = blank(12, 14);
+function buildSingleAxisDynamicSheet(): SheetPreview {
+  const cells = blank(8, 6);
 
-  cells[0][0] =
-    "Quarterly snapshot — messy export where non-data columns interleave";
+  cells[0][0] = "Single axis · Row orientation · Dynamic headers";
   cells[1][0] =
-    "Rows are fields. Columns with '— Subtotal —' in row 3 are aggregates to skip.";
-
-  // Row 3 is the label row the skip rule will target (axis: "row", crossAxisIndex: 3).
-  write(cells, 3, 0, [
-    "Dept",
-    "Q1 2025",
-    "Q2 2025",
-    "— Subtotal —",
-    "Q3 2025",
-    "Q4 2025",
-    "— Subtotal —",
-    "Q1 2026",
-    "Q2 2026",
-    "— Year-end —",
-    "Q3 2026",
+    "Headers are value labels (month names); user names the axis (month) and the measure (sales).";
+  write(cells, 2, 0, [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
   ]);
-  write(cells, 4, 0, ["Eng HC", 38, 40, 78, 41, 42, 83, 42, 43, 161, 43]);
-  write(cells, 5, 0, ["Sales HC", 24, 26, 50, 27, 28, 55, 28, 29, 105, 29]);
-  write(cells, 6, 0, ["Mkt HC", 12, 13, 25, 14, 14, 28, 14, 14, 53, 14]);
-  write(cells, 7, 0, ["Support HC", 8, 9, 17, 9, 9, 18, 9, 10, 35, 10]);
-  // Column 11 and 12 are empty — terminator=2 fires for the columns region.
-  // Column 13 has content — never reached.
-  cells[4][13] = 999;
-  cells[5][13] = 999;
+  write(cells, 3, 0, [42300, 39800, 51200, 55400, 60100, 58700]);
+  write(cells, 4, 0, [53210, 32105, 27463, 19283, 85342, 14387]);
+  write(cells, 5, 0, [94325, 75324, 64234, 41532, 63642, 32455]);
 
   return {
-    id: "sheet_messy_quarters",
-    name: "Messy quarters",
-    rowCount: 12,
-    colCount: 14,
+    id: "sheet_mixed_axes",
+    name: "Single axis · Dynamic",
+    rowCount: 8,
+    colCount: 6,
     cells,
   };
 }
 
 // ----------------------------------------------------------------------------
-// Sheet 6: "Headerless" — raw data with no header row, plus a gap-before-data case
+// Sheet 4 — Crosstab · both axes dynamic (team × severity tickets).
+//   Mirrors "Crosstab - Table 1" (dynamic × dynamic, blank corner).
+// ----------------------------------------------------------------------------
+
+function buildCrosstabSheet(): SheetPreview {
+  const cells = blank(10, 5);
+
+  cells[0][0] = "Crosstab · both axes · Dynamic × Dynamic headers";
+  cells[1][0] =
+    "Both axes carry value labels. Neither axis has a declared field name. Corner cell is blank.";
+  write(cells, 2, 0, ["", "Critical", "High", "Medium", "Low"]);
+  write(cells, 3, 0, ["Platform", 3, 8, 14, 22]);
+  write(cells, 4, 0, ["Mobile", 1, 5, 18, 30]);
+  write(cells, 5, 0, ["Data", 2, 6, 11, 19]);
+  write(cells, 6, 0, ["DevOps", 5, 12, 9, 15]);
+  write(cells, 7, 0, ["QA", 0, 3, 21, 42]);
+
+  return {
+    id: "sheet_crosstab",
+    name: "Crosstab · Dynamic × Dynamic",
+    rowCount: 10,
+    colCount: 5,
+    cells,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Sheet 5 — Pivot · Row orientation · Hybrid static + dynamic headers
+//   (accounts × products × years revenue). Mirrors "Pivot - Table 1".
+//   The row-axis header band has two static fields ("Account", "Product")
+//   followed by a dynamic pivot over four year labels.
+// ----------------------------------------------------------------------------
+
+function buildPivotRowSheet(): SheetPreview {
+  const cells = blank(10, 6);
+
+  cells[0][0] = "Pivot · Row orientation · Hybrid Static + Dynamic headers";
+  cells[1][0] =
+    "Column headers mix static fields (Account, Product) with dynamic value labels (year).";
+  write(cells, 2, 0, ["Account", "Product", 2020, 2021, 2022, 2023]);
+  write(cells, 3, 0, ["Google", "Product 1", 100000, 200000, 300000, 400000]);
+  write(cells, 4, 0, [
+    "Microsoft",
+    "Product 2",
+    150000,
+    250000,
+    350000,
+    450000,
+  ]);
+  write(cells, 5, 0, ["Costco", "Product 3", 200000, 250000, 300000, 400000]);
+  write(cells, 6, 0, ["Lowe’s", "Product 4", 300000, 350000, 400000, 450000]);
+
+  return {
+    id: "sheet_messy_pipeline",
+    name: "Pivot · Row",
+    rowCount: 10,
+    colCount: 6,
+    cells,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Sheet 6 — Hybrid Crosstab (company × year revenue with metadata fields).
+//   Mirrors the core of "Hybrid Crosstab - Table 1-1-1" — simplified to
+//   fit the editor's draft model: static fields (Industry, HQ) followed
+//   by a dynamic pivot over quarter labels.
+// ----------------------------------------------------------------------------
+
+function buildHybridCrosstabSheet(): SheetPreview {
+  const cells = blank(10, 7);
+
+  cells[0][0] = "Hybrid Crosstab · Mixed static + dynamic headers";
+  cells[1][0] =
+    "Two static cols (Industry, HQ) precede a dynamic pivot over quarter labels.";
+  write(cells, 2, 0, [
+    "Company",
+    "Industry",
+    "HQ",
+    "2022-Q1",
+    "2022-Q2",
+    "2022-Q3",
+    "2022-Q4",
+  ]);
+  write(cells, 3, 0, ["Apple", "Tech", "Cupertino", 100, 120, 130, 140]);
+  write(cells, 4, 0, ["Microsoft", "Tech", "Redmond", 95, 105, 115, 125]);
+  write(cells, 5, 0, ["Walmart", "Retail", "Bentonville", 150, 160, 170, 180]);
+  write(cells, 6, 0, ["Shell", "Energy", "The Hague", 200, 210, 205, 195]);
+
+  return {
+    id: "sheet_messy_quarters",
+    name: "Hybrid Crosstab",
+    rowCount: 10,
+    colCount: 7,
+    cells,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Sheet 7 — Hybrid Crosstab · Both axes · Static + Dynamic headers.
+//   Product × Quarter revenue where *both* axes mix static field headers
+//   with dynamic pivot labels. Row axis: skip (corner) + Region / Owner
+//   (static fields) + 2024-Q1..Q4 (dynamic pivot). Column axis: skip
+//   (corner) + Audit / Currency (static fields) + Alpha / Beta / Gamma /
+//   Delta (dynamic pivot). Inner (dynamic × dynamic) cells carry the
+//   revenue measure; field × dynamic cells carry per-period or per-product
+//   metadata.
+// ----------------------------------------------------------------------------
+
+function buildHybridCrosstabBothAxesSheet(): SheetPreview {
+  const cells = blank(11, 7);
+
+  cells[0][0] =
+    "Hybrid Crosstab · Both axes · Static + Dynamic headers";
+  cells[1][0] =
+    "Row axis: Region, Owner, then Q1–Q4.  Column axis: Audit, Currency, then products.  Inner cells = revenue.";
+
+  // Row 2 — row-axis header row: corner, two static fields, four period labels.
+  write(cells, 2, 0, [
+    "",
+    "Region",
+    "Owner",
+    "2024-Q1",
+    "2024-Q2",
+    "2024-Q3",
+    "2024-Q4",
+  ]);
+
+  // Rows 3–4 — column-axis static fields. Their cells under Region/Owner
+  // are blank (field × field intersections); under the period pivot they
+  // carry per-period metadata (audit status / currency).
+  write(cells, 3, 0, ["Audit", "", "", "Draft", "Draft", "Final", "Final"]);
+  write(cells, 4, 0, ["Currency", "", "", "USD", "USD", "USD", "USD"]);
+
+  // Rows 5–8 — column-axis dynamic pivot (product names) with per-product
+  // metadata (Region, Owner) and per-period revenue.
+  write(cells, 5, 0, ["Alpha", "NA", "Priya", 100, 120, 130, 140]);
+  write(cells, 6, 0, ["Beta", "EMEA", "Hans", 95, 105, 115, 125]);
+  write(cells, 7, 0, ["Gamma", "APAC", "Yuki", 150, 160, 170, 180]);
+  write(cells, 8, 0, ["Delta", "LATAM", "Diego", 200, 210, 205, 195]);
+
+  return {
+    id: "sheet_hybrid_crosstab_both",
+    name: "Hybrid Crosstab · Both axes",
+    rowCount: 11,
+    colCount: 7,
+    cells,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Sheet 8 — Headerless (unchanged — exercises headerless extraction).
 // ----------------------------------------------------------------------------
 
 function buildHeaderlessSheet(): SheetPreview {
@@ -365,7 +341,7 @@ function buildHeaderlessSheet(): SheetPreview {
 }
 
 // ----------------------------------------------------------------------------
-// Sheet 8: Large GL fact — exercises edge-scroll while drawing
+// Sheet 9 — Large GL fact (unchanged — exercises edge-scroll drawing).
 // ----------------------------------------------------------------------------
 
 function buildLargeFactSheet(): SheetPreview {
@@ -431,14 +407,15 @@ function buildLargeFactSheet(): SheetPreview {
 
 export const DEMO_WORKBOOK: Workbook = {
   fetchedAt: "2026-04-17 09:12 UTC",
-  sourceLabel: "demo.xlsx",
+  sourceLabel: "supported_layouts.xlsx",
   sheets: [
-    buildRowTablesSheet(),
-    buildColumnTablesSheet(),
-    buildMixedAxesSheet(),
+    buildSingleAxisStaticRowSheet(),
+    buildSingleAxisStaticColSheet(),
+    buildSingleAxisDynamicSheet(),
     buildCrosstabSheet(),
-    buildMessyPipelineSheet(),
-    buildMessyQuartersSheet(),
+    buildPivotRowSheet(),
+    buildHybridCrosstabSheet(),
+    buildHybridCrosstabBothAxesSheet(),
     buildHeaderlessSheet(),
     buildLargeFactSheet(),
   ],
@@ -446,186 +423,191 @@ export const DEMO_WORKBOOK: Workbook = {
 
 export const EMPTY_REGIONS: RegionDraft[] = [];
 
-// Region definitions covering every shape the editor supports. Each entry
-// is authored directly in the canonical segment model — stories exercise
-// the same shape the Panel / SheetCanvas render in production.
+// Region definitions cover each of the six showcase layouts with a
+// canonical segment model. Region + sheet IDs are stable across the
+// codebase — stories and tests address them by id.
 export const PROPOSED_REGIONS: RegionDraft[] = [
-  // ---- Sheet 1: Tidy row-headers ----
-  // Flat fact table: one row per (region, quarter) observation.
+  // ---- Sheet 1: Single axis · Row · Static (employees) ----
   {
     id: "region_revenue_rows_as_obs",
     sheetId: "sheet_row_tables",
-    bounds: { startRow: 3, endRow: 19, startCol: 0, endCol: 2 },
-    proposedLabel: "Revenue (rows-as-records, header row)",
-    targetEntityDefinitionId: "ent_revenue",
-    targetEntityLabel: "Revenue",
+    bounds: { startRow: 2, endRow: 7, startCol: 0, endCol: 4 },
+    proposedLabel: "Employees (rows-as-records)",
+    targetEntityDefinitionId: "ent_employee",
+    targetEntityLabel: "Employee",
     headerAxes: ["row"],
-    segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
+    segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
     confidence: 0.93,
   },
 
-  // ---- Sheet 2: Tidy column-headers (transposed) ----
-  // Same observations, transposed: one column per observation.
+  // ---- Sheet 2: Single axis · Column · Static (employees transposed) ----
   {
     id: "region_revenue_cols_as_obs",
     sheetId: "sheet_column_tables",
-    bounds: { startRow: 3, endRow: 5, startCol: 0, endCol: 16 },
-    proposedLabel: "Revenue (columns-as-records, header column)",
-    targetEntityDefinitionId: "ent_revenue_transposed",
-    targetEntityLabel: "Revenue (transposed)",
+    bounds: { startRow: 2, endRow: 6, startCol: 0, endCol: 5 },
+    proposedLabel: "Employees (columns-as-records)",
+    targetEntityDefinitionId: "ent_employee_col",
+    targetEntityLabel: "Employee (transposed)",
     headerAxes: ["column"],
-    segmentsByAxis: { column: [{ kind: "field", positionCount: 3 }] },
+    segmentsByAxis: { column: [{ kind: "field", positionCount: 5 }] },
     confidence: 0.9,
   },
 
-  // ---- Sheet 3: Mixed axes — two pivoted permutations ----
-  // Variant A: column header with a pivot — each row is a record, col 0
-  // holds the pivot axis values ("Region").
+  // ---- Sheet 3: Single axis · Dynamic (monthly sales) ----
+  // The header row carries month names; the user provides the axis name
+  // ("month") and the measure ("sales") in the config panel.
   {
     id: "region_attrs_rows_as_regions",
     sheetId: "sheet_mixed_axes",
-    bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
-    proposedLabel: "Region attributes (pivoted column header)",
-    targetEntityDefinitionId: "ent_department",
-    targetEntityLabel: "Department",
-    headerAxes: ["column"],
-    segmentsByAxis: {
-      column: [
-        {
-          kind: "pivot",
-          id: "attrs-rows-col-pivot",
-          axisName: "Region",
-          axisNameSource: "user",
-          positionCount: 5,
-        },
-      ],
-    },
-    cellValueField: { name: "value", nameSource: "user" },
-    confidence: 0.75,
-  },
-  // Variant B: row header with a pivot — each column is a record, row 0
-  // holds the pivot axis values ("Region").
-  {
-    id: "region_attrs_cols_as_regions",
-    sheetId: "sheet_mixed_axes",
-    bounds: { startRow: 12, endRow: 16, startCol: 0, endCol: 4 },
-    proposedLabel: "Region attributes (pivoted row header)",
-    targetEntityDefinitionId: "ent_department_transposed",
-    targetEntityLabel: "Department (transposed)",
+    bounds: { startRow: 2, endRow: 5, startCol: 0, endCol: 5 },
+    proposedLabel: "Monthly sales (dynamic headers)",
+    targetEntityDefinitionId: "ent_monthly_sales",
+    targetEntityLabel: "Monthly sales",
     headerAxes: ["row"],
     segmentsByAxis: {
       row: [
         {
           kind: "pivot",
-          id: "attrs-cols-row-pivot",
-          axisName: "Region",
-          axisNameSource: "ai",
-          positionCount: 5,
+          id: "monthly-sales-pivot",
+          axisName: "month",
+          axisNameSource: "user",
+          positionCount: 6,
         },
       ],
     },
-    cellValueField: { name: "value", nameSource: "user" },
-    confidence: 0.72,
+    cellValueField: { name: "sales", nameSource: "user" },
+    confidence: 0.75,
   },
 
-  // ---- Sheet 4: Crosstab ----
-  // Same observations laid out as a 2D pivot (Region × Quarter).
+  // ---- Sheet 4: Crosstab · Dynamic × Dynamic (team × severity tickets) ----
   {
     id: "region_revenue_crosstab_absolute",
     sheetId: "sheet_crosstab",
-    bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
-    proposedLabel: "Revenue (2D crosstab)",
-    targetEntityDefinitionId: "ent_revenue_crosstab",
-    targetEntityLabel: "Revenue (crosstab)",
+    bounds: { startRow: 2, endRow: 7, startCol: 0, endCol: 4 },
+    proposedLabel: "Tickets by team × severity",
+    targetEntityDefinitionId: "ent_ticket",
+    targetEntityLabel: "Ticket",
     headerAxes: ["row", "column"],
     segmentsByAxis: {
       row: [
+        { kind: "skip", positionCount: 1 },
         {
           kind: "pivot",
-          id: "revenue-crosstab-row-pivot",
-          axisName: "Region",
+          id: "tickets-crosstab-row-pivot",
+          axisName: "severity",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "tickets-crosstab-col-pivot",
+          axisName: "team",
           axisNameSource: "user",
           positionCount: 5,
         },
       ],
-      column: [
-        {
-          kind: "pivot",
-          id: "revenue-crosstab-col-pivot",
-          axisName: "Quarter",
-          axisNameSource: "ai",
-          positionCount: 5,
-        },
-      ],
     },
-    cellValueField: { name: "Revenue", nameSource: "ai" },
+    cellValueField: { name: "tickets", nameSource: "user" },
     confidence: 0.83,
   },
 
-  // ---- Sheet 5a: Row-oriented skip rules ----
+  // ---- Sheet 5: Pivot · Row · Hybrid (accounts × products × years) ----
+  //   Row-axis segments: two static fields (Account, Product) + a dynamic
+  //   pivot over four year labels. The pivot contributes a "year"
+  //   column-label field and a "revenue" measure.
   {
     id: "region_messy_pipeline",
     sheetId: "sheet_messy_pipeline",
-    bounds: { startRow: 3, endRow: 8, startCol: 0, endCol: 4 },
-    proposedLabel: "Global pipeline — skip separators + subtotals",
-    targetEntityDefinitionId: "ent_deal",
-    targetEntityLabel: "Deal",
+    bounds: { startRow: 2, endRow: 6, startCol: 0, endCol: 5 },
+    proposedLabel: "Account revenue by year",
+    targetEntityDefinitionId: "ent_account_revenue",
+    targetEntityLabel: "Account revenue",
     headerAxes: ["row"],
-    segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
-    recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
-    skipRules: [
-      { kind: "blank" },
-      // "— NA Region —" / "— EMEA Region —" / "— APAC Region —" all in column A.
-      { kind: "cellMatches", crossAxisIndex: 0, pattern: "^—.*—$" },
-      // Subtotal rows — column A contains "Subtotal".
-      { kind: "cellMatches", crossAxisIndex: 0, pattern: "^Subtotal$" },
-    ],
+    segmentsByAxis: {
+      row: [
+        { kind: "field", positionCount: 2 },
+        {
+          kind: "pivot",
+          id: "account-revenue-year-pivot",
+          axisName: "year",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+    },
+    cellValueField: { name: "revenue", nameSource: "user" },
     confidence: 0.79,
-    warnings: [
-      {
-        code: "AMBIGUOUS_HEADER",
-        severity: "info",
-        message:
-          "Three skip rules active — extraction omits section labels and subtotals.",
-        suggestedFix: "Verify the 9 extracted rows match the 9 real deals.",
-      },
-    ],
   },
 
-  // ---- Sheet 5b: Column-oriented skip rules (rule axis "row") ----
+  // ---- Sheet 6: Hybrid Crosstab (company × year revenue with metadata) ----
   {
     id: "region_messy_quarters",
     sheetId: "sheet_messy_quarters",
-    bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 2 },
-    proposedLabel: "Quarters — skip subtotal columns",
-    targetEntityDefinitionId: "ent_department_messy",
-    targetEntityLabel: "Department (messy quarters)",
-    headerAxes: ["column"],
-    segmentsByAxis: { column: [{ kind: "field", positionCount: 5 }] },
-    recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
-    skipRules: [
-      { kind: "blank" },
-      // Row 3 is the label row for each column. Skip columns whose row-3 cell
-      // looks like an aggregate header ("— Subtotal —", "— Year-end —").
-      {
-        kind: "cellMatches",
-        crossAxisIndex: 3,
-        pattern: "^—.*—$",
-        axis: "row",
-      },
-    ],
+    bounds: { startRow: 2, endRow: 6, startCol: 0, endCol: 6 },
+    proposedLabel: "Company revenue by quarter",
+    targetEntityDefinitionId: "ent_company_revenue",
+    targetEntityLabel: "Company revenue",
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [
+        { kind: "field", positionCount: 3 },
+        {
+          kind: "pivot",
+          id: "company-revenue-quarter-pivot",
+          axisName: "quarter",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+    },
+    cellValueField: { name: "revenue", nameSource: "user" },
     confidence: 0.74,
-    warnings: [
-      {
-        code: "UNRECOGNIZED_COLUMN",
-        severity: "info",
-        message:
-          "Subtotal columns are skipped; record columns extend until two consecutive empty columns.",
-      },
-    ],
   },
 
-  // ---- Sheet 6: Headerless examples ----
+  // ---- Sheet 7: Hybrid Crosstab · Both axes ·
+  //   Row axis: skip (corner) + field×2 (Region, Owner) + pivot×4 (periods).
+  //   Column axis: skip (corner) + field×2 (Audit, Currency) + pivot×4 (products).
+  //   Inner dynamic × dynamic cells carry the revenue measure.
+  {
+    id: "region_hybrid_crosstab_both",
+    sheetId: "sheet_hybrid_crosstab_both",
+    bounds: { startRow: 2, endRow: 8, startCol: 0, endCol: 6 },
+    proposedLabel: "Product × Quarter revenue (hybrid both axes)",
+    targetEntityDefinitionId: "ent_product_quarter_revenue",
+    targetEntityLabel: "Product × Quarter revenue",
+    headerAxes: ["row", "column"],
+    segmentsByAxis: {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        { kind: "field", positionCount: 2 },
+        {
+          kind: "pivot",
+          id: "hybrid-both-period-pivot",
+          axisName: "period",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        { kind: "field", positionCount: 2 },
+        {
+          kind: "pivot",
+          id: "hybrid-both-product-pivot",
+          axisName: "product",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+    },
+    cellValueField: { name: "revenue", nameSource: "user" },
+    confidence: 0.7,
+  },
+
+  // ---- Sheet 8: Headerless examples ----
   {
     id: "region_event_log_headerless",
     sheetId: "sheet_headerless",
@@ -663,15 +645,16 @@ export const DRIFT_REGIONS: RegionDraft[] = PROPOSED_REGIONS.map((r) => {
       drift: {
         flagged: true,
         kind: "columns",
-        priorSummary: "Columns: Region · Quarter · Revenue",
+        priorSummary:
+          "Columns: employee_id · name · department · salary · hire_date",
         observedSummary:
-          "New column observed: 'Source' between Quarter and Revenue",
+          "New column observed: 'location' between department and salary",
       },
       warnings: [
         {
           code: "UNRECOGNIZED_COLUMN",
           severity: "warn",
-          message: "New column 'Source' added since last sync.",
+          message: "New column 'location' added since last sync.",
           suggestedFix: "Accept the new column to include it in the mapping.",
         },
       ],
@@ -684,9 +667,9 @@ export const DRIFT_REGIONS: RegionDraft[] = PROPOSED_REGIONS.map((r) => {
         flagged: true,
         kind: "identity",
         identityChanging: true,
-        priorSummary: "Column-axis values: Q1 2025, Q2 2025, Q3 2025, Q4 2025",
+        priorSummary: "Column-axis values: Critical, High, Medium, Low",
         observedSummary:
-          "Column-axis values renamed to 2025-Q1, 2025-Q2, 2025-Q3, 2025-Q4",
+          "Column-axis values renamed to SEV-1, SEV-2, SEV-3, SEV-4",
       },
       warnings: [
         {
@@ -709,7 +692,7 @@ export const BLOCKER_REGIONS: RegionDraft[] = [
       {
         code: "IDENTITY_COLUMN_HAS_BLANKS",
         severity: "blocker",
-        message: "Identity column 'Region' has 2 blank rows.",
+        message: "Identity column 'employee_id' has 2 blank rows.",
         suggestedFix:
           "Fill the blanks in the source file or choose a different identity column.",
       },

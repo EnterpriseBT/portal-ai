@@ -27,10 +27,18 @@ export interface SegmentEditPopoverUIProps {
   segment: Segment;
   /** Whether this segment is the tail of its axis. Gates the dynamic toggle. */
   isTail: boolean;
+  /**
+   * Whether this segment may be removed. Typically `false` when it is the
+   * only segment on its axis — in that case the user collapses the whole
+   * header axis instead of removing an individual segment.
+   */
+  canRemove?: boolean;
   onChangeAxisName: (value: string) => void;
   onToggleDynamic: (on: boolean) => void;
   onChangeTerminator: (terminator: Terminator) => void;
   onConvert: (toKind: SegmentKind) => void;
+  /** When provided, renders a "Delete segment" button. */
+  onRemove?: () => void;
   onClose: () => void;
 }
 
@@ -50,10 +58,12 @@ export const SegmentEditPopoverUI: React.FC<SegmentEditPopoverUIProps> = ({
   axis,
   segment,
   isTail,
+  canRemove = true,
   onChangeAxisName,
   onToggleDynamic,
   onChangeTerminator,
   onConvert,
+  onRemove,
   onClose,
 }) => {
   const kinds: SegmentKind[] = ["field", "pivot", "skip"];
@@ -147,7 +157,30 @@ export const SegmentEditPopoverUI: React.FC<SegmentEditPopoverUIProps> = ({
         </Stack>
 
         <Box sx={{ pt: 0.5 }}>
-          <Stack direction="row" justifyContent="flex-end">
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            {onRemove ? (
+              <Button
+                type="button"
+                variant="text"
+                color="error"
+                disabled={!canRemove}
+                onClick={onRemove}
+                aria-label="Delete segment"
+                title={
+                  canRemove
+                    ? undefined
+                    : "Can't delete the only segment on this axis — remove the whole axis instead."
+                }
+              >
+                Delete segment
+              </Button>
+            ) : (
+              <span />
+            )}
             <Button type="button" variant="text" onClick={onClose}>
               Close
             </Button>
