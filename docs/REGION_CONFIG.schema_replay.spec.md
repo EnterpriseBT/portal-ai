@@ -1,13 +1,15 @@
-# Region Segmentation — Schema + Replay (Phase 1)
+# Region Segmentation — Schema + Replay
 
-The smallest shippable unit that proves the segmented-region
-semantics. No interpret-pipeline changes, no UI. Plans crafted by
-hand or by direct API construction round-trip through schema
-validation and extract records correctly.
+The foundational PR of the segments roadmap: replaces the pre-PR
+region shape (`orientation` + `headerAxis` + `recordsAxisName` +
+`secondaryRecordsAxisName` + `cellValueName`) with a unified
+segment-list representation that works for 1D regions and crosstabs
+alike. Replay drives off it uniformly; everything downstream — plan
+persistence, interpret stages, the frontend editor — reads the new
+fields.
 
-Context: `docs/REGION_CONFIG_FLEXIBILITY.discovery.md` §§ "Schema
-additions", "Record generation semantics", "Replay pipeline changes",
-"Crosstab treatment".
+Context: `docs/REGION_CONFIG_FLEXIBILITY.discovery.md` §§ "Crosstab
+treatment", "Permutation matrix", "Phasing".
 
 ## Prerequisites
 
@@ -17,124 +19,145 @@ additions", "Record generation semantics", "Replay pipeline changes",
   reference validation inside segmented plans relies on org-unique
   keys.
 
-## Schema additions
+## Schema
 
 ### `packages/spreadsheet-parsing/src/plan/region.schema.ts`
 
-Two new optional fields on the region schema:
+The canonical region shape:
 
 ```ts
-const AxisPositionRoleSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("field") }),
+export const SegmentSchema = z.discriminatedUnion("kind", [
   z.object({
-    kind: z.literal("pivotLabel"),
-    segmentId: z.string().min(1),
+    kind: z.literal("field"),
+    positionCount: z.number().int().min(1),
   }),
-  z.object({ kind: z.literal("skip") }),
+  z.object({
+    kind: z.literal("pivot"),
+    id: z.string().min(1),
+    axisName: z.string().min(1),
+    axisNameSource: z.enum(["user", "ai", "anchor-cell"]),
+    positionCount: z.number().int().min(1),
+    dynamic: z.object({ terminator: TerminatorSchema }).optional(),
+  }),
+  z.object({
+    kind: z.literal("skip"),
+    positionCount: z.number().int().min(1),
+  }),
 ]);
 
-const PivotSegmentSchema = z.object({
-  id: z.string().min(1),
-  axisName: z.string().min(1),
-  axisNameSource: z.enum(["user", "ai", "anchor-cell"]),
-  valueFieldName: z.string().min(1),
-  valueFieldNameSource: z.enum(["user", "ai", "anchor-cell"]),
-  valueColumnDefinitionId: z.string().min(1).optional(),
+export const CellValueFieldSchema = z.object({
+  name: z.string().min(1),
+  nameSource: z.enum(["user", "ai", "anchor-cell"]),
+  columnDefinitionId: z.string().min(1).optional(),
 });
 
 // on RegionSchema:
-positionRoles: z.array(AxisPositionRoleSchema).optional(),
-pivotSegments: z.array(PivotSegmentSchema).optional(),
+headerAxes: z.array(AxisMemberEnum).max(2).default([]),
+segmentsByAxis: z
+  .object({
+    row: z.array(SegmentSchema).optional(),
+    column: z.array(SegmentSchema).optional(),
+  })
+  .optional(),
+cellValueField: CellValueFieldSchema.optional(),
+recordAxisTerminator: TerminatorSchema.optional(),
+recordsAxis: AxisMemberEnum.optional(),
+headerStrategyByAxis: z
+  .object({
+    row: HeaderStrategySchema.optional(),
+    column: HeaderStrategySchema.optional(),
+  })
+  .optional(),
 ```
 
-### Zod refinements
+`Terminator` is a discriminated union of
+`{ kind: "untilBlank", consecutiveBlanks }` and
+`{ kind: "matchesPattern", pattern }`.
 
-The RegionSchema gets three refinements:
+### Refinements
 
-1. **Crosstab exemption** — if `orientation === "cells-as-records"`,
-   `positionRoles` and `pivotSegments` must both be absent. Error
-   code carried as `SEGMENTED_CROSSTAB_NOT_SUPPORTED`.
-2. **Length match** — if `positionRoles` is present, its length
-   must equal the header-line length (`bounds.endCol -
-   bounds.startCol + 1` for `headerAxis:row`, or
-   `bounds.endRow - bounds.startRow + 1` for `headerAxis:column`).
-3. **Segment consistency** — every `pivotLabel.segmentId` in
-   `positionRoles` must reference an id in `pivotSegments`; every
-   segment in `pivotSegments` must be referenced by at least one
-   position.
+The delivered `RegionSchema.superRefine` block enforces:
 
-Refinement failures manifest as Zod issues; the existing parser's
-plan-validation machinery surfaces them as
-`LAYOUT_PLAN_INVALID_PAYLOAD`.
+| # | Rule |
+|---|---|
+| 1 | `headerAxes` entries are unique |
+| 2 | `segmentsByAxis[axis]` is allowed (and required) iff `axis ∈ headerAxes` |
+| 3 | Sum of `positionCount` on each axis matches the axis span; a dynamic tail pivot is allowed to claim ≥ 1 beyond the span floor |
+| 4 | Pivot `id` is unique across both axes (implemented together with refinement 13 in the superRefine) |
+| 5 | `recordsAxis` required iff `headerAxes.length === 0`; forbidden otherwise |
+| 6 | `headerStrategyByAxis[axis]` required for each declared header axis; forbidden for axes not declared |
+| 7 | `cellValueField` required iff at least one pivot segment exists; forbidden otherwise |
+| 8 | `axisAnchorCell`, when present, must sit within `bounds` |
+| 9 | `columnOverrides` keyed by default field names must target real positions on the record axis |
+| 10 | `dynamic` segment must be the tail of its axis; at most one dynamic segment per axis |
+| 11 | `recordAxisTerminator` is forbidden on a crosstab (`headerAxes.length === 2`) |
+| 13 | Pivot `id` uniqueness restated as a hard per-segment constraint |
+| 14 | `ColumnBinding.sourceLocator.axis` must be in `headerAxes` when `headerAxes` is non-empty |
+| 15 | `byHeaderName` bindings are forbidden on headerless regions; `byPositionIndex` on a headerless region must target the axis opposite `recordsAxis` |
+| 16 | `byPositionIndex.index` must fall within the position span on its axis |
+
+Zod issues from the refinement block surface through the existing
+parser plan-validation machinery as `LAYOUT_PLAN_INVALID_PAYLOAD`.
 
 ### `packages/core/src/contracts/spreadsheet-parsing.contract.ts`
 
-Re-export the two new types so API + frontend consume them through
-the same surface as today's region types.
+Re-exports the new types (`Region`, `Segment`, `CellValueField`,
+`Terminator`, `AxisMember`, etc.) so API + frontend consume them
+through the same surface as the pre-PR region types.
 
-## Replay changes
+## Replay
 
 ### `packages/spreadsheet-parsing/src/replay/extract-records.ts`
 
-Add a branch at the top of `extractRecords`:
+Replay is unified: there is no dispatch on pre-PR `orientation`.
+Every region runs through the same emit loop driven by `headerAxes`
+cardinality + per-axis segments.
 
-```ts
-if (region.positionRoles && region.pivotSegments) {
-  return extractSegmentedRecords(region, sheet);
-}
-// ...existing orientation branches...
-```
-
-### New function: `extractSegmentedRecords`
-
-File:
-`packages/spreadsheet-parsing/src/replay/extract-segmented-records.ts`
+### Unified record emission
 
 Pseudocode:
 
 ```ts
-function extractSegmentedRecords(region, sheet): ExtractedRecord[] {
+function extractRecords(region, sheet): ExtractedRecord[] {
   const bounds = resolveRegionBounds(region, sheet);
+  const axes = region.headerAxes;
+  const recordAxisPositions = entityUnitsFor(region, bounds);
   const records: ExtractedRecord[] = [];
 
-  const positions = positionsForHeaderAxis(region, bounds);
-  const roleByPosition = zipPositionsWithRoles(positions, region.positionRoles);
-  const segmentById = indexBy(region.pivotSegments, "id");
+  for (const entityUnit of recordAxisPositions) {
+    // Collect statics from field segments on declared axes.
+    const statics = collectFieldValues(region, sheet, entityUnit);
 
-  for (const entityUnit of entityUnitsFor(region, bounds)) {
-    // Collect statics — one value per field-role position, cell value
-    // at (entityUnit, position).
-    const statics: Record<string, unknown> = {};
-    for (const { position, role } of roleByPosition) {
-      if (role.kind !== "field") continue;
-      const binding = bindingForPosition(region, position);
-      if (!binding) continue;
-      statics[binding.columnDefinitionId] = cellValueAt(sheet, entityUnit, position);
-    }
-
-    // For each segment, emit one record per pivotLabel position.
-    for (const segment of region.pivotSegments) {
-      for (const { position, role } of roleByPosition) {
-        if (role.kind !== "pivotLabel") continue;
-        if (role.segmentId !== segment.id) continue;
-        const label = headerLabelAt(sheet, region, position);
-        const value = cellValueAt(sheet, entityUnit, position);
-        records.push({
-          regionId: region.id,
-          targetEntityDefinitionId: region.targetEntityDefinitionId,
-          sourceId: deriveSegmentedSourceId(region, entityUnit, segment.id, label),
-          checksum: computeChecksum({
-            ...statics,
-            [segment.axisName]: label,
-            [segment.valueFieldName]: value,
-          }),
-          fields: {
-            ...statics,
-            [segment.axisName]: label,
-            [segment.valueFieldName]: value,
-          },
-        });
+    // Build the Cartesian product of pivot segments across declared
+    // header axes. 1D region → 1-axis product; crosstab → 2-axis
+    // product. Regions with no pivot segments have a 1-element
+    // product and emit one statics-only record per entity unit.
+    for (const pivotTuple of cartesianProduct(axes, region.segmentsByAxis)) {
+      const axisFields: Record<string, unknown> = {};
+      for (const { segment, position } of pivotTuple) {
+        const label = pivotLabelAt(sheet, region, segment, position);
+        axisFields[segment.axisName] = label;
       }
+      const cellValue = valueAtIntersection(sheet, entityUnit, pivotTuple);
+      records.push({
+        regionId: region.id,
+        targetEntityDefinitionId: region.targetEntityDefinitionId,
+        sourceId: deriveSourceId(region, entityUnit, pivotTuple),
+        checksum: computeChecksum({
+          ...statics,
+          ...axisFields,
+          ...(region.cellValueField
+            ? { [region.cellValueField.name]: cellValue }
+            : {}),
+        }),
+        fields: {
+          ...statics,
+          ...axisFields,
+          ...(region.cellValueField
+            ? { [region.cellValueField.name]: cellValue }
+            : {}),
+        },
+      });
     }
   }
   return records;
@@ -143,118 +166,79 @@ function extractSegmentedRecords(region, sheet): ExtractedRecord[] {
 
 ### Source-id derivation
 
-`deriveSegmentedSourceId` combines `(entityUnit sourceId,
-segmentId, positionLabel)` into a stable string, e.g.
-`${entitySourceId}::${segmentId}::${label}`. The entity sourceId
-still comes from the existing identity strategy
-(`rowPosition` / `column` / `composite`). The segment suffix plus
-label disambiguate the multiple records a single entity-unit emits.
+`deriveSourceId` combines the base identity-strategy result with
+`::segmentId::label` for each pivot involved in the tuple. A tidy
+region (no pivot) produces `entitySourceId` unchanged — the
+source-ids of the same shape match pre-PR encoding, so existing
+records round-trip.
 
-Drift detection treats segment renames the same way axis renames are
-treated today (see `SPREADSHEET_PARSING.architecture.spec.md` §
-"Identity drift"). That extension is tracked as a follow-up; for
-v1, renaming a segment is a known rebuild trigger.
+Drift detection still treats segment renames the same way axis
+renames were treated pre-PR; the rename handler lives in the replay
+drift module.
 
-### Orientation dispatch
+### Dynamic-tail + terminator
 
-`entityUnitsFor` and `positionsForHeaderAxis` are small helpers that
-resolve to:
-
-| orientation            | headerAxis | entityUnits         | positions          |
-|------------------------|------------|---------------------|--------------------|
-| rows-as-records        | row        | data rows           | columns in bounds  |
-| rows-as-records        | column     | data cols (pivoted) | rows in bounds     |
-| columns-as-records     | column     | data cols           | rows in bounds     |
-| columns-as-records     | row        | data rows (pivoted) | columns in bounds  |
-
-The pivoted rows-as-records + headerAxis:column and its transpose
-also get full segmentation support. When the base is pivoted, the
-"statics" pass collects per-entity-unit static fields from the field
-positions (perpendicular axis via `columnBindings`). The pivotLabel
-positions then emit records exactly as in the non-pivoted case —
-each position contributes one record per entity-unit.
-
-## Backward compat
-
-- Regions without `positionRoles` (or without `pivotSegments`) take
-  the existing orientation branches. No behavior change.
-- Existing plans in the database validate cleanly against the new
-  schema.
-- `plan-version.ts` — no bump required because the new fields are
-  optional additions. A future plan-version bump is needed when
-  segmented plans become the default representation for shapes that
-  today use `recordsAxisName`/`cellValueName`.
+When the tail pivot on an axis has `dynamic` set, the replay engine
+extends positions past the schema-declared `positionCount` up to the
+point where the configured terminator fires
+(`untilBlank.consecutiveBlanks` blanks in a row, or a cell matching
+`matchesPattern.pattern`). `recordAxisTerminator` does the same for
+the record axis on 1D / headerless regions — it's the sibling
+affordance for "grow until" at the region level, forbidden on
+crosstab (refinement 11).
 
 ## Acceptance criteria
 
-- Zod validation accepts every row marked "✅" in the discovery doc's
-  permutation matrix when fed a plan whose `positionRoles` and
-  `pivotSegments` match the expected shape.
-- Zod validation rejects segmented crosstab (matrix row 8) with
-  `SEGMENTED_CROSSTAB_NOT_SUPPORTED`.
-- `extractRecords` produces the expected record list for each
-  in-scope matrix id. Fixture fed by
-  `docs/fixtures/region-segmentation-matrix.csv` (or the XLSX
-  equivalent) via a helper that builds a plan for each id.
-- Existing replay tests (classic `rows-as-records`, `pivoted-columns-as-records`,
-  crosstab) still pass unchanged.
+- Every row of the discovery doc's permutation matrix round-trips
+  through `RegionSchema.safeParse` when given a valid plan in the
+  canonical segment shape.
+- Row 8 (segmented crosstab) also round-trips — it is a crosstab with
+  pivot segments on both axes plus `cellValueField`, no longer a
+  deferred shape.
+- `extractRecords` produces the expected record list for each matrix
+  row. A single set of fixtures drives 1D (rows/cols/headerless) and
+  2D (crosstab); the emit loop is shared across shapes.
+- Refinements 1–11 + 13–16 from the table above reject every invalid
+  plan fixture in `packages/spreadsheet-parsing/src/plan/__tests__/schemas.test.ts`.
 
 ## Test plan
 
 ### Schema
 (`packages/spreadsheet-parsing/src/plan/__tests__/schemas.test.ts`)
 
-- Valid segmented region with matching `positionRoles` +
-  `pivotSegments` parses.
-- Mismatched role count vs. bounds → Zod issue.
-- Orphan `segmentId` reference in `positionRoles` → Zod issue.
-- Segmented crosstab (`cells-as-records` + roles) → Zod issue with
-  `SEGMENTED_CROSSTAB_NOT_SUPPORTED`.
+- Valid 1D, pivoted-1D, headerless, and crosstab plans parse.
+- Segment-span mismatch → refinement 3 error.
+- Non-tail dynamic segment → refinement 10 error.
+- `recordAxisTerminator` on a crosstab → refinement 11 error.
+- Duplicate pivot ids across axes → refinement 13 error.
+- `byPositionIndex.index` out of range → refinement 16 error.
 
 ### Replay
-(`packages/spreadsheet-parsing/src/replay/__tests__/segmented-records.test.ts`
-— new file)
+(`packages/spreadsheet-parsing/src/replay/__tests__/unified-emit.test.ts`)
 
-Fixture-driven. A helper `loadMatrixFixture(id)` loads the
-permutation block from the CSV + a hand-crafted plan for that id.
-Tests:
+Fixture-driven. Each matrix row has a hand-crafted plan + sheet
+fixture; the test asserts on `extractRecords(plan, sheet)`:
 
 - 1e canonical — Apple row produces 6 records, 3 quarter + 3 month,
-  each with {name: Apple, industry: Tech} statics.
+  each with `{name: Apple, industry: Tech}` statics.
 - 1c multi-pivot no statics — each row produces 6 records, no
   static fields.
 - 1d mixed single segment — each row produces 3 records, all with
   the 2 statics.
-- 1f mixed + skip — Total column has `kind: "skip"` role; resulting
+- 1f mixed + skip — Total column has `kind: "skip"`; resulting
   records omit it entirely.
-- 2e canonical transpose — each col produces 6 records.
+- 2e canonical transpose — each column produces 6 records.
 - 3b / 4b — pivoted base + multi-segment emits records with the
   right segment axis-names (quarter vs. month).
-
-### Extract-records regression
-
-Existing tests in
-`packages/spreadsheet-parsing/src/replay/__tests__/{rows-as-records,columns-as-records,cells-as-records}.test.ts`
-all pass unmodified.
-
-## Non-goals
-
-- No `detect-position-roles` stage — plans are hand-crafted.
-- No LLM classify for segmented regions — existing classifier still
-  runs; for a segmented region the classifier just sees the
-  field-role positions (or an empty set if all roles are
-  pivotLabel).
-- No frontend role strip — UI still shows today's
-  `recordsAxisName`/`cellValueName` editors. Segmented regions
-  arrive at the editor already configured (from fixtures or direct
-  API calls) and the editor may not render them accurately yet —
-  spec for UI is separate.
-- No crosstab segmentation (Zod rejects).
+- 7 — crosstab emits one record per `(row-label, col-label)` pair
+  with `cellValueField.name` set to each intersection's value.
+- 8 — static-prefix crosstab (field segment on row axis + pivot on
+  both axes) replicates the statics into every record.
 
 ## Follow-ups
 
 - `REGION_CONFIG.interpret.spec.md` — interpret pipeline produces
   segmented plans from hints.
-- `REGION_CONFIG.ui.spec.md` — editor surfaces the role strip.
-- Identity-drift handling for segment renames (separate small spec
-  once the segment-rename UX is designed).
+- `REGION_CONFIG.ui.spec.md` — editor surfaces the segment-strip UI.
+- Identity-drift handling for segment renames — tracked as a separate
+  small spec once the rename UX is designed.

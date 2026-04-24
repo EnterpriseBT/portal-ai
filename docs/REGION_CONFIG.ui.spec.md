@@ -1,229 +1,259 @@
-# Region Segmentation — Role Strip UI
+# Region Segmentation — Editor UI
 
-Render segmented regions in the editor. Users can view + edit the
-per-position role assignments, manage `pivotSegments`, and see the
-downstream record expansion preview. Surfaces the opt-in flag to the
-interpret endpoint.
+Render segmented regions in the editor. Users compose regions from
+segments (field / pivot / skip) on each declared header axis, can
+promote a 1D region to a crosstab, edit axis names on pivots, and
+name the cell-value field at the region level.
 
-Context: `docs/REGION_CONFIG_FLEXIBILITY.discovery.md` § "UI surface".
+Context: `docs/REGION_CONFIG_FLEXIBILITY.discovery.md` § "Crosstab
+treatment"; `docs/REGION_CONFIG.segments_04_region_editor.plan.md` for
+the PR's phased test-driven walkthrough.
 
 ## Prerequisites
 
-- `REGION_CONFIG.schema_replay.spec.md` merged — schema + extraction
-  accept segmentation.
+- `REGION_CONFIG.schema_replay.spec.md` merged — schema + replay
+  accept the unified segment model.
 - `REGION_CONFIG.interpret.spec.md` merged — the interpret endpoint
-  can emit segmented plans when `enableSegmentation: true` is set.
+  emits segmented plans for every region.
 
-## New components (apps/web)
+## Shipped components (apps/web)
 
-### `RoleStrip.component.tsx`
+All new components live in
+`apps/web/src/modules/RegionEditor/`. Each is a pure UI component
+(no SDK dependency); the `RegionConfigurationPanel` container wires
+them up.
 
-Location: `apps/web/src/modules/RegionEditor/RoleStrip.component.tsx`.
+### `SegmentStrip.component.tsx`
 
-Props (pure UI, no SDK dependency):
-
-```ts
-interface RoleStripUIProps {
-  /** Cell labels along the header axis, in document order. */
-  labels: string[];
-  /** Current role for each label. */
-  roles: AxisPositionRole[];
-  /** All known segments on this region. */
-  segments: PivotSegmentDraft[];
-  /** The axis the strip runs along — "row" or "column". */
-  axis: "row" | "column";
-  /** Called with a new roles array when the user edits a role. */
-  onRolesChange: (next: AxisPositionRole[]) => void;
-  /** Called when the user creates a new segment from bulk-selection. */
-  onCreateSegment: (positions: number[]) => void;
-  /** Called to rename or delete a segment. */
-  onUpdateSegment: (id: string, patch: Partial<PivotSegmentDraft>) => void;
-  onDeleteSegment: (id: string) => void;
-}
-```
-
-Render:
-
-- Horizontal strip of chips when `axis === "row"` (one chip per
-  column); vertical strip when `axis === "column"`.
-- Each chip shows: cell label (truncated w/ title attr for long),
-  role icon (Field / Pivot / Skip), and — for pivot roles —
-  a color dot for the segment (reuses `colorForEntity` palette).
-- Per-chip click opens a popover with the three-way role toggle +
-  segment dropdown (when Pivot is selected).
-- Multi-select: shift-click extends selection; drag-select across
-  adjacent chips; bulk-assign via a toolbar action ("Group as
-  segment").
-- Skip positions render muted grey.
-
-### `SegmentManagementCard.component.tsx`
-
-Location:
-`apps/web/src/modules/RegionEditor/SegmentManagementCard.component.tsx`.
-
+Per-axis chip row. One chip per segment, showing the segment's kind +
+`positionCount` (and a `·∞` badge when a tail pivot is dynamic).
 Props:
 
 ```ts
-interface SegmentManagementCardUIProps {
-  segment: PivotSegmentDraft;
-  memberLabels: string[];            // read-only list of member cell labels
-  errors?: FormErrors;
-  onChange: (patch: Partial<PivotSegmentDraft>) => void;
-  onDelete: () => void;
-  columnDefinitionSearch?: SearchResult<SelectOption>;
+interface SegmentStripUIProps {
+  axis: AxisMember;
+  segments: Segment[];
+  axisLabel?: string;                      // default: "<axis> axis"
+  onEditSegment: (axis: AxisMember, index: number, anchor: HTMLElement) => void;
+  onAddSegment: (axis: AxisMember) => void;
+  /** Only passed when the other axis isn't already a header axis — the
+   *  strip renders an "Add <other> axis" button that forwards this
+   *  callback. */
+  onAddHeaderAxis?: (otherAxis: AxisMember) => void;
 }
 ```
 
-Render:
+### `SegmentEditPopover.component.tsx`
 
-- `axisName` text field (required; respects the source-gate from the
-  existing `recordsAxisName` infra — `source: "user"` marks
-  confirmed).
-- `valueFieldName` text field (required).
-- Optional `valueColumnDefinitionId` via the existing
-  `AsyncSearchableSelect` picker (same as binding-editor popover).
-- Read-only member list with color dot.
-- Delete button with confirmation.
+Per-segment popover opened by clicking a chip. Renders:
+
+- Axis-name text input (pivots only; required).
+- "Can this segment grow?" toggle (tail pivot only; refinement 10
+  forbids non-tail dynamic).
+- Terminator form (kind selector + consecutive-blanks / pattern
+  input) — `TerminatorForm.component.tsx` is shared with the
+  record-axis popover.
+- Convert-to buttons (field / pivot / skip), with the current kind
+  disabled.
+
+### `RecordAxisTerminatorPopover.component.tsx`
+
+Region-level "Extent" popover opened from a button in the panel's
+Extent slot. Exposes the same terminator form at the record-axis
+level; gated on `!isCrosstab` (refinement 11).
+
+### `TerminatorForm.component.tsx`
+
+Shared inner form used by the two popovers above. Kind selector +
+one of: a number input for `untilBlank.consecutiveBlanks`, or a
+pattern input (`matchesPattern.pattern`) with a lightweight regex
+validity check.
 
 ## Changed components
 
 ### `RegionConfigurationPanel.component.tsx`
 
-Extend the props + render:
+The shape section renders:
 
-- New props: `positionRoles`, `pivotSegments`, role/segment callbacks
-  mirroring `RoleStripUIProps` + `SegmentManagementCardUIProps`.
-- Render order inside the panel:
-  1. Entity picker (existing; now with owning-connector label from
-     C2 spec).
-  2. Orientation + headerAxis pickers (existing).
-  3. **RoleStrip** — only when `headerAxis !== "none"` and the
-     region is not a crosstab. Strip is hidden for
-     `cells-as-records` regions.
-  4. **SegmentManagementCard** list — one per segment in
-     `pivotSegments`. Empty list when no segments defined.
-  5. Existing `recordsAxisName` editor — shown **only** for legacy
-     single-segment pivoted regions (back-compat for
-     non-segmented plans). Hidden once a region has segmentation
-     applied.
-  6. Skip rules / bounds / etc. (existing).
+1. One `SegmentStripUI` per axis in `region.headerAxes` (always when
+   1D; two strips when crosstab).
+2. An "Add <other> axis" button from the strip, surfacing only when
+   the other axis isn't yet a header axis.
+3. A "Collapse crosstab" button when the region is a crosstab.
+4. A `cellValueField.name` text input whenever any pivot segment
+   exists on the region (auto-seeds to `"value"` when the first
+   pivot appears, auto-drops when the last pivot leaves).
+5. The axis-anchor-cell picker remains (still pivoted-only).
+
+The extent section renders:
+
+1. A "Fixed bounds" / "Grows until …" button that opens
+   `RecordAxisTerminatorPopoverUI`. Hidden on crosstab.
+2. Skip rules + existing skip-and-terminator editor (unchanged).
+
+Gone from the panel (relative to the pre-PR editor):
+
+- Orientation dropdown.
+- Header-axis toggle.
+- Records-axis-name / secondary-records-axis-name / cell-value-name
+  inputs (replaced by per-segment axis-name inputs + region-level
+  `cellValueField`).
+- `boundsMode` picker + `boundsPattern` input (replaced by the
+  Extent control and per-segment dynamic toggles).
+- Field-names editor for `headerAxis: "none"` (a replacement UI
+  surfaces as part of the headerless affordance when that lands).
+
+### `RegionDrawingStep.component.tsx`
+
+On a new bounds commit (`onRegionDraft`), the workflow constructs a
+default-tidy `RegionDraft` — `headerAxes: ["row"]` + a single
+`{ kind: "field", positionCount: span }` segment. The caller reads
+row 1 of the selected sheet and supplies the initial byHeaderName
+`ColumnBinding`s via `defaultRegionForBounds` in
+`apps/web/src/modules/RegionEditor/utils/default-region.util.ts`.
 
 ### `FileUploadConnectorWorkflow.component.tsx` (container)
 
-- Default `enableSegmentation: true` on every `regionHint` for the
-  interpret call. Segmented plans come back automatically.
-- Wire the role-strip callbacks through to the workflow hook's
-  existing `onRegionUpdate(regionId, updates)` — updates now
-  accept partial `positionRoles`/`pivotSegments`.
-- Pass the region's cell labels (from workbook + headerAxis) into
-  `RoleStrip` so the chips show the actual header text.
+Wires `onRegionDraft` → `defaultRegionForBounds` for new regions;
+wires the panel's `onUpdate(partial)` through to the workflow's
+existing `onRegionUpdate(regionId, updates)`. Plan mirroring keeps
+`state.plan.regions[i]` in sync with `state.regions[i]` on every
+segment edit.
 
-### `file-upload-workflow.util.ts`
+## Pure segment operations
 
-`PLAN_MIRROR_KEYS` gets extended so `onRegionUpdate` with
-`positionRoles`/`pivotSegments` mirrors into `state.plan` the same
-way binding edits do today.
+`apps/web/src/modules/RegionEditor/utils/segment-ops.util.ts`
+exports pure `Region → Region` helpers the panel's handlers call:
+
+| Operation                    | Effect                                                                 |
+|------------------------------|------------------------------------------------------------------------|
+| `splitSegment`               | Splits a field segment in two; rejects dynamic splits (refinement 10). |
+| `convertSegmentKind`         | field ↔ pivot ↔ skip; auto-seeds `cellValueField` when first pivot appears; auto-drops when last pivot leaves. |
+| `addHeaderAxis`              | Promotes 1D → crosstab by seeding a skip segment on the new axis.      |
+| `removeHeaderAxis`           | Collapses crosstab → 1D; drops that axis's segments, bindings, strategy. |
+| `addFieldSegment`            | Inserts a field segment; merges adjacent same-kind segments.           |
+| `removeSegment`              | Removes a segment; merges adjacent same-kind; rejects removing the only segment on an axis. |
+| `setCellValueField`          | Explicit setter; auto-drops when no pivot exists.                      |
+| `setSegmentDynamic`          | Tail-pivot only (refinement 10); rejects a second dynamic on same axis. |
+| `setRecordAxisTerminator`    | 1D / headerless only (refinement 11).                                  |
+
+Each returns a new region whose `RegionSchema.safeParse` succeeds —
+unit tests assert on that invariant for every op.
 
 ## Validation
 
-`region-editor-validation.util.ts` extends `validateRegion` with:
+`region-editor-validation.util.ts`'s `validateRegion` enforces:
 
-- A segmented region's `pivotSegments` must be non-empty when
-  `positionRoles` contains any `pivotLabel` role.
-- Every segment must have non-empty `axisName` and
-  `valueFieldName`.
-- No two segments on the same region may share an `axisName`
-  (collision warning — records would overwrite on merge).
-- Every position with `kind: "pivotLabel"` references a defined
-  segment id.
+- A pivot segment with an empty `axisName` →
+  `errors["segmentsByAxis.<axis>.pivot.axisName"]`.
+- Any pivot segment present with no `cellValueField.name` →
+  `errors.cellValueField`.
+- `recordAxisTerminator` on a crosstab → `errors.recordAxisTerminator`.
+- `recordAxisTerminator.kind === "matchesPattern"` with invalid
+  regex → `errors.recordAxisTerminator`.
+- `axisAnchorCell` off-region or on a non-pivoted region →
+  `errors.axisAnchorCell`.
 
-Errors render inline under each affected chip (for position-level
-errors) and on the `SegmentManagementCard` (for segment-level
-errors).
+Errors render inline on the relevant input or chip. Blocker-level
+errors block the Interpret / Commit actions.
 
 ## Storybook
 
-New stories under
-`apps/web/src/modules/RegionEditor/stories/`:
+Stories under `apps/web/src/modules/RegionEditor/stories/`:
 
-- `RoleStrip.stories.tsx` — renders each non-trivial matrix id
-  (1c, 1d, 1e, 1f, 2e, 3b, 4b) with the right `labels`/`roles`
-  shape. `Interactive` story lets you toggle roles and see
-  callbacks fire.
-- `SegmentManagementCard.stories.tsx` — empty-state, valid,
-  missing-axis-name, missing-value-field, collision-warning.
+- `RegionConfigurationPanel.stories.tsx`:
+  - **Tidy (classic)** — single row axis, one field segment.
+  - **Pivoted** — single axis, one pivot segment, cell-value field
+    input visible.
+  - **Crosstab** — both axes with pivot segments, cell-value field
+    + axis-anchor decoration visible.
+  - **Crosstab with dynamic tail** — row axis carries a
+    dynamic-tail pivot so the dashed-edge overlay + `·∞` badge have
+    visible coverage.
+- `SegmentStrip.stories.tsx`, `SegmentEditPopover.stories.tsx`,
+  `RecordAxisTerminatorPopover.stories.tsx`,
+  `TerminatorForm.stories.tsx` — one pure-UI story per component
+  for visual review.
 
 ## Acceptance criteria
 
-- After interpret, a segmented region's role strip renders along
-  the correct axis (horizontal for `headerAxis:row`, vertical for
-  `headerAxis:column`). Chips show actual header cell labels.
-- Toggling a chip between Field / Pivot / Skip fires
-  `onRolesChange` with a new `positionRoles` array containing the
-  edit. Workflow state updates both `state.regions` and
-  `state.plan`.
-- Creating a new segment assigns the selected positions to its
-  `segmentId`; the SegmentManagementCard for that segment appears.
-- Renaming a segment's `axisName` or `valueFieldName` updates all
-  dependent displays. `axisNameSource` flips to `"user"` on
-  edit.
-- Deleting a segment reassigns its positions back to
-  `kind: "field"` with a confirmation prompt (no orphan positions
-  left).
+- A freshly-drawn region defaults to tidy — `headerAxes: ["row"]` +
+  one field segment + byHeaderName bindings from row 1. Matches the
+  pre-PR byte-for-byte when the user doesn't interact with the new
+  affordances.
+- Clicking a chip opens the popover anchored on the chip; the user
+  can change axis name, toggle dynamic, change terminator, or
+  convert kind. Each edit dispatches a segment-ops call that
+  produces a schema-valid region.
+- Adding a header axis promotes 1D → crosstab (second `SegmentStripUI`
+  renders, `Add header axis` button hides, `cellValueField` input
+  visible if any pivot exists).
+- Collapsing a crosstab removes the other axis's segments +
+  strategies + axis-bound bindings (refinement 14 stays satisfied).
+- The Extent control renders only on 1D / headerless regions; it's
+  absent for crosstab.
 - Commit is blocked when validation errors exist (blocker severity
-  mirrors today's blocker-gate).
-- Legacy (non-segmented) plans render exactly as today — the role
-  strip hides and `recordsAxisName` shows.
+  mirrors the pre-PR blocker-gate).
 
 ## Test plan
 
 ### Pure UI tests
 
-- `RoleStrip.test.tsx` — rendering for each matrix id; multi-select
-  → "Group as segment" → `onCreateSegment` fires; click chip →
-  popover opens; role change fires `onRolesChange`.
-- `SegmentManagementCard.test.tsx` — field renders; rename fires
-  with `source: "user"`; delete prompts confirm; validation errors
-  surface inline.
-- `RegionConfigurationPanel.test.tsx` — role strip visible when
-  region is non-crosstab with headerAxis; hidden otherwise.
-  `recordsAxisName` editor hidden when segmentation is applied.
+- `SegmentStrip.test.tsx` — chip per segment; chip click callback
+  receives the anchor element; add-segment + add-header-axis
+  buttons emit the right axis.
+- `SegmentEditPopover.test.tsx` — axis-name input on pivots; dynamic
+  toggle on tail pivots only; terminator form per kind; convert
+  buttons emit `onConvert(kind)`.
+- `RecordAxisTerminatorPopover.test.tsx` — hidden on crosstab;
+  toggle on/off emits `onToggle`; pattern edit emits
+  `onChangeTerminator`.
+- `TerminatorForm.test.tsx` — each kind's branch renders; invalid
+  regex flagged via `aria-invalid`; consecutive-blanks < 1 rejected.
+- `RegionConfigurationPanel.test.tsx` — SegmentStrip renders;
+  cellValueField input gated on pivot presence; Extent control
+  gated on `!isCrosstab`; add-header-axis button gated on 1D;
+  dynamic-tail chip badge renders when `segment.dynamic` is set;
+  orientation / boundsMode UI is gone.
 
-### Container tests
+### Pure operation tests
 
-- `FileUploadConnectorWorkflow.test.tsx` — interpret call sends
-  `enableSegmentation: true` on every region hint; response
-  containing `positionRoles`/`pivotSegments` drives the panel into
-  segmented mode.
-- Edit flow: user changes a position from Pivot → Field and hits
-  Apply; workflow's `state.plan` receives the updated
-  `positionRoles`.
+- `segment-ops.test.ts` — one test per operation covering the
+  acceptance case + each invariant it preserves. End-state validated
+  through `RegionSchema.safeParse` via a helper.
+- `default-region.test.ts` — classic tidy seed matches the plan's
+  expected shape and validates clean.
+
+### Container + workflow tests
+
+- `RegionConfigurationPanel.test.tsx` (container integration) — the
+  panel's segment-ops calls mirror into the parent's `onUpdate`
+  callback with the right partial shape.
+- `FileUploadConnectorWorkflow.test.tsx` — `onRegionDraft` emits a
+  default-tidy new-shape draft; the workflow's plan mirroring keeps
+  `state.plan.regions[i]` in sync with edit events.
 
 ### Storybook smoke
 
-- Visual parity check for each matrix id story. No functional
-  regressions in existing RegionEditor stories.
+- Visual parity check for Tidy / Pivoted / Crosstab / Crosstab
+  dynamic-tail stories. No functional regressions in existing
+  RegionEditor stories.
 
 ## Non-goals
 
-- Auto-segment detection is the interpret pipeline's job — the UI
-  only renders and edits what the plan carries.
-- Crosstab segmentation — the role strip is hidden for
-  `cells-as-records`.
-- Value-field-name LLM recommendation — the textbox accepts manual
-  input; the heuristic pre-fills a default (`${axisName}Total`).
-- Visual preview of the expanded record list — a stretch goal,
-  deferred to a follow-up so the initial UI ships on its own
-  scope.
+- Drag-to-reorder segments — follow-up.
+- Segment-rename drift detection — follow-up (shares a spec with
+  identity-drift segment-rename handling).
+- Per-segment `columnDefinitionId` picker for `cellValueField` — the
+  shipped input accepts a name only; mapping to a catalog definition
+  is a workflow-layer follow-up.
+- Mid-axis dynamic segments — forbidden by refinement 10.
 
 ## Rollout
 
-One PR covering the two new components + panel/container/util
-changes + tests + stories. Flag `enableSegmentation: true` at the
-container level defaults on; this is the flip-to-default for the
-opt-in introduced in the interpret spec, so the order of shipping
-is: schema/replay → interpret (opt-in off) → UI (flips opt-in on).
-
-If UI QA finds any regressions for legacy single-segment regions,
-the container can revert to `enableSegmentation: false` without a
-schema or interpret rollback.
+One PR (`segments_04_region_editor`) delivers the panel rework
+alongside the four new components + segment-ops helpers + updated
+tests + stories. A follow-up PR adds the suggestion affordance on
+pivot axis-names (the `onSuggestAxisName` entry point was removed
+when the region-level "Suggest" button went away; the replacement
+lives in the per-segment popover).

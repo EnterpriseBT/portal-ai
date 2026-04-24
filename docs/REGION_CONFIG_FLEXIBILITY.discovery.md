@@ -202,101 +202,48 @@ one entity org-wide.
 
 ## Crosstab treatment
 
-`cells-as-records` regions (crosstabs) are a third orientation alongside
-rows-as-records and columns-as-records. They carry **two** header lines
-— the row-header and the column-header — and every cell at their
-intersection is a record. Today crosstabs use three flat names
-(`recordsAxisName`, `secondaryRecordsAxisName`, `cellValueName`), not
-segmentation.
+Crosstabs are regions whose `headerAxes` is `["row", "column"]` — both
+header bands carry labels and every interior cell is a record. Today
+(as shipped in PR-1..PR-3) a crosstab is **one region, with one
+`segmentsByAxis` entry per declared header axis**, exactly like a 1D
+region. The shape that used to be expressed with three flat names
+(`recordsAxisName`, `secondaryRecordsAxisName`, `cellValueName`) is now
+expressed as two pivot segments (one per axis) plus one
+`cellValueField` at the region level. This has three direct benefits:
 
-### Where segmentation would extend crosstabs
+- **Static-prefix crosstab** — a crosstab with leading label columns
+  that describe the row (e.g. a `count` column before `Region1..3`
+  cells). The prefix is a `field` segment on the row axis; it replicates
+  into every cell record via the unified emit loop.
+- **Skip totals row/col** — most real-world crosstabs have a `Total`
+  row or column that isn't a legitimate records-axis value. A `skip`
+  segment covers this uniformly.
+- **Mixed segmentation per axis** — the row axis can mix field + pivot
+  + skip segments while the column axis does the same; record emission
+  is a Cartesian product over the pivot segments, with statics from
+  field segments joining every record.
 
-The segmented mental model generalizes naturally to 2D: each header
-line (row line and col line) gets its own `positionRoles[]` and its own
-`pivotSegments[]`. Record emission rules for a fully segmented crosstab
-would be:
+The shipped behavior:
 
-- A record is emitted only for cells whose **row** position has role
-  `pivotLabel` **and** whose **col** position has role `pivotLabel`.
-- `field` (static) positions on either axis contribute their cell value
-  into every record whose row or column intersects them. In effect:
-  a row-line static replicates across every column-record in that row;
-  a col-line static replicates across every row-record in that column.
-- `skip` positions are ignored for record emission, from either axis.
-- Cells at `(static, static)` intersections don't belong to any record
-  and are dropped as metadata.
-
-This is strictly more expressive than today's crosstab and absorbs two
-patterns the current model can't express:
-
-1. **Static-prefix crosstab** — a crosstab with leading label columns
-   that describe the row (e.g., `count` column before `Region1..3`
-   cells). Under segmentation the prefix columns are `field`-role
-   positions on the col-line; they replicate into every cell record.
-2. **Skip totals row/col** — most real-world crosstabs have a `Total`
-   row or column that isn't a legitimate records-axis value. `skip`
-   role covers this uniformly.
-
-### v1 scope: keep crosstabs flat
-
-For v1 we **do not** ship segmented crosstabs. Reasons:
-
-- Crosstabs are already the hardest orientation to configure; layering
-  two dimensions of segmentation on top is a big UX and parser lift.
-- The canonical failing pattern this discovery is built around
-  (mixed static + multi-pivot header on one axis) is expressible with
-  rows-as-records / columns-as-records + segmentation — crosstab isn't
-  required to solve it.
-- Phase 1's fixture matrix gets unwieldy if we try to cover 1D and 2D
-  segmentation at once; better to lock in the 1D semantics first.
-
-Enforcement for v1:
-
-- Parser schema: `positionRoles` / `pivotSegments` are **not permitted**
-  on regions where `orientation === "cells-as-records"`. Zod refinement
-  rejects them; commit-time validation returns a clear error.
-- Crosstabs continue to use the existing three flat names. The review
-  editor's crosstab config stays unchanged.
-- Frontend role-strip UI is hidden for cells-as-records regions.
-
-### v2 path (deferred)
-
-When the 2D extension is ready, the upgrade is additive:
-
-- Relax the Zod refinement: segmented crosstabs accept per-axis
-  `positionRoles`/`pivotSegments` (two sets, one per axis). The three
-  flat names remain as the "single-segment-per-axis" legacy form.
-- Record emission code branches on `(row-segmented?, col-segmented?)`
-  — four combinations, three of which reduce to the v1 code path.
-- UI grows a second role strip (along the row-header edge) mirroring
-  the column one.
-- The "multiple `cellValueName`s" case — different (rowSegment,
-  colSegment) pairs carrying different value semantics like
-  `revenue` vs. `headcount` — stays an open question even in v2;
-  first cut uses a single per-region `cellValueName` and adds
-  per-col-segment `valueFieldName` later if needed.
-
-Callouts for v1 that keep v2 reachable:
-
-- The row-line-axis roles and the col-line-axis roles should live in
-  **separate** fields when we add them (`rowPositionRoles`,
-  `colPositionRoles`), not in a single `positionRoles`. This avoids
-  ambiguity when both exist.
-- Segment ids should be scoped to a region but globally unique across
-  axes within that region (`segmentId: string`), so future merging /
-  reporting is coherent.
-- `pivotSegments: PivotSegment[]` stays a flat region-level list; each
-  segment declares which axis it belongs to via a `axis: "row" | "col"`
-  field in the v2 schema. v1 can omit that field (implicit
-  `axis: "col"` or `axis: "row"` based on the region's `headerAxis`).
+- `RegionSchema` allows a `segmentsByAxis` entry on the row axis iff
+  `row ∈ headerAxes`, and the same for `column` (refinement 2).
+  Crosstabs therefore carry up to two segment lists naturally.
+- `cellValueField` is region-level, required iff ≥ 1 pivot segment
+  exists anywhere on the region (refinement 7). Different segments on
+  different axes don't each declare their own `cellValueName` — a
+  region still has one "cell value" field name. Distinct value
+  semantics per `(rowSegment, colSegment)` pair remain an open
+  question; the shipped schema is the single-`cellValueField` cut.
+- `recordAxisTerminator` is **forbidden** on crosstab (refinement 11)
+  because a crosstab's record axis is the Cartesian product of two
+  header-axis pivots, not a single growing edge.
 
 ### Interaction with C1 and C2
 
 Neither C1 (one region per entity) nor C2 (org-wide unique entity keys)
 has special-case behavior for crosstabs — each crosstab is one region
 targeting one entity; its key sits in the same org-wide uniqueness
-namespace as any other entity. The crosstab exemption is purely about
-*segmentation*, not about the two simplifying constraints.
+namespace as any other entity.
 
 ## Permutation matrix
 
@@ -318,49 +265,37 @@ Legend:
   - `mixed:N` — some `field` positions + N pivot segments.
   - `+skip` — any of above with at least one `skip` position.
 
-| id  | Orientation | HeaderAxis | Role pattern                              | In scope | Notes                                    |
-|-----|-------------|------------|-------------------------------------------|----------|------------------------------------------|
-| 1a  | rows        | row        | all-field (degenerate)                    | ✅       | Existing: classic tidy                   |
-| 1b  | rows        | row        | all-pivot 1 segment                       | ✅       | New segmented encoding of existing shape |
-| 1c  | rows        | row        | 2-segments, no statics                    | ✅       | New                                      |
-| 1d  | rows        | row        | mixed: statics + 1 segment                | ✅       | New                                      |
-| 1e  | rows        | row        | mixed: statics + 2 segments **canonical** | ✅       | New — the motivating case                |
-| 1f  | rows        | row        | mixed + skip (e.g. Total col)             | ✅       | New                                      |
-| 2a  | cols        | col        | all-field (degenerate)                    | ✅       | Existing: transposed tidy                |
-| 2b  | cols        | col        | all-pivot 1 segment                       | ✅       | New segmented encoding                   |
-| 2c  | cols        | col        | 2-segments, no statics                    | ✅       | New                                      |
-| 2d  | cols        | col        | mixed: statics + 1 segment                | ✅       | New                                      |
-| 2e  | cols        | col        | mixed: statics + 2 segments               | ✅       | New — canonical transpose                |
-| 2f  | cols        | col        | mixed + skip                              | ✅       | New                                      |
-| 3a  | rows        | col        | all-pivot 1 segment (existing pivoted)    | ✅       | Existing                                 |
-| 3b  | rows        | col        | N-segments (multi records-axis)           | ✅       | New — split one records-axis into N      |
-| 4a  | cols        | row        | all-pivot 1 segment (existing pivoted)    | ✅       | Existing                                 |
-| 4b  | cols        | row        | N-segments (multi records-axis)           | ✅       | New                                      |
-| 5   | rows        | none       | headerless                                | ✅       | Existing; segmentation N/A               |
-| 6   | cols        | none       | headerless                                | ✅       | Existing; segmentation N/A               |
-| 7   | cells       | (2D)       | flat crosstab                             | ✅       | Existing; no segmentation in v1          |
-| 8   | cells       | (2D)       | static-prefix / segmented crosstab        | 🔒 v2    | Deferred — see "Crosstab treatment"      |
+| id  | Orientation | HeaderAxis | Role pattern                              | In scope | Status    | Notes                                    |
+|-----|-------------|------------|-------------------------------------------|----------|-----------|------------------------------------------|
+| 1a  | rows        | row        | all-field (degenerate)                    | ✅       | ✅ Shipped | Existing: classic tidy                   |
+| 1b  | rows        | row        | all-pivot 1 segment                       | ✅       | ✅ Shipped | Segmented encoding of existing shape     |
+| 1c  | rows        | row        | 2-segments, no statics                    | ✅       | ✅ Shipped |                                          |
+| 1d  | rows        | row        | mixed: statics + 1 segment                | ✅       | ✅ Shipped |                                          |
+| 1e  | rows        | row        | mixed: statics + 2 segments **canonical** | ✅       | ✅ Shipped | The motivating case                      |
+| 1f  | rows        | row        | mixed + skip (e.g. Total col)             | ✅       | ✅ Shipped |                                          |
+| 2a  | cols        | col        | all-field (degenerate)                    | ✅       | ✅ Shipped | Existing: transposed tidy                |
+| 2b  | cols        | col        | all-pivot 1 segment                       | ✅       | ✅ Shipped | Segmented encoding of transposed pivoted |
+| 2c  | cols        | col        | 2-segments, no statics                    | ✅       | ✅ Shipped |                                          |
+| 2d  | cols        | col        | mixed: statics + 1 segment                | ✅       | ✅ Shipped |                                          |
+| 2e  | cols        | col        | mixed: statics + 2 segments               | ✅       | ✅ Shipped | Canonical transpose                      |
+| 2f  | cols        | col        | mixed + skip                              | ✅       | ✅ Shipped |                                          |
+| 3a  | rows        | col        | all-pivot 1 segment (pivoted row header)  | ✅       | ✅ Shipped |                                          |
+| 3b  | rows        | col        | N-segments (multi records-axis)           | ✅       | ✅ Shipped | Split one records-axis into N            |
+| 4a  | cols        | row        | all-pivot 1 segment (pivoted col header)  | ✅       | ✅ Shipped |                                          |
+| 4b  | cols        | row        | N-segments (multi records-axis)           | ✅       | ✅ Shipped |                                          |
+| 5   | rows        | none       | headerless                                | ✅       | ✅ Shipped | `headerAxes: []`; segmentation N/A       |
+| 6   | cols        | none       | headerless                                | ✅       | ✅ Shipped | `headerAxes: []`; segmentation N/A       |
+| 7   | cells       | (2D)       | flat crosstab                             | ✅       | ✅ Shipped | Two pivot segments, one per axis         |
+| 8   | cells       | (2D)       | static-prefix / segmented crosstab        | ✅       | ✅ Shipped | Mixed field/pivot/skip on both axes      |
 
-Notes on the "new" rows:
+Row 8 landed as part of the unified segment model — the original v2
+deferral became unnecessary once `segmentsByAxis` admitted crosstabs
+alongside 1D regions. See § "Crosstab treatment" above for the shape
+and § "Specs" below for where each row's behavior is exercised.
 
-- **1b / 2b** formally duplicate the existing pivoted shape but under
-  the segmented encoding (one implicit segment covering every
-  position). They're listed so the phase-1 parser can round-trip a
-  pivoted region through segmentation without behavior change.
-- **1c / 2c** is the "multiple pivots, no statics" case — two
-  independent records-axes share a non-pivoted base but drop the
-  static prefix. Rare but falls out of the same model.
-- **3b / 4b** ("multi records-axis") is the pivoted analogue: the
-  existing pivoted shape already assigns records-axis labels on
-  `headerAxis`; segmentation there splits those labels into multiple
-  named axes. Each segment gets its own axis-name; each position is
-  still exactly one record.
-- **8** (segmented crosstab) stays deferred. See § "Crosstab
-  treatment".
-
-The CSV companion gives hand-crafted data for each ✅ row so reviewers
-can see at a glance what the feature covers and so fixture-based tests
-have a canonical source.
+The CSV companion gives hand-crafted data for each row so reviewers can
+see at a glance what the feature covers and so fixture-based tests have
+a canonical source.
 
 ## Schema additions (spreadsheet-parsing)
 
@@ -595,47 +530,41 @@ re-syncs. Simplest derivation: `{entityId}/{segmentId}/{position.label}`.
 
 ## Phasing
 
-Two prerequisite phases (the constraints above) ship before segmentation
-can land coherently. Each is independently useful.
+The six originally-planned phases collapsed into five shipped PRs once
+the team agreed to make the segment model the representation (rather
+than hide it behind an opt-in). Recorded for history:
 
-0a. **One region per entity (C1)** — add frontend + commit-time
-   validation, emit `DUPLICATE_ENTITY_TARGET` from the parser, strike
-   the merge semantics from `SPREADSHEET_PARSING.architecture.spec.md`,
-   and simplify `layout-plan-commit.service.ts`'s grouping. Small PR;
-   ships on its own regardless of whether segmentation proceeds.
+0a. **One region per entity (C1)** — shipped as its own PR alongside
+   the frontend + commit-time validation changes.
+0b. **Org-wide entity key uniqueness (C2)** — shipped independently of
+   segmentation with the DB migration + audit + error-code plumbing.
+1. **Schema + replay** — PR-1 of the segments roadmap. Unified
+   `headerAxes` + `segmentsByAxis` + `cellValueField` in the Zod
+   schema; `replay()` drives off them uniformly (1D and crosstab
+   alike).
+2. **Interpret — heuristic detection** — PR-2 of the roadmap. Added
+   the `detect-segments` stage with a pattern bank and wired it into
+   the dispatch matrix. No opt-in gate: detect-segments runs on every
+   region.
+3. **UI — segment composition editor** — PR-4 of the roadmap. The
+   RegionConfigurationPanel exposes per-axis segment chips and an
+   inline popover for kind / axis name / dynamic-tail edits. (The
+   original plan sequenced UI before the LLM classifier; we shipped
+   in the opposite order because a pure-heuristic pipeline made the
+   UI a useful visual check on what detection produced.)
+4. **Interpret — per-segment classifier + recommender** — PR-3 of the
+   roadmap. Added `classify-field-segments` and
+   `recommend-segment-axis-names` as first-class stages.
+5. **Flip default** — merged into PR-1 rather than being its own
+   phase. PR-1 cut over the whole representation to segments, so
+   there was never a period where the old shape persisted behind a
+   flag. The original `recordsAxisName` / `cellValueName` fields are
+   gone from both the canonical schema and the editor draft.
 
-0b. **Org-wide entity key uniqueness (C2)** — DB migration + dry-run
-   duplicate audit, update the unique index, adjust
-   `upsertByKey` to key on `(organizationId, key)`, tighten reference
-   validation to the org-unique resolver, add the "key already owned
-   by another connector" error path. Ships on its own; references
-   become unambiguous across connectors immediately.
-
-1. **Schema + replay (linear orientations only)** — add `positionRoles`
-   / `pivotSegments` to the Zod schema with a Zod refinement that
-   rejects them when `orientation === "cells-as-records"`. Implement
-   `extractSegmentedRecords` for rows-as-records and columns-as-records.
-   Plans constructed by hand work end-to-end. No interpret or UI
-   support yet. Confirms the 1D semantics. Depends on 0a and 0b.
-   Crosstab segmentation is explicitly deferred — see "Crosstab
-   treatment" section for the v2 path.
-2. **Interpret — heuristic** — `detect-position-roles` pass generates
-   initial roles from patterns (quarter/month/year regex banks). No
-   LLM yet. Ship behind a per-region opt-in flag so the legacy
-   pipeline remains the default.
-3. **UI — role strip** — render the chips + role picker in the region
-   configuration panel. User can opt into segmentation post-interpret.
-   LLM still not involved.
-4. **Interpret — LLM classifier** — `classify-positions` sub-prompt.
-   Ship once heuristic + UI shake-out establishes the data model.
-5. **Flip default** — once live usage confirms the design, the
-   non-segmented single-pivot codepath becomes a special case rendered
-   by the same segmented machinery. `recordsAxisName` / `cellValueName`
-   become computed views over the single-segment case.
-
-Phase 1 is the smallest segmentation-shippable unit. Phases 0a and 0b
-can ship in either order or in parallel and are valuable independently
-of the segmentation work.
+The C1 + C2 phases were independently valuable and stayed their own
+PRs; the five segments-roadmap PRs (one schema/replay, one detect,
+one classify/recommend, one editor, one docs) each map to a single
+review-sized diff.
 
 ## Open questions
 
@@ -677,25 +606,21 @@ of the segmentation work.
 
 ## Specs
 
-The discovery has been split into five focused specs, each sized for a
-single PR. Ship in the order below; the first two are independent of
-segmentation and valuable on their own.
+The discovery split into five focused specs; each one shipped as a
+single PR.
 
-| Spec                                               | Scope                                                                          | Depends on    |
-|----------------------------------------------------|--------------------------------------------------------------------------------|---------------|
-| `REGION_CONFIG.c1_one_region_per_entity.spec.md`   | C1: enforce one region per `targetEntityDefinitionId` per connector instance   | —             |
-| `REGION_CONFIG.c2_org_unique_entity_key.spec.md`   | C2: unique `(organization_id, key)` index + audit + error code + UI affordance | —             |
-| `REGION_CONFIG.schema_replay.spec.md`              | Segmentation phase 1 — Zod schema + replay `extractSegmentedRecords`           | C1, C2        |
-| `REGION_CONFIG.interpret.spec.md`                  | Segmentation phases 2 + 4 — heuristic role detection + LLM classify/recommend  | schema_replay |
-| `REGION_CONFIG.ui.spec.md`                         | Segmentation phase 3 — role strip, segment management card, validation         | schema_replay, interpret |
+| Spec                                               | Scope                                                                          | Sub-plan                                              | Depends on    |
+|----------------------------------------------------|--------------------------------------------------------------------------------|-------------------------------------------------------|---------------|
+| `REGION_CONFIG.c1_one_region_per_entity.spec.md`   | C1: enforce one region per `targetEntityDefinitionId` per connector instance   | `REGION_CONFIG.c1_one_region_per_entity.plan.md`      | —             |
+| `REGION_CONFIG.c2_org_unique_entity_key.spec.md`   | C2: unique `(organization_id, key)` index + audit + error code + UI affordance | `REGION_CONFIG.c2_org_unique_entity_key.plan.md`      | —             |
+| `REGION_CONFIG.schema_replay.spec.md`              | Unified segment schema + replay                                                | `REGION_CONFIG.segments_01_schema_replay.plan.md`     | C1, C2        |
+| `REGION_CONFIG.interpret.spec.md`                  | Segment detection + per-segment classifier + axis-name recommender             | `REGION_CONFIG.segments_02_detect_segments.plan.md`, `REGION_CONFIG.segments_03_segment_classify_recommend.plan.md` | schema_replay |
+| `REGION_CONFIG.ui.spec.md`                         | Segment-composition editor                                                     | `REGION_CONFIG.segments_04_region_editor.plan.md`     | schema_replay, interpret |
 
 Each spec includes its own test plan and acceptance criteria; none
 restate the rationale — they reference this discovery for the "why".
 
-Segmented crosstabs (matrix row 8) stay deferred; they get their own
-discovery → spec → plan arc when scheduled. The v1 Zod refinement in
-`schema_replay` enforces the deferral.
-
-A `.plan.md` breaking the specs into sequenced PRs with ready-to-go
-test matrices is a reasonable next artifact once the specs have been
-reviewed.
+Segmented crosstabs (matrix row 8) ship with the unified representation
+— no separate arc needed. The roadmap index
+`REGION_CONFIG.segments.plan.md` links each PR's ready-to-go test
+matrix.

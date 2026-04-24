@@ -97,16 +97,19 @@ LayoutPlan v1
     {
       id: stable region id
       sheet: string
-      bounds: { startRow, endRow | dynamic, startCol, endCol }
+      bounds: { startRow, endRow, startCol, endCol }
       targetEntityDefinitionId: string
-      orientation: "rows-as-records" | "columns-as-records" | "cells-as-records"
-      headerAxis: "row" | "column" | "none"
-      recordsAxisName?: { name, source: "user" | "ai" | "anchor-cell", confidence }
-      secondaryRecordsAxisName?: { ... }       // crosstab column dimension
-      cellValueName?: { ... }                   // crosstab cell value field
-      axisAnchorCell?: { row, col }            // override for axis-name anchor; default = top-left
-      columnOverrides?: Record<string, string>  // field-name overrides when headerAxis === "none"
-      headerStrategy: { kind, locator, confidence }
+      headerAxes: AxisMember[]                  // 0, 1, or 2 of { "row", "column" }
+      segmentsByAxis?: {                         // segments per declared header axis
+        row?:    Segment[]                       // each Segment is field | pivot | skip
+        column?: Segment[]
+      }
+      cellValueField?: { name, nameSource, columnDefinitionId? }  // present iff ≥1 pivot
+      recordAxisTerminator?: Terminator          // grows-until stop; forbidden on crosstab
+      recordsAxis?: "row" | "column"             // required iff headerAxes.length === 0
+      headerStrategyByAxis?: { row?, column? }   // strategy per declared axis
+      axisAnchorCell?: { row, col }              // override for axis-name anchor; default = top-left
+      columnOverrides?: Record<string, string>   // field-name overrides for headerless regions
       identityStrategy: { kind, spec, confidence }
       columnBindings: [ { sourceLocator, columnDefinitionId, confidence, rationale? } ]
       skipRules: [ ... ]
@@ -155,40 +158,109 @@ Collisions surface at three layers:
 
 Soft-deleted keys free up for reuse because the index is partial on `deleted IS NULL`. Cross-org scoping is unchanged — different organizations can freely share keys. See `docs/REGION_CONFIG.c2_org_unique_entity_key.spec.md`.
 
-## Pivoted regions
+## Region structure
 
-A region is *pivoted* when records run across one axis while field names run along the other. For pivoted regions:
+A region is a rectangle over a sheet (its `bounds`), with three region-level
+fields that together describe how cells inside that rectangle become
+records: `headerAxes`, `segmentsByAxis`, and `cellValueField`. `orientation`
+and `headerAxis` are not fields of the shipped model — they are derived
+properties (see below) that the UI and replay compute on demand.
 
-- `orientation` declares which axis carries records (`columns-as-records` or `rows-as-records`).
-- `headerAxis` declares which axis carries field names.
-- `recordsAxisName` is **required** — it is a user-facing name for the records dimension (e.g., `Month`, `Year`, `Region`). Each extracted record gets a field named `recordsAxisName.name` whose value is the axis label.
-- If the user does not supply a name, two auto-population paths exist:
-  1. **Anchor-cell auto-population** — the region's axis-name anchor cell (defaulting to the top-left of bounds, overridable via `axisAnchorCell`) is read for a non-blank string value. If present, the plan sets `recordsAxisName` with `source: "anchor-cell"` so the UI shows it pre-filled but editable. Moving or overriding the anchor cell updates the proposed name in real time.
-  2. **AI recommendation** — the interpreter may propose a name via a `recommendRecordsAxisName` AI sub-call that inspects the records-axis labels. The plan marks `recordsAxisName.source` as `"ai"` so the UI can flag AI suggestions for confirmation.
-- `recordsAxisName.source` is one of `"user"` (typed by the user), `"ai"` (LLM-proposed), or `"anchor-cell"` (auto-populated from the anchor cell value). Only `"user"` names are treated as confirmed; `"ai"` and `"anchor-cell"` names are shown with a confirmation prompt.
-- If no name can be proposed with high confidence and the user hasn't supplied one, the plan emits a `PIVOTED_REGION_MISSING_AXIS_NAME` blocker.
+See `docs/REGION_CONFIG.segments.plan.md` for the full roadmap index and
+sub-plan references; the remainder of this section summarizes what the
+shipped schema enforces.
 
-### Crosstabs (cells-as-records)
+### Header axes
 
-When `orientation === "cells-as-records"`, both axes carry dimension labels and every cell is a record. A crosstab region requires **three** user-facing names:
+`headerAxes: AxisMember[]` lists the axes that carry header values (field
+names or pivot axis labels). Its cardinality picks the region shape:
 
-- `recordsAxisName` — names the row dimension (e.g. `Quarter`).
-- `secondaryRecordsAxisName` — names the column dimension (e.g. `Region`).
-- `cellValueName` — names the field that holds each cell's value (e.g. `Revenue`).
+- **`[]` — headerless.** The rectangle is all data. `recordsAxis` names
+  which direction records run (complement is the field-index axis), and
+  `columnOverrides` supplies per-field names. Each position on the field
+  axis maps to one field; each position on the record axis is a record.
+- **`["row"]` — row-headed (classic tidy).** The top row carries headers;
+  each row below is a record.
+- **`["column"]` — column-headed.** The left column carries headers; each
+  column to its right is a record.
+- **`["row", "column"]` — crosstab.** Both bands carry labels and every
+  interior cell is a record. The corner cell is the axis-name anchor.
 
-Each extracted record has three fields whose keys are the three names above and whose values are `(row-label, col-label, cell-value)` respectively. Validation treats all three as blockers when missing; the same `PIVOTED_REGION_MISSING_AXIS_NAME` warning code is reused, with the `locator` distinguishing which axis is missing.
+Refinement 1 forbids duplicates; refinement 5 enforces `recordsAxis` iff
+`headerAxes.length === 0`.
 
-## Region segmentation (Phase 1)
+### Segments
 
-A region may optionally carry two fields — `positionRoles` (one entry per header-axis position) and `pivotSegments` (named records-axes plus value-field declarations). They generalize the single-axis pivoted shape above into an N-segment model where a single header line can mix static fields with multiple independently-named pivot axes.
+`segmentsByAxis.row` / `.column` each hold an ordered list of `Segment`s
+that covers the axis (sum of `positionCount` matches the span; a dynamic
+tail is allowed to claim "≥ 1 additional"). `Segment` is a discriminated
+union:
 
-- Each entry in `positionRoles` is tagged `field` (a column-bound static), `pivotLabel` (a label for one of the declared `pivotSegments`), or `skip` (ignored; e.g. a Total column).
-- Each `pivotSegment` has an `id`, an `axisName` (field name for the label), and a `valueFieldName` (field name for each position's cell value). Sources (`user` / `ai` / `anchor-cell`) carry provenance analogous to `recordsAxisName`.
-- Schema refinements on `RegionSchema` enforce: `positionRoles` length matches the header-line length (column span for `headerAxis:row`, row span for `headerAxis:column`); every `pivotLabel.segmentId` resolves to a declared `pivotSegment`; every declared segment is referenced by at least one position; and `cells-as-records` rejects segmentation outright with `SEGMENTED_CROSSTAB_NOT_SUPPORTED`.
-- Record generation: for each entity-unit the replay engine collects statics from `field`-role positions, then for each declared segment emits one record per matching `pivotLabel` position — its `fields` are the statics plus `{ [segment.axisName]: headerLabel, [segment.valueFieldName]: cellValue }`. Source-ids combine the base identity-strategy result with `::segmentId::label`; plans with zero segments emit one statics-only record per entity-unit and keep the base source-id unchanged, so segmented and classic (non-pivoted) encodings round-trip.
-- Orientation symmetry: the emit loop is driven by `headerAxis` (row vs. column), so pivoted variants (`rows-as-records + headerAxis:column`, `columns-as-records + headerAxis:row`) share the same layout code as their non-pivoted siblings — `orientation` only affects the base source-id format.
+- **`field`** — positions are field names. Each position becomes one
+  field on every record along the record axis.
+- **`pivot`** — positions are *axis values* (e.g. quarters). Each
+  position becomes one extracted record per record-axis position, and
+  the pivot's `axisName` names the field that carries the label.
+- **`skip`** — positions are ignored (e.g. a Totals column in the
+  middle of a header row).
 
-Phase 1 ships the schema + replay only; `interpret` stages and the UI role strip land in later phases. Until then, segmented plans reach the pipeline through direct API construction or hand-crafted fixtures. See `docs/REGION_CONFIG.schema_replay.spec.md` for the full spec and `docs/REGION_CONFIG.schema_replay.plan.md` for the TDD walkthrough.
+Segments compose: a single axis can mix `[field, pivot, skip]` so one
+header row can carry static field names alongside a pivoted axis
+alongside ignored columns. A segment is required on each declared
+header axis (refinement 2); segment lengths sum to the axis span unless
+the tail is a dynamic pivot (refinements 3, 10).
+
+Pivot `id` values are unique across both axes (refinement 13). `dynamic`
+is allowed only on the tail pivot of an axis, and at most one per axis
+(refinement 10). `recordAxisTerminator` is forbidden on a crosstab
+(refinement 11) because a crosstab's record axis is a complement of two
+header axes, not a single growing edge.
+
+### `cellValueField`
+
+Required iff at least one pivot segment exists (refinement 7); forbidden
+otherwise. It carries the field name that holds each cell's *value*
+under a pivoted/crosstab emit (the `name` corresponds to what the user
+types in the "Cell value name" input). `nameSource` is `"user"` /
+`"ai"` / `"anchor-cell"` and carries provenance; the UI treats only
+`"user"` as confirmed.
+
+### Record generation (unified emit)
+
+Replay walks every region once. For an entity-unit (a single record-axis
+position on a 1D region, or a single `(row, col)` pair on a crosstab),
+it collects statics from `field`-role segments, then runs a
+Cartesian-product loop over the pivot segments present on declared
+header axes. Each element of the product emits one record whose fields
+are the statics plus `{ [pivot.axisName]: axisLabel, ...,
+[cellValueField.name]: cellValue }`.
+
+A tidy region (no pivots, one `field` segment) has a 1-element Cartesian
+product and degenerates to "one record per record-axis position" —
+identical to pre-segment emit for the same shape. A crosstab with pivot
+segments on both axes has a 2-axis product: one record per `(row-label,
+col-label)` pair, picking up the row-axis pivot's name + the column-axis
+pivot's name + `cellValueField.name` on each record. Source-ids combine
+the base identity-strategy result with `::segmentId::label` for each
+pivot involved; plans with zero pivots keep the base source-id
+unchanged, so tidy and segmented encodings round-trip.
+
+### Derived properties
+
+The shipped module exports three helpers so consumers don't re-derive
+the shape inline:
+
+- `isCrosstab(region)` — `headerAxes.length === 2`.
+- `isPivoted(region)` — any pivot segment on either axis.
+- `recordsAxisOf(region)` — the axis records run along: the complement
+  of `headerAxes[0]` for 1D, `region.recordsAxis` for headerless, or
+  `undefined` for crosstab (records are cells, not a single axis).
+
+A "pivoted vs. tidy" display is a function of `isPivoted`; an
+"orientation arrow" is a function of `headerAxes` and pivot presence —
+neither carries state of its own. See
+`packages/spreadsheet-parsing/src/plan/region.schema.ts` for the
+authoritative schema + refinements.
 
 ## v1 declarative surface
 
@@ -197,26 +269,42 @@ Surface variants kept and deferred in v1. The interpreter must recognize deferre
 | Group | v1 keeps | v1 defers |
 |---|---|---|
 | Locator | `cell`, `range`, `column`, `row` | `headerRelative`, `pattern` |
-| Bounds | `absolute` (from hints), `untilEmpty` (with configurable terminator count), `matchesPattern` (regex stop rule) | `anchoredTo`, `wholeSheet` auto-detect |
-| Orientation | `rows-as-records`, `columns-as-records`, `cells-as-records` (crosstab) | — |
-| Header strategy / axis | `headerAxis: "row" \| "column" \| "none"`; `headerStrategy.kind: "row" \| "column" \| "rowLabels"` | `composite` header strategy |
+| Bounds | `absolute` (from hints), `untilBlank` terminator (with configurable `consecutiveBlanks`), `matchesPattern` terminator | `anchoredTo`, `wholeSheet` auto-detect |
+| Region shape | derived from `headerAxes` cardinality + pivot presence (headerless / row-headed / column-headed / crosstab; tidy vs. pivoted) | — |
+| Header strategy / axis | `headerAxes: ("row" \| "column")[]` with max two entries; `headerStrategyByAxis.row?` / `.column?` with `kind: "row" \| "column" \| "rowLabels"` | `composite` header strategy |
 | Identity strategy | `column`, `composite`, `rowPosition` (warn) | `derived` |
 | Skip predicates | `blank`, `cellMatches` (row or column target) | `allSameValue`, `marker`, `columnMatches` by header name |
 | Transforms | none (belong in `ColumnDefinition`) | none |
-| Binding source locator | `byHeaderName`, `byColumnIndex` (fallback) | `byHeaderMatch` |
+| Binding source locator | `byHeaderName`, `byPositionIndex` (fallback) | `byHeaderMatch` |
 | Drift tolerance knobs | `headerShiftRows`, `addedColumns`, `removedColumns` | `columnReorder`, `renamedHeaders` |
 
-New v1 region fields from the primary (hinted-region) design:
+Region fields from the primary (hinted-region) design:
 
-- `targetEntityDefinitionId: string`
-- `headerAxis: "row" | "column" | "none"` (explicit rather than implicit in header strategy; `"none"` enables headerless regions with auto-generated `columnOverrides`)
-- `recordsAxisName?: { name, source: "user" | "ai" | "anchor-cell", confidence }` — required on pivoted and crosstab regions
-- `secondaryRecordsAxisName?: { name, source, confidence }` — required on crosstab regions (column dimension)
-- `cellValueName?: { name, source, confidence }` — required on crosstab regions (the field holding each cell's value)
-- `axisAnchorCell?: { row, col }` — optional override for the cell whose value auto-populates axis names; defaults to the region's top-left corner; must be within bounds; only meaningful for pivoted and crosstab shapes
-- `boundsMode: "absolute" | "untilEmpty" | "matchesPattern"` with companion `boundsPattern` and `untilEmptyTerminatorCount`
-- `skipRules: SkipRule[]` — union of `{ kind: "blank" }` and `{ kind: "cellMatches", crossAxisIndex, pattern, axis? }`
-- `columnOverrides?: Record<string, string>` — per-field user overrides when `headerAxis === "none"`
+- `targetEntityDefinitionId: string`.
+- `headerAxes: AxisMember[]` (0, 1, or 2 entries) — explicit rather than
+  implicit in header strategy; an empty list enables headerless regions
+  with auto-generated `columnOverrides`.
+- `segmentsByAxis?: { row?: Segment[], column?: Segment[] }` — required
+  on each declared header axis; each segment is `field` / `pivot` /
+  `skip` with a `positionCount`. Pivot segments carry their own
+  `axisName` + `axisNameSource` for the label field each pivot
+  introduces.
+- `cellValueField?: { name, nameSource, columnDefinitionId? }` —
+  required iff ≥ 1 pivot segment exists; forbidden otherwise.
+- `recordAxisTerminator?: Terminator` — optional "grows until" rule
+  along the record axis of a 1D or headerless region; forbidden on
+  crosstab (refinement 11). `Terminator` is one of
+  `{ kind: "untilBlank", consecutiveBlanks }` or
+  `{ kind: "matchesPattern", pattern }`.
+- `recordsAxis?: AxisMember` — required iff `headerAxes.length === 0`.
+- `axisAnchorCell?: { row, col }` — optional override for the cell whose
+  value seeds an unassigned pivot `axisName`; defaults to the region's
+  top-left corner; must be within bounds; only meaningful for pivoted
+  and crosstab shapes.
+- `skipRules: SkipRule[]` — union of `{ kind: "blank" }` and
+  `{ kind: "cellMatches", crossAxisIndex, pattern, axis? }`.
+- `columnOverrides?: Record<string, string>` — per-field user overrides
+  for headerless regions.
 
 Transforms are deliberately omitted: value coercion is `ColumnDefinition`'s job. The plan describes *structure only*.
 
@@ -246,7 +334,7 @@ Each score is a number in `[0, 1]`. Scores are meaningful only in relative and t
 
 Every low-confidence score must be accompanied by a structured `warning`:
 
-- `code` — enum (examples: `AMBIGUOUS_HEADER`, `MIXED_COLUMN_TYPES`, `DUPLICATE_IDENTITY_VALUES`, `IDENTITY_COLUMN_HAS_BLANKS`, `UNRECOGNIZED_COLUMN`, `REGION_BOUNDS_UNCERTAIN`, `MULTIPLE_HEADER_CANDIDATES`, `SHEET_MAY_BE_NON_DATA`, `PIVOTED_REGION_MISSING_AXIS_NAME`).
+- `code` — enum (examples: `AMBIGUOUS_HEADER`, `MIXED_COLUMN_TYPES`, `DUPLICATE_IDENTITY_VALUES`, `IDENTITY_COLUMN_HAS_BLANKS`, `UNRECOGNIZED_COLUMN`, `REGION_BOUNDS_UNCERTAIN`, `MULTIPLE_HEADER_CANDIDATES`, `SHEET_MAY_BE_NON_DATA`, `SEGMENT_MISSING_AXIS_NAME`).
 - `severity` — `info | warn | blocker`. Blockers prevent commit.
 - `locator` — the specific sheet/cell/region the warning points to.
 - `message` — short, user-facing.
@@ -275,11 +363,12 @@ The v1 implementation — even if it is a single structured-output LLM call — 
 2. **Model the interior as named stages with a shared state object**, even when they execute in one call. Stages:
    - `detectRegions` — (auto-detect fallback only) find rectangular data regions. Skipped when `regionHints` are supplied.
    - `detectHeaders` — locate header rows/columns per region.
-   - `detectIdentity` — choose or derive a `source_id` column per region.
-   - `classifyColumns` — semantic match from source columns → `ColumnDefinition`s. AI owns naming semantics; heuristic owns pure value-pattern fallbacks.
+   - `detectSegments` — partition each declared header axis into `field` / `pivot` / `skip` segments. Runs once per declared axis and emits the segments that the rest of the pipeline threads through.
+   - `classifyFieldSegments` — resolve field-segment positions to `ColumnDefinition`s. AI owns naming semantics; heuristic owns pure value-pattern fallbacks.
+   - `recommendSegmentAxisNames` — (only for pivot segments whose `axisName` the user hasn't supplied) propose an axis label by inspecting the label cells.
+   - `detectIdentity` — choose or derive a `source_id` rule per region.
    - `proposeBindings` — final plan assembly with confidence scores.
    - `reconcileWithPrior` — (only when a prior plan exists) diff against prior, mark preserved vs changed bindings, flag identity changes.
-   - `recommendRecordsAxisName` — (only for pivoted regions without a user-supplied name) propose a records-axis label.
    - `scoreAndWarn` — consolidate per-stage signals into the plan's `confidence` fields and emit structured warnings with `suggestedFix`.
 3. **Make each stage individually testable** with fixture grids and fixture state, so migrating to a graph is a refactor, not a rewrite.
 4. **Checkpoint intermediate artifacts** — region detections, header candidates, classification scores — on the plan itself (or on a sibling `InterpretationTrace`).
@@ -309,7 +398,7 @@ Cross-cutting (not per-connector): the `entity_records` write path, `FieldMappin
 These are not blockers for the spec but should be tracked through implementation.
 
 1. **Identity derivation for pivoted regions.** When records are columns-as-records, identity is typically the records-axis value (e.g., `JAN`). What happens when that value is renamed? Always identity-changing drift, or only when no alias mapping exists?
-2. **Cost/latency envelope.** Per-interpret budget bounds how much context (raw grid sample size, prior-plan excerpt) can be sent. Includes the bounded `recommendRecordsAxisName` sub-call.
+2. **Cost/latency envelope.** Per-interpret budget bounds how much context (raw grid sample size, prior-plan excerpt) can be sent. Includes the bounded `recommendSegmentAxisNames` sub-call.
 3. **Offline/deterministic mode.** Do we support a "no AI" product mode for customers who can't send data to a model provider? The hinted-primary path makes this viable; question is whether it's advertised or emergent.
 4. **Sheet classification.** With hints-primary, the user implicitly classifies sheets by drawing regions. What do we do with sheets the user didn't annotate?
 5. **Confidence thresholds.** Where do green/yellow/red bands sit, and which warning codes are `blocker` by default? Per-consumer override (e.g., stricter for Mode B first-time setup than Mode A)?
