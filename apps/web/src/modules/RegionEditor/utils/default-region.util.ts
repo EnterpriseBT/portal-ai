@@ -4,8 +4,9 @@
  * selected sheet and producing one `byHeaderName` `ColumnBinding` per
  * column; the region emitted here wires those bindings with a single field
  * segment spanning the bounds, a row-strategy header anchor, and sensible
- * defaults for identity + drift. The shape matches the pre-PR UX
- * byte-for-byte when the user does not interact with the new segment UI.
+ * defaults for identity + drift. A user who does not open any segment
+ * chips sees the same tidy behavior they would have seen before segments
+ * landed.
  */
 
 import type { ColumnBinding, Region } from "@portalai/core/contracts";

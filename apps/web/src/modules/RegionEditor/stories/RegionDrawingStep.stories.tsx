@@ -62,7 +62,6 @@ export const WithProposedRegions: Story = {
     onRegionUpdate: fn(),
     onRegionDelete: fn(),
     entityOptions: ENTITY_OPTIONS,
-    onSuggestAxisName: fn(),
     onInterpret: fn(),
     onRefetchWorkbook: fn(),
   },
@@ -117,7 +116,6 @@ export const CrosstabSelected: Story = {
     onRegionUpdate: fn(),
     onRegionDelete: fn(),
     entityOptions: ENTITY_OPTIONS,
-    onSuggestAxisName: fn(),
     onInterpret: fn(),
     onRefetchWorkbook: fn(),
   },
@@ -199,11 +197,6 @@ const InteractiveContent: React.FC = () => {
       onRegionDelete={handleDelete}
       onRegionResize={handleResize}
       entityOptions={entityOptions}
-      onSuggestAxisName={(_id) => {
-        // PR-4 moved axis-name editing into per-segment popovers; this
-        // story still wires a handler to exercise the prop plumbing but
-        // no longer mutates a legacy field.
-      }}
       onInterpret={fn()}
       onRefetchWorkbook={fn()}
     />

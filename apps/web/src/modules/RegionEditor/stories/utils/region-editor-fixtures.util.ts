@@ -446,159 +446,11 @@ export const DEMO_WORKBOOK: Workbook = {
 
 export const EMPTY_REGIONS: RegionDraft[] = [];
 
-// Storybook-only helper: translate the pre-PR-4 draft shape (orientation +
-// headerAxis + recordsAxisName + boundsMode) into the PR-4 segment model so
-// the long-standing fixtures keep rendering without a line-by-line rewrite.
-// Stories pass *legacy* overrides; the helper seeds the right combination of
-// headerAxes + segmentsByAxis + cellValueField so the editor UI receives a
-// schema-adjacent draft.
-type LegacyRegionShape = {
-  id: string;
-  sheetId: string;
-  bounds: RegionDraft["bounds"];
-  proposedLabel?: string;
-  targetEntityDefinitionId: string | null;
-  targetEntityLabel?: string;
-  orientation?: "rows-as-records" | "columns-as-records" | "cells-as-records";
-  headerAxis?: "row" | "column" | "none";
-  recordsAxisName?: {
-    name: string;
-    source: "user" | "ai" | "anchor-cell";
-    confidence?: number;
-  };
-  secondaryRecordsAxisName?: {
-    name: string;
-    source: "user" | "ai" | "anchor-cell";
-    confidence?: number;
-  };
-  cellValueName?: {
-    name: string;
-    source: "user" | "ai" | "anchor-cell";
-    confidence?: number;
-  };
-  boundsMode?: "absolute" | "untilEmpty" | "matchesPattern";
-  untilEmptyTerminatorCount?: number;
-  boundsPattern?: string;
-  skipRules?: RegionDraft["skipRules"];
-  columnOverrides?: RegionDraft["columnOverrides"];
-  confidence?: number;
-  warnings?: RegionDraft["warnings"];
-  drift?: RegionDraft["drift"];
-  axisAnchorCell?: RegionDraft["axisAnchorCell"];
-};
-
-function legacyToRegion(src: LegacyRegionShape): RegionDraft {
-  const orientation = src.orientation ?? "rows-as-records";
-  const headerAxis = src.headerAxis ?? "row";
-  const rowSpan = src.bounds.endCol - src.bounds.startCol + 1;
-  const colSpan = src.bounds.endRow - src.bounds.startRow + 1;
-
-  const draft: RegionDraft = {
-    id: src.id,
-    sheetId: src.sheetId,
-    bounds: src.bounds,
-    proposedLabel: src.proposedLabel,
-    targetEntityDefinitionId: src.targetEntityDefinitionId,
-    targetEntityLabel: src.targetEntityLabel,
-    confidence: src.confidence,
-    warnings: src.warnings,
-    drift: src.drift,
-    columnOverrides: src.columnOverrides,
-    skipRules: src.skipRules,
-    axisAnchorCell: src.axisAnchorCell,
-  };
-
-  if (src.boundsMode === "matchesPattern" && src.boundsPattern) {
-    draft.recordAxisTerminator = {
-      kind: "matchesPattern",
-      pattern: src.boundsPattern,
-    };
-  } else if (src.boundsMode === "untilEmpty") {
-    draft.recordAxisTerminator = {
-      kind: "untilBlank",
-      consecutiveBlanks: src.untilEmptyTerminatorCount ?? 2,
-    };
-  }
-
-  if (headerAxis === "none") {
-    draft.headerAxes = [];
-    draft.recordsAxis =
-      orientation === "columns-as-records" ? "column" : "row";
-    return draft;
-  }
-
-  if (orientation === "cells-as-records") {
-    draft.headerAxes = ["row", "column"];
-    draft.segmentsByAxis = {
-      row: [
-        {
-          kind: "pivot",
-          id: `${src.id}-row-pivot`,
-          axisName: src.recordsAxisName?.name ?? "",
-          axisNameSource: src.recordsAxisName?.source ?? "user",
-          positionCount: rowSpan,
-        },
-      ],
-      column: [
-        {
-          kind: "pivot",
-          id: `${src.id}-col-pivot`,
-          axisName: src.secondaryRecordsAxisName?.name ?? "",
-          axisNameSource: src.secondaryRecordsAxisName?.source ?? "user",
-          positionCount: colSpan,
-        },
-      ],
-    };
-    draft.cellValueField = src.cellValueName
-      ? {
-          name: src.cellValueName.name,
-          nameSource: src.cellValueName.source,
-        }
-      : { name: "value", nameSource: "user" };
-    return draft;
-  }
-
-  const pivoted =
-    (orientation === "rows-as-records" && headerAxis === "column") ||
-    (orientation === "columns-as-records" && headerAxis === "row");
-  const span = headerAxis === "row" ? rowSpan : colSpan;
-
-  draft.headerAxes = [headerAxis];
-  if (pivoted) {
-    draft.segmentsByAxis = {
-      [headerAxis]: [
-        {
-          kind: "pivot",
-          id: `${src.id}-pivot`,
-          axisName: src.recordsAxisName?.name ?? "",
-          axisNameSource: src.recordsAxisName?.source ?? "user",
-          positionCount: span,
-        },
-      ],
-    };
-    // Any pivot requires `cellValueField` (refinement 7). Seed a placeholder
-    // when the legacy fixture didn't carry a `cellValueName` so the story
-    // region still validates clean.
-    draft.cellValueField = src.cellValueName
-      ? {
-          name: src.cellValueName.name,
-          nameSource: src.cellValueName.source,
-        }
-      : { name: "value", nameSource: "user" };
-  } else {
-    draft.segmentsByAxis = {
-      [headerAxis]: [{ kind: "field", positionCount: span }],
-    };
-  }
-  return draft;
-}
-
-// Region definitions covering every permutation. Each entry is written in
-// the pre-PR-4 shape and translated to the PR-4 segment model by
-// `legacyToRegion`. When the stories refresh to use native segment authoring
-// (refinement follow-up), the literals below can drop the legacy helper.
-const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
-  // ---- Sheet 1: Row tables (rows-as-records + headerAxis: row) ----
+// Region definitions covering every shape the editor supports. Each entry
+// is authored directly in the canonical segment model — stories exercise
+// the same shape the Panel / SheetCanvas render in production.
+export const PROPOSED_REGIONS: RegionDraft[] = [
+  // ---- Sheet 1: Tidy row-headers ----
   // Flat fact table: one row per (region, quarter) observation.
   {
     id: "region_revenue_rows_as_obs",
@@ -607,13 +459,12 @@ const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
     proposedLabel: "Revenue (rows-as-records, header row)",
     targetEntityDefinitionId: "ent_revenue",
     targetEntityLabel: "Revenue",
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    boundsMode: "absolute",
+    headerAxes: ["row"],
+    segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
     confidence: 0.93,
   },
 
-  // ---- Sheet 2: Column tables (columns-as-records + headerAxis: column) ----
+  // ---- Sheet 2: Tidy column-headers (transposed) ----
   // Same observations, transposed: one column per observation.
   {
     id: "region_revenue_cols_as_obs",
@@ -622,78 +473,106 @@ const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
     proposedLabel: "Revenue (columns-as-records, header column)",
     targetEntityDefinitionId: "ent_revenue_transposed",
     targetEntityLabel: "Revenue (transposed)",
-    orientation: "columns-as-records",
-    headerAxis: "column",
-    boundsMode: "absolute",
+    headerAxes: ["column"],
+    segmentsByAxis: { column: [{ kind: "field", positionCount: 3 }] },
     confidence: 0.9,
   },
 
-  // ---- Sheet 3: Mixed axes — two uncommon pivot permutations ----
-  // Variant A: rows-as-records + headerAxis: column.
-  //   Each row is a region; col A = identity, row 3 = attribute labels.
+  // ---- Sheet 3: Mixed axes — two pivoted permutations ----
+  // Variant A: column header with a pivot — each row is a record, col 0
+  // holds the pivot axis values ("Region").
   {
     id: "region_attrs_rows_as_regions",
     sheetId: "sheet_mixed_axes",
     bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
-    proposedLabel: "Region attributes (rows-as-records, header column)",
+    proposedLabel: "Region attributes (pivoted column header)",
     targetEntityDefinitionId: "ent_department",
     targetEntityLabel: "Department",
-    orientation: "rows-as-records",
-    headerAxis: "column",
-    recordsAxisName: { name: "Region", source: "user" },
-    boundsMode: "absolute",
+    headerAxes: ["column"],
+    segmentsByAxis: {
+      column: [
+        {
+          kind: "pivot",
+          id: "attrs-rows-col-pivot",
+          axisName: "Region",
+          axisNameSource: "user",
+          positionCount: 5,
+        },
+      ],
+    },
+    cellValueField: { name: "value", nameSource: "user" },
     confidence: 0.75,
   },
-  // Variant B: columns-as-records + headerAxis: row.
-  //   Each column is a region; row 12 = identity, col A = attribute labels.
+  // Variant B: row header with a pivot — each column is a record, row 0
+  // holds the pivot axis values ("Region").
   {
     id: "region_attrs_cols_as_regions",
     sheetId: "sheet_mixed_axes",
     bounds: { startRow: 12, endRow: 16, startCol: 0, endCol: 4 },
-    proposedLabel: "Region attributes (columns-as-records, header row)",
+    proposedLabel: "Region attributes (pivoted row header)",
     targetEntityDefinitionId: "ent_department_transposed",
     targetEntityLabel: "Department (transposed)",
-    orientation: "columns-as-records",
-    headerAxis: "row",
-    recordsAxisName: { name: "Region", source: "ai", confidence: 0.78 },
-    boundsMode: "absolute",
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [
+        {
+          kind: "pivot",
+          id: "attrs-cols-row-pivot",
+          axisName: "Region",
+          axisNameSource: "ai",
+          positionCount: 5,
+        },
+      ],
+    },
+    cellValueField: { name: "value", nameSource: "user" },
     confidence: 0.72,
   },
 
-  // ---- Sheet 4: Crosstab (cells-as-records) ----
-  // Same observations laid out as a 2D pivot.
+  // ---- Sheet 4: Crosstab ----
+  // Same observations laid out as a 2D pivot (Region × Quarter).
   {
     id: "region_revenue_crosstab_absolute",
     sheetId: "sheet_crosstab",
     bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
-    proposedLabel: "Revenue (cells-as-records, 2D crosstab)",
+    proposedLabel: "Revenue (2D crosstab)",
     targetEntityDefinitionId: "ent_revenue_crosstab",
     targetEntityLabel: "Revenue (crosstab)",
-    orientation: "cells-as-records",
-    headerAxis: "row",
-    recordsAxisName: { name: "Region", source: "user" },
-    secondaryRecordsAxisName: {
-      name: "Quarter",
-      source: "ai",
-      confidence: 0.82,
+    headerAxes: ["row", "column"],
+    segmentsByAxis: {
+      row: [
+        {
+          kind: "pivot",
+          id: "revenue-crosstab-row-pivot",
+          axisName: "Region",
+          axisNameSource: "user",
+          positionCount: 5,
+        },
+      ],
+      column: [
+        {
+          kind: "pivot",
+          id: "revenue-crosstab-col-pivot",
+          axisName: "Quarter",
+          axisNameSource: "ai",
+          positionCount: 5,
+        },
+      ],
     },
-    cellValueName: { name: "Revenue", source: "ai", confidence: 0.79 },
-    boundsMode: "absolute",
+    cellValueField: { name: "Revenue", nameSource: "ai" },
     confidence: 0.83,
   },
 
-  // ---- Sheet 5a: Messy pipeline (row-oriented skip rules) ----
+  // ---- Sheet 5a: Row-oriented skip rules ----
   {
     id: "region_messy_pipeline",
     sheetId: "sheet_messy_pipeline",
-    // Anchor covers header + first region block; extent extends past it.
     bounds: { startRow: 3, endRow: 8, startCol: 0, endCol: 4 },
     proposedLabel: "Global pipeline — skip separators + subtotals",
     targetEntityDefinitionId: "ent_deal",
     targetEntityLabel: "Deal",
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    boundsMode: "untilEmpty",
+    headerAxes: ["row"],
+    segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
+    recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
     skipRules: [
       { kind: "blank" },
       // "— NA Region —" / "— EMEA Region —" / "— APAC Region —" all in column A.
@@ -701,7 +580,6 @@ const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
       // Subtotal rows — column A contains "Subtotal".
       { kind: "cellMatches", crossAxisIndex: 0, pattern: "^Subtotal$" },
     ],
-    untilEmptyTerminatorCount: 2,
     confidence: 0.79,
     warnings: [
       {
@@ -714,18 +592,17 @@ const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
     ],
   },
 
-  // ---- Sheet 5b: Messy quarters (column-oriented skip rules, axis: "row") ----
+  // ---- Sheet 5b: Column-oriented skip rules (rule axis "row") ----
   {
     id: "region_messy_quarters",
     sheetId: "sheet_messy_quarters",
-    // Anchor covers label column + 2 record columns; extent extends right.
     bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 2 },
     proposedLabel: "Quarters — skip subtotal columns",
     targetEntityDefinitionId: "ent_department_messy",
     targetEntityLabel: "Department (messy quarters)",
-    orientation: "columns-as-records",
-    headerAxis: "column",
-    boundsMode: "untilEmpty",
+    headerAxes: ["column"],
+    segmentsByAxis: { column: [{ kind: "field", positionCount: 5 }] },
+    recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
     skipRules: [
       { kind: "blank" },
       // Row 3 is the label row for each column. Skip columns whose row-3 cell
@@ -737,7 +614,6 @@ const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
         axis: "row",
       },
     ],
-    untilEmptyTerminatorCount: 2,
     confidence: 0.74,
     warnings: [
       {
@@ -756,14 +632,13 @@ const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
     bounds: { startRow: 3, endRow: 8, startCol: 0, endCol: 4 },
     proposedLabel: "Event log (no headers)",
     targetEntityDefinitionId: null,
-    orientation: "rows-as-records",
-    headerAxis: "none",
-    boundsMode: "untilEmpty",
+    headerAxes: [],
+    recordsAxis: "column",
+    recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
     columnOverrides: {
       columnA: "timestamp",
       columnB: "event",
       columnC: "userId",
-      // columnD and columnE left with auto names to show default behavior
     },
     confidence: 0.64,
   },
@@ -774,16 +649,12 @@ const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
     proposedLabel: "Orders (header, gap, data)",
     targetEntityDefinitionId: "ent_invoice",
     targetEntityLabel: "Invoice",
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    boundsMode: "untilEmpty",
+    headerAxes: ["row"],
+    segmentsByAxis: { row: [{ kind: "field", positionCount: 4 }] },
+    recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
     confidence: 0.83,
   },
 ];
-
-export const PROPOSED_REGIONS: RegionDraft[] = LEGACY_REGION_FIXTURES.map(
-  legacyToRegion
-);
 
 export const DRIFT_REGIONS: RegionDraft[] = PROPOSED_REGIONS.map((r) => {
   if (r.id === "region_revenue_rows_as_obs") {

@@ -45,7 +45,6 @@ export interface RegionDrawingStepUIProps {
   onRegionDelete: (regionId: string) => void;
   onRegionResize?: (regionId: string, nextBounds: CellBounds) => void;
   entityOptions: EntityOption[];
-  onSuggestAxisName?: (regionId: string) => void;
   onAcceptProposedIdentity?: (regionId: string) => void;
   onKeepPriorIdentity?: (regionId: string) => void;
   onCreateEntity?: (key: string, label: string) => string;
@@ -88,7 +87,6 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   onRegionDelete,
   onRegionResize,
   entityOptions,
-  onSuggestAxisName,
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
   onCreateEntity,
@@ -261,9 +259,6 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
   }, [selectedRegionId, onRegionDelete, onSelectRegion]);
 
   const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
-  const selectedRegionSheet = selectedRegion
-    ? workbook.sheets.find((s) => s.id === selectedRegion.sheetId)
-    : undefined;
   const siblingsInSameEntity = selectedRegion?.targetEntityDefinitionId
     ? regions.filter(
         (r) =>
@@ -475,7 +470,6 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
         >
           <RegionConfigurationPanelUI
             region={selectedRegion}
-            sheet={selectedRegionSheet}
             entityOptions={entityOptions}
             entityOrder={entityOrder}
             siblingsInSameEntity={siblingsInSameEntity}
@@ -485,11 +479,6 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
               selectedRegion && onRegionUpdate(selectedRegion.id, updates)
             }
             onDelete={() => selectedRegion && onRegionDelete(selectedRegion.id)}
-            onSuggestAxisName={
-              selectedRegion && onSuggestAxisName
-                ? () => onSuggestAxisName(selectedRegion.id)
-                : undefined
-            }
             onAcceptProposedIdentity={
               selectedRegion && onAcceptProposedIdentity
                 ? () => onAcceptProposedIdentity(selectedRegion.id)

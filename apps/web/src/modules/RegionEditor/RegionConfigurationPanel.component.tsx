@@ -39,7 +39,6 @@ import {
 import type {
   EntityOption,
   RegionDraft,
-  SheetPreview,
 } from "./utils/region-editor.types";
 import {
   isDraftCrosstab,
@@ -51,25 +50,12 @@ import {
 
 export interface RegionConfigurationPanelUIProps {
   region: RegionDraft | null;
-  /**
-   * The sheet the region is drawn on. Retained from the pre-PR-4 panel for
-   * downstream consumers that still pass it; the panel no longer reads it
-   * (anchor-cell axis-name auto-fill moves to the workflow in PR-5).
-   */
-  sheet?: SheetPreview;
   entityOptions: EntityOption[];
   entityOrder: string[];
   siblingsInSameEntity: number;
   errors?: import("./utils/region-editor-validation.util").RegionErrors;
   onUpdate: (updates: Partial<RegionDraft>) => void;
   onDelete: () => void;
-  /**
-   * Retained for workflow-level callers; the PR-4 panel no longer exposes a
-   * "Suggest axis name" button at the region level — suggestion moves to
-   * the per-segment popover in a follow-up. Passing this prop is a no-op
-   * for now and its presence does not surface any affordance.
-   */
-  onSuggestAxisName?: () => void;
   onAcceptProposedIdentity?: () => void;
   onKeepPriorIdentity?: () => void;
   driftProposedIdentityLabel?: string;

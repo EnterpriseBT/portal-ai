@@ -35,7 +35,6 @@ export interface RegionEditorUIProps {
 
   entityOptions: EntityOption[];
 
-  onSuggestAxisName?: (regionId: string) => void;
   onAcceptProposedIdentity?: (regionId: string) => void;
   onKeepPriorIdentity?: (regionId: string) => void;
   onCreateEntity?: (key: string, label: string) => string;
@@ -71,7 +70,6 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
   onRegionDelete,
   onRegionResize,
   entityOptions,
-  onSuggestAxisName,
   onAcceptProposedIdentity,
   onKeepPriorIdentity,
   onCreateEntity,
@@ -116,7 +114,6 @@ export const RegionEditorUI: React.FC<RegionEditorUIProps> = ({
               onRegionDelete={onRegionDelete}
               onRegionResize={onRegionResize}
               entityOptions={entityOptions}
-              onSuggestAxisName={onSuggestAxisName}
               onAcceptProposedIdentity={onAcceptProposedIdentity}
               onKeepPriorIdentity={onKeepPriorIdentity}
               onCreateEntity={onCreateEntity}
