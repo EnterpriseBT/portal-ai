@@ -21,8 +21,8 @@ function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
     id: "r1",
     sheetId: "s1",
     bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
-    orientation: "rows-as-records",
-    headerAxis: "row",
+    headerAxes: ["row"],
+    segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
     targetEntityDefinitionId: "ent_a",
     ...overrides,
   };

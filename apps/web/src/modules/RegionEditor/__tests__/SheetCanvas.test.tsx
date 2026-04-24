@@ -71,8 +71,8 @@ describe("SheetCanvasUI", () => {
       id: "r1",
       sheetId: "s1",
       bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 3 },
-      orientation: "rows-as-records",
-      headerAxis: "row",
+      headerAxes: ["row"],
+      segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
       targetEntityDefinitionId: "ent_a",
     };
     render(
@@ -95,10 +95,20 @@ describe("SheetCanvasUI", () => {
       id: "r1",
       sheetId: "s1",
       bounds: { startRow: 1, endRow: 4, startCol: 1, endCol: 3 },
-      orientation: "rows-as-records",
-      headerAxis: "column",
+      headerAxes: ["column"],
+      segmentsByAxis: {
+        column: [
+          {
+            kind: "pivot",
+            id: "col-pivot",
+            axisName: "Category",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+      },
+      cellValueField: { name: "value", nameSource: "user" },
       targetEntityDefinitionId: "ent_a",
-      recordsAxisName: { name: "Category", source: "user" },
     };
     render(
       <SheetCanvasUI

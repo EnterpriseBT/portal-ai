@@ -724,8 +724,8 @@ describe("useFileUploadWorkflow — binding edits", () => {
     id: "region-a",
     sheetId: DEMO_WORKBOOK.sheets[0].id,
     bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
-    orientation: "rows-as-records",
-    headerAxis: "row",
+    headerAxes: ["row"],
+    segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
     targetEntityDefinitionId: "ent_contact",
     columnBindings: [
       {
@@ -744,8 +744,8 @@ describe("useFileUploadWorkflow — binding edits", () => {
     id: "region-b",
     sheetId: DEMO_WORKBOOK.sheets[1]?.id ?? DEMO_WORKBOOK.sheets[0].id,
     bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
-    orientation: "rows-as-records",
-    headerAxis: "row",
+    headerAxes: ["row"],
+    segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
     targetEntityDefinitionId: "ent_order",
     columnBindings: [
       {

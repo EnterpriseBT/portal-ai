@@ -166,8 +166,8 @@ const invalidRegion: RegionDraft = {
   id: "r_invalid_story",
   sheetId: DEMO_WORKBOOK.sheets[0].id,
   bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
-  orientation: "rows-as-records",
-  headerAxis: "row",
+  headerAxes: ["row"],
+  segmentsByAxis: { row: [{ kind: "field", positionCount: 4 }] },
   targetEntityDefinitionId: null,
 };
 

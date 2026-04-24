@@ -36,12 +36,6 @@ const BoundsSchema = z
     path: ["endCol"],
   });
 
-const RecordsAxisNameSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
-  source: z.enum(["user", "ai", "anchor-cell"]),
-  confidence: z.number().min(0).max(1).optional(),
-});
-
 const CellMatchesSkipRuleSchema = z.object({
   kind: z.literal("cellMatches"),
   crossAxisIndex: z
@@ -85,43 +79,32 @@ export function validateRegion(region: RegionDraft): RegionErrors {
     }
   }
 
-  // --- Orientation / header-axis combos ---
-  const crosstab = region.orientation === "cells-as-records";
-  const pivoted =
-    crosstab ||
-    (region.orientation === "columns-as-records" &&
-      region.headerAxis === "row") ||
-    (region.orientation === "rows-as-records" &&
-      region.headerAxis === "column");
+  // --- Shape (segment model) ---
+  const axes = region.headerAxes ?? [];
+  const crosstab = axes.length === 2;
+  const rowSegs = region.segmentsByAxis?.row ?? [];
+  const colSegs = region.segmentsByAxis?.column ?? [];
+  const rowPivot = rowSegs.find((s) => s.kind === "pivot");
+  const colPivot = colSegs.find((s) => s.kind === "pivot");
+  const pivoted = !!rowPivot || !!colPivot;
 
-  if (pivoted) {
-    if (!region.recordsAxisName?.name || !region.recordsAxisName.name.trim()) {
-      errors.recordsAxisName = crosstab
-        ? "Row-axis name is required for crosstab regions"
-        : "Records-axis name is required for pivoted regions";
-    } else {
-      const parsed = RecordsAxisNameSchema.safeParse(region.recordsAxisName);
-      if (!parsed.success) {
-        errors.recordsAxisName =
-          parsed.error.issues[0]?.message ?? "Invalid records-axis name";
-      }
-    }
+  if (rowPivot && !rowPivot.axisName.trim()) {
+    errors["segmentsByAxis.row.pivot.axisName"] =
+      "Axis name is required on pivot segments";
+  }
+  if (colPivot && !colPivot.axisName.trim()) {
+    errors["segmentsByAxis.column.pivot.axisName"] =
+      "Axis name is required on pivot segments";
+  }
+  if (
+    pivoted &&
+    (!region.cellValueField?.name || !region.cellValueField.name.trim())
+  ) {
+    errors.cellValueField =
+      "Cell-value field name is required when the region has a pivot segment";
   }
 
-  if (crosstab) {
-    if (
-      !region.secondaryRecordsAxisName?.name ||
-      !region.secondaryRecordsAxisName.name.trim()
-    ) {
-      errors.secondaryRecordsAxisName =
-        "Column-axis name is required for crosstab regions";
-    }
-    if (!region.cellValueName?.name || !region.cellValueName.name.trim()) {
-      errors.cellValueName = "Cell value name is required for crosstab regions";
-    }
-  }
-
-  // --- Axis-anchor-cell override (optional; only meaningful for pivoted shapes) ---
+  // --- Axis-anchor-cell override (only meaningful for pivoted shapes) ---
   if (region.axisAnchorCell) {
     const { row, col } = region.axisAnchorCell;
     if (
@@ -144,30 +127,22 @@ export function validateRegion(region: RegionDraft): RegionErrors {
     }
   }
 
-  // --- Extent ---
-  if (region.boundsMode === "matchesPattern") {
-    const p = region.boundsPattern?.trim();
+  // --- Record-axis terminator (only allowed on 1D / headerless regions) ---
+  if (region.recordAxisTerminator && crosstab) {
+    errors.recordAxisTerminator =
+      "Record-axis terminator is not allowed on a crosstab region";
+  }
+  if (region.recordAxisTerminator?.kind === "matchesPattern") {
+    const p = region.recordAxisTerminator.pattern.trim();
     if (!p) {
-      errors.boundsPattern =
-        "Stop pattern is required when extent is Matches pattern";
+      errors.recordAxisTerminator = "Terminator pattern is required";
     } else {
       try {
         new RegExp(p);
       } catch {
-        errors.boundsPattern = "Stop pattern is not a valid regular expression";
+        errors.recordAxisTerminator =
+          "Terminator pattern is not a valid regular expression";
       }
-    }
-  }
-
-  if (
-    region.boundsMode === "untilEmpty" &&
-    region.untilEmptyTerminatorCount !== undefined
-  ) {
-    if (
-      !Number.isFinite(region.untilEmptyTerminatorCount) ||
-      region.untilEmptyTerminatorCount < 1
-    ) {
-      errors.untilEmptyTerminatorCount = "Terminator count must be at least 1";
     }
   }
 

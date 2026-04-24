@@ -128,12 +128,13 @@ function draftSkipRuleToBackend(
 
 /**
  * Merge user-configured knobs from the prior draft list into a plan freshly
- * returned from `interpret()`. The interpret RPC today doesn't accept every
- * configuration field the user can tweak in the editor (boundsMode, skipRules,
- * …), so without this merge those selections would be clobbered by defaults on
- * every Interpret click. Matching follows `regionDraftsToHints` — drafts
- * without a target entity are dropped, and the remaining drafts line up with
- * the plan's regions by index.
+ * returned from `interpret()`. Preserves the user's segment edits
+ * (headerAxes, segmentsByAxis, cellValueField, recordAxisTerminator) as well
+ * as column-level overrides (skipRules, columnOverrides, columnBindings)
+ * that the interpret response would otherwise clobber with defaults.
+ * Matching follows `regionDraftsToHints` — drafts without a target entity
+ * are dropped, and the remaining drafts line up with the plan's regions by
+ * index.
  */
 export function preserveUserRegionConfig(
   plan: LayoutPlan,
@@ -150,11 +151,21 @@ export function preserveUserRegionConfig(
       const prior = considered[i];
       if (!prior) return region;
       const merged: BackendRegion = { ...region };
-      // PR-1 stopgap: the draft still carries pre-schema knobs (`boundsMode`,
-      // `boundsPattern`, `untilEmptyTerminatorCount`) that no longer exist on
-      // the canonical Region. PR-4 reintroduces the same controls via the
-      // `recordAxisTerminator` + dynamic-segment model; until then those user
-      // tweaks are not round-tripped through Interpret.
+      if (prior.headerAxes) {
+        merged.headerAxes = [...prior.headerAxes];
+      }
+      if (prior.segmentsByAxis) {
+        merged.segmentsByAxis = { ...prior.segmentsByAxis };
+      }
+      if (prior.cellValueField) {
+        merged.cellValueField = { ...prior.cellValueField };
+      }
+      if (prior.recordAxisTerminator) {
+        merged.recordAxisTerminator = prior.recordAxisTerminator;
+      }
+      if (prior.recordsAxis && merged.headerAxes.length === 0) {
+        merged.recordsAxis = prior.recordsAxis;
+      }
       if (prior.columnOverrides) {
         merged.columnOverrides = { ...prior.columnOverrides };
       }
@@ -185,12 +196,6 @@ export function preserveUserRegionConfig(
 
 type BackendAxis = "row" | "column";
 
-function draftHeaderAxes(draft: RegionDraft): BackendAxis[] {
-  if (draft.headerAxis === "none") return [];
-  if (draft.orientation === "cells-as-records") return ["row", "column"];
-  return [draft.headerAxis];
-}
-
 export function regionDraftsToHints(
   workbook: Workbook,
   drafts: RegionDraft[]
@@ -208,18 +213,7 @@ export function regionDraftsToHints(
       );
     }
 
-    const headerAxes = draftHeaderAxes(draft);
-    const rowSpan = draft.bounds.endCol - draft.bounds.startCol + 1;
-    const colSpan = draft.bounds.endRow - draft.bounds.startRow + 1;
-
-    // PR-1 stopgap: the editor doesn't yet know about segments, so every
-    // declared axis gets a single field segment spanning its full extent.
-    // PR-4 will teach the editor to author pivot segments directly.
-    const segmentsByAxis: RegionHint["segmentsByAxis"] = {};
-    for (const axis of headerAxes) {
-      const positionCount = axis === "row" ? rowSpan : colSpan;
-      segmentsByAxis[axis] = [{ kind: "field", positionCount }];
-    }
+    const headerAxes: BackendAxis[] = [...(draft.headerAxes ?? [])];
 
     const hint: RegionHint = {
       sheet: sheet.name,
@@ -232,19 +226,29 @@ export function regionDraftsToHints(
       targetEntityDefinitionId: draft.targetEntityDefinitionId,
       headerAxes,
     };
-    if (headerAxes.length > 0) {
+
+    const segmentsByAxis: RegionHint["segmentsByAxis"] = {};
+    for (const axis of headerAxes) {
+      const segs = draft.segmentsByAxis?.[axis];
+      if (segs && segs.length > 0) {
+        segmentsByAxis[axis] = segs;
+      }
+    }
+    if (headerAxes.length > 0 && Object.keys(segmentsByAxis).length > 0) {
       hint.segmentsByAxis = segmentsByAxis;
     }
     if (headerAxes.length === 0) {
-      hint.recordsAxis =
-        draft.orientation === "columns-as-records" ? "column" : "row";
+      hint.recordsAxis = draft.recordsAxis ?? "row";
     }
 
-    if (draft.cellValueName?.name && draft.cellValueName.source === "user") {
+    if (draft.cellValueField?.name) {
       hint.cellValueField = {
-        name: draft.cellValueName.name,
-        nameSource: "user",
+        name: draft.cellValueField.name,
+        nameSource: draft.cellValueField.nameSource,
       };
+    }
+    if (draft.recordAxisTerminator) {
+      hint.recordAxisTerminator = draft.recordAxisTerminator;
     }
     if (draft.axisAnchorCell) {
       hint.axisAnchorCell = {
@@ -273,44 +277,6 @@ function boundsToFrontend(
   };
 }
 
-function regionToDraftOrientation(
-  region: BackendRegion
-): RegionDraft["orientation"] {
-  if (region.headerAxes.length === 2) return "cells-as-records";
-  if (region.headerAxes.length === 0) {
-    return region.recordsAxis === "column"
-      ? "columns-as-records"
-      : "rows-as-records";
-  }
-  return region.headerAxes[0] === "column"
-    ? "columns-as-records"
-    : "rows-as-records";
-}
-
-function regionToDraftHeaderAxis(
-  region: BackendRegion
-): RegionDraft["headerAxis"] {
-  if (region.headerAxes.length === 0) return "none";
-  // PR-1 stopgap: a pre-PR `headerAxis` enum only had a single value, so
-  // crosstabs pick the row axis as the primary. PR-4 reworks the editor
-  // around `headerAxes` directly and removes this collapse.
-  return region.headerAxes.includes("row") ? "row" : "column";
-}
-
-function firstPivotAxisName(
-  region: BackendRegion,
-  axis: BackendAxis
-): { name: string; source: "user" | "ai" | "anchor-cell" } | undefined {
-  const segments = region.segmentsByAxis?.[axis];
-  if (!segments) return undefined;
-  for (const seg of segments) {
-    if (seg.kind === "pivot") {
-      return { name: seg.axisName, source: seg.axisNameSource };
-    }
-  }
-  return undefined;
-}
-
 export function planRegionsToDrafts(
   plan: Pick<LayoutPlan, "regions" | "confidence">,
   workbook: Workbook
@@ -329,15 +295,11 @@ export function planRegionsToDrafts(
       // Reuse the plan region's id so `state.regions[i].id` matches
       // `state.plan.regions[j].id` — the workflow hook's `patchBinding`
       // relies on this match to mirror per-binding edits (Omit, rebind,
-      // overrides) into the commit payload. Without it, toggling Omit
-      // updates only the draft, the plan still ships `excluded: undefined`,
-      // and the backend rejects with `LAYOUT_PLAN_INVALID_REFERENCE` for
-      // reference-typed bindings the user meant to drop.
+      // overrides) into the commit payload.
       id: region.id,
       sheetId: sheet.id,
       bounds: boundsToFrontend(region.bounds),
-      orientation: regionToDraftOrientation(region),
-      headerAxis: regionToDraftHeaderAxis(region),
+      headerAxes: [...region.headerAxes],
       targetEntityDefinitionId: region.targetEntityDefinitionId,
       columnBindings: region.columnBindings.map(bindingToDraft),
       confidence: region.confidence.aggregate,
@@ -349,25 +311,30 @@ export function planRegionsToDrafts(
       })),
     };
 
-    // PR-1 stopgap: the editor still displays "records axis name" fields per
-    // the pre-PR UI. Map each axis's first pivot segment into the legacy
-    // slot so labels keep rendering; PR-4 replaces the UI with a per-segment
-    // editor driven directly by `segmentsByAxis`.
-    const rowAxisName = firstPivotAxisName(region, "row");
-    const colAxisName = firstPivotAxisName(region, "column");
-    if (rowAxisName) draft.recordsAxisName = rowAxisName;
-    if (colAxisName) {
-      if (draft.recordsAxisName) {
-        draft.secondaryRecordsAxisName = colAxisName;
-      } else {
-        draft.recordsAxisName = colAxisName;
+    if (region.segmentsByAxis) {
+      const segs: RegionDraft["segmentsByAxis"] = {};
+      if (region.segmentsByAxis.row) {
+        segs.row = region.segmentsByAxis.row;
       }
+      if (region.segmentsByAxis.column) {
+        segs.column = region.segmentsByAxis.column;
+      }
+      if (segs.row || segs.column) draft.segmentsByAxis = segs;
     }
     if (region.cellValueField) {
-      draft.cellValueName = {
+      draft.cellValueField = {
         name: region.cellValueField.name,
-        source: region.cellValueField.nameSource,
+        nameSource: region.cellValueField.nameSource,
+        ...(region.cellValueField.columnDefinitionId !== undefined && {
+          columnDefinitionId: region.cellValueField.columnDefinitionId,
+        }),
       };
+    }
+    if (region.recordAxisTerminator) {
+      draft.recordAxisTerminator = region.recordAxisTerminator;
+    }
+    if (region.recordsAxis) {
+      draft.recordsAxis = region.recordsAxis;
     }
     if (region.axisAnchorCell) {
       draft.axisAnchorCell = {

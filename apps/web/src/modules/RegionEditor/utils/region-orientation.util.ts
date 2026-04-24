@@ -1,7 +1,14 @@
-import type {
-  OrientationDraft,
-  RegionDraft,
-} from "./region-editor.types";
+import type { RegionDraft } from "./region-editor.types";
+
+/**
+ * A compact directional label for a region's record-axis direction. The
+ * editor surfaces this next to the region's bounds caption and header pill
+ * so the user has a single visual cue for "records run ↓ / → / ↘".
+ */
+export type OrientationDraft =
+  | "rows-as-records"
+  | "columns-as-records"
+  | "cells-as-records";
 
 export function orientationArrow(orientation: OrientationDraft): string {
   switch (orientation) {
@@ -26,17 +33,23 @@ export function orientationArrowLabel(orientation: OrientationDraft): string {
 }
 
 /**
- * Derive the legacy `OrientationDraft` label from a draft. Prefers the PR-4
- * segment model (`headerAxes` + pivot presence) when present so the panel's
- * breadcrumb arrow stays in sync with segment edits; falls back to the
- * legacy `orientation` field for drafts that haven't been migrated yet.
+ * Derive the orientation label for a draft region. The draft's `headerAxes`
+ * + pivot presence is the single source of truth:
+ *
+ *   - crosstab (headerAxes.length === 2) → "cells-as-records"
+ *   - 1D with the record axis running ↓ → "rows-as-records"
+ *   - 1D with the record axis running → → "columns-as-records"
+ *
+ * The record axis of a 1D region is the axis opposite its header axis,
+ * unless a pivot segment on the header axis flips the interpretation (axis
+ * values become fields on records that run the SAME direction as the
+ * header). Headerless drafts fall back to `recordsAxis`, defaulting to
+ * rows-as-records when nothing has been picked yet.
  */
 export function orientationFromDraft(draft: RegionDraft): OrientationDraft {
-  const axes = draft.headerAxes;
-  if (axes && axes.length > 0) {
-    if (axes.length === 2) return "cells-as-records";
-    // 1D with a pivot segment on the header axis means records run along
-    // the *other* axis (pivoted). 1D without pivot is rows/columns-as-records.
+  const axes = draft.headerAxes ?? [];
+  if (axes.length === 2) return "cells-as-records";
+  if (axes.length === 1) {
     const headerAxis = axes[0];
     const pivoted = hasPivotOnAxis(draft, headerAxis);
     if (headerAxis === "row") {
@@ -44,30 +57,18 @@ export function orientationFromDraft(draft: RegionDraft): OrientationDraft {
     }
     return pivoted ? "rows-as-records" : "columns-as-records";
   }
-  return draft.orientation;
+  // Headerless.
+  return draft.recordsAxis === "row" ? "columns-as-records" : "rows-as-records";
 }
 
-/**
- * True when the region has at least one pivot segment (either axis). Used
- * to gate the `cellValueField.name` input and the dynamic-tail affordance.
- */
 export function isDraftPivoted(draft: RegionDraft): boolean {
-  if (hasPivotOnAxis(draft, "row") || hasPivotOnAxis(draft, "column")) {
-    return true;
-  }
-  // Legacy fallback: a draft with orientation + headerAxis combinations
-  // that imply a pivot (e.g. columns-as-records + headerAxis:row).
-  const { orientation, headerAxis } = draft;
-  if (orientation === "cells-as-records") return true;
-  if (orientation === "columns-as-records" && headerAxis === "row") return true;
-  if (orientation === "rows-as-records" && headerAxis === "column") return true;
-  return false;
+  return (
+    hasPivotOnAxis(draft, "row") || hasPivotOnAxis(draft, "column")
+  );
 }
 
 export function isDraftCrosstab(draft: RegionDraft): boolean {
-  if (draft.headerAxes && draft.headerAxes.length === 2) return true;
-  if (draft.headerAxes && draft.headerAxes.length > 0) return false;
-  return draft.orientation === "cells-as-records";
+  return (draft.headerAxes ?? []).length === 2;
 }
 
 function hasPivotOnAxis(

@@ -931,15 +931,6 @@ function deriveLegendKinds(
     kinds.push("rowAxisLabel", "colAxisLabel");
   } else if (axes.length === 1) {
     kinds.push("header");
-  } else if (axes.length === 0) {
-    // Legacy fallback: use the pre-PR-4 orientation fields.
-    if (region.orientation !== "cells-as-records" &&
-        (region.headerAxis === "row" || region.headerAxis === "column")) {
-      kinds.push("header");
-    }
-    if (region.orientation === "cells-as-records") {
-      kinds.push("rowAxisLabel", "colAxisLabel");
-    }
   }
   if (region.skipRules && region.skipRules.length > 0) {
     kinds.push("skipped");

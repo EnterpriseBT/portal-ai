@@ -46,20 +46,3 @@ export function coordInBounds(coord: CellCoord, bounds: CellBounds): boolean {
   );
 }
 
-export function defaultFieldNamesForRegion(
-  bounds: CellBounds,
-  orientation: "rows-as-records" | "columns-as-records" | "cells-as-records"
-): string[] {
-  if (orientation === "columns-as-records") {
-    const out: string[] = [];
-    for (let row = bounds.startRow; row <= bounds.endRow; row++) {
-      out.push(`row${row + 1}`);
-    }
-    return out;
-  }
-  const out: string[] = [];
-  for (let col = bounds.startCol; col <= bounds.endCol; col++) {
-    out.push(`column${colIndexToLetter(col)}`);
-  }
-  return out;
-}

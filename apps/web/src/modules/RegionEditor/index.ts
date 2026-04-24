@@ -23,13 +23,15 @@ export { DriftBannerUI } from "./DriftBanner.component";
 export type { DriftBannerUIProps } from "./DriftBanner.component";
 
 export type {
+  AxisMember,
   CellCoord,
   CellBounds,
   CellValue,
+  CellValueField,
+  Segment,
   SheetPreview,
+  Terminator,
   Workbook,
-  OrientationDraft,
-  HeaderAxisDraft,
   ConfidenceBand,
   WarningSeverity,
   WarningCode,
@@ -38,7 +40,6 @@ export type {
   HeaderStrategyKind,
   ColumnBindingDraft,
   RecordsAxisName,
-  BoundsModeDraft,
   SkipRule,
   RegionDraft,
   RegionDriftState,
@@ -46,7 +47,6 @@ export type {
   EntityOption,
   DriftReportPreview,
 } from "./utils/region-editor.types";
-export { DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT } from "./utils/region-editor.types";
 
 export {
   colIndexToLetter,

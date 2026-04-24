@@ -81,8 +81,8 @@ const invalidRegion: RegionDraft = {
   id: "r_invalid_demo",
   sheetId: FIRST_SHEET_ID,
   bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
-  orientation: "rows-as-records",
-  headerAxis: "row",
+  headerAxes: ["row"],
+  segmentsByAxis: { row: [{ kind: "field", positionCount: 4 }] },
   targetEntityDefinitionId: null,
 };
 

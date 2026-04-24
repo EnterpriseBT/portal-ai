@@ -46,14 +46,14 @@ describe("region-editor.types canonical derivation", () => {
     expect(CanonicalWarningCode[code]).toBe("AMBIGUOUS_HEADER");
   });
 
-  it("RegionDraft compiles with the PR-1 draft unions", () => {
+  it("RegionDraft compiles with the PR-4 segment shape", () => {
     const draft: RegionDraft = {
       id: "r1",
       sheetId: "s1",
       bounds: { startRow: 1, endRow: 10, startCol: 1, endCol: 5 },
       targetEntityDefinitionId: null,
-      orientation: "rows-as-records",
-      headerAxis: "row",
+      headerAxes: ["row"],
+      segmentsByAxis: { row: [{ kind: "field", positionCount: 5 }] },
     };
     expect(draft.id).toBe("r1");
   });

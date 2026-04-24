@@ -1,7 +1,6 @@
 import {
   colIndexToLetter,
   coordInBounds,
-  defaultFieldNamesForRegion,
   formatBounds,
   formatCell,
   letterToColIndex,
@@ -80,28 +79,3 @@ describe("coordInBounds", () => {
   });
 });
 
-describe("defaultFieldNamesForRegion", () => {
-  test("rows-as-records produces column-letter names", () => {
-    const names = defaultFieldNamesForRegion(
-      { startRow: 0, endRow: 2, startCol: 1, endCol: 3 },
-      "rows-as-records"
-    );
-    expect(names).toEqual(["columnB", "columnC", "columnD"]);
-  });
-
-  test("columns-as-records produces row-number names", () => {
-    const names = defaultFieldNamesForRegion(
-      { startRow: 2, endRow: 4, startCol: 0, endCol: 1 },
-      "columns-as-records"
-    );
-    expect(names).toEqual(["row3", "row4", "row5"]);
-  });
-
-  test("cells-as-records falls back to column-letter names", () => {
-    const names = defaultFieldNamesForRegion(
-      { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
-      "cells-as-records"
-    );
-    expect(names).toEqual(["columnA", "columnB", "columnC"]);
-  });
-});

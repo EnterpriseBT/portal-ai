@@ -306,12 +306,15 @@ export function useFileUploadWorkflow(
 
   const onRegionDraft = useCallback(
     (draft: { sheetId: string; bounds: CellBounds }) => {
+      const span = Math.max(1, draft.bounds.endCol - draft.bounds.startCol + 1);
       const newRegion: RegionDraft = {
         id: mintRegionId(draft.sheetId),
         sheetId: draft.sheetId,
         bounds: draft.bounds,
-        orientation: "rows-as-records",
-        headerAxis: "row",
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: span }],
+        },
         targetEntityDefinitionId: null,
       };
       setState((prev) => ({

@@ -13,11 +13,57 @@ function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
     id: "r1",
     sheetId: "s1",
     bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
-    orientation: "rows-as-records",
-    headerAxis: "row",
+    headerAxes: ["row"],
+    segmentsByAxis: { row: [{ kind: "field", positionCount: 4 }] },
     targetEntityDefinitionId: "ent_contact",
     ...overrides,
   };
+}
+
+function pivotedRowRegion(
+  overrides: Partial<RegionDraft> = {}
+): RegionDraft {
+  return baseRegion({
+    segmentsByAxis: {
+      row: [
+        {
+          kind: "pivot",
+          id: "r-piv",
+          axisName: "",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+    },
+    ...overrides,
+  });
+}
+
+function crosstabRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
+  return baseRegion({
+    headerAxes: ["row", "column"],
+    segmentsByAxis: {
+      row: [
+        {
+          kind: "pivot",
+          id: "r-piv",
+          axisName: "",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+      column: [
+        {
+          kind: "pivot",
+          id: "c-piv",
+          axisName: "",
+          axisNameSource: "user",
+          positionCount: 5,
+        },
+      ],
+    },
+    ...overrides,
+  });
 }
 
 describe("validateRegion — bounds", () => {
@@ -59,98 +105,142 @@ describe("validateRegion — target entity", () => {
   });
 });
 
-describe("validateRegion — pivoted regions require a records-axis name", () => {
-  test("columns-as-records + headerAxis:row requires recordsAxisName", () => {
-    const errors = validateRegion(
-      baseRegion({
-        orientation: "columns-as-records",
-        headerAxis: "row",
-      })
-    );
-    expect(errors.recordsAxisName).toMatch(/required/i);
+describe("validateRegion — pivoted regions require an axis name", () => {
+  test("a pivot segment with an empty axisName is flagged", () => {
+    const errors = validateRegion(pivotedRowRegion());
+    expect(errors["segmentsByAxis.row.pivot.axisName"]).toMatch(/required/i);
   });
 
-  test("rows-as-records + headerAxis:column requires recordsAxisName", () => {
+  test("a pivot segment with a non-empty axisName is accepted", () => {
     const errors = validateRegion(
-      baseRegion({
-        orientation: "rows-as-records",
-        headerAxis: "column",
-      })
-    );
-    expect(errors.recordsAxisName).toMatch(/required/i);
-  });
-
-  test("pivoted region with provided name passes", () => {
-    const errors = validateRegion(
-      baseRegion({
-        orientation: "columns-as-records",
-        headerAxis: "row",
-        recordsAxisName: { name: "Month", source: "user" },
-      })
-    );
-    expect(errors.recordsAxisName).toBeUndefined();
-  });
-
-  test("non-pivoted region does not require axis name", () => {
-    const errors = validateRegion(baseRegion());
-    expect(errors.recordsAxisName).toBeUndefined();
-  });
-});
-
-describe("validateRegion — crosstab requires three axis fields", () => {
-  test("missing row-axis name, column-axis name, and cell value name", () => {
-    const errors = validateRegion(
-      baseRegion({ orientation: "cells-as-records", headerAxis: "row" })
-    );
-    expect(errors.recordsAxisName).toMatch(/row-axis|crosstab/i);
-    expect(errors.secondaryRecordsAxisName).toMatch(/column-axis|crosstab/i);
-    expect(errors.cellValueName).toMatch(/cell value|crosstab/i);
-  });
-
-  test("complete crosstab passes", () => {
-    const errors = validateRegion(
-      baseRegion({
-        orientation: "cells-as-records",
-        headerAxis: "row",
-        recordsAxisName: { name: "Region", source: "user" },
-        secondaryRecordsAxisName: { name: "Month", source: "user" },
-        cellValueName: { name: "Revenue", source: "user" },
+      pivotedRowRegion({
+        segmentsByAxis: {
+          row: [
+            {
+              kind: "pivot",
+              id: "r-piv",
+              axisName: "Region",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+        },
+        cellValueField: { name: "Revenue", nameSource: "user" },
       })
     );
     expect(errors).toEqual({});
   });
+
+  test("a pivot without cellValueField is flagged", () => {
+    const errors = validateRegion(
+      pivotedRowRegion({
+        segmentsByAxis: {
+          row: [
+            {
+              kind: "pivot",
+              id: "r-piv",
+              axisName: "Region",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+        },
+      })
+    );
+    expect(errors.cellValueField).toMatch(/cell-value|required/i);
+  });
+
+  test("a non-pivoted region does not require cellValueField", () => {
+    const errors = validateRegion(baseRegion());
+    expect(errors.cellValueField).toBeUndefined();
+  });
 });
 
-describe("validateRegion — extent", () => {
-  test("matchesPattern requires a stop pattern", () => {
-    const errors = validateRegion(baseRegion({ boundsMode: "matchesPattern" }));
-    expect(errors.boundsPattern).toMatch(/required/i);
+describe("validateRegion — crosstab", () => {
+  test("flags missing axis names on both pivots + missing cellValueField", () => {
+    const errors = validateRegion(crosstabRegion());
+    expect(errors["segmentsByAxis.row.pivot.axisName"]).toMatch(/required/i);
+    expect(errors["segmentsByAxis.column.pivot.axisName"]).toMatch(/required/i);
+    expect(errors.cellValueField).toMatch(/cell-value|required/i);
   });
 
-  test("matchesPattern rejects invalid regex", () => {
+  test("a complete crosstab passes", () => {
     const errors = validateRegion(
-      baseRegion({ boundsMode: "matchesPattern", boundsPattern: "([unclosed" })
+      crosstabRegion({
+        segmentsByAxis: {
+          row: [
+            {
+              kind: "pivot",
+              id: "r-piv",
+              axisName: "Region",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+          column: [
+            {
+              kind: "pivot",
+              id: "c-piv",
+              axisName: "Month",
+              axisNameSource: "user",
+              positionCount: 5,
+            },
+          ],
+        },
+        cellValueField: { name: "Revenue", nameSource: "user" },
+      })
     );
-    expect(errors.boundsPattern).toMatch(/valid regular expression/i);
+    expect(errors).toEqual({});
   });
 
-  test("matchesPattern accepts valid regex", () => {
+  test("rejects recordAxisTerminator on a crosstab (refinement 11)", () => {
     const errors = validateRegion(
-      baseRegion({ boundsMode: "matchesPattern", boundsPattern: "^Total$" })
+      crosstabRegion({
+        segmentsByAxis: {
+          row: [
+            {
+              kind: "pivot",
+              id: "r-piv",
+              axisName: "Region",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+          column: [
+            {
+              kind: "pivot",
+              id: "c-piv",
+              axisName: "Month",
+              axisNameSource: "user",
+              positionCount: 5,
+            },
+          ],
+        },
+        cellValueField: { name: "Revenue", nameSource: "user" },
+        recordAxisTerminator: { kind: "untilBlank", consecutiveBlanks: 2 },
+      })
     );
-    expect(errors.boundsPattern).toBeUndefined();
+    expect(errors.recordAxisTerminator).toMatch(/crosstab/i);
   });
+});
 
-  test("untilEmpty rejects terminator count of 0", () => {
+describe("validateRegion — record-axis terminator", () => {
+  test("rejects an invalid regex pattern", () => {
     const errors = validateRegion(
-      baseRegion({ boundsMode: "untilEmpty", untilEmptyTerminatorCount: 0 })
+      baseRegion({
+        recordAxisTerminator: { kind: "matchesPattern", pattern: "([unclosed" },
+      })
     );
-    expect(errors.untilEmptyTerminatorCount).toMatch(/at least 1/i);
+    expect(errors.recordAxisTerminator).toMatch(/valid regular expression/i);
   });
 
-  test("untilEmpty accepts undefined terminator count (uses default)", () => {
-    const errors = validateRegion(baseRegion({ boundsMode: "untilEmpty" }));
-    expect(errors.untilEmptyTerminatorCount).toBeUndefined();
+  test("accepts a valid regex pattern", () => {
+    const errors = validateRegion(
+      baseRegion({
+        recordAxisTerminator: { kind: "matchesPattern", pattern: "^Total$" },
+      })
+    );
+    expect(errors.recordAxisTerminator).toBeUndefined();
   });
 });
 
@@ -219,11 +309,20 @@ describe("validateRegion — skip rules", () => {
 });
 
 describe("validateRegion — axisAnchorCell override", () => {
-  const pivotedBase = baseRegion({
-    orientation: "rows-as-records",
-    headerAxis: "column",
+  const pivotedBase = pivotedRowRegion({
     bounds: { startRow: 3, endRow: 7, startCol: 0, endCol: 4 },
-    recordsAxisName: { name: "Region", source: "user" },
+    segmentsByAxis: {
+      row: [
+        {
+          kind: "pivot",
+          id: "r-piv",
+          axisName: "Region",
+          axisNameSource: "user",
+          positionCount: 5,
+        },
+      ],
+    },
+    cellValueField: { name: "Revenue", nameSource: "user" },
   });
 
   test("accepts an anchor within bounds on a pivoted region", () => {

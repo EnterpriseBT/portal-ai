@@ -11,8 +11,8 @@ const makeRegion = (
   id: "region-a",
   sheetId: "sheet_a",
   bounds: { startRow: 0, endRow: 3, startCol: 0, endCol: 2 },
-  orientation: "rows-as-records",
-  headerAxis: "row",
+  headerAxes: ["row"],
+  segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
   targetEntityDefinitionId: "ent_contact",
   confidence: 0.85,
   columnBindings: [

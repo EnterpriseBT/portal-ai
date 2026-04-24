@@ -41,8 +41,8 @@ const baseDraft = (overrides: Partial<RegionDraft> = {}): RegionDraft => ({
   id: "r1",
   sheetId: "sheet_a",
   bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 1 },
-  orientation: "rows-as-records",
-  headerAxis: "row",
+  headerAxes: ["row"],
+  segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
   targetEntityDefinitionId: "ent_contact",
   ...overrides,
 });
@@ -70,7 +70,7 @@ describe("regionDraftsToHints", () => {
   it("passes user-confirmed cell-value field + anchor fields through (anchor converted 0→1-indexed)", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
-        cellValueName: { name: "Revenue", source: "user" },
+        cellValueField: { name: "Revenue", nameSource: "user" },
         axisAnchorCell: { row: 2, col: 1 },
         proposedLabel: "Quarterly fact",
       }),
@@ -84,30 +84,38 @@ describe("regionDraftsToHints", () => {
     );
   });
 
-  it("does not forward anchor-cell auto-populated cell-value name (still tentative)", () => {
+  it("forwards cellValueField verbatim regardless of nameSource", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
-        cellValueName: { name: "metric", source: "anchor-cell" },
+        cellValueField: { name: "metric", nameSource: "anchor-cell" },
         axisAnchorCell: { row: 0, col: 0 },
       }),
     ]);
-    // `cellValueField` absent so the backend's recommender still runs.
-    expect(hints[0]).not.toHaveProperty("cellValueField");
+    expect(hints[0].cellValueField).toEqual({
+      name: "metric",
+      nameSource: "anchor-cell",
+    });
     expect(hints[0].axisAnchorCell).toEqual({ row: 1, col: 1 });
   });
 
-  it("does not forward AI-suggested cell-value names (awaiting user confirmation)", () => {
+  it("forwards AI-suggested cellValueField names", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
-        cellValueName: { name: "Revenue", source: "ai", confidence: 0.82 },
+        cellValueField: { name: "Revenue", nameSource: "ai" },
       }),
     ]);
-    expect(hints[0]).not.toHaveProperty("cellValueField");
+    expect(hints[0].cellValueField).toEqual({
+      name: "Revenue",
+      nameSource: "ai",
+    });
   });
 
-  it("stamps a single field segment per declared header axis (PR-1 stopgap)", () => {
+  it("forwards the draft's segmentsByAxis verbatim", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
-      baseDraft({ bounds: { startRow: 0, startCol: 0, endRow: 2, endCol: 3 } }),
+      baseDraft({
+        bounds: { startRow: 0, startCol: 0, endRow: 2, endCol: 3 },
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 4 }] },
+      }),
     ]);
     expect(hints[0].headerAxes).toEqual(["row"]);
     expect(hints[0].segmentsByAxis).toEqual({
@@ -115,9 +123,13 @@ describe("regionDraftsToHints", () => {
     });
   });
 
-  it("emits a headerless hint with recordsAxis for headerAxis='none'", () => {
+  it("emits a headerless hint with recordsAxis when headerAxes is empty", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
-      baseDraft({ headerAxis: "none", orientation: "rows-as-records" }),
+      baseDraft({
+        headerAxes: [],
+        segmentsByAxis: undefined,
+        recordsAxis: "row",
+      }),
     ]);
     expect(hints[0].headerAxes).toEqual([]);
     expect(hints[0].recordsAxis).toBe("row");

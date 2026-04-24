@@ -3,7 +3,11 @@ import {
   anchorCellValue,
   computeRegionDecorations,
 } from "../utils/region-editor-decorations.util";
-import type { RegionDraft, SheetPreview } from "../utils/region-editor.types";
+import type {
+  CellBounds,
+  RegionDraft,
+  SheetPreview,
+} from "../utils/region-editor.types";
 
 function sheet(cells: (string | number | null)[][]): SheetPreview {
   return {
@@ -15,16 +19,132 @@ function sheet(cells: (string | number | null)[][]): SheetPreview {
   };
 }
 
-function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
-  return {
-    id: "r",
-    sheetId: "s",
-    bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
-    orientation: "rows-as-records",
-    headerAxis: "row",
-    targetEntityDefinitionId: "ent_a",
-    ...overrides,
+/**
+ * Legacy-shape overrides translated into the PR-4 segment model so the
+ * suite's pre-PR-4 test cases keep working without a line-by-line rewrite.
+ * Supports the same four inputs the pre-PR draft carried:
+ *   - `orientation` × `headerAxis` → `headerAxes` + segment kind
+ *   - `recordsAxisName` → pivot segment's `axisName` on the row axis
+ *     (or column axis for 1D pivoted columns-as-records)
+ *   - `secondaryRecordsAxisName` → column-axis pivot `axisName` (crosstab)
+ *   - `cellValueName` → `cellValueField`
+ */
+type LegacyOverrides = {
+  id?: string;
+  sheetId?: string;
+  bounds?: CellBounds;
+  targetEntityDefinitionId?: string | null;
+  orientation?: "rows-as-records" | "columns-as-records" | "cells-as-records";
+  headerAxis?: "row" | "column" | "none";
+  recordsAxisName?: {
+    name: string;
+    source: "user" | "ai" | "anchor-cell";
+    confidence?: number;
   };
+  secondaryRecordsAxisName?: {
+    name: string;
+    source: "user" | "ai" | "anchor-cell";
+    confidence?: number;
+  };
+  cellValueName?: {
+    name: string;
+    source: "user" | "ai" | "anchor-cell";
+  };
+  axisAnchorCell?: { row: number; col: number };
+  skipRules?: RegionDraft["skipRules"];
+};
+
+function baseRegion(overrides: LegacyOverrides = {}): RegionDraft {
+  const bounds = overrides.bounds ?? {
+    startRow: 0,
+    endRow: 4,
+    startCol: 0,
+    endCol: 3,
+  };
+  const orientation = overrides.orientation ?? "rows-as-records";
+  const headerAxis = overrides.headerAxis ?? "row";
+  const rowSpan = bounds.endCol - bounds.startCol + 1;
+  const colSpan = bounds.endRow - bounds.startRow + 1;
+
+  const draft: RegionDraft = {
+    id: overrides.id ?? "r",
+    sheetId: overrides.sheetId ?? "s",
+    bounds,
+    targetEntityDefinitionId: overrides.targetEntityDefinitionId ?? "ent_a",
+  };
+  if (overrides.axisAnchorCell) draft.axisAnchorCell = overrides.axisAnchorCell;
+  if (overrides.skipRules) draft.skipRules = overrides.skipRules;
+
+  if (headerAxis === "none") {
+    draft.headerAxes = [];
+    draft.recordsAxis =
+      orientation === "columns-as-records" ? "column" : "row";
+    return draft;
+  }
+
+  if (orientation === "cells-as-records") {
+    draft.headerAxes = ["row", "column"];
+    draft.segmentsByAxis = {
+      row: [
+        {
+          kind: "pivot",
+          id: "row-pivot",
+          axisName: overrides.recordsAxisName?.name ?? "",
+          axisNameSource: overrides.recordsAxisName?.source ?? "user",
+          positionCount: rowSpan,
+        },
+      ],
+      column: [
+        {
+          kind: "pivot",
+          id: "column-pivot",
+          axisName: overrides.secondaryRecordsAxisName?.name ?? "",
+          axisNameSource: overrides.secondaryRecordsAxisName?.source ?? "user",
+          positionCount: colSpan,
+        },
+      ],
+    };
+    if (overrides.cellValueName) {
+      draft.cellValueField = {
+        name: overrides.cellValueName.name,
+        nameSource: overrides.cellValueName.source,
+      };
+    }
+    return draft;
+  }
+
+  // 1D region. Pivoted when the record axis is unlabeled by the data itself
+  // (rows-as-records + column header, or columns-as-records + row header).
+  const pivoted =
+    (orientation === "rows-as-records" && headerAxis === "column") ||
+    (orientation === "columns-as-records" && headerAxis === "row");
+  const span = headerAxis === "row" ? rowSpan : colSpan;
+
+  draft.headerAxes = [headerAxis];
+  if (pivoted) {
+    draft.segmentsByAxis = {
+      [headerAxis]: [
+        {
+          kind: "pivot",
+          id: `${headerAxis}-pivot`,
+          axisName: overrides.recordsAxisName?.name ?? "",
+          axisNameSource: overrides.recordsAxisName?.source ?? "user",
+          positionCount: span,
+        },
+      ],
+    };
+    if (overrides.cellValueName) {
+      draft.cellValueField = {
+        name: overrides.cellValueName.name,
+        nameSource: overrides.cellValueName.source,
+      };
+    }
+  } else {
+    draft.segmentsByAxis = {
+      [headerAxis]: [{ kind: "field", positionCount: span }],
+    };
+  }
+  return draft;
 }
 
 describe("computeRegionDecorations — headers", () => {

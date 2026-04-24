@@ -98,8 +98,8 @@ describe("FileUploadRegionDrawingStepUI — Interpret", () => {
       id: "r_invalid",
       sheetId: DEMO_WORKBOOK.sheets[0].id,
       bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
-      orientation: "rows-as-records",
-      headerAxis: "row",
+      headerAxes: ["row"],
+      segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
       targetEntityDefinitionId: null,
     };
     render(

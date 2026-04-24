@@ -7,7 +7,18 @@ import type { CellBounds, RegionDraft } from "./utils/region-editor.types";
 import {
   orientationArrow,
   orientationArrowLabel,
+  orientationFromDraft,
 } from "./utils/region-orientation.util";
+
+function hasDynamicTailPivot(
+  region: RegionDraft,
+  axis: "row" | "column"
+): boolean {
+  const segs = region.segmentsByAxis?.[axis] ?? [];
+  if (segs.length === 0) return false;
+  const tail = segs[segs.length - 1];
+  return tail.kind === "pivot" && !!tail.dynamic;
+}
 
 export type ResizeHandleKind =
   | "nw"
@@ -103,24 +114,39 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
   onResizeStart,
 }) => {
   const color = colorForEntity(region.targetEntityDefinitionId, entityOrder);
-  const { drift, boundsMode = "absolute", orientation } = region;
+  const { drift } = region;
   const left = ROW_HEADER_WIDTH + bounds.startCol * cellWidth;
   const top = COL_HEADER_HEIGHT + bounds.startRow * cellHeight;
   const width = (bounds.endCol - bounds.startCol + 1) * cellWidth;
   const height = (bounds.endRow - bounds.startRow + 1) * cellHeight;
   const driftFlagged = Boolean(drift?.flagged);
-  const isDynamic = boundsMode !== "absolute";
-  const extendsDown =
-    isDynamic &&
-    (orientation === "rows-as-records" || orientation === "cells-as-records");
-  const extendsRight =
-    isDynamic &&
-    (orientation === "columns-as-records" ||
-      orientation === "cells-as-records");
+  const orientation = orientationFromDraft(region);
+  // A region's record axis can grow beyond the drawn bounds when
+  // `recordAxisTerminator` is set, or when a tail pivot segment is
+  // marked dynamic. The overlay renders a dashed edge on the growth
+  // direction to signal that.
+  const axes = region.headerAxes ?? [];
+  const tailRowDynamic = hasDynamicTailPivot(region, "row");
+  const tailColDynamic = hasDynamicTailPivot(region, "column");
+  const axisGrows = (axis: "row" | "column"): boolean => {
+    if (axes.length === 2) return axis === "row" ? tailRowDynamic : tailColDynamic;
+    if (axes.length === 1) {
+      const isRecordAxis =
+        (axes[0] === "row" && axis === "column") ||
+        (axes[0] === "column" && axis === "row");
+      return isRecordAxis && !!region.recordAxisTerminator;
+    }
+    if (region.recordsAxis) {
+      return region.recordsAxis === axis && !!region.recordAxisTerminator;
+    }
+    return false;
+  };
+  const extendsDown = axisGrows("column"); // column axis positions are rows
+  const extendsRight = axisGrows("row"); // row axis positions are columns
   const extentBadge =
-    boundsMode === "untilEmpty"
-      ? "UNTIL EMPTY"
-      : boundsMode === "matchesPattern"
+    region.recordAxisTerminator?.kind === "untilBlank"
+      ? "UNTIL BLANK"
+      : region.recordAxisTerminator?.kind === "matchesPattern"
         ? "MATCHES PATTERN"
         : null;
 
@@ -165,11 +191,11 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
           }}
         >
           <span
-            aria-label={orientationArrowLabel(region.orientation)}
-            title={orientationArrowLabel(region.orientation)}
+            aria-label={orientationArrowLabel(orientation)}
+            title={orientationArrowLabel(orientation)}
             style={{ fontWeight: 700 }}
           >
-            {orientationArrow(region.orientation)}
+            {orientationArrow(orientation)}
           </span>
           <span>
             {region.proposedLabel ??

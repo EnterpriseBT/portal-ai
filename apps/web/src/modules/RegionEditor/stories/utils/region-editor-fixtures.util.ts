@@ -446,8 +446,158 @@ export const DEMO_WORKBOOK: Workbook = {
 
 export const EMPTY_REGIONS: RegionDraft[] = [];
 
-// Region definitions covering every permutation.
-export const PROPOSED_REGIONS: RegionDraft[] = [
+// Storybook-only helper: translate the pre-PR-4 draft shape (orientation +
+// headerAxis + recordsAxisName + boundsMode) into the PR-4 segment model so
+// the long-standing fixtures keep rendering without a line-by-line rewrite.
+// Stories pass *legacy* overrides; the helper seeds the right combination of
+// headerAxes + segmentsByAxis + cellValueField so the editor UI receives a
+// schema-adjacent draft.
+type LegacyRegionShape = {
+  id: string;
+  sheetId: string;
+  bounds: RegionDraft["bounds"];
+  proposedLabel?: string;
+  targetEntityDefinitionId: string | null;
+  targetEntityLabel?: string;
+  orientation?: "rows-as-records" | "columns-as-records" | "cells-as-records";
+  headerAxis?: "row" | "column" | "none";
+  recordsAxisName?: {
+    name: string;
+    source: "user" | "ai" | "anchor-cell";
+    confidence?: number;
+  };
+  secondaryRecordsAxisName?: {
+    name: string;
+    source: "user" | "ai" | "anchor-cell";
+    confidence?: number;
+  };
+  cellValueName?: {
+    name: string;
+    source: "user" | "ai" | "anchor-cell";
+    confidence?: number;
+  };
+  boundsMode?: "absolute" | "untilEmpty" | "matchesPattern";
+  untilEmptyTerminatorCount?: number;
+  boundsPattern?: string;
+  skipRules?: RegionDraft["skipRules"];
+  columnOverrides?: RegionDraft["columnOverrides"];
+  confidence?: number;
+  warnings?: RegionDraft["warnings"];
+  drift?: RegionDraft["drift"];
+  axisAnchorCell?: RegionDraft["axisAnchorCell"];
+};
+
+function legacyToRegion(src: LegacyRegionShape): RegionDraft {
+  const orientation = src.orientation ?? "rows-as-records";
+  const headerAxis = src.headerAxis ?? "row";
+  const rowSpan = src.bounds.endCol - src.bounds.startCol + 1;
+  const colSpan = src.bounds.endRow - src.bounds.startRow + 1;
+
+  const draft: RegionDraft = {
+    id: src.id,
+    sheetId: src.sheetId,
+    bounds: src.bounds,
+    proposedLabel: src.proposedLabel,
+    targetEntityDefinitionId: src.targetEntityDefinitionId,
+    targetEntityLabel: src.targetEntityLabel,
+    confidence: src.confidence,
+    warnings: src.warnings,
+    drift: src.drift,
+    columnOverrides: src.columnOverrides,
+    skipRules: src.skipRules,
+    axisAnchorCell: src.axisAnchorCell,
+  };
+
+  if (src.boundsMode === "matchesPattern" && src.boundsPattern) {
+    draft.recordAxisTerminator = {
+      kind: "matchesPattern",
+      pattern: src.boundsPattern,
+    };
+  } else if (src.boundsMode === "untilEmpty") {
+    draft.recordAxisTerminator = {
+      kind: "untilBlank",
+      consecutiveBlanks: src.untilEmptyTerminatorCount ?? 2,
+    };
+  }
+
+  if (headerAxis === "none") {
+    draft.headerAxes = [];
+    draft.recordsAxis =
+      orientation === "columns-as-records" ? "column" : "row";
+    return draft;
+  }
+
+  if (orientation === "cells-as-records") {
+    draft.headerAxes = ["row", "column"];
+    draft.segmentsByAxis = {
+      row: [
+        {
+          kind: "pivot",
+          id: `${src.id}-row-pivot`,
+          axisName: src.recordsAxisName?.name ?? "",
+          axisNameSource: src.recordsAxisName?.source ?? "user",
+          positionCount: rowSpan,
+        },
+      ],
+      column: [
+        {
+          kind: "pivot",
+          id: `${src.id}-col-pivot`,
+          axisName: src.secondaryRecordsAxisName?.name ?? "",
+          axisNameSource: src.secondaryRecordsAxisName?.source ?? "user",
+          positionCount: colSpan,
+        },
+      ],
+    };
+    draft.cellValueField = src.cellValueName
+      ? {
+          name: src.cellValueName.name,
+          nameSource: src.cellValueName.source,
+        }
+      : { name: "value", nameSource: "user" };
+    return draft;
+  }
+
+  const pivoted =
+    (orientation === "rows-as-records" && headerAxis === "column") ||
+    (orientation === "columns-as-records" && headerAxis === "row");
+  const span = headerAxis === "row" ? rowSpan : colSpan;
+
+  draft.headerAxes = [headerAxis];
+  if (pivoted) {
+    draft.segmentsByAxis = {
+      [headerAxis]: [
+        {
+          kind: "pivot",
+          id: `${src.id}-pivot`,
+          axisName: src.recordsAxisName?.name ?? "",
+          axisNameSource: src.recordsAxisName?.source ?? "user",
+          positionCount: span,
+        },
+      ],
+    };
+    // Any pivot requires `cellValueField` (refinement 7). Seed a placeholder
+    // when the legacy fixture didn't carry a `cellValueName` so the story
+    // region still validates clean.
+    draft.cellValueField = src.cellValueName
+      ? {
+          name: src.cellValueName.name,
+          nameSource: src.cellValueName.source,
+        }
+      : { name: "value", nameSource: "user" };
+  } else {
+    draft.segmentsByAxis = {
+      [headerAxis]: [{ kind: "field", positionCount: span }],
+    };
+  }
+  return draft;
+}
+
+// Region definitions covering every permutation. Each entry is written in
+// the pre-PR-4 shape and translated to the PR-4 segment model by
+// `legacyToRegion`. When the stories refresh to use native segment authoring
+// (refinement follow-up), the literals below can drop the legacy helper.
+const LEGACY_REGION_FIXTURES: LegacyRegionShape[] = [
   // ---- Sheet 1: Row tables (rows-as-records + headerAxis: row) ----
   // Flat fact table: one row per (region, quarter) observation.
   {
@@ -630,6 +780,10 @@ export const PROPOSED_REGIONS: RegionDraft[] = [
     confidence: 0.83,
   },
 ];
+
+export const PROPOSED_REGIONS: RegionDraft[] = LEGACY_REGION_FIXTURES.map(
+  legacyToRegion
+);
 
 export const DRIFT_REGIONS: RegionDraft[] = PROPOSED_REGIONS.map((r) => {
   if (r.id === "region_revenue_rows_as_obs") {

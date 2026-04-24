@@ -6,16 +6,12 @@
  * expected. Validation happens via `validateRegion()` in
  * `region-editor-validation.util.ts` before the draft is sent to the backend.
  *
- * The PR-1 schema collapse removed `Orientation`, `HeaderAxis`, and
- * `BoundsMode` from the canonical parser module — PR-4 will rework this
- * editor's draft shape around `headerAxes` + `segmentsByAxis`. Until then
- * the draft keeps the Phase-1 field names as frontend-only unions so the
- * in-progress editor UI keeps rendering; the draft-to-plan mapper in
- * `layout-plan-mapping.util.ts` is what emits the new canonical shape.
- *
- * Preview-only shapes (`Workbook`, `SheetPreview`, `EntityOption`,
- * `EntityLegendEntry`, `DriftReportPreview`) are rendering types for this
- * editor; they do not correspond to a backend contract.
+ * The draft mirrors the canonical `Region` shape (`headerAxes`,
+ * `segmentsByAxis`, `cellValueField`, `recordAxisTerminator`,
+ * `recordsAxis`) with every field optional so mid-edit state is
+ * representable. Preview-only shapes (`Workbook`, `SheetPreview`,
+ * `EntityOption`, `EntityLegendEntry`, `DriftReportPreview`) are rendering
+ * types for this editor; they do not correspond to a backend contract.
  */
 
 import type {
@@ -23,7 +19,6 @@ import type {
   CellValueField,
   HeaderStrategyKind,
   IdentityStrategyKind,
-  RecordsAxisName,
   Segment,
   SkipRuleAxis,
   Terminator,
@@ -45,17 +40,6 @@ export type {
   WarningCode,
   WarningSeverity,
 } from "@portalai/core/contracts";
-
-// ── Frontend-only draft unions (PR-1 stopgap; PR-4 replaces these) ──────
-export type BoundsModeDraft = "absolute" | "untilEmpty" | "matchesPattern";
-export type HeaderAxisDraft = "row" | "column" | "none";
-export type OrientationDraft =
-  | "rows-as-records"
-  | "columns-as-records"
-  | "cells-as-records";
-
-/** @deprecated Use the new canonical `headerAxes` + `segmentsByAxis` shape emitted by the draft-to-plan mapper. */
-export const DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT = 3;
 
 /**
  * Draft form of a SkipRule — identical to the canonical `SkipRule` except
@@ -152,23 +136,14 @@ export type RegionDraft = {
   id: string;
   sheetId: string;
   bounds: CellBounds;
-  boundsMode?: BoundsModeDraft;
-  boundsPattern?: string;
   proposedLabel?: string;
   targetEntityDefinitionId: string | null;
   targetEntityLabel?: string;
-  orientation: OrientationDraft;
-  headerAxis: HeaderAxisDraft;
-  recordsAxisName?: RecordsAxisName;
-  secondaryRecordsAxisName?: RecordsAxisName;
-  cellValueName?: RecordsAxisName;
   /**
-   * PR-4 segment model (transitional — coexists with `orientation` +
-   * `headerAxis` + `recordsAxisName` until the workflow integration in the
-   * next PR removes those). When present the RegionConfigurationPanel
-   * drives itself off these fields and ignores the legacy orientation
-   * inputs; helpers like `orientationFromDraft` pick the segment model
-   * first and fall back to the legacy fields when segments are unset.
+   * PR-4 segment model. Optional on the draft because the user can build up
+   * toward a valid region incrementally (e.g. a freshly-drawn region has
+   * `headerAxes: ["row"]` + a single field segment; promoting to crosstab
+   * adds a `column` entry + a skip segment at the intersection).
    */
   headerAxes?: AxisMember[];
   segmentsByAxis?: { row?: Segment[]; column?: Segment[] };
@@ -183,18 +158,17 @@ export type RegionDraft = {
   /**
    * Optional override for the axis-name anchor cell. When unset, the anchor
    * defaults to the top-left of the region — `(bounds.startRow, bounds.startCol)`.
-   * Only meaningful for pivoted shapes (crosstabs, rows-as-records +
-   * headerAxis:column, columns-as-records + headerAxis:row). Must be within bounds.
+   * Only meaningful when the region has at least one pivot segment; must be
+   * within bounds.
    */
   axisAnchorCell?: CellCoord;
   /**
-   * User-supplied overrides for auto-generated field names (when headerAxis === "none").
-   * Keyed by the default name (e.g. "columnA"), mapped to the override (e.g. "customerName").
+   * User-supplied overrides for auto-generated field names on a headerless
+   * region. Keyed by the default name (e.g. "columnA"), mapped to the
+   * override (e.g. "customerName").
    */
   columnOverrides?: Record<string, string>;
   skipRules?: SkipRuleDraft[];
-  /** Consecutive unskippable blank records required to terminate `untilEmpty`. Defaults to `DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT`. */
-  untilEmptyTerminatorCount?: number;
   headerStrategy?: { kind: HeaderStrategyKind; confidence?: number };
   identityStrategy?: {
     kind: IdentityStrategyKind;

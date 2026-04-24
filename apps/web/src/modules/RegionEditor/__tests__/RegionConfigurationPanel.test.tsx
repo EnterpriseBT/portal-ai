@@ -15,8 +15,6 @@ function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
     id: "r1",
     sheetId: "s1",
     bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
-    orientation: "rows-as-records",
-    headerAxis: "row",
     targetEntityDefinitionId: "ent_a",
     targetEntityLabel: "Contact",
     ...overrides,
@@ -332,7 +330,7 @@ describe("RegionConfigurationPanelUI", () => {
     const onUpdate = jest.fn();
     render(
       <RegionConfigurationPanelUI
-        region={baseRegion({ boundsMode: "untilEmpty" })}
+        region={baseRegion()}
         entityOptions={ENTITY_OPTIONS}
         entityOrder={["ent_a"]}
         siblingsInSameEntity={0}

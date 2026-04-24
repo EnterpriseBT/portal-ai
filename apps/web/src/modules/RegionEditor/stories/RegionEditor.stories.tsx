@@ -217,11 +217,11 @@ const InteractiveContent: React.FC<InteractiveContentProps> = ({
         onRegionResize={handleResize}
         entityOptions={entityOptions}
         onCreateEntity={handleCreateEntity}
-        onSuggestAxisName={(id) =>
-          handleUpdate(id, {
-            recordsAxisName: { name: "Month", source: "ai", confidence: 0.82 },
-          })
-        }
+        onSuggestAxisName={(_id) => {
+          // PR-4 moved axis-name editing into per-segment popovers; this
+          // story still wires a handler to exercise the prop plumbing but
+          // no longer mutates a legacy field.
+        }}
         onInterpret={() => {
           setRegions((prev) =>
             prev.map((r, i) => ({
