@@ -152,15 +152,15 @@ const InteractiveContent: React.FC = () => {
 
   const handleDraft = (draft: { sheetId: string; bounds: CellBounds }) => {
     const id = `region_${Date.now()}`;
+    const span = Math.max(1, draft.bounds.endCol - draft.bounds.startCol + 1);
     setRegions((prev) => [
       ...prev,
       {
         id,
         sheetId: draft.sheetId,
         bounds: draft.bounds,
-        orientation: "rows-as-records",
-        headerAxis: "row",
-        boundsMode: "absolute",
+        headerAxes: ["row"],
+        segmentsByAxis: { row: [{ kind: "field", positionCount: span }] },
         targetEntityDefinitionId: null,
       },
     ]);
