@@ -67,11 +67,9 @@ describe("regionDraftsToHints", () => {
     expect(hints[0].targetEntityDefinitionId).toBe("ent_contact");
   });
 
-  it("passes optional axis-name + anchor fields through (anchor converted 0→1-indexed)", () => {
+  it("passes user-confirmed cell-value field + anchor fields through (anchor converted 0→1-indexed)", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
-        recordsAxisName: { name: "Quarter", source: "user" },
-        secondaryRecordsAxisName: { name: "Region", source: "user" },
         cellValueName: { name: "Revenue", source: "user" },
         axisAnchorCell: { row: 2, col: 1 },
         proposedLabel: "Quarterly fact",
@@ -79,35 +77,51 @@ describe("regionDraftsToHints", () => {
     ]);
     expect(hints[0]).toEqual(
       expect.objectContaining({
-        recordsAxisName: "Quarter",
-        secondaryRecordsAxisName: "Region",
-        cellValueName: "Revenue",
+        cellValueField: { name: "Revenue", nameSource: "user" },
         axisAnchorCell: { row: 3, col: 2 },
         proposedLabel: "Quarterly fact",
       })
     );
   });
 
-  it("does not forward anchor-cell auto-populated axis names (they're tentative)", () => {
+  it("does not forward anchor-cell auto-populated cell-value name (still tentative)", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
-        recordsAxisName: { name: "metric", source: "anchor-cell" },
+        cellValueName: { name: "metric", source: "anchor-cell" },
         axisAnchorCell: { row: 0, col: 0 },
       }),
     ]);
-    // `recordsAxisName` absent from the hint so the backend's AI recommender
-    // can run instead of treating the placeholder as a confirmed user value.
-    expect(hints[0]).not.toHaveProperty("recordsAxisName");
+    // `cellValueField` absent so the backend's recommender still runs.
+    expect(hints[0]).not.toHaveProperty("cellValueField");
     expect(hints[0].axisAnchorCell).toEqual({ row: 1, col: 1 });
   });
 
-  it("does not forward AI-suggested axis names (awaiting user confirmation)", () => {
+  it("does not forward AI-suggested cell-value names (awaiting user confirmation)", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({
-        recordsAxisName: { name: "Quarter", source: "ai", confidence: 0.82 },
+        cellValueName: { name: "Revenue", source: "ai", confidence: 0.82 },
       }),
     ]);
-    expect(hints[0]).not.toHaveProperty("recordsAxisName");
+    expect(hints[0]).not.toHaveProperty("cellValueField");
+  });
+
+  it("stamps a single field segment per declared header axis (PR-1 stopgap)", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({ bounds: { startRow: 0, startCol: 0, endRow: 2, endCol: 3 } }),
+    ]);
+    expect(hints[0].headerAxes).toEqual(["row"]);
+    expect(hints[0].segmentsByAxis).toEqual({
+      row: [{ kind: "field", positionCount: 4 }],
+    });
+  });
+
+  it("emits a headerless hint with recordsAxis for headerAxis='none'", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({ headerAxis: "none", orientation: "rows-as-records" }),
+    ]);
+    expect(hints[0].headerAxes).toEqual([]);
+    expect(hints[0].recordsAxis).toBe("row");
+    expect(hints[0].segmentsByAxis).toBeUndefined();
   });
 
   it("converts 0-indexed frontend bounds to 1-indexed backend bounds", () => {
@@ -142,19 +156,35 @@ describe("planRegionsToDrafts", () => {
         id: "region-1-Alpha-1x1",
         sheet: "Alpha",
         bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
-        boundsMode: "absolute" as const,
-        orientation: "rows-as-records" as const,
-        headerAxis: "row" as const,
         targetEntityDefinitionId: "ent_contact",
+        headerAxes: ["row" as const],
+        segmentsByAxis: {
+          row: [{ kind: "field" as const, positionCount: 2 }],
+        },
+        headerStrategyByAxis: {
+          row: {
+            kind: "row" as const,
+            locator: { kind: "row" as const, sheet: "Alpha", row: 1 },
+            confidence: 0.95,
+          },
+        },
         identityStrategy: { kind: "rowPosition" as const, confidence: 0.9 },
         columnBindings: [
           {
-            sourceLocator: { kind: "byHeaderName" as const, name: "Name" },
+            sourceLocator: {
+              kind: "byHeaderName" as const,
+              axis: "row" as const,
+              name: "Name",
+            },
             columnDefinitionId: "coldef_name",
             confidence: 0.95,
           },
           {
-            sourceLocator: { kind: "byColumnIndex" as const, col: 2 },
+            sourceLocator: {
+              kind: "byPositionIndex" as const,
+              axis: "row" as const,
+              index: 2,
+            },
             columnDefinitionId: "coldef_email",
             confidence: 0.7,
             rationale: "matched by position",
@@ -201,8 +231,8 @@ describe("planRegionsToDrafts", () => {
     const drafts = planRegionsToDrafts(plan, makeWorkbook());
     const bindings = drafts[0].columnBindings ?? [];
     expect(bindings).toHaveLength(2);
-    expect(bindings[0].sourceLocator).toBe("header:Name");
-    expect(bindings[1].sourceLocator).toBe("col:2");
+    expect(bindings[0].sourceLocator).toBe("header:row:Name");
+    expect(bindings[1].sourceLocator).toBe("pos:row:2");
   });
 
   it("copies confidence (region aggregate) and warnings through", () => {
@@ -227,10 +257,18 @@ describe("preserveUserRegionConfig", () => {
     id: "region-1",
     sheet: "Alpha",
     bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
-    boundsMode: "absolute",
-    orientation: "rows-as-records",
-    headerAxis: "row",
     targetEntityDefinitionId: "ent_contact",
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [{ kind: "field", positionCount: 2 }],
+    },
+    headerStrategyByAxis: {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "Alpha", row: 1 },
+        confidence: 0.95,
+      },
+    },
     identityStrategy: { kind: "rowPosition", confidence: 0.9 },
     columnBindings: [],
     skipRules: [],
@@ -253,27 +291,12 @@ describe("preserveUserRegionConfig", () => {
     confidence: { overall: 0.85, perRegion: { "region-1": 0.85 } },
   };
 
-  it("overrides boundsMode with the prior draft's user selection", () => {
+  it("copies columnOverrides from the prior draft onto the plan", () => {
     const result = preserveUserRegionConfig(basePlan, [
-      baseDraft({ boundsMode: "untilEmpty" }),
+      baseDraft({ columnOverrides: { columnA: "customerName" } }),
     ]);
-    expect(result.regions[0].boundsMode).toBe("untilEmpty");
-  });
-
-  it("copies boundsPattern, untilEmptyTerminatorCount, columnOverrides", () => {
-    const result = preserveUserRegionConfig(basePlan, [
-      baseDraft({
-        boundsMode: "matchesPattern",
-        boundsPattern: "^Totals$",
-        untilEmptyTerminatorCount: 4,
-        columnOverrides: { columnA: "customerName" },
-      }),
-    ]);
-    expect(result.regions[0]).toMatchObject({
-      boundsMode: "matchesPattern",
-      boundsPattern: "^Totals$",
-      untilEmptyTerminatorCount: 4,
-      columnOverrides: { columnA: "customerName" },
+    expect(result.regions[0].columnOverrides).toEqual({
+      columnA: "customerName",
     });
   });
 
@@ -305,12 +328,11 @@ describe("preserveUserRegionConfig", () => {
     };
     const result = preserveUserRegionConfig(twoRegionPlan, [
       baseDraft({ targetEntityDefinitionId: null }), // dropped by filter
-      baseDraft({ boundsMode: "untilEmpty" }),
-      baseDraft({ boundsMode: "matchesPattern", boundsPattern: "END" }),
+      baseDraft({ columnOverrides: { a: "first" } }),
+      baseDraft({ columnOverrides: { b: "second" } }),
     ]);
-    expect(result.regions[0].boundsMode).toBe("untilEmpty");
-    expect(result.regions[1].boundsMode).toBe("matchesPattern");
-    expect(result.regions[1].boundsPattern).toBe("END");
+    expect(result.regions[0].columnOverrides).toEqual({ a: "first" });
+    expect(result.regions[1].columnOverrides).toEqual({ b: "second" });
   });
 
   it("returns the plan unchanged when no drafts have a target entity", () => {
@@ -323,7 +345,7 @@ describe("preserveUserRegionConfig", () => {
   describe("— binding overrides", () => {
     const baseBackendBinding: LayoutPlan["regions"][number]["columnBindings"][number] =
       {
-        sourceLocator: { kind: "byHeaderName", name: "Email" },
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "Email" },
         columnDefinitionId: "coldef_email",
         confidence: 0.9,
       };
@@ -332,7 +354,7 @@ describe("preserveUserRegionConfig", () => {
       columnBindings: [
         baseBackendBinding,
         {
-          sourceLocator: { kind: "byColumnIndex", col: 3 },
+          sourceLocator: { kind: "byPositionIndex", axis: "row", index: 2 },
           columnDefinitionId: "coldef_name",
           confidence: 0.7,
         },
@@ -348,7 +370,7 @@ describe("preserveUserRegionConfig", () => {
         baseDraft({
           columnBindings: [
             {
-              sourceLocator: "header:Email",
+              sourceLocator: "header:row:Email",
               columnDefinitionId: "coldef_email",
               confidence: 0.9,
               excluded: false,
@@ -361,7 +383,7 @@ describe("preserveUserRegionConfig", () => {
               refNormalizedKey: null,
             },
             {
-              sourceLocator: "col:3",
+              sourceLocator: "pos:row:2",
               columnDefinitionId: "coldef_name",
               confidence: 0.7,
               excluded: true,
@@ -371,7 +393,7 @@ describe("preserveUserRegionConfig", () => {
       ]);
       const bindings = result.regions[0].columnBindings;
       expect(bindings[0]).toMatchObject({
-        sourceLocator: { kind: "byHeaderName", name: "Email" },
+        sourceLocator: { kind: "byHeaderName", axis: "row", name: "Email" },
         columnDefinitionId: "coldef_email",
         normalizedKey: "email_override",
         required: true,
@@ -386,7 +408,7 @@ describe("preserveUserRegionConfig", () => {
         baseDraft({
           columnBindings: [
             {
-              sourceLocator: "header:Email",
+              sourceLocator: "header:row:Email",
               columnDefinitionId: "coldef_email_rebind",
               confidence: 1,
             },
@@ -403,7 +425,7 @@ describe("preserveUserRegionConfig", () => {
         baseDraft({
           columnBindings: [
             {
-              sourceLocator: "header:Email",
+              sourceLocator: "header:row:Email",
               columnDefinitionId: "coldef_email",
               confidence: 0.9,
               // no override fields set
@@ -419,7 +441,7 @@ describe("preserveUserRegionConfig", () => {
         baseDraft({
           columnBindings: [
             {
-              sourceLocator: "header:PhantomColumn",
+              sourceLocator: "header:row:PhantomColumn",
               columnDefinitionId: "coldef_ghost",
               confidence: 1,
               excluded: true,
@@ -453,14 +475,26 @@ describe("planRegionsToDrafts — binding overrides", () => {
           id: "region-1",
           sheet: "Alpha",
           bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 2 },
-          boundsMode: "absolute" as const,
-          orientation: "rows-as-records" as const,
-          headerAxis: "row" as const,
           targetEntityDefinitionId: "ent_contact",
+          headerAxes: ["row" as const],
+          segmentsByAxis: {
+            row: [{ kind: "field" as const, positionCount: 2 }],
+          },
+          headerStrategyByAxis: {
+            row: {
+              kind: "row" as const,
+              locator: { kind: "row" as const, sheet: "Alpha", row: 1 },
+              confidence: 0.95,
+            },
+          },
           identityStrategy: { kind: "rowPosition" as const, confidence: 0.9 },
           columnBindings: [
             {
-              sourceLocator: { kind: "byHeaderName" as const, name: "Email" },
+              sourceLocator: {
+                kind: "byHeaderName" as const,
+                axis: "row" as const,
+                name: "Email",
+              },
               columnDefinitionId: "coldef_email",
               confidence: 0.9,
               excluded: true,
@@ -484,7 +518,7 @@ describe("planRegionsToDrafts — binding overrides", () => {
     const drafts = planRegionsToDrafts(plan, makeWorkbook());
     const binding = drafts[0].columnBindings?.[0];
     expect(binding).toMatchObject({
-      sourceLocator: "header:Email",
+      sourceLocator: "header:row:Email",
       columnDefinitionId: "coldef_email",
       excluded: true,
       normalizedKey: "email_override",

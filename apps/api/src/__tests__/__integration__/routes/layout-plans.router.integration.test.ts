@@ -167,14 +167,17 @@ function makePlan(
         id: "r1",
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
-        boundsMode: "absolute",
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
-        headerStrategy: {
-          kind: "row",
-          locator: { kind: "row", sheet: "Sheet1", row: 1 },
-          confidence: 0.95,
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 2 }],
+        },
+        headerStrategyByAxis: {
+          row: {
+            kind: "row",
+            locator: { kind: "row", sheet: "Sheet1", row: 1 },
+            confidence: 0.95,
+          },
         },
         identityStrategy: {
           kind: "column",
@@ -183,12 +186,12 @@ function makePlan(
         },
         columnBindings: [
           {
-            sourceLocator: { kind: "byHeaderName", name: "email" },
+            sourceLocator: { kind: "byHeaderName", axis: "row", name: "email" },
             columnDefinitionId: colEmailId,
             confidence: 0.9,
           },
           {
-            sourceLocator: { kind: "byHeaderName", name: "name" },
+            sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
             columnDefinitionId: colNameId,
             confidence: 0.9,
           },
@@ -432,12 +435,20 @@ describe("Layout Plans Draft Router", () => {
       };
       plan.regions[0].columnBindings = [
         {
-          sourceLocator: { kind: "byHeaderName", name: "Email Address" },
+          sourceLocator: {
+            kind: "byHeaderName",
+            axis: "row",
+            name: "Email Address",
+          },
           columnDefinitionId: emailId,
           confidence: 0.9,
         },
         {
-          sourceLocator: { kind: "byHeaderName", name: "Full Name" },
+          sourceLocator: {
+            kind: "byHeaderName",
+            axis: "row",
+            name: "Full Name",
+          },
           columnDefinitionId: nameId,
           confidence: 0.9,
         },

@@ -40,9 +40,9 @@ function indexSheets(workbook: Workbook): SheetIndex {
 export function serializeLocator(locator: BackendLocator): string {
   switch (locator.kind) {
     case "byHeaderName":
-      return `header:${locator.name}`;
-    case "byColumnIndex":
-      return `col:${locator.col}`;
+      return `header:${locator.axis}:${locator.name}`;
+    case "byPositionIndex":
+      return `pos:${locator.axis}:${locator.index}`;
     default: {
       const exhaustive: never = locator;
       throw new Error(`Unhandled locator kind: ${String(exhaustive)}`);
@@ -150,13 +150,11 @@ export function preserveUserRegionConfig(
       const prior = considered[i];
       if (!prior) return region;
       const merged: BackendRegion = { ...region };
-      if (prior.boundsMode) merged.boundsMode = prior.boundsMode;
-      if (prior.boundsPattern !== undefined) {
-        merged.boundsPattern = prior.boundsPattern;
-      }
-      if (prior.untilEmptyTerminatorCount !== undefined) {
-        merged.untilEmptyTerminatorCount = prior.untilEmptyTerminatorCount;
-      }
+      // PR-1 stopgap: the draft still carries pre-schema knobs (`boundsMode`,
+      // `boundsPattern`, `untilEmptyTerminatorCount`) that no longer exist on
+      // the canonical Region. PR-4 reintroduces the same controls via the
+      // `recordAxisTerminator` + dynamic-segment model; until then those user
+      // tweaks are not round-tripped through Interpret.
       if (prior.columnOverrides) {
         merged.columnOverrides = { ...prior.columnOverrides };
       }
@@ -185,6 +183,14 @@ export function preserveUserRegionConfig(
   };
 }
 
+type BackendAxis = "row" | "column";
+
+function draftHeaderAxes(draft: RegionDraft): BackendAxis[] {
+  if (draft.headerAxis === "none") return [];
+  if (draft.orientation === "cells-as-records") return ["row", "column"];
+  return [draft.headerAxis];
+}
+
 export function regionDraftsToHints(
   workbook: Workbook,
   drafts: RegionDraft[]
@@ -202,6 +208,19 @@ export function regionDraftsToHints(
       );
     }
 
+    const headerAxes = draftHeaderAxes(draft);
+    const rowSpan = draft.bounds.endCol - draft.bounds.startCol + 1;
+    const colSpan = draft.bounds.endRow - draft.bounds.startRow + 1;
+
+    // PR-1 stopgap: the editor doesn't yet know about segments, so every
+    // declared axis gets a single field segment spanning its full extent.
+    // PR-4 will teach the editor to author pivot segments directly.
+    const segmentsByAxis: RegionHint["segmentsByAxis"] = {};
+    for (const axis of headerAxes) {
+      const positionCount = axis === "row" ? rowSpan : colSpan;
+      segmentsByAxis[axis] = [{ kind: "field", positionCount }];
+    }
+
     const hint: RegionHint = {
       sheet: sheet.name,
       bounds: {
@@ -211,31 +230,21 @@ export function regionDraftsToHints(
         endCol: draft.bounds.endCol + 1,
       },
       targetEntityDefinitionId: draft.targetEntityDefinitionId,
-      orientation: draft.orientation,
-      headerAxis: draft.headerAxis,
+      headerAxes,
     };
+    if (headerAxes.length > 0) {
+      hint.segmentsByAxis = segmentsByAxis;
+    }
+    if (headerAxes.length === 0) {
+      hint.recordsAxis =
+        draft.orientation === "columns-as-records" ? "column" : "row";
+    }
 
-    // Only forward axis names the user has explicitly confirmed. The
-    // `anchor-cell` and `ai` sources are tentative placeholders shown in the
-    // editor — forwarding them would trip `detectRegions` into stamping
-    // `source: "user"` on the backend, which suppresses the axis-name
-    // recommender. The recommender's job is exactly to propose a name from
-    // the records-axis labels, so we leave that slot empty when the user
-    // hasn't committed to a value.
-    if (
-      draft.recordsAxisName?.name &&
-      draft.recordsAxisName.source === "user"
-    ) {
-      hint.recordsAxisName = draft.recordsAxisName.name;
-    }
-    if (
-      draft.secondaryRecordsAxisName?.name &&
-      draft.secondaryRecordsAxisName.source === "user"
-    ) {
-      hint.secondaryRecordsAxisName = draft.secondaryRecordsAxisName.name;
-    }
     if (draft.cellValueName?.name && draft.cellValueName.source === "user") {
-      hint.cellValueName = draft.cellValueName.name;
+      hint.cellValueField = {
+        name: draft.cellValueName.name,
+        nameSource: "user",
+      };
     }
     if (draft.axisAnchorCell) {
       hint.axisAnchorCell = {
@@ -264,6 +273,44 @@ function boundsToFrontend(
   };
 }
 
+function regionToDraftOrientation(
+  region: BackendRegion
+): RegionDraft["orientation"] {
+  if (region.headerAxes.length === 2) return "cells-as-records";
+  if (region.headerAxes.length === 0) {
+    return region.recordsAxis === "column"
+      ? "columns-as-records"
+      : "rows-as-records";
+  }
+  return region.headerAxes[0] === "column"
+    ? "columns-as-records"
+    : "rows-as-records";
+}
+
+function regionToDraftHeaderAxis(
+  region: BackendRegion
+): RegionDraft["headerAxis"] {
+  if (region.headerAxes.length === 0) return "none";
+  // PR-1 stopgap: a pre-PR `headerAxis` enum only had a single value, so
+  // crosstabs pick the row axis as the primary. PR-4 reworks the editor
+  // around `headerAxes` directly and removes this collapse.
+  return region.headerAxes.includes("row") ? "row" : "column";
+}
+
+function firstPivotAxisName(
+  region: BackendRegion,
+  axis: BackendAxis
+): { name: string; source: "user" | "ai" | "anchor-cell" } | undefined {
+  const segments = region.segmentsByAxis?.[axis];
+  if (!segments) return undefined;
+  for (const seg of segments) {
+    if (seg.kind === "pivot") {
+      return { name: seg.axisName, source: seg.axisNameSource };
+    }
+  }
+  return undefined;
+}
+
 export function planRegionsToDrafts(
   plan: Pick<LayoutPlan, "regions" | "confidence">,
   workbook: Workbook
@@ -289,8 +336,8 @@ export function planRegionsToDrafts(
       id: region.id,
       sheetId: sheet.id,
       bounds: boundsToFrontend(region.bounds),
-      orientation: region.orientation,
-      headerAxis: region.headerAxis,
+      orientation: regionToDraftOrientation(region),
+      headerAxis: regionToDraftHeaderAxis(region),
       targetEntityDefinitionId: region.targetEntityDefinitionId,
       columnBindings: region.columnBindings.map(bindingToDraft),
       confidence: region.confidence.aggregate,
@@ -302,29 +349,31 @@ export function planRegionsToDrafts(
       })),
     };
 
-    if (region.recordsAxisName) {
-      draft.recordsAxisName = region.recordsAxisName;
+    // PR-1 stopgap: the editor still displays "records axis name" fields per
+    // the pre-PR UI. Map each axis's first pivot segment into the legacy
+    // slot so labels keep rendering; PR-4 replaces the UI with a per-segment
+    // editor driven directly by `segmentsByAxis`.
+    const rowAxisName = firstPivotAxisName(region, "row");
+    const colAxisName = firstPivotAxisName(region, "column");
+    if (rowAxisName) draft.recordsAxisName = rowAxisName;
+    if (colAxisName) {
+      if (draft.recordsAxisName) {
+        draft.secondaryRecordsAxisName = colAxisName;
+      } else {
+        draft.recordsAxisName = colAxisName;
+      }
     }
-    if (region.secondaryRecordsAxisName) {
-      draft.secondaryRecordsAxisName = region.secondaryRecordsAxisName;
-    }
-    if (region.cellValueName) {
-      draft.cellValueName = region.cellValueName;
+    if (region.cellValueField) {
+      draft.cellValueName = {
+        name: region.cellValueField.name,
+        source: region.cellValueField.nameSource,
+      };
     }
     if (region.axisAnchorCell) {
       draft.axisAnchorCell = {
         row: region.axisAnchorCell.row - 1,
         col: region.axisAnchorCell.col - 1,
       };
-    }
-    if (region.boundsMode) {
-      draft.boundsMode = region.boundsMode;
-    }
-    if (region.boundsPattern !== undefined) {
-      draft.boundsPattern = region.boundsPattern;
-    }
-    if (region.untilEmptyTerminatorCount !== undefined) {
-      draft.untilEmptyTerminatorCount = region.untilEmptyTerminatorCount;
     }
     if (region.columnOverrides) {
       draft.columnOverrides = { ...region.columnOverrides };
@@ -341,9 +390,11 @@ export function planRegionsToDrafts(
             }
       );
     }
-    if (region.headerStrategy) {
+    const headerStrategy =
+      region.headerStrategyByAxis?.row ?? region.headerStrategyByAxis?.column;
+    if (headerStrategy) {
       draft.headerStrategy = {
-        kind: region.headerStrategy.kind,
+        kind: headerStrategy.kind,
       };
     }
     if (region.identityStrategy) {

@@ -31,7 +31,7 @@ import {
   type DecorationKind,
 } from "./utils/region-editor-decorations.util";
 import {
-  type BoundsMode,
+  type BoundsModeDraft,
   type EntityOption,
   type RegionDraft,
   type SheetPreview,
@@ -831,7 +831,7 @@ export const RegionConfigurationPanelUI: React.FC<
           <Typography variant="caption" sx={SECTION_HEADING_SX}>
             Extent
           </Typography>
-          <ToggleRowUI<BoundsMode>
+          <ToggleRowUI<BoundsModeDraft>
             value={region.boundsMode ?? "absolute"}
             onChange={(v) =>
               onUpdate({
@@ -949,7 +949,7 @@ function deriveLegendKinds(region: RegionDraft): DecorationKind[] {
 
 function extentDescription(
   orientation: RegionDraft["orientation"],
-  mode: BoundsMode
+  mode: BoundsModeDraft
 ): string {
   const axis = orientation === "rows-as-records" ? "row" : "column";
   switch (mode) {

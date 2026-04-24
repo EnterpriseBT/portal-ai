@@ -1,16 +1,17 @@
 /**
  * Frontend-facing types for the region editor.
  *
- * Enum-like shapes (orientation, header axis, bounds mode, records-axis
- * source, skip rule, warning codes, etc.) are **derived** from
- * `@portalai/core/contracts` — which re-exports from `@portalai/spreadsheet-parsing`.
- * Do not introduce parallel string-literal unions; extend the parser module
- * when a new value is needed so the backend remains the canonical owner.
- *
  * Draft shapes (`RegionDraft`, `ColumnBindingDraft`) are deliberately loose —
  * the user is mid-edit, so optional fields and nullable entity IDs are
  * expected. Validation happens via `validateRegion()` in
  * `region-editor-validation.util.ts` before the draft is sent to the backend.
+ *
+ * The PR-1 schema collapse removed `Orientation`, `HeaderAxis`, and
+ * `BoundsMode` from the canonical parser module — PR-4 will rework this
+ * editor's draft shape around `headerAxes` + `segmentsByAxis`. Until then
+ * the draft keeps the Phase-1 field names as frontend-only unions so the
+ * in-progress editor UI keeps rendering; the draft-to-plan mapper in
+ * `layout-plan-mapping.util.ts` is what emits the new canonical shape.
  *
  * Preview-only shapes (`Workbook`, `SheetPreview`, `EntityOption`,
  * `EntityLegendEntry`, `DriftReportPreview`) are rendering types for this
@@ -18,11 +19,8 @@
  */
 
 import type {
-  BoundsMode,
-  HeaderAxis,
   HeaderStrategyKind,
   IdentityStrategyKind,
-  Orientation,
   RecordsAxisName,
   SkipRuleAxis,
   WarningCode,
@@ -32,16 +30,24 @@ import type { ColumnDataType } from "@portalai/core/models";
 
 // ── Re-export canonical enum types so existing imports keep resolving ────
 export type {
-  BoundsMode,
-  HeaderAxis,
   HeaderStrategyKind,
   IdentityStrategyKind,
-  Orientation,
   RecordsAxisName,
   SkipRule,
   WarningCode,
   WarningSeverity,
 } from "@portalai/core/contracts";
+
+// ── Frontend-only draft unions (PR-1 stopgap; PR-4 replaces these) ──────
+export type BoundsModeDraft = "absolute" | "untilEmpty" | "matchesPattern";
+export type HeaderAxisDraft = "row" | "column" | "none";
+export type OrientationDraft =
+  | "rows-as-records"
+  | "columns-as-records"
+  | "cells-as-records";
+
+/** @deprecated Use the new canonical `headerAxes` + `segmentsByAxis` shape emitted by the draft-to-plan mapper. */
+export const DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT = 3;
 
 /**
  * Draft form of a SkipRule — identical to the canonical `SkipRule` except
@@ -138,13 +144,13 @@ export type RegionDraft = {
   id: string;
   sheetId: string;
   bounds: CellBounds;
-  boundsMode?: BoundsMode;
+  boundsMode?: BoundsModeDraft;
   boundsPattern?: string;
   proposedLabel?: string;
   targetEntityDefinitionId: string | null;
   targetEntityLabel?: string;
-  orientation: Orientation;
-  headerAxis: HeaderAxis;
+  orientation: OrientationDraft;
+  headerAxis: HeaderAxisDraft;
   recordsAxisName?: RecordsAxisName;
   secondaryRecordsAxisName?: RecordsAxisName;
   cellValueName?: RecordsAxisName;
@@ -221,5 +227,3 @@ export type DriftReportPreview = {
   notes?: string;
 };
 
-// ── Re-exports of canonical constants consumers previously pulled from here
-export { DEFAULT_UNTIL_EMPTY_TERMINATOR_COUNT } from "@portalai/core/contracts";

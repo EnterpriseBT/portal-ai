@@ -5,12 +5,16 @@
  * This runs under the unit suite (no DB). It walks the `apps/api/src/` and
  * `apps/web/src/` trees and scans for patterns that indicate drift:
  *
- *   1. A type alias redefining the `Orientation` union locally — all
- *      consumers must import `Orientation` from `@portalai/core/contracts`.
- *   2. Multiple definitions of `RegionDraft` — it must only live at
+ *   1. Multiple definitions of `RegionDraft` — it must only live at
  *      `apps/web/src/modules/RegionEditor/utils/region-editor.types.ts`.
- *   3. A named `hasHeader` export from `csv-parser.util.ts` — that heuristic
+ *   2. A named `hasHeader` export from `csv-parser.util.ts` — that heuristic
  *      moved into `@portalai/spreadsheet-parsing/interpret/stages/detect-headers`.
+ *
+ * The `Orientation` union was removed from the canonical parser module in the
+ * PR-1 schema collapse. The RegionEditor's frontend-only `OrientationDraft`
+ * union stays in `region-editor.types.ts` as a stopgap until PR-4 reworks
+ * the editor; no canonical audit is possible for a union that no longer
+ * exists.
  */
 
 import fs from "node:fs";
@@ -54,26 +58,15 @@ const AUDIT_SELF = path.resolve(here, "audit.test.ts");
 describe("Phase 10 audit — parser module owns spreadsheet-parsing concepts", () => {
   it("no file in apps/api/src/ defines the Orientation union as a local type alias", () => {
     const offenders: string[] = [];
-    // `type <Name> = "rows-as-records" | "columns-as-records" | "cells-as-records"` in any order.
+    // The pre-PR-1 `Orientation` union ("rows-as-records" | "columns-as-records" |
+    // "cells-as-records") is gone from the parser module; the api side stays
+    // clean. Any local redefinition here is a regression.
     const aliasRe =
       /type\s+\w+\s*=\s*"(?:rows|columns|cells)-as-records"\s*\|\s*"(?:rows|columns|cells)-as-records"/;
     for (const file of apiFiles) {
       const text = fs.readFileSync(file, "utf8");
       if (aliasRe.test(text)) {
         offenders.push(path.relative(apiSrcRoot, file));
-      }
-    }
-    expect(offenders).toEqual([]);
-  });
-
-  it("no file in apps/web/src/ defines the Orientation union as a local type alias", () => {
-    const offenders: string[] = [];
-    const aliasRe =
-      /type\s+\w+\s*=\s*"(?:rows|columns|cells)-as-records"\s*\|\s*"(?:rows|columns|cells)-as-records"/;
-    for (const file of webFiles) {
-      const text = fs.readFileSync(file, "utf8");
-      if (aliasRe.test(text)) {
-        offenders.push(path.relative(webSrcRoot, file));
       }
     }
     expect(offenders).toEqual([]);

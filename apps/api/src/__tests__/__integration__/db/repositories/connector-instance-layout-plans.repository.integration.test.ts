@@ -42,14 +42,17 @@ function makeLayoutPlan(overrides: Partial<LayoutPlan> = {}): LayoutPlan {
         id: "r1",
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
-        boundsMode: "absolute",
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
-        headerStrategy: {
-          kind: "row",
-          locator: { kind: "row", sheet: "Sheet1", row: 1 },
-          confidence: 0.9,
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 2 }],
+        },
+        headerStrategyByAxis: {
+          row: {
+            kind: "row",
+            locator: { kind: "row", sheet: "Sheet1", row: 1 },
+            confidence: 0.9,
+          },
         },
         identityStrategy: { kind: "rowPosition", confidence: 0.3 },
         columnBindings: [],

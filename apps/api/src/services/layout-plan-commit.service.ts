@@ -506,6 +506,6 @@ function sourceFieldFromBinding(binding: ColumnBinding): string {
   if (binding.sourceLocator.kind === "byHeaderName") {
     return binding.sourceLocator.name;
   }
-  // byColumnIndex fallback — synthesize a stable label.
-  return `col_${binding.sourceLocator.col}`;
+  // byPositionIndex fallback — synthesize a stable label.
+  return `${binding.sourceLocator.axis}_${binding.sourceLocator.index}`;
 }

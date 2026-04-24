@@ -651,24 +651,44 @@ describe("useFileUploadWorkflow — atomic commit (deferred persistence)", () =>
 describe("useFileUploadWorkflow — binding edits", () => {
   // Fixtures for binding-edit tests. Two regions on separate sheets so we can
   // assert cross-region isolation; one binding uses `byHeaderName` locator,
-  // the other uses `byColumnIndex` so both serialisation paths are exercised.
+  // the other uses `byPositionIndex` so both serialisation paths are exercised.
   const planRegionA = {
     id: "region-a",
     sheet: DEMO_WORKBOOK.sheets[0].name,
     bounds: { startRow: 1, endRow: 4, startCol: 1, endCol: 3 },
-    boundsMode: "absolute" as const,
-    orientation: "rows-as-records" as const,
-    headerAxis: "row" as const,
     targetEntityDefinitionId: "ent_contact",
+    headerAxes: ["row" as const],
+    segmentsByAxis: {
+      row: [{ kind: "field" as const, positionCount: 3 }],
+    },
+    headerStrategyByAxis: {
+      row: {
+        kind: "row" as const,
+        locator: {
+          kind: "row" as const,
+          sheet: DEMO_WORKBOOK.sheets[0].name,
+          row: 1,
+        },
+        confidence: 0.95,
+      },
+    },
     identityStrategy: { kind: "rowPosition" as const, confidence: 0.9 },
     columnBindings: [
       {
-        sourceLocator: { kind: "byHeaderName" as const, name: "Email" },
+        sourceLocator: {
+          kind: "byHeaderName" as const,
+          axis: "row" as const,
+          name: "Email",
+        },
         columnDefinitionId: "coldef_email",
         confidence: 0.9,
       },
       {
-        sourceLocator: { kind: "byColumnIndex" as const, col: 3 },
+        sourceLocator: {
+          kind: "byPositionIndex" as const,
+          axis: "row" as const,
+          index: 3,
+        },
         columnDefinitionId: "coldef_name",
         confidence: 0.7,
       },
@@ -689,7 +709,11 @@ describe("useFileUploadWorkflow — binding edits", () => {
     targetEntityDefinitionId: "ent_order",
     columnBindings: [
       {
-        sourceLocator: { kind: "byHeaderName" as const, name: "Total" },
+        sourceLocator: {
+          kind: "byHeaderName" as const,
+          axis: "row" as const,
+          name: "Total",
+        },
         columnDefinitionId: "coldef_total",
         confidence: 0.95,
       },
@@ -705,12 +729,12 @@ describe("useFileUploadWorkflow — binding edits", () => {
     targetEntityDefinitionId: "ent_contact",
     columnBindings: [
       {
-        sourceLocator: "header:Email",
+        sourceLocator: "header:row:Email",
         columnDefinitionId: "coldef_email",
         confidence: 0.9,
       },
       {
-        sourceLocator: "col:3",
+        sourceLocator: "pos:row:3",
         columnDefinitionId: "coldef_name",
         confidence: 0.7,
       },
@@ -725,7 +749,7 @@ describe("useFileUploadWorkflow — binding edits", () => {
     targetEntityDefinitionId: "ent_order",
     columnBindings: [
       {
-        sourceLocator: "header:Total",
+        sourceLocator: "header:row:Total",
         columnDefinitionId: "coldef_total",
         confidence: 0.95,
       },
@@ -774,13 +798,13 @@ describe("useFileUploadWorkflow — binding edits", () => {
     act(() =>
       hook.result.current.onToggleBindingExcluded(
         "region-a",
-        "header:Email",
+        "header:row:Email",
         true
       )
     );
     const region = hook.result.current.regions.find((r) => r.id === "region-a");
     const draftBinding = region?.columnBindings?.find(
-      (b) => b.sourceLocator === "header:Email"
+      (b) => b.sourceLocator === "header:row:Email"
     );
     expect(draftBinding?.excluded).toBe(true);
 
@@ -798,14 +822,14 @@ describe("useFileUploadWorkflow — binding edits", () => {
   test("onUpdateBinding merges the patch onto both state.regions and state.plan", async () => {
     const hook = await seedInterpretedState();
     act(() =>
-      hook.result.current.onUpdateBinding("region-a", "header:Email", {
+      hook.result.current.onUpdateBinding("region-a", "header:row:Email", {
         normalizedKey: "email_override",
         required: true,
       })
     );
     const draftBinding = hook.result.current.regions
       .find((r) => r.id === "region-a")
-      ?.columnBindings?.find((b) => b.sourceLocator === "header:Email");
+      ?.columnBindings?.find((b) => b.sourceLocator === "header:row:Email");
     expect(draftBinding).toMatchObject({
       normalizedKey: "email_override",
       required: true,
@@ -823,20 +847,27 @@ describe("useFileUploadWorkflow — binding edits", () => {
     });
   });
 
-  test("matches binding by serialized sourceLocator for both byHeaderName and byColumnIndex", async () => {
+  test("matches binding by serialized sourceLocator for both byHeaderName and byPositionIndex", async () => {
     const hook = await seedInterpretedState();
     act(() =>
-      hook.result.current.onToggleBindingExcluded("region-a", "col:3", true)
+      hook.result.current.onToggleBindingExcluded(
+        "region-a",
+        "pos:row:3",
+        true
+      )
     );
     const draftBinding = hook.result.current.regions
       .find((r) => r.id === "region-a")
-      ?.columnBindings?.find((b) => b.sourceLocator === "col:3");
+      ?.columnBindings?.find((b) => b.sourceLocator === "pos:row:3");
     expect(draftBinding?.excluded).toBe(true);
 
     const planBinding = hook.result.current.plan?.regions
       .find((r) => r.id === "region-a")
       ?.columnBindings.find(
-        (b) => b.sourceLocator.kind === "byColumnIndex" && b.sourceLocator.col === 3
+        (b) =>
+          b.sourceLocator.kind === "byPositionIndex" &&
+          b.sourceLocator.axis === "row" &&
+          b.sourceLocator.index === 3
       );
     expect(planBinding?.excluded).toBe(true);
   });
@@ -844,15 +875,15 @@ describe("useFileUploadWorkflow — binding edits", () => {
   test("leaves bindings on other regions untouched", async () => {
     const hook = await seedInterpretedState();
     act(() =>
-      hook.result.current.onUpdateBinding("region-a", "header:Email", {
+      hook.result.current.onUpdateBinding("region-a", "header:row:Email", {
         normalizedKey: "email_override",
       })
     );
     const regionBBinding = hook.result.current.regions
       .find((r) => r.id === "region-b")
-      ?.columnBindings?.find((b) => b.sourceLocator === "header:Total");
+      ?.columnBindings?.find((b) => b.sourceLocator === "header:row:Total");
     expect(regionBBinding).toMatchObject({
-      sourceLocator: "header:Total",
+      sourceLocator: "header:row:Total",
       columnDefinitionId: "coldef_total",
     });
     expect(regionBBinding?.normalizedKey).toBeUndefined();
@@ -862,7 +893,7 @@ describe("useFileUploadWorkflow — binding edits", () => {
     const hook = await seedInterpretedState();
     const before = hook.result.current.regions;
     act(() =>
-      hook.result.current.onUpdateBinding("region-ghost", "header:Email", {
+      hook.result.current.onUpdateBinding("region-ghost", "header:row:Email", {
         normalizedKey: "x",
       })
     );
@@ -888,7 +919,7 @@ describe("useFileUploadWorkflow — binding edits", () => {
     );
     // No interpret has run; state.plan is null.
     act(() =>
-      result.current.onUpdateBinding("region-a", "header:Email", {
+      result.current.onUpdateBinding("region-a", "header:row:Email", {
         normalizedKey: "x",
       })
     );

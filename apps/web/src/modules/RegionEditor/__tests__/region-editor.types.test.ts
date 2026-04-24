@@ -1,22 +1,13 @@
 import { describe, it, expect } from "@jest/globals";
 
 import {
-  BoundsModeEnum,
-  HeaderAxisEnum,
-  OrientationEnum,
   SkipRuleSchema,
   WarningCode as CanonicalWarningCode,
-  type BoundsMode as CanonicalBoundsMode,
-  type HeaderAxis as CanonicalHeaderAxis,
-  type Orientation as CanonicalOrientation,
   type SkipRule as CanonicalSkipRule,
   type WarningCode as CanonicalWarningCodeType,
 } from "@portalai/core/contracts";
 
 import type {
-  BoundsMode,
-  HeaderAxis,
-  Orientation,
   RegionDraft,
   SkipRule,
   WarningCode,
@@ -31,44 +22,13 @@ type AssertEqual<A, B> =
     ? true
     : false;
 
-const _orientationsAligned: AssertEqual<Orientation, CanonicalOrientation> =
-  true;
-const _headerAxesAligned: AssertEqual<HeaderAxis, CanonicalHeaderAxis> = true;
-const _boundsModesAligned: AssertEqual<BoundsMode, CanonicalBoundsMode> = true;
 const _skipRulesAligned: AssertEqual<SkipRule, CanonicalSkipRule> = true;
 const _warningCodesAligned: AssertEqual<WarningCode, CanonicalWarningCodeType> =
   true;
-void _orientationsAligned;
-void _headerAxesAligned;
-void _boundsModesAligned;
 void _skipRulesAligned;
 void _warningCodesAligned;
 
 describe("region-editor.types canonical derivation", () => {
-  it("frontend Orientation matches the parser module's union at runtime", () => {
-    const values: Orientation[] =
-      OrientationEnum.options.slice() as Orientation[];
-    expect(values).toEqual(
-      expect.arrayContaining([
-        "rows-as-records",
-        "columns-as-records",
-        "cells-as-records",
-      ])
-    );
-  });
-
-  it("frontend HeaderAxis matches the parser module's union at runtime", () => {
-    const values: HeaderAxis[] = HeaderAxisEnum.options.slice() as HeaderAxis[];
-    expect(values).toEqual(expect.arrayContaining(["row", "column", "none"]));
-  });
-
-  it("frontend BoundsMode matches the parser module's union at runtime", () => {
-    const values: BoundsMode[] = BoundsModeEnum.options.slice() as BoundsMode[];
-    expect(values).toEqual(
-      expect.arrayContaining(["absolute", "untilEmpty", "matchesPattern"])
-    );
-  });
-
   it("frontend SkipRule parses through the canonical SkipRuleSchema", () => {
     const rule: SkipRule = { kind: "blank" };
     expect(SkipRuleSchema.safeParse(rule).success).toBe(true);
@@ -86,7 +46,7 @@ describe("region-editor.types canonical derivation", () => {
     expect(CanonicalWarningCode[code]).toBe("AMBIGUOUS_HEADER");
   });
 
-  it("RegionDraft compiles with canonical-derived enums", () => {
+  it("RegionDraft compiles with the PR-1 draft unions", () => {
     const draft: RegionDraft = {
       id: "r1",
       sheetId: "s1",
@@ -95,7 +55,6 @@ describe("region-editor.types canonical derivation", () => {
       orientation: "rows-as-records",
       headerAxis: "row",
     };
-    // Existence + shape check — passes iff the file compiles.
     expect(draft.id).toBe("r1");
   });
 });

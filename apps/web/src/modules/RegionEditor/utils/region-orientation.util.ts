@@ -1,6 +1,6 @@
-import type { Orientation } from "./region-editor.types";
+import type { OrientationDraft } from "./region-editor.types";
 
-export function orientationArrow(orientation: Orientation): string {
+export function orientationArrow(orientation: OrientationDraft): string {
   switch (orientation) {
     case "rows-as-records":
       return "↓";
@@ -11,7 +11,7 @@ export function orientationArrow(orientation: Orientation): string {
   }
 }
 
-export function orientationArrowLabel(orientation: Orientation): string {
+export function orientationArrowLabel(orientation: OrientationDraft): string {
   switch (orientation) {
     case "rows-as-records":
       return "Records run down (each row is a record)";

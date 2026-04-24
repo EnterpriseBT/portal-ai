@@ -122,14 +122,17 @@ function makeLayoutPlan(overrides: Partial<LayoutPlan> = {}): LayoutPlan {
         id: "r1",
         sheet: "Sheet1",
         bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
-        boundsMode: "absolute",
         targetEntityDefinitionId: "contacts",
-        orientation: "rows-as-records",
-        headerAxis: "row",
-        headerStrategy: {
-          kind: "row",
-          locator: { kind: "row", sheet: "Sheet1", row: 1 },
-          confidence: 0.9,
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 2 }],
+        },
+        headerStrategyByAxis: {
+          row: {
+            kind: "row",
+            locator: { kind: "row", sheet: "Sheet1", row: 1 },
+            confidence: 0.9,
+          },
         },
         identityStrategy: { kind: "rowPosition", confidence: 0.3 },
         columnBindings: [],
@@ -551,14 +554,17 @@ describe("Connector Instance Layout Plans Router", () => {
       id: regionId,
       sheet: "Sheet1",
       bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
-      boundsMode: "absolute",
       targetEntityDefinitionId: target,
-      orientation: "rows-as-records",
-      headerAxis: "row",
-      headerStrategy: {
-        kind: "row",
-        locator: { kind: "row", sheet: "Sheet1", row: 1 },
-        confidence: 0.95,
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 2 }],
+      },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row",
+          locator: { kind: "row", sheet: "Sheet1", row: 1 },
+          confidence: 0.95,
+        },
       },
       identityStrategy: {
         kind: "column",
@@ -567,12 +573,12 @@ describe("Connector Instance Layout Plans Router", () => {
       },
       columnBindings: [
         {
-          sourceLocator: { kind: "byHeaderName", name: "email" },
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "email" },
           columnDefinitionId: colEmailId,
           confidence: 0.9,
         },
         {
-          sourceLocator: { kind: "byHeaderName", name: "name" },
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
           columnDefinitionId: colNameId,
           confidence: 0.9,
         },
@@ -1151,14 +1157,17 @@ describe("Connector Instance Layout Plans Router", () => {
             id: "r1",
             sheet: "Sheet1",
             bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
-            boundsMode: "absolute",
             targetEntityDefinitionId: "monthly",
-            orientation: "columns-as-records",
-            headerAxis: "row",
-            headerStrategy: {
-              kind: "row",
-              locator: { kind: "row", sheet: "Sheet1", row: 1 },
-              confidence: 0.9,
+            headerAxes: ["row"],
+            segmentsByAxis: {
+              row: [{ kind: "field", positionCount: 2 }],
+            },
+            headerStrategyByAxis: {
+              row: {
+                kind: "row",
+                locator: { kind: "row", sheet: "Sheet1", row: 1 },
+                confidence: 0.9,
+              },
             },
             identityStrategy: { kind: "rowPosition", confidence: 0.3 },
             columnBindings: [],
