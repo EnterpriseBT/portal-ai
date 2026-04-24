@@ -33,7 +33,11 @@
       "Bash(npm --workspace packages/spreadsheet-parsing run test:unit)",
       "Bash(npm --workspace apps/api run test:unit)",
       "Bash(npm --workspace apps/api run test:unit -- --runInBand)",
-      "Bash(npm --workspace apps/web run test:unit -- --testPathPattern=\"file-upload.legacy-audit\")"
+      "Bash(npm --workspace apps/web run test:unit -- --testPathPattern=\"file-upload.legacy-audit\")",
+      "Bash(npm --workspace packages/spreadsheet-parsing run test -- schemas)",
+      "Bash(NODE_OPTIONS=--experimental-vm-modules npx jest schemas --no-coverage)",
+      "Bash(npm --workspace packages/spreadsheet-parsing run type-check)",
+      "Bash(npm --workspace packages/spreadsheet-parsing run test)"
     ]
   }
 }
