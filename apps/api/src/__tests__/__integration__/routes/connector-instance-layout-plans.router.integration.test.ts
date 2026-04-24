@@ -550,14 +550,25 @@ describe("Connector Instance Layout Plans Router", () => {
     colNameId: string,
     overrides: Partial<LayoutPlan["regions"][number]> = {}
   ): LayoutPlan["regions"][number] {
+    const bounds = overrides.bounds ?? {
+      startRow: 1,
+      startCol: 1,
+      endRow: 3,
+      endCol: 2,
+    };
+    // Keep `segmentsByAxis.row.positionCount` in lockstep with the bounds
+    // span so callers that override `bounds` don't have to remember to
+    // restate segments — the plan-schema refinement requires the sum to
+    // equal the span exactly.
+    const colSpan = bounds.endCol - bounds.startCol + 1;
     return {
       id: regionId,
       sheet: "Sheet1",
-      bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 2 },
+      bounds,
       targetEntityDefinitionId: target,
       headerAxes: ["row"],
       segmentsByAxis: {
-        row: [{ kind: "field", positionCount: 2 }],
+        row: [{ kind: "field", positionCount: colSpan }],
       },
       headerStrategyByAxis: {
         row: {
