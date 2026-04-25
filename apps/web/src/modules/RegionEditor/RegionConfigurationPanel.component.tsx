@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Stack,
@@ -159,6 +159,25 @@ export const RegionConfigurationPanelUI: React.FC<
   const [extentAnchor, setExtentAnchor] = useState<HTMLElement | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Bumped each time the user adds a pivot via the column-axis "+ pivot"
+  // affordance. The cell-value field name input takes focus when this
+  // counter changes — that field surfaces the moment the region becomes
+  // pivoted, and routing focus there lets the user rename it (default
+  // "value") without reaching for the mouse.
+  const cellValueFieldRef = useRef<HTMLInputElement>(null);
+  const [cellValueFieldFocusToken, setCellValueFieldFocusToken] = useState(0);
+
+  useEffect(() => {
+    if (cellValueFieldFocusToken === 0) return;
+    const timer = setTimeout(() => {
+      const input = cellValueFieldRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [cellValueFieldFocusToken]);
+
   const currentTarget = region?.targetEntityDefinitionId ?? null;
   const selectOptions = useMemo<SelectOption[]>(
     () => buildSelectOptions(entityOptions, claimedEntityKeys, currentTarget),
@@ -280,6 +299,13 @@ export const RegionConfigurationPanelUI: React.FC<
       writeSegments(region, axis, segments)
     );
     onUpdate(updates);
+    // Column-axis "+ pivot" — the region just became pivoted (or gained a
+    // second pivot) and the cell-value field name input surfaces with a
+    // generic default ("value"). Bump the focus token so the input picks
+    // up keyboard focus once the next render commits the visibility flip.
+    if (axis === "column" && kind === "pivot") {
+      setCellValueFieldFocusToken((c) => c + 1);
+    }
   };
 
   const handleAddHeaderAxis = (otherAxis: AxisMember) => {
@@ -836,6 +862,7 @@ export const RegionConfigurationPanelUI: React.FC<
 
         {pivoted && (
           <TextInput
+            inputRef={cellValueFieldRef}
             size="small"
             fullWidth
             label="Cell-value field name"

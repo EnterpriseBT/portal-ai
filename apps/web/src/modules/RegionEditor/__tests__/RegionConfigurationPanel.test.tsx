@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
+import { useState } from "react";
 import { jest } from "@jest/globals";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 
 import { RegionConfigurationPanelUI } from "../RegionConfigurationPanel.component";
 import type { EntityOption, RegionDraft } from "../utils/region-editor.types";
@@ -328,6 +329,91 @@ describe("RegionConfigurationPanelUI", () => {
           }),
         })
       );
+    });
+
+    test("adding a column-axis pivot autofocuses the cell-value field name input once it surfaces", async () => {
+      // Drives state through a small harness so onUpdate actually mutates
+      // the rendered region — the autofocus only fires once the
+      // cell-value field input mounts on the next render.
+      function Harness() {
+        const [region, setRegion] = useState<RegionDraft>(
+          segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            headerAxes: ["row", "column"],
+            segmentsByAxis: {
+              row: [{ kind: "field", positionCount: 4 }],
+              column: [{ kind: "field", positionCount: 5 }],
+            },
+          })
+        );
+        return (
+          <RegionConfigurationPanelUI
+            region={region}
+            entityOptions={ENTITY_OPTIONS}
+            entityOrder={["ent_a"]}
+            siblingsInSameEntity={0}
+            onUpdate={(patch) =>
+              setRegion((prev) => ({ ...prev, ...patch }))
+            }
+            onDelete={jest.fn()}
+          />
+        );
+      }
+      render(<Harness />);
+      // Cell-value field input is hidden until the region becomes pivoted.
+      expect(
+        screen.queryByLabelText(/cell-value field name/i)
+      ).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole("button", { name: /add column pivot segment/i })
+      );
+      const input = screen.getByLabelText(
+        /cell-value field name/i
+      ) as HTMLInputElement;
+      expect(input).toBeInTheDocument();
+      // Focus is deferred 50ms past mount to clear any popover/transition
+      // focus traps; wait for it to settle.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 75));
+      });
+      expect(document.activeElement).toBe(input);
+    });
+
+    test("adding a row-axis pivot does NOT autofocus the cell-value field name input", async () => {
+      function Harness() {
+        const [region, setRegion] = useState<RegionDraft>(
+          segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            headerAxes: ["row"],
+            segmentsByAxis: {
+              row: [{ kind: "field", positionCount: 4 }],
+            },
+          })
+        );
+        return (
+          <RegionConfigurationPanelUI
+            region={region}
+            entityOptions={ENTITY_OPTIONS}
+            entityOrder={["ent_a"]}
+            siblingsInSameEntity={0}
+            onUpdate={(patch) =>
+              setRegion((prev) => ({ ...prev, ...patch }))
+            }
+            onDelete={jest.fn()}
+          />
+        );
+      }
+      render(<Harness />);
+      fireEvent.click(
+        screen.getByRole("button", { name: /add row pivot segment/i })
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 75));
+      });
+      const cellValueInput = screen.getByLabelText(
+        /cell-value field name/i
+      );
+      expect(document.activeElement).not.toBe(cellValueInput);
     });
 
     test("adding a segment donates from the tail and keeps region bounds fixed", () => {
