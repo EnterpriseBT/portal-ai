@@ -178,10 +178,36 @@ function toPlanPatch(
 }
 
 /**
- * Apply a synthetic-locator patch (`pivot:<segId>` chip → only
- * `columnDefinitionId` is meaningful) to the matching pivot segment in both
- * the regions state and the plan mirror. Other patch fields are ignored —
- * the pivot Segment schema has no override slots beyond columnDefinitionId.
+ * Fields a synthetic-locator (pivot / cellValueField) patch may carry.
+ * Each one has a schema slot on the Segment / CellValueField shape; other
+ * ColumnBinding override fields (normalizedKey, required, defaultValue,
+ * etc.) have no home and are silently dropped at the popover apply step.
+ */
+const SYNTHETIC_PATCH_KEYS = ["columnDefinitionId", "excluded"] as const;
+type SyntheticPatchKey = (typeof SYNTHETIC_PATCH_KEYS)[number];
+
+function pickSyntheticPatch(
+  patch: Partial<ColumnBindingDraft>
+): Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>> | null {
+  const out: Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>> = {};
+  let touched = false;
+  for (const key of SYNTHETIC_PATCH_KEYS) {
+    if (key in patch) {
+      (out as Record<string, unknown>)[key] = (
+        patch as Record<string, unknown>
+      )[key];
+      touched = true;
+    }
+  }
+  return touched ? out : null;
+}
+
+/**
+ * Apply a synthetic-locator patch (`pivot:<segId>` chip) to the matching
+ * pivot segment in both the regions state and the plan mirror. Currently
+ * `columnDefinitionId` (rebind) and `excluded` (omit toggle) are the only
+ * fields that carry through — pivot Segment doesn't have schema slots for
+ * the other ColumnBinding overrides.
  */
 function patchPivotSegmentBinding(
   prev: FileUploadWorkflowState,
@@ -189,8 +215,8 @@ function patchPivotSegmentBinding(
   segmentId: string,
   patch: Partial<ColumnBindingDraft>
 ): FileUploadWorkflowState {
-  if (!("columnDefinitionId" in patch)) return prev;
-  const nextColumnDefinitionId = patch.columnDefinitionId ?? undefined;
+  const synthetic = pickSyntheticPatch(patch);
+  if (!synthetic) return prev;
 
   type DraftSegments = NonNullable<RegionDraft["segmentsByAxis"]>;
   type DraftSegment = NonNullable<DraftSegments["row"]>[number];
@@ -202,7 +228,7 @@ function patchPivotSegmentBinding(
     const next = segs.map((s) => {
       if (s.kind !== "pivot" || s.id !== segmentId) return s;
       touched = true;
-      return { ...s, columnDefinitionId: nextColumnDefinitionId };
+      return applyPivotFields(s, synthetic);
     });
     return { next, touched };
   };
@@ -234,7 +260,7 @@ function patchPivotSegmentBinding(
       if (!segs) return segs;
       return segs.map((s) =>
         s.kind === "pivot" && s.id === segmentId
-          ? { ...s, columnDefinitionId: nextColumnDefinitionId }
+          ? applyPivotFields(s, synthetic)
           : s
       );
     };
@@ -258,30 +284,38 @@ function patchPivotSegmentBinding(
   return { ...prev, regions: nextRegions, plan: nextPlan };
 }
 
+function applyPivotFields<
+  S extends { kind: "pivot"; columnDefinitionId?: string; excluded?: boolean },
+>(seg: S, patch: Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>>): S {
+  const next: S = { ...seg };
+  if ("columnDefinitionId" in patch) {
+    next.columnDefinitionId = patch.columnDefinitionId ?? undefined;
+  }
+  if ("excluded" in patch) {
+    next.excluded = patch.excluded ?? undefined;
+  }
+  return next;
+}
+
 /**
- * Apply a synthetic-locator patch (`cellValueField` chip → only
- * `columnDefinitionId` is meaningful) to the region's cellValueField slot
- * in both the regions state and the plan mirror.
+ * Apply a synthetic-locator patch (`cellValueField` chip) to the region's
+ * cellValueField slot in both the regions state and the plan mirror.
+ * `columnDefinitionId` (rebind) and `excluded` (omit toggle) are the only
+ * fields that carry through.
  */
 function patchCellValueFieldBinding(
   prev: FileUploadWorkflowState,
   regionId: string,
   patch: Partial<ColumnBindingDraft>
 ): FileUploadWorkflowState {
-  if (!("columnDefinitionId" in patch)) return prev;
-  const nextColumnDefinitionId = patch.columnDefinitionId ?? undefined;
+  const synthetic = pickSyntheticPatch(patch);
+  if (!synthetic) return prev;
 
   let regionTouched = false;
   const nextRegions = prev.regions.map((r) => {
     if (r.id !== regionId || !r.cellValueField) return r;
     regionTouched = true;
-    return {
-      ...r,
-      cellValueField: {
-        ...r.cellValueField,
-        columnDefinitionId: nextColumnDefinitionId,
-      },
-    };
+    return { ...r, cellValueField: applyCellValueFields(r.cellValueField, synthetic) };
   });
   if (!regionTouched) return prev;
 
@@ -295,15 +329,33 @@ function patchCellValueFieldBinding(
         }
         return {
           ...planRegion,
-          cellValueField: {
-            ...planRegion.cellValueField,
-            columnDefinitionId: nextColumnDefinitionId,
-          },
+          cellValueField: applyCellValueFields(
+            planRegion.cellValueField,
+            synthetic
+          ),
         };
       }),
     };
   }
   return { ...prev, regions: nextRegions, plan: nextPlan };
+}
+
+function applyCellValueFields<
+  C extends {
+    name: string;
+    nameSource: "user" | "ai" | "anchor-cell";
+    columnDefinitionId?: string;
+    excluded?: boolean;
+  },
+>(field: C, patch: Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>>): C {
+  const next: C = { ...field };
+  if ("columnDefinitionId" in patch) {
+    next.columnDefinitionId = patch.columnDefinitionId ?? undefined;
+  }
+  if ("excluded" in patch) {
+    next.excluded = patch.excluded ?? undefined;
+  }
+  return next;
 }
 
 function mergeFilesByName(existing: File[], incoming: File[]): File[] {

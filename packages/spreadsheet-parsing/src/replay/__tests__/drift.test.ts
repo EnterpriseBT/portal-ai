@@ -112,6 +112,71 @@ describe("detectRegionDrift — added-columns", () => {
     expect(rollUpDrift([drift]).identityChanging).toBe(false);
   });
 
+  it("does not flag pivot-segment header positions as added columns", () => {
+    // Pure-pivot region — header row contains only pivot label values
+    // (Jan/Feb/Mar). Those positions belong to a `kind: "pivot"` segment
+    // and have no place in `columnBindings`. Treating them as added
+    // columns made any pivot region trip `LAYOUT_PLAN_DRIFT_HALT` on
+    // commit unless the region carried `addedColumns: "auto-apply"`.
+    // Drift now looks only at field-segment positions for the
+    // addedColumns gate.
+    const wb = makeWorkbook({
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows: 2, cols: 3 },
+          cells: [
+            { row: 1, col: 1, value: "Jan" },
+            { row: 1, col: 2, value: "Feb" },
+            { row: 1, col: 3, value: "Mar" },
+            { row: 2, col: 1, value: 10 },
+            { row: 2, col: 2, value: 20 },
+            { row: 2, col: 3, value: 30 },
+          ],
+        },
+      ],
+    });
+    const region: Region = {
+      id: "r1",
+      sheet: "Sheet1",
+      bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
+      targetEntityDefinitionId: "monthly",
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [
+          {
+            kind: "pivot",
+            id: "month",
+            axisName: "month",
+            axisNameSource: "user",
+            positionCount: 3,
+          },
+        ],
+      },
+      cellValueField: { name: "revenue", nameSource: "user" },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row",
+          locator: { kind: "row", sheet: "Sheet1", row: 1 },
+          confidence: 0.95,
+        },
+      },
+      identityStrategy: { kind: "rowPosition", confidence: 0.6 },
+      columnBindings: [],
+      skipRules: [],
+      drift: {
+        headerShiftRows: 0,
+        addedColumns: "halt",
+        removedColumns: { max: 0, action: "halt" },
+      },
+      confidence: { region: 0.9, aggregate: 0.9 },
+      warnings: [],
+    };
+    const drift = detectRegionDrift(region, wb.sheets[0]);
+    expect(drift.kinds).not.toContain("added-columns");
+    expect(drift.withinTolerance).toBe(true);
+  });
+
   it("silently drops added columns when addedColumns: 'auto-apply'", () => {
     const wb = makeWorkbook({
       sheets: [

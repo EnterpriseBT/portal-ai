@@ -119,13 +119,18 @@ function parseSyntheticLocator(
 function findPivotSegment(
   region: RegionDraft,
   segmentId: string
-): { axisName: string; columnDefinitionId?: string } | undefined {
+): {
+  axisName: string;
+  columnDefinitionId?: string;
+  excluded?: boolean;
+} | undefined {
   for (const axis of ["row", "column"] as const) {
     for (const seg of region.segmentsByAxis?.[axis] ?? []) {
       if (seg.kind === "pivot" && seg.id === segmentId) {
         return {
           axisName: seg.axisName,
           columnDefinitionId: seg.columnDefinitionId,
+          excluded: seg.excluded,
         };
       }
     }
@@ -146,6 +151,7 @@ function syntheticBindingDraft(
       sourceLocator,
       columnDefinitionId: seg.columnDefinitionId ?? null,
       confidence: 1,
+      excluded: seg.excluded,
     };
   }
   // cellValueField
@@ -154,6 +160,7 @@ function syntheticBindingDraft(
     sourceLocator,
     columnDefinitionId: region.cellValueField.columnDefinitionId ?? null,
     confidence: 1,
+    excluded: region.cellValueField.excluded,
   };
 }
 

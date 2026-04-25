@@ -47,6 +47,14 @@ export const SegmentSchema = z.discriminatedUnion("kind", [
     positionCount: z.number().int().min(1),
     dynamic: z.object({ terminator: TerminatorSchema }).optional(),
     columnDefinitionId: z.string().min(1).optional(),
+    /**
+     * Mirrors `ColumnBinding.excluded`. When `true`, the review-step "Omit"
+     * toggle marks the pivot axis-name field as not-to-be-mapped: commit
+     * creates no FieldMapping for it. Replay still emits the field value
+     * on records (the data is in the spreadsheet either way), it just
+     * doesn't have a FieldMapping row pointing at it.
+     */
+    excluded: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("skip"),
@@ -61,6 +69,12 @@ export const CellValueFieldSchema = z.object({
   name: z.string().min(1),
   nameSource: z.enum(["user", "ai", "anchor-cell"]),
   columnDefinitionId: z.string().min(1).optional(),
+  /**
+   * Mirrors `ColumnBinding.excluded`. When `true`, commit creates no
+   * FieldMapping for the cell-value field. See pivot Segment for the
+   * full semantics.
+   */
+  excluded: z.boolean().optional(),
 });
 export type CellValueField = z.infer<typeof CellValueFieldSchema>;
 

@@ -62,6 +62,31 @@ function pivotSegmentsWithAnchor(region: Region): Segment[] {
 }
 
 /**
+ * Walk the segments along `axis` and emit, for each header position, the
+ * `kind` of segment it lives in (`"field"` | `"pivot"` | `"skip"`). Caller
+ * walks `header.labels` in lockstep — index `i` of the labels array
+ * corresponds to the i-th position covered by `segmentKindByHeaderIndex`.
+ *
+ * Used by the addedColumns drift gate: only `field`-segment positions
+ * count as "static columns the user has bound by name". Pivot positions
+ * are expected to vary across syncs (within `positionCount` limits) and
+ * skip positions are explicitly opt-out, so neither should trigger an
+ * `added-columns` drift signal.
+ */
+function segmentKindByHeaderIndex(
+  region: Region,
+  axis: "row" | "column"
+): Segment["kind"][] {
+  const out: Segment["kind"][] = [];
+  for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+    for (let i = 0; i < seg.positionCount; i++) {
+      out.push(seg.kind);
+    }
+  }
+  return out;
+}
+
+/**
  * Evaluate drift for a single region against the current workbook.
  */
 export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
@@ -109,8 +134,18 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
           b.sourceLocator.kind === "byHeaderName" ? b.sourceLocator.name : ""
         )
     );
-    for (const label of header.labels) {
+    // Only positions inside a `kind: "field"` segment count for the
+    // addedColumns gate — pivot positions are expected to vary across
+    // syncs (their axisName is the binding, not the per-position label),
+    // and skip positions are opt-out by definition. Falling back to
+    // checking every label would (and previously did) flag every pivot
+    // header value as an "added column", making any pivot region
+    // un-committable without an `addedColumns: "auto-apply"` workaround.
+    const kindByIndex = segmentKindByHeaderIndex(region, header.axis);
+    for (let i = 0; i < header.labels.length; i++) {
+      const label = header.labels[i];
       if (label === "") continue;
+      if (kindByIndex[i] !== "field") continue;
       if (!boundNames.has(label)) {
         detail.addedColumns.push(label);
       }

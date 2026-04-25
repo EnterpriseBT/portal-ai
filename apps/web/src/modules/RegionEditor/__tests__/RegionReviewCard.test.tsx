@@ -173,6 +173,66 @@ describe("RegionReviewCardUI — pivot + cellValueField chips", () => {
     expect(onEditBinding).toHaveBeenCalledWith("cellValueField", cellChip);
   });
 
+  test("excluded pivot chip shows the 'Excluded' pill and aria-label", () => {
+    render(
+      <RegionReviewCardUI
+        region={makeRegion({
+          ...pivotRegion,
+          segmentsByAxis: {
+            row: [
+              {
+                kind: "pivot",
+                id: "pivot-1",
+                axisName: "timestamp",
+                axisNameSource: "user",
+                positionCount: 6,
+                columnDefinitionId: "coldef_timestamp",
+                excluded: true,
+              },
+            ],
+          },
+        })}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+        resolveColumnLabel={(id) =>
+          id === "coldef_timestamp" ? "Timestamp" : undefined
+        }
+      />
+    );
+    expect(
+      screen.getByRole("button", {
+        name: /excluded.*pivot axis "timestamp"/i,
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^excluded$/i)).toBeInTheDocument();
+  });
+
+  test("excluded cellValueField chip shows the 'Excluded' pill and aria-label", () => {
+    render(
+      <RegionReviewCardUI
+        region={makeRegion({
+          ...pivotRegion,
+          cellValueField: {
+            name: "amount",
+            nameSource: "user",
+            columnDefinitionId: "coldef_amount",
+            excluded: true,
+          },
+        })}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+        resolveColumnLabel={(id) =>
+          id === "coldef_amount" ? "Amount" : undefined
+        }
+      />
+    );
+    expect(
+      screen.getByRole("button", {
+        name: /excluded.*cell value "amount"/i,
+      })
+    ).toBeInTheDocument();
+  });
+
   test("unbound pivot segment carries an 'Unbound' pill instead of a confidence dot", () => {
     render(
       <RegionReviewCardUI

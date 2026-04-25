@@ -686,6 +686,11 @@ describe("Connector Instance Layout Plans Router", () => {
       // are the two logical fields that ultimately become entity record
       // columns — commit must materialise a FieldMapping for each so the
       // emitted records line up with concrete columnDefinitionIds.
+      const colIdId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "id"
+      );
       const colMonthId = await seedColumnDefinition(
         db as Db,
         organizationId,
@@ -740,16 +745,20 @@ describe("Connector Instance Layout Plans Router", () => {
               sourceLocator: { kind: "column", sheet: "Sheet1", col: 1 },
               confidence: 0.9,
             },
-            columnBindings: [],
+            // Binding for the identity column's field-segment position so
+            // drift's addedColumns gate has a name to match against — the
+            // pivot positions (Jan/Feb/Mar) skip the gate as pivot segments.
+            columnBindings: [
+              {
+                sourceLocator: { kind: "byHeaderName", axis: "row", name: "id" },
+                columnDefinitionId: colIdId,
+                confidence: 0.95,
+              },
+            ],
             skipRules: [],
-            // Pivot positions show up in `header.labels` even though they
-            // aren't bound via columnBindings — drift detection treats every
-            // such label as an "added column", so a pivot region needs
-            // `addedColumns: "auto-apply"` (or a future drift-pivot-aware
-            // tightening) to commit cleanly.
             drift: {
               headerShiftRows: 0,
-              addedColumns: "auto-apply",
+              addedColumns: "halt",
               removedColumns: { max: 0, action: "halt" },
             },
             confidence: { region: 0.9, aggregate: 0.9 },
@@ -797,13 +806,14 @@ describe("Connector Instance Layout Plans Router", () => {
       expect(res.body.payload.recordCounts.created).toBe(6);
 
       const mappings = await (db as Db).select().from(schema.fieldMappings);
-      // One mapping for axisName ("month"), one for cellValueField.name
-      // ("revenue"). The single field segment on the records-axis is the
-      // identity column at col 1 — no columnBinding for it, so no mapping.
-      expect(mappings).toHaveLength(2);
+      // Three mappings: one for the identity columnBinding ("id"), one for
+      // the pivot axisName ("month"), and one for the cellValueField.name
+      // ("revenue").
+      expect(mappings).toHaveLength(3);
       const byKey = new Map(
         mappings.map((m) => [m.normalizedKey, m.columnDefinitionId])
       );
+      expect(byKey.get("id")).toBe(colIdId);
       expect(byKey.get("month")).toBe(colMonthId);
       expect(byKey.get("revenue")).toBe(colRevenueId);
 
@@ -821,6 +831,134 @@ describe("Connector Instance Layout Plans Router", () => {
         )
       );
       expect(months).toEqual(new Set(["Jan", "Feb", "Mar"]));
+    });
+
+    it("pivot region: excluded pivot axisName + cellValueField produce no FieldMappings", async () => {
+      // Regression for the "Omit this column" toggle on synthetic chips:
+      // when the user marks a pivot segment or cellValueField as excluded,
+      // commit must not materialise a FieldMapping for it (parallel to
+      // `binding.excluded === true` on columnBindings).
+      const colIdId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "id"
+      );
+      const colMonthId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "month"
+      );
+      const colRevenueId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "revenue"
+      );
+      const plan: LayoutPlan = {
+        planVersion: "1.0.0",
+        workbookFingerprint: {
+          sheetNames: ["Sheet1"],
+          dimensions: { Sheet1: { rows: 3, cols: 4 } },
+          anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "id" }],
+        },
+        regions: [
+          {
+            id: "r1",
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 4 },
+            targetEntityDefinitionId: "monthly",
+            headerAxes: ["row"],
+            segmentsByAxis: {
+              row: [
+                { kind: "field", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "month-seg",
+                  axisName: "month",
+                  axisNameSource: "user",
+                  positionCount: 3,
+                  columnDefinitionId: colMonthId,
+                  excluded: true,
+                },
+              ],
+            },
+            cellValueField: {
+              name: "revenue",
+              nameSource: "user",
+              columnDefinitionId: colRevenueId,
+              excluded: true,
+            },
+            headerStrategyByAxis: {
+              row: {
+                kind: "row",
+                locator: { kind: "row", sheet: "Sheet1", row: 1 },
+                confidence: 0.95,
+              },
+            },
+            identityStrategy: {
+              kind: "column",
+              sourceLocator: { kind: "column", sheet: "Sheet1", col: 1 },
+              confidence: 0.9,
+            },
+            columnBindings: [
+              {
+                sourceLocator: { kind: "byHeaderName", axis: "row", name: "id" },
+                columnDefinitionId: colIdId,
+                confidence: 0.95,
+              },
+            ],
+            skipRules: [],
+            drift: {
+              headerShiftRows: 0,
+              addedColumns: "halt",
+              removedColumns: { max: 0, action: "halt" },
+            },
+            confidence: { region: 0.9, aggregate: 0.9 },
+            warnings: [],
+          },
+        ],
+        confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
+      };
+      const planId = await insertPlanRow(db as Db, plan);
+
+      const workbook: WorkbookData = {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 3, cols: 4 },
+            cells: [
+              { row: 1, col: 1, value: "id" },
+              { row: 1, col: 2, value: "Jan" },
+              { row: 1, col: 3, value: "Feb" },
+              { row: 1, col: 4, value: "Mar" },
+              { row: 2, col: 1, value: "p1" },
+              { row: 2, col: 2, value: 100 },
+              { row: 2, col: 3, value: 110 },
+              { row: 2, col: 4, value: 120 },
+              { row: 3, col: 1, value: "p2" },
+              { row: 3, col: 2, value: 80 },
+              { row: 3, col: 3, value: 90 },
+              { row: 3, col: 4, value: 95 },
+            ],
+          },
+        ],
+      };
+
+      const res = await request(app)
+        .post(
+          `/api/connector-instances/${connectorInstanceId}/layout-plan/${planId}/commit`
+        )
+        .set("Authorization", "Bearer test-token")
+        .send({ workbook });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const mappings = await (db as Db).select().from(schema.fieldMappings);
+      // Only the static `id` columnBinding produces a FieldMapping. The
+      // excluded pivot axisName + cellValueField each yield zero rows.
+      expect(mappings).toHaveLength(1);
+      expect(mappings[0].normalizedKey).toBe("id");
+      expect(mappings[0].columnDefinitionId).toBe(colIdId);
     });
 
     it("rejects plans where two regions share a targetEntityDefinitionId (C1)", async () => {

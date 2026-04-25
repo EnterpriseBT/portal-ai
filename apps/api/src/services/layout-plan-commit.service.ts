@@ -163,7 +163,10 @@ export class LayoutPlanCommitService {
       // so the recordFieldKey is the human-readable axisName. Each pivot
       // gets its own FieldMapping; the segment's `columnDefinitionId` is
       // populated by `classify-logical-fields` (text-fallback when the
-      // classifier doesn't match).
+      // classifier doesn't match). `excluded` segments are omitted by the
+      // user via the review-step "Omit" toggle and skipped here so no
+      // FieldMapping is materialised, parallel to the columnBindings
+      // `binding.excluded === true` path.
       for (const axis of ["row", "column"] as const) {
         for (const seg of region.segmentsByAxis?.[axis] ?? []) {
           if (seg.kind !== "pivot" || !seg.columnDefinitionId) continue;
@@ -172,6 +175,7 @@ export class LayoutPlanCommitService {
             sourceField: seg.axisName,
             recordFieldKey: seg.axisName,
             isPrimaryKey: false,
+            excluded: seg.excluded,
           });
         }
       }
@@ -183,6 +187,7 @@ export class LayoutPlanCommitService {
           sourceField: region.cellValueField.name,
           recordFieldKey: region.cellValueField.name,
           isPrimaryKey: false,
+          excluded: region.cellValueField.excluded,
         });
       }
     }

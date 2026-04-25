@@ -89,9 +89,11 @@ function buildChips(
       if (seg.kind !== "pivot") continue;
       const id = seg.columnDefinitionId;
       const label = id ? resolveColumnLabel?.(id) : undefined;
+      const excluded = seg.excluded === true;
       // Pivot segment binds to the catalog by name match — band tracks
       // whether the slot is filled, not a numeric confidence we'd otherwise
-      // surface in the popover.
+      // surface in the popover. The "Unbound" pill is suppressed for
+      // excluded chips since the user has opted them out anyway.
       const sourceLocator = `pivot:${seg.id}`;
       chips.push({
         key: `pivot:${seg.id}`,
@@ -99,12 +101,14 @@ function buildChips(
         columnDefinitionLabel: label,
         columnDefinitionId: id ?? null,
         band: id ? "green" : "red",
-        excluded: false,
-        invalid: !id,
+        excluded,
+        invalid: !excluded && !id,
         onClick: (anchor) => onEditBinding(sourceLocator, anchor),
-        ariaLabel: id
-          ? `Edit pivot axis "${seg.axisName}" — bound to ${label ?? id}`
-          : `Edit pivot axis "${seg.axisName}" — unbound`,
+        ariaLabel: excluded
+          ? `Excluded — click to edit pivot axis "${seg.axisName}"`
+          : id
+            ? `Edit pivot axis "${seg.axisName}" — bound to ${label ?? id}`
+            : `Edit pivot axis "${seg.axisName}" — unbound`,
       });
     }
   }
@@ -112,6 +116,7 @@ function buildChips(
   if (region.cellValueField) {
     const id = region.cellValueField.columnDefinitionId;
     const label = id ? resolveColumnLabel?.(id) : undefined;
+    const excluded = region.cellValueField.excluded === true;
     const sourceLocator = "cellValueField";
     chips.push({
       key: "cellValueField",
@@ -119,12 +124,14 @@ function buildChips(
       columnDefinitionLabel: label,
       columnDefinitionId: id ?? null,
       band: id ? "green" : "red",
-      excluded: false,
-      invalid: !id,
+      excluded,
+      invalid: !excluded && !id,
       onClick: (anchor) => onEditBinding(sourceLocator, anchor),
-      ariaLabel: id
-        ? `Edit cell value "${region.cellValueField.name}" — bound to ${label ?? id}`
-        : `Edit cell value "${region.cellValueField.name}" — unbound`,
+      ariaLabel: excluded
+        ? `Excluded — click to edit cell value "${region.cellValueField.name}"`
+        : id
+          ? `Edit cell value "${region.cellValueField.name}" — bound to ${label ?? id}`
+          : `Edit cell value "${region.cellValueField.name}" — unbound`,
     });
   }
 

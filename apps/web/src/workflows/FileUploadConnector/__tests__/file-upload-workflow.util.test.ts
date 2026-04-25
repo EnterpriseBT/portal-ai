@@ -1109,12 +1109,60 @@ describe("useFileUploadWorkflow — binding edits", () => {
         hook.result.current.onUpdateBinding(
           "region-pivot",
           "pivot:pivot-1",
-          // No columnDefinitionId — patch carries only override fields that
-          // pivot Segment doesn't support. Should be a no-op.
+          // No columnDefinitionId or excluded — patch carries only fields
+          // that pivot Segment doesn't support. Should be a no-op.
           { normalizedKey: "ignored", required: true }
         )
       );
       expect(hook.result.current.regions).toBe(before);
+    });
+
+    test("`pivot:<segId>` toggle of `excluded: true` lands on segment.excluded in regions and plan", async () => {
+      const hook = await seedPivotState();
+      act(() =>
+        hook.result.current.onToggleBindingExcluded(
+          "region-pivot",
+          "pivot:pivot-1",
+          true
+        )
+      );
+      const region = hook.result.current.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      const pivotSeg = region?.segmentsByAxis?.row?.find(
+        (s) => s.kind === "pivot"
+      );
+      if (pivotSeg?.kind === "pivot") {
+        expect(pivotSeg.excluded).toBe(true);
+      }
+      const planRegion = hook.result.current.plan?.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      const planPivot = planRegion?.segmentsByAxis?.row?.find(
+        (s) => s.kind === "pivot"
+      );
+      if (planPivot?.kind === "pivot") {
+        expect(planPivot.excluded).toBe(true);
+      }
+    });
+
+    test("`cellValueField` toggle of `excluded: true` lands on cellValueField.excluded in regions and plan", async () => {
+      const hook = await seedPivotState();
+      act(() =>
+        hook.result.current.onToggleBindingExcluded(
+          "region-pivot",
+          "cellValueField",
+          true
+        )
+      );
+      const region = hook.result.current.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      expect(region?.cellValueField?.excluded).toBe(true);
+      const planRegion = hook.result.current.plan?.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      expect(planRegion?.cellValueField?.excluded).toBe(true);
     });
   });
 });
