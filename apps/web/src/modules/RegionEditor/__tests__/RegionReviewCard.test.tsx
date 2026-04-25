@@ -133,7 +133,7 @@ describe("RegionReviewCardUI — pivot + cellValueField chips", () => {
     expect(screen.getByText("Amount")).toBeInTheDocument();
   });
 
-  test("pivot + cellValueField chips are non-interactive (no edit handler yet)", () => {
+  test("clicking a pivot chip fires onEditBinding with a `pivot:<segId>` synthetic locator", () => {
     const onEditBinding =
       jest.fn<(sourceLocator: string, anchorEl: HTMLElement) => void>();
     render(
@@ -146,13 +146,31 @@ describe("RegionReviewCardUI — pivot + cellValueField chips", () => {
         }
       />
     );
-    // Pivot chip exposes a status role with an aria-label that names the
-    // bound ColumnDefinition.
-    const pivotChip = screen.getByRole("status", {
-      name: /pivot axis "timestamp" bound to Timestamp/i,
+    const pivotChip = screen.getByRole("button", {
+      name: /edit pivot axis "timestamp"/i,
     });
     fireEvent.click(pivotChip);
-    expect(onEditBinding).not.toHaveBeenCalled();
+    expect(onEditBinding).toHaveBeenCalledWith("pivot:pivot-1", pivotChip);
+  });
+
+  test("clicking a cellValueField chip fires onEditBinding with the `cellValueField` synthetic locator", () => {
+    const onEditBinding =
+      jest.fn<(sourceLocator: string, anchorEl: HTMLElement) => void>();
+    render(
+      <RegionReviewCardUI
+        region={makeRegion(pivotRegion)}
+        onJump={jest.fn()}
+        onEditBinding={onEditBinding}
+        resolveColumnLabel={(id) =>
+          id === "coldef_timestamp" ? "Timestamp" : "Amount"
+        }
+      />
+    );
+    const cellChip = screen.getByRole("button", {
+      name: /edit cell value "amount"/i,
+    });
+    fireEvent.click(cellChip);
+    expect(onEditBinding).toHaveBeenCalledWith("cellValueField", cellChip);
   });
 
   test("unbound pivot segment carries an 'Unbound' pill instead of a confidence dot", () => {

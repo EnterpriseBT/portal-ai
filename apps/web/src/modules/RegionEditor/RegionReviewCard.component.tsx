@@ -92,6 +92,7 @@ function buildChips(
       // Pivot segment binds to the catalog by name match — band tracks
       // whether the slot is filled, not a numeric confidence we'd otherwise
       // surface in the popover.
+      const sourceLocator = `pivot:${seg.id}`;
       chips.push({
         key: `pivot:${seg.id}`,
         source: seg.axisName,
@@ -100,9 +101,10 @@ function buildChips(
         band: id ? "green" : "red",
         excluded: false,
         invalid: !id,
+        onClick: (anchor) => onEditBinding(sourceLocator, anchor),
         ariaLabel: id
-          ? `Pivot axis "${seg.axisName}" bound to ${label ?? id}`
-          : `Pivot axis "${seg.axisName}" — unbound`,
+          ? `Edit pivot axis "${seg.axisName}" — bound to ${label ?? id}`
+          : `Edit pivot axis "${seg.axisName}" — unbound`,
       });
     }
   }
@@ -110,6 +112,7 @@ function buildChips(
   if (region.cellValueField) {
     const id = region.cellValueField.columnDefinitionId;
     const label = id ? resolveColumnLabel?.(id) : undefined;
+    const sourceLocator = "cellValueField";
     chips.push({
       key: "cellValueField",
       source: region.cellValueField.name,
@@ -118,9 +121,10 @@ function buildChips(
       band: id ? "green" : "red",
       excluded: false,
       invalid: !id,
+      onClick: (anchor) => onEditBinding(sourceLocator, anchor),
       ariaLabel: id
-        ? `Cell value "${region.cellValueField.name}" bound to ${label ?? id}`
-        : `Cell value "${region.cellValueField.name}" — unbound`,
+        ? `Edit cell value "${region.cellValueField.name}" — bound to ${label ?? id}`
+        : `Edit cell value "${region.cellValueField.name}" — unbound`,
     });
   }
 

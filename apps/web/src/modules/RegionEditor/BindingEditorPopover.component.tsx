@@ -49,6 +49,14 @@ export interface BindingEditorPopoverUIProps {
   referenceFieldOptions?: SelectOption[];
   errors: FormErrors;
   serverError: ServerError | null;
+  /**
+   * Optional override for the popover header. Callers building synthetic
+   * `ColumnBindingDraft`s for non-locator-derived sources (review-step
+   * pivot / cellValueField chips) supply this so the header renders the
+   * underlying axisName / cellValueField.name + a meaningful kind chip
+   * instead of the opaque sourceLocator string.
+   */
+  titleOverride?: { primary: string; kind: string };
   onChange: (patch: Partial<ColumnBindingDraft>) => void;
   onApply: () => void;
   onCancel: () => void;
@@ -92,11 +100,12 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
   referenceFieldOptions,
   errors,
   serverError,
+  titleOverride,
   onChange,
   onApply,
   onCancel,
 }) => {
-  const title = locatorTitle(draft.sourceLocator);
+  const title = titleOverride ?? locatorTitle(draft.sourceLocator);
   const isExcluded = draft.excluded === true;
   const isReference = columnDefinitionType
     ? REFERENCE_TYPES.has(columnDefinitionType)

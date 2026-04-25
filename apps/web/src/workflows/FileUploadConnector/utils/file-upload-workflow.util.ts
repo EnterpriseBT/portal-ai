@@ -177,6 +177,135 @@ function toPlanPatch(
   return out;
 }
 
+/**
+ * Apply a synthetic-locator patch (`pivot:<segId>` chip → only
+ * `columnDefinitionId` is meaningful) to the matching pivot segment in both
+ * the regions state and the plan mirror. Other patch fields are ignored —
+ * the pivot Segment schema has no override slots beyond columnDefinitionId.
+ */
+function patchPivotSegmentBinding(
+  prev: FileUploadWorkflowState,
+  regionId: string,
+  segmentId: string,
+  patch: Partial<ColumnBindingDraft>
+): FileUploadWorkflowState {
+  if (!("columnDefinitionId" in patch)) return prev;
+  const nextColumnDefinitionId = patch.columnDefinitionId ?? undefined;
+
+  type DraftSegments = NonNullable<RegionDraft["segmentsByAxis"]>;
+  type DraftSegment = NonNullable<DraftSegments["row"]>[number];
+  const remapDraft = (
+    segs: DraftSegment[] | undefined
+  ): { next: DraftSegment[] | undefined; touched: boolean } => {
+    if (!segs) return { next: segs, touched: false };
+    let touched = false;
+    const next = segs.map((s) => {
+      if (s.kind !== "pivot" || s.id !== segmentId) return s;
+      touched = true;
+      return { ...s, columnDefinitionId: nextColumnDefinitionId };
+    });
+    return { next, touched };
+  };
+
+  let regionTouched = false;
+  const nextRegions = prev.regions.map((r) => {
+    if (r.id !== regionId) return r;
+    const row = remapDraft(r.segmentsByAxis?.row);
+    const column = remapDraft(r.segmentsByAxis?.column);
+    if (!row.touched && !column.touched) return r;
+    regionTouched = true;
+    return {
+      ...r,
+      segmentsByAxis: {
+        ...r.segmentsByAxis,
+        row: row.next,
+        column: column.next,
+      },
+    };
+  });
+  if (!regionTouched) return prev;
+
+  let nextPlan = prev.plan;
+  if (prev.plan) {
+    type PlanRegion = LayoutPlan["regions"][number];
+    type PlanSegments = NonNullable<PlanRegion["segmentsByAxis"]>;
+    type PlanSegment = NonNullable<PlanSegments["row"]>[number];
+    const remapPlan = (segs: PlanSegment[] | undefined): PlanSegment[] | undefined => {
+      if (!segs) return segs;
+      return segs.map((s) =>
+        s.kind === "pivot" && s.id === segmentId
+          ? { ...s, columnDefinitionId: nextColumnDefinitionId }
+          : s
+      );
+    };
+    nextPlan = {
+      ...prev.plan,
+      regions: prev.plan.regions.map((planRegion) => {
+        if (planRegion.id !== regionId) return planRegion;
+        const row = remapPlan(planRegion.segmentsByAxis?.row);
+        const column = remapPlan(planRegion.segmentsByAxis?.column);
+        return {
+          ...planRegion,
+          segmentsByAxis: {
+            ...planRegion.segmentsByAxis,
+            row,
+            column,
+          },
+        };
+      }),
+    };
+  }
+  return { ...prev, regions: nextRegions, plan: nextPlan };
+}
+
+/**
+ * Apply a synthetic-locator patch (`cellValueField` chip → only
+ * `columnDefinitionId` is meaningful) to the region's cellValueField slot
+ * in both the regions state and the plan mirror.
+ */
+function patchCellValueFieldBinding(
+  prev: FileUploadWorkflowState,
+  regionId: string,
+  patch: Partial<ColumnBindingDraft>
+): FileUploadWorkflowState {
+  if (!("columnDefinitionId" in patch)) return prev;
+  const nextColumnDefinitionId = patch.columnDefinitionId ?? undefined;
+
+  let regionTouched = false;
+  const nextRegions = prev.regions.map((r) => {
+    if (r.id !== regionId || !r.cellValueField) return r;
+    regionTouched = true;
+    return {
+      ...r,
+      cellValueField: {
+        ...r.cellValueField,
+        columnDefinitionId: nextColumnDefinitionId,
+      },
+    };
+  });
+  if (!regionTouched) return prev;
+
+  let nextPlan = prev.plan;
+  if (prev.plan) {
+    nextPlan = {
+      ...prev.plan,
+      regions: prev.plan.regions.map((planRegion) => {
+        if (planRegion.id !== regionId || !planRegion.cellValueField) {
+          return planRegion;
+        }
+        return {
+          ...planRegion,
+          cellValueField: {
+            ...planRegion.cellValueField,
+            columnDefinitionId: nextColumnDefinitionId,
+          },
+        };
+      }),
+    };
+  }
+  return { ...prev, regions: nextRegions, plan: nextPlan };
+}
+
 function mergeFilesByName(existing: File[], incoming: File[]): File[] {
   const seen = new Set(existing.map((f) => f.name));
   const merged = [...existing];
@@ -381,6 +510,22 @@ export function useFileUploadWorkflow(
     ): FileUploadWorkflowState => {
       const region = prev.regions.find((r) => r.id === regionId);
       if (!region) return prev;
+
+      // Synthetic locators issued by review-step pivot / cellValueField
+      // chips. Only `columnDefinitionId` persists — pivot Segment +
+      // CellValueField don't carry the override fields ColumnBinding does.
+      if (sourceLocator === "cellValueField") {
+        return patchCellValueFieldBinding(prev, regionId, patch);
+      }
+      if (sourceLocator.startsWith("pivot:")) {
+        return patchPivotSegmentBinding(
+          prev,
+          regionId,
+          sourceLocator.slice("pivot:".length),
+          patch
+        );
+      }
+
       const existingBindings = region.columnBindings ?? [];
       const bindingIndex = existingBindings.findIndex(
         (b) => b.sourceLocator === sourceLocator

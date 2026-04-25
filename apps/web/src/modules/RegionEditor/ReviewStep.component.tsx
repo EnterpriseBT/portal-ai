@@ -93,6 +93,67 @@ function draftValidationContext(
   };
 }
 
+/**
+ * Synthetic sourceLocators issued for pivot segments + cellValueField chips.
+ * Recognising them up-front lets handleChipClick build a draft from the
+ * matching segment / cellValueField slot instead of region.columnBindings,
+ * and patchBinding (in the workflow util) routes apply patches back onto
+ * `segment.columnDefinitionId` / `cellValueField.columnDefinitionId`. The
+ * popover only meaningfully edits `columnDefinitionId` for these — pivot
+ * Segment + CellValueField don't carry the override fields a ColumnBinding
+ * does.
+ */
+function parseSyntheticLocator(
+  sourceLocator: string
+): { kind: "pivot"; segmentId: string } | { kind: "cellValueField" } | null {
+  if (sourceLocator === "cellValueField") return { kind: "cellValueField" };
+  if (sourceLocator.startsWith("pivot:")) {
+    return { kind: "pivot", segmentId: sourceLocator.slice("pivot:".length) };
+  }
+  return null;
+}
+
+function findPivotSegment(
+  region: RegionDraft,
+  segmentId: string
+): { axisName: string; columnDefinitionId?: string } | undefined {
+  for (const axis of ["row", "column"] as const) {
+    for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+      if (seg.kind === "pivot" && seg.id === segmentId) {
+        return {
+          axisName: seg.axisName,
+          columnDefinitionId: seg.columnDefinitionId,
+        };
+      }
+    }
+  }
+  return undefined;
+}
+
+function syntheticBindingDraft(
+  region: RegionDraft,
+  sourceLocator: string
+): ColumnBindingDraft | null {
+  const parsed = parseSyntheticLocator(sourceLocator);
+  if (!parsed) return null;
+  if (parsed.kind === "pivot") {
+    const seg = findPivotSegment(region, parsed.segmentId);
+    if (!seg) return null;
+    return {
+      sourceLocator,
+      columnDefinitionId: seg.columnDefinitionId ?? null,
+      confidence: 1,
+    };
+  }
+  // cellValueField
+  if (!region.cellValueField) return null;
+  return {
+    sourceLocator,
+    columnDefinitionId: region.cellValueField.columnDefinitionId ?? null,
+    confidence: 1,
+  };
+}
+
 export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   regions,
   overallConfidence,
@@ -125,6 +186,28 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   ) => {
     if (!popoverEnabled) {
       onEditBinding(region.id, sourceLocator);
+      return;
+    }
+    const synthetic = parseSyntheticLocator(sourceLocator);
+    if (synthetic) {
+      // Pivot / cellValueField — synthesize a ColumnBindingDraft from the
+      // segment or cellValueField slot. Only `columnDefinitionId` is
+      // meaningful (the underlying schema has no override fields), but
+      // that's the field the user wants to rebind.
+      const initialDraft = syntheticBindingDraft(region, sourceLocator);
+      if (!initialDraft) return;
+      const ctx = draftValidationContext(
+        initialDraft,
+        resolveColumnDefinitionType
+      );
+      setEditing({
+        regionId: region.id,
+        sourceLocator,
+        anchorEl,
+        draft: initialDraft,
+        errors: validateBindingDraft(initialDraft, ctx),
+        serverError: null,
+      });
       return;
     }
     const binding = region.columnBindings?.find(
@@ -184,6 +267,26 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
     // again from regions in case state mutated underneath us (e.g. Omit
     // toggle already round-tripped through the hook).
     const region = regions.find((r) => r.id === editing.regionId);
+    const synthetic = parseSyntheticLocator(editing.sourceLocator);
+    if (synthetic) {
+      // Pivot / cellValueField slot — only `columnDefinitionId` persists.
+      // Override fields (normalizedKey, required, defaultValue, format,
+      // enumValues, refEntityKey, refNormalizedKey) have no schema home
+      // for these slots and are silently dropped.
+      const original = region
+        ? syntheticBindingDraft(region, editing.sourceLocator)
+        : null;
+      if (
+        editing.draft.columnDefinitionId !== undefined &&
+        editing.draft.columnDefinitionId !== original?.columnDefinitionId
+      ) {
+        onUpdateBinding(editing.regionId, editing.sourceLocator, {
+          columnDefinitionId: editing.draft.columnDefinitionId,
+        });
+      }
+      setEditing(null);
+      return;
+    }
     const original = region?.columnBindings?.find(
       (b) => b.sourceLocator === editing.sourceLocator
     );
@@ -385,6 +488,21 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
           anchorEl={editing.anchorEl}
           binding={editing.draft}
           draft={editing.draft}
+          titleOverride={(() => {
+            const synthetic = parseSyntheticLocator(editing.sourceLocator);
+            if (!synthetic) return undefined;
+            const region = regions.find((r) => r.id === editing.regionId);
+            if (!region) return undefined;
+            if (synthetic.kind === "pivot") {
+              const seg = findPivotSegment(region, synthetic.segmentId);
+              return seg
+                ? { primary: seg.axisName, kind: "Pivot axis" }
+                : undefined;
+            }
+            return region.cellValueField
+              ? { primary: region.cellValueField.name, kind: "Cell value" }
+              : undefined;
+          })()}
           columnDefinitionType={
             resolveColumnDefinitionType?.(editing.draft) ?? undefined
           }

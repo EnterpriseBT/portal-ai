@@ -929,4 +929,192 @@ describe("useFileUploadWorkflow — binding edits", () => {
     );
     expect(result.current.plan).toBeNull();
   });
+
+  // Synthetic locators issued by the review-step pivot / cellValueField
+  // chips: `pivot:<segId>` updates `segment.columnDefinitionId`,
+  // `cellValueField` updates `cellValueField.columnDefinitionId`. Both
+  // mirror the change into state.plan.
+  describe("synthetic locators (pivot + cellValueField)", () => {
+    const pivotDraftRegion: RegionDraft = {
+      id: "region-pivot",
+      sheetId: DEMO_WORKBOOK.sheets[0].id,
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 3 },
+      headerAxes: ["row"],
+      targetEntityDefinitionId: "ent_pivot",
+      segmentsByAxis: {
+        row: [
+          { kind: "field", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "pivot-1",
+            axisName: "timestamp",
+            axisNameSource: "user",
+            positionCount: 3,
+            columnDefinitionId: "coldef_timestamp_initial",
+          },
+        ],
+      },
+      cellValueField: {
+        name: "amount",
+        nameSource: "user",
+        columnDefinitionId: "coldef_amount_initial",
+      },
+      columnBindings: [],
+    };
+    const pivotPlanRegion = {
+      id: "region-pivot",
+      sheet: DEMO_WORKBOOK.sheets[0].name,
+      bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 4 },
+      targetEntityDefinitionId: "ent_pivot",
+      headerAxes: ["row" as const],
+      segmentsByAxis: {
+        row: [
+          { kind: "field" as const, positionCount: 1 },
+          {
+            kind: "pivot" as const,
+            id: "pivot-1",
+            axisName: "timestamp",
+            axisNameSource: "user" as const,
+            positionCount: 3,
+            columnDefinitionId: "coldef_timestamp_initial",
+          },
+        ],
+      },
+      cellValueField: {
+        name: "amount",
+        nameSource: "user" as const,
+        columnDefinitionId: "coldef_amount_initial",
+      },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row" as const,
+          locator: {
+            kind: "row" as const,
+            sheet: DEMO_WORKBOOK.sheets[0].name,
+            row: 1,
+          },
+          confidence: 0.95,
+        },
+      },
+      identityStrategy: { kind: "rowPosition" as const, confidence: 0.6 },
+      columnBindings: [],
+      skipRules: [],
+      drift: {
+        headerShiftRows: 0,
+        addedColumns: "halt" as const,
+        removedColumns: { max: 0, action: "halt" as const },
+      },
+      confidence: { region: 0.9, aggregate: 0.85 },
+      warnings: [],
+    };
+
+    async function seedPivotState() {
+      const callbacks = makeCallbacks({
+        runInterpret: jest
+          .fn<FileUploadWorkflowCallbacks["runInterpret"]>()
+          .mockResolvedValue({
+            regions: [pivotDraftRegion],
+            plan: {
+              planVersion: "1.0.0",
+              workbookFingerprint: {
+                sheetNames: [],
+                dimensions: {},
+                anchorCells: [],
+              },
+              regions: [pivotPlanRegion],
+              confidence: {
+                overall: 0.85,
+                perRegion: { "region-pivot": 0.85 },
+              },
+            } as unknown as import("@portalai/core/contracts").LayoutPlan,
+            overallConfidence: 0.85,
+          }),
+      });
+      const hook = renderHook(() => useFileUploadWorkflow(callbacks));
+      hook.result.current.addFiles([SAMPLE_FILE]);
+      await act(async () => {
+        await hook.result.current.startParse();
+      });
+      act(() => {
+        hook.result.current.onRegionDraft({
+          sheetId: DEMO_WORKBOOK.sheets[0].id,
+          bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 3 },
+        });
+      });
+      await act(async () => {
+        await hook.result.current.onInterpret();
+      });
+      return hook;
+    }
+
+    test("`pivot:<segId>` patch updates segment.columnDefinitionId on both regions and plan", async () => {
+      const hook = await seedPivotState();
+      act(() =>
+        hook.result.current.onUpdateBinding("region-pivot", "pivot:pivot-1", {
+          columnDefinitionId: "coldef_timestamp_user_pinned",
+        })
+      );
+      const region = hook.result.current.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      const pivotSeg = region?.segmentsByAxis?.row?.find(
+        (s) => s.kind === "pivot"
+      );
+      expect(pivotSeg?.kind).toBe("pivot");
+      if (pivotSeg?.kind === "pivot") {
+        expect(pivotSeg.columnDefinitionId).toBe(
+          "coldef_timestamp_user_pinned"
+        );
+      }
+      const planRegion = hook.result.current.plan?.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      const planPivot = planRegion?.segmentsByAxis?.row?.find(
+        (s) => s.kind === "pivot"
+      );
+      if (planPivot?.kind === "pivot") {
+        expect(planPivot.columnDefinitionId).toBe(
+          "coldef_timestamp_user_pinned"
+        );
+      }
+    });
+
+    test("`cellValueField` patch updates cellValueField.columnDefinitionId on both regions and plan", async () => {
+      const hook = await seedPivotState();
+      act(() =>
+        hook.result.current.onUpdateBinding(
+          "region-pivot",
+          "cellValueField",
+          { columnDefinitionId: "coldef_amount_user_pinned" }
+        )
+      );
+      const region = hook.result.current.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      expect(region?.cellValueField?.columnDefinitionId).toBe(
+        "coldef_amount_user_pinned"
+      );
+      const planRegion = hook.result.current.plan?.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      expect(planRegion?.cellValueField?.columnDefinitionId).toBe(
+        "coldef_amount_user_pinned"
+      );
+    });
+
+    test("ignores non-columnDefinitionId fields on synthetic patches (no schema home)", async () => {
+      const hook = await seedPivotState();
+      const before = hook.result.current.regions;
+      act(() =>
+        hook.result.current.onUpdateBinding(
+          "region-pivot",
+          "pivot:pivot-1",
+          // No columnDefinitionId — patch carries only override fields that
+          // pivot Segment doesn't support. Should be a no-op.
+          { normalizedKey: "ignored", required: true }
+        )
+      );
+      expect(hook.result.current.regions).toBe(before);
+    });
+  });
 });
