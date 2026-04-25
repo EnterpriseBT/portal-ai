@@ -182,8 +182,16 @@ function toPlanPatch(
  * Each one has a schema slot on the Segment / CellValueField shape; other
  * ColumnBinding override fields (normalizedKey, required, defaultValue,
  * etc.) have no home and are silently dropped at the popover apply step.
+ *
+ * `sourceField` carries the user-edited "Axis name" / "Field name" input
+ * — applies onto `segment.axisName` for pivot patches and
+ * `cellValueField.name` for cellValueField patches.
  */
-const SYNTHETIC_PATCH_KEYS = ["columnDefinitionId", "excluded"] as const;
+const SYNTHETIC_PATCH_KEYS = [
+  "columnDefinitionId",
+  "excluded",
+  "sourceField",
+] as const;
 type SyntheticPatchKey = (typeof SYNTHETIC_PATCH_KEYS)[number];
 
 function pickSyntheticPatch(
@@ -285,7 +293,13 @@ function patchPivotSegmentBinding(
 }
 
 function applyPivotFields<
-  S extends { kind: "pivot"; columnDefinitionId?: string; excluded?: boolean },
+  S extends {
+    kind: "pivot";
+    axisName: string;
+    axisNameSource: "user" | "ai" | "anchor-cell";
+    columnDefinitionId?: string;
+    excluded?: boolean;
+  },
 >(seg: S, patch: Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>>): S {
   const next: S = { ...seg };
   if ("columnDefinitionId" in patch) {
@@ -293,6 +307,14 @@ function applyPivotFields<
   }
   if ("excluded" in patch) {
     next.excluded = patch.excluded ?? undefined;
+  }
+  // The Segment schema requires a non-empty axisName, so only apply when
+  // the popover sent a real value. Empty / absent edits leave the
+  // existing axisName untouched. Flip the source to "user" so the
+  // recommender stage doesn't overwrite the user's edit on re-interpret.
+  if (patch.sourceField !== undefined && patch.sourceField !== "") {
+    next.axisName = patch.sourceField;
+    next.axisNameSource = "user";
   }
   return next;
 }
@@ -354,6 +376,13 @@ function applyCellValueFields<
   }
   if ("excluded" in patch) {
     next.excluded = patch.excluded ?? undefined;
+  }
+  // Same `min(1)` constraint as pivot's axisName — drop empty edits.
+  if (patch.sourceField !== undefined && patch.sourceField !== "") {
+    next.name = patch.sourceField;
+    // User-typed via the popover, so the source flips to "user" — the
+    // parser's recommender never overrides a user-sourced name.
+    next.nameSource = "user";
   }
   return next;
 }

@@ -130,6 +130,16 @@ export type ColumnBindingDraft = {
   enumValues?: string[] | null;
   refEntityKey?: string | null;
   refNormalizedKey?: string | null;
+
+  /**
+   * Edit-time transport for the underlying source-field name on synthetic
+   * locators (`pivot:<segId>` / `cellValueField`). The popover's "Axis
+   * name" / "Field name" input writes here; the workflow's synthetic
+   * patch helpers route the value onto `segment.axisName` /
+   * `cellValueField.name`. Static (real) columnBindings have their source
+   * name baked into the locator string and ignore this field.
+   */
+  sourceField?: string;
 };
 
 export type RegionDraft = {

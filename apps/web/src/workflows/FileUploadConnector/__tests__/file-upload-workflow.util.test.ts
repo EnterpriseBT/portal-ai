@@ -1164,5 +1164,73 @@ describe("useFileUploadWorkflow — binding edits", () => {
       );
       expect(planRegion?.cellValueField?.excluded).toBe(true);
     });
+
+    test("`pivot:<segId>` sourceField patch lands on segment.axisName + flips axisNameSource to 'user'", async () => {
+      const hook = await seedPivotState();
+      act(() =>
+        hook.result.current.onUpdateBinding("region-pivot", "pivot:pivot-1", {
+          sourceField: "captured_at",
+        })
+      );
+      const region = hook.result.current.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      const pivotSeg = region?.segmentsByAxis?.row?.find(
+        (s) => s.kind === "pivot"
+      );
+      if (pivotSeg?.kind === "pivot") {
+        expect(pivotSeg.axisName).toBe("captured_at");
+        expect(pivotSeg.axisNameSource).toBe("user");
+      }
+      const planRegion = hook.result.current.plan?.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      const planPivot = planRegion?.segmentsByAxis?.row?.find(
+        (s) => s.kind === "pivot"
+      );
+      if (planPivot?.kind === "pivot") {
+        expect(planPivot.axisName).toBe("captured_at");
+        expect(planPivot.axisNameSource).toBe("user");
+      }
+    });
+
+    test("`cellValueField` sourceField patch lands on cellValueField.name + flips nameSource to 'user'", async () => {
+      const hook = await seedPivotState();
+      act(() =>
+        hook.result.current.onUpdateBinding(
+          "region-pivot",
+          "cellValueField",
+          { sourceField: "value" }
+        )
+      );
+      const region = hook.result.current.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      expect(region?.cellValueField?.name).toBe("value");
+      expect(region?.cellValueField?.nameSource).toBe("user");
+      const planRegion = hook.result.current.plan?.regions.find(
+        (r) => r.id === "region-pivot"
+      );
+      expect(planRegion?.cellValueField?.name).toBe("value");
+      expect(planRegion?.cellValueField?.nameSource).toBe("user");
+    });
+
+    test("empty sourceField is treated as 'no edit' — leaves the existing name intact", async () => {
+      const hook = await seedPivotState();
+      act(() =>
+        hook.result.current.onUpdateBinding("region-pivot", "pivot:pivot-1", {
+          sourceField: "",
+        })
+      );
+      const pivot = hook.result.current.regions
+        .find((r) => r.id === "region-pivot")
+        ?.segmentsByAxis?.row?.find((s) => s.kind === "pivot");
+      if (pivot?.kind === "pivot") {
+        expect(pivot.axisName).toBe("timestamp");
+        // Source stays at its previous value rather than flipping to "user"
+        // for an empty edit.
+        expect(pivot.axisNameSource).toBe("user");
+      }
+    });
   });
 });

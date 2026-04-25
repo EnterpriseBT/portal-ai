@@ -176,6 +176,60 @@ describe("BindingEditorPopoverUI — interaction", () => {
   });
 });
 
+describe("BindingEditorPopoverUI — synthetic locator (pivot / cellValueField)", () => {
+  test("renders the nameField input pre-filled from draft.sourceField", () => {
+    setup({
+      draft: {
+        ...baseBinding,
+        sourceLocator: "pivot:pivot-1",
+        sourceField: "timestamp",
+      },
+      titleOverride: { primary: "timestamp", kind: "Pivot axis" },
+      nameField: { label: "Axis name" },
+    });
+    const input = screen.getByLabelText(/axis name/i) as HTMLInputElement;
+    expect(input.value).toBe("timestamp");
+  });
+
+  test("editing the nameField fires onChange with the new sourceField", () => {
+    const { onChange } = setup({
+      draft: {
+        ...baseBinding,
+        sourceLocator: "pivot:pivot-1",
+        sourceField: "timestamp",
+      },
+      titleOverride: { primary: "timestamp", kind: "Pivot axis" },
+      nameField: { label: "Axis name" },
+    });
+    const input = screen.getByLabelText(/axis name/i);
+    fireEvent.change(input, { target: { value: "captured_at" } });
+    expect(onChange).toHaveBeenCalledWith({ sourceField: "captured_at" });
+  });
+
+  test("autofocuses the nameField input after the popover opens", async () => {
+    setup({
+      draft: {
+        ...baseBinding,
+        sourceLocator: "pivot:pivot-1",
+        sourceField: "timestamp",
+      },
+      titleOverride: { primary: "timestamp", kind: "Pivot axis" },
+      nameField: { label: "Axis name" },
+    });
+    const input = screen.getByLabelText(/axis name/i);
+    // useDialogAutoFocus defers the focus 50ms past mount to clear MUI's
+    // focus-trap transition. Wait for it to settle.
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(document.activeElement).toBe(input);
+  });
+
+  test("does not render the nameField when nameField is omitted (static columnBinding)", () => {
+    setup({ draft: { ...baseBinding, sourceLocator: "header:Email" } });
+    expect(screen.queryByLabelText(/axis name/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/field name/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("BindingEditorPopoverUI — validation", () => {
   test("renders a per-field error when errors.normalizedKey is set", () => {
     setup({

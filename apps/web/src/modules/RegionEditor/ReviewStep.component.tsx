@@ -152,6 +152,7 @@ function syntheticBindingDraft(
       columnDefinitionId: seg.columnDefinitionId ?? null,
       confidence: 1,
       excluded: seg.excluded,
+      sourceField: seg.axisName,
     };
   }
   // cellValueField
@@ -161,6 +162,7 @@ function syntheticBindingDraft(
     columnDefinitionId: region.cellValueField.columnDefinitionId ?? null,
     confidence: 1,
     excluded: region.cellValueField.excluded,
+    sourceField: region.cellValueField.name,
   };
 }
 
@@ -309,20 +311,32 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
     const region = regions.find((r) => r.id === editing.regionId);
     const synthetic = parseSyntheticLocator(editing.sourceLocator);
     if (synthetic) {
-      // Pivot / cellValueField slot — only `columnDefinitionId` persists.
-      // Override fields (normalizedKey, required, defaultValue, format,
-      // enumValues, refEntityKey, refNormalizedKey) have no schema home
-      // for these slots and are silently dropped.
+      // Pivot / cellValueField slot — only `columnDefinitionId` and
+      // `sourceField` (axis name / cell-value name) persist. Other
+      // override fields have no schema home and are silently dropped.
       const original = region
         ? syntheticBindingDraft(region, editing.sourceLocator)
         : null;
+      const patch: Partial<ColumnBindingDraft> = {};
       if (
         editing.draft.columnDefinitionId !== undefined &&
         editing.draft.columnDefinitionId !== original?.columnDefinitionId
       ) {
-        onUpdateBinding(editing.regionId, editing.sourceLocator, {
-          columnDefinitionId: editing.draft.columnDefinitionId,
-        });
+        patch.columnDefinitionId = editing.draft.columnDefinitionId;
+      }
+      // Drop empty edits — `sourceField` requires a non-empty value
+      // (mirrors the schema's `axisName.min(1)` / `name.min(1)`). An
+      // empty input is treated as "no change" rather than persisted.
+      const trimmedSourceField = editing.draft.sourceField?.trim();
+      if (
+        trimmedSourceField !== undefined &&
+        trimmedSourceField !== "" &&
+        trimmedSourceField !== original?.sourceField
+      ) {
+        patch.sourceField = trimmedSourceField;
+      }
+      if (Object.keys(patch).length > 0) {
+        onUpdateBinding(editing.regionId, editing.sourceLocator, patch);
       }
       setEditing(null);
       return;
@@ -548,6 +562,21 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
             return region
               ? syntheticDerivedNormalizedKey(region, editing.sourceLocator)
               : undefined;
+          })()}
+          nameField={(() => {
+            const synthetic = parseSyntheticLocator(editing.sourceLocator);
+            if (!synthetic) return undefined;
+            return synthetic.kind === "pivot"
+              ? {
+                  label: "Axis name",
+                  helperText:
+                    "Display name for the pivot axis — defaults to the value the AI/heuristic recommended.",
+                }
+              : {
+                  label: "Field name",
+                  helperText:
+                    "Display name for the cell-value field on the entity record.",
+                };
           })()}
           columnDefinitionType={
             resolveColumnDefinitionType?.(editing.draft) ?? undefined

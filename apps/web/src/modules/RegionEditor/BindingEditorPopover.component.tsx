@@ -1,4 +1,5 @@
 import React from "react";
+import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 import MuiPopover from "@mui/material/Popover";
 import MuiChip from "@mui/material/Chip";
 import {
@@ -66,6 +67,15 @@ export interface BindingEditorPopoverUIProps {
    * unset (existing behavior for static columnBindings).
    */
   derivedNormalizedKey?: string;
+  /**
+   * Synthetic-locator-only: configures a "Name" input rendered at the top
+   * of the form (autofocused on open). Pivot chips show "Axis name"
+   * binding to `segment.axisName`; cellValueField chips show "Field name"
+   * binding to `cellValueField.name`. Edits live in `draft.sourceField`;
+   * static columnBindings omit this prop because their source name is
+   * baked into the locator string and not user-editable.
+   */
+  nameField?: { label: string; helperText?: string };
   onChange: (patch: Partial<ColumnBindingDraft>) => void;
   onApply: () => void;
   onCancel: () => void;
@@ -111,10 +121,18 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
   serverError,
   titleOverride,
   derivedNormalizedKey: derivedNormalizedKeyProp,
+  nameField,
   onChange,
   onApply,
   onCancel,
 }) => {
+  // Autofocus the source-name input on open. Popover transitions are
+  // similar enough to MUI Dialog's that the same delay-and-focus helper
+  // works — using it instead of native `autoFocus` avoids React's
+  // aria-hidden focus-trap conflict during the transition.
+  const nameInputRef = useDialogAutoFocus<HTMLInputElement>(
+    open && nameField !== undefined
+  );
   const title = titleOverride ?? locatorTitle(draft.sourceLocator);
   const isExcluded = draft.excluded === true;
   const isReference = columnDefinitionType
@@ -159,6 +177,21 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
             {title.primary}
           </Typography>
         </Stack>
+
+        {/* Synthetic-locator name input — pivot's `axisName` /
+            cellValueField's `name`. Static columnBindings have their
+            source name baked into the locator and don't render this. */}
+        {nameField && (
+          <TextInput
+            inputRef={nameInputRef}
+            label={nameField.label}
+            value={draft.sourceField ?? ""}
+            onChange={(e) => onChange({ sourceField: e.target.value })}
+            disabled={isExcluded}
+            helperText={nameField.helperText}
+            fullWidth
+          />
+        )}
 
         {/* Server-error banner (outside the per-field errors) */}
         {serverError && <FormAlert serverError={serverError} />}
