@@ -109,7 +109,45 @@ function mergeBindingOverrides(
   return merged;
 }
 
+type BackendSegment = NonNullable<
+  BackendRegion["segmentsByAxis"]
+>["row"] extends (infer S)[] | undefined
+  ? S
+  : never;
+
 type BackendSkipRule = BackendRegion["skipRules"][number];
+
+/**
+ * Re-apply the response's freshly-classified `columnDefinitionId` onto the
+ * preserved prior segments. The prior draft holds the user's edits to
+ * `axisName` / `axisNameSource` / `positionCount`, but its segment
+ * `columnDefinitionId` is whatever the previous interpret call wrote (or
+ * undefined for first-pass drafts) — re-interpret should land the latest
+ * classifier output on the chip, not a stale value. Match by segment id;
+ * unmatched prior segments keep their existing columnDefinitionId so user
+ * overrides aren't lost when classify-logical-fields couldn't bind a
+ * pivot.
+ */
+function adoptResponseSegmentBindings(
+  prior: BackendSegment[] | undefined,
+  fromResponse: BackendSegment[] | undefined
+): BackendSegment[] | undefined {
+  if (!prior) return prior;
+  if (!fromResponse) return prior;
+  const responseById = new Map(
+    fromResponse
+      .filter((s): s is Extract<BackendSegment, { kind: "pivot" }> =>
+        s.kind === "pivot"
+      )
+      .map((s) => [s.id, s])
+  );
+  return prior.map((seg) => {
+    if (seg.kind !== "pivot") return seg;
+    const fresh = responseById.get(seg.id);
+    if (!fresh || fresh.columnDefinitionId === undefined) return seg;
+    return { ...seg, columnDefinitionId: fresh.columnDefinitionId };
+  });
+}
 
 function draftSkipRuleToBackend(
   rule: NonNullable<RegionDraft["skipRules"]>[number]
@@ -155,10 +193,32 @@ export function preserveUserRegionConfig(
         merged.headerAxes = [...prior.headerAxes];
       }
       if (prior.segmentsByAxis) {
-        merged.segmentsByAxis = { ...prior.segmentsByAxis };
+        // Preserve the user's segment edits but adopt the response's
+        // freshly-classified `columnDefinitionId` per pivot — those are
+        // classifier output, not user knobs, and a re-interpret must
+        // surface the latest binding on the review chip.
+        merged.segmentsByAxis = {
+          row: adoptResponseSegmentBindings(
+            prior.segmentsByAxis.row,
+            region.segmentsByAxis?.row
+          ),
+          column: adoptResponseSegmentBindings(
+            prior.segmentsByAxis.column,
+            region.segmentsByAxis?.column
+          ),
+        };
       }
       if (prior.cellValueField) {
-        merged.cellValueField = { ...prior.cellValueField };
+        // Same idea for cellValueField: keep the user's name/nameSource,
+        // but pick up the response's columnDefinitionId so the chip
+        // reflects the freshly-classified binding (or text-fallback) rather
+        // than a stale value from the prior draft.
+        merged.cellValueField = {
+          ...prior.cellValueField,
+          ...(region.cellValueField?.columnDefinitionId !== undefined && {
+            columnDefinitionId: region.cellValueField.columnDefinitionId,
+          }),
+        };
       }
       if (prior.recordAxisTerminator) {
         merged.recordAxisTerminator = prior.recordAxisTerminator;

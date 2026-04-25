@@ -354,6 +354,142 @@ describe("preserveUserRegionConfig", () => {
     expect(result).toBe(basePlan);
   });
 
+  describe("— pivot binding adoption", () => {
+    // Re-interpret carries the latest classifier output for pivot/cellValueField
+    // on the response. The user's prior draft holds its own segment edits but
+    // a (stale) columnDefinitionId — preserveUserRegionConfig must keep the
+    // user's name/positionCount knobs and adopt the response's freshly-
+    // classified columnDefinitionId so the review chip never falls back to
+    // "Unbound" after a re-interpret.
+    const pivotPlanRegion: LayoutPlan["regions"][number] = {
+      ...baseRegion,
+      bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 4 },
+      segmentsByAxis: {
+        row: [
+          { kind: "field", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "pivot-1",
+            axisName: "timestamp",
+            axisNameSource: "user",
+            positionCount: 3,
+            columnDefinitionId: "coldef_timestamp_fresh",
+          },
+        ],
+      },
+      cellValueField: {
+        name: "amount",
+        nameSource: "user",
+        columnDefinitionId: "coldef_amount_fresh",
+      },
+    };
+    const pivotPlan: LayoutPlan = {
+      ...basePlan,
+      regions: [pivotPlanRegion],
+    };
+
+    it("adopts the response's pivot columnDefinitionId, keeping the prior axisName/positionCount", () => {
+      const result = preserveUserRegionConfig(pivotPlan, [
+        baseDraft({
+          bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 3 },
+          segmentsByAxis: {
+            row: [
+              { kind: "field", positionCount: 1 },
+              {
+                kind: "pivot",
+                id: "pivot-1",
+                axisName: "timestamp",
+                axisNameSource: "user",
+                positionCount: 3,
+                // Prior draft's stale binding — must NOT clobber the response.
+                columnDefinitionId: "coldef_stale",
+              },
+            ],
+          },
+          cellValueField: {
+            name: "amount",
+            nameSource: "user",
+            columnDefinitionId: "coldef_amount_stale",
+          },
+        }),
+      ]);
+      const pivot = result.regions[0].segmentsByAxis?.row?.find(
+        (s) => s.kind === "pivot"
+      );
+      expect(pivot?.kind).toBe("pivot");
+      if (pivot?.kind === "pivot") {
+        expect(pivot.axisName).toBe("timestamp");
+        expect(pivot.axisNameSource).toBe("user");
+        expect(pivot.columnDefinitionId).toBe("coldef_timestamp_fresh");
+      }
+      expect(result.regions[0].cellValueField).toMatchObject({
+        name: "amount",
+        nameSource: "user",
+        columnDefinitionId: "coldef_amount_fresh",
+      });
+    });
+
+    it("leaves the prior pivot columnDefinitionId intact when the response didn't classify one", () => {
+      // Response has the pivot segment but no columnDefinitionId (e.g. no
+      // text-fallback wired). The user's prior draft must still win in that
+      // case — re-interpret can't be allowed to drop a previously-bound
+      // pivot to undefined.
+      const responseMinusBinding: LayoutPlan = {
+        ...pivotPlan,
+        regions: [
+          {
+            ...pivotPlanRegion,
+            segmentsByAxis: {
+              row: [
+                { kind: "field", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "pivot-1",
+                  axisName: "timestamp",
+                  axisNameSource: "user",
+                  positionCount: 3,
+                },
+              ],
+            },
+            cellValueField: { name: "amount", nameSource: "user" },
+          },
+        ],
+      };
+      const result = preserveUserRegionConfig(responseMinusBinding, [
+        baseDraft({
+          bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 3 },
+          segmentsByAxis: {
+            row: [
+              { kind: "field", positionCount: 1 },
+              {
+                kind: "pivot",
+                id: "pivot-1",
+                axisName: "timestamp",
+                axisNameSource: "user",
+                positionCount: 3,
+                columnDefinitionId: "coldef_user_pinned",
+              },
+            ],
+          },
+          cellValueField: {
+            name: "amount",
+            nameSource: "user",
+            columnDefinitionId: "coldef_user_pinned_amount",
+          },
+        }),
+      ]);
+      const pivot = result.regions[0].segmentsByAxis?.row?.find(
+        (s) => s.kind === "pivot"
+      );
+      if (pivot?.kind === "pivot") {
+        expect(pivot.columnDefinitionId).toBe("coldef_user_pinned");
+      }
+      expect(
+        result.regions[0].cellValueField?.columnDefinitionId
+      ).toBe("coldef_user_pinned_amount");
+    });
+  });
+
   describe("— binding overrides", () => {
     const baseBackendBinding: LayoutPlan["regions"][number]["columnBindings"][number] =
       {
