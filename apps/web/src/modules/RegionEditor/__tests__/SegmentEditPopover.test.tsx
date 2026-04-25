@@ -74,6 +74,15 @@ describe("SegmentEditPopoverUI — pivot axis name", () => {
       screen.queryByRole("textbox", { name: /axis name/i })
     ).not.toBeInTheDocument();
   });
+
+  it("autofocuses the axis-name input when the popover opens on a pivot segment", async () => {
+    setup({ segment: pivotSegment() });
+    const input = screen.getByRole("textbox", { name: /axis name/i });
+    // useDialogAutoFocus defers focus past the popover's transition; wait
+    // long enough for it to settle.
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(document.activeElement).toBe(input);
+  });
 });
 
 describe("SegmentEditPopoverUI — dynamic toggle", () => {

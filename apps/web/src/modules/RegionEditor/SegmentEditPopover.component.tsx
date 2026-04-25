@@ -17,6 +17,7 @@ import type {
 } from "@portalai/core/contracts";
 
 import { TerminatorFormUI } from "./TerminatorForm.component";
+import { useDialogAutoFocus } from "../../utils/use-dialog-autofocus.util";
 
 type SegmentKind = Segment["kind"];
 
@@ -70,6 +71,11 @@ export const SegmentEditPopoverUI: React.FC<SegmentEditPopoverUIProps> = ({
   const isPivot = segment.kind === "pivot";
   const dynamic = isPivot ? segment.dynamic : undefined;
   const dynamicOn = !!dynamic;
+  // Focus the axis-name input when the popover opens for a pivot segment
+  // AND when the user converts a non-pivot segment to pivot from inside
+  // this popover (the input mounts at that moment, and the hook re-runs
+  // because its `open` argument flips from false to true).
+  const axisNameRef = useDialogAutoFocus<HTMLInputElement>(open && isPivot);
 
   return (
     <MuiPopover
@@ -96,6 +102,7 @@ export const SegmentEditPopoverUI: React.FC<SegmentEditPopoverUIProps> = ({
 
         {isPivot && (
           <TextInput
+            inputRef={axisNameRef}
             size="small"
             fullWidth
             label="Axis name"
