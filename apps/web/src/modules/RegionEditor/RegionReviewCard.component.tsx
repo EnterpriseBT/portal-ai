@@ -186,6 +186,12 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {chips.map((chip) => {
               const interactive = chip.onClick !== undefined;
+              // Native `<button>` styling resolves text color against
+              // `buttontext` / `Canvas` instead of the document's
+              // `text.primary`, which on the grey.50 card background
+              // renders as a near-invisible pale gray. Lock both the color
+              // and font-family to the document so interactive (button)
+              // chips and display-only (div) chips look identical.
               const sx = {
                 display: "inline-flex",
                 alignItems: "center",
@@ -200,6 +206,8 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                 backgroundColor: chip.invalid
                   ? "error.light"
                   : "background.paper",
+                color: "text.primary",
+                fontFamily: "inherit",
                 cursor: interactive ? "pointer" : "default",
                 fontSize: 12,
                 opacity: chip.excluded ? 0.55 : 1,
