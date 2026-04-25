@@ -57,6 +57,15 @@ export interface BindingEditorPopoverUIProps {
    * instead of the opaque sourceLocator string.
    */
   titleOverride?: { primary: string; kind: string };
+  /**
+   * Optional override for the normalizedKey input's "Defaults to …" hint.
+   * Synthetic locators (`pivot:<segId>` / `cellValueField`) don't encode
+   * the underlying source name in the locator string, so the parent
+   * derives the default from `seg.axisName` / `cellValueField.name` and
+   * passes it here. Falls back to `sourceLocatorToNormalizedKey` when
+   * unset (existing behavior for static columnBindings).
+   */
+  derivedNormalizedKey?: string;
   onChange: (patch: Partial<ColumnBindingDraft>) => void;
   onApply: () => void;
   onCancel: () => void;
@@ -101,6 +110,7 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
   errors,
   serverError,
   titleOverride,
+  derivedNormalizedKey: derivedNormalizedKeyProp,
   onChange,
   onApply,
   onCancel,
@@ -114,7 +124,9 @@ export const BindingEditorPopoverUI: React.FC<BindingEditorPopoverUIProps> = ({
   // Default normalized key derives from the source field name. Commit uses
   // the same derivation when no override is set, so what the user sees here
   // is what gets written unless they edit it.
-  const derivedNormalizedKey = sourceLocatorToNormalizedKey(draft.sourceLocator);
+  const derivedNormalizedKey =
+    derivedNormalizedKeyProp ??
+    sourceLocatorToNormalizedKey(draft.sourceLocator);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

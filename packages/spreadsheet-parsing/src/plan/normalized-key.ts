@@ -20,14 +20,39 @@ export function sourceFieldToNormalizedKey(source: string): string {
   return `f_${base}`;
 }
 
+const AXIS_SEGMENTS = new Set(["row", "column"]);
+
 /**
  * Derive the source field name a binding refers to, then normalise it — the
  * one-call convenience for frontend callers that only have the serialised
  * `ColumnBindingDraft.sourceLocator` string.
+ *
+ * Recognises the current frontend serialisation forms emitted by
+ * `serializeLocator` in `apps/web/src/workflows/.../layout-plan-mapping.util.ts`:
+ *   - `header:<axis>:<name>`        — `byHeaderName` locator (current)
+ *   - `pos:<axis>:<index>`          — `byPositionIndex` locator (current)
+ * plus the legacy `header:<name>` / `col:<index>` shapes a few callers and
+ * tests still use. The axis word is stripped so the derived key reflects
+ * the source column's own name (`Email` → `email`), not its axis (`row`
+ * → `row_email`).
  */
 export function sourceLocatorToNormalizedKey(sourceLocator: string): string {
   if (sourceLocator.startsWith("header:")) {
-    return sourceFieldToNormalizedKey(sourceLocator.slice("header:".length));
+    const rest = sourceLocator.slice("header:".length);
+    const colonIdx = rest.indexOf(":");
+    if (colonIdx >= 0 && AXIS_SEGMENTS.has(rest.slice(0, colonIdx))) {
+      return sourceFieldToNormalizedKey(rest.slice(colonIdx + 1));
+    }
+    return sourceFieldToNormalizedKey(rest);
+  }
+  if (sourceLocator.startsWith("pos:")) {
+    const rest = sourceLocator.slice("pos:".length);
+    const colonIdx = rest.indexOf(":");
+    const idx =
+      colonIdx >= 0 && AXIS_SEGMENTS.has(rest.slice(0, colonIdx))
+        ? rest.slice(colonIdx + 1)
+        : rest;
+    return sourceFieldToNormalizedKey(`col_${idx}`);
   }
   if (sourceLocator.startsWith("col:")) {
     return sourceFieldToNormalizedKey(`col_${sourceLocator.slice("col:".length)}`);

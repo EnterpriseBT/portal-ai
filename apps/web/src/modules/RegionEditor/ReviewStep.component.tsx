@@ -3,7 +3,10 @@ import { Box, Stack, Typography, Button } from "@portalai/core/ui";
 import type { SelectOption } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import type { ColumnDataType } from "@portalai/core/models";
-import { sourceLocatorToNormalizedKey } from "@portalai/core/contracts";
+import {
+  sourceFieldToNormalizedKey,
+  sourceLocatorToNormalizedKey,
+} from "@portalai/core/contracts";
 
 import { ConfidenceChipUI } from "./ConfidenceChip.component";
 import { RegionReviewCardUI } from "./RegionReviewCard.component";
@@ -154,6 +157,27 @@ function syntheticBindingDraft(
   };
 }
 
+/**
+ * Source-derived default normalizedKey for a synthetic locator. The
+ * locator string itself doesn't carry the underlying name (`pivot:pivot-1`
+ * tells you the segment id, not its axisName), so derive from the
+ * region's segment / cellValueField slot directly.
+ */
+function syntheticDerivedNormalizedKey(
+  region: RegionDraft,
+  sourceLocator: string
+): string | undefined {
+  const parsed = parseSyntheticLocator(sourceLocator);
+  if (!parsed) return undefined;
+  if (parsed.kind === "pivot") {
+    const seg = findPivotSegment(region, parsed.segmentId);
+    return seg ? sourceFieldToNormalizedKey(seg.axisName) : undefined;
+  }
+  return region.cellValueField
+    ? sourceFieldToNormalizedKey(region.cellValueField.name)
+    : undefined;
+}
+
 export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   regions,
   overallConfidence,
@@ -194,8 +218,17 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
       // segment or cellValueField slot. Only `columnDefinitionId` is
       // meaningful (the underlying schema has no override fields), but
       // that's the field the user wants to rebind.
-      const initialDraft = syntheticBindingDraft(region, sourceLocator);
-      if (!initialDraft) return;
+      const baseDraft = syntheticBindingDraft(region, sourceLocator);
+      if (!baseDraft) return;
+      // Pre-populate the normalizedKey field with the source-derived
+      // default so the input shows what the field will be called instead
+      // of a blank box. The value is purely cosmetic — handleApply only
+      // diffs columnDefinitionId for synthetic locators.
+      const derivedKey = syntheticDerivedNormalizedKey(region, sourceLocator);
+      const initialDraft: ColumnBindingDraft = {
+        ...baseDraft,
+        normalizedKey: derivedKey,
+      };
       const ctx = draftValidationContext(
         initialDraft,
         resolveColumnDefinitionType
@@ -501,6 +534,12 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
             }
             return region.cellValueField
               ? { primary: region.cellValueField.name, kind: "Cell value" }
+              : undefined;
+          })()}
+          derivedNormalizedKey={(() => {
+            const region = regions.find((r) => r.id === editing.regionId);
+            return region
+              ? syntheticDerivedNormalizedKey(region, editing.sourceLocator)
               : undefined;
           })()}
           columnDefinitionType={
