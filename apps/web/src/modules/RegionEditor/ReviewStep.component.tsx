@@ -65,6 +65,14 @@ export interface ReviewStepUIProps {
   resolveColumnDefinitionDescription?: (
     binding: ColumnBindingDraft
   ) => string | null | undefined;
+  /**
+   * Looks up a ColumnDefinition's display label by id. The review card uses
+   * this to render labels for the pivot-segment and cellValueField chips —
+   * those fields land on `region.segmentsByAxis[*].columnDefinitionId` and
+   * `region.cellValueField.columnDefinitionId` respectively, neither of which
+   * carries an embedded label like a `ColumnBindingDraft`.
+   */
+  resolveColumnLabel?: (columnDefinitionId: string) => string | undefined;
 }
 
 interface EditingState {
@@ -101,6 +109,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   resolveReferenceFieldOptions,
   resolveColumnDefinitionType,
   resolveColumnDefinitionDescription,
+  resolveColumnLabel,
 }) => {
   const popoverEnabled =
     onUpdateBinding !== undefined &&
@@ -356,6 +365,7 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
                     handleChipClick(region, sourceLocator, anchorEl)
                   }
                   bindingErrors={bindingErrorsByRegion.get(region.id)}
+                  resolveColumnLabel={resolveColumnLabel}
                 />
               ))}
             </Stack>

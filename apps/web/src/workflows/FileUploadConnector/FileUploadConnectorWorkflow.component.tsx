@@ -166,6 +166,7 @@ export interface FileUploadConnectorWorkflowUIProps {
   resolveColumnDefinitionDescription?: (
     binding: ColumnBindingDraft
   ) => string | null | undefined;
+  resolveColumnLabel?: (columnDefinitionId: string) => string | undefined;
   onCommit: () => void;
 
   // Navigation
@@ -224,6 +225,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
   resolveReferenceFieldOptions,
   resolveColumnDefinitionType,
   resolveColumnDefinitionDescription,
+  resolveColumnLabel,
   onCommit,
   onBack,
   errors,
@@ -307,6 +309,7 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                 resolveColumnDefinitionDescription={
                   resolveColumnDefinitionDescription
                 }
+                resolveColumnLabel={resolveColumnLabel}
                 onCommit={onCommit}
                 onBack={onBack}
                 isCommitting={isCommitting}
@@ -627,6 +630,12 @@ export const FileUploadConnectorWorkflow: React.FC<
     [columnDefinitionsById]
   );
 
+  const resolveColumnLabel = useCallback(
+    (columnDefinitionId: string): string | undefined =>
+      columnDefinitionsById.get(columnDefinitionId)?.label,
+    [columnDefinitionsById]
+  );
+
   // C2 pre-check: before staging a newly-created entity, make sure no
   // other connector in this org already owns the chosen key. Reuses the
   // connectorEntity search SDK (org-scoped by auth) so callers don't
@@ -774,6 +783,7 @@ export const FileUploadConnectorWorkflow: React.FC<
       resolveReferenceFieldOptions={resolveReferenceFieldOptions}
       resolveColumnDefinitionType={resolveColumnDefinitionType}
       resolveColumnDefinitionDescription={resolveColumnDefinitionDescription}
+      resolveColumnLabel={resolveColumnLabel}
       onCommit={() => {
         void workflow.onCommit();
       }}

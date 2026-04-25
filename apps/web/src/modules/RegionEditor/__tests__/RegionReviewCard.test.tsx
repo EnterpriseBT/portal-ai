@@ -84,6 +84,122 @@ describe("RegionReviewCardUI — excluded chip styling", () => {
   });
 });
 
+describe("RegionReviewCardUI — pivot + cellValueField chips", () => {
+  const pivotRegion: Partial<RegionDraft> = {
+    id: "region-pivot",
+    bounds: { startRow: 3, endRow: 6, startCol: 1, endCol: 6 },
+    headerAxes: ["row"],
+    segmentsByAxis: {
+      row: [
+        {
+          kind: "pivot",
+          id: "pivot-1",
+          axisName: "timestamp",
+          axisNameSource: "user",
+          positionCount: 6,
+          columnDefinitionId: "coldef_timestamp",
+        },
+      ],
+    },
+    cellValueField: {
+      name: "amount",
+      nameSource: "user",
+      columnDefinitionId: "coldef_amount",
+    },
+    columnBindings: [],
+  };
+
+  test("renders a chip per pivot segment, resolving the label via resolveColumnLabel", () => {
+    const resolveColumnLabel = jest.fn((id: string) =>
+      id === "coldef_timestamp"
+        ? "Timestamp"
+        : id === "coldef_amount"
+          ? "Amount"
+          : undefined
+    );
+    render(
+      <RegionReviewCardUI
+        region={makeRegion(pivotRegion)}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+        resolveColumnLabel={resolveColumnLabel}
+      />
+    );
+    // Pivot axisName chip: source = "timestamp", label = "Timestamp"
+    expect(screen.getByText("timestamp")).toBeInTheDocument();
+    expect(screen.getByText("Timestamp")).toBeInTheDocument();
+    // CellValueField chip: source = "amount", label = "Amount"
+    expect(screen.getByText("amount")).toBeInTheDocument();
+    expect(screen.getByText("Amount")).toBeInTheDocument();
+  });
+
+  test("pivot + cellValueField chips are non-interactive (no edit handler yet)", () => {
+    const onEditBinding =
+      jest.fn<(sourceLocator: string, anchorEl: HTMLElement) => void>();
+    render(
+      <RegionReviewCardUI
+        region={makeRegion(pivotRegion)}
+        onJump={jest.fn()}
+        onEditBinding={onEditBinding}
+        resolveColumnLabel={(id) =>
+          id === "coldef_timestamp" ? "Timestamp" : "Amount"
+        }
+      />
+    );
+    // Pivot chip exposes a status role with an aria-label that names the
+    // bound ColumnDefinition.
+    const pivotChip = screen.getByRole("status", {
+      name: /pivot axis "timestamp" bound to Timestamp/i,
+    });
+    fireEvent.click(pivotChip);
+    expect(onEditBinding).not.toHaveBeenCalled();
+  });
+
+  test("unbound pivot segment carries an 'Unbound' pill instead of a confidence dot", () => {
+    render(
+      <RegionReviewCardUI
+        region={makeRegion({
+          ...pivotRegion,
+          segmentsByAxis: {
+            row: [
+              {
+                kind: "pivot",
+                id: "pivot-1",
+                axisName: "timestamp",
+                axisNameSource: "user",
+                positionCount: 6,
+                // no columnDefinitionId — classifier didn't find a match.
+              },
+            ],
+          },
+          cellValueField: {
+            name: "amount",
+            nameSource: "user",
+            // no columnDefinitionId either.
+          },
+        })}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+      />
+    );
+    expect(screen.getAllByText(/^unbound$/i).length).toBe(2);
+  });
+
+  test("non-pivoted region shows no logical-field chips even when resolver is supplied", () => {
+    render(
+      <RegionReviewCardUI
+        region={makeRegion()}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+        resolveColumnLabel={() => "Anything"}
+      />
+    );
+    // The fixture has no pivot segments and no cellValueField — only the
+    // existing columnBindings chips should render.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
 describe("RegionReviewCardUI — invalid chip styling", () => {
   test("chips with entries in bindingErrors carry an invalid aria-label + Invalid pill", () => {
     setup(
