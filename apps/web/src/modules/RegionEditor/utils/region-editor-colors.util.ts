@@ -41,3 +41,22 @@ export const CONFIDENCE_BAND_COLOR: Record<
   red: "#dc2626",
   none: "#94a3b8",
 };
+
+/**
+ * Theme-aware variant of `CONFIDENCE_BAND_COLOR` — maps each band to a MUI
+ * palette token usable directly in `sx` props (e.g. `borderColor:
+ * CONFIDENCE_BAND_PALETTE[band]`). Prefer this in new code so colors track
+ * the active theme (light / dark / brand) instead of the hardcoded hex
+ * values; `CONFIDENCE_BAND_COLOR` remains for cases that need a raw hex
+ * (e.g. alpha-blending via concatenation, where token resolution doesn't
+ * apply).
+ */
+export const CONFIDENCE_BAND_PALETTE: Record<
+  "green" | "yellow" | "red" | "none",
+  string
+> = {
+  green: "success.main",
+  yellow: "warning.main",
+  red: "error.main",
+  none: "text.disabled",
+};

@@ -7,7 +7,7 @@ import { WarningRowUI } from "./WarningRow.component";
 import { formatBounds } from "./utils/a1-notation.util";
 import {
   confidenceBand,
-  CONFIDENCE_BAND_COLOR,
+  CONFIDENCE_BAND_PALETTE,
 } from "./utils/region-editor-colors.util";
 import type { RegionDraft } from "./utils/region-editor.types";
 import type { RegionBindingErrors } from "./utils/region-editor-validation.util";
@@ -202,7 +202,7 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                 border: "1px solid",
                 borderColor: chip.invalid
                   ? "error.main"
-                  : CONFIDENCE_BAND_COLOR[chip.band],
+                  : CONFIDENCE_BAND_PALETTE[chip.band],
                 backgroundColor: chip.invalid
                   ? "error.light"
                   : "background.paper",
@@ -244,7 +244,7 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
                         width: 6,
                         height: 6,
                         borderRadius: "50%",
-                        backgroundColor: CONFIDENCE_BAND_COLOR[chip.band],
+                        backgroundColor: CONFIDENCE_BAND_PALETTE[chip.band],
                       }}
                     />
                   )}
