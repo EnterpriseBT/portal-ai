@@ -10,7 +10,10 @@ import type {
   InterpretState,
 } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
-import { heuristicMatch } from "./classifier-heuristic.util.js";
+import {
+  applyDefaultColumnDefinition,
+  heuristicMatch,
+} from "./classifier-heuristic.util.js";
 import {
   headerLineCoords,
   readHeaderLineLabels,
@@ -176,7 +179,13 @@ export async function classifyFieldSegments(
     const classifications: ColumnClassification[] = Array.isArray(result)
       ? result
       : (result as ClassifierResult).classifications;
-    next.set(pending[i].regionId, classifications);
+    next.set(
+      pending[i].regionId,
+      applyDefaultColumnDefinition(
+        classifications,
+        deps.defaultColumnDefinitionId
+      )
+    );
   }
   return { ...state, columnClassifications: next };
 }

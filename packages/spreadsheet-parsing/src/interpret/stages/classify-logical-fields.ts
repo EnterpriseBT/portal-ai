@@ -10,7 +10,10 @@ import type {
   InterpretState,
 } from "../types.js";
 import { pLimit } from "../util/p-limit.js";
-import { heuristicMatch } from "./classifier-heuristic.util.js";
+import {
+  applyDefaultColumnDefinition,
+  heuristicMatch,
+} from "./classifier-heuristic.util.js";
 import { headerLineCoords } from "./header-line.util.js";
 
 const SAMPLE_LIMIT = 10;
@@ -272,7 +275,13 @@ export async function classifyLogicalFields(
       ? result
       : (result as ClassifierResult).classifications;
     workByRegion.set(work.regionId, work);
-    classificationsByRegion.set(work.regionId, classifications);
+    classificationsByRegion.set(
+      work.regionId,
+      applyDefaultColumnDefinition(
+        classifications,
+        deps.defaultColumnDefinitionId
+      )
+    );
   }
 
   const detectedRegions = state.detectedRegions.map((region) => {

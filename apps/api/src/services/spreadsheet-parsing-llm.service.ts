@@ -72,6 +72,7 @@ export interface CreateInterpretDepsOptions {
    * itself — always injected.
    */
   columnDefinitionCatalog?: InterpretDeps["columnDefinitionCatalog"];
+  defaultColumnDefinitionId?: InterpretDeps["defaultColumnDefinitionId"];
 }
 
 const DEFAULT_INTERPRET_MODEL = "claude-haiku-4-5-20251001";
@@ -223,6 +224,7 @@ export function createInterpretDeps(
     classifier,
     axisNameRecommender,
     columnDefinitionCatalog: opts.columnDefinitionCatalog,
+    defaultColumnDefinitionId: opts.defaultColumnDefinitionId,
     logger,
   };
 }

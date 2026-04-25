@@ -28,9 +28,18 @@ export class LayoutPlanInterpretService {
     hints: RegionHint[],
     orgId: string,
     userId: string,
-    depsOverrides?: Omit<CreateInterpretDepsOptions, "columnDefinitionCatalog">
+    depsOverrides?: Omit<
+      CreateInterpretDepsOptions,
+      "columnDefinitionCatalog" | "defaultColumnDefinitionId"
+    >
   ): Promise<LayoutPlan> {
     const catalog = await LayoutPlanInterpretService.loadCatalog(orgId);
+    // Resolve the org's seeded `text` system ColumnDefinition; the parser
+    // uses it as the landing spot for any candidate the classifier can't
+    // confidently match, so the review step never shows an unbound field.
+    const defaultColumnDefinitionId = catalog.find(
+      (c) => c.normalizedKey === "text"
+    )?.id;
     const deps = createInterpretDeps({
       // Env-selected defaults for each stage. Explicit depsOverrides still
       // win (tests pass a mocked `generateObject` + fixed model ids), so
@@ -39,6 +48,7 @@ export class LayoutPlanInterpretService {
       axisNameRecommenderModel: environment.INTERPRET_AXIS_NAME_MODEL,
       ...depsOverrides,
       columnDefinitionCatalog: catalog,
+      defaultColumnDefinitionId,
       logger:
         depsOverrides?.logger ??
         createLogger({ module: "interpret", orgId, userId }),

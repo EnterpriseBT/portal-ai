@@ -31,6 +31,16 @@ export interface InterpretDeps {
   columnDefinitionCatalog?: ColumnDefinitionCatalogEntry[];
 
   /**
+   * Catalog id to fall back to when the classifier (heuristic or LLM) can't
+   * confidently match a candidate. Treated as a "default text" landing spot
+   * so the review step never shows an unbound field — the user can re-bind
+   * any defaulted entry. When omitted, unmatched candidates keep
+   * `columnDefinitionId: null` (legacy behavior). Consumers typically pass
+   * the org's seeded `text` system ColumnDefinition id.
+   */
+  defaultColumnDefinitionId?: string;
+
+  /**
    * Narrow AI sub-call for pivoted-segment axis-name recommendations.
    * Default: returns `null` (no recommendation), which leaves the pivot
    * segment's `axisName` unresolved and triggers `SEGMENT_MISSING_AXIS_NAME`

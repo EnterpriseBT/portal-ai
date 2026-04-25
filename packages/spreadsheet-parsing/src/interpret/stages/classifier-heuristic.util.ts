@@ -4,6 +4,8 @@ import type {
   ColumnDefinitionCatalogEntry,
 } from "../types.js";
 
+const DEFAULT_FALLBACK_RATIONALE = "default-text-fallback";
+
 /**
  * Normalise a label for name-equality matching. Lower-case, alphanumeric-only,
  * collapses runs of separators into single underscores and strips leading /
@@ -49,4 +51,30 @@ export function heuristicMatch(
     confidence: 0,
     rationale: "heuristic-no-match",
   };
+}
+
+/**
+ * Rewrite null `columnDefinitionId` entries to the fallback id so the review
+ * step never shows an unbound field. Confidence drops to 0 and the rationale
+ * is annotated with `default-text-fallback`, preserving any prior rationale
+ * (e.g. `heuristic-no-match`) so traces stay informative. Pass-through when
+ * no fallback is supplied — legacy callers see no behavior change.
+ */
+export function applyDefaultColumnDefinition(
+  classifications: ColumnClassification[],
+  fallbackId: string | undefined
+): ColumnClassification[] {
+  if (!fallbackId) return classifications;
+  return classifications.map((c) => {
+    if (c.columnDefinitionId !== null) return c;
+    const rationale = c.rationale
+      ? `${c.rationale}; ${DEFAULT_FALLBACK_RATIONALE}`
+      : DEFAULT_FALLBACK_RATIONALE;
+    return {
+      ...c,
+      columnDefinitionId: fallbackId,
+      confidence: 0,
+      rationale,
+    };
+  });
 }

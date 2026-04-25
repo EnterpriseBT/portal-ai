@@ -128,6 +128,24 @@ describe("classifyLogicalFields — built-in heuristic", () => {
     expect(region.cellValueField?.columnDefinitionId).toBeUndefined();
   });
 
+  it("falls back to defaultColumnDefinitionId when the catalog has no match", async () => {
+    const state = await runThroughProposeBindings(pivotInput());
+    const next = await classifyLogicalFields(state, {
+      columnDefinitionCatalog: [
+        { id: "col-unrelated", label: "Something Else" },
+      ],
+      defaultColumnDefinitionId: "col-text",
+    });
+    const region = next.detectedRegions[0];
+    const pivot = region.segmentsByAxis?.row?.find(
+      (s): s is Extract<Segment, { kind: "pivot" }> => s.kind === "pivot"
+    );
+    // Both pivot axisName and cellValueField land on the fallback so the
+    // review step never shows an unbound logical field.
+    expect(pivot?.columnDefinitionId).toBe("col-text");
+    expect(region.cellValueField?.columnDefinitionId).toBe("col-text");
+  });
+
   it("is a no-op for regions with no pivot segment", async () => {
     const input: InterpretInput = {
       workbook: {

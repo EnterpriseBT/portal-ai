@@ -117,6 +117,24 @@ describe("classifyFieldSegments — heuristic default", () => {
       true
     );
   });
+
+  it("rewrites null columnDefinitionId to defaultColumnDefinitionId when supplied, with rationale annotated", async () => {
+    const prepared = runUpToDetectSegments(simpleInput());
+    const state = await classifyFieldSegments(prepared, {
+      columnDefinitionCatalog: DEFAULT_CATALOG,
+      defaultColumnDefinitionId: "col-text",
+    });
+    const regionId = state.detectedRegions[0].id;
+    const classifications = state.columnClassifications.get(regionId)!;
+    // "age" has no catalog match but should now bind to the fallback.
+    const ageEntry = classifications.find((c) => c.sourceHeader === "age");
+    expect(ageEntry?.columnDefinitionId).toBe("col-text");
+    expect(ageEntry?.confidence).toBe(0);
+    expect(ageEntry?.rationale).toContain("default-text-fallback");
+    // Real matches are untouched.
+    const emailEntry = classifications.find((c) => c.sourceHeader === "email");
+    expect(emailEntry?.columnDefinitionId).toBe("col-email");
+  });
 });
 
 describe("classifyFieldSegments — filters non-field positions", () => {
