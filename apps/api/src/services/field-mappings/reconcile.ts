@@ -1,21 +1,29 @@
 /**
- * Reconcile `FieldMapping` rows for a connector entity against a union of
- * `ColumnBinding`s from one or more plan regions.
+ * Reconcile `FieldMapping` rows for a connector entity against the
+ * `ColumnBinding`s of a single plan region. Each region maps 1:1 to an
+ * entity (C1: `assertUniqueEntityTargets`); the binding set this stage
+ * receives is therefore the bindings of one region.
  *
  * - Drops bindings with `excluded: true` up-front so commit writes no row
  *   for them (and soft-deletes any previously-live mapping on a re-commit).
- * - Dedupes the remaining bindings by `columnDefinitionId` (two regions
- *   binding the same column definition produce **one** `FieldMapping`).
+ * - Validates that no two active bindings resolve to the same normalizedKey
+ *   — `(connectorEntityId, normalizedKey)` is the FieldMapping unique key,
+ *   so a collision would silently overwrite data
+ *   (`LAYOUT_PLAN_DUPLICATE_NORMALIZED_KEY`). Multiple bindings *may* share
+ *   a `columnDefinitionId` (e.g. when several unmatched headers land on
+ *   the text-fallback default) — each gets its own FieldMapping row keyed
+ *   by its source-derived normalizedKey.
  * - Honors per-binding overrides (`normalizedKey`, `required`, `defaultValue`,
  *   `format`, `enumValues`, `refEntityKey`, `refNormalizedKey`) with catalog
  *   fallbacks. See `docs/BINDING_OVERRIDES.spec.md`.
- * - Validates normalized-key regex + uniqueness across the desired set
- *   (`LAYOUT_PLAN_INVALID_PAYLOAD` / `LAYOUT_PLAN_DUPLICATE_NORMALIZED_KEY`).
+ * - Validates normalized-key regex on explicit overrides
+ *   (`LAYOUT_PLAN_INVALID_PAYLOAD`).
  * - Validates reference-typed bindings against the caller-supplied set of
  *   staged entity keys and an on-demand lookup of existing org entities
  *   (`LAYOUT_PLAN_INVALID_REFERENCE`).
- * - Soft-deletes mappings that are no longer in the union (so patched plans
- *   that drop or exclude a binding also drop the corresponding mapping).
+ * - Soft-deletes mappings that are no longer in the desired set (so patched
+ *   plans that drop or exclude a binding also drop the corresponding
+ *   mapping).
  */
 
 import { and, eq, inArray, isNull } from "drizzle-orm";
@@ -124,16 +132,11 @@ export async function reconcileFieldMappings(
   // stale-detection path below).
   const active = bindings.filter((b) => b.excluded !== true);
 
-  // Dedupe by columnDefinitionId, preserving the first occurrence's metadata.
-  const byColumnDefId = new Map<string, PlanBinding>();
-  for (const binding of active) {
-    if (!byColumnDefId.has(binding.columnDefinitionId)) {
-      byColumnDefId.set(binding.columnDefinitionId, binding);
-    }
-  }
-
   // Resolve normalized keys + enforce regex on explicit overrides.
-  const desired = Array.from(byColumnDefId.values()).map((binding) => {
+  // Multiple bindings may share a columnDefinitionId (e.g. text-fallback)
+  // and each gets its own FieldMapping row keyed by its source-derived
+  // normalizedKey — so dedup happens at the normalizedKey level below.
+  const resolved = active.map((binding) => {
     if (
       binding.normalizedKey !== undefined &&
       !NORMALIZED_KEY_PATTERN.test(binding.normalizedKey)
@@ -150,13 +153,16 @@ export async function reconcileFieldMappings(
     };
   });
 
-  // Reject two bindings (different columnDefinitionId) that resolve to the
-  // same normalizedKey — FieldMapping is keyed on (connectorEntityId,
-  // normalizedKey), so a collision would silently overwrite data.
+  // Reject any two active bindings that resolve to the same normalizedKey.
+  // FieldMapping is keyed on (connectorEntityId, normalizedKey) — a duplicate
+  // means two bindings would compete for the same row and one's data would
+  // silently disappear. The user must rename a normalizedKey override or
+  // rebind one of the source columns.
+  const desired: { binding: PlanBinding; normalizedKey: string }[] = [];
   const seen = new Map<string, string>();
-  for (const { binding, normalizedKey } of desired) {
+  for (const { binding, normalizedKey } of resolved) {
     const prior = seen.get(normalizedKey);
-    if (prior !== undefined && prior !== binding.columnDefinitionId) {
+    if (prior !== undefined) {
       throw new ApiError(
         400,
         ApiCode.LAYOUT_PLAN_DUPLICATE_NORMALIZED_KEY,
@@ -164,6 +170,7 @@ export async function reconcileFieldMappings(
       );
     }
     seen.set(normalizedKey, binding.columnDefinitionId);
+    desired.push({ binding, normalizedKey });
   }
 
   // Reference validation — resolve target entity + refNormalizedKey per

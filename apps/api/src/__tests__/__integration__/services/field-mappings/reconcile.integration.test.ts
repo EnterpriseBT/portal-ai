@@ -376,6 +376,33 @@ describe("reconcileFieldMappings — integration", () => {
       expect(rows[0].normalizedKey).toBe("customer_name");
     });
 
+    it("creates one FieldMapping per binding when multiple bindings share a columnDefinitionId but resolve to distinct normalizedKeys", async () => {
+      // Three different source headers all default to the same text-fallback
+      // ColumnDefinition. Each gets its own FieldMapping row keyed by the
+      // source-derived normalizedKey — the dedup is by normalizedKey, not by
+      // columnDefinitionId, so the second and third aren't dropped.
+      await reconcileFieldMappings(
+        {
+          connectorEntityId: subjectEntityId,
+          organizationId: orgId,
+          userId,
+          bindings: [
+            { columnDefinitionId: colStringId, sourceField: "Department" },
+            { columnDefinitionId: colStringId, sourceField: "Cost Center" },
+            { columnDefinitionId: colStringId, sourceField: "Region" },
+          ],
+          catalogById,
+        },
+        db
+      );
+      const rows = await readMappings();
+      expect(rows).toHaveLength(3);
+      const byKey = new Map(rows.map((r) => [r.normalizedKey, r]));
+      expect(byKey.get("department")?.columnDefinitionId).toBe(colStringId);
+      expect(byKey.get("cost_center")?.columnDefinitionId).toBe(colStringId);
+      expect(byKey.get("region")?.columnDefinitionId).toBe(colStringId);
+    });
+
     it("honors binding.normalizedKey over the catalog key", async () => {
       await reconcileFieldMappings(
         {

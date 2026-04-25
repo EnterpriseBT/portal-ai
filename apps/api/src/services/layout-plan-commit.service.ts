@@ -139,10 +139,14 @@ export class LayoutPlanCommitService {
         (bindingsByTarget
           .set(region.targetEntityDefinitionId, [])
           .get(region.targetEntityDefinitionId) as PlanBindingWithSource[]);
+
+      // Static field bindings — replay emits these in `record.fields` keyed
+      // by `columnDefinitionId`, so the recordFieldKey is the colDefId.
       for (const binding of region.columnBindings as ColumnBinding[]) {
         bucket.push({
           columnDefinitionId: binding.columnDefinitionId,
           sourceField: sourceFieldFromBinding(binding),
+          recordFieldKey: binding.columnDefinitionId,
           isPrimaryKey: false,
           excluded: binding.excluded,
           normalizedKey: binding.normalizedKey,
@@ -152,6 +156,33 @@ export class LayoutPlanCommitService {
           enumValues: binding.enumValues,
           refEntityKey: binding.refEntityKey,
           refNormalizedKey: binding.refNormalizedKey,
+        });
+      }
+
+      // Pivot segments — replay emits `record.fields[segment.axisName]`,
+      // so the recordFieldKey is the human-readable axisName. Each pivot
+      // gets its own FieldMapping; the segment's `columnDefinitionId` is
+      // populated by `classify-logical-fields` (text-fallback when the
+      // classifier doesn't match).
+      for (const axis of ["row", "column"] as const) {
+        for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+          if (seg.kind !== "pivot" || !seg.columnDefinitionId) continue;
+          bucket.push({
+            columnDefinitionId: seg.columnDefinitionId,
+            sourceField: seg.axisName,
+            recordFieldKey: seg.axisName,
+            isPrimaryKey: false,
+          });
+        }
+      }
+
+      // Cell-value field — replay emits `record.fields[cellValueField.name]`.
+      if (region.cellValueField?.columnDefinitionId) {
+        bucket.push({
+          columnDefinitionId: region.cellValueField.columnDefinitionId,
+          sourceField: region.cellValueField.name,
+          recordFieldKey: region.cellValueField.name,
+          isPrimaryKey: false,
         });
       }
     }
@@ -214,16 +245,19 @@ export class LayoutPlanCommitService {
           tx
         );
 
-        // Build the `columnDefinitionId → normalizedKey` map the record
-        // writer needs so `entity_records.normalizedData` lines up with the
-        // `FieldMapping.normalizedKey` values reconcile wrote. Skip excluded
-        // bindings — they have no FieldMapping row to match.
-        const normalizedKeyByColumnDefId = new Map<string, string>();
+        // Build the `recordFieldKey → normalizedKey` map the record writer
+        // needs so `entity_records.normalizedData` lines up with the
+        // `FieldMapping.normalizedKey` values reconcile wrote. Static field
+        // bindings expose values under `columnDefinitionId`; pivot +
+        // cellValueField bindings expose values under their source name —
+        // each binding declares its own `recordFieldKey` so the lookup is
+        // uniform. Skip excluded bindings — they have no FieldMapping row.
+        const normalizedKeyByRecordFieldKey = new Map<string, string>();
         for (const binding of bindings) {
           if (binding.excluded === true) continue;
-          if (!normalizedKeyByColumnDefId.has(binding.columnDefinitionId)) {
-            normalizedKeyByColumnDefId.set(
-              binding.columnDefinitionId,
+          if (!normalizedKeyByRecordFieldKey.has(binding.recordFieldKey)) {
+            normalizedKeyByRecordFieldKey.set(
+              binding.recordFieldKey,
               resolveNormalizedKey(binding, catalogById)
             );
           }
@@ -233,7 +267,7 @@ export class LayoutPlanCommitService {
           entity.id,
           groupRecords,
           catalogById,
-          normalizedKeyByColumnDefId,
+          normalizedKeyByRecordFieldKey,
           organizationId,
           userId,
           tx
@@ -368,12 +402,15 @@ export class LayoutPlanCommitService {
 
   /**
    * Write one group's records into `entity_records` via
-   * `upsertManyBySourceId`. Translates `ExtractedRecord.fields` (keyed by
-   * columnDefinitionId or axis-name) into `normalizedData` keyed by the
-   * binding's resolved `normalizedKey` — the same value reconcile wrote to
-   * `FieldMapping.normalizedKey`, so downstream readers can look the record's
-   * fields up by the mapping's key. Falls back to `catalog.key` / the raw
-   * field name for axis-name entries that have no binding. Computes
+   * `upsertManyBySourceId`. Translates `ExtractedRecord.fields` (whose keys
+   * are either a `columnDefinitionId` for static field segments or a source
+   * name like `segment.axisName` / `cellValueField.name` for pivot regions)
+   * into `normalizedData` keyed by the binding's resolved `normalizedKey` —
+   * the same value reconcile wrote to `FieldMapping.normalizedKey`, so
+   * downstream readers can look the record's fields up by the mapping's key.
+   * The caller-supplied `normalizedKeyByRecordFieldKey` covers both keying
+   * conventions; the catalog-key / raw-field-name fallbacks below remain as
+   * safety nets for entries the bindings list didn't cover. Computes
    * created / updated / unchanged by comparing against existing rows by
    * (entity, sourceId, checksum).
    */
@@ -381,7 +418,7 @@ export class LayoutPlanCommitService {
     connectorEntityId: string,
     records: ExtractedRecord[],
     catalogById: Map<string, ColumnDefinitionSelect>,
-    normalizedKeyByColumnDefId: Map<string, string>,
+    normalizedKeyByRecordFieldKey: Map<string, string>,
     organizationId: string,
     userId: string,
     tx: DbClient
@@ -439,11 +476,12 @@ export class LayoutPlanCommitService {
 
       const normalizedData: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(record.fields)) {
-        // Binding field → use the same normalizedKey reconcile wrote to
-        // FieldMapping. Axis-name field → fall back to the catalog key, then
-        // the raw field name.
+        // Map the record-field key (columnDefinitionId for statics, source
+        // name for pivot/cellValueField) to the same normalizedKey reconcile
+        // wrote on the FieldMapping. Catalog-key / raw-field-name remain as
+        // last-resort fallbacks for entries no binding covered.
         const key =
-          normalizedKeyByColumnDefId.get(k) ??
+          normalizedKeyByRecordFieldKey.get(k) ??
           catalogById.get(k)?.key ??
           k;
         normalizedData[key] = v;
@@ -491,6 +529,15 @@ export class LayoutPlanCommitService {
 interface PlanBindingWithSource {
   columnDefinitionId: string;
   sourceField: string;
+  /**
+   * The key under which this binding's value will appear in
+   * `ExtractedRecord.fields`. Replay emits static field-segment values keyed
+   * by `columnDefinitionId`, but pivot segment + cellValueField values are
+   * keyed by their human-readable name (axisName / cellValueField.name).
+   * `writeRecords` consults this key to translate `record.fields` into
+   * `normalizedData` keyed by the FieldMapping's normalizedKey.
+   */
+  recordFieldKey: string;
   isPrimaryKey?: boolean;
   excluded?: boolean;
   normalizedKey?: string;
