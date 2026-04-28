@@ -63,6 +63,11 @@ COPY --from=build /app/apps/api/drizzle.config.ts ./drizzle.config.ts
 # Copy production node_modules (installed for target arch)
 COPY --from=deps /app/node_modules ./node_modules
 
+# Overlay api workspace's nested node_modules so packages that aren't hoisted
+# at the monorepo root (e.g. zod v4 — root keeps v3 for apps/web's tanstack)
+# are resolvable from /app/dist at runtime.
+COPY --from=deps /app/apps/api/node_modules ./node_modules
+
 # Copy built @portalai/core into node_modules
 COPY --from=build /app/packages/core/dist ./node_modules/@portalai/core/dist
 COPY --from=build /app/packages/core/package.json ./node_modules/@portalai/core/
