@@ -1,5 +1,8 @@
 import type { ConnectorInstance, ColumnDataType } from "@portalai/core/models";
-import type { ResolvedColumn } from "@portalai/core/contracts";
+import type {
+  PublicAccountInfo,
+  ResolvedColumn,
+} from "@portalai/core/contracts";
 
 // ── Query / Result types ────────────────────────────────────────────
 
@@ -62,4 +65,17 @@ export interface ConnectorAdapter {
     instance: ConnectorInstance,
     entityKey: string
   ): Promise<DiscoveredColumn[]>;
+
+  /**
+   * Project the decrypted credentials blob into the public `accountInfo`
+   * shape rendered on the connector card chip + detail view. Adapters
+   * implement this to surface non-secret fields (e.g. the authenticated
+   * account's email); omit the method entirely to opt out (the serializer
+   * defaults to `EMPTY_ACCOUNT_INFO`).
+   *
+   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 9.
+   */
+  toPublicAccountInfo?(
+    credentials: Record<string, unknown> | null
+  ): PublicAccountInfo;
 }

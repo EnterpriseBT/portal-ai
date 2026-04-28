@@ -39,6 +39,15 @@ export const environment = {
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
   // Encryption key for securing sensitive data at rest (base64-encoded, 32 bytes)
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+  // ── Google OAuth (Phase A: docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md)
+  //    Per-env Google OAuth2 client used by the google-sheets connector.
+  //    OAUTH_STATE_SECRET is a separate HMAC key used only to sign the
+  //    short-lived `state` token that binds the OAuth callback to its
+  //    requester — distinct from ENCRYPTION_KEY (signing ≠ encryption).
+  GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
+  GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
+  GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI || "",
+  OAUTH_STATE_SECRET: process.env.OAUTH_STATE_SECRET || "",
   // Redis configuration (BullMQ + Pub/Sub)
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6380",
   // Size cap for the legacy multipart POST /api/file-uploads/parse path.

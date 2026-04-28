@@ -7,12 +7,42 @@ import {
 } from "./pagination.contract.js";
 
 /**
- * API-facing schema for connector instances.
- * Overrides `credentials` from the DB-layer `string | null` back to the
- * decrypted `Record<string, unknown> | null` that API consumers expect.
+ * Connector-defined public projection of a credential blob.
+ *
+ * Adapters opt into surfacing fields by implementing
+ * `ConnectorAdapter.toPublicAccountInfo`. The `identity` field is the
+ * one-line summary the connector card chip renders (typically an email
+ * or workspace name); `metadata` is a free-form bag of additional public
+ * fields the detail view renders generically. Primitive-only values in
+ * `metadata` so the UI can humanize keys + stringify values without
+ * recursion.
+ *
+ * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 9.
  */
-export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.extend({
-  credentials: z.record(z.string(), z.unknown()).nullable(),
+export const PublicAccountInfoSchema = z.object({
+  identity: z.string().nullable(),
+  metadata: z.record(
+    z.string(),
+    z.union([z.string(), z.number(), z.boolean()])
+  ),
+});
+
+export type PublicAccountInfo = z.infer<typeof PublicAccountInfoSchema>;
+
+export const EMPTY_ACCOUNT_INFO: PublicAccountInfo = {
+  identity: null,
+  metadata: {},
+};
+
+/**
+ * API-facing schema for connector instances. The repository decrypts
+ * `credentials` on read; the API layer redacts it before responding and
+ * surfaces only the connector-defined `accountInfo` projection.
+ */
+export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.omit({
+  credentials: true,
+}).extend({
+  accountInfo: PublicAccountInfoSchema,
 });
 
 export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;

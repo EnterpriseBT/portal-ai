@@ -13,7 +13,10 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { connectorInstances } from "../db/schema/index.js";
+import {
+  connectorDefinitions,
+  connectorInstances,
+} from "../db/schema/index.js";
 import {
   ConnectorInstanceListRequestQuerySchema,
   type ConnectorInstanceListResponsePayload,
@@ -27,6 +30,10 @@ import {
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import {
+  redactInstance,
+  redactInstances,
+} from "../services/connector-instances.service.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
@@ -200,12 +207,33 @@ connectorInstanceRouter.get(
         );
       });
 
+      // Resolve slug for each row's adapter lookup. When the caller asked
+      // for `include=connectorDefinition`, the rows already carry the slug;
+      // otherwise we batch-load it from the definition repository so the
+      // redaction never falls back to "unknown adapter" on a slug that's
+      // actually registered.
+      const definitionIds = Array.from(
+        new Set(data.map((r) => r.connectorDefinitionId))
+      );
+      const definitions = definitionIds.length
+        ? await DbService.repository.connectorDefinitions.findMany(
+            inArray(connectorDefinitions.id, definitionIds)
+          )
+        : [];
+      const slugByDefinitionId = new Map(
+        definitions.map((d) => [d.id, d.slug])
+      );
+      const redacted = redactInstances(
+        data as unknown as Parameters<typeof redactInstances>[0],
+        slugByDefinitionId
+      );
+
       return HttpService.success<
         | ConnectorInstanceListResponsePayload
         | ConnectorInstanceListWithDefinitionResponsePayload
       >(res, {
         connectorInstances:
-          data as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
+          redacted as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
         total,
         limit,
         offset,
@@ -308,10 +336,13 @@ connectorInstanceRouter.get(
           .catch(() => null);
 
       return HttpService.success<ConnectorInstanceGetResponsePayload>(res, {
-        connectorInstance: {
-          ...connectorInstance,
+        connectorInstance: redactInstance({
+          instance: connectorInstance as unknown as Parameters<
+            typeof redactInstance
+          >[0]["instance"],
+          slug: connectorDefinition?.slug ?? "",
           connectorDefinition: connectorDefinition ?? null,
-        } as unknown as ConnectorInstanceWithDefinitionApi,
+        }) as unknown as ConnectorInstanceWithDefinitionApi,
       });
     } catch (error) {
       logger.error(
@@ -602,8 +633,12 @@ connectorInstanceRouter.post(
       return HttpService.success<ConnectorInstanceCreateResponsePayload>(
         res,
         {
-          connectorInstance:
-            connectorInstance as unknown as ConnectorInstanceApi,
+          connectorInstance: redactInstance({
+            instance: connectorInstance as unknown as Parameters<
+              typeof redactInstance
+            >[0]["instance"],
+            slug: definition?.slug ?? "",
+          }) as unknown as ConnectorInstanceApi,
         },
         201
       );
@@ -905,8 +940,20 @@ connectorInstanceRouter.patch(
       );
 
       logger.info({ id }, "Connector instance updated");
+      const updatedDefinition = updated
+        ? await DbService.repository.connectorDefinitions.findById(
+            updated.connectorDefinitionId
+          )
+        : null;
       return HttpService.success(res, {
-        connectorInstance: updated as unknown as ConnectorInstanceApi,
+        connectorInstance: updated
+          ? (redactInstance({
+              instance: updated as unknown as Parameters<
+                typeof redactInstance
+              >[0]["instance"],
+              slug: updatedDefinition?.slug ?? "",
+            }) as unknown as ConnectorInstanceApi)
+          : null,
       });
     } catch (error) {
       logger.error(

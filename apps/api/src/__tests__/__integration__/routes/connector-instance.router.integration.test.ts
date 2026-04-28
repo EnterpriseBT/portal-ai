@@ -1256,10 +1256,13 @@ describe("Connector Instance Router", () => {
       expect(created.organizationId).toBe(orgId);
       expect(created.status).toBe("active");
       expect(created.config).toBeNull();
-      expect(created.credentials).toBeNull();
+      // `credentials` is redacted from every response shape (see Slice 9).
+      expect(created.credentials).toBeUndefined();
+      // Connectors with no `toPublicAccountInfo` get the empty default.
+      expect(created.accountInfo).toEqual({ identity: null, metadata: {} });
     });
 
-    it("should create an instance with config and credentials", async () => {
+    it("should create an instance with config and credentials but redact credentials from the response", async () => {
       const def = createConnectorDefinition();
       const user = createUser(AUTH0_ID);
       const orgId = generateId();
@@ -1287,8 +1290,13 @@ describe("Connector Instance Router", () => {
       expect(res.status).toBe(201);
       const created = res.body.payload.connectorInstance;
       expect(created.config).toEqual({ endpoint: "https://api.example.com" });
-      // Credentials should be returned decrypted through the API
-      expect(created.credentials).toEqual({ apiKey: "secret-key-123" });
+      // Credentials must NEVER be returned over the wire — the API redacts
+      // them. Deep-scan the body so a future regression slipping the field
+      // through any nested object fails this test.
+      expect(JSON.stringify(res.body)).not.toContain("secret-key-123");
+      expect(created.credentials).toBeUndefined();
+      // The unrecognized slug has no adapter — accountInfo defaults to empty.
+      expect(created.accountInfo).toEqual({ identity: null, metadata: {} });
     });
 
     it("created instance should be retrievable via GET", async () => {
@@ -1325,6 +1333,53 @@ describe("Connector Instance Router", () => {
       expect(getRes.body.payload.connectorInstance.name).toBe(
         "Retrievable Instance"
       );
+    });
+
+    it("surfaces accountInfo.identity for google-sheets instances and never leaks credentials", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({ slug: "google-sheets" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      // Insert a row directly with already-encrypted credentials, mirroring
+      // what the OAuth callback writes. The repository decrypts on read; the
+      // serializer projects it to accountInfo.identity = email.
+      const { encryptCredentials } = await import(
+        "../../../utils/crypto.util.js"
+      );
+      const credentialsBlob = encryptCredentials({
+        refresh_token: "1//super-secret-refresh-token",
+        scopes: ["drive.readonly"],
+        googleAccountEmail: "alice@example.com",
+      });
+      const instanceId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(
+          createConnectorInstance(def.id, organizationId, {
+            id: instanceId,
+            status: "pending",
+            credentials: credentialsBlob,
+          }) as never
+        );
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${instanceId}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const body = res.body.payload.connectorInstance;
+      expect(body.accountInfo).toEqual({
+        identity: "alice@example.com",
+        metadata: {},
+      });
+      expect(body.credentials).toBeUndefined();
+      // Deep-scan: refresh_token must not appear anywhere in the response.
+      expect(JSON.stringify(res.body)).not.toContain("super-secret-refresh-token");
     });
   });
 });
