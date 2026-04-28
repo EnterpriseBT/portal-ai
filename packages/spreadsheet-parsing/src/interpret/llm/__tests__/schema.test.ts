@@ -25,13 +25,13 @@ describe("ClassifierResponseSchema", () => {
     expect(out.success).toBe(true);
   });
 
-  it("rejects confidence outside [0, 1]", () => {
+  it("accepts confidence outside [0, 1] (clamping happens on receipt)", () => {
     const out = ClassifierResponseSchema.safeParse({
       classifications: [
         { sourceHeader: "x", columnDefinitionId: "id", confidence: 1.1 },
       ],
     });
-    expect(out.success).toBe(false);
+    expect(out.success).toBe(true);
   });
 
   it("rejects non-null-non-string columnDefinitionId", () => {
@@ -68,13 +68,13 @@ describe("AxisNameRecommenderResponseSchema", () => {
     ).toBe(false);
   });
 
-  it("rejects confidence > 1", () => {
+  it("accepts confidence > 1 (clamping happens on receipt)", () => {
     expect(
       AxisNameRecommenderResponseSchema.safeParse({
         name: "Month",
         confidence: 1.5,
       }).success
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("rejects missing confidence", () => {
