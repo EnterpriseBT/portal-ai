@@ -11,11 +11,13 @@ ENV BUILD_SHA=$BUILD_SHA
 COPY package*.json turbo.json tsconfig.json ./
 COPY apps/api/package*.json apps/api/
 COPY packages/core/package*.json packages/core/
+COPY packages/spreadsheet-parsing/package*.json packages/spreadsheet-parsing/
 
 # Install all dependencies (including devDependencies for build)
 RUN npm ci
 
 # Copy source
+COPY packages/spreadsheet-parsing/ packages/spreadsheet-parsing/
 COPY packages/core/ packages/core/
 COPY apps/api/ apps/api/
 
@@ -38,6 +40,7 @@ WORKDIR /app
 COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/apps/api/package.json apps/api/
 COPY --from=build /app/packages/core/package.json packages/core/
+COPY --from=build /app/packages/spreadsheet-parsing/package.json packages/spreadsheet-parsing/
 RUN NPM_CPU=$(echo "$TARGETARCH" | sed 's/amd64/x64/') && \
     npm ci --omit=dev --cpu="$NPM_CPU" --os="$TARGETOS"
 
@@ -63,6 +66,10 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy built @portalai/core into node_modules
 COPY --from=build /app/packages/core/dist ./node_modules/@portalai/core/dist
 COPY --from=build /app/packages/core/package.json ./node_modules/@portalai/core/
+
+# Copy built @portalai/spreadsheet-parsing into node_modules
+COPY --from=build /app/packages/spreadsheet-parsing/dist ./node_modules/@portalai/spreadsheet-parsing/dist
+COPY --from=build /app/packages/spreadsheet-parsing/package.json ./node_modules/@portalai/spreadsheet-parsing/
 
 EXPOSE 3001
 
