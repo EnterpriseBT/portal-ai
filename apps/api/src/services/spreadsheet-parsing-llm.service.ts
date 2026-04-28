@@ -210,7 +210,10 @@ export function createInterpretDeps(
     );
 
     return {
-      suggestion: parsed.data,
+      suggestion: {
+        ...parsed.data,
+        confidence: clampConfidence(parsed.data.confidence),
+      },
       usage: {
         inputTokens: result.usage?.inputTokens,
         outputTokens: result.usage?.outputTokens,
@@ -240,8 +243,19 @@ function mapClassifierResponse(
       sourceHeader: entry.sourceHeader,
       sourceCol: candidate?.sourceCol ?? 0,
       columnDefinitionId: entry.columnDefinitionId,
-      confidence: entry.confidence,
+      confidence: clampConfidence(entry.confidence),
       rationale: entry.rationale,
     };
   });
+}
+
+// Anthropic's structured-output schema rejects min/max on numbers, so the
+// schemas advertise `confidence: number` and the [0, 1] contract is enforced
+// here. Out-of-range values from the model are pulled back into the band
+// rather than thrown — a stray 1.05 shouldn't fail the whole interpret run.
+function clampConfidence(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
 }

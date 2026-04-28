@@ -147,8 +147,8 @@ describe("createInterpretDeps — classifier", () => {
         classifications: [
           {
             sourceHeader: "email",
-            columnDefinitionId: "col-email",
-            confidence: 99, // out-of-range
+            columnDefinitionId: 42, // wrong type
+            confidence: 0.9,
           },
         ],
       },
@@ -159,6 +159,32 @@ describe("createInterpretDeps — classifier", () => {
       name: "LlmResponseError",
       stage: "classify",
     });
+  });
+
+  it("clamps out-of-range confidence into [0, 1] on receipt", async () => {
+    generateObject.mockResolvedValue({
+      object: {
+        classifications: [
+          {
+            sourceHeader: "email",
+            columnDefinitionId: "col-email",
+            confidence: 1.4,
+          },
+          {
+            sourceHeader: "name",
+            columnDefinitionId: null,
+            confidence: -0.2,
+          },
+        ],
+      },
+      usage: {},
+    });
+    const deps = createInterpretDeps({ generateObject });
+    const out = (await deps.classifier!(candidates, catalog)) as {
+      classifications: { confidence: number }[];
+    };
+    expect(out.classifications[0]?.confidence).toBe(1);
+    expect(out.classifications[1]?.confidence).toBe(0);
   });
 });
 
@@ -212,6 +238,18 @@ describe("createInterpretDeps — axisNameRecommender", () => {
       name: "LlmResponseError",
       stage: "recommend-axis-name",
     });
+  });
+
+  it("clamps out-of-range confidence into [0, 1] on receipt", async () => {
+    generateObject.mockResolvedValue({
+      object: { name: "Month", confidence: 1.5 },
+      usage: {},
+    });
+    const deps = createInterpretDeps({ generateObject });
+    const out = (await deps.axisNameRecommender!(["Jan"])) as {
+      suggestion: { confidence: number };
+    };
+    expect(out.suggestion.confidence).toBe(1);
   });
 });
 
