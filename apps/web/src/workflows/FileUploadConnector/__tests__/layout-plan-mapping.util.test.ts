@@ -110,6 +110,30 @@ describe("regionDraftsToHints", () => {
     });
   });
 
+  it("forwards intersectionCellValueFields onto the hint so re-interpret keeps per-block names", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        cellValueField: { name: "value", nameSource: "user" },
+        intersectionCellValueFields: {
+          rp1__cp1: { name: "Revenue", nameSource: "user" },
+          rp1__cp2: {
+            name: "Headcount",
+            nameSource: "user",
+            columnDefinitionId: "coldef_headcount",
+          },
+        },
+      }),
+    ]);
+    expect(hints[0].intersectionCellValueFields).toEqual({
+      rp1__cp1: { name: "Revenue", nameSource: "user" },
+      rp1__cp2: {
+        name: "Headcount",
+        nameSource: "user",
+        columnDefinitionId: "coldef_headcount",
+      },
+    });
+  });
+
   it("forwards the draft's segmentsByAxis verbatim", () => {
     const hints = regionDraftsToHints(makeWorkbook(), [
       baseDraft({

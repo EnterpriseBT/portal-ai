@@ -38,6 +38,27 @@ export const SegmentSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("field"),
     positionCount: z.number().int().min(1),
+    /**
+     * Optional per-position header overrides, index-aligned with the segment's
+     * positions (length must equal `positionCount` when present). An entry's
+     * trimmed value, when non-empty, replaces what the cell-derived header
+     * would produce for that position — both in the editor's preview and at
+     * interpret time. Empty strings mean "no override; use the cell".
+     *
+     * Use case: spreadsheets that ship a value column without a header label
+     * (the user wants to call it "year"), or that ship a header the user
+     * wants to rename without renaming the cell itself.
+     */
+    headers: z.array(z.string()).optional(),
+    /**
+     * Optional per-position skip flags, index-aligned with the segment's
+     * positions (length must equal `positionCount` when present). When
+     * `skipped[i] === true`, the position emits no record column — the
+     * preview omits it and the interpreter treats it like a `skip` segment
+     * for that single position. Lets the user drop one column out of a
+     * larger field run without having to fragment the segment.
+     */
+    skipped: z.array(z.boolean()).optional(),
   }),
   z.object({
     kind: z.literal("pivot"),
@@ -119,6 +140,22 @@ const RegionObjectSchema = z.object({
   headerAxes: z.array(AxisMemberEnum).max(2).default([]),
   segmentsByAxis: SegmentsByAxisSchema.optional(),
   cellValueField: CellValueFieldSchema.optional(),
+  /**
+   * Per-intersection-block cell-value overrides on a 2D region. Keys are
+   * composite ids `<rowPivotSegmentId>__<colPivotSegmentId>` referring to
+   * pivot segments on `segmentsByAxis.row` and `segmentsByAxis.column`
+   * respectively. When set, the value's `name` replaces the region-level
+   * `cellValueField.name` for body cells inside that intersection block;
+   * commit emits a separate FieldMapping per distinct override.
+   *
+   * Only meaningful on regions where both axes carry at least one pivot
+   * segment — i.e. true crosstabs with multiple `<intersection-block>`s
+   * (see `segment-intersection.md`). Unreferenced keys (pivot ids that
+   * don't exist) are rejected by refinement.
+   */
+  intersectionCellValueFields: z
+    .record(z.string(), CellValueFieldSchema)
+    .optional(),
   recordsAxis: AxisMemberEnum.optional(),
   recordAxisTerminator: TerminatorSchema.optional(),
   headerStrategyByAxis: HeaderStrategyByAxisSchema.optional(),
@@ -235,6 +272,28 @@ export const RegionSchema = RegionObjectSchema.superRefine((region, ctx) => {
     }
   }
 
+  // ── Refinement 3a: field segment `headers` length matches positionCount ─
+  for (const axis of ["row", "column"] as const) {
+    const segs = region.segmentsByAxis?.[axis] ?? [];
+    segs.forEach((s, i) => {
+      if (s.kind !== "field") return;
+      if (s.headers !== undefined && s.headers.length !== s.positionCount) {
+        ctx.addIssue({
+          code: "custom",
+          message: `field segment headers length ${s.headers.length} does not match positionCount ${s.positionCount}`,
+          path: ["segmentsByAxis", axis, i, "headers"],
+        });
+      }
+      if (s.skipped !== undefined && s.skipped.length !== s.positionCount) {
+        ctx.addIssue({
+          code: "custom",
+          message: `field segment skipped length ${s.skipped.length} does not match positionCount ${s.positionCount}`,
+          path: ["segmentsByAxis", axis, i, "skipped"],
+        });
+      }
+    });
+  }
+
   // ── Refinement 4 / 13: pivot id unique across both axes ───────────────
   {
     const seen = new Set<string>();
@@ -287,6 +346,54 @@ export const RegionSchema = RegionObjectSchema.superRefine((region, ctx) => {
         message: `headerStrategyByAxis.${axis} is only allowed when "${axis}" ∈ headerAxes`,
         path: ["headerStrategyByAxis", axis],
       });
+    }
+  }
+
+  // ── Refinement 6a: intersectionCellValueFields key validity ──────────
+  if (region.intersectionCellValueFields) {
+    const rowPivotIds = new Set<string>();
+    const colPivotIds = new Set<string>();
+    for (const seg of region.segmentsByAxis?.row ?? []) {
+      if (seg.kind === "pivot") rowPivotIds.add(seg.id);
+    }
+    for (const seg of region.segmentsByAxis?.column ?? []) {
+      if (seg.kind === "pivot") colPivotIds.add(seg.id);
+    }
+    const isCrosstab = region.headerAxes.length === 2;
+    for (const key of Object.keys(region.intersectionCellValueFields)) {
+      if (!isCrosstab) {
+        ctx.addIssue({
+          code: "custom",
+          message: `intersectionCellValueFields requires a 2D region (headerAxes.length === 2)`,
+          path: ["intersectionCellValueFields", key],
+        });
+        continue;
+      }
+      const sep = key.indexOf("__");
+      if (sep < 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: `intersectionCellValueFields key "${key}" must be "<rowPivotSegmentId>__<colPivotSegmentId>"`,
+          path: ["intersectionCellValueFields", key],
+        });
+        continue;
+      }
+      const rowId = key.slice(0, sep);
+      const colId = key.slice(sep + 2);
+      if (!rowPivotIds.has(rowId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `intersectionCellValueFields key "${key}" references unknown row-axis pivot id "${rowId}"`,
+          path: ["intersectionCellValueFields", key],
+        });
+      }
+      if (!colPivotIds.has(colId)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `intersectionCellValueFields key "${key}" references unknown column-axis pivot id "${colId}"`,
+          path: ["intersectionCellValueFields", key],
+        });
+      }
     }
   }
 

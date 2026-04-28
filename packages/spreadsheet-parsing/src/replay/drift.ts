@@ -63,9 +63,13 @@ function pivotSegmentsWithAnchor(region: Region): Segment[] {
 
 /**
  * Walk the segments along `axis` and emit, for each header position, the
- * `kind` of segment it lives in (`"field"` | `"pivot"` | `"skip"`). Caller
- * walks `header.labels` in lockstep — index `i` of the labels array
+ * effective `kind` it has at runtime (`"field"` | `"pivot"` | `"skip"`).
+ * Caller walks `header.labels` in lockstep — index `i` of the labels array
  * corresponds to the i-th position covered by `segmentKindByHeaderIndex`.
+ *
+ * Per-position field-segment overrides:
+ *   - `skipped[k] === true` flips the kind to `"skip"` for that index, so
+ *     the addedColumns gate ignores the position (the user has opted out).
  *
  * Used by the addedColumns drift gate: only `field`-segment positions
  * count as "static columns the user has bound by name". Pivot positions
@@ -80,7 +84,35 @@ function segmentKindByHeaderIndex(
   const out: Segment["kind"][] = [];
   for (const seg of region.segmentsByAxis?.[axis] ?? []) {
     for (let i = 0; i < seg.positionCount; i++) {
-      out.push(seg.kind);
+      if (seg.kind === "field" && seg.skipped?.[i] === true) {
+        out.push("skip");
+      } else {
+        out.push(seg.kind);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 0-based positions along `axis` that are bound by a `byPositionIndex`
+ * locator. The addedColumns gate uses this to avoid flagging positions
+ * that are pinned positionally — they're already bound, even though
+ * their cell label doesn't appear in `boundNames` (which only tracks
+ * `byHeaderName` bindings).
+ */
+function positionalBoundIndices(
+  region: Region,
+  axis: "row" | "column"
+): Set<number> {
+  const out = new Set<number>();
+  for (const binding of region.columnBindings) {
+    if (
+      binding.sourceLocator.kind === "byPositionIndex" &&
+      binding.sourceLocator.axis === axis
+    ) {
+      // sourceLocator.index is 1-based; header index is 0-based.
+      out.add(binding.sourceLocator.index - 1);
     }
   }
   return out;
@@ -142,10 +174,16 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
     // header value as an "added column", making any pivot region
     // un-committable without an `addedColumns: "auto-apply"` workaround.
     const kindByIndex = segmentKindByHeaderIndex(region, header.axis);
+    const positional = positionalBoundIndices(region, header.axis);
     for (let i = 0; i < header.labels.length; i++) {
       const label = header.labels[i];
       if (label === "") continue;
       if (kindByIndex[i] !== "field") continue;
+      // A position pinned by `byPositionIndex` is already bound (typically
+      // because the user supplied a `headers[i]` override); the cell label
+      // doesn't drive the binding, so a fresh value there isn't an "added
+      // column" — it's just whatever happens to live in the cell now.
+      if (positional.has(i)) continue;
       if (!boundNames.has(label)) {
         detail.addedColumns.push(label);
       }

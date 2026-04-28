@@ -458,6 +458,204 @@ describe("classifyFieldSegments — injected classifier override", () => {
     expect(peak).toBeLessThanOrEqual(2);
   });
 
+  it("drops positions where the field segment marks skipped[i] === true", async () => {
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 2, cols: 3 },
+            cells: [
+              { row: 1, col: 1, value: "email" },
+              { row: 1, col: 2, value: "First Name" },
+              { row: 1, col: 3, value: "age" },
+              { row: 2, col: 1, value: "a@x.com" },
+              { row: 2, col: 2, value: "alice" },
+              { row: 2, col: 3, value: 30 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
+          targetEntityDefinitionId: "contacts",
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              {
+                kind: "field",
+                positionCount: 3,
+                skipped: [false, true, false],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(async () => []);
+    const prepared = runUpToDetectSegments(input);
+    await classifyFieldSegments(prepared, {
+      classifier: spy,
+      columnDefinitionCatalog: [],
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [candidates] = spy.mock.calls[0]!;
+    expect(candidates.map((c) => c.sourceHeader)).toEqual(["email", "age"]);
+  });
+
+  it("uses headers[i] as sourceHeader when set, regardless of cell contents — the override always wins and is flagged fromHeaderOverride", async () => {
+    // Spy on the classifier so we can inspect the candidate stream directly
+    // (the heuristic default would round-trip the same data and add catalog-
+    // matching noise that obscures the test's intent).
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 4, cols: 3 },
+            // Row 1 is the chosen header line. Col 1's header is blank so the
+            // override on `headers[0]` is what gives that position a label.
+            cells: [
+              // Row 1 is the header — col 1 deliberately blank. Data rows
+              // are all numeric so detect-headers' string-heavy scoring
+              // unambiguously prefers row 1.
+              { row: 1, col: 1, value: "" },
+              { row: 1, col: 2, value: "name" },
+              { row: 1, col: 3, value: "desc" },
+              { row: 2, col: 1, value: 1 },
+              { row: 2, col: 2, value: 2 },
+              { row: 2, col: 3, value: 3 },
+              { row: 3, col: 1, value: 4 },
+              { row: 3, col: 2, value: 5 },
+              { row: 3, col: 3, value: 6 },
+              { row: 4, col: 1, value: 7 },
+              { row: 4, col: 2, value: 8 },
+              { row: 4, col: 3, value: 9 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+          targetEntityDefinitionId: "rows",
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              {
+                kind: "field",
+                positionCount: 3,
+                headers: ["year", "", ""],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async (candidates) =>
+        candidates.map((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId: null,
+          confidence: 0,
+        }))
+    );
+    const prepared = runUpToDetectSegments(input);
+    const state = await classifyFieldSegments(prepared, {
+      classifier: spy,
+      columnDefinitionCatalog: [],
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [candidates] = spy.mock.calls[0]!;
+    expect(candidates.map((c) => c.sourceHeader)).toEqual([
+      "year",
+      "name",
+      "desc",
+    ]);
+    const regionId = state.detectedRegions[0].id;
+    const classifications = state.columnClassifications.get(regionId)!;
+    const yearClassification = classifications.find(
+      (c) => c.sourceHeader === "year"
+    );
+    expect(yearClassification?.fromHeaderOverride).toBe(true);
+    const nameClassification = classifications.find(
+      (c) => c.sourceHeader === "name"
+    );
+    expect(nameClassification?.fromHeaderOverride).toBeUndefined();
+  });
+
+  it("override beats a non-empty cell — the user's typed name wins over whatever the cell says", async () => {
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 4, cols: 3 },
+            // Row 1 col 1 contains a label the user wants to rename
+            // ("YR" → "year"). The override should still win.
+            cells: [
+              { row: 1, col: 1, value: "YR" },
+              { row: 1, col: 2, value: "name" },
+              { row: 1, col: 3, value: "desc" },
+              { row: 2, col: 1, value: 1 },
+              { row: 2, col: 2, value: 2 },
+              { row: 2, col: 3, value: 3 },
+              { row: 3, col: 1, value: 4 },
+              { row: 3, col: 2, value: 5 },
+              { row: 3, col: 3, value: 6 },
+              { row: 4, col: 1, value: 7 },
+              { row: 4, col: 2, value: 8 },
+              { row: 4, col: 3, value: 9 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+          targetEntityDefinitionId: "rows",
+          headerAxes: ["row"],
+          segmentsByAxis: {
+            row: [
+              {
+                kind: "field",
+                positionCount: 3,
+                headers: ["year", "", ""],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const spy: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async (candidates) =>
+        candidates.map((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId: null,
+          confidence: 0,
+        }))
+    );
+    const prepared = runUpToDetectSegments(input);
+    await classifyFieldSegments(prepared, {
+      classifier: spy,
+      columnDefinitionCatalog: [],
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [candidates] = spy.mock.calls[0]!;
+    // Position 0 yields the override "year", not the cell value "YR".
+    expect(candidates.map((c) => c.sourceHeader)).toEqual([
+      "year",
+      "name",
+      "desc",
+    ]);
+  });
+
   it("skips classification entirely for headerless regions", async () => {
     const input: InterpretInput = {
       workbook: {

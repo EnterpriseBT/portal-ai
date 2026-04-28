@@ -213,6 +213,102 @@ describe("detectRegionDrift — added-columns", () => {
   });
 });
 
+describe("detectRegionDrift — field-segment overrides", () => {
+  it("does not flag added-columns for a position bound by byPositionIndex (header-override case)", () => {
+    // The user supplied `headers[0] = "year"` against a blank header cell
+    // that subsequently gained a value. The binding is byPositionIndex
+    // (the override doesn't appear in the sheet) — drift should treat
+    // that position as already bound, not as an added column.
+    const wb = makeWorkbook({
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows: 2, cols: 3 },
+          cells: [
+            { row: 1, col: 1, value: "year" },
+            { row: 1, col: 2, value: "name" },
+            { row: 1, col: 3, value: "age" },
+            { row: 2, col: 1, value: 2024 },
+            { row: 2, col: 2, value: "alice" },
+            { row: 2, col: 3, value: 30 },
+          ],
+        },
+      ],
+    });
+    const region = contactsRegion({
+      bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 3, headers: ["year", "", ""] }],
+      },
+      columnBindings: [
+        {
+          sourceLocator: { kind: "byPositionIndex", axis: "row", index: 1 },
+          columnDefinitionId: "col-year",
+          confidence: 0.9,
+          normalizedKey: "year",
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "name" },
+          columnDefinitionId: "col-name",
+          confidence: 0.9,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "age" },
+          columnDefinitionId: "col-age",
+          confidence: 0.8,
+        },
+      ],
+    });
+    const drift = detectRegionDrift(region, wb.sheets[0]);
+    expect(drift.kinds).not.toContain("added-columns");
+  });
+
+  it("does not flag added-columns for a position the segment marks skipped[i] === true", () => {
+    const wb = makeWorkbook({
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows: 2, cols: 3 },
+          cells: [
+            { row: 1, col: 1, value: "email" },
+            { row: 1, col: 2, value: "ignore-me" },
+            { row: 1, col: 3, value: "age" },
+            { row: 2, col: 1, value: "a@x.com" },
+            { row: 2, col: 2, value: "x" },
+            { row: 2, col: 3, value: 30 },
+          ],
+        },
+      ],
+    });
+    const region = contactsRegion({
+      bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 3 },
+      segmentsByAxis: {
+        row: [
+          {
+            kind: "field",
+            positionCount: 3,
+            skipped: [false, true, false],
+          },
+        ],
+      },
+      columnBindings: [
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "email" },
+          columnDefinitionId: "col-email",
+          confidence: 0.9,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "row", name: "age" },
+          columnDefinitionId: "col-age",
+          confidence: 0.9,
+        },
+      ],
+    });
+    const drift = detectRegionDrift(region, wb.sheets[0]);
+    expect(drift.kinds).not.toContain("added-columns");
+  });
+});
+
 describe("detectRegionDrift — removed-columns", () => {
   it("is a blocker when removed-columns exceed removedColumns.max", () => {
     const wb = makeWorkbook({

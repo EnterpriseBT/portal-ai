@@ -50,14 +50,40 @@ export interface IdentityCandidate {
 export interface ColumnClassification {
   /** Header label as discovered by `detect-headers`. */
   sourceHeader: string;
-  /** 1-based column index in the sheet (for `byColumnIndex` fallback). */
+  /**
+   * Axis-relative coordinate of the classified position. For axis="row"
+   * (a row-of-headers axis) this is a sheet column index; for
+   * axis="column" (a column-of-headers axis) it is a sheet row index.
+   * Naming is historical — when this stage only handled tidy regions the
+   * axis was always row, so the coord was always a column. Crosstabs may
+   * surface either, so always read this together with `sourceAxis` (when
+   * set) to disambiguate.
+   */
   sourceCol: number;
+  /**
+   * Header axis the classification came from — "row" for a row-of-headers
+   * axis, "column" for a column-of-headers axis. Set by
+   * `classify-field-segments` when iterating the region's declared
+   * `headerAxes` so `propose-bindings` can route each classification to
+   * the right `byPositionIndex` axis on a 2D crosstab. Optional for
+   * backwards compatibility with custom classifiers that don't supply it
+   * — `propose-bindings` then falls back to legacy single-axis routing.
+   */
+  sourceAxis?: AxisMember;
   /** Matched ColumnDefinition id, or `null` if no confident match. */
   columnDefinitionId: string | null;
   /** Classifier confidence in [0, 1]. */
   confidence: number;
   /** Short rationale the classifier emitted. */
   rationale?: string;
+  /**
+   * Set by `classify-field-segments` when `sourceHeader` was synthesised
+   * from a field-segment `headers[i]` override (typically because the
+   * underlying header cell was blank). `propose-bindings` reads this flag
+   * to emit a `byPositionIndex` locator — `byHeaderName` would fail at
+   * replay since the override name doesn't appear in the sheet.
+   */
+  fromHeaderOverride?: boolean;
 }
 
 export interface RegionConfidence {

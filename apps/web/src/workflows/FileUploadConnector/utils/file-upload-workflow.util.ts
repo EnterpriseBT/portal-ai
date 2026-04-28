@@ -320,6 +320,59 @@ function applyPivotFields<
 }
 
 /**
+ * Apply a synthetic-locator patch (`intersection:<id>` chip) to a single
+ * entry in `region.intersectionCellValueFields`. Routes the same patch
+ * shape `patchCellValueFieldBinding` accepts (columnDefinitionId,
+ * excluded, sourceField → name) onto the intersection's slot.
+ */
+function patchIntersectionCellValueField(
+  prev: FileUploadWorkflowState,
+  regionId: string,
+  intersectionId: string,
+  patch: Partial<ColumnBindingDraft>
+): FileUploadWorkflowState {
+  const synthetic = pickSyntheticPatch(patch);
+  if (!synthetic) return prev;
+
+  let regionTouched = false;
+  const nextRegions = prev.regions.map((r) => {
+    if (r.id !== regionId) return r;
+    const prior = r.intersectionCellValueFields?.[intersectionId];
+    if (!prior) return r;
+    regionTouched = true;
+    return {
+      ...r,
+      intersectionCellValueFields: {
+        ...r.intersectionCellValueFields,
+        [intersectionId]: applyCellValueFields(prior, synthetic),
+      },
+    };
+  });
+  if (!regionTouched) return prev;
+
+  let nextPlan = prev.plan;
+  if (prev.plan) {
+    nextPlan = {
+      ...prev.plan,
+      regions: prev.plan.regions.map((planRegion) => {
+        if (planRegion.id !== regionId) return planRegion;
+        const prior =
+          planRegion.intersectionCellValueFields?.[intersectionId];
+        if (!prior) return planRegion;
+        return {
+          ...planRegion,
+          intersectionCellValueFields: {
+            ...planRegion.intersectionCellValueFields,
+            [intersectionId]: applyCellValueFields(prior, synthetic),
+          },
+        };
+      }),
+    };
+  }
+  return { ...prev, regions: nextRegions, plan: nextPlan };
+}
+
+/**
  * Apply a synthetic-locator patch (`cellValueField` chip) to the region's
  * cellValueField slot in both the regions state and the plan mirror.
  * `columnDefinitionId` (rebind) and `excluded` (omit toggle) are the only
@@ -592,9 +645,10 @@ export function useFileUploadWorkflow(
       const region = prev.regions.find((r) => r.id === regionId);
       if (!region) return prev;
 
-      // Synthetic locators issued by review-step pivot / cellValueField
-      // chips. Only `columnDefinitionId` persists — pivot Segment +
-      // CellValueField don't carry the override fields ColumnBinding does.
+      // Synthetic locators issued by review-step pivot / cellValueField /
+      // intersection chips. Only `columnDefinitionId`, `excluded`, and
+      // `sourceField → name` persist — these slots don't carry the full
+      // override surface ColumnBinding does.
       if (sourceLocator === "cellValueField") {
         return patchCellValueFieldBinding(prev, regionId, patch);
       }
@@ -603,6 +657,14 @@ export function useFileUploadWorkflow(
           prev,
           regionId,
           sourceLocator.slice("pivot:".length),
+          patch
+        );
+      }
+      if (sourceLocator.startsWith("intersection:")) {
+        return patchIntersectionCellValueField(
+          prev,
+          regionId,
+          sourceLocator.slice("intersection:".length),
           patch
         );
       }

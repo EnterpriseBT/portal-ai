@@ -44,13 +44,17 @@ function candidatesForRegion(
 ): IdentityCandidate[] {
   const { bounds, sheet: sheetName } = region;
 
-  // Column-based identity only makes sense when records iterate rows — i.e.,
-  // 1D with a row header, or a 2D crosstab (which also iterates rows as
-  // records in today's sense). For records-are-columns or headerless-column,
-  // we skip column identity.
+  // Column-based identity only makes sense when records iterate rows —
+  // i.e., 1D with a row header. For 2D crosstabs each body cell is a
+  // record (not each row), so a unique-column candidate would assign
+  // the same sourceId to every (rowPivot × colPivot) record sharing
+  // that row, collapsing the K × L matrix to K records under upsert.
+  // Crosstabs fall through to `rowPosition` (cell-coord sourceId) so
+  // every pivot×pivot record gets a distinct id. For records-are-columns
+  // or headerless-column, column identity is also skipped.
   const recAxis = recordsAxisOf(region);
   const admitsColumnIdentity =
-    recAxis === "row" || region.headerAxes.length === 2;
+    recAxis === "row" && region.headerAxes.length !== 2;
 
   const rowHeader = headerCandidates?.find((c) => c.axis === "row");
   const headerRow = rowHeader?.index ?? bounds.startRow - 1;

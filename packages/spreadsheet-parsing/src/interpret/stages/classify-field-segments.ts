@@ -53,9 +53,38 @@ function collectSamples(
 }
 
 /**
+ * A `ClassifierCandidate` together with the metadata `propose-bindings`
+ * needs to choose a locator kind. The classifier sees only the public
+ * `ClassifierCandidate` fields; `fromHeaderOverride` is preserved on the
+ * resulting `ColumnClassification` (see runBuiltIn / classifier callers).
+ */
+interface AnnotatedCandidate {
+  candidate: ClassifierCandidate;
+  fromHeaderOverride: boolean;
+  /**
+   * Header axis the candidate came from. Stamped onto the resulting
+   * `ColumnClassification.sourceAxis` so `propose-bindings` can route
+   * each binding to the right axis on a 2D crosstab — column-axis
+   * classifications must use `byPositionIndex.axis: "column"` and an
+   * index relative to `bounds.startRow`, not `startCol`.
+   */
+  sourceAxis: AxisMember;
+}
+
+/**
  * Walk `segments` along `axis` and emit one `ClassifierCandidate` per
  * position inside a `kind: "field"` segment. Pivot and skip positions are
  * dropped — they're classified by other stages (or not at all).
+ *
+ * Per-position field-segment overrides on `kind === "field"`:
+ *   - `skipped[i] === true` drops the position outright (no candidate).
+ *   - `headers[i]` (when non-empty) replaces the cell-derived `sourceHeader`
+ *     unconditionally — the override is the user's stated intent and wins
+ *     over whatever the cell happens to say (blank, mislabelled, or just
+ *     a value the user wants to rename). Candidates produced from an
+ *     override are flagged `fromHeaderOverride` so `propose-bindings`
+ *     emits a `byPositionIndex` binding (the override name may not appear
+ *     in the sheet at all) and writes a derived `normalizedKey`.
  */
 function candidatesForAxisFieldSegments(
   region: Region,
@@ -63,8 +92,8 @@ function candidatesForAxisFieldSegments(
   segments: Segment[],
   headerIndex: number,
   sheet: Sheet
-): ClassifierCandidate[] {
-  const out: ClassifierCandidate[] = [];
+): AnnotatedCandidate[] {
+  const out: AnnotatedCandidate[] = [];
   const coords = headerLineCoords(region, axis, region.bounds);
   const labels = readHeaderLineLabels(region, axis, sheet, headerIndex);
   let offset = 0;
@@ -73,12 +102,24 @@ function candidatesForAxisFieldSegments(
       for (let k = 0; k < segment.positionCount; k++) {
         const i = offset + k;
         if (i >= coords.length) break;
-        const sourceHeader = labels[i];
+        if (segment.skipped?.[k] === true) continue;
+        const override = segment.headers?.[k]?.trim();
+        const sourceHeader = override ? override : labels[i];
         if (sourceHeader === "") continue;
         out.push({
-          sourceHeader,
-          sourceCol: coords[i],
-          samples: collectSamples(region, axis, headerIndex, coords[i], sheet),
+          candidate: {
+            sourceHeader,
+            sourceCol: coords[i],
+            samples: collectSamples(
+              region,
+              axis,
+              headerIndex,
+              coords[i],
+              sheet
+            ),
+          },
+          fromHeaderOverride: !!override,
+          sourceAxis: axis,
         });
       }
     }
@@ -128,7 +169,11 @@ export async function classifyFieldSegments(
   const classifier = deps.classifier ?? runBuiltIn;
   const catalog = deps.columnDefinitionCatalog ?? [];
 
-  type PendingWork = { regionId: string; candidates: ClassifierCandidate[] };
+  type PendingWork = {
+    regionId: string;
+    candidates: ClassifierCandidate[];
+    annotations: AnnotatedCandidate[];
+  };
   const pending: PendingWork[] = [];
 
   for (const region of state.detectedRegions) {
@@ -145,13 +190,13 @@ export async function classifyFieldSegments(
       region,
       state.segmentsByRegion.get(region.id)
     );
-    const candidates: ClassifierCandidate[] = [];
+    const annotated: AnnotatedCandidate[] = [];
     for (const axis of region.headerAxes) {
       const segments = segmentsByAxis?.[axis];
       if (!segments || segments.length === 0) continue;
       const headerIndex = pickHeaderIndex(state, region.id, axis);
       if (headerIndex === null) continue;
-      candidates.push(
+      annotated.push(
         ...candidatesForAxisFieldSegments(
           region,
           axis,
@@ -161,11 +206,15 @@ export async function classifyFieldSegments(
         )
       );
     }
-    if (candidates.length === 0) {
+    if (annotated.length === 0) {
       next.set(region.id, []);
       continue;
     }
-    pending.push({ regionId: region.id, candidates });
+    pending.push({
+      regionId: region.id,
+      candidates: annotated.map((a) => a.candidate),
+      annotations: annotated,
+    });
   }
 
   const limit = pLimit(deps.concurrency ?? DEFAULT_INTERPRET_CONCURRENCY);
@@ -179,10 +228,21 @@ export async function classifyFieldSegments(
     const classifications: ColumnClassification[] = Array.isArray(result)
       ? result
       : (result as ClassifierResult).classifications;
+    // Re-attach the `fromHeaderOverride` flag and `sourceAxis` — the
+    // classifier (which may be user-supplied) doesn't see or preserve
+    // them. The classifier contract is to return classifications in the
+    // same order as the input candidates, so we zip by index.
+    const annotated = classifications.map((c, idx) => {
+      const ann = pending[i].annotations[idx];
+      if (!ann) return c;
+      const next: ColumnClassification = { ...c, sourceAxis: ann.sourceAxis };
+      if (ann.fromHeaderOverride) next.fromHeaderOverride = true;
+      return next;
+    });
     next.set(
       pending[i].regionId,
       applyDefaultColumnDefinition(
-        classifications,
+        annotated,
         deps.defaultColumnDefinitionId
       )
     );

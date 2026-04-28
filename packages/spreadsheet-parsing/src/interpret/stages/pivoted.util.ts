@@ -36,6 +36,18 @@ function hintHasUserSourcedPivot(segments: SegmentsByAxis | undefined): boolean 
   return false;
 }
 
+function hintHasFieldOverrides(segments: SegmentsByAxis | undefined): boolean {
+  if (!segments) return false;
+  for (const axis of ["row", "column"] as const) {
+    for (const seg of segments[axis] ?? []) {
+      if (seg.kind !== "field") continue;
+      if (seg.headers?.some((h) => h.trim() !== "")) return true;
+      if (seg.skipped?.some((s) => s)) return true;
+    }
+  }
+  return false;
+}
+
 function hasAnySegments(segments: SegmentsByAxis | undefined): boolean {
   if (!segments) return false;
   return Boolean(segments.row?.length || segments.column?.length);
@@ -59,6 +71,10 @@ export function resolveEffectiveSegments(
 ): SegmentsByAxis | undefined {
   const hint = region.segmentsByAxis;
   if (hintHasUserSourcedPivot(hint)) return hint;
+  // Field-segment overrides (`headers` / `skipped`) are user-authored —
+  // detect-segments would never synthesise them — so prefer the hint when
+  // either is set on any field segment.
+  if (hintHasFieldOverrides(hint)) return hint;
   if (hasAnySegments(computed)) return computed;
   return undefined;
 }

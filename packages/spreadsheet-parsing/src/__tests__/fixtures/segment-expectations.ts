@@ -723,9 +723,11 @@ export const EXPECTATIONS: Record<MatrixId, Expectation> = {
       ],
     },
     cellValueField: { name: "Sales", nameSource: "anchor-cell" },
-    // 5 row-positions × 5 col-positions: extract2D emits a record for every
-    // non-skip pair, including field × field and field × pivot combinations.
-    recordCount: 25,
+    // Records exist only at (row-pivot × col-pivot) cells — the anchor +
+    // field × pivot edges contribute static-field reads to those records,
+    // not their own records, so a 4-month × 4-quarter matrix yields 16
+    // records (not 25 across the full 5×5 frame).
+    recordCount: 16,
   },
   "crosstab-sales-by-year": {
     segmentsByAxis: {
@@ -740,9 +742,9 @@ export const EXPECTATIONS: Record<MatrixId, Expectation> = {
     },
     // Anchor cell resolves blank → fall back to the ai "value" seed.
     cellValueField: AI_VALUE,
-    // 4 row-positions × 5 col-positions (dynamic year segment stays at
-    // floor=3 since there are no additional year columns to scan into).
-    recordCount: 20,
+    // Pivot×pivot only: 3 year-positions (dynamic floor) × 4 quarter
+    // positions = 12 records.
+    recordCount: 12,
   },
   "headerless-rows": {
     // detect-segments is a no-op for headerless regions.

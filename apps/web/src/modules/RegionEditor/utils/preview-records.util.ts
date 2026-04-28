@@ -198,6 +198,7 @@ function plan1D(
     if (seg.kind === "skip") return;
     if (seg.kind === "field") {
       for (let i = 0; i < seg.positionCount; i++) {
+        if (seg.skipped?.[i] === true) continue;
         const axisOffset = offsets[segIdx] + i;
         // Header cell: at (startRow, startCol + axisOffset) for row axis,
         //              at (startRow + axisOffset, startCol) for column axis.
@@ -208,7 +209,10 @@ function plan1D(
           headerAxis === "row"
             ? `Column ${colIndexToLetter(startCol + axisOffset)}`
             : `Row ${startRow + axisOffset + 1}`;
-        const { label, placeholder } = coerceHeaderLabel(rawLabel, positional);
+        const override = seg.headers?.[i]?.trim();
+        const { label, placeholder } = override
+          ? { label: override, placeholder: false }
+          : coerceHeaderLabel(rawLabel, positional);
         const key = uniqueKey(placeholder ? positional : label, seenKeys);
         fieldColumns.push({ key, label, placeholder, axisOffset });
       }
@@ -351,82 +355,268 @@ function build1D(
 
 // ── Crosstab ──────────────────────────────────────────────────────────────
 
+interface RowFieldPos {
+  kind: "field";
+  /** Sheet column governed by this row-axis position. */
+  col: number;
+  /** Field name from the row-axis header at this column (or override). */
+  header: string;
+  placeholder: boolean;
+}
+interface RowPivotPos {
+  kind: "pivot";
+  col: number;
+  segmentId: string;
+  axisName: string;
+  axisNamePlaceholder: boolean;
+}
+type RowAxisPos = RowFieldPos | RowPivotPos;
+
+interface ColFieldPos {
+  kind: "field";
+  /** Sheet row governed by this column-axis position. */
+  row: number;
+  header: string;
+  placeholder: boolean;
+}
+interface ColPivotPos {
+  kind: "pivot";
+  row: number;
+  segmentId: string;
+  axisName: string;
+  axisNamePlaceholder: boolean;
+}
+type ColAxisPos = ColFieldPos | ColPivotPos;
+
+function walkRowAxis(
+  segs: Segment[],
+  startRow: number,
+  startCol: number,
+  sheet: SheetPreview
+): RowAxisPos[] {
+  const out: RowAxisPos[] = [];
+  let offset = 0;
+  for (const seg of segs) {
+    if (seg.kind === "skip") {
+      offset += seg.positionCount;
+      continue;
+    }
+    if (seg.kind === "field") {
+      for (let i = 0; i < seg.positionCount; i++) {
+        if (seg.skipped?.[i] === true) continue;
+        const col = startCol + offset + i;
+        const headerRaw = readCell(sheet, startRow, col);
+        const positional = `Column ${colIndexToLetter(col)}`;
+        const override = seg.headers?.[i]?.trim();
+        const { label, placeholder } = override
+          ? { label: override, placeholder: false }
+          : coerceHeaderLabel(headerRaw, positional);
+        out.push({ kind: "field", col, header: label, placeholder });
+      }
+      offset += seg.positionCount;
+      continue;
+    }
+    // pivot
+    const axisName = pivotAxisName(seg, `Pivot @ ${offset}`);
+    for (let i = 0; i < seg.positionCount; i++) {
+      const col = startCol + offset + i;
+      out.push({
+        kind: "pivot",
+        col,
+        segmentId: seg.id,
+        axisName: axisName.label,
+        axisNamePlaceholder: axisName.placeholder,
+      });
+    }
+    offset += seg.positionCount;
+  }
+  return out;
+}
+
+function walkColAxis(
+  segs: Segment[],
+  startRow: number,
+  startCol: number,
+  sheet: SheetPreview
+): ColAxisPos[] {
+  const out: ColAxisPos[] = [];
+  let offset = 0;
+  for (const seg of segs) {
+    if (seg.kind === "skip") {
+      offset += seg.positionCount;
+      continue;
+    }
+    if (seg.kind === "field") {
+      for (let i = 0; i < seg.positionCount; i++) {
+        if (seg.skipped?.[i] === true) continue;
+        const row = startRow + offset + i;
+        const headerRaw = readCell(sheet, row, startCol);
+        const positional = `Row ${row + 1}`;
+        const override = seg.headers?.[i]?.trim();
+        const { label, placeholder } = override
+          ? { label: override, placeholder: false }
+          : coerceHeaderLabel(headerRaw, positional);
+        out.push({ kind: "field", row, header: label, placeholder });
+      }
+      offset += seg.positionCount;
+      continue;
+    }
+    // pivot
+    const axisName = pivotAxisName(seg, `Pivot @ ${offset}`);
+    for (let i = 0; i < seg.positionCount; i++) {
+      const row = startRow + offset + i;
+      out.push({
+        kind: "pivot",
+        row,
+        segmentId: seg.id,
+        axisName: axisName.label,
+        axisNamePlaceholder: axisName.placeholder,
+      });
+    }
+    offset += seg.positionCount;
+  }
+  return out;
+}
+
 function buildCrosstab(
   region: RegionDraft,
   sheet: SheetPreview
 ): PreviewResult {
   const rowSegs = region.segmentsByAxis?.row ?? [];
   const colSegs = region.segmentsByAxis?.column ?? [];
-  const rowPivot = rowSegs.find((s) => s.kind === "pivot") as
-    | Extract<Segment, { kind: "pivot" }>
-    | undefined;
-  const colPivot = colSegs.find((s) => s.kind === "pivot") as
-    | Extract<Segment, { kind: "pivot" }>
-    | undefined;
-  const { startRow, endRow, startCol, endCol } = region.bounds;
+  const { startRow, startCol } = region.bounds;
   const notes: string[] = [];
-
-  const rowAxisName = rowPivot
-    ? pivotAxisName(rowPivot, "Row axis")
-    : { label: "Row axis", placeholder: true };
-  const colAxisName = colPivot
-    ? pivotAxisName(colPivot, "Column axis")
-    : { label: "Column axis", placeholder: true };
-  const valueField = region.cellValueField?.name?.trim();
-  const valuePlaceholder = !valueField;
-
   const seenKeys = new Set<string>();
-  const rowAxisKey = uniqueKey(rowAxisName.label, seenKeys);
-  const colAxisKey = uniqueKey(colAxisName.label, seenKeys);
-  const valueKey = uniqueKey(valueField || "value", seenKeys);
-  const columns: PreviewColumn[] = [
-    { key: rowAxisKey, label: rowAxisName.label, placeholder: rowAxisName.placeholder },
-    { key: colAxisKey, label: colAxisName.label, placeholder: colAxisName.placeholder },
-    { key: valueKey, label: valueField || "value", placeholder: valuePlaceholder },
-  ];
 
-  // Inner rectangle: everything except the first row (column-axis labels) and
-  // first column (row-axis labels). If bounds collapse, no inner area.
-  if (endRow <= startRow || endCol <= startCol) {
-    return {
-      columns,
-      rows: [],
-      shape: "Crosstab — region too small to expand",
-      truncated: false,
-      notes,
-    };
+  const rowAxisItems = walkRowAxis(rowSegs, startRow, startCol, sheet);
+  const colAxisItems = walkColAxis(colSegs, startRow, startCol, sheet);
+
+  const rowFieldPositions = rowAxisItems.filter(
+    (i): i is RowFieldPos => i.kind === "field"
+  );
+  const colFieldPositions = colAxisItems.filter(
+    (i): i is ColFieldPos => i.kind === "field"
+  );
+  const rowPivotPositions = rowAxisItems.filter(
+    (i): i is RowPivotPos => i.kind === "pivot"
+  );
+  const colPivotPositions = colAxisItems.filter(
+    (i): i is ColPivotPos => i.kind === "pivot"
+  );
+
+  // Build columns in the order: row-axis fields, col-axis fields, row-axis
+  // pivot axisNames, col-axis pivot axisNames, then one column per distinct
+  // cell-value field name (region default + every per-intersection override
+  // that introduces a new name).
+  const columns: PreviewColumn[] = [];
+  const rowFieldKeyByCol = new Map<number, string>();
+  for (const f of rowFieldPositions) {
+    const positional = `Column ${colIndexToLetter(f.col)}`;
+    const key = uniqueKey(f.placeholder ? positional : f.header, seenKeys);
+    columns.push({ key, label: f.header, placeholder: f.placeholder });
+    rowFieldKeyByCol.set(f.col, key);
+  }
+  const colFieldKeyByRow = new Map<number, string>();
+  for (const f of colFieldPositions) {
+    const positional = `Row ${f.row + 1}`;
+    const key = uniqueKey(f.placeholder ? positional : f.header, seenKeys);
+    columns.push({ key, label: f.header, placeholder: f.placeholder });
+    colFieldKeyByRow.set(f.row, key);
+  }
+  const rowPivotKeyBySegId = new Map<string, string>();
+  const seenRowPivots = new Set<string>();
+  for (const p of rowPivotPositions) {
+    if (seenRowPivots.has(p.segmentId)) continue;
+    seenRowPivots.add(p.segmentId);
+    const key = uniqueKey(p.axisName, seenKeys);
+    columns.push({ key, label: p.axisName, placeholder: p.axisNamePlaceholder });
+    rowPivotKeyBySegId.set(p.segmentId, key);
+  }
+  const colPivotKeyBySegId = new Map<string, string>();
+  const seenColPivots = new Set<string>();
+  for (const p of colPivotPositions) {
+    if (seenColPivots.has(p.segmentId)) continue;
+    seenColPivots.add(p.segmentId);
+    const key = uniqueKey(p.axisName, seenKeys);
+    columns.push({ key, label: p.axisName, placeholder: p.axisNamePlaceholder });
+    colPivotKeyBySegId.set(p.segmentId, key);
   }
 
+  const cellValueDefault = region.cellValueField?.name?.trim() ?? "";
+  const distinctCellValueNames = new Set<string>();
+  if (cellValueDefault) distinctCellValueNames.add(cellValueDefault);
+  if (region.intersectionCellValueFields) {
+    for (const f of Object.values(region.intersectionCellValueFields)) {
+      const name = f?.name?.trim();
+      if (name) distinctCellValueNames.add(name);
+    }
+  }
+  if (distinctCellValueNames.size === 0) distinctCellValueNames.add("value");
+  const cellValueKeyByName = new Map<string, string>();
+  for (const name of distinctCellValueNames) {
+    const placeholder = !cellValueDefault && name === "value";
+    const key = uniqueKey(name, seenKeys);
+    columns.push({ key, label: name, placeholder });
+    cellValueKeyByName.set(name, key);
+  }
+  const cellValueNameFor = (rowSegId: string, colSegId: string): string => {
+    const intersectionId = `${rowSegId}__${colSegId}`;
+    const override =
+      region.intersectionCellValueFields?.[intersectionId]?.name?.trim();
+    return override || cellValueDefault || "value";
+  };
+
+  // Records exist at (row-axis pivot position × col-axis pivot position) body
+  // cells. Skip and field-only quadrants emit no record. Each record reads:
+  //   - row-axis field columns: cell(record's row, fieldCol)
+  //   - col-axis field columns: cell(fieldRow, record's col)
+  //   - row-axis pivot key: cell(startRow, record's col)
+  //   - col-axis pivot key: cell(record's row, startCol)
+  //   - cell value: cell(record's row, record's col)
   const rows: PreviewRow[] = [];
   let truncated = false;
-  outer: for (let r = startRow + 1; r <= endRow; r++) {
-    const rowLabelRaw = readCell(sheet, r, startCol);
-    const rowLabel = coerceHeaderLabel(rowLabelRaw, `Row ${r + 1}`);
-    for (let c = startCol + 1; c <= endCol; c++) {
+  outer: for (const cp of colPivotPositions) {
+    for (const rp of rowPivotPositions) {
       if (rows.length >= PREVIEW_ROW_LIMIT) {
         truncated = true;
         break outer;
       }
-      const colLabelRaw = readCell(sheet, startRow, c);
-      const colLabel = coerceHeaderLabel(
-        colLabelRaw,
-        `Column ${colIndexToLetter(c)}`
-      );
-      rows.push({
-        [rowAxisKey]: rowLabel.label,
-        [colAxisKey]: colLabel.label,
-        [valueKey]: readCell(sheet, r, c),
-      });
+      const record: PreviewRow = {};
+      for (const [fieldCol, key] of rowFieldKeyByCol.entries()) {
+        record[key] = readCell(sheet, cp.row, fieldCol);
+      }
+      for (const [fieldRow, key] of colFieldKeyByRow.entries()) {
+        record[key] = readCell(sheet, fieldRow, rp.col);
+      }
+      const rowPivotKey = rowPivotKeyBySegId.get(rp.segmentId);
+      if (rowPivotKey) {
+        record[rowPivotKey] = readCell(sheet, startRow, rp.col);
+      }
+      const colPivotKey = colPivotKeyBySegId.get(cp.segmentId);
+      if (colPivotKey) {
+        record[colPivotKey] = readCell(sheet, cp.row, startCol);
+      }
+      const cellValueName = cellValueNameFor(rp.segmentId, cp.segmentId);
+      const cellValueKey = cellValueKeyByName.get(cellValueName);
+      if (cellValueKey) {
+        record[cellValueKey] = readCell(sheet, cp.row, rp.col);
+      }
+      rows.push(record);
     }
   }
 
-  return {
-    columns,
-    rows,
-    shape: "Crosstab — one record per inner cell",
-    truncated,
-    notes,
-  };
+  if (rowPivotPositions.length === 0 || colPivotPositions.length === 0) {
+    notes.push(
+      "Crosstab — both axes need at least one pivot segment to produce records."
+    );
+  }
+
+  const shape =
+    rowPivotPositions.length === 0 || colPivotPositions.length === 0
+      ? "Crosstab — incomplete (one or both axes have no pivot)"
+      : `Crosstab — one record per (row-pivot × column-pivot) intersection`;
+
+  return { columns, rows, shape, truncated, notes };
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────

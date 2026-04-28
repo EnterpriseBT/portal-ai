@@ -108,10 +108,20 @@ function draftValidationContext(
  */
 function parseSyntheticLocator(
   sourceLocator: string
-): { kind: "pivot"; segmentId: string } | { kind: "cellValueField" } | null {
+):
+  | { kind: "pivot"; segmentId: string }
+  | { kind: "cellValueField" }
+  | { kind: "intersection"; intersectionId: string }
+  | null {
   if (sourceLocator === "cellValueField") return { kind: "cellValueField" };
   if (sourceLocator.startsWith("pivot:")) {
     return { kind: "pivot", segmentId: sourceLocator.slice("pivot:".length) };
+  }
+  if (sourceLocator.startsWith("intersection:")) {
+    return {
+      kind: "intersection",
+      intersectionId: sourceLocator.slice("intersection:".length),
+    };
   }
   return null;
 }
@@ -155,6 +165,18 @@ function syntheticBindingDraft(
       sourceField: seg.axisName,
     };
   }
+  if (parsed.kind === "intersection") {
+    const field =
+      region.intersectionCellValueFields?.[parsed.intersectionId];
+    if (!field) return null;
+    return {
+      sourceLocator,
+      columnDefinitionId: field.columnDefinitionId ?? null,
+      confidence: 1,
+      excluded: field.excluded,
+      sourceField: field.name,
+    };
+  }
   // cellValueField
   if (!region.cellValueField) return null;
   return {
@@ -181,6 +203,11 @@ function syntheticDerivedNormalizedKey(
   if (parsed.kind === "pivot") {
     const seg = findPivotSegment(region, parsed.segmentId);
     return seg ? sourceFieldToNormalizedKey(seg.axisName) : undefined;
+  }
+  if (parsed.kind === "intersection") {
+    const field =
+      region.intersectionCellValueFields?.[parsed.intersectionId];
+    return field ? sourceFieldToNormalizedKey(field.name) : undefined;
   }
   return region.cellValueField
     ? sourceFieldToNormalizedKey(region.cellValueField.name)

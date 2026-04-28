@@ -32,6 +32,15 @@ export const RegionHintSchema = z.object({
     })
     .optional(),
   cellValueField: CellValueFieldSchema.optional(),
+  /**
+   * Per-intersection cell-value overrides on a 2D crosstab hint. Keys are
+   * `${rowPivotSegmentId}__${colPivotSegmentId}` referring to pivot
+   * segments inside `segmentsByAxis`. Round-trips through interpret so a
+   * user's panel edits survive a re-classification.
+   */
+  intersectionCellValueFields: z
+    .record(z.string(), CellValueFieldSchema)
+    .optional(),
   recordsAxis: AxisMemberEnum.optional(),
   recordAxisTerminator: TerminatorSchema.optional(),
   axisAnchorCell: z

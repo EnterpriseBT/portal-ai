@@ -1,6 +1,7 @@
 import {
   activeDecorationKinds,
   anchorCellValue,
+  computeIntersectionOverlays,
   computeRegionDecorations,
   computeSegmentOverlays,
 } from "../utils/region-editor-decorations.util";
@@ -478,6 +479,78 @@ describe("computeRegionDecorations — axisNameAnchor", () => {
   });
 });
 
+describe("computeRegionDecorations — field-segment skipped positions", () => {
+  test("row-axis field segment with skipped[i] === true emits a skipped column decoration spanning the record area", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 2 },
+    });
+    region.segmentsByAxis = {
+      row: [{ kind: "field", positionCount: 3, skipped: [false, true, false] }],
+    };
+    const s = sheet([
+      ["year", "name", "desc"],
+      [2020, "a", "x"],
+      [2021, "b", "y"],
+      [2022, "c", "z"],
+      [2023, "d", "w"],
+    ]);
+    const skipped = computeRegionDecorations(region, s).filter(
+      (d) => d.kind === "skipped"
+    );
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toEqual({
+      kind: "skipped",
+      bounds: { startRow: 1, endRow: 4, startCol: 1, endCol: 1 },
+      label: "Skipped column",
+    });
+  });
+
+  test("column-axis field segment with skipped[i] === true emits a skipped row decoration spanning the record area", () => {
+    const region = baseRegion({
+      headerAxis: "column",
+      orientation: "columns-as-records",
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 4 },
+    });
+    region.segmentsByAxis = {
+      column: [
+        { kind: "field", positionCount: 3, skipped: [false, false, true] },
+      ],
+    };
+    const s = sheet([
+      ["a", 1, 2, 3, 4],
+      ["b", 5, 6, 7, 8],
+      ["c", 9, 10, 11, 12],
+    ]);
+    const skipped = computeRegionDecorations(region, s).filter(
+      (d) => d.kind === "skipped"
+    );
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]).toEqual({
+      kind: "skipped",
+      bounds: { startRow: 2, endRow: 2, startCol: 1, endCol: 4 },
+      label: "Skipped row",
+    });
+  });
+
+  test("emits no skipped decoration when no positions are flagged", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+    });
+    region.segmentsByAxis = {
+      row: [{ kind: "field", positionCount: 3 }],
+    };
+    const s = sheet([
+      ["a", "b", "c"],
+      [1, 2, 3],
+      [4, 5, 6],
+    ]);
+    const skipped = computeRegionDecorations(region, s).filter(
+      (d) => d.kind === "skipped"
+    );
+    expect(skipped).toHaveLength(0);
+  });
+});
+
 describe("computeRegionDecorations — skipped rows", () => {
   test("blank rule marks fully empty data rows as skipped", () => {
     // rows 0 = header; 1-2 data; 3 blank; 4 data.
@@ -856,6 +929,338 @@ describe("computeSegmentOverlays", () => {
       startCol: 0,
       endCol: 0,
     });
+  });
+});
+
+describe("computeIntersectionOverlays", () => {
+  test("returns no overlays for a 1D region", () => {
+    const region = baseRegion({
+      headerAxis: "row",
+      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+    });
+    expect(computeIntersectionOverlays(region)).toEqual([]);
+  });
+
+  test("returns no overlays for a headerless region", () => {
+    const region = baseRegion({
+      headerAxis: "none",
+      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+    });
+    expect(computeIntersectionOverlays(region)).toEqual([]);
+  });
+
+  test("emits one overlay per pivot×pivot pair on a crosstab", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 4 },
+    });
+    region.headerAxes = ["row", "column"];
+    region.segmentsByAxis = {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "row-pivot-1",
+          axisName: "Region",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+        {
+          kind: "pivot",
+          id: "row-pivot-2",
+          axisName: "Quarter",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "col-pivot-1",
+          axisName: "Metric",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+        {
+          kind: "pivot",
+          id: "col-pivot-2",
+          axisName: "Year",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+    };
+    region.cellValueField = { name: "value", nameSource: "user" };
+
+    const overlays = computeIntersectionOverlays(region);
+    expect(overlays).toHaveLength(4);
+
+    const byId = new Map(overlays.map((o) => [o.id, o]));
+    expect(byId.get("row-pivot-1__col-pivot-1")?.label).toBe(
+      "Region × Metric"
+    );
+    expect(byId.get("row-pivot-1__col-pivot-1")?.bounds).toEqual({
+      startRow: 1,
+      endRow: 2,
+      startCol: 1,
+      endCol: 2,
+    });
+    expect(byId.get("row-pivot-2__col-pivot-2")?.bounds).toEqual({
+      startRow: 3,
+      endRow: 4,
+      startCol: 3,
+      endCol: 4,
+    });
+    expect(byId.get("row-pivot-2__col-pivot-1")?.label).toBe(
+      "Quarter × Metric"
+    );
+  });
+
+  test("emits every body intersection on a mixed-segment crosstab, tagging each with its kind", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 4 },
+    });
+    region.headerAxes = ["row", "column"];
+    region.segmentsByAxis = {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        { kind: "field", positionCount: 2 },
+        {
+          kind: "pivot",
+          id: "row-pivot-1",
+          axisName: "Quarter",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        { kind: "field", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "col-pivot-1",
+          axisName: "Metric",
+          axisNameSource: "user",
+          positionCount: 3,
+        },
+      ],
+    };
+    region.cellValueField = { name: "value", nameSource: "user" };
+
+    const overlays = computeIntersectionOverlays(region);
+    const pivotPivot = overlays.find((o) => o.kind === "pivot-pivot");
+    expect(pivotPivot?.id).toBe("row-pivot-1__col-pivot-1");
+    expect(pivotPivot?.bounds).toEqual({
+      startRow: 2,
+      endRow: 4,
+      startCol: 3,
+      endCol: 4,
+    });
+
+    // field × field is the small body block where both axes carry static
+    // field segments — degenerate but explicitly emitted so the user sees
+    // it tinted on the canvas.
+    const fieldField = overlays.find((o) => o.kind === "field-field");
+    expect(fieldField).toBeDefined();
+    expect(fieldField?.bounds).toEqual({
+      startRow: 1,
+      endRow: 1,
+      startCol: 1,
+      endCol: 2,
+    });
+
+    // field × pivot covers both off-diagonals (row-field × col-pivot and
+    // row-pivot × col-field) under one shared kind since they're
+    // semantically symmetric.
+    const fieldPivot = overlays.filter((o) => o.kind === "field-pivot");
+    expect(fieldPivot.length).toBe(2);
+
+    // The corner-only skip segments (positionCount=1 at offset 0) live
+    // entirely on the header band, so they contribute no body cells and
+    // emit no skip-mixed overlay here.
+    expect(overlays.find((o) => o.kind === "skip-mixed")).toBeUndefined();
+  });
+
+  test("emits skip-mixed overlays for body cells where a wider skip segment intersects either axis", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 5, startCol: 0, endCol: 4 },
+    });
+    region.headerAxes = ["row", "column"];
+    // Row-axis: skip(1) corner + pivot(4). Column-axis: skip(1) corner +
+    // skip(2) MID-axis (rows 1-2 contribute body cells under "skip-mixed")
+    // + pivot(2) tail.
+    region.segmentsByAxis = {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "row-pivot-1",
+          axisName: "Quarter",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        { kind: "skip", positionCount: 2 },
+        {
+          kind: "pivot",
+          id: "col-pivot-1",
+          axisName: "Metric",
+          axisNameSource: "user",
+          positionCount: 3,
+        },
+      ],
+    };
+    region.cellValueField = { name: "value", nameSource: "user" };
+
+    const overlays = computeIntersectionOverlays(region);
+    const skipMixed = overlays.filter((o) => o.kind === "skip-mixed");
+    expect(skipMixed.length).toBe(1);
+    expect(skipMixed[0].bounds).toEqual({
+      startRow: 1,
+      endRow: 2,
+      startCol: 1,
+      endCol: 4,
+    });
+  });
+
+  test("falls back to (unnamed) when a pivot has no axisName yet", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+    });
+    region.headerAxes = ["row", "column"];
+    region.segmentsByAxis = {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "row-pivot-1",
+          axisName: "",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "col-pivot-1",
+          axisName: "Metric",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+    };
+    region.cellValueField = { name: "value", nameSource: "user" };
+
+    const overlays = computeIntersectionOverlays(region);
+    expect(overlays).toHaveLength(1);
+    expect(overlays[0].label).toBe("(unnamed) × Metric");
+  });
+
+  test("inherits cellValueName from the region-level cellValueField when no override is set", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+    });
+    region.headerAxes = ["row", "column"];
+    region.segmentsByAxis = {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "row-pivot-1",
+          axisName: "Region",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "col-pivot-1",
+          axisName: "Quarter",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+    };
+    region.cellValueField = { name: "revenue", nameSource: "user" };
+    const overlays = computeIntersectionOverlays(region);
+    expect(overlays).toHaveLength(1);
+    expect(overlays[0].cellValueName).toBe("revenue");
+    expect(overlays[0].cellValueOverridden).toBe(false);
+  });
+
+  test("uses the per-intersection override when one is set", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+    });
+    region.headerAxes = ["row", "column"];
+    region.segmentsByAxis = {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "row-pivot-1",
+          axisName: "Region",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "col-pivot-1",
+          axisName: "Quarter",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+    };
+    region.cellValueField = { name: "revenue", nameSource: "user" };
+    region.intersectionCellValueFields = {
+      "row-pivot-1__col-pivot-1": { name: "headcount", nameSource: "user" },
+    };
+    const overlays = computeIntersectionOverlays(region);
+    expect(overlays).toHaveLength(1);
+    expect(overlays[0].cellValueName).toBe("headcount");
+    expect(overlays[0].cellValueOverridden).toBe(true);
+  });
+
+  test("emits an empty cellValueName when neither override nor region-level cellValueField is set", () => {
+    const region = baseRegion({
+      bounds: { startRow: 0, endRow: 2, startCol: 0, endCol: 2 },
+    });
+    region.headerAxes = ["row", "column"];
+    region.segmentsByAxis = {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "row-pivot-1",
+          axisName: "Region",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "col-pivot-1",
+          axisName: "Quarter",
+          axisNameSource: "user",
+          positionCount: 2,
+        },
+      ],
+    };
+    const overlays = computeIntersectionOverlays(region);
+    expect(overlays).toHaveLength(1);
+    expect(overlays[0].cellValueName).toBe("");
+    expect(overlays[0].cellValueOverridden).toBe(false);
   });
 });
 

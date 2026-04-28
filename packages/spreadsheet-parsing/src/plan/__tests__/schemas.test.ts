@@ -150,6 +150,82 @@ describe("SegmentSchema", () => {
     ).toBe(true);
   });
 
+  it("accepts a field segment with index-aligned headers", () => {
+    expect(
+      SegmentSchema.safeParse({
+        kind: "field",
+        positionCount: 3,
+        headers: ["year", "", "desc"],
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects a field segment whose headers length doesn't match positionCount (RegionSchema refinement)", async () => {
+    const { RegionSchema } = await import("../region.schema.js");
+    const result = RegionSchema.safeParse({
+      id: "r1",
+      sheet: "Sheet1",
+      bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 3 },
+      targetEntityDefinitionId: "ed",
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 3, headers: ["year", ""] }],
+      },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row",
+          locator: { kind: "row", sheet: "Sheet1", row: 1 },
+          confidence: 1,
+        },
+      },
+      identityStrategy: { kind: "rowPosition", confidence: 1 },
+      columnBindings: [],
+      skipRules: [],
+      drift: { columnsAdded: "ignore", columnsRemoved: "ignore" },
+      confidence: { region: 0.5, aggregate: 0.5 },
+      warnings: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a field segment with skipped flags (length === positionCount)", () => {
+    expect(
+      SegmentSchema.safeParse({
+        kind: "field",
+        positionCount: 3,
+        skipped: [false, true, false],
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects a field segment whose skipped length doesn't match positionCount (RegionSchema refinement)", async () => {
+    const { RegionSchema } = await import("../region.schema.js");
+    const result = RegionSchema.safeParse({
+      id: "r1",
+      sheet: "Sheet1",
+      bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 3 },
+      targetEntityDefinitionId: "ed",
+      headerAxes: ["row"],
+      segmentsByAxis: {
+        row: [{ kind: "field", positionCount: 3, skipped: [false, true] }],
+      },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row",
+          locator: { kind: "row", sheet: "Sheet1", row: 1 },
+          confidence: 1,
+        },
+      },
+      identityStrategy: { kind: "rowPosition", confidence: 1 },
+      columnBindings: [],
+      skipRules: [],
+      drift: { columnsAdded: "ignore", columnsRemoved: "ignore" },
+      confidence: { region: 0.5, aggregate: 0.5 },
+      warnings: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects dynamic on non-pivot (discriminated-union)", () => {
     expect(
       SegmentSchema.safeParse({
@@ -490,6 +566,108 @@ describe("RegionSchema — cellValueField presence rule (refinement 7)", () => {
       nameSource: "user",
     };
     expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+});
+
+describe("RegionSchema — intersectionCellValueFields", () => {
+  function crosstabRegion() {
+    const r = buildTidyRegion();
+    r.headerAxes = ["row", "column"] as unknown as typeof r.headerAxes;
+    r.bounds = { startRow: 1, startCol: 1, endRow: 5, endCol: 5 };
+    r.segmentsByAxis = {
+      row: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "rp1",
+          axisName: "Region",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+      column: [
+        { kind: "skip", positionCount: 1 },
+        {
+          kind: "pivot",
+          id: "cp1",
+          axisName: "Quarter",
+          axisNameSource: "user",
+          positionCount: 4,
+        },
+      ],
+    } as unknown as typeof r.segmentsByAxis;
+    r.headerStrategyByAxis = {
+      row: {
+        kind: "row",
+        locator: { kind: "row", sheet: "Sheet1", row: 1 },
+        confidence: 1,
+      },
+      column: {
+        kind: "column",
+        locator: { kind: "column", sheet: "Sheet1", col: 1 },
+        confidence: 1,
+      },
+    } as unknown as typeof r.headerStrategyByAxis;
+    (r as Record<string, unknown>).cellValueField = {
+      name: "value",
+      nameSource: "user",
+    };
+    r.columnBindings = [];
+    return r;
+  }
+
+  it("accepts a valid override keyed by `<rowPivotId>__<colPivotId>`", () => {
+    const r = crosstabRegion();
+    (r as Record<string, unknown>).intersectionCellValueFields = {
+      rp1__cp1: { name: "revenue", nameSource: "user" },
+    };
+    expect(RegionSchema.safeParse(r).success).toBe(true);
+  });
+
+  it("rejects an override referencing a nonexistent row-axis pivot id", () => {
+    const r = crosstabRegion();
+    (r as Record<string, unknown>).intersectionCellValueFields = {
+      missing__cp1: { name: "x", nameSource: "user" },
+    };
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("rejects an override referencing a nonexistent column-axis pivot id", () => {
+    const r = crosstabRegion();
+    (r as Record<string, unknown>).intersectionCellValueFields = {
+      rp1__missing: { name: "x", nameSource: "user" },
+    };
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("rejects a malformed key (no `__` separator)", () => {
+    const r = crosstabRegion();
+    (r as Record<string, unknown>).intersectionCellValueFields = {
+      "no-separator": { name: "x", nameSource: "user" },
+    };
+    expect(RegionSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("rejects intersectionCellValueFields on a 1D region", () => {
+    const r = buildTidyRegion();
+    r.segmentsByAxis.row = [
+      {
+        kind: "pivot",
+        id: "p1",
+        axisName: "M",
+        axisNameSource: "user",
+        positionCount: 3,
+      },
+    ] as unknown as typeof r.segmentsByAxis.row;
+    (r as Record<string, unknown>).cellValueField = {
+      name: "V",
+      nameSource: "user",
+    };
+    (r as Record<string, unknown>).intersectionCellValueFields = {
+      p1__p1: { name: "x", nameSource: "user" },
+    };
+    r.columnBindings = [];
+    expect(RegionSchema.safeParse(r).success).toBe(false);
   });
 });
 

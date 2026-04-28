@@ -220,6 +220,30 @@ export function preserveUserRegionConfig(
           }),
         };
       }
+      if (prior.intersectionCellValueFields) {
+        // Per-intersection cell-value names are user knobs (set in the
+        // config panel) — keep the user's name/nameSource for each entry
+        // and pick up the response's columnDefinitionId where the
+        // classifier produced one. Entries the user dropped from the
+        // prior draft do not reappear in the merged plan.
+        const responseEntries =
+          region.intersectionCellValueFields ?? {};
+        const next: NonNullable<
+          BackendRegion["intersectionCellValueFields"]
+        > = {};
+        for (const [id, priorField] of Object.entries(
+          prior.intersectionCellValueFields
+        )) {
+          const fromResponse = responseEntries[id];
+          next[id] = {
+            ...priorField,
+            ...(fromResponse?.columnDefinitionId !== undefined && {
+              columnDefinitionId: fromResponse.columnDefinitionId,
+            }),
+          };
+        }
+        merged.intersectionCellValueFields = next;
+      }
       if (prior.recordAxisTerminator) {
         merged.recordAxisTerminator = prior.recordAxisTerminator;
       }
@@ -307,6 +331,27 @@ export function regionDraftsToHints(
         nameSource: draft.cellValueField.nameSource,
       };
     }
+    if (draft.intersectionCellValueFields) {
+      // Mirror the panel-level per-intersection edits onto the hint so
+      // re-interpret retains the user's chosen names. Each entry is a
+      // full `CellValueField` (name + nameSource, plus optional
+      // columnDefinitionId / excluded carried through).
+      hint.intersectionCellValueFields = {};
+      for (const [id, field] of Object.entries(
+        draft.intersectionCellValueFields
+      )) {
+        hint.intersectionCellValueFields[id] = {
+          name: field.name,
+          nameSource: field.nameSource,
+          ...(field.columnDefinitionId !== undefined && {
+            columnDefinitionId: field.columnDefinitionId,
+          }),
+          ...(field.excluded !== undefined && {
+            excluded: field.excluded,
+          }),
+        };
+      }
+    }
     if (draft.recordAxisTerminator) {
       hint.recordAxisTerminator = draft.recordAxisTerminator;
     }
@@ -389,6 +434,22 @@ export function planRegionsToDrafts(
           columnDefinitionId: region.cellValueField.columnDefinitionId,
         }),
       };
+    }
+    if (region.intersectionCellValueFields) {
+      const next: NonNullable<RegionDraft["intersectionCellValueFields"]> = {};
+      for (const [id, field] of Object.entries(
+        region.intersectionCellValueFields
+      )) {
+        next[id] = {
+          name: field.name,
+          nameSource: field.nameSource,
+          ...(field.columnDefinitionId !== undefined && {
+            columnDefinitionId: field.columnDefinitionId,
+          }),
+          ...(field.excluded !== undefined && { excluded: field.excluded }),
+        };
+      }
+      draft.intersectionCellValueFields = next;
     }
     if (region.recordAxisTerminator) {
       draft.recordAxisTerminator = region.recordAxisTerminator;

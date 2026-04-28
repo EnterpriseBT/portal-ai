@@ -137,6 +137,55 @@ describe("detectIdentity", () => {
     expect(["composite", "rowPosition"]).toContain(topKind);
   });
 
+  it("emits only rowPosition for a 2D crosstab — each body cell is a record, so a column-unique candidate would dedupe pivot×pivot records to K rows", () => {
+    // Without this, detect-identity would propose `column at col 1`
+    // (companies are unique per row), and at commit every (company,
+    // quarter) record would share sourceId = company → upsert collapses
+    // K × L records to K. rowPosition produces cell-coord sourceIds so
+    // every body cell stays distinct.
+    const input: InterpretInput = {
+      workbook: {
+        sheets: [
+          {
+            name: "Sheet1",
+            dimensions: { rows: 4, cols: 4 },
+            cells: [
+              { row: 1, col: 1, value: "" },
+              { row: 1, col: 2, value: "Q1" },
+              { row: 1, col: 3, value: "Q2" },
+              { row: 1, col: 4, value: "Q3" },
+              { row: 2, col: 1, value: "Apple" },
+              { row: 2, col: 2, value: 100 },
+              { row: 2, col: 3, value: 110 },
+              { row: 2, col: 4, value: 120 },
+              { row: 3, col: 1, value: "Microsoft" },
+              { row: 3, col: 2, value: 200 },
+              { row: 3, col: 3, value: 210 },
+              { row: 3, col: 4, value: 220 },
+              { row: 4, col: 1, value: "Shell" },
+              { row: 4, col: 2, value: 300 },
+              { row: 4, col: 3, value: 310 },
+              { row: 4, col: 4, value: 320 },
+            ],
+          },
+        ],
+      },
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 4 },
+          targetEntityDefinitionId: "metrics",
+          headerAxes: ["row", "column"],
+        },
+      ],
+    };
+    const state = runPipeline(input);
+    const regionId = state.detectedRegions[0].id;
+    const candidates = state.identityCandidates.get(regionId)!;
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].strategy.kind).toBe("rowPosition");
+  });
+
   it("emits only rowPosition for a headerless records-are-columns region", () => {
     const input: InterpretInput = {
       workbook: {

@@ -12,6 +12,7 @@ import type {
   InterpretState,
   RecordsAxisNameSuggestion,
 } from "../types.js";
+import { toNormalizedKey } from "./classifier-heuristic.util.js";
 import { resolveEffectiveSegments } from "./pivoted.util.js";
 
 function headerStrategyFromCandidate(
@@ -40,11 +41,18 @@ function bindingsFromClassifications(
   const out: ColumnBinding[] = [];
   for (const c of classifications) {
     if (c.columnDefinitionId === null) continue;
-    if (headerAxis === null) {
-      // Headerless region: use byPositionIndex along the records-axis's
-      // opposite. `sourceCol` is the absolute sheet coord along the header
-      // axis of the classifier (which for headerless falls back to row
-      // iteration); convert to an axis-relative 1-based index.
+    // `sourceAxis` is set by `classify-field-segments` per axis loop,
+    // so even on a 2D crosstab each classification knows which axis its
+    // `sourceCol` references. Fall back to the legacy single-axis
+    // routing only when the classifier didn't supply it (custom
+    // classifier, or headerless region).
+    const effectiveAxis: AxisMember | null = c.sourceAxis ?? headerAxis;
+    if (effectiveAxis === null) {
+      // Headerless region (no header axes declared and no per-classification
+      // sourceAxis): use byPositionIndex along the records-axis's
+      // opposite. `sourceCol` is the absolute sheet coord along the
+      // header axis of the classifier (which for headerless falls back
+      // to row iteration); convert to an axis-relative 1-based index.
       const axis: AxisMember =
         region.recordsAxis === "row" ? "column" : "row";
       const start =
@@ -59,11 +67,36 @@ function bindingsFromClassifications(
         confidence: c.confidence,
         rationale: c.rationale,
       });
+    } else if (c.fromHeaderOverride) {
+      // Header override — the user has stated an explicit name for this
+      // position, which wins over whatever the cell happens to contain.
+      // We pin the binding to the position (`byHeaderName` would search
+      // the sheet for the override string and might match nothing) and
+      // attach a derived `normalizedKey` so the override surfaces all
+      // the way through commit. `toNormalizedKey` coerces the override
+      // into the schema's `^[a-z][a-z0-9_]*$` shape (e.g. `"Year"` →
+      // `"year"`, `"2020"` → `"f_2020"`).
+      const start =
+        effectiveAxis === "row"
+          ? region.bounds.startCol
+          : region.bounds.startRow;
+      const normalizedKey = toNormalizedKey(c.sourceHeader);
+      out.push({
+        sourceLocator: {
+          kind: "byPositionIndex",
+          axis: effectiveAxis,
+          index: c.sourceCol - start + 1,
+        },
+        columnDefinitionId: c.columnDefinitionId,
+        confidence: c.confidence,
+        rationale: c.rationale,
+        ...(normalizedKey ? { normalizedKey } : {}),
+      });
     } else {
       out.push({
         sourceLocator: {
           kind: "byHeaderName",
-          axis: headerAxis,
+          axis: effectiveAxis,
           name: c.sourceHeader,
         },
         columnDefinitionId: c.columnDefinitionId,
@@ -204,9 +237,12 @@ export function proposeBindings(state: InterpretState): InterpretState {
       ),
     };
 
-    // Column bindings — 1D regions only. Crosstab binding assembly is
-    // deferred to later phases since interpret() doesn't produce crosstabs
-    // in PR-1.
+    // Column bindings: each classification carries its own `sourceAxis`
+    // when produced by `classify-field-segments`, so crosstab regions
+    // route correctly per-classification (row-axis fields → axis "row",
+    // column-axis fields → axis "column"). The `scanAxis` argument
+    // remains as the legacy fallback for 1D regions whose classifier
+    // didn't stamp `sourceAxis` on each entry.
     const scanAxis: AxisMember | null =
       next.headerAxes.length === 1 ? next.headerAxes[0] : null;
     next = {

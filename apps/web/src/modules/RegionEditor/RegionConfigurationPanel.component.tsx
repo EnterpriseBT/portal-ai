@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import MuiChip from "@mui/material/Chip";
 import {
   Box,
   Stack,
@@ -28,6 +29,7 @@ import { SegmentStripUI } from "./SegmentStrip.component";
 import { SkipAndTerminatorEditorUI } from "./SkipAndTerminatorEditor.component";
 import { formatBounds } from "./utils/a1-notation.util";
 import { buildPreviewRecords } from "./utils/preview-records.util";
+import { resizeSegment } from "./utils/segment-ops.util";
 import {
   colorForEntity,
   confidenceBand,
@@ -129,6 +131,39 @@ function withPivotSync(
 
 function defaultTerminator(): Terminator {
   return { kind: "untilBlank", consecutiveBlanks: 2 };
+}
+
+/**
+ * Read the cell-derived header for each position of a field segment so the
+ * SegmentEditPopover can show them as placeholders alongside the
+ * (potentially overridden) value. Header cells live along `bounds.startRow`
+ * for a row-axis segment, and along `bounds.startCol` for a column-axis
+ * segment — the same convention `preview-records.util` reads from.
+ */
+function readFieldHeaderCells(
+  region: RegionDraft,
+  sheet: import("./utils/region-editor.types").SheetPreview,
+  axis: AxisMember,
+  segmentIndex: number
+): string[] {
+  const segments = region.segmentsByAxis?.[axis] ?? [];
+  const seg = segments[segmentIndex];
+  if (!seg || seg.kind !== "field") return [];
+  const startOffset = segments
+    .slice(0, segmentIndex)
+    .reduce((acc, s) => acc + s.positionCount, 0);
+  const { startRow, startCol } = region.bounds;
+  const out: string[] = [];
+  for (let i = 0; i < seg.positionCount; i++) {
+    const offset = startOffset + i;
+    const cellRow = axis === "row" ? startRow : startRow + offset;
+    const cellCol = axis === "row" ? startCol + offset : startCol;
+    const raw = sheet.cells[cellRow]?.[cellCol];
+    out.push(
+      raw === null || raw === undefined ? "" : String(raw).trim()
+    );
+  }
+  return out;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -237,6 +272,15 @@ export const RegionConfigurationPanelUI: React.FC<
   const editingIsTail = editingSegment
     ? editingSegment.index === axisSegments(region, editingSegment.axis).length - 1
     : false;
+  const editingCellPlaceholders =
+    editingSegment && editingSeg?.kind === "field" && regionSheet
+      ? readFieldHeaderCells(
+          region,
+          regionSheet,
+          editingSegment.axis,
+          editingSegment.index
+        )
+      : undefined;
 
   const closeSegmentEditor = () => {
     setEditingSegment(null);
@@ -268,10 +312,7 @@ export const RegionConfigurationPanelUI: React.FC<
     }
     if (donorIndex === -1) return;
     const donor = segments[donorIndex];
-    segments[donorIndex] = {
-      ...donor,
-      positionCount: donor.positionCount - 1,
-    };
+    segments[donorIndex] = resizeSegment(donor, donor.positionCount - 1);
     // Insert before any dynamic-tail pivot so refinement 10 (dynamic pivot
     // must be the tail) keeps holding. Otherwise append at the end.
     const tailIndex = segments.length - 1;
@@ -377,6 +418,36 @@ export const RegionConfigurationPanelUI: React.FC<
     onUpdate(writeSegments(region, axis, segments));
   };
 
+  const handleChangeFieldHeaders = (headers: string[] | undefined) => {
+    if (!editingSegment) return;
+    const { axis, index } = editingSegment;
+    const segments = [...axisSegments(region, axis)];
+    const seg = segments[index];
+    if (seg?.kind !== "field") return;
+    if (headers === undefined) {
+      const { headers: _drop, ...rest } = seg;
+      segments[index] = rest;
+    } else {
+      segments[index] = { ...seg, headers };
+    }
+    onUpdate(writeSegments(region, axis, segments));
+  };
+
+  const handleChangeFieldSkipped = (skipped: boolean[] | undefined) => {
+    if (!editingSegment) return;
+    const { axis, index } = editingSegment;
+    const segments = [...axisSegments(region, axis)];
+    const seg = segments[index];
+    if (seg?.kind !== "field") return;
+    if (skipped === undefined) {
+      const { skipped: _drop, ...rest } = seg;
+      segments[index] = rest;
+    } else {
+      segments[index] = { ...seg, skipped };
+    }
+    onUpdate(writeSegments(region, axis, segments));
+  };
+
   const handleToggleDynamic = (on: boolean) => {
     if (!editingSegment) return;
     const { axis, index } = editingSegment;
@@ -426,10 +497,10 @@ export const RegionConfigurationPanelUI: React.FC<
       segments.splice(index, 1);
       const recipientIdx = index > 0 ? index - 1 : 0;
       const recipient = segments[recipientIdx];
-      segments[recipientIdx] = {
-        ...recipient,
-        positionCount: recipient.positionCount + donate,
-      };
+      segments[recipientIdx] = resizeSegment(
+        recipient,
+        recipient.positionCount + donate
+      );
       const merged = coalesceSegments(segments);
       updates = withPivotSync(region, writeSegments(region, axis, merged));
     }
@@ -860,7 +931,7 @@ export const RegionConfigurationPanelUI: React.FC<
           </Button>
         )}
 
-        {pivoted && (
+        {pivoted && !crosstab && (
           <TextInput
             inputRef={cellValueFieldRef}
             size="small"
@@ -880,6 +951,133 @@ export const RegionConfigurationPanelUI: React.FC<
             }}
           />
         )}
+
+        {crosstab && pivoted && (() => {
+          const rowPivots = (region.segmentsByAxis?.row ?? []).filter(
+            (s): s is Extract<Segment, { kind: "pivot" }> => s.kind === "pivot"
+          );
+          const colPivots = (region.segmentsByAxis?.column ?? []).filter(
+            (s): s is Extract<Segment, { kind: "pivot" }> => s.kind === "pivot"
+          );
+          const fallbackName = region.cellValueField?.name?.trim() ?? "";
+          const writeOverride = (
+            id: string,
+            name: string
+          ) => {
+            const trimmed = name.trim();
+            const map = { ...(region.intersectionCellValueFields ?? {}) };
+            if (trimmed === "") {
+              delete map[id];
+            } else {
+              const prior = map[id];
+              map[id] = {
+                ...(prior ?? {}),
+                name,
+                nameSource: "user",
+              };
+            }
+            onUpdate({
+              intersectionCellValueFields:
+                Object.keys(map).length === 0 ? undefined : map,
+            });
+          };
+          if (rowPivots.length === 0 || colPivots.length === 0) {
+            return (
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 1,
+                  backgroundColor: "rgba(217, 119, 6, 0.08)",
+                  border: "1px dashed",
+                  borderColor: "rgba(180, 83, 9, 0.55)",
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{ ...SECTION_HEADING_SX, mb: 0.5 }}
+                >
+                  Cell-value fields
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ color: "text.secondary", lineHeight: 1.45 }}
+                >
+                  Add a pivot segment on each axis to surface
+                  per-intersection cell-value fields.
+                </Typography>
+              </Box>
+            );
+          }
+          return (
+            <Stack spacing={1}>
+              <Typography variant="caption" sx={SECTION_HEADING_SX}>
+                Cell-value fields per intersection
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ color: "text.secondary", lineHeight: 1.45 }}
+              >
+                Each pivot × pivot intersection emits its own field —
+                different intersections can hold different value types.
+                Leave a name blank to inherit the region default
+                {fallbackName ? ` ("${fallbackName}")` : ""}.
+              </Typography>
+              {rowPivots.map((rp) =>
+                colPivots.map((cp) => {
+                  const id = `${rp.id}__${cp.id}`;
+                  const override =
+                    region.intersectionCellValueFields?.[id];
+                  const overrideName = override?.name?.trim() ?? "";
+                  const rowName = rp.axisName.trim() || "(unnamed)";
+                  const colName = cp.axisName.trim() || "(unnamed)";
+                  return (
+                    <Stack
+                      key={id}
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      sx={{
+                        p: 1,
+                        borderRadius: 1,
+                        backgroundColor: "rgba(217, 119, 6, 0.06)",
+                        border: "1px dashed",
+                        borderColor: "rgba(180, 83, 9, 0.45)",
+                      }}
+                    >
+                      <MuiChip
+                        size="small"
+                        label={`${rowName} × ${colName}`}
+                        sx={{
+                          backgroundColor: "rgba(180, 83, 9, 0.85)",
+                          color: "#fff",
+                          fontWeight: 700,
+                        }}
+                      />
+                      <TextInput
+                        size="small"
+                        fullWidth
+                        label="Cell-value field name"
+                        value={overrideName}
+                        placeholder={fallbackName || undefined}
+                        onChange={(e) => writeOverride(id, e.target.value)}
+                        helperText={
+                          overrideName
+                            ? "Override — this block emits a separate field."
+                            : `Inherits "${fallbackName || "value"}" from the region default.`
+                        }
+                        slotProps={{
+                          htmlInput: {
+                            "aria-label": `Cell-value field name for intersection ${rowName} × ${colName}`,
+                          },
+                        }}
+                      />
+                    </Stack>
+                  );
+                })
+              )}
+            </Stack>
+          );
+        })()}
 
         {pivoted && (
           <Stack spacing={1}>
@@ -1038,7 +1236,10 @@ export const RegionConfigurationPanelUI: React.FC<
           axis={editingAxis}
           segment={editingSeg}
           isTail={editingIsTail}
+          cellPlaceholders={editingCellPlaceholders}
           onChangeAxisName={handleChangeAxisName}
+          onChangeHeaders={handleChangeFieldHeaders}
+          onChangeSkipped={handleChangeFieldSkipped}
           onToggleDynamic={handleToggleDynamic}
           onChangeTerminator={handleChangeSegmentTerminator}
           onConvert={handleConvertSegment}
@@ -1139,10 +1340,27 @@ function coalesceSegments(segments: Segment[]): Segment[] {
       continue;
     }
     if (tail.kind === "field" && seg.kind === "field") {
-      out[out.length - 1] = {
+      const merged: Extract<Segment, { kind: "field" }> = {
         kind: "field",
         positionCount: tail.positionCount + seg.positionCount,
       };
+      const headers = mergeFieldArrays(
+        tail.headers,
+        seg.headers,
+        tail.positionCount,
+        seg.positionCount,
+        ""
+      );
+      if (headers) merged.headers = headers;
+      const skipped = mergeFieldArrays(
+        tail.skipped,
+        seg.skipped,
+        tail.positionCount,
+        seg.positionCount,
+        false
+      );
+      if (skipped) merged.skipped = skipped;
+      out[out.length - 1] = merged;
       continue;
     }
     if (tail.kind === "skip" && seg.kind === "skip") {
@@ -1155,6 +1373,29 @@ function coalesceSegments(segments: Segment[]): Segment[] {
     out.push(seg);
   }
   return out;
+}
+
+function padFieldArray<T>(values: T[] | undefined, count: number, fill: T): T[] {
+  if (values && values.length === count) return [...values];
+  const out = new Array<T>(count).fill(fill);
+  if (values) {
+    for (let i = 0; i < Math.min(values.length, count); i++) out[i] = values[i];
+  }
+  return out;
+}
+
+function mergeFieldArrays<T>(
+  aValues: T[] | undefined,
+  bValues: T[] | undefined,
+  aCount: number,
+  bCount: number,
+  fill: T
+): T[] | undefined {
+  if (aValues === undefined && bValues === undefined) return undefined;
+  return [
+    ...padFieldArray(aValues, aCount, fill),
+    ...padFieldArray(bValues, bCount, fill),
+  ];
 }
 
 

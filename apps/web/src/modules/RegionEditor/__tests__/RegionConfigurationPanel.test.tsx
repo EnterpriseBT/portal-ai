@@ -331,17 +331,97 @@ describe("RegionConfigurationPanelUI", () => {
       );
     });
 
-    test("adding a column-axis pivot autofocuses the cell-value field name input once it surfaces", async () => {
-      // Drives state through a small harness so onUpdate actually mutates
-      // the rendered region — the autofocus only fires once the
-      // cell-value field input mounts on the next render.
+    test("renders one panel-level cell-value field input per pivot × pivot intersection on a 2D crosstab", () => {
+      // 2D crosstabs surface a per-intersection editor inside the
+      // configuration panel — one input per pivot × pivot pairing — so
+      // the user can name each block's cell-value field without leaving
+      // the panel. The standalone region-level input is intentionally
+      // gone for crosstabs.
       function Harness() {
         const [region, setRegion] = useState<RegionDraft>(
           segmentedRegion({
             bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
             headerAxes: ["row", "column"],
             segmentsByAxis: {
-              row: [{ kind: "field", positionCount: 4 }],
+              row: [
+                { kind: "skip", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "rp1",
+                  axisName: "Region",
+                  axisNameSource: "user",
+                  positionCount: 3,
+                },
+              ],
+              column: [
+                { kind: "skip", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "cp1",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 4,
+                },
+              ],
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })
+        );
+        return (
+          <RegionConfigurationPanelUI
+            region={region}
+            entityOptions={ENTITY_OPTIONS}
+            entityOrder={["ent_a"]}
+            siblingsInSameEntity={0}
+            onUpdate={(patch) =>
+              setRegion((prev) => ({ ...prev, ...patch }))
+            }
+            onDelete={jest.fn()}
+          />
+        );
+      }
+      render(<Harness />);
+      // No standalone region-level "Cell-value field name" input on a
+      // crosstab — every visible cell-value input here is keyed by
+      // intersection (per its aria-label).
+      const allCellValueInputs = screen.getAllByLabelText(
+        /cell-value field name/i
+      );
+      for (const inp of allCellValueInputs) {
+        expect(inp.getAttribute("aria-label")).toMatch(
+          /cell-value field name for intersection/i
+        );
+      }
+      // Per-intersection input is present and inherits the region default.
+      const input = screen.getByLabelText(
+        /cell-value field name for intersection region × quarter/i
+      ) as HTMLInputElement;
+      expect(input).toBeInTheDocument();
+      expect(input.value).toBe("");
+      expect(input.placeholder).toBe("Revenue");
+      // Typing into the per-intersection input writes the override onto
+      // region.intersectionCellValueFields keyed by composite id.
+      fireEvent.change(input, { target: { value: "Headcount" } });
+      expect(
+        (
+          screen.getByLabelText(
+            /cell-value field name for intersection region × quarter/i
+          ) as HTMLInputElement
+        ).value
+      ).toBe("Headcount");
+    });
+
+    test("renders the panel-level cell-value field input when a 1D region becomes pivoted", async () => {
+      // 1D pivoted regions still have a single cell-value field — there are
+      // no intersections to carry per-block names — so the panel keeps its
+      // standalone input here, and autofocuses it the moment the region
+      // turns pivoted.
+      function Harness() {
+        const [region, setRegion] = useState<RegionDraft>(
+          segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            headerAxes: ["column"],
+            segmentsByAxis: {
               column: [{ kind: "field", positionCount: 5 }],
             },
           })
@@ -360,7 +440,6 @@ describe("RegionConfigurationPanelUI", () => {
         );
       }
       render(<Harness />);
-      // Cell-value field input is hidden until the region becomes pivoted.
       expect(
         screen.queryByLabelText(/cell-value field name/i)
       ).not.toBeInTheDocument();
@@ -371,8 +450,6 @@ describe("RegionConfigurationPanelUI", () => {
         /cell-value field name/i
       ) as HTMLInputElement;
       expect(input).toBeInTheDocument();
-      // Focus is deferred 50ms past mount to clear any popover/transition
-      // focus traps; wait for it to settle.
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 75));
       });

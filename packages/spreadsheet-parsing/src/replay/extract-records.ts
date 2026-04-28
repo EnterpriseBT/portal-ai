@@ -515,8 +515,17 @@ function extract2D(
       const cellRow = cp.coord;
       const cellCol = rp.coord;
 
-      // Skip positions whose segment is "skip" on either axis.
-      if (rp.segment.kind === "skip" || cp.segment.kind === "skip") continue;
+      // Records exist only at (row-axis pivot × column-axis pivot) body
+      // cells. Field positions on either axis contribute static sidebar
+      // values to the pivot×pivot records (read from the same row/col),
+      // not their own records — emitting one for every non-skip cell
+      // would double-write static-field values (the body cell at a
+      // field column equals the static field's value for that row, so
+      // a record there would carry the same value under both the
+      // static field name AND the cell-value name).
+      if (rp.segment.kind !== "pivot" || cp.segment.kind !== "pivot") {
+        continue;
+      }
 
       if (
         region.skipRules.some((rule) =>
@@ -534,20 +543,32 @@ function extract2D(
       }
 
       // Row-axis pivot contribution: label from row-header at this col.
-      if (rp.segment.kind === "pivot" && rowHeaders) {
+      if (rowHeaders) {
         fields[rp.segment.axisName] = cellText(
           sheet.cell(rowHeaders.index, rp.coord)
         );
       }
       // Column-axis pivot contribution: label from col-header at this row.
-      if (cp.segment.kind === "pivot" && colHeaders) {
+      if (colHeaders) {
         fields[cp.segment.axisName] = cellText(
           sheet.cell(cp.coord, colHeaders.index)
         );
       }
-      // Cell value
-      if (cellValueFieldName) {
-        fields[cellValueFieldName] = cellValue(sheet.cell(cellRow, cellCol));
+      // Cell value — when the user has supplied a per-intersection
+      // override (`region.intersectionCellValueFields[
+      // `${rowPivotId}__${colPivotId}`]`), emit under that override's
+      // name so each (rowPivot, colPivot) block lands in its own
+      // FieldMapping. Fall back to the region-level `cellValueField.name`
+      // when no override is set on this intersection.
+      let effectiveCellValueName = cellValueFieldName;
+      if (region.intersectionCellValueFields) {
+        const intersectionKey = `${rp.segment.id}__${cp.segment.id}`;
+        const override = region.intersectionCellValueFields[intersectionKey];
+        const overrideName = override?.name?.trim();
+        if (overrideName) effectiveCellValueName = overrideName;
+      }
+      if (effectiveCellValueName) {
+        fields[effectiveCellValueName] = cellValue(sheet.cell(cellRow, cellCol));
       }
 
       out.push(

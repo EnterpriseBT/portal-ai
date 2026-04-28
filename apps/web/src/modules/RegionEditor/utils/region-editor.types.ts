@@ -158,6 +158,12 @@ export type RegionDraft = {
   headerAxes?: AxisMember[];
   segmentsByAxis?: { row?: Segment[]; column?: Segment[] };
   cellValueField?: CellValueField;
+  /**
+   * Per-intersection cell-value overrides on a 2D region. Keyed by
+   * `${rowPivotSegmentId}__${colPivotSegmentId}`. Round-trips to
+   * `Region.intersectionCellValueFields` on the canonical schema.
+   */
+  intersectionCellValueFields?: Record<string, CellValueField>;
   recordAxisTerminator?: Terminator;
   /**
    * Records axis for headerless regions (required by the canonical schema's

@@ -20,6 +20,7 @@ import { EntityLegendUI } from "./EntityLegend.component";
 import { RegionConfigurationPanelUI } from "./RegionConfigurationPanel.component";
 import { formatBounds } from "./utils/a1-notation.util";
 import { colorForEntity } from "./utils/region-editor-colors.util";
+import { resizeSegment } from "./utils/segment-ops.util";
 import type {
   CellBounds,
   EntityLegendEntry,
@@ -481,11 +482,8 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
               const left = axisSegs[segmentIndex];
               const right = axisSegs[segmentIndex + 1];
               if (!left || !right) return;
-              axisSegs[segmentIndex] = { ...left, positionCount: newLeft };
-              axisSegs[segmentIndex + 1] = {
-                ...right,
-                positionCount: newRight,
-              };
+              axisSegs[segmentIndex] = resizeSegment(left, newLeft);
+              axisSegs[segmentIndex + 1] = resizeSegment(right, newRight);
               onRegionUpdate(regionId, {
                 segmentsByAxis: {
                   ...(region.segmentsByAxis ?? {}),
@@ -493,6 +491,7 @@ export const RegionDrawingStepUI: React.FC<RegionDrawingStepUIProps> = ({
                 },
               });
             }}
+            onRegionUpdate={onRegionUpdate}
             maxHeight={isLargeScreen ? "calc(100vh - 400px)" : 420}
             loadSlice={loadSlice}
           />

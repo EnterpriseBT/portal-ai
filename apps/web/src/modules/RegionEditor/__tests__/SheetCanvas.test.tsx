@@ -450,4 +450,64 @@ describe("SheetCanvasUI", () => {
     );
     expect(loadSlice).toHaveBeenCalledTimes(1);
   });
+
+  test("clicking a pivot×pivot intersection overlay opens the cell-value editor popover", () => {
+    const region: RegionDraft = {
+      id: "r1",
+      sheetId: "s1",
+      bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 4 },
+      headerAxes: ["row", "column"],
+      segmentsByAxis: {
+        row: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "rp1",
+            axisName: "Region",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+        column: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "cp1",
+            axisName: "Quarter",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+      },
+      cellValueField: { name: "Revenue", nameSource: "user" },
+      targetEntityDefinitionId: "ent_a",
+    };
+    const onRegionUpdate = jest.fn();
+    render(
+      <SheetCanvasUI
+        sheet={makeSheet()}
+        regions={[region]}
+        entityOrder={["ent_a"]}
+        selectedRegionId="r1"
+        onRegionSelect={jest.fn()}
+        onRegionDraft={jest.fn()}
+        onRegionUpdate={onRegionUpdate}
+      />
+    );
+    const overlay = screen.getByTestId("intersection-overlay-r1-rp1__cp1");
+    expect(overlay).toBeInTheDocument();
+    // Editing fires on pointer-down (same event family the region overlay
+    // body listens to) so the gesture is claimed before any region-drag
+    // can start.
+    fireEvent.pointerDown(overlay, {
+      pointerId: 1,
+      clientX: 200,
+      clientY: 100,
+    });
+    expect(
+      screen.getByRole("textbox", {
+        name: /cell-value field name for this intersection/i,
+      })
+    ).toBeInTheDocument();
+  });
 });

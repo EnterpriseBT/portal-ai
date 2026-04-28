@@ -21,6 +21,19 @@ export function normalise(text: string): string {
 }
 
 /**
+ * Same as `normalise` but coerces the result into a valid `normalizedKey`
+ * (`/^[a-z][a-z0-9_]*$/`). When the normalised form starts with a digit
+ * (e.g. user-typed override `"2020"`) we prepend `f_` so the result begins
+ * with a letter, matching the schema's `NORMALIZED_KEY_PATTERN`. Returns
+ * `null` when the input has no alphanumeric content at all.
+ */
+export function toNormalizedKey(text: string): string | null {
+  const base = normalise(text);
+  if (!base) return null;
+  return /^[a-z]/.test(base) ? base : `f_${base}`;
+}
+
+/**
  * Shared built-in classifier — used both by `classify-field-segments` (per
  * header-line position) and `classify-logical-fields` (per pivot axisName /
  * cellValueField.name). Returns a concrete classification so downstream

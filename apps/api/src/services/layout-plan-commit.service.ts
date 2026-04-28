@@ -180,15 +180,70 @@ export class LayoutPlanCommitService {
         }
       }
 
-      // Cell-value field — replay emits `record.fields[cellValueField.name]`.
+      // Per-intersection cell-value overrides — when a 2D region carries
+      // `intersectionCellValueFields[key]`, replay emits the body cells
+      // inside that intersection under the override's `name`. Each entry
+      // becomes its own FieldMapping so distinct intersections can carry
+      // distinct value types. Done before the region-level cellValueField
+      // emission so a downstream identical-name collision is detected by
+      // reconcile (LAYOUT_PLAN_DUPLICATE_NORMALIZED_KEY) rather than
+      // silently winning the second push.
+      if (region.intersectionCellValueFields) {
+        for (const field of Object.values(region.intersectionCellValueFields)) {
+          if (!field?.columnDefinitionId) continue;
+          bucket.push({
+            columnDefinitionId: field.columnDefinitionId,
+            sourceField: field.name,
+            recordFieldKey: field.name,
+            isPrimaryKey: false,
+            excluded: field.excluded,
+          });
+        }
+      }
+
+      // Cell-value field — replay emits `record.fields[cellValueField.name]`
+      // for any pivot×pivot body cell that doesn't match an entry in
+      // `intersectionCellValueFields`. When every (rowPivot, colPivot)
+      // pair has its own override, the region-level cellValueField is
+      // never written by replay and would land as an empty FieldMapping
+      // here — skip the push in that case so commit doesn't materialise
+      // an unused field.
       if (region.cellValueField?.columnDefinitionId) {
-        bucket.push({
-          columnDefinitionId: region.cellValueField.columnDefinitionId,
-          sourceField: region.cellValueField.name,
-          recordFieldKey: region.cellValueField.name,
-          isPrimaryKey: false,
-          excluded: region.cellValueField.excluded,
-        });
+        const overrides = region.intersectionCellValueFields ?? {};
+        const rowPivotIds: string[] = [];
+        const colPivotIds: string[] = [];
+        for (const seg of region.segmentsByAxis?.row ?? []) {
+          if (seg.kind === "pivot") rowPivotIds.push(seg.id);
+        }
+        for (const seg of region.segmentsByAxis?.column ?? []) {
+          if (seg.kind === "pivot") colPivotIds.push(seg.id);
+        }
+        let unusedByOverrides = false;
+        if (
+          region.headerAxes.length === 2 &&
+          rowPivotIds.length > 0 &&
+          colPivotIds.length > 0
+        ) {
+          let allCovered = true;
+          outer: for (const rid of rowPivotIds) {
+            for (const cid of colPivotIds) {
+              if (!overrides[`${rid}__${cid}`]) {
+                allCovered = false;
+                break outer;
+              }
+            }
+          }
+          unusedByOverrides = allCovered;
+        }
+        if (!unusedByOverrides) {
+          bucket.push({
+            columnDefinitionId: region.cellValueField.columnDefinitionId,
+            sourceField: region.cellValueField.name,
+            recordFieldKey: region.cellValueField.name,
+            isPrimaryKey: false,
+            excluded: region.cellValueField.excluded,
+          });
+        }
       }
     }
 

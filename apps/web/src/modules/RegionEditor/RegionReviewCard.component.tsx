@@ -37,6 +37,30 @@ export interface RegionReviewCardUIProps {
   resolveColumnLabel?: (columnDefinitionId: string) => string | undefined;
 }
 
+/**
+ * Pull a human-readable source label from a serialised locator string.
+ * `header:axis:name` → the header name; `pos:axis:index` → the binding's
+ * `normalizedKey` (when the back-end emitted one — typically because the
+ * user supplied a `headers[i]` override over a blank cell), otherwise a
+ * `Pos {axis} {index}` placeholder. Falls back to the raw locator for
+ * any unrecognised shape so the chip never renders empty.
+ */
+function bindingSourceLabel(
+  serializedLocator: string,
+  binding: { normalizedKey?: string }
+): string {
+  if (serializedLocator.startsWith("header:")) {
+    const parts = serializedLocator.split(":");
+    if (parts.length >= 3) return parts.slice(2).join(":");
+  }
+  if (serializedLocator.startsWith("pos:")) {
+    if (binding.normalizedKey) return binding.normalizedKey;
+    const parts = serializedLocator.split(":");
+    if (parts.length === 3) return `Pos ${parts[1]} ${parts[2]}`;
+  }
+  return serializedLocator;
+}
+
 interface ReviewChip {
   key: string;
   /** Source label rendered on the left of the chip arrow. */
@@ -67,9 +91,10 @@ function buildChips(
   for (const binding of region.columnBindings ?? []) {
     const excluded = binding.excluded === true;
     const invalid = !excluded && bindingErrors?.[binding.sourceLocator] !== undefined;
+    const sourceLabel = bindingSourceLabel(binding.sourceLocator, binding);
     chips.push({
       key: `binding:${binding.sourceLocator}`,
-      source: binding.sourceLocator,
+      source: sourceLabel,
       columnDefinitionLabel: binding.columnDefinitionLabel,
       columnDefinitionId: binding.columnDefinitionId,
       band: confidenceBand(binding.confidence),
@@ -77,10 +102,10 @@ function buildChips(
       invalid,
       onClick: (anchor) => onEditBinding(binding.sourceLocator, anchor),
       ariaLabel: excluded
-        ? `Excluded — click to edit: ${binding.sourceLocator}`
+        ? `Excluded — click to edit: ${sourceLabel}`
         : invalid
-          ? `Invalid — click to edit: ${binding.sourceLocator}`
-          : `Edit binding: ${binding.sourceLocator}`,
+          ? `Invalid — click to edit: ${sourceLabel}`
+          : `Edit binding: ${sourceLabel}`,
     });
   }
 
@@ -113,7 +138,38 @@ function buildChips(
     }
   }
 
-  if (region.cellValueField) {
+  // Per-intersection cell-value fields take precedence over the
+  // region-level `cellValueField` chip on a 2D crosstab — each
+  // intersection is its own field with its own classification, so
+  // surface each as its own chip. The region-level "value" default is
+  // a fallback that ceases to be the canonical name once an
+  // intersection override is set.
+  const intersectionEntries = region.intersectionCellValueFields
+    ? Object.entries(region.intersectionCellValueFields)
+    : [];
+  if (intersectionEntries.length > 0) {
+    for (const [id, field] of intersectionEntries) {
+      const colDefId = field.columnDefinitionId;
+      const label = colDefId ? resolveColumnLabel?.(colDefId) : undefined;
+      const excluded = field.excluded === true;
+      const sourceLocator = `intersection:${id}`;
+      chips.push({
+        key: `intersection:${id}`,
+        source: field.name,
+        columnDefinitionLabel: label,
+        columnDefinitionId: colDefId ?? null,
+        band: colDefId ? "green" : "red",
+        excluded,
+        invalid: !excluded && !colDefId,
+        onClick: (anchor) => onEditBinding(sourceLocator, anchor),
+        ariaLabel: excluded
+          ? `Excluded — click to edit intersection cell value "${field.name}"`
+          : colDefId
+            ? `Edit intersection cell value "${field.name}" — bound to ${label ?? colDefId}`
+            : `Edit intersection cell value "${field.name}" — unbound`,
+      });
+    }
+  } else if (region.cellValueField) {
     const id = region.cellValueField.columnDefinitionId;
     const label = id ? resolveColumnLabel?.(id) : undefined;
     const excluded = region.cellValueField.excluded === true;

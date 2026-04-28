@@ -41,6 +41,14 @@ function skeletonRegionFromHint(hint: RegionHint, index: number): Region {
   if (hint.cellValueField) {
     region.cellValueField = { ...hint.cellValueField };
   }
+  if (hint.intersectionCellValueFields) {
+    region.intersectionCellValueFields = Object.fromEntries(
+      Object.entries(hint.intersectionCellValueFields).map(([id, f]) => [
+        id,
+        { ...f },
+      ])
+    );
+  }
   if (hint.recordsAxis !== undefined) {
     region.recordsAxis = hint.recordsAxis;
   }

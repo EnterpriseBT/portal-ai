@@ -24,16 +24,22 @@ import {
 import {
   DECORATION_BACKGROUND_IMAGE,
   DECORATION_COLOR,
+  INTERSECTION_OVERLAY_BACKGROUND_IMAGE,
+  INTERSECTION_OVERLAY_BORDER,
+  INTERSECTION_OVERLAY_COLOR,
   SEGMENT_OVERLAY_BACKGROUND_IMAGE,
   SEGMENT_OVERLAY_BORDER,
   SEGMENT_OVERLAY_COLOR,
+  computeIntersectionOverlays,
   computeRegionDecorations,
   computeSegmentOverlays,
 } from "./utils/region-editor-decorations.util";
+import { IntersectionEditPopoverUI } from "./IntersectionEditPopover.component";
 import type {
   CellBounds,
   CellCoord,
   CellValue,
+  CellValueField,
   RegionDraft,
   SheetPreview,
 } from "./utils/region-editor.types";
@@ -75,6 +81,13 @@ export interface SheetCanvasUIProps {
     newLeft: number,
     newRight: number
   ) => void;
+  /**
+   * Apply a partial update to a region — used by the intersection editor
+   * (and any future canvas-level editors) to write `intersectionCellValueFields`
+   * back onto the region's draft. Wired through to the same setter
+   * `RegionConfigurationPanel` consumes via its `onUpdate` prop.
+   */
+  onRegionUpdate?: (regionId: string, updates: Partial<RegionDraft>) => void;
   readOnly?: boolean;
   cellSize?: { width: number; height: number };
   maxHeight?: number | string;
@@ -169,6 +182,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
   onRegionDraft,
   onRegionResize,
   onSegmentResize,
+  onRegionUpdate,
   readOnly = false,
   cellSize,
   maxHeight = 420,
@@ -186,6 +200,17 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     vy: 0,
   });
   const [activeOp, setActiveOp] = useState<ActiveOp | null>(null);
+  // Open-popover state for the per-intersection cell-value editor. The
+  // canvas owns this directly because the overlay is canvas-rendered and
+  // there is no separate "intersection strip" elsewhere in the UI.
+  const [editingIntersection, setEditingIntersection] = useState<{
+    regionId: string;
+    intersectionId: string;
+    rowPivotSegmentId: string;
+    colPivotSegmentId: string;
+    label: string;
+    anchor: HTMLElement;
+  } | null>(null);
 
   // Per-canvas slice cache for lazy-loaded sheets. Keyed by row index —
   // each entry is the row's cells across the full column range. Rests
@@ -1019,6 +1044,8 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
               }
             }
             const segmentOverlays = computeSegmentOverlays(previewRegion);
+            const intersectionOverlays =
+              computeIntersectionOverlays(previewRegion);
             const decorations = computeRegionDecorations(previewRegion, sheet);
             const decorationEls = decorations.map((d, i) => {
               const dLeft = ROW_HEADER_WIDTH + d.bounds.startCol * cellWidth;
@@ -1202,6 +1229,187 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
                 </Box>
               );
             });
+            // Body-cell intersection blocks. Tinted rectangles colored by
+            // intersection kind so the user reads the body grid at a
+            // glance; only `pivot-pivot` blocks are interactive (they
+            // carry an editable cell-value field name). All four kinds
+            // — field-field, field-pivot, pivot-pivot, skip-mixed — are
+            // emitted on 2D regions; 1D and headerless return none.
+            const canEditPivotIntersections =
+              !readOnly && !!onRegionUpdate;
+            const intersectionEls = intersectionOverlays.map((o) => {
+              const iLeft =
+                ROW_HEADER_WIDTH + o.bounds.startCol * cellWidth;
+              const iTop = COL_HEADER_HEIGHT + o.bounds.startRow * cellHeight;
+              const iWidth =
+                (o.bounds.endCol - o.bounds.startCol + 1) * cellWidth;
+              const iHeight =
+                (o.bounds.endRow - o.bounds.startRow + 1) * cellHeight;
+              const isEditable =
+                canEditPivotIntersections && o.kind === "pivot-pivot";
+              const titleParts: string[] = [];
+              if (o.kind === "pivot-pivot" && o.label) {
+                titleParts.push(`Pivot intersection — ${o.label}`);
+                if (o.cellValueName) {
+                  titleParts.push(
+                    o.cellValueOverridden
+                      ? `Cell-value: "${o.cellValueName}" (override)`
+                      : `Cell-value: "${o.cellValueName}" (inherited)`
+                  );
+                } else {
+                  titleParts.push("Cell-value: (unset)");
+                }
+                if (isEditable) {
+                  titleParts.push("Click to edit cell-value field name");
+                }
+              } else if (o.kind === "field-field") {
+                titleParts.push(
+                  "Field × field — body cell named by both axes (degenerate)"
+                );
+              } else if (o.kind === "field-pivot") {
+                titleParts.push(
+                  "Field × pivot — body cell carries the static-axis field value"
+                );
+              } else {
+                titleParts.push(
+                  "Skip — body cells in this block are dropped from records"
+                );
+              }
+              return (
+                <Box
+                  key={`intersection-${o.id}`}
+                  data-testid={`intersection-overlay-${previewRegion.id}-${o.id}`}
+                  role={isEditable ? "button" : undefined}
+                  tabIndex={isEditable ? 0 : undefined}
+                  // Drive editing from pointer-down rather than click — the
+                  // region overlay below also reacts on pointer-down, and
+                  // claiming the gesture as early as possible (and on the
+                  // same event family the region overlay listens to)
+                  // avoids any window where the gesture could be re-routed
+                  // mid-stream. preventDefault keeps the browser from
+                  // promoting the gesture into a drag/text-select.
+                  onPointerDown={
+                    isEditable && o.label
+                      ? (event) => {
+                          event.stopPropagation();
+                          event.preventDefault();
+                          // Capture the anchor synchronously — event
+                          // properties may be cleared after the handler
+                          // returns and the popover needs a stable DOM ref.
+                          const anchor = event.currentTarget;
+                          // Selecting the region keeps the side panel in
+                          // sync — clicking an intersection on a region
+                          // that's currently unselected should still
+                          // promote it to the active region the way a
+                          // body-click would.
+                          onRegionSelect(previewRegion.id);
+                          setEditingIntersection({
+                            regionId: previewRegion.id,
+                            intersectionId: o.id,
+                            rowPivotSegmentId: o.rowPivotSegmentId!,
+                            colPivotSegmentId: o.colPivotSegmentId!,
+                            label: o.label!,
+                            anchor,
+                          });
+                        }
+                      : undefined
+                  }
+                  onKeyDown={
+                    isEditable && o.label
+                      ? (event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          const anchor = event.currentTarget;
+                          onRegionSelect(previewRegion.id);
+                          setEditingIntersection({
+                            regionId: previewRegion.id,
+                            intersectionId: o.id,
+                            rowPivotSegmentId: o.rowPivotSegmentId!,
+                            colPivotSegmentId: o.colPivotSegmentId!,
+                            label: o.label!,
+                            anchor,
+                          });
+                        }
+                      : undefined
+                  }
+                  title={titleParts.join(" — ")}
+                  aria-label={titleParts.join(" — ")}
+                  sx={{
+                    position: "absolute",
+                    left: iLeft,
+                    top: iTop,
+                    width: iWidth,
+                    height: iHeight,
+                    backgroundColor: INTERSECTION_OVERLAY_COLOR[o.kind],
+                    backgroundImage:
+                      INTERSECTION_OVERLAY_BACKGROUND_IMAGE[o.kind],
+                    border: "1.5px dashed",
+                    borderColor: INTERSECTION_OVERLAY_BORDER[o.kind],
+                    pointerEvents: isEditable ? "auto" : "none",
+                    cursor: isEditable ? "pointer" : "default",
+                    // Editable intersection blocks must sit above the
+                    // region overlay (z=5 unselected, 6 selected) so their
+                    // pointer-down/click reaches the popover handler
+                    // instead of triggering a region drag. Non-editable
+                    // tints stay below the segment chrome (z=4.5) and
+                    // above generic decorations (z=4).
+                    zIndex: (isEditable ? 6.5 : 4.4) as unknown as number,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    "&:hover, &:focus-visible":
+                      isEditable
+                        ? {
+                            backgroundColor: "rgba(217, 119, 6, 0.32)",
+                            outline: "none",
+                          }
+                        : undefined,
+                  }}
+                >
+                  {o.kind === "pivot-pivot" && o.label && (
+                    <Box
+                      component="span"
+                      sx={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        mt: "2px",
+                        px: "5px",
+                        py: "1px",
+                        borderRadius: "3px",
+                        backgroundColor: INTERSECTION_OVERLAY_BORDER[o.kind],
+                        color: "#fff",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        lineHeight: 1.1,
+                        letterSpacing: 0.2,
+                        whiteSpace: "nowrap",
+                        textOverflow: "ellipsis",
+                        overflow: "hidden",
+                        maxWidth: "95%",
+                      }}
+                    >
+                      <Box component="span">{o.label}</Box>
+                      {o.cellValueName && (
+                        <Box
+                          component="span"
+                          sx={{
+                            fontWeight: 600,
+                            fontStyle: o.cellValueOverridden
+                              ? "normal"
+                              : "italic",
+                            opacity: o.cellValueOverridden ? 1 : 0.85,
+                          }}
+                        >
+                          : {o.cellValueName}
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              );
+            });
             // Drag handles between adjacent segments, one per axis. They let
             // the user rebalance positionCount within the region without
             // resizing the region itself.
@@ -1284,6 +1492,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
             return (
               <>
                 {decorationEls}
+                {intersectionEls}
                 {segmentEls}
                 {dividerEls}
               </>
@@ -1361,6 +1570,59 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
           )}
         </div>
       </Box>
+      {editingIntersection &&
+        (() => {
+          const region = regions.find(
+            (r) => r.id === editingIntersection.regionId
+          );
+          if (!region) return null;
+          const override =
+            region.intersectionCellValueFields?.[
+              editingIntersection.intersectionId
+            ];
+          const overrideName = override?.name?.trim() ?? "";
+          const overridden = overrideName !== "";
+          const fallbackName = region.cellValueField?.name?.trim() ?? "";
+          const close = () => setEditingIntersection(null);
+          const writeOverride = (next: Record<string, CellValueField> | undefined) => {
+            onRegionUpdate?.(region.id, {
+              intersectionCellValueFields: next,
+            });
+          };
+          const handleChange = (value: string) => {
+            const trimmed = value.trim();
+            const map = { ...(region.intersectionCellValueFields ?? {}) };
+            if (trimmed === "") {
+              delete map[editingIntersection.intersectionId];
+            } else {
+              const prior = map[editingIntersection.intersectionId];
+              map[editingIntersection.intersectionId] = {
+                ...(prior ?? {}),
+                name: value,
+                nameSource: "user",
+              };
+            }
+            writeOverride(Object.keys(map).length === 0 ? undefined : map);
+          };
+          const handleClear = () => {
+            const map = { ...(region.intersectionCellValueFields ?? {}) };
+            delete map[editingIntersection.intersectionId];
+            writeOverride(Object.keys(map).length === 0 ? undefined : map);
+          };
+          return (
+            <IntersectionEditPopoverUI
+              open={true}
+              anchorEl={editingIntersection.anchor}
+              label={editingIntersection.label}
+              value={overrideName}
+              fallbackName={fallbackName || undefined}
+              overridden={overridden}
+              onChange={handleChange}
+              onClear={handleClear}
+              onClose={close}
+            />
+          );
+        })()}
     </Box>
   );
 };

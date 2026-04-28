@@ -13,6 +13,8 @@ import {
   convertSegmentKind,
   removeHeaderAxis,
   removeSegment,
+  resizeFieldSegment,
+  resizeSegment,
   setCellValueField,
   setRecordAxisTerminator,
   setSegmentDynamic,
@@ -225,6 +227,45 @@ describe("splitSegment", () => {
     expect(() => splitSegment(region, "row", 0, 4)).toThrow();
   });
 
+  it("splits headers along with the segment, slicing at the offset", () => {
+    const region = tidyFieldRegion(3);
+    region.segmentsByAxis!.row![0] = {
+      kind: "field",
+      positionCount: 3,
+      headers: ["year", "name", "desc"],
+    };
+    const next = splitSegment(region, "row", 0, 1);
+    const segs = rowSegs(next);
+    expect(segs).toEqual([
+      { kind: "field", positionCount: 1, headers: ["year"] },
+      { kind: "field", positionCount: 2, headers: ["name", "desc"] },
+    ]);
+  });
+
+  it("splits skipped along with the segment, slicing at the offset", () => {
+    const region = tidyFieldRegion(3);
+    region.segmentsByAxis!.row![0] = {
+      kind: "field",
+      positionCount: 3,
+      skipped: [false, true, false],
+    };
+    const next = splitSegment(region, "row", 0, 2);
+    expect(rowSegs(next)).toEqual([
+      { kind: "field", positionCount: 2, skipped: [false, true] },
+      { kind: "field", positionCount: 1, skipped: [false] },
+    ]);
+  });
+
+  it("leaves headers undefined on both halves when the source segment has no overrides", () => {
+    const region = tidyFieldRegion(3);
+    const next = splitSegment(region, "row", 0, 1);
+    for (const seg of rowSegs(next)) {
+      expect(seg.kind).toBe("field");
+      if (seg.kind !== "field") throw new Error("unreachable");
+      expect(seg.headers).toBeUndefined();
+    }
+  });
+
   it("rejects splitting a dynamic segment (would create mid-axis dynamic)", () => {
     const region = pivotRegion();
     const withDynamic = setSegmentDynamic(region, "row", 0, {
@@ -411,6 +452,50 @@ describe("addFieldSegment / removeSegment", () => {
     const expected: Segment[] = [{ kind: "field", positionCount: 5 }];
     expect(rowSegs(next)).toEqual(expected);
     expect(next.bounds.endCol - next.bounds.startCol + 1).toBe(5);
+    assertValid(next);
+  });
+
+  it("coalesces adjacent field segments by concatenating their headers (padding absent halves)", () => {
+    const region: Region = {
+      ...tidyFieldRegion(3),
+      bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
+      segmentsByAxis: {
+        row: [
+          { kind: "field", positionCount: 2, headers: ["year", ""] },
+          { kind: "skip", positionCount: 1 },
+          { kind: "field", positionCount: 2 },
+        ],
+      },
+      columnBindings: [],
+    };
+    const next = removeSegment(region, "row", 1);
+    expect(rowSegs(next)).toEqual([
+      { kind: "field", positionCount: 4, headers: ["year", "", "", ""] },
+    ]);
+    assertValid(next);
+  });
+
+  it("coalesces adjacent field segments by concatenating their skipped arrays (padding absent halves with false)", () => {
+    const region: Region = {
+      ...tidyFieldRegion(3),
+      bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
+      segmentsByAxis: {
+        row: [
+          { kind: "field", positionCount: 2, skipped: [true, false] },
+          { kind: "skip", positionCount: 1 },
+          { kind: "field", positionCount: 2 },
+        ],
+      },
+      columnBindings: [],
+    };
+    const next = removeSegment(region, "row", 1);
+    expect(rowSegs(next)).toEqual([
+      {
+        kind: "field",
+        positionCount: 4,
+        skipped: [true, false, false, false],
+      },
+    ]);
     assertValid(next);
   });
 });
@@ -625,5 +710,96 @@ describe("setRecordAxisTerminator", () => {
     const next = setRecordAxisTerminator(withTerm, null);
     expect(next.recordAxisTerminator).toBeUndefined();
     assertValid(next);
+  });
+});
+
+describe("resizeFieldSegment / resizeSegment — keep parallel arrays in sync", () => {
+  it("returns the original segment when positionCount is unchanged", () => {
+    const seg: Segment = {
+      kind: "field",
+      positionCount: 3,
+      headers: ["a", "b", "c"],
+    };
+    expect(resizeFieldSegment(seg, 3)).toBe(seg);
+  });
+
+  it("truncates headers and skipped when shrinking", () => {
+    const seg: Segment = {
+      kind: "field",
+      positionCount: 4,
+      headers: ["a", "b", "c", "d"],
+      skipped: [false, true, false, false],
+    };
+    const next = resizeFieldSegment(seg, 2);
+    expect(next.positionCount).toBe(2);
+    expect(next.headers).toEqual(["a", "b"]);
+    expect(next.skipped).toEqual([false, true]);
+  });
+
+  it("pads headers (with empty strings) and skipped (with false) when growing", () => {
+    const seg: Segment = {
+      kind: "field",
+      positionCount: 2,
+      headers: ["a", "b"],
+      skipped: [true, false],
+    };
+    const next = resizeFieldSegment(seg, 4);
+    expect(next.positionCount).toBe(4);
+    expect(next.headers).toEqual(["a", "b", "", ""]);
+    expect(next.skipped).toEqual([true, false, false, false]);
+  });
+
+  it("drops headers/skipped entirely when truncation leaves them all-empty / all-false", () => {
+    const seg: Segment = {
+      kind: "field",
+      positionCount: 4,
+      headers: ["", "year", "", ""],
+      skipped: [false, true, false, false],
+    };
+    const next = resizeFieldSegment(seg, 1);
+    expect(next.positionCount).toBe(1);
+    // Slice 0..1 = [""] → all empty → drop.
+    expect(next.headers).toBeUndefined();
+    // Slice 0..1 = [false] → all false → drop.
+    expect(next.skipped).toBeUndefined();
+  });
+
+  it("resizeSegment passes pivot/skip through with new positionCount untouched", () => {
+    const pivot = resizeSegment(
+      {
+        kind: "pivot",
+        id: "p1",
+        axisName: "Quarter",
+        axisNameSource: "user",
+        positionCount: 4,
+      },
+      6
+    );
+    expect(pivot).toEqual({
+      kind: "pivot",
+      id: "p1",
+      axisName: "Quarter",
+      axisNameSource: "user",
+      positionCount: 6,
+    });
+    const skip = resizeSegment({ kind: "skip", positionCount: 1 }, 3);
+    expect(skip).toEqual({ kind: "skip", positionCount: 3 });
+  });
+
+  // Reproduces the schema rejection observed at /interpret: a row axis
+  // with [field(7) + skipped[0]=true] gets the user adding a pivot on
+  // the right, donating from the field. The bug was that the field
+  // shrunk to positionCount=3 without truncating skipped → schema
+  // refinement 3a rejected the plan with "skipped length 7 does not
+  // match positionCount 3".
+  it("repro: shrinking a field after a pivot is added off the donor truncates skipped", () => {
+    const seg = {
+      kind: "field" as const,
+      positionCount: 7,
+      skipped: [true, false, false, false, false, false, false],
+    };
+    const shrunk = resizeFieldSegment(seg, 3);
+    expect(shrunk.skipped).toEqual([true, false, false]);
+    expect(shrunk.positionCount).toBe(3);
   });
 });

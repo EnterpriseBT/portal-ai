@@ -3,6 +3,7 @@ import type {
   CellCoord,
   CellValue,
   RegionDraft,
+  Segment,
   SheetPreview,
   SkipRuleDraft,
 } from "./region-editor.types";
@@ -266,6 +267,51 @@ export function computeRegionDecorations(
     });
   }
 
+  // Per-position field-segment skips — each `skipped[i] === true` flag on a
+  // field segment marks one column (row-axis) or one row (column-axis) as
+  // omitted from records. We surface that as the same striped "skipped"
+  // decoration the skip-rules emit so the canvas reads consistently. The
+  // overlay spans the full record area (excluding the header line itself —
+  // the popover already disables the header input there) so the user can
+  // see exactly which column / row will be dropped.
+  for (const axis of axes) {
+    const segments = axis === "row" ? rowSegs : colSegs;
+    let offset = 0;
+    for (const seg of segments) {
+      if (seg.kind === "field" && seg.skipped) {
+        for (let i = 0; i < seg.positionCount; i++) {
+          if (seg.skipped[i] !== true) continue;
+          if (axis === "row") {
+            const col = bounds.startCol + offset + i;
+            decorations.push({
+              kind: "skipped",
+              bounds: {
+                startRow: bounds.startRow + 1,
+                endRow: bounds.endRow,
+                startCol: col,
+                endCol: col,
+              },
+              label: "Skipped column",
+            });
+          } else {
+            const row = bounds.startRow + offset + i;
+            decorations.push({
+              kind: "skipped",
+              bounds: {
+                startRow: row,
+                endRow: row,
+                startCol: bounds.startCol + 1,
+                endCol: bounds.endCol,
+              },
+              label: "Skipped row",
+            });
+          }
+        }
+      }
+      offset += seg.positionCount;
+    }
+  }
+
   // Skip rules — evaluated along the record axis. For crosstab, rules can
   // target rows or columns via `rule.axis`; for 1D, the record axis is the
   // axis opposite the header; for headerless, `region.recordsAxis` picks.
@@ -406,6 +452,212 @@ export const SEGMENT_OVERLAY_BORDER: Record<SegmentOverlayKind, string> = {
   pivot: "rgba(147, 51, 234, 0.75)",
   skip: "rgba(100, 116, 139, 0.55)",
 };
+
+// ── Pivot intersection overlays ──────────────────────────────────────────
+
+/**
+ * Body-cell rectangle defined by `(row-axis pivot segment R, column-axis
+ * pivot segment C)` — i.e. the cells whose row-axis position lies inside `R`
+ * and whose column-axis position lies inside `C`. Documented in
+ * `segment-intersection.md` as `<intersection-block>` and rendered by the
+ * canvas as a single tinted rectangle with a composite axisName label so
+ * the user can see which pivot pairing fans out into which body region.
+ */
+/**
+ * The four "kinds" of body-cell intersection in a 2D crosstab. Keyed by
+ * `(row-axis segment kind, column-axis segment kind)`; the off-diagonal
+ * `field × pivot` and `pivot × field` collapse to a single visual kind
+ * because they're symmetric semantically (one axis is static, the other
+ * fans out — the body cell is the static axis's value either way), and
+ * any cell where either axis is `<skip>` collapses to `skip-mixed`
+ * regardless of the orthogonal kind.
+ */
+export type IntersectionKind =
+  | "field-field"
+  | "field-pivot"
+  | "pivot-pivot"
+  | "skip-mixed";
+
+export interface IntersectionOverlay {
+  /**
+   * Stable id derived from the row/column segment indices (and pivot ids
+   * when present). Pivot×pivot uses `${rowPivotId}__${colPivotId}` for
+   * round-tripping with `intersectionCellValueFields`; non-pivot kinds
+   * use `r${rowIdx}-c${colIdx}` since field/skip segments don't carry ids.
+   */
+  id: string;
+  /** Intersection kind — drives the canvas tint + edit affordance. */
+  kind: IntersectionKind;
+  bounds: CellBounds;
+  /** Set on `pivot-pivot` only — the segment ids participating. */
+  rowPivotSegmentId?: string;
+  colPivotSegmentId?: string;
+  /**
+   * Composite display label — `<axisName-row> × <axisName-col>`. Set on
+   * `pivot-pivot` (where both names exist); omitted for other kinds since
+   * field/skip segments don't carry an axisName.
+   */
+  label?: string;
+  /**
+   * Resolved cell-value field name for this intersection's body cells —
+   * `region.intersectionCellValueFields[id].name` when an override is set,
+   * otherwise `region.cellValueField.name`. Empty string when neither is
+   * available. Set on `pivot-pivot` only; the canvas surfaces this on the
+   * overlay so the user can see which field each block fans out into.
+   */
+  cellValueName?: string;
+  /**
+   * `true` when `region.intersectionCellValueFields[id]` is set — i.e. this
+   * intersection has its own per-block override, distinct from the
+   * region-level `cellValueField`. Set on `pivot-pivot` only.
+   */
+  cellValueOverridden?: boolean;
+}
+
+/**
+ * Tints keyed by `IntersectionKind`. Each kind gets a distinct hue so the
+ * user reads the body grid at a glance:
+ *
+ * - `field-field` blue (degenerate; both axes claim the cell)
+ * - `field-pivot` violet (one axis static, the other fans out)
+ * - `pivot-pivot` amber (the canonical intersection — editable)
+ * - `skip-mixed`  gray (any axis is `<skip>` — body cell is dropped)
+ */
+export const INTERSECTION_OVERLAY_COLOR: Record<IntersectionKind, string> = {
+  "field-field": "rgba(37, 99, 235, 0.14)",
+  "field-pivot": "rgba(168, 85, 247, 0.16)",
+  "pivot-pivot": "rgba(217, 119, 6, 0.18)",
+  "skip-mixed": "rgba(100, 116, 139, 0.14)",
+};
+
+/** Borders matching the per-kind tint above; the label chip reuses these
+ *  for its own background so the outline + chip read as one unit. */
+export const INTERSECTION_OVERLAY_BORDER: Record<IntersectionKind, string> = {
+  "field-field": "rgba(37, 99, 235, 0.55)",
+  "field-pivot": "rgba(147, 51, 234, 0.55)",
+  "pivot-pivot": "rgba(180, 83, 9, 0.65)",
+  "skip-mixed": "rgba(100, 116, 139, 0.55)",
+};
+
+/** Diagonal-stripe pattern for `skip-mixed` so dropped cells read as
+ *  excluded at a glance — same gesture skip-rule decorations use. */
+export const INTERSECTION_OVERLAY_BACKGROUND_IMAGE: Partial<
+  Record<IntersectionKind, string>
+> = {
+  "skip-mixed":
+    "repeating-linear-gradient(45deg, rgba(100,116,139,0.32) 0 5px, transparent 5px 10px)",
+};
+
+function intersectionKind(
+  rowKind: Segment["kind"],
+  colKind: Segment["kind"]
+): IntersectionKind {
+  if (rowKind === "skip" || colKind === "skip") return "skip-mixed";
+  if (rowKind === "pivot" && colKind === "pivot") return "pivot-pivot";
+  if (rowKind === "field" && colKind === "field") return "field-field";
+  return "field-pivot";
+}
+
+/**
+ * Emit one overlay per body-cell rectangle defined by every
+ * `(row-axis segment, column-axis segment)` pair on a 2D region — colored
+ * by intersection kind. `pivot-pivot` overlays additionally carry the
+ * pivot ids + composite axisName label + resolved cell-value name so the
+ * canvas can render an editable label chip; the other kinds are
+ * visual-only references.
+ *
+ * Bounds are clamped to body cells (header lines excluded). Returns `[]`
+ * for 1D and headerless regions, where no axis pairing exists.
+ */
+export function computeIntersectionOverlays(
+  region: RegionDraft
+): IntersectionOverlay[] {
+  const overlays: IntersectionOverlay[] = [];
+  const axes = region.headerAxes ?? [];
+  if (axes.length !== 2) return overlays;
+
+  const rowSegs = region.segmentsByAxis?.row ?? [];
+  const colSegs = region.segmentsByAxis?.column ?? [];
+  const { startRow, startCol, endRow, endCol } = region.bounds;
+
+  // Body cells start one past each axis's header line. Segments that
+  // happen to begin at offset 0 (i.e. include the corner / header band)
+  // still produce an overlay; we clamp the bounds so the overlay never
+  // paints over a header-band decoration.
+  const bodyStartRow = startRow + 1;
+  const bodyStartCol = startCol + 1;
+
+  let rowOffset = 0;
+  for (let rIdx = 0; rIdx < rowSegs.length; rIdx++) {
+    const r = rowSegs[rIdx];
+    const blockStartCol = Math.max(bodyStartCol, startCol + rowOffset);
+    const blockEndCol = Math.min(
+      endCol,
+      startCol + rowOffset + r.positionCount - 1
+    );
+    if (blockEndCol < blockStartCol) {
+      rowOffset += r.positionCount;
+      continue;
+    }
+
+    let colOffset = 0;
+    for (let cIdx = 0; cIdx < colSegs.length; cIdx++) {
+      const c = colSegs[cIdx];
+      const blockStartRow = Math.max(bodyStartRow, startRow + colOffset);
+      const blockEndRow = Math.min(
+        endRow,
+        startRow + colOffset + c.positionCount - 1
+      );
+      if (blockEndRow < blockStartRow) {
+        colOffset += c.positionCount;
+        continue;
+      }
+
+      const kind = intersectionKind(r.kind, c.kind);
+      const bounds: CellBounds = {
+        startRow: blockStartRow,
+        endRow: blockEndRow,
+        startCol: blockStartCol,
+        endCol: blockEndCol,
+      };
+
+      if (kind === "pivot-pivot") {
+        // Both segments are pivots — narrow the types in TS-friendly form
+        // so we can read `id` and `axisName` off them. The discriminator
+        // is the segment kind we just matched in `intersectionKind`.
+        const rp = r as Extract<Segment, { kind: "pivot" }>;
+        const cp = c as Extract<Segment, { kind: "pivot" }>;
+        const rowName = rp.axisName.trim() || "(unnamed)";
+        const colName = cp.axisName.trim() || "(unnamed)";
+        const overlayId = `${rp.id}__${cp.id}`;
+        const overrideField = region.intersectionCellValueFields?.[overlayId];
+        const overrideName = overrideField?.name?.trim();
+        const cellValueName =
+          overrideName || region.cellValueField?.name?.trim() || "";
+        overlays.push({
+          id: overlayId,
+          kind,
+          rowPivotSegmentId: rp.id,
+          colPivotSegmentId: cp.id,
+          bounds,
+          label: `${rowName} × ${colName}`,
+          cellValueName,
+          cellValueOverridden: !!overrideName,
+        });
+      } else {
+        overlays.push({
+          id: `r${rIdx}-c${cIdx}`,
+          kind,
+          bounds,
+        });
+      }
+
+      colOffset += c.positionCount;
+    }
+    rowOffset += r.positionCount;
+  }
+  return overlays;
+}
 
 /**
  * Emit one overlay per segment on each header axis of the region. Row-axis

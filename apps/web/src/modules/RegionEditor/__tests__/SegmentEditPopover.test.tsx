@@ -31,6 +31,10 @@ function setup(overrides: Partial<SegmentEditPopoverUIProps> = {}) {
   const anchor = document.createElement("button");
   document.body.appendChild(anchor);
   const onChangeAxisName = jest.fn<(value: string) => void>();
+  const onChangeHeaders =
+    jest.fn<(headers: string[] | undefined) => void>();
+  const onChangeSkipped =
+    jest.fn<(skipped: boolean[] | undefined) => void>();
   const onToggleDynamic = jest.fn<(on: boolean) => void>();
   const onChangeTerminator = jest.fn<(t: Terminator) => void>();
   const onConvert = jest.fn<(kind: Segment["kind"]) => void>();
@@ -42,6 +46,8 @@ function setup(overrides: Partial<SegmentEditPopoverUIProps> = {}) {
     segment: fieldSegment(),
     isTail: true,
     onChangeAxisName,
+    onChangeHeaders,
+    onChangeSkipped,
     onToggleDynamic,
     onChangeTerminator,
     onConvert,
@@ -52,6 +58,8 @@ function setup(overrides: Partial<SegmentEditPopoverUIProps> = {}) {
   return {
     ...utils,
     onChangeAxisName,
+    onChangeHeaders,
+    onChangeSkipped,
     onToggleDynamic,
     onChangeTerminator,
     onConvert,
@@ -189,6 +197,179 @@ describe("SegmentEditPopoverUI — convert buttons", () => {
   });
 });
 
+describe("SegmentEditPopoverUI — field headers", () => {
+  it("renders one header input per position for field segments", () => {
+    setup({
+      segment: { kind: "field", positionCount: 3 },
+      cellPlaceholders: ["", "name", "desc"],
+    });
+    expect(
+      screen.getByRole("textbox", { name: /field header for position 1/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /field header for position 2/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /field header for position 3/i })
+    ).toBeInTheDocument();
+  });
+
+  it("does not render header inputs for non-field segments", () => {
+    setup({ segment: pivotSegment() });
+    expect(
+      screen.queryByRole("textbox", { name: /field header for position 1/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("editing a header position fires onChangeHeaders with that index updated", () => {
+    const { onChangeHeaders } = setup({
+      segment: { kind: "field", positionCount: 3 },
+      cellPlaceholders: ["", "name", "desc"],
+    });
+    const input = screen.getByRole("textbox", {
+      name: /field header for position 1/i,
+    });
+    fireEvent.change(input, { target: { value: "year" } });
+    expect(onChangeHeaders).toHaveBeenCalledWith(["year", "", ""]);
+  });
+
+  it("seeds the editor from existing segment headers", () => {
+    setup({
+      segment: { kind: "field", positionCount: 2, headers: ["year", ""] },
+      cellPlaceholders: ["", "name"],
+    });
+    expect(
+      screen.getByRole("textbox", { name: /field header for position 1/i })
+    ).toHaveValue("year");
+    expect(
+      screen.getByRole("textbox", { name: /field header for position 2/i })
+    ).toHaveValue("");
+  });
+
+  it("clearing the last override emits undefined to drop the headers field", () => {
+    const { onChangeHeaders } = setup({
+      segment: { kind: "field", positionCount: 2, headers: ["year", ""] },
+      cellPlaceholders: ["", "name"],
+    });
+    const input = screen.getByRole("textbox", {
+      name: /field header for position 1/i,
+    });
+    fireEvent.change(input, { target: { value: "" } });
+    expect(onChangeHeaders).toHaveBeenCalledWith(undefined);
+  });
+
+  it("autofocuses the first blank-cell position", async () => {
+    setup({
+      segment: { kind: "field", positionCount: 3 },
+      cellPlaceholders: ["name", "", "desc"],
+    });
+    const input = screen.getByRole("textbox", {
+      name: /field header for position 2/i,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("falls back to position 0 when every cell already has a label", async () => {
+    setup({
+      segment: { kind: "field", positionCount: 3 },
+      cellPlaceholders: ["year", "name", "desc"],
+    });
+    const input = screen.getByRole("textbox", {
+      name: /field header for position 1/i,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(document.activeElement).toBe(input);
+  });
+});
+
+describe("SegmentEditPopoverUI — field skip checkbox", () => {
+  it("renders one Skip checkbox per position when onChangeSkipped is provided", () => {
+    setup({
+      segment: { kind: "field", positionCount: 3 },
+      cellPlaceholders: ["", "name", "desc"],
+    });
+    expect(
+      screen.getByRole("checkbox", { name: /skip field at position 1/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /skip field at position 2/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /skip field at position 3/i })
+    ).toBeInTheDocument();
+  });
+
+  it("checking a position fires onChangeSkipped with that index flipped to true", () => {
+    const { onChangeSkipped } = setup({
+      segment: { kind: "field", positionCount: 3 },
+      cellPlaceholders: ["", "name", "desc"],
+    });
+    const checkbox = screen.getByRole("checkbox", {
+      name: /skip field at position 2/i,
+    });
+    fireEvent.click(checkbox);
+    expect(onChangeSkipped).toHaveBeenCalledWith([false, true, false]);
+  });
+
+  it("unchecking the last skipped position emits undefined to drop the array", () => {
+    const { onChangeSkipped } = setup({
+      segment: {
+        kind: "field",
+        positionCount: 3,
+        skipped: [false, true, false],
+      },
+    });
+    const checkbox = screen.getByRole("checkbox", {
+      name: /skip field at position 2/i,
+    });
+    fireEvent.click(checkbox);
+    expect(onChangeSkipped).toHaveBeenCalledWith(undefined);
+  });
+
+  it("disables the header input when its position is skipped", () => {
+    setup({
+      segment: {
+        kind: "field",
+        positionCount: 2,
+        skipped: [false, true],
+      },
+      cellPlaceholders: ["year", "name"],
+    });
+    expect(
+      screen.getByRole("textbox", { name: /field header for position 1/i })
+    ).not.toBeDisabled();
+    expect(
+      screen.getByRole("textbox", { name: /field header for position 2/i })
+    ).toBeDisabled();
+  });
+
+  it("does not render skip checkboxes when onChangeSkipped is not provided", () => {
+    const onChangeHeaders = jest.fn<(h: string[] | undefined) => void>();
+    const anchor = document.createElement("button");
+    document.body.appendChild(anchor);
+    render(
+      <SegmentEditPopoverUI
+        open
+        anchorEl={anchor}
+        axis="row"
+        segment={{ kind: "field", positionCount: 2 }}
+        isTail
+        cellPlaceholders={["a", "b"]}
+        onChangeAxisName={jest.fn()}
+        onChangeHeaders={onChangeHeaders}
+        onToggleDynamic={jest.fn()}
+        onChangeTerminator={jest.fn()}
+        onConvert={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+    expect(
+      screen.queryByRole("checkbox", { name: /skip field at position 1/i })
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("SegmentEditPopoverUI — delete button", () => {
   it("does not render the delete button when onRemove is not provided", () => {
     setup();
@@ -213,5 +394,50 @@ describe("SegmentEditPopoverUI — delete button", () => {
     expect(btn).toBeDisabled();
     fireEvent.click(btn);
     expect(onRemove).not.toHaveBeenCalled();
+  });
+});
+
+describe("SegmentEditPopoverUI — Enter to dismiss", () => {
+  it("Enter inside the axis-name input fires onClose (commit-and-close affordance)", () => {
+    const { onClose } = setup({ segment: pivotSegment() });
+    const input = screen.getByRole("textbox", { name: /axis name/i });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Enter inside a field-header input fires onClose", () => {
+    const { onClose } = setup({
+      segment: { kind: "field", positionCount: 2 },
+      cellPlaceholders: ["", "name"],
+    });
+    const input = screen.getByRole("textbox", {
+      name: /field header for position 1/i,
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Enter on a Convert-to button activates it instead of dismissing", () => {
+    const { onConvert, onClose } = setup({ segment: fieldSegment() });
+    const group = screen
+      .getByText(/convert to/i)
+      .closest("div") as HTMLElement;
+    const pivotBtn = within(group).getByRole("button", { name: /pivot/i });
+    // jsdom synthesizes a click for keyboard activation; emulate by
+    // clicking through the same handler the browser would call.
+    pivotBtn.focus();
+    fireEvent.keyDown(pivotBtn, { key: "Enter" });
+    fireEvent.click(pivotBtn);
+    expect(onConvert).toHaveBeenCalledWith("pivot");
+    // Enter on the button reaches Stack's onKeyDown but we skip the
+    // close path for BUTTON targets so the click activation wins.
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("modifier-held Enter (e.g. Shift+Enter) is ignored — leaves the popover open", () => {
+    const { onClose } = setup({ segment: pivotSegment() });
+    const input = screen.getByRole("textbox", { name: /axis name/i });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

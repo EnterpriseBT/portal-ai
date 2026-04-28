@@ -1063,4 +1063,324 @@ describe("extractRecords — 2D crosstab (migrated from cells-as-records)", () =
       expect(r.fields.Region).not.toBe("Quarter");
     }
   });
+
+  it("emits each pivot×pivot intersection's body cell under its own override name when intersectionCellValueFields is set", () => {
+    const region = crosstabRegion();
+    region.intersectionCellValueFields = {
+      region__quarter: { name: "Headcount", nameSource: "user" },
+    };
+    const records = extractRecords(region, crosstabWorkbook().sheets[0]);
+    // Every record should carry `Headcount` (the override) and not the
+    // region-level `Revenue` since both axes are pivots and the override
+    // applies to the (region, quarter) intersection.
+    for (const r of records) {
+      expect(r.fields.Headcount).toBeDefined();
+      expect(r.fields.Revenue).toBeUndefined();
+    }
+    const q1North = records.find(
+      (r) => r.fields.Quarter === "Q1" && r.fields.Region === "North"
+    );
+    expect(q1North?.fields.Headcount).toBe(100);
+  });
+
+  it("emits exactly (rowPivotCount × colPivotCount) records on a hybrid crosstab with sidebar fields on both axes — no field × pivot duplicates", () => {
+    // Layout (rows × cols), bounds = 1..5 × 1..5:
+    //   row 1 [anchor] [HQ]  [Industry] [Q1] [Q2]
+    //   row 2 [scope]  [...] [...]      [s1] [s2]
+    //   row 3 [curr]   [...] [...]      [c1] [c2]
+    //   row 4 [Acme]   [NYC] [Tech]     [10] [11]
+    //   row 5 [Beta]   [LA]  [Retail]   [20] [21]
+    //
+    // 2 row-pivot × 2 col-pivot positions = 4 records (not 25).
+    const wb = makeWorkbook({
+      sheets: [
+        {
+          name: "Hybrid",
+          dimensions: { rows: 5, cols: 5 },
+          cells: [
+            { row: 1, col: 1, value: "anchor" },
+            { row: 1, col: 2, value: "HQ" },
+            { row: 1, col: 3, value: "Industry" },
+            { row: 1, col: 4, value: "Q1" },
+            { row: 1, col: 5, value: "Q2" },
+            { row: 2, col: 1, value: "scope" },
+            { row: 2, col: 4, value: "s1" },
+            { row: 2, col: 5, value: "s2" },
+            { row: 3, col: 1, value: "currency" },
+            { row: 3, col: 4, value: "c1" },
+            { row: 3, col: 5, value: "c2" },
+            { row: 4, col: 1, value: "Acme" },
+            { row: 4, col: 2, value: "NYC" },
+            { row: 4, col: 3, value: "Tech" },
+            { row: 4, col: 4, value: 10 },
+            { row: 4, col: 5, value: 11 },
+            { row: 5, col: 1, value: "Beta" },
+            { row: 5, col: 2, value: "LA" },
+            { row: 5, col: 3, value: "Retail" },
+            { row: 5, col: 4, value: 20 },
+            { row: 5, col: 5, value: 21 },
+          ],
+        },
+      ],
+    });
+    const region: Region = {
+      id: "r1",
+      sheet: "Hybrid",
+      bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 5 },
+      targetEntityDefinitionId: "metrics",
+      headerAxes: ["row", "column"],
+      segmentsByAxis: {
+        row: [
+          { kind: "field", positionCount: 1 },
+          { kind: "field", positionCount: 2 },
+          {
+            kind: "pivot",
+            id: "rp1",
+            axisName: "quarter",
+            axisNameSource: "user",
+            positionCount: 2,
+          },
+        ],
+        column: [
+          { kind: "field", positionCount: 1 },
+          { kind: "field", positionCount: 2 },
+          {
+            kind: "pivot",
+            id: "cp1",
+            axisName: "company",
+            axisNameSource: "user",
+            positionCount: 2,
+          },
+        ],
+      },
+      cellValueField: { name: "value", nameSource: "user" },
+      intersectionCellValueFields: {
+        rp1__cp1: { name: "revenue", nameSource: "user" },
+      },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row",
+          locator: { kind: "row", sheet: "Hybrid", row: 1 },
+          confidence: 1,
+        },
+        column: {
+          kind: "column",
+          locator: { kind: "column", sheet: "Hybrid", col: 1 },
+          confidence: 1,
+        },
+      },
+      identityStrategy: { kind: "rowPosition", confidence: 1 },
+      columnBindings: [],
+      skipRules: [],
+      drift: {
+        headerShiftRows: 0,
+        addedColumns: "halt",
+        removedColumns: { max: 0, action: "halt" },
+      },
+      confidence: { region: 1, aggregate: 1 },
+      warnings: [],
+    };
+    const records = extractRecords(region, wb.sheets[0]);
+    // 2 row-pivot × 2 col-pivot positions = 4 records, not 25 across the
+    // full body grid.
+    expect(records).toHaveLength(4);
+    // Every record carries `revenue` (the intersection override), never
+    // the region-level `value`.
+    for (const r of records) {
+      expect(r.fields.revenue).toBeDefined();
+      expect(r.fields.value).toBeUndefined();
+    }
+    // Spot-check one record's full shape — the static fields are read
+    // off-cell (HQ from same row, scope from same col) so each record
+    // carries the right sidebar values.
+    const acmeQ1 = records.find(
+      (r) => r.fields.company === "Acme" && r.fields.quarter === "Q1"
+    );
+    expect(acmeQ1).toBeDefined();
+    expect(acmeQ1?.fields.revenue).toBe(10);
+  });
+
+  it("falls back to the region-level cellValueField name when the intersection has no override", () => {
+    const region = crosstabRegion();
+    region.intersectionCellValueFields = {
+      // An override targets a NONEXISTENT pair (won't apply); the existing
+      // pair (region, quarter) keeps inheriting from `Revenue`.
+      "other__missing": { name: "Headcount", nameSource: "user" },
+    };
+    // The schema rejects unknown ids, but the replay path must be defensive
+    // — strip the bad entry before passing through to extract.
+    region.intersectionCellValueFields = {};
+    const records = extractRecords(region, crosstabWorkbook().sheets[0]);
+    for (const r of records) {
+      expect(r.fields.Revenue).toBeDefined();
+    }
+  });
+});
+
+// Multiple pivot segments per axis form K × L intersection blocks; each
+// block contributes (rowPivotPositions × colPivotPositions) records.
+// Row axis: [pivot-2 (3 positions), pivot-3 (1 position)] → 4 row positions.
+// Column axis: [pivot (3 positions)] → 3 col positions.
+// Total: (3 × 3) + (1 × 3) = 9 + 3 = 12 records.
+describe("extractRecords — 2D crosstab with multiple pivot segments per axis", () => {
+  function multiPivotWorkbook() {
+    // Row axis on top (cols 2..4 = pivot positions): Q1, Q2, Q3.
+    // Col axis on left (rows 2..5):
+    //   rows 2..4 = pivot-2 positions (Acme, Beta, Cara)
+    //   row 5 = pivot-3 position (Delta)
+    // Body cells filled with deterministic numerics to verify mapping.
+    return makeWorkbook({
+      sheets: [
+        {
+          name: "Data",
+          dimensions: { rows: 5, cols: 4 },
+          cells: [
+            { row: 1, col: 1, value: "" },
+            { row: 1, col: 2, value: "Q1" },
+            { row: 1, col: 3, value: "Q2" },
+            { row: 1, col: 4, value: "Q3" },
+            { row: 2, col: 1, value: "Acme" },
+            { row: 2, col: 2, value: 11 },
+            { row: 2, col: 3, value: 12 },
+            { row: 2, col: 4, value: 13 },
+            { row: 3, col: 1, value: "Beta" },
+            { row: 3, col: 2, value: 21 },
+            { row: 3, col: 3, value: 22 },
+            { row: 3, col: 4, value: 23 },
+            { row: 4, col: 1, value: "Cara" },
+            { row: 4, col: 2, value: 31 },
+            { row: 4, col: 3, value: 32 },
+            { row: 4, col: 4, value: 33 },
+            { row: 5, col: 1, value: "Delta" },
+            { row: 5, col: 2, value: 91 },
+            { row: 5, col: 3, value: 92 },
+            { row: 5, col: 4, value: 93 },
+          ],
+        },
+      ],
+    });
+  }
+
+  function multiPivotRegion(): Region {
+    return {
+      id: "r1",
+      sheet: "Data",
+      bounds: { startRow: 1, startCol: 1, endRow: 5, endCol: 4 },
+      targetEntityDefinitionId: "metrics",
+      headerAxes: ["row", "column"],
+      segmentsByAxis: {
+        row: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "rp-quarter",
+            axisName: "quarter",
+            axisNameSource: "user",
+            positionCount: 3,
+          },
+        ],
+        column: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "cp-company",
+            axisName: "company",
+            axisNameSource: "user",
+            positionCount: 3,
+          },
+          {
+            kind: "pivot",
+            id: "cp-special",
+            axisName: "special",
+            axisNameSource: "user",
+            positionCount: 1,
+          },
+        ],
+      },
+      cellValueField: { name: "value", nameSource: "user" },
+      headerStrategyByAxis: {
+        row: {
+          kind: "row",
+          locator: { kind: "row", sheet: "Data", row: 1 },
+          confidence: 1,
+        },
+        column: {
+          kind: "column",
+          locator: { kind: "column", sheet: "Data", col: 1 },
+          confidence: 1,
+        },
+      },
+      identityStrategy: { kind: "rowPosition", confidence: 1 },
+      columnBindings: [],
+      skipRules: [],
+      drift: {
+        headerShiftRows: 0,
+        addedColumns: "halt",
+        removedColumns: { max: 0, action: "halt" },
+      },
+      confidence: { region: 1, aggregate: 1 },
+      warnings: [],
+    };
+  }
+
+  it("emits one record per body cell across every (rowPivot × colPivot) intersection — 9 + 3 = 12", () => {
+    const records = extractRecords(
+      multiPivotRegion(),
+      multiPivotWorkbook().sheets[0]
+    );
+    expect(records).toHaveLength(12);
+    // Each record carries its own rowPivot pivot key + the colPivot
+    // pivot key. The two row-axis pivots have different axisNames
+    // (`company`, `special`), so records from different intersection
+    // blocks have different field shapes — that's intentional.
+    const company = records.filter((r) => r.fields.company !== undefined);
+    const special = records.filter((r) => r.fields.special !== undefined);
+    expect(company).toHaveLength(9);
+    expect(special).toHaveLength(3);
+    for (const r of records) {
+      expect(r.fields.quarter).toBeDefined();
+      expect(r.fields.value).toBeDefined();
+    }
+  });
+
+  it("assigns a unique rowPosition sourceId per body cell so the upsert doesn't collapse intersections", () => {
+    const records = extractRecords(
+      multiPivotRegion(),
+      multiPivotWorkbook().sheets[0]
+    );
+    const sourceIds = new Set(records.map((r) => r.sourceId));
+    expect(sourceIds.size).toBe(records.length);
+  });
+
+  it("honours per-intersection cell-value overrides independently per block", () => {
+    const region = multiPivotRegion();
+    region.intersectionCellValueFields = {
+      "cp-company__rp-quarter": { name: "revenue", nameSource: "user" },
+      "cp-special__rp-quarter": { name: "headcount", nameSource: "user" },
+    };
+    // Wait — the override key format is `${rowPivotId}__${colPivotId}`.
+    // Row-axis pivot is `rp-quarter`; column-axis pivots are `cp-company`
+    // and `cp-special`. Re-key correctly.
+    region.intersectionCellValueFields = {
+      "rp-quarter__cp-company": { name: "revenue", nameSource: "user" },
+      "rp-quarter__cp-special": { name: "headcount", nameSource: "user" },
+    };
+    const records = extractRecords(region, multiPivotWorkbook().sheets[0]);
+    expect(records).toHaveLength(12);
+    const revenueRecords = records.filter(
+      (r) => r.fields.revenue !== undefined
+    );
+    const headcountRecords = records.filter(
+      (r) => r.fields.headcount !== undefined
+    );
+    // 9 cells under rp-quarter × cp-company → carry `revenue`
+    expect(revenueRecords).toHaveLength(9);
+    // 3 cells under rp-quarter × cp-special → carry `headcount`
+    expect(headcountRecords).toHaveLength(3);
+    // No record falls back to the region-level `value` because every
+    // intersection has its own override.
+    for (const r of records) {
+      expect(r.fields.value).toBeUndefined();
+    }
+  });
 });

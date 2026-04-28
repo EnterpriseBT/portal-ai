@@ -82,6 +82,138 @@ describe("RegionReviewCardUI — excluded chip styling", () => {
     fireEvent.click(chip);
     expect(onEditBinding).toHaveBeenCalledWith("col:3", chip);
   });
+
+  test("byHeaderName locator renders the header name as the chip's source label, not the raw locator", () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "header:row:HQ",
+          columnDefinitionId: "coldef_hq",
+          columnDefinitionLabel: "HQ Office",
+          confidence: 0.9,
+        },
+      ],
+    });
+    // The source label (HQ from the locator) renders alongside the
+    // columnDefinitionLabel ("HQ Office"). The raw "header:row:HQ"
+    // string never appears.
+    expect(screen.getByText("HQ")).toBeInTheDocument();
+    expect(screen.getByText("HQ Office")).toBeInTheDocument();
+    expect(screen.queryByText("header:row:HQ")).not.toBeInTheDocument();
+  });
+
+  test("byPositionIndex locator with a normalizedKey override renders the override as the chip's source label", () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "pos:row:1",
+          columnDefinitionId: "coldef_year",
+          columnDefinitionLabel: "Year",
+          confidence: 0.9,
+          normalizedKey: "year",
+        },
+      ],
+    });
+    expect(screen.getByText("year")).toBeInTheDocument();
+    expect(screen.queryByText("pos:row:1")).not.toBeInTheDocument();
+  });
+
+  test("renders one chip per intersectionCellValueFields entry on a 2D crosstab and skips the region-level cellValueField chip", () => {
+    setup({
+      headerAxes: ["row", "column"],
+      segmentsByAxis: {
+        row: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "rp1",
+            axisName: "year",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+        column: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "cp1",
+            axisName: "company",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+      },
+      cellValueField: { name: "value", nameSource: "user" },
+      intersectionCellValueFields: {
+        rp1__cp1: {
+          name: "revenue",
+          nameSource: "user",
+          columnDefinitionId: "coldef_revenue",
+        },
+      },
+      columnBindings: [],
+    });
+    // Override surfaces as the chip's source label.
+    expect(screen.getByText("revenue")).toBeInTheDocument();
+    // Region-level "value" default no longer appears on the review card —
+    // the override is the canonical name.
+    expect(screen.queryByText("value")).not.toBeInTheDocument();
+  });
+
+  test("clicking an intersection chip emits the `intersection:<id>` synthetic locator", () => {
+    const { onEditBinding } = setup({
+      headerAxes: ["row", "column"],
+      segmentsByAxis: {
+        row: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "rp1",
+            axisName: "year",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+        column: [
+          { kind: "skip", positionCount: 1 },
+          {
+            kind: "pivot",
+            id: "cp1",
+            axisName: "company",
+            axisNameSource: "user",
+            positionCount: 4,
+          },
+        ],
+      },
+      cellValueField: { name: "value", nameSource: "user" },
+      intersectionCellValueFields: {
+        rp1__cp1: { name: "revenue", nameSource: "user" },
+      },
+      columnBindings: [],
+    });
+    const chip = screen.getByRole("button", {
+      name: /edit intersection cell value "revenue"/i,
+    });
+    fireEvent.click(chip);
+    expect(onEditBinding).toHaveBeenCalledWith("intersection:rp1__cp1", chip);
+  });
+
+  test("byPositionIndex without a normalizedKey falls back to a positional placeholder", () => {
+    setup({
+      columnBindings: [
+        {
+          sourceLocator: "pos:row:2",
+          columnDefinitionId: "coldef_other",
+          columnDefinitionLabel: "Other",
+          confidence: 0.7,
+        },
+      ],
+    });
+    // Don't show the raw "pos:row:2" — use a placeholder so the chip
+    // still reads as a positional binding.
+    expect(screen.queryByText("pos:row:2")).not.toBeInTheDocument();
+    expect(screen.getByText(/Pos row 2/i)).toBeInTheDocument();
+  });
 });
 
 describe("RegionReviewCardUI — pivot + cellValueField chips", () => {

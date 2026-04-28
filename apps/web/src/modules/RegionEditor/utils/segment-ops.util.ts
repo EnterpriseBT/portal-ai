@@ -97,7 +97,9 @@ function defaultHeaderStrategy(
 /**
  * Merge runs of adjacent same-kind non-pivot segments. Pivot segments are
  * never merged — each pivot carries its own `id` + `axisName` and two
- * adjacent pivots are distinct by intent.
+ * adjacent pivots are distinct by intent. Field segments concat their
+ * per-position `headers` and `skipped` arrays (padding absent halves with
+ * empty strings / `false`) so user-set overrides survive a coalesce.
  */
 function coalesceSegments(segments: Segment[]): Segment[] {
   const out: Segment[] = [];
@@ -108,10 +110,27 @@ function coalesceSegments(segments: Segment[]): Segment[] {
       continue;
     }
     if (tail.kind === "field" && seg.kind === "field") {
-      out[out.length - 1] = {
+      const merged: Extract<Segment, { kind: "field" }> = {
         kind: "field",
         positionCount: tail.positionCount + seg.positionCount,
       };
+      const headers = mergeFieldArrays(
+        tail.headers,
+        seg.headers,
+        tail.positionCount,
+        seg.positionCount,
+        ""
+      );
+      if (headers) merged.headers = headers;
+      const skipped = mergeFieldArrays(
+        tail.skipped,
+        seg.skipped,
+        tail.positionCount,
+        seg.positionCount,
+        false
+      );
+      if (skipped) merged.skipped = skipped;
+      out[out.length - 1] = merged;
       continue;
     }
     if (tail.kind === "skip" && seg.kind === "skip") {
@@ -124,6 +143,89 @@ function coalesceSegments(segments: Segment[]): Segment[] {
     out.push(seg);
   }
   return out;
+}
+
+function padArray<T>(values: T[] | undefined, count: number, fill: T): T[] {
+  if (values && values.length === count) return [...values];
+  const out = new Array<T>(count).fill(fill);
+  if (values) {
+    for (let i = 0; i < Math.min(values.length, count); i++) out[i] = values[i];
+  }
+  return out;
+}
+
+/**
+ * Resize a field segment's `positionCount` and keep its parallel
+ * `headers` / `skipped` arrays in lock-step. Truncates when shrinking,
+ * pads with empty string / `false` when growing, and drops the parallel
+ * arrays entirely when they reduce to all-empty / all-false. Use this
+ * anywhere a field segment's `positionCount` mutates — `headers` and
+ * `skipped` carry the schema's `length === positionCount` invariant
+ * (refinement 3a) so a bare `{ ...seg, positionCount: n }` spread
+ * silently violates the schema.
+ */
+export function resizeFieldSegment(
+  seg: Extract<Segment, { kind: "field" }>,
+  nextPositionCount: number
+): Extract<Segment, { kind: "field" }> {
+  if (nextPositionCount === seg.positionCount) return seg;
+  const out: Extract<Segment, { kind: "field" }> = {
+    kind: "field",
+    positionCount: nextPositionCount,
+  };
+  if (seg.headers !== undefined) {
+    const next =
+      seg.headers.length > nextPositionCount
+        ? seg.headers.slice(0, nextPositionCount)
+        : [
+            ...seg.headers,
+            ...new Array<string>(
+              nextPositionCount - seg.headers.length
+            ).fill(""),
+          ];
+    if (next.some((h) => h.trim() !== "")) out.headers = next;
+  }
+  if (seg.skipped !== undefined) {
+    const next =
+      seg.skipped.length > nextPositionCount
+        ? seg.skipped.slice(0, nextPositionCount)
+        : [
+            ...seg.skipped,
+            ...new Array<boolean>(
+              nextPositionCount - seg.skipped.length
+            ).fill(false),
+          ];
+    if (next.some((v) => v)) out.skipped = next;
+  }
+  return out;
+}
+
+/**
+ * Resize a segment of any kind, preserving kind-specific metadata.
+ * Pivots and skips have no per-position arrays so they round-trip
+ * positionCount cleanly via spread; fields delegate to
+ * `resizeFieldSegment`.
+ */
+export function resizeSegment(
+  seg: Segment,
+  nextPositionCount: number
+): Segment {
+  if (seg.kind === "field") return resizeFieldSegment(seg, nextPositionCount);
+  return { ...seg, positionCount: nextPositionCount };
+}
+
+function mergeFieldArrays<T>(
+  aValues: T[] | undefined,
+  bValues: T[] | undefined,
+  aCount: number,
+  bCount: number,
+  fill: T
+): T[] | undefined {
+  if (aValues === undefined && bValues === undefined) return undefined;
+  return [
+    ...padArray(aValues, aCount, fill),
+    ...padArray(bValues, bCount, fill),
+  ];
 }
 
 /**
@@ -187,11 +289,22 @@ export function splitSegment(
       `splitSegment: splitting "${seg.kind}" segments is not supported`
     );
   }
-  const head: Segment = { kind: "field", positionCount: offset };
-  const tail: Segment = {
+  const head: Extract<Segment, { kind: "field" }> = {
+    kind: "field",
+    positionCount: offset,
+  };
+  const tail: Extract<Segment, { kind: "field" }> = {
     kind: "field",
     positionCount: seg.positionCount - offset,
   };
+  if (seg.headers) {
+    head.headers = seg.headers.slice(0, offset);
+    tail.headers = seg.headers.slice(offset);
+  }
+  if (seg.skipped) {
+    head.skipped = seg.skipped.slice(0, offset);
+    tail.skipped = seg.skipped.slice(offset);
+  }
   const next = [...segments];
   next.splice(segmentIndex, 1, head, tail);
   return setSegments(region, axis, next);

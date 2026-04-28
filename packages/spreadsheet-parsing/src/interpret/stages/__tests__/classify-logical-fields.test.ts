@@ -229,3 +229,169 @@ describe("classifyLogicalFields — injected classifier", () => {
     expect(amt?.samples).toEqual(expect.arrayContaining(["100", "200"]));
   });
 });
+
+// 2D crosstab with two pivot×pivot intersections, each carrying its own
+// override cell-value field name. Each intersection's columnDefinitionId
+// should be classified independently.
+function crosstabWithTwoIntersectionsInput(): InterpretInput {
+  return {
+    workbook: {
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows: 4, cols: 5 },
+          cells: [
+            // Row 1 = column-axis labels for two pivot segments.
+            { row: 1, col: 1, value: "Region" },
+            { row: 1, col: 2, value: "Q1" },
+            { row: 1, col: 3, value: "Q2" },
+            { row: 1, col: 4, value: "Q3" },
+            { row: 1, col: 5, value: "Q4" },
+            // Col 1 (rows 2-4) = row-axis labels.
+            { row: 2, col: 1, value: "North" },
+            { row: 3, col: 1, value: "South" },
+            { row: 4, col: 1, value: "East" },
+            // Body cells (numeric).
+            { row: 2, col: 2, value: 100 },
+            { row: 2, col: 3, value: 110 },
+            { row: 2, col: 4, value: 120 },
+            { row: 2, col: 5, value: 130 },
+            { row: 3, col: 2, value: 200 },
+            { row: 3, col: 3, value: 210 },
+            { row: 3, col: 4, value: 220 },
+            { row: 3, col: 5, value: 230 },
+            { row: 4, col: 2, value: 300 },
+            { row: 4, col: 3, value: 310 },
+            { row: 4, col: 4, value: 320 },
+            { row: 4, col: 5, value: 330 },
+          ],
+        },
+      ],
+    },
+    regionHints: [
+      {
+        sheet: "Sheet1",
+        bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 5 },
+        targetEntityDefinitionId: "metrics-by-region-quarter",
+        headerAxes: ["row", "column"],
+        segmentsByAxis: {
+          row: [
+            { kind: "skip", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "rp1",
+              axisName: "Region",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+          column: [
+            { kind: "skip", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "cp1",
+              axisName: "Quarter",
+              axisNameSource: "user",
+              positionCount: 3,
+            },
+          ],
+        },
+        cellValueField: { name: "Revenue", nameSource: "user" },
+      },
+    ],
+  };
+}
+
+describe("classifyLogicalFields — per-intersection cellValueField", () => {
+  it("emits one classifier candidate per intersectionCellValueField in addition to the region-level one", async () => {
+    const classifier: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async (cands) =>
+        cands.map<ColumnClassification>((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId: null,
+          confidence: 0,
+          rationale: "ai",
+        }))
+    );
+    const state = await runThroughProposeBindings(
+      crosstabWithTwoIntersectionsInput()
+    );
+    // Inject the per-intersection overrides AFTER propose-bindings so the
+    // runner-stage helpers see a region with both axes populated and the
+    // override map present.
+    const region = state.detectedRegions[0];
+    const augmentedRegion = {
+      ...region,
+      intersectionCellValueFields: {
+        rp1__cp1: { name: "Headcount", nameSource: "user" as const },
+      },
+    };
+    const augmentedState: InterpretState = {
+      ...state,
+      detectedRegions: [augmentedRegion],
+    };
+    await classifyLogicalFields(augmentedState, {
+      classifier,
+      columnDefinitionCatalog: CATALOG,
+    });
+    const [cands] = classifier.mock.calls[0]!;
+    expect(cands.map((c) => c.sourceHeader).sort()).toEqual([
+      "Headcount",
+      "Quarter",
+      "Region",
+      "Revenue",
+    ]);
+  });
+
+  it("writes the matched columnDefinitionId back onto each intersection entry independently", async () => {
+    const classifier: jest.MockedFunction<ClassifierFn> = jest.fn(
+      async (cands) =>
+        cands.map<ColumnClassification>((c) => ({
+          sourceHeader: c.sourceHeader,
+          sourceCol: c.sourceCol,
+          columnDefinitionId:
+            c.sourceHeader === "Headcount"
+              ? "col-headcount"
+              : c.sourceHeader === "Margin"
+                ? "col-margin"
+                : c.sourceHeader === "Revenue"
+                  ? "col-revenue"
+                  : null,
+          confidence: 0.9,
+          rationale: "ai",
+        }))
+    );
+    const state = await runThroughProposeBindings(
+      crosstabWithTwoIntersectionsInput()
+    );
+    const region = state.detectedRegions[0];
+    const augmentedRegion = {
+      ...region,
+      intersectionCellValueFields: {
+        rp1__cp1: { name: "Headcount", nameSource: "user" as const },
+        // A second override with a different name so each entry's
+        // columnDefinitionId can be verified independently.
+        "rp1__cp1-clone": { name: "Margin", nameSource: "user" as const },
+      },
+    };
+    const augmentedState: InterpretState = {
+      ...state,
+      detectedRegions: [augmentedRegion],
+    };
+    const next = await classifyLogicalFields(augmentedState, {
+      classifier,
+      columnDefinitionCatalog: CATALOG,
+    });
+    const out = next.detectedRegions[0];
+    expect(
+      out.intersectionCellValueFields?.["rp1__cp1"]?.columnDefinitionId
+    ).toBe("col-headcount");
+    expect(
+      out.intersectionCellValueFields?.["rp1__cp1-clone"]?.columnDefinitionId
+    ).toBe("col-margin");
+    // Region-level cellValueField also gets its own classification — it
+    // shares the candidate stream but is keyed by a different name.
+    expect(out.cellValueField?.columnDefinitionId).toBe("col-revenue");
+  });
+});

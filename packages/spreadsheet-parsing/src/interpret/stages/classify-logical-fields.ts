@@ -20,7 +20,18 @@ const SAMPLE_LIMIT = 10;
 
 type LogicalFieldTarget =
   | { kind: "pivotSegment"; segmentId: string }
-  | { kind: "cellValueField" };
+  | { kind: "cellValueField" }
+  | {
+      /**
+       * One slot per `region.intersectionCellValueFields[key]` — each
+       * intersection in a 2D region carries its own `CellValueField` and
+       * needs its own classifier round-trip so the matched columnDefinitionId
+       * lands on the right entry. Targets share the candidate-routing
+       * machinery with the region-level slot above.
+       */
+      kind: "intersectionCellValueField";
+      key: string;
+    };
 
 interface PendingWork {
   regionId: string;
@@ -161,6 +172,25 @@ function buildPendingWork(
     targets.push({ kind: "cellValueField" });
   }
 
+  // Per-intersection cell-value overrides — one classifier slot per entry
+  // so each `(rowPivot, colPivot)` block lands on its own
+  // `columnDefinitionId`. Body samples are shared with the region-level
+  // call: classification keys off the user-supplied name, and refining
+  // samples to per-block cells would compress the signal without changing
+  // the heuristic's verdict.
+  if (region.intersectionCellValueFields) {
+    for (const [key, field] of Object.entries(
+      region.intersectionCellValueFields
+    )) {
+      candidates.push({
+        sourceHeader: field.name,
+        sourceCol: 0,
+        samples: collectCellValueSamples(region, sheet),
+      });
+      targets.push({ kind: "intersectionCellValueField", key });
+    }
+  }
+
   return { regionId: region.id, candidates, targets };
 }
 
@@ -221,6 +251,35 @@ function applyClassificationsToRegion(
           },
         };
       }
+    }
+  }
+
+  // Per-intersection cell-value overrides — each entry's
+  // `columnDefinitionId` is independently writable since classifications
+  // are routed by intersection key. Two intersections sharing the same
+  // `name` resolve to the same classification (byHeader.get returns the
+  // same entry for both), so they end up with the same columnDefinitionId
+  // — that's correct: identical names mean identical fields.
+  if (region.intersectionCellValueFields) {
+    let intersectionTouched = false;
+    const nextIntersections: Record<string, typeof region.intersectionCellValueFields[string]> = {
+      ...region.intersectionCellValueFields,
+    };
+    for (let i = 0; i < work.targets.length; i++) {
+      const t = work.targets[i];
+      if (t.kind !== "intersectionCellValueField") continue;
+      const classification = byHeader.get(work.candidates[i].sourceHeader);
+      if (!classification || classification.columnDefinitionId === null) continue;
+      const prior = nextIntersections[t.key];
+      if (!prior) continue;
+      nextIntersections[t.key] = {
+        ...prior,
+        columnDefinitionId: classification.columnDefinitionId,
+      };
+      intersectionTouched = true;
+    }
+    if (intersectionTouched) {
+      next = { ...next, intersectionCellValueFields: nextIntersections };
     }
   }
 
