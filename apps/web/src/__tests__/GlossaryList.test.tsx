@@ -33,8 +33,12 @@ const fixture: GlossaryEntry[] = [
 describe("GlossaryList", () => {
   it("renders one accordion per provided entry", () => {
     render(<GlossaryList entries={fixture} />);
-    expect(screen.getByTestId("glossary-entry-connector-instance")).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-entry-field-mapping")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("glossary-entry-connector-instance")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("glossary-entry-field-mapping")
+    ).toBeInTheDocument();
     expect(screen.getByTestId("glossary-entry-station")).toBeInTheDocument();
   });
 
@@ -58,10 +62,14 @@ describe("GlossaryList", () => {
     const entry = screen.getByTestId("glossary-entry-connector-instance");
     await user.click(within(entry).getByText("Connector Instance"));
 
-    expect(within(entry).getByText("A live connection to a data source.")).toBeInTheDocument();
+    expect(
+      within(entry).getByText("A live connection to a data source.")
+    ).toBeInTheDocument();
     expect(within(entry).getByText("Example")).toBeInTheDocument();
     expect(
-      within(entry).getByText("Upload a CSV file to create a connector instance.")
+      within(entry).getByText(
+        "Upload a CSV file to create a connector instance."
+      )
     ).toBeInTheDocument();
     expect(within(entry).getByText("Related")).toBeInTheDocument();
     expect(within(entry).getByText("Connector Definition")).toBeInTheDocument();
@@ -70,19 +78,25 @@ describe("GlossaryList", () => {
   });
 
   it("omits 'Example' section when entry has no example", () => {
-    render(<GlossaryList entries={[fixture[1]]} expandedTerm="Field Mapping" />);
+    render(
+      <GlossaryList entries={[fixture[1]]} expandedTerm="Field Mapping" />
+    );
     const entry = screen.getByTestId("glossary-entry-field-mapping");
     expect(within(entry).queryByText("Example")).not.toBeInTheDocument();
   });
 
   it("omits 'Related' section when entry has no relatedTerms", () => {
-    render(<GlossaryList entries={[fixture[1]]} expandedTerm="Field Mapping" />);
+    render(
+      <GlossaryList entries={[fixture[1]]} expandedTerm="Field Mapping" />
+    );
     const entry = screen.getByTestId("glossary-entry-field-mapping");
     expect(within(entry).queryByText("Related")).not.toBeInTheDocument();
   });
 
   it("omits 'Found on' section when entry has no pageRoute", () => {
-    render(<GlossaryList entries={[fixture[1]]} expandedTerm="Field Mapping" />);
+    render(
+      <GlossaryList entries={[fixture[1]]} expandedTerm="Field Mapping" />
+    );
     const entry = screen.getByTestId("glossary-entry-field-mapping");
     expect(within(entry).queryByText("Found on")).not.toBeInTheDocument();
   });

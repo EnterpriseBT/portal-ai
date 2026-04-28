@@ -9,7 +9,11 @@ import {
   FilterExpressionSchema,
   countConditions as coreCountConditions,
 } from "@portalai/core/contracts";
-import type { FilterExpression, FilterCondition, FilterGroup } from "@portalai/core/contracts";
+import type {
+  FilterExpression,
+  FilterCondition,
+  FilterGroup,
+} from "@portalai/core/contracts";
 
 // ── Serialization ───────────────────────────────────────────────────
 
@@ -24,7 +28,9 @@ export function serializeFilterExpression(expr: FilterExpression): string {
  * Decode a base64 JSON string into a FilterExpression.
  * Returns null if the input is invalid.
  */
-export function deserializeFilterExpression(str: string): FilterExpression | null {
+export function deserializeFilterExpression(
+  str: string
+): FilterExpression | null {
   try {
     const json = JSON.parse(atob(str));
     const result = FilterExpressionSchema.safeParse(json);
@@ -96,9 +102,7 @@ export function getOperatorLabel(operator: string): string {
  * Collect all leaf conditions from an expression (flattened).
  * Used to render summary chips.
  */
-export function collectConditions(
-  expr: FilterExpression,
-): FilterCondition[] {
+export function collectConditions(expr: FilterExpression): FilterCondition[] {
   const result: FilterCondition[] = [];
   function walk(group: FilterGroup) {
     for (const item of group.conditions) {
@@ -119,7 +123,7 @@ export function collectConditions(
  */
 export function removeConditionByIndex(
   expr: FilterExpression,
-  targetIndex: number,
+  targetIndex: number
 ): FilterExpression {
   let currentIndex = 0;
 
@@ -151,7 +155,7 @@ export function removeConditionByIndex(
  */
 export function stripInvalidColumns(
   expr: FilterExpression,
-  validKeys: ReadonlySet<string>,
+  validKeys: ReadonlySet<string>
 ): [FilterExpression, string[]] {
   const removed: string[] = [];
 

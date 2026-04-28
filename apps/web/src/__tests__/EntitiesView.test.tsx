@@ -152,9 +152,7 @@ describe("EntitiesView", () => {
 
   it("renders pagination toolbar", () => {
     render(<EntitiesViewUI {...sharedProps} />);
-    expect(
-      screen.getByPlaceholderText("Search...")
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search...")).toBeInTheDocument();
   });
 
   it("renders filter button with tag filter available", async () => {
@@ -172,12 +170,17 @@ describe("EntitiesView", () => {
           ...twoEntities.data,
           connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
             ...e,
-            connectorInstance: { ...e.connectorInstance, enabledCapabilityFlags: { write: false } },
+            connectorInstance: {
+              ...e.connectorInstance,
+              enabledCapabilityFlags: { write: false },
+            },
           })),
         },
       });
       render(<EntitiesViewUI {...sharedProps} />);
-      expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Delete" })
+      ).not.toBeInTheDocument();
     });
 
     it("shows delete action when enabledCapabilityFlags.write is true", () => {
@@ -187,7 +190,10 @@ describe("EntitiesView", () => {
           ...twoEntities.data,
           connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
             ...e,
-            connectorInstance: { ...e.connectorInstance, enabledCapabilityFlags: { write: true } },
+            connectorInstance: {
+              ...e.connectorInstance,
+              enabledCapabilityFlags: { write: true },
+            },
           })),
         },
       });
@@ -202,12 +208,17 @@ describe("EntitiesView", () => {
           ...twoEntities.data,
           connectorEntities: twoEntities.data.connectorEntities.map((e) => ({
             ...e,
-            connectorInstance: { ...e.connectorInstance, enabledCapabilityFlags: null },
+            connectorInstance: {
+              ...e.connectorInstance,
+              enabledCapabilityFlags: null,
+            },
           })),
         },
       });
       render(<EntitiesViewUI {...sharedProps} />);
-      expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Delete" })
+      ).not.toBeInTheDocument();
     });
   });
 });

@@ -75,7 +75,10 @@ describe("ColumnDefinitionSchema system field", () => {
   };
 
   it("requires a boolean `system` field", () => {
-    const ok = ColumnDefinitionSchema.safeParse({ ...minimalBase, system: false });
+    const ok = ColumnDefinitionSchema.safeParse({
+      ...minimalBase,
+      system: false,
+    });
     expect(ok.success).toBe(true);
 
     const missing: Record<string, unknown> = { ...minimalBase };
@@ -260,7 +263,9 @@ describe("ColumnDefinitionModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(false);
       if (!result.success) {
-        const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
         expect(paths).toContain("organizationId");
         expect(paths).toContain("key");
         expect(paths).toContain("label");
@@ -278,7 +283,9 @@ describe("ColumnDefinitionModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(false);
       if (!result.success) {
-        const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
         expect(paths).toContain("key");
       }
     });
@@ -293,7 +300,9 @@ describe("ColumnDefinitionModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(false);
       if (!result.success) {
-        const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
         expect(paths).toContain("type");
       }
     });

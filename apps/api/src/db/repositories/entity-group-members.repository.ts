@@ -70,32 +70,51 @@ export class EntityGroupMembersRepository extends Repository<
       ? await (client as typeof db)
           .select()
           .from(connectorEntities)
-          .where(inArray(connectorEntities.id, [...new Set(members.map((m) => m.connectorEntityId))]))
-          .then((rows) => new Map(rows.map((e) => [e.id, e as ConnectorEntitySelect])))
+          .where(
+            inArray(connectorEntities.id, [
+              ...new Set(members.map((m) => m.connectorEntityId)),
+            ])
+          )
+          .then(
+            (rows) =>
+              new Map(rows.map((e) => [e.id, e as ConnectorEntitySelect]))
+          )
       : null;
 
     // Batch-load field mappings
     const mappingIds = [...new Set(members.map((m) => m.linkFieldMappingId))];
-    const mappingMap = includes.has("fieldMapping") || includes.has("columnDefinition")
-      ? await (client as typeof db)
-          .select()
-          .from(fieldMappings)
-          .where(inArray(fieldMappings.id, mappingIds))
-          .then((rows) => new Map(rows.map((m) => [m.id, m as FieldMappingSelect])))
-      : null;
+    const mappingMap =
+      includes.has("fieldMapping") || includes.has("columnDefinition")
+        ? await (client as typeof db)
+            .select()
+            .from(fieldMappings)
+            .where(inArray(fieldMappings.id, mappingIds))
+            .then(
+              (rows) =>
+                new Map(rows.map((m) => [m.id, m as FieldMappingSelect]))
+            )
+        : null;
 
     // Batch-load column definitions for each field mapping
-    const colDefMap = includes.has("columnDefinition") && mappingMap
-      ? await (async () => {
-          const colDefIds = [...new Set([...mappingMap.values()].map((m) => m.columnDefinitionId))];
-          if (colDefIds.length === 0) return new Map<string, ColumnDefinitionSelect>();
-          const colDefs = await (client as typeof db)
-            .select()
-            .from(columnDefinitions)
-            .where(inArray(columnDefinitions.id, colDefIds));
-          return new Map(colDefs.map((c) => [c.id, c as ColumnDefinitionSelect]));
-        })()
-      : null;
+    const colDefMap =
+      includes.has("columnDefinition") && mappingMap
+        ? await (async () => {
+            const colDefIds = [
+              ...new Set(
+                [...mappingMap.values()].map((m) => m.columnDefinitionId)
+              ),
+            ];
+            if (colDefIds.length === 0)
+              return new Map<string, ColumnDefinitionSelect>();
+            const colDefs = await (client as typeof db)
+              .select()
+              .from(columnDefinitions)
+              .where(inArray(columnDefinitions.id, colDefIds));
+            return new Map(
+              colDefs.map((c) => [c.id, c as ColumnDefinitionSelect])
+            );
+          })()
+        : null;
 
     return members
       .filter((m) => {
@@ -103,15 +122,25 @@ export class EntityGroupMembersRepository extends Repository<
         if (mappingMap && !mappingMap.has(m.linkFieldMappingId)) return false;
         if (colDefMap && mappingMap) {
           const mapping = mappingMap.get(m.linkFieldMappingId);
-          if (!mapping || !colDefMap.has(mapping.columnDefinitionId)) return false;
+          if (!mapping || !colDefMap.has(mapping.columnDefinitionId))
+            return false;
         }
         return true;
       })
       .map((m) => ({
         ...(m as EntityGroupMemberSelect),
-        ...(entityMap && { connectorEntity: entityMap.get(m.connectorEntityId)! }),
-        ...(mappingMap && { fieldMapping: mappingMap.get(m.linkFieldMappingId)! }),
-        ...(colDefMap && mappingMap && { columnDefinition: colDefMap.get(mappingMap.get(m.linkFieldMappingId)!.columnDefinitionId)! }),
+        ...(entityMap && {
+          connectorEntity: entityMap.get(m.connectorEntityId)!,
+        }),
+        ...(mappingMap && {
+          fieldMapping: mappingMap.get(m.linkFieldMappingId)!,
+        }),
+        ...(colDefMap &&
+          mappingMap && {
+            columnDefinition: colDefMap.get(
+              mappingMap.get(m.linkFieldMappingId)!.columnDefinitionId
+            )!,
+          }),
       }));
   }
 
@@ -121,7 +150,10 @@ export class EntityGroupMembersRepository extends Repository<
     client: DbClient = db
   ): Promise<number> {
     if (connectorEntityIds.length === 0) return 0;
-    return this.count(inArray(entityGroupMembers.connectorEntityId, connectorEntityIds), client);
+    return this.count(
+      inArray(entityGroupMembers.connectorEntityId, connectorEntityIds),
+      client
+    );
   }
 
   /** Return all non-deleted group memberships for a connector entity. */
@@ -162,7 +194,6 @@ export class EntityGroupMembersRepository extends Repository<
       .limit(1);
     return row as EntityGroupMemberSelect | undefined;
   }
-
 
   /** Return the primary member of a group, or undefined if none is set. */
   async findPrimary(
@@ -207,7 +238,9 @@ export class EntityGroupMembersRepository extends Repository<
     memberId: string,
     client?: DbClient
   ): Promise<EntityGroupMemberSelect | undefined> {
-    const exec = async (tx: DbClient): Promise<EntityGroupMemberSelect | undefined> => {
+    const exec = async (
+      tx: DbClient
+    ): Promise<EntityGroupMemberSelect | undefined> => {
       const member = await this.findById(memberId, tx);
       if (!member) return undefined;
 

@@ -94,11 +94,7 @@ describe("Stepper Components", () => {
 
     it("should accept custom data attributes", () => {
       render(
-        <Stepper
-          steps={basicSteps}
-          activeStep={0}
-          data-testid="my-stepper"
-        />
+        <Stepper steps={basicSteps} activeStep={0} data-testid="my-stepper" />
       );
       expect(screen.getByTestId("my-stepper")).toBeInTheDocument();
     });
@@ -177,23 +173,17 @@ describe("Stepper Components", () => {
     });
 
     it("should enable Back button on non-first steps", () => {
-      render(
-        <StepperNavigation {...defaultNavProps} isFirstStep={false} />
-      );
+      render(<StepperNavigation {...defaultNavProps} isFirstStep={false} />);
       expect(screen.getByText("Back")).toBeEnabled();
     });
 
     it("should show Finish label on the last step", () => {
-      render(
-        <StepperNavigation {...defaultNavProps} isLastStep={true} />
-      );
+      render(<StepperNavigation {...defaultNavProps} isLastStep={true} />);
       expect(screen.getByText("Finish")).toBeInTheDocument();
     });
 
     it("should show Reset button when complete", () => {
-      render(
-        <StepperNavigation {...defaultNavProps} isComplete={true} />
-      );
+      render(<StepperNavigation {...defaultNavProps} isComplete={true} />);
       expect(screen.getByText("Reset")).toBeInTheDocument();
       expect(screen.queryByText("Back")).not.toBeInTheDocument();
       expect(screen.queryByText("Next")).not.toBeInTheDocument();
@@ -206,17 +196,13 @@ describe("Stepper Components", () => {
     });
 
     it("should call onBack when Back is clicked", async () => {
-      render(
-        <StepperNavigation {...defaultNavProps} isFirstStep={false} />
-      );
+      render(<StepperNavigation {...defaultNavProps} isFirstStep={false} />);
       await userEvent.click(screen.getByText("Back"));
       expect(defaultNavProps.onBack).toHaveBeenCalledTimes(1);
     });
 
     it("should call onReset when Reset is clicked", async () => {
-      render(
-        <StepperNavigation {...defaultNavProps} isComplete={true} />
-      );
+      render(<StepperNavigation {...defaultNavProps} isComplete={true} />);
       await userEvent.click(screen.getByText("Reset"));
       expect(defaultNavProps.onReset).toHaveBeenCalledTimes(1);
     });
@@ -256,17 +242,13 @@ describe("Stepper Components", () => {
     it("should start on the first step", () => {
       render(<UseStepperExample />);
       expect(screen.getByText("Step One Content")).toBeInTheDocument();
-      expect(
-        screen.queryByText("Step Two Content")
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Step Two Content")).not.toBeInTheDocument();
     });
 
     it("should advance to the next step when Next is clicked", async () => {
       render(<UseStepperExample />);
       await userEvent.click(screen.getByText("Next"));
-      expect(
-        screen.queryByText("Step One Content")
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Step One Content")).not.toBeInTheDocument();
       expect(screen.getByText("Step Two Content")).toBeInTheDocument();
     });
 
@@ -374,9 +356,7 @@ describe("Stepper Components", () => {
 
         await userEvent.click(screen.getByText("Next"));
         await waitFor(() => {
-          expect(
-            screen.getByText("Step One Content")
-          ).toBeInTheDocument();
+          expect(screen.getByText("Step One Content")).toBeInTheDocument();
         });
       });
 
@@ -449,7 +429,11 @@ describe("Stepper Components", () => {
 
       it("should include the step config in the validation error", async () => {
         const steps: StepConfig[] = [
-          { label: "Step One", description: "First step", validate: () => false },
+          {
+            label: "Step One",
+            description: "First step",
+            validate: () => false,
+          },
           { label: "Step Two" },
         ];
         render(<UseStepperExample steps={steps} />);
@@ -504,7 +488,9 @@ describe("Stepper Components", () => {
         const steps: StepConfig[] = [
           {
             label: "Step One",
-            validate: () => { throw new Error("boom"); },
+            validate: () => {
+              throw new Error("boom");
+            },
           },
           { label: "Step Two" },
         ];

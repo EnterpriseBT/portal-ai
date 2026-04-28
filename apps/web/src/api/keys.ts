@@ -73,24 +73,39 @@ export const queryKeys = {
   entityRecords: {
     root: ["entityRecords"] as const,
     list: (connectorEntityId: string, params?: EntityRecordListRequestQuery) =>
-      [...queryKeys.entityRecords.root, "list", connectorEntityId, params] as const,
+      [
+        ...queryKeys.entityRecords.root,
+        "list",
+        connectorEntityId,
+        params,
+      ] as const,
     count: (connectorEntityId: string) =>
       [...queryKeys.entityRecords.root, "count", connectorEntityId] as const,
     get: (connectorEntityId: string, recordId: string) =>
-      [...queryKeys.entityRecords.root, "get", connectorEntityId, recordId] as const,
+      [
+        ...queryKeys.entityRecords.root,
+        "get",
+        connectorEntityId,
+        recordId,
+      ] as const,
   },
   entityGroups: {
     root: ["entityGroups"] as const,
     list: (params?: EntityGroupListRequestQuery) =>
       [...queryKeys.entityGroups.root, "list", params] as const,
     listByEntity: (connectorEntityId: string) =>
-      [...queryKeys.entityGroups.root, "listByEntity", connectorEntityId] as const,
-    get: (id: string) =>
-      [...queryKeys.entityGroups.root, "get", id] as const,
+      [
+        ...queryKeys.entityGroups.root,
+        "listByEntity",
+        connectorEntityId,
+      ] as const,
+    get: (id: string) => [...queryKeys.entityGroups.root, "get", id] as const,
     impact: (id: string) =>
       [...queryKeys.entityGroups.root, "impact", id] as const,
-    memberOverlap: (id: string, params?: EntityGroupMemberOverlapRequestQuery) =>
-      [...queryKeys.entityGroups.root, "memberOverlap", id, params] as const,
+    memberOverlap: (
+      id: string,
+      params?: EntityGroupMemberOverlapRequestQuery
+    ) => [...queryKeys.entityGroups.root, "memberOverlap", id, params] as const,
     resolve: (id: string, params?: EntityGroupResolveRequestQuery) =>
       [...queryKeys.entityGroups.root, "resolve", id, params] as const,
   },
@@ -98,27 +113,28 @@ export const queryKeys = {
     root: ["entityTags"] as const,
     list: (params?: EntityTagListRequestQuery) =>
       [...queryKeys.entityTags.root, "list", params] as const,
-    get: (id: string) =>
-      [...queryKeys.entityTags.root, "get", id] as const,
+    get: (id: string) => [...queryKeys.entityTags.root, "get", id] as const,
   },
   entityTagAssignments: {
     root: ["entityTagAssignments"] as const,
     listByEntity: (connectorEntityId: string) =>
-      [...queryKeys.entityTagAssignments.root, "listByEntity", connectorEntityId] as const,
+      [
+        ...queryKeys.entityTagAssignments.root,
+        "listByEntity",
+        connectorEntityId,
+      ] as const,
   },
   jobs: {
     root: ["jobs"] as const,
     list: (params?: JobListRequestQuery) =>
       [...queryKeys.jobs.root, "list", params] as const,
-    get: (id: string) =>
-      [...queryKeys.jobs.root, "get", id] as const,
+    get: (id: string) => [...queryKeys.jobs.root, "get", id] as const,
   },
   stations: {
     root: ["stations"] as const,
     list: (params?: StationListRequestQuery) =>
       [...queryKeys.stations.root, "list", params] as const,
-    get: (id: string) =>
-      [...queryKeys.stations.root, "get", id] as const,
+    get: (id: string) => [...queryKeys.stations.root, "get", id] as const,
   },
   portals: {
     root: ["portals"] as const,
@@ -131,8 +147,7 @@ export const queryKeys = {
     root: ["portalResults"] as const,
     list: (params?: Record<string, unknown>) =>
       [...queryKeys.portalResults.root, "list", params] as const,
-    get: (id: string) =>
-      [...queryKeys.portalResults.root, "get", id] as const,
+    get: (id: string) => [...queryKeys.portalResults.root, "get", id] as const,
   },
   organizationTools: {
     root: ["organizationTools"] as const,
@@ -145,5 +160,38 @@ export const queryKeys = {
     root: ["stationTools"] as const,
     list: (stationId: string, params?: StationToolListRequestQuery) =>
       [...queryKeys.stationTools.root, "list", stationId, params] as const,
+  },
+  connectorInstanceLayoutPlans: {
+    root: ["connectorInstanceLayoutPlans"] as const,
+    detail: (connectorInstanceId: string) =>
+      [
+        ...queryKeys.connectorInstanceLayoutPlans.root,
+        "detail",
+        connectorInstanceId,
+      ] as const,
+  },
+  layoutPlans: {
+    root: ["layoutPlans"] as const,
+  },
+  fileUploads: {
+    root: ["fileUploads"] as const,
+    sheetSlice: (
+      uploadSessionId: string,
+      sheetId: string,
+      rowStart: number,
+      rowEnd: number,
+      colStart: number,
+      colEnd: number
+    ) =>
+      [
+        ...queryKeys.fileUploads.root,
+        "sheetSlice",
+        uploadSessionId,
+        sheetId,
+        rowStart,
+        rowEnd,
+        colStart,
+        colEnd,
+      ] as const,
   },
 };

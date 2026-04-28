@@ -16,6 +16,8 @@ const {
   organizationUsers,
   connectorInstances,
   connectorDefinitions,
+  connectorInstanceLayoutPlans,
+  fileUploads,
   jobs,
   fieldMappings,
   connectorEntities,
@@ -164,6 +166,8 @@ export async function teardownOrg(db: Db): Promise<void> {
   await db.delete(connectorEntities);
   await db.delete(columnDefinitions);
   await db.delete(jobs);
+  await db.delete(fileUploads);
+  await db.delete(connectorInstanceLayoutPlans);
   await db.delete(connectorInstances);
   await db.delete(connectorDefinitions);
   await db.delete(organizationUsers);

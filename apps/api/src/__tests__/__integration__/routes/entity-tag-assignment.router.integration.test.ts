@@ -40,7 +40,13 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 
-const { entityTags, entityTagAssignments, connectorEntities, connectorInstances, connectorDefinitions } = schema;
+const {
+  entityTags,
+  entityTagAssignments,
+  connectorEntities,
+  connectorInstances,
+  connectorDefinitions,
+} = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -67,7 +73,10 @@ function createConnectorDefinition() {
   };
 }
 
-function createConnectorInstance(connectorDefinitionId: string, organizationId: string) {
+function createConnectorInstance(
+  connectorDefinitionId: string,
+  organizationId: string
+) {
   return {
     id: generateId(),
     connectorDefinitionId,
@@ -476,8 +485,12 @@ describe("Entity Tag Assignment Router", () => {
         organizationId
       );
 
-      const entityA = createConnectorEntity(organizationId, connInstId, { label: "Entity A" });
-      const entityB = createConnectorEntity(organizationId, connInstId, { label: "Entity B" });
+      const entityA = createConnectorEntity(organizationId, connInstId, {
+        label: "Entity A",
+      });
+      const entityB = createConnectorEntity(organizationId, connInstId, {
+        label: "Entity B",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorEntities)
         .values([entityA, entityB] as never);
@@ -538,8 +551,12 @@ describe("Entity Tag Assignment Router", () => {
         organizationId
       );
 
-      const entityA = createConnectorEntity(organizationId, connInstId, { label: "Tagged Entity" });
-      const entityB = createConnectorEntity(organizationId, connInstId, { label: "Untagged Entity" });
+      const entityA = createConnectorEntity(organizationId, connInstId, {
+        label: "Tagged Entity",
+      });
+      const entityB = createConnectorEntity(organizationId, connInstId, {
+        label: "Untagged Entity",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(connectorEntities)
         .values([entityA, entityB] as never);

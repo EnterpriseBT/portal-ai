@@ -1,0 +1,65 @@
+{
+  "planVersion": "1.0.0",
+  "workbookFingerprint": {
+    "sheetNames": ["Monthly"],
+    "dimensions": { "Monthly": { "rows": 5, "cols": 3 } },
+    "anchorCells": [
+      { "sheet": "Monthly", "row": 1, "col": 1, "value": "Month" }
+    ]
+  },
+  "regions": [
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "sheet": "Monthly",
+      "bounds": { "startRow": 1, "startCol": 1, "endRow": 5, "endCol": 3 },
+      "targetEntityDefinitionId": "monthly-metrics",
+      "headerAxes": ["column"],
+      "segmentsByAxis": {
+        "column": [
+          {
+            "kind": "pivot",
+            "id": "month-seg",
+            "axisName": "Month",
+            "axisNameSource": "anchor-cell",
+            "positionCount": 5
+          }
+        ]
+      },
+      "cellValueField": {
+        "name": "Revenue",
+        "nameSource": "user"
+      },
+      "axisAnchorCell": { "row": 1, "col": 1 },
+      "headerStrategyByAxis": {
+        "column": {
+          "kind": "rowLabels",
+          "locator": { "kind": "column", "sheet": "Monthly", "col": 1 },
+          "confidence": 0.9
+        }
+      },
+      "identityStrategy": {
+        "kind": "rowPosition",
+        "confidence": 0.6
+      },
+      "columnBindings": [],
+      "skipRules": [],
+      "drift": {
+        "headerShiftRows": 0,
+        "addedColumns": "halt",
+        "removedColumns": { "max": 0, "action": "halt" }
+      },
+      "confidence": { "region": 0.83, "aggregate": 0.83 },
+      "warnings": [
+        {
+          "code": "ROW_POSITION_IDENTITY",
+          "severity": "warn",
+          "message": "Identity falls back to row position — breaks if rows reorder."
+        }
+      ]
+    }
+  ],
+  "confidence": {
+    "overall": 0.83,
+    "perRegion": { "22222222-2222-4222-8222-222222222222": 0.83 }
+  }
+}

@@ -1,7 +1,16 @@
 import React from "react";
 
-import type { PortalListResponsePayload, PortalWithIncludes } from "@portalai/core/contracts";
-import { DetailCard, Icon, IconName, Stack, Typography } from "@portalai/core/ui";
+import type {
+  PortalListResponsePayload,
+  PortalWithIncludes,
+} from "@portalai/core/contracts";
+import {
+  DetailCard,
+  Icon,
+  IconName,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -58,7 +67,10 @@ export const RecentPortalsListUI: React.FC<RecentPortalsListUIProps> = ({
             <Stack spacing={0.25}>
               {portal.stationName && (
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <Icon name={IconName.SatelliteAlt} sx={{ fontSize: "0.875rem", color: "text.secondary" }} />
+                  <Icon
+                    name={IconName.SatelliteAlt}
+                    sx={{ fontSize: "0.875rem", color: "text.secondary" }}
+                  />
                   <Typography variant="caption" color="text.secondary">
                     {portal.stationName}
                   </Typography>
@@ -106,8 +118,7 @@ export const RecentPortalsListConnected: React.FC<
     {(result) => (
       <DataResult results={{ portals: result }}>
         {(data) => {
-          const payload =
-            data.portals as unknown as PortalListResponsePayload;
+          const payload = data.portals as unknown as PortalListResponsePayload;
           return (
             <RecentPortalsListUI
               portals={payload.portals}

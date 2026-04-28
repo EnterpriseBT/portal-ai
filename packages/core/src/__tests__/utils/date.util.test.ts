@@ -192,11 +192,15 @@ describe("DateFactory", () => {
     });
 
     it("returns hours ago for timestamps less than 1 day ago", () => {
-      expect(DateFactory.relativeTime(Date.now() - 3 * 3_600_000)).toBe("3h ago");
+      expect(DateFactory.relativeTime(Date.now() - 3 * 3_600_000)).toBe(
+        "3h ago"
+      );
     });
 
     it("returns days ago for timestamps more than 1 day ago", () => {
-      expect(DateFactory.relativeTime(Date.now() - 2 * 86_400_000)).toBe("2d ago");
+      expect(DateFactory.relativeTime(Date.now() - 2 * 86_400_000)).toBe(
+        "2d ago"
+      );
     });
   });
 

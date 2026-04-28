@@ -75,7 +75,11 @@ describe("EntityTagsRepository Integration Tests", () => {
 
   describe("create", () => {
     it("should insert and return the full row", async () => {
-      const data = makeTag({ name: "my-tag", color: "#ff0000", description: "A test tag" });
+      const data = makeTag({
+        name: "my-tag",
+        color: "#ff0000",
+        description: "A test tag",
+      });
       const created = await repo.create(data, db);
 
       expect(created.id).toBe(data.id);
@@ -144,7 +148,10 @@ describe("EntityTagsRepository Integration Tests", () => {
 
   describe("update", () => {
     it("should modify fields and return updated row", async () => {
-      const tag = await repo.create(makeTag({ name: "original", color: null }), db);
+      const tag = await repo.create(
+        makeTag({ name: "original", color: null }),
+        db
+      );
 
       const updated = await repo.update(
         tag.id,

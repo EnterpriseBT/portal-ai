@@ -45,10 +45,9 @@ export const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
       className,
       ...rest
     },
-    ref,
+    ref
   ) => {
-    const hasSecondaryActions =
-      secondaryActions && secondaryActions.length > 0;
+    const hasSecondaryActions = secondaryActions && secondaryActions.length > 0;
     const hasActions = primaryAction || hasSecondaryActions;
 
     return (
@@ -112,7 +111,7 @@ export const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
         </Stack>
       </Box>
     );
-  },
+  }
 );
 
 export default PageHeader;

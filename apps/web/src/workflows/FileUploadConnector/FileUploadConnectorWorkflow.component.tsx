@@ -1,59 +1,112 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 
-import { sdk } from "../../api/sdk";
-import type { ConnectorEntityListWithMappingsResponsePayload, ConnectorEntityWithMappings } from "@portalai/core/contracts";
+import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   Box,
-  Stack,
-  Typography,
   Button,
   Modal,
-  Stepper,
+  Stack,
   StepPanel,
+  Stepper,
+  Typography,
 } from "@portalai/core/ui";
-import type { StepConfig, SelectOption } from "@portalai/core/ui";
-import type { JobStatus } from "@portalai/core/models";
+import type { StepConfig } from "@portalai/core/ui";
+import type { FileUploadParseSheet } from "@portalai/core/contracts";
 
 import { UploadStep } from "./UploadStep.component";
-import { EntityStep } from "./EntityStep.component";
-import { ColumnMappingStep } from "./ColumnMappingStep.component";
-import { ReviewStep } from "./ReviewStep.component";
+import { FileUploadRegionDrawingStepUI } from "./FileUploadRegionDrawingStep.component";
+import { FileUploadReviewStepUI } from "./FileUploadReviewStep.component";
 import {
-  useUploadWorkflow,
-  WORKFLOW_STEPS,
-} from "./utils/upload-workflow.util";
+  FILE_UPLOAD_WORKFLOW_STEPS,
+  useFileUploadWorkflow,
+} from "./utils/file-upload-workflow.util";
+import type { FileUploadWorkflowCallbacks } from "./utils/file-upload-workflow.util";
+import type { UploadPhase } from "./utils/file-upload-fixtures.util";
 import {
-  validateEntityStep,
-  validateColumnStep,
-  hasEntityStepErrors,
-  hasColumnStepErrors,
-} from "./utils/file-upload-validation.util";
-import type { EntityStepErrors, ColumnStepErrors } from "./utils/file-upload-validation.util";
-import { focusFirstInvalidField } from "../../utils/form-validation.util";
-import type { ConfirmResponsePayload } from "@portalai/core/contracts";
+  entityOptionsFromWorkbook,
+  mergeStagedEntityOptions,
+  overallConfidenceFromPlan,
+  planRegionsToDrafts,
+  preserveUserRegionConfig,
+  regionDraftsToHints,
+} from "./utils/layout-plan-mapping.util";
 
+import { sdk, queryKeys } from "../../api/sdk";
+import { putToS3 } from "../../api/file-uploads.api";
 import type {
-  UseUploadWorkflowReturn,
-  Recommendations,
-  RecommendedEntity,
-  RecommendedColumnUpdate,
-  ParseSummary,
-  WorkflowStep,
-} from "./utils/upload-workflow.util";
-import type {
-  FileUploadProgress,
-  UploadPhase,
-} from "../../utils/file-upload.util";
+  CellBounds,
+  CellValue,
+  ColumnBindingDraft,
+  EntityOption,
+  LoadSliceFn,
+  RegionDraft,
+  RegionEditorErrors,
+  SheetPreview,
+  Workbook,
+} from "../../modules/RegionEditor";
+import type { SelectOption } from "@portalai/core/ui";
+import type { ColumnDataType } from "@portalai/core/models";
+import type { SearchResult } from "../../api/types";
+import type { FileUploadProgress } from "./utils/file-upload-workflow.util";
+import type { ServerError } from "../../utils/api.util";
 
-// --- UI Props ---
+/**
+ * Derive the ConnectorInstance name from the first uploaded file. Strips the
+ * extension; falls back to `"Upload"` when there are no files or the stripped
+ * base is empty.
+ */
+function deriveConnectorInstanceName(files: File[]): string {
+  const filename = files[0]?.name ?? "Upload";
+  const dot = filename.lastIndexOf(".");
+  const base = dot > 0 ? filename.substring(0, dot) : filename;
+  return base.trim() || "Upload";
+}
+
+/**
+ * Convert the backend's parse-session response into the `Workbook` the
+ * RegionEditor renders. Inlined sheets are flattened into a dense 2D array;
+ * sheets served via the sliced path come back with `cells: []` and stay
+ * empty, so the canvas treats every row as unloaded and fetches via
+ * `loadSlice` as it scrolls.
+ */
+function backendParseSheetsToPreview(
+  sheets: FileUploadParseSheet[],
+  sourceLabel: string
+): Workbook {
+  const out: SheetPreview[] = sheets.map((sheet) => {
+    const rows = sheet.dimensions.rows;
+    const cols = sheet.dimensions.cols;
+    const cells: CellValue[][] =
+      sheet.cells.length === 0
+        ? []
+        : Array.from({ length: rows }, (_, r) =>
+            Array.from({ length: cols }, (_, c) => {
+              const raw = sheet.cells[r]?.[c];
+              if (raw === undefined || raw === null) return "";
+              return raw as CellValue;
+            })
+          );
+    return {
+      id: sheet.id,
+      name: sheet.name,
+      rowCount: rows,
+      colCount: cols,
+      cells,
+    };
+  });
+  return { sheets: out, sourceLabel };
+}
+
+// ---------------------------------------------------------------------------
+// UI Props
+// ---------------------------------------------------------------------------
 
 export interface FileUploadConnectorWorkflowUIProps {
   open: boolean;
   onClose: () => void;
-
-  // Stepper state
-  step: WorkflowStep;
+  step: 0 | 1 | 2;
   stepConfigs: StepConfig[];
 
   // Upload step
@@ -62,54 +115,81 @@ export interface FileUploadConnectorWorkflowUIProps {
   uploadPhase: UploadPhase;
   fileProgress: Map<string, FileUploadProgress>;
   overallUploadPercent: number;
-  jobProgress: number;
-  jobError: string | null;
-  uploadError: string | null;
-  isProcessing: boolean;
-  connectionStatus: string;
-  jobStatus: JobStatus | null;
-  jobResult: Record<string, unknown> | null;
+  onStartParse: () => void;
 
-  // Entity step
-  recommendations: Recommendations | null;
-  parseResults: ParseSummary[] | null;
-  onUpdateEntity: (index: number, updates: Partial<RecommendedEntity>) => void;
-  entityStepErrors?: EntityStepErrors;
-
-  // Column mapping step
-  dbEntities: ConnectorEntityWithMappings[];
-  isLoadingDbEntities: boolean;
-  columnStepErrors?: ColumnStepErrors;
-  onUpdateColumn: (
-    entityIndex: number,
-    columnIndex: number,
-    updates: RecommendedColumnUpdate
-  ) => void;
-  onColumnKeySearch: (query: string) => Promise<SelectOption[]>;
-  onColumnKeyGetById: ((id: string) => Promise<SelectOption | null>) | undefined;
+  // Region drawing step
+  workbook: Workbook | null;
+  regions: RegionDraft[];
+  selectedRegionId: string | null;
+  activeSheetId: string | null;
+  entityOptions: EntityOption[];
+  onActiveSheetChange: (sheetId: string) => void;
+  onSelectRegion: (regionId: string | null) => void;
+  onRegionDraft: (draft: { sheetId: string; bounds: CellBounds }) => void;
+  onRegionUpdate: (regionId: string, updates: Partial<RegionDraft>) => void;
+  onRegionResize: (regionId: string, nextBounds: CellBounds) => void;
+  onRegionDelete: (regionId: string) => void;
+  onCreateEntity?: (key: string, label: string) => string;
+  validateEntityKey?: (
+    key: string
+  ) => Promise<{ ok: true } | { ok: false; ownedBy?: string }>;
+  onInterpret: () => void;
+  /**
+   * Shortcut back to the review step when a plan already exists. Unset when
+   * no interpretation has run yet, which hides the button.
+   */
+  onSkipToReview?: () => void;
 
   // Review step
-  onConnectorNameChange: (name: string) => void;
-  onConfirm: () => void;
-  isConfirming: boolean;
-  confirmError: string | null;
-  confirmResult: ConfirmResponsePayload | null;
-  onDone: () => void;
-  onCancel: () => void;
-  isCancelling: boolean;
+  overallConfidence?: number;
+  onJumpToRegion: (regionId: string) => void;
+  onEditBinding: (regionId: string, sourceLocator: string) => void;
+  onUpdateBinding?: (
+    regionId: string,
+    sourceLocator: string,
+    patch: Partial<ColumnBindingDraft>
+  ) => void;
+  onToggleBindingExcluded?: (
+    regionId: string,
+    sourceLocator: string,
+    excluded: boolean
+  ) => void;
+  columnDefinitionSearch?: SearchResult<SelectOption>;
+  resolveReferenceOptions?: (region: RegionDraft) => SelectOption[];
+  resolveReferenceFieldOptions?: (
+    region: RegionDraft,
+    refEntityKey: string | null | undefined
+  ) => SelectOption[];
+  resolveColumnDefinitionType?: (
+    binding: ColumnBindingDraft
+  ) => ColumnDataType | undefined;
+  resolveColumnDefinitionDescription?: (
+    binding: ColumnBindingDraft
+  ) => string | null | undefined;
+  resolveColumnLabel?: (columnDefinitionId: string) => string | undefined;
+  onCommit: () => void;
 
   // Navigation
   onBack: () => void;
-  onNext: () => void;
-  backLabel: string;
-  nextLabel: string;
-  isBackDisabled: boolean;
-  isNextDisabled: boolean;
+
+  // Status
+  errors?: RegionEditorErrors;
+  serverError: ServerError | null;
+  isInterpreting: boolean;
+  isCommitting: boolean;
+
+  // Lazy-loaded cells for sliced sheets. Undefined for workbooks whose cells
+  // were inlined in the parse response.
+  loadSlice?: LoadSliceFn;
 }
 
-// --- Pure UI Component ---
+// ---------------------------------------------------------------------------
+// Pure UI
+// ---------------------------------------------------------------------------
 
-export const FileUploadConnectorWorkflowUI: React.FC<FileUploadConnectorWorkflowUIProps> = ({
+export const FileUploadConnectorWorkflowUI: React.FC<
+  FileUploadConnectorWorkflowUIProps
+> = ({
   open,
   onClose,
   step,
@@ -119,149 +199,155 @@ export const FileUploadConnectorWorkflowUI: React.FC<FileUploadConnectorWorkflow
   uploadPhase,
   fileProgress,
   overallUploadPercent,
-  jobProgress,
-  jobError,
-  uploadError,
-  isProcessing,
-  connectionStatus,
-  jobStatus,
-  jobResult,
-  recommendations,
-  parseResults,
-  onUpdateEntity,
-  entityStepErrors,
-  dbEntities,
-  isLoadingDbEntities,
-  columnStepErrors,
-  onUpdateColumn,
-  onColumnKeySearch,
-  onColumnKeyGetById,
-  onConnectorNameChange,
-  onConfirm,
-  isConfirming,
-  confirmError,
-  confirmResult,
-  onDone,
-  onCancel,
-  isCancelling,
+  onStartParse,
+  workbook,
+  regions,
+  selectedRegionId,
+  activeSheetId,
+  entityOptions,
+  onActiveSheetChange,
+  onSelectRegion,
+  onRegionDraft,
+  onRegionUpdate,
+  onRegionResize,
+  onRegionDelete,
+  onCreateEntity,
+  validateEntityKey,
+  onInterpret,
+  onSkipToReview,
+  overallConfidence,
+  onJumpToRegion,
+  onEditBinding,
+  onUpdateBinding,
+  onToggleBindingExcluded,
+  columnDefinitionSearch,
+  resolveReferenceOptions,
+  resolveReferenceFieldOptions,
+  resolveColumnDefinitionType,
+  resolveColumnDefinitionDescription,
+  resolveColumnLabel,
+  onCommit,
   onBack,
-  onNext,
-  backLabel,
-  nextLabel,
-  isBackDisabled,
-  isNextDisabled,
+  errors,
+  serverError,
+  isInterpreting,
+  isCommitting,
+  loadSlice,
 }) => {
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="File Upload"
-      maxWidth="md"
-      fullWidth
-    >
-      <Box sx={{ minHeight: 400 }}>
-        <Stepper steps={stepConfigs} activeStep={step}>
-          {/* Step 0: Upload CSV */}
-          <StepPanel index={0} activeStep={step}>
-            <UploadStep
-              files={files}
-              onFilesChange={onFilesChange}
-              uploadPhase={uploadPhase}
-              fileProgress={fileProgress}
-              overallUploadPercent={overallUploadPercent}
-              jobProgress={jobProgress}
-              jobError={jobError}
-              uploadError={uploadError}
-              isProcessing={isProcessing}
-              connectionStatus={connectionStatus}
-              jobStatus={jobStatus}
-              jobResult={jobResult}
-            />
-          </StepPanel>
+    const isUploadDisabled =
+      files.length === 0 ||
+      uploadPhase === "uploading" ||
+      uploadPhase === "parsing";
 
-          {/* Step 1: Confirm Entities */}
-          <StepPanel index={1} activeStep={step}>
-            {recommendations ? (
-              <EntityStep
-                entities={recommendations.entities}
+    const resolvedActiveSheetId = activeSheetId ?? workbook?.sheets[0]?.id ?? "";
+
+    return (
+      <Modal
+        open={open}
+        onClose={onClose}
+        title="Upload a spreadsheet"
+        defaultMaximized
+        maximizable
+      >
+        <Stack spacing={2} sx={{ minWidth: 0 }}>
+          <Stepper steps={stepConfigs} activeStep={step}>
+            <StepPanel index={0} activeStep={step}>
+              <UploadStep
                 files={files}
-                parseResults={parseResults}
-                onUpdateEntity={onUpdateEntity}
-                errors={entityStepErrors}
+                onFilesChange={onFilesChange}
+                uploadPhase={uploadPhase}
+                fileProgress={fileProgress}
+                overallUploadPercent={overallUploadPercent}
+                serverError={serverError}
               />
-            ) : (
-              <Typography color="text.secondary">
-                Waiting for recommendations...
-              </Typography>
-            )}
-          </StepPanel>
+            </StepPanel>
 
-          {/* Step 2: Map Columns */}
-          <StepPanel index={2} activeStep={step}>
-            {recommendations ? (
-              <ColumnMappingStep
-                entities={recommendations.entities}
-                dbEntities={dbEntities}
-                isLoadingDbEntities={isLoadingDbEntities}
-                onUpdateColumn={onUpdateColumn}
-                errors={columnStepErrors}
-                onColumnKeySearch={onColumnKeySearch}
-                onColumnKeyGetById={onColumnKeyGetById}
+            <StepPanel index={1} activeStep={step}>
+              {workbook ? (
+                <FileUploadRegionDrawingStepUI
+                  workbook={workbook}
+                  regions={regions}
+                  activeSheetId={resolvedActiveSheetId}
+                  onActiveSheetChange={onActiveSheetChange}
+                  selectedRegionId={selectedRegionId}
+                  onSelectRegion={onSelectRegion}
+                  onRegionDraft={onRegionDraft}
+                  onRegionUpdate={onRegionUpdate}
+                  onRegionResize={onRegionResize}
+                  onRegionDelete={onRegionDelete}
+                  entityOptions={entityOptions}
+                  onCreateEntity={onCreateEntity}
+                  validateEntityKey={validateEntityKey}
+                  onInterpret={onInterpret}
+                  onSkipToReview={onSkipToReview}
+                  isInterpreting={isInterpreting}
+                  errors={errors}
+                  serverError={serverError}
+                  loadSlice={loadSlice}
+                />
+              ) : (
+                <Box sx={{ p: 3 }}>
+                  <Typography color="text.secondary">
+                    Preparing your spreadsheet…
+                  </Typography>
+                </Box>
+              )}
+            </StepPanel>
+
+            <StepPanel index={2} activeStep={step}>
+              <FileUploadReviewStepUI
+                regions={regions}
+                overallConfidence={overallConfidence}
+                onJumpToRegion={onJumpToRegion}
+                onEditBinding={onEditBinding}
+                onUpdateBinding={onUpdateBinding}
+                onToggleBindingExcluded={onToggleBindingExcluded}
+                columnDefinitionSearch={columnDefinitionSearch}
+                resolveReferenceOptions={resolveReferenceOptions}
+                resolveReferenceFieldOptions={resolveReferenceFieldOptions}
+                resolveColumnDefinitionType={resolveColumnDefinitionType}
+                resolveColumnDefinitionDescription={
+                  resolveColumnDefinitionDescription
+                }
+                resolveColumnLabel={resolveColumnLabel}
+                onCommit={onCommit}
+                onBack={onBack}
+                isCommitting={isCommitting}
+                serverError={serverError}
               />
-            ) : (
-              <Typography color="text.secondary">
-                Waiting for recommendations...
-              </Typography>
-            )}
-          </StepPanel>
+            </StepPanel>
+          </Stepper>
 
-          {/* Step 3: Review & Import */}
-          <StepPanel index={3} activeStep={step}>
-            {recommendations || confirmResult ? (
-              <ReviewStep
-                recommendations={recommendations}
-                onConnectorNameChange={onConnectorNameChange}
-                onConfirm={onConfirm}
-                isConfirming={isConfirming}
-                confirmError={confirmError}
-                confirmResult={confirmResult}
-                onDone={onDone}
-                onCancel={onCancel}
-                isCancelling={isCancelling}
-              />
-            ) : (
-              <Typography color="text.secondary">
-                No recommendations available.
-              </Typography>
-            )}
-          </StepPanel>
-        </Stepper>
+          {step === 0 && (
+            <Stack direction="row" justifyContent="space-between" sx={{ pt: 1 }}>
+              <Button variant="text" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={onStartParse}
+                disabled={isUploadDisabled}
+              >
+                Upload
+              </Button>
+            </Stack>
+          )}
 
-        {/* Navigation — hidden on step 3 where ReviewStep has its own actions */}
-        {step !== 3 && (
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            sx={{ pt: 2, px: 2 }}
-          >
-            <Button onClick={onBack} disabled={isBackDisabled} variant="text">
-              {backLabel}
-            </Button>
-            <Button
-              onClick={onNext}
-              disabled={isNextDisabled}
-              variant="contained"
-            >
-              {nextLabel}
-            </Button>
-          </Stack>
-        )}
-      </Box>
-    </Modal>
-  );
-};
+          {step === 1 && (
+            <Stack direction="row" justifyContent="flex-start" sx={{ pt: 1 }}>
+              <Button variant="text" onClick={onBack}>
+                Back
+              </Button>
+            </Stack>
+          )}
+        </Stack>
+      </Modal>
+    );
+  };
 
-// --- Container Props ---
+// ---------------------------------------------------------------------------
+// Container Props
+// ---------------------------------------------------------------------------
 
 interface FileUploadConnectorWorkflowProps {
   open: boolean;
@@ -270,191 +356,442 @@ interface FileUploadConnectorWorkflowProps {
   connectorDefinitionId: string;
 }
 
-// --- Helpers ---
+// ---------------------------------------------------------------------------
+// Container
+// ---------------------------------------------------------------------------
 
-function deriveNextLabel(workflow: UseUploadWorkflowReturn): string {
-  switch (workflow.step) {
-    case 0:
-      if (workflow.uploadPhase === "idle" && workflow.files.length > 0)
-        return "Upload";
-      if (workflow.isProcessing) return "Processing...";
-      return "Next";
-    case 3:
-      return "Confirm";
-    default:
-      return "Next";
-  }
-}
+export const FileUploadConnectorWorkflow: React.FC<
+  FileUploadConnectorWorkflowProps
+> = ({ open, onClose, organizationId, connectorDefinitionId }) => {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-function deriveIsNextDisabled(workflow: UseUploadWorkflowReturn): boolean {
-  switch (workflow.step) {
-    case 0:
-      return workflow.files.length === 0 || workflow.isProcessing;
-    case 1:
-      return (
-        !workflow.recommendations ||
-        workflow.recommendations.entities.length === 0
-      );
-    case 2:
-      return !workflow.recommendations;
-    case 3:
-      return false;
-    default:
-      return false;
-  }
-}
+  const { mutateAsync: presignMutate } = sdk.fileUploads.presign();
+  const { mutateAsync: confirmMutate } = sdk.fileUploads.confirm();
+  const { mutateAsync: parseMutate } = sdk.fileUploads.parse();
+  const { mutateAsync: sheetSliceMutate } = sdk.fileUploads.sheetSlice();
+  const { mutateAsync: interpretMutate } = sdk.layoutPlans.interpret();
+  const { mutateAsync: commitMutate } = sdk.layoutPlans.commit();
+  const workbookRef = useRef<Workbook | null>(null);
+  const uploadSessionIdRef = useRef<string | null>(null);
+  const filesRef = useRef<File[]>([]);
 
-function deriveStepConfigs(workflow: UseUploadWorkflowReturn): StepConfig[] {
-  return WORKFLOW_STEPS.map((s, index) => ({
-    label: s.label,
-    description: s.description,
-    validate: () => {
-      switch (index) {
-        case 0:
-          if (workflow.files.length === 0)
-            return "Please select at least one CSV file";
-          return true;
-        case 1:
-          if (
-            !workflow.recommendations ||
-            workflow.recommendations.entities.length === 0
-          )
-            return "No entities to review";
-          return true;
-        default:
-          return true;
-      }
+  // Handed to the canvas so sliced sheets can fetch cells on scroll. The
+  // reference closure reads `uploadSessionIdRef.current` per call, so a
+  // single stable callback works across parse → review without needing to
+  // be rebuilt when the session id changes.
+  const loadSlice: LoadSliceFn = useCallback(
+    async ({ sheetId, rowStart, rowEnd, colStart, colEnd }) => {
+      const uploadSessionId = uploadSessionIdRef.current;
+      if (!uploadSessionId) throw new Error("Upload session missing");
+      const res = await sheetSliceMutate({
+        uploadSessionId,
+        sheetId,
+        rowStart,
+        rowEnd,
+        colStart,
+        colEnd,
+      });
+      return res.cells;
     },
-  }));
-}
+    [sheetSliceMutate]
+  );
 
-// --- Container Component ---
+  // User-staged entities created via the region editor's "+ Create new entity"
+  // affordance. Sheet-derived options always win on key collisions; see
+  // `mergeStagedEntityOptions`.
+  const [stagedEntities, setStagedEntities] = useState<EntityOption[]>([]);
 
-export const FileUploadConnectorWorkflow: React.FC<FileUploadConnectorWorkflowProps> = ({
-  open,
-  onClose,
-  organizationId,
-  connectorDefinitionId,
-}) => {
-  const workflow = useUploadWorkflow();
-  const [entityStepErrors, setEntityStepErrors] = useState<EntityStepErrors>({});
-  const [columnStepErrors, setColumnStepErrors] = useState<ColumnStepErrors>({});
-  const { onSearch: onColumnKeySearch, getById: onColumnKeyGetById } = sdk.columnDefinitions.search({
-    mapItem: (cd) => ({
-      value: cd.id,
-      label: `${cd.label} (${cd.key}) — ${cd.type}${cd.description ? ` · ${cd.description}` : ""}`,
-      columnDefinition: cd,
-    }),
+  const handleCreateEntity = useCallback(
+    (key: string, label: string): string => {
+      setStagedEntities((prev) => {
+        if (prev.some((e) => e.value === key)) return prev;
+        return [...prev, { value: key, label, source: "staged" as const }];
+      });
+      return key;
+    },
+    []
+  );
+
+  const parseFile: FileUploadWorkflowCallbacks["parseFile"] = useCallback(
+    async (files, options) => {
+      if (files.length === 0) throw new Error("No file selected");
+      filesRef.current = files;
+
+      // 1) Mint presigned PUT URLs — one row per file in status "pending".
+      const presignPayload = await presignMutate({
+        files: files.map((f) => ({
+          fileName: f.name,
+          contentType: f.type || "application/octet-stream",
+          sizeBytes: f.size,
+        })),
+      });
+
+      // 2) PUT each file directly to S3. XHR progress events feed the hook.
+      await Promise.all(
+        files.map((file, i) =>
+          putToS3(file, presignPayload.uploads[i].putUrl, {
+            onProgress: (loaded, total) =>
+              options?.onProgress?.({ fileName: file.name, loaded, total }),
+            signal: options?.signal,
+          })
+        )
+      );
+
+      // 3) Confirm each upload — backend HEADs S3 + flips row to "uploaded".
+      await Promise.all(
+        presignPayload.uploads.map((u) =>
+          confirmMutate({ uploadId: u.uploadId })
+        )
+      );
+
+      // 4) Stream parse — returns the preview workbook + uploadSessionId.
+      const parsePayload = await parseMutate({
+        uploadIds: presignPayload.uploads.map((u) => u.uploadId),
+      });
+
+      const sourceLabel =
+        files.length === 1 ? files[0].name : `${files.length} files`;
+      const converted = backendParseSheetsToPreview(
+        parsePayload.sheets,
+        sourceLabel
+      );
+      workbookRef.current = converted;
+      uploadSessionIdRef.current = parsePayload.uploadSessionId;
+      return {
+        workbook: converted,
+        uploadSessionId: parsePayload.uploadSessionId,
+      };
+    },
+    [presignMutate, confirmMutate, parseMutate]
+  );
+
+  const runInterpret: FileUploadWorkflowCallbacks["runInterpret"] = useCallback(
+    async (regions) => {
+      const workbook = workbookRef.current;
+      const uploadSessionId = uploadSessionIdRef.current;
+      if (!workbook) throw new Error("Workbook not parsed");
+      if (!uploadSessionId) throw new Error("Upload session missing");
+      const res = await interpretMutate({
+        uploadSessionId,
+        regionHints: regionDraftsToHints(workbook, regions),
+      });
+      const plan = preserveUserRegionConfig(res.plan, regions);
+      return {
+        regions: planRegionsToDrafts(plan, workbook),
+        plan,
+        overallConfidence: overallConfidenceFromPlan(plan),
+      };
+    },
+    [interpretMutate]
+  );
+
+  const runCommit: FileUploadWorkflowCallbacks["runCommit"] = useCallback(
+    async (plan) => {
+      const uploadSessionId = uploadSessionIdRef.current;
+      if (!uploadSessionId) throw new Error("Upload session missing");
+      const res = await commitMutate({
+        connectorDefinitionId,
+        name: deriveConnectorInstanceName(filesRef.current),
+        plan,
+        uploadSessionId,
+      });
+      await Promise.all(
+        [
+          queryKeys.connectorInstances.root,
+          queryKeys.connectorEntities.root,
+          queryKeys.stations.root,
+          queryKeys.fieldMappings.root,
+          queryKeys.portals.root,
+          queryKeys.portalResults.root,
+          queryKeys.connectorInstanceLayoutPlans.root,
+        ].map((queryKey) => queryClient.invalidateQueries({ queryKey }))
+      );
+      return { connectorInstanceId: res.connectorInstanceId };
+    },
+    [commitMutate, connectorDefinitionId, queryClient]
+  );
+
+  const workflow = useFileUploadWorkflow({
+    parseFile,
+    runInterpret,
+    runCommit,
+    onCommitSuccess: (connectorInstanceId) => {
+      navigate({
+        to: "/connectors/$connectorInstanceId",
+        params: { connectorInstanceId },
+      });
+      handleClose();
+    },
   });
 
-  const { data: dbEntitiesData, isLoading: isLoadingDbEntities } =
-    sdk.connectorEntities.list(
-      { include: "fieldMappings" } as Parameters<typeof sdk.connectorEntities.list>[0],
-      { staleTime: 30_000 }
-    );
-  const dbEntities: ConnectorEntityWithMappings[] =
-    (dbEntitiesData as ConnectorEntityListWithMappingsResponsePayload | undefined)
-      ?.connectorEntities ?? [];
+  // The organizationId prop is kept for API symmetry with the previous design
+  // but is unused now: the server derives org scope from the authenticated
+  // token. Reference it so TypeScript/ESLint don't flag it unused.
+  void organizationId;
 
   const handleClose = useCallback(() => {
+    workbookRef.current = null;
+    uploadSessionIdRef.current = null;
+    filesRef.current = [];
+    setStagedEntities([]);
     workflow.reset();
-    setEntityStepErrors({});
-    setColumnStepErrors({});
     onClose();
   }, [workflow, onClose]);
 
-  const handleStartUpload = useCallback(async () => {
-    await workflow.startUpload(organizationId, connectorDefinitionId);
-  }, [workflow, organizationId, connectorDefinitionId]);
+  const entityOptions = useMemo(
+    () =>
+      mergeStagedEntityOptions(
+        entityOptionsFromWorkbook(workflow.workbook),
+        stagedEntities
+      ),
+    [workflow.workbook, stagedEntities]
+  );
 
-  const handleNext = useCallback(async () => {
-    if (workflow.step === 0 && workflow.uploadPhase === "idle") {
-      await handleStartUpload();
-      return;
+  // The interpret endpoint returns column bindings keyed by columnDefinitionId
+  // — opaque UUIDs. Fetch the org's ColumnDefinition catalog so the review and
+  // region-editor panels can show the human label on each binding chip.
+  const columnDefinitionsQuery = sdk.columnDefinitions.list({
+    limit: 1000,
+    offset: 0,
+    sortBy: "label",
+    sortOrder: "asc",
+  });
+  const columnDefinitionsById = useMemo(() => {
+    const map = new Map<
+      string,
+      { label: string; type: ColumnDataType; description: string | null }
+    >();
+    const rows = columnDefinitionsQuery.data?.columnDefinitions ?? [];
+    for (const cd of rows) {
+      map.set(cd.id, {
+        label: cd.label,
+        type: cd.type as ColumnDataType,
+        description: cd.description,
+      });
     }
+    return map;
+  }, [columnDefinitionsQuery.data]);
 
-    if (workflow.step === 1 && workflow.recommendations) {
-      const errors = validateEntityStep(workflow.recommendations.entities);
-      setEntityStepErrors(errors);
-      if (hasEntityStepErrors(errors)) {
-        requestAnimationFrame(() => focusFirstInvalidField());
-        return;
+  const regionsWithResolvedLabels = useMemo(() => {
+    if (columnDefinitionsById.size === 0) {
+      return workflow.regions;
+    }
+    return workflow.regions.map((region) => {
+      if (!region.columnBindings || region.columnBindings.length === 0) {
+        return region;
       }
-    }
+      return {
+        ...region,
+        columnBindings: region.columnBindings.map((binding) => {
+          if (!binding.columnDefinitionId) return binding;
+          const meta = columnDefinitionsById.get(binding.columnDefinitionId);
+          if (!meta) return binding;
+          return {
+            ...binding,
+            columnDefinitionLabel: binding.columnDefinitionLabel ?? meta.label,
+            columnDefinitionType: binding.columnDefinitionType ?? meta.type,
+          };
+        }),
+      };
+    });
+  }, [workflow.regions, columnDefinitionsById]);
 
-    if (workflow.step === 2 && workflow.recommendations) {
-      const errors = validateColumnStep(workflow.recommendations.entities);
-      setColumnStepErrors(errors);
-      if (hasColumnStepErrors(errors)) {
-        requestAnimationFrame(() => focusFirstInvalidField());
-        return;
+  // Search hooks for the binding editor popover. `columnDefinitions.search`
+  // populates the rebind picker; `connectorEntities.search` populates the
+  // reference editor's DB-target half (staged entities come from `regions`).
+  const columnDefinitionSearch = sdk.columnDefinitions.search();
+  const connectorEntitySearch = sdk.connectorEntities.search();
+
+  const resolveColumnDefinitionType = useCallback(
+    (binding: ColumnBindingDraft): ColumnDataType | undefined => {
+      // Prefer a fresh catalog lookup keyed by the currently-selected id so
+      // the returned type always matches the current binding. The cached
+      // `binding.columnDefinitionType` can drift from `columnDefinitionId`
+      // when the user swaps definitions in the popover — treating it as
+      // authoritative surfaced as the binding editor failing to show
+      // reference/enum sub-fields after a rebind.
+      if (binding.columnDefinitionId) {
+        const fromCatalog = columnDefinitionsById.get(
+          binding.columnDefinitionId
+        )?.type;
+        if (fromCatalog) return fromCatalog;
       }
-    }
+      return binding.columnDefinitionType;
+    },
+    [columnDefinitionsById]
+  );
 
-    workflow.goNext();
-  }, [workflow, handleStartUpload]);
+  const resolveColumnDefinitionDescription = useCallback(
+    (binding: ColumnBindingDraft): string | null | undefined => {
+      if (!binding.columnDefinitionId) return undefined;
+      return columnDefinitionsById.get(binding.columnDefinitionId)?.description;
+    },
+    [columnDefinitionsById]
+  );
 
-  const handleBack = useCallback(() => {
-    if (workflow.step === 0) {
-      handleClose();
-    } else {
-      workflow.goBack();
-    }
-  }, [workflow, handleClose]);
+  const resolveColumnLabel = useCallback(
+    (columnDefinitionId: string): string | undefined =>
+      columnDefinitionsById.get(columnDefinitionId)?.label,
+    [columnDefinitionsById]
+  );
 
-  const handleConfirm = useCallback(async () => {
-    await workflow.confirm();
-  }, [workflow]);
+  // C2 pre-check: before staging a newly-created entity, make sure no
+  // other connector in this org already owns the chosen key. Reuses the
+  // connectorEntity search SDK (org-scoped by auth) so callers don't
+  // need to re-fetch at commit time.
+  const validateEntityKey = useCallback(
+    async (
+      key: string
+    ): Promise<{ ok: true } | { ok: false; ownedBy?: string }> => {
+      const results = await connectorEntitySearch.onSearch(key);
+      // Search is key|label ilike; filter to exact key match.
+      const exact = results.find((r) => String(r.value) === key);
+      if (!exact) return { ok: true };
+      const metaMap = connectorEntitySearch.metaMap ?? {};
+      const ownedBy = metaMap[String(exact.value)]?.connectorInstanceName;
+      return { ok: false, ownedBy };
+    },
+    [connectorEntitySearch]
+  );
 
-  const handleCancel = useCallback(async () => {
-    await workflow.cancel();
-    handleClose();
-  }, [workflow, handleClose]);
+  // Reference-target options — staged sibling entities first (prefixed "this
+  // import"), then DB-backed options resolved by the connectorEntity search.
+  const resolveReferenceOptions = useCallback(
+    (currentRegion: RegionDraft): SelectOption[] => {
+      const staged = new Map<string, SelectOption>();
+      for (const r of workflow.regions) {
+        if (!r.targetEntityDefinitionId) continue;
+        if (r.id === currentRegion.id) continue; // self-references disallowed
+        if (staged.has(r.targetEntityDefinitionId)) continue;
+        const label = r.targetEntityLabel ?? r.targetEntityDefinitionId;
+        staged.set(r.targetEntityDefinitionId, {
+          value: r.targetEntityDefinitionId,
+          label: `${label} (this import)`,
+        });
+      }
+      // DB-backed options: C2 surfaces the owning connector's name via
+      // `metaMap.connectorInstanceName` so the picker can disambiguate
+      // across connectors within the same org.
+      const metaMap = connectorEntitySearch.metaMap ?? {};
+      const dbOptions = Object.entries(connectorEntitySearch.labelMap).map(
+        ([value, label]) => {
+          const connectorName = metaMap[value]?.connectorInstanceName;
+          const suffix = connectorName
+            ? ` (existing · ${connectorName})`
+            : " (existing)";
+          return { value, label: `${label}${suffix}` };
+        }
+      );
+      const all = [...staged.values(), ...dbOptions];
+      const seen = new Set<string>();
+      return all.filter((opt) => {
+        if (seen.has(String(opt.value))) return false;
+        seen.add(String(opt.value));
+        return true;
+      });
+    },
+    [
+      workflow.regions,
+      connectorEntitySearch.labelMap,
+      connectorEntitySearch.metaMap,
+    ]
+  );
 
-  const stepConfigs = deriveStepConfigs(workflow);
+  const resolveReferenceFieldOptions = useCallback(
+    (
+      _region: RegionDraft,
+      refEntityKey: string | null | undefined
+    ): SelectOption[] => {
+      if (!refEntityKey) return [];
+      // Staged target — derive from sibling region's bindings' normalizedKey
+      // overrides + catalog keys. Commit reconciles with the same logic.
+      const stagedRegion = workflow.regions.find(
+        (r) => r.targetEntityDefinitionId === refEntityKey
+      );
+      if (stagedRegion) {
+        const seen = new Set<string>();
+        const out: SelectOption[] = [];
+        for (const b of stagedRegion.columnBindings ?? []) {
+          if (b.excluded) continue;
+          const key =
+            b.normalizedKey ??
+            (b.columnDefinitionId
+              ? columnDefinitionsById.get(b.columnDefinitionId)?.label ??
+                b.columnDefinitionId
+              : null);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          out.push({ value: key, label: key });
+        }
+        return out;
+      }
+      // DB target — field list isn't loaded synchronously here; fall back to
+      // an empty list so the select is disabled until the server validates.
+      // Commit's reference validation (`LAYOUT_PLAN_INVALID_REFERENCE`) is
+      // the safety net.
+      return [];
+    },
+    [workflow.regions, columnDefinitionsById]
+  );
 
   return (
     <FileUploadConnectorWorkflowUI
       open={open}
       onClose={handleClose}
       step={workflow.step}
-      stepConfigs={stepConfigs}
+      stepConfigs={FILE_UPLOAD_WORKFLOW_STEPS}
       files={workflow.files}
       onFilesChange={workflow.addFiles}
       uploadPhase={workflow.uploadPhase}
-      fileProgress={workflow.uploadProgress}
+      fileProgress={workflow.fileProgressMap}
       overallUploadPercent={workflow.overallUploadPercent}
-      jobProgress={workflow.jobProgress}
-      jobError={workflow.jobError}
-      uploadError={workflow.uploadError}
-      isProcessing={workflow.isProcessing}
-      connectionStatus={workflow.connectionStatus}
-      jobStatus={workflow.jobStatus}
-      jobResult={workflow.jobResult}
-      recommendations={workflow.recommendations}
-      parseResults={workflow.parseResults}
-      onUpdateEntity={workflow.updateEntity}
-      entityStepErrors={entityStepErrors}
-      dbEntities={dbEntities}
-      isLoadingDbEntities={isLoadingDbEntities}
-      columnStepErrors={columnStepErrors}
-      onUpdateColumn={workflow.updateColumn}
-      onColumnKeySearch={onColumnKeySearch}
-      onColumnKeyGetById={onColumnKeyGetById}
-      onConnectorNameChange={workflow.updateConnectorName}
-      onConfirm={handleConfirm}
-      isConfirming={workflow.isConfirming}
-      confirmError={workflow.confirmError}
-      confirmResult={workflow.confirmResult}
-      onDone={handleClose}
-      onCancel={handleCancel}
-      isCancelling={workflow.isCancelling}
-      onBack={handleBack}
-      onNext={handleNext}
-      backLabel={workflow.step === 0 ? "Cancel" : "Back"}
-      nextLabel={deriveNextLabel(workflow)}
-      isBackDisabled={workflow.step === 0 ? false : workflow.isProcessing}
-      isNextDisabled={deriveIsNextDisabled(workflow)}
+      onStartParse={() => {
+        void workflow.startParse();
+      }}
+      workbook={workflow.workbook}
+      regions={regionsWithResolvedLabels}
+      selectedRegionId={workflow.selectedRegionId}
+      activeSheetId={workflow.activeSheetId}
+      entityOptions={entityOptions}
+      onActiveSheetChange={workflow.onActiveSheetChange}
+      onSelectRegion={workflow.onSelectRegion}
+      onRegionDraft={workflow.onRegionDraft}
+      onRegionUpdate={workflow.onRegionUpdate}
+      onRegionResize={(regionId, nextBounds) =>
+        workflow.onRegionUpdate(regionId, { bounds: nextBounds })
+      }
+      onRegionDelete={workflow.onRegionDelete}
+      onCreateEntity={handleCreateEntity}
+      validateEntityKey={validateEntityKey}
+      onInterpret={() => {
+        void workflow.onInterpret();
+      }}
+      onSkipToReview={workflow.plan ? workflow.onSkipToReview : undefined}
+      overallConfidence={workflow.overallConfidence}
+      onJumpToRegion={workflow.onJumpToRegion}
+      onEditBinding={(regionId, _sourceLocator) => {
+        // Fallback path — only fires when the popover isn't wired (any of
+        // onUpdateBinding / onToggleBindingExcluded / columnDefinitionSearch
+        // missing). The popover-enabled path below owns the affordance now.
+        workflow.onJumpToRegion(regionId);
+      }}
+      onUpdateBinding={workflow.onUpdateBinding}
+      onToggleBindingExcluded={workflow.onToggleBindingExcluded}
+      columnDefinitionSearch={columnDefinitionSearch}
+      resolveReferenceOptions={resolveReferenceOptions}
+      resolveReferenceFieldOptions={resolveReferenceFieldOptions}
+      resolveColumnDefinitionType={resolveColumnDefinitionType}
+      resolveColumnDefinitionDescription={resolveColumnDefinitionDescription}
+      resolveColumnLabel={resolveColumnLabel}
+      onCommit={() => {
+        void workflow.onCommit();
+      }}
+      onBack={workflow.goBack}
+      serverError={workflow.serverError}
+      isInterpreting={workflow.isInterpreting}
+      isCommitting={workflow.isCommitting}
+      loadSlice={loadSlice}
     />
   );
 };

@@ -3,7 +3,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { ToolService, type WebhookImplementation } from "../services/tools.service.js";
+import {
+  ToolService,
+  type WebhookImplementation,
+} from "../services/tools.service.js";
 import { Tool } from "../types/tools.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -23,7 +26,7 @@ export class WebhookTool extends Tool {
     description: string,
     parameterSchema: Record<string, unknown>,
     implementation: WebhookImplementation,
-    stationId: string,
+    stationId: string
   ) {
     super();
     this.slug = toolName;
@@ -45,10 +48,17 @@ export class WebhookTool extends Tool {
       execute: async (rawInput: Record<string, unknown>) => {
         const input = this.validate(rawInput) as Record<string, unknown>;
         logger.info(
-          { toolName: this.slug, stationId: this.stationId, url: this.implementation.url },
+          {
+            toolName: this.slug,
+            stationId: this.stationId,
+            url: this.implementation.url,
+          },
           "Calling webhook tool"
         );
-        const result = await ToolService.callWebhook(this.implementation, input);
+        const result = await ToolService.callWebhook(
+          this.implementation,
+          input
+        );
 
         // Propagate vega-lite and vega chart results
         if (
@@ -99,9 +109,7 @@ function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType {
         string,
         Record<string, unknown>
       >;
-      const required = new Set(
-        (schema.required as string[] | undefined) ?? []
-      );
+      const required = new Set((schema.required as string[] | undefined) ?? []);
       const shape: Record<string, z.ZodType> = {};
 
       for (const [key, propSchema] of Object.entries(properties)) {

@@ -16,7 +16,7 @@ describe("DetailCard Component", () => {
         <DetailCard
           title="Alpha"
           icon={<span data-testid="card-icon">ic</span>}
-        />,
+        />
       );
       expect(screen.getByTestId("card-icon")).toBeInTheDocument();
     });
@@ -30,7 +30,7 @@ describe("DetailCard Component", () => {
       render(
         <DetailCard title="Alpha">
           <p>Last synced 2 hours ago</p>
-        </DetailCard>,
+        </DetailCard>
       );
       expect(screen.getByText("Last synced 2 hours ago")).toBeInTheDocument();
     });
@@ -50,10 +50,12 @@ describe("DetailCard Component", () => {
             { label: "Edit", onClick: () => {} },
             { label: "Delete", onClick: () => {} },
           ]}
-        />,
+        />
       );
       expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Delete" })
+      ).toBeInTheDocument();
     });
 
     it("should not render actions when actions is an empty array", () => {
@@ -71,7 +73,7 @@ describe("DetailCard Component", () => {
 
     it("should support elevation variant", () => {
       const { container } = render(
-        <DetailCard title="Alpha" variant="elevation" />,
+        <DetailCard title="Alpha" variant="elevation" />
       );
       expect(container.querySelector(".MuiCard-root")).toBeInTheDocument();
     });
@@ -80,17 +82,17 @@ describe("DetailCard Component", () => {
   describe("Clickable Card", () => {
     it("should render a CardActionArea when onClick is provided", () => {
       const { container } = render(
-        <DetailCard title="Alpha" onClick={() => {}} />,
+        <DetailCard title="Alpha" onClick={() => {}} />
       );
       expect(
-        container.querySelector(".MuiCardActionArea-root"),
+        container.querySelector(".MuiCardActionArea-root")
       ).toBeInTheDocument();
     });
 
     it("should not render a CardActionArea when onClick is not provided", () => {
       const { container } = render(<DetailCard title="Alpha" />);
       expect(
-        container.querySelector(".MuiCardActionArea-root"),
+        container.querySelector(".MuiCardActionArea-root")
       ).not.toBeInTheDocument();
     });
 
@@ -111,7 +113,7 @@ describe("DetailCard Component", () => {
           title="Alpha"
           onClick={handleCardClick}
           actions={[{ label: "Edit", onClick: handleEdit }]}
-        />,
+        />
       );
 
       await userEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -124,7 +126,7 @@ describe("DetailCard Component", () => {
   describe("Props", () => {
     it("should accept a custom className", () => {
       const { container } = render(
-        <DetailCard title="Alpha" className="custom-card" />,
+        <DetailCard title="Alpha" className="custom-card" />
       );
       expect(container.firstChild).toHaveClass("custom-card");
     });

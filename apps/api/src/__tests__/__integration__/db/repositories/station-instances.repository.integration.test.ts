@@ -53,21 +53,19 @@ describe("StationInstancesRepository Integration Tests", () => {
 
     // Create a station
     stationId = generateId();
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.stations)
-      .values({
-        id: stationId,
-        organizationId: orgId,
-        name: "Test Station",
-        description: null,
-        toolPacks: ["data_query"],
-        created: now,
-        createdBy: "SYSTEM_TEST",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
+    await (db as ReturnType<typeof drizzle>).insert(schema.stations).values({
+      id: stationId,
+      organizationId: orgId,
+      name: "Test Station",
+      description: null,
+      toolPacks: ["data_query"],
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
 
     // Create a connector definition
     const connDefId = generateId();

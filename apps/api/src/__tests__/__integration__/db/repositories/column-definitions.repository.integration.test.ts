@@ -236,5 +236,4 @@ describe("ColumnDefinitionsRepository Integration Tests", () => {
       await expect(repo.create(data, db)).rejects.toThrow();
     });
   });
-
 });

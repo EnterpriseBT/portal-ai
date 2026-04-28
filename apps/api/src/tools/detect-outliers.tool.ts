@@ -1,16 +1,17 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type StationData } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type StationData,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 import { getRecords } from "../utils/tools.util.js";
 
 const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
   column: z.string().describe("Numeric column key"),
-  method: z
-    .enum(["iqr", "zscore"])
-    .describe("Detection method: iqr or zscore"),
+  method: z.enum(["iqr", "zscore"]).describe("Detection method: iqr or zscore"),
 });
 
 export class DetectOutliersTool extends Tool<typeof InputSchema> {

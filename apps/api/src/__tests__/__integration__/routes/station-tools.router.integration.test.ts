@@ -152,9 +152,7 @@ describe("Station Tools Router", () => {
     it("returns 404 for unknown station", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
-      await request(app)
-        .get(`/api/stations/${generateId()}/tools`)
-        .expect(404);
+      await request(app).get(`/api/stations/${generateId()}/tools`).expect(404);
     });
   });
 

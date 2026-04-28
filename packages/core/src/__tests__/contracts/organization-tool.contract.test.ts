@@ -14,7 +14,10 @@ const validOrgTool = {
   organizationId: "org-1",
   name: "Custom Webhook",
   description: "Calls external API",
-  parameterSchema: { type: "object", properties: { query: { type: "string" } } },
+  parameterSchema: {
+    type: "object",
+    properties: { query: { type: "string" } },
+  },
   implementation: { type: "webhook", url: "https://api.example.com/hook" },
   created: Date.now(),
   createdBy: "user-1",

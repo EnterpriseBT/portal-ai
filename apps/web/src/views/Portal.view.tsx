@@ -1,7 +1,16 @@
 import React, { useState, useCallback } from "react";
 
 import type { PortalGetResponsePayload } from "@portalai/core/contracts";
-import { Box, Button, Icon, IconName, MetadataList, Modal, PageHeader, Stack } from "@portalai/core/ui";
+import {
+  Box,
+  Button,
+  Icon,
+  IconName,
+  MetadataList,
+  Modal,
+  PageHeader,
+  Stack,
+} from "@portalai/core/ui";
 import { DateFactory } from "@portalai/core/utils";
 import Chip from "@mui/material/Chip";
 import Collapse from "@mui/material/Collapse";
@@ -124,8 +133,12 @@ interface PortalHeaderMetaProps {
   stationId: string;
 }
 
-export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({ stationId }) => {
-  const { data } = sdk.stations.get(stationId, { include: "connectorInstance" });
+export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({
+  stationId,
+}) => {
+  const { data } = sdk.stations.get(stationId, {
+    include: "connectorInstance",
+  });
   const { isMobile } = useLayout();
   const [expanded, setExpanded] = useState(false);
   const station = data?.station;
@@ -160,7 +173,9 @@ export const PortalHeaderMeta: React.FC<PortalHeaderMetaProps> = ({ stationId })
                 <Chip
                   key={inst.id}
                   icon={<MemoryOutlined fontSize="small" />}
-                  label={inst.connectorInstance?.name ?? inst.connectorInstanceId}
+                  label={
+                    inst.connectorInstance?.name ?? inst.connectorInstanceId
+                  }
                   size="small"
                   variant="outlined"
                   color="primary"
@@ -265,7 +280,9 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
     removeMutation.mutate(undefined, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.portals.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.portalResults.root,
+        });
         navigate({ to: "/" });
       },
     });
@@ -301,7 +318,12 @@ export const PortalView: React.FC<PortalViewProps> = ({ portalId }) => {
                       </Button>
                     }
                     secondaryActions={[
-                      { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteOpen(true), color: "error" },
+                      {
+                        label: "Delete",
+                        icon: <DeleteIcon />,
+                        onClick: () => setDeleteOpen(true),
+                        color: "error",
+                      },
                     ]}
                   >
                     <PortalHeaderMeta stationId={item.portal.stationId} />

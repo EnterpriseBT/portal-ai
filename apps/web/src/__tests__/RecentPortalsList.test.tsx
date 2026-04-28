@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { PortalWithIncludes } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { RecentPortalsListUI } = await import(
-  "../components/RecentPortalsList.component"
-);
+const { RecentPortalsListUI } =
+  await import("../components/RecentPortalsList.component");
 
 const makePortal = (
   overrides: Partial<PortalWithIncludes> = {}
@@ -80,7 +79,11 @@ describe("RecentPortalsListUI", () => {
       lastOpened: Date.now() - 3600000, // 1 hour ago
     });
     render(
-      <RecentPortalsListUI portals={[portal]} onPortalClick={jest.fn()} onDeletePortal={jest.fn()} />
+      <RecentPortalsListUI
+        portals={[portal]}
+        onPortalClick={jest.fn()}
+        onDeletePortal={jest.fn()}
+      />
     );
     // Should show lastOpened (1h) not created (1d)
     expect(screen.getByText("1h ago")).toBeInTheDocument();
@@ -94,7 +97,11 @@ describe("RecentPortalsListUI", () => {
       lastOpened: null,
     });
     render(
-      <RecentPortalsListUI portals={[portal]} onPortalClick={jest.fn()} onDeletePortal={jest.fn()} />
+      <RecentPortalsListUI
+        portals={[portal]}
+        onPortalClick={jest.fn()}
+        onDeletePortal={jest.fn()}
+      />
     );
     expect(screen.getByText("1d ago")).toBeInTheDocument();
   });

@@ -95,7 +95,11 @@ describe("JobsView", () => {
 
   it("should display job rows when jobs exist", () => {
     const job1 = makeJob({ id: "job-1", type: "system_check" });
-    const job2 = makeJob({ id: "job-2", type: "file_upload", status: "pending" });
+    const job2 = makeJob({
+      id: "job-2",
+      type: "revalidation",
+      status: "pending",
+    });
 
     currentListQuery = {
       data: { jobs: [job1, job2], total: 2, limit: 20, offset: 0 },
@@ -106,7 +110,7 @@ describe("JobsView", () => {
 
     render(<JobsView />);
     expect(screen.getByText("system_check")).toBeInTheDocument();
-    expect(screen.getByText("file_upload")).toBeInTheDocument();
+    expect(screen.getByText("revalidation")).toBeInTheDocument();
   });
 
   it("should show loading state", () => {

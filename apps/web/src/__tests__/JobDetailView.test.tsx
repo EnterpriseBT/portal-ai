@@ -11,7 +11,9 @@ import type { ApiError } from "../utils";
 type GetQuery = UseQueryResult<JobGetResponsePayload, ApiError>;
 
 let currentGetQuery: Partial<GetQuery> = {};
-let currentCancelMutation: Partial<UseMutationResult<JobCancelResponsePayload, ApiError, void>> = {};
+let currentCancelMutation: Partial<
+  UseMutationResult<JobCancelResponsePayload, ApiError, void>
+> = {};
 let currentStreamState: JobStreamState = {
   jobId: null,
   status: null,
@@ -63,7 +65,11 @@ describe("JobDetailView", () => {
   beforeEach(() => {
     currentGetQuery = {};
     currentCancelMutation = {
-      mutate: jest.fn() as unknown as UseMutationResult<JobCancelResponsePayload, ApiError, void>["mutate"],
+      mutate: jest.fn() as unknown as UseMutationResult<
+        JobCancelResponsePayload,
+        ApiError,
+        void
+      >["mutate"],
       isPending: false,
     } as Partial<UseMutationResult<JobCancelResponsePayload, ApiError, void>>;
     currentStreamState = {

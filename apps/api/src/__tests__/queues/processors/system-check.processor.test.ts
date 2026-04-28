@@ -1,17 +1,22 @@
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 import type { Job as BullJob } from "bullmq";
 
 import { systemCheckProcessor } from "../../../queues/processors/system-check.processor.js";
 
 /** Create a mock BullMQ job with the given data. */
-function createMockBullJob(
-  data: Record<string, unknown> = {}
-): BullJob {
+function createMockBullJob(data: Record<string, unknown> = {}): BullJob {
   return {
     data: { jobId: "job-001", type: "system_check", ...data },
-    updateProgress: jest.fn<(progress: number) => Promise<void>>().mockResolvedValue(
-      undefined
-    ),
+    updateProgress: jest
+      .fn<(progress: number) => Promise<void>>()
+      .mockResolvedValue(undefined),
   } as unknown as BullJob;
 }
 

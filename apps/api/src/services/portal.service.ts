@@ -10,13 +10,16 @@
 
 import { streamText, stepCountIs, type ModelMessage } from "ai";
 
-import type { DeltaEvent, ToolResultEvent, DoneEvent, PinnedBlockEntry } from "@portalai/core/contracts";
+import type {
+  DeltaEvent,
+  ToolResultEvent,
+  DoneEvent,
+  PinnedBlockEntry,
+} from "@portalai/core/contracts";
 import { eq, and } from "drizzle-orm";
 
 import { AiService } from "./ai.service.js";
-import {
-  AnalyticsService,
-} from "./analytics.service.js";
+import { AnalyticsService } from "./analytics.service.js";
 import { ToolService } from "./tools.service.js";
 import { DbService } from "./db.service.js";
 import { ApiError } from "./http.service.js";
@@ -85,10 +88,7 @@ interface StreamContext {
 }
 
 /** Handle a text-delta chunk: accumulate text and send SSE. */
-function handleTextDelta(
-  ctx: StreamContext,
-  text: string
-): void {
+function handleTextDelta(ctx: StreamContext, text: string): void {
   ctx.currentText += text;
   const event: DeltaEvent = { type: "delta", content: text };
   ctx.sse.send("delta", event);
@@ -175,8 +175,7 @@ export function resolveDisplayBlock(
       : Array.isArray(toolResult?.rows)
         ? (toolResult!.rows as Record<string, unknown>[])
         : [];
-    const columns =
-      rows.length > 0 ? Object.keys(rows[0] as object) : [];
+    const columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
     const dataTableContent = { type: "data-table" as const, columns, rows };
     return {
       block: { type: "data-table" as const, content: dataTableContent },
@@ -218,7 +217,6 @@ export function resolveDisplayBlock(
 // ---------------------------------------------------------------------------
 // In-memory station data cache (keyed by portalId)
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Service
@@ -314,7 +312,7 @@ export class PortalService {
    */
   static async getPortal(
     portalId: string,
-    opts?: { include?: string[] },
+    opts?: { include?: string[] }
   ): Promise<PortalWithMessages> {
     const repo = DbService.repository;
 
@@ -470,7 +468,7 @@ export class PortalService {
     const analyticsTools = await ToolService.buildAnalyticsTools(
       organizationId,
       stationContext.stationId,
-      userId,
+      userId
     );
 
     // streamText() is lazy in AI SDK v6 — it returns immediately and
@@ -505,13 +503,18 @@ export class PortalService {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const err = (chunk as any).error;
           const message =
-            err instanceof Error ? err.message : String(err ?? "Unknown AI error");
+            err instanceof Error
+              ? err.message
+              : String(err ?? "Unknown AI error");
           logger.error({ portalId, error: message }, "AI stream error chunk");
           sse.sendError(message);
           return;
         } else if (chunk.type === "finish") {
           if (ctx.currentText) {
-            ctx.assistantBlocks.push({ type: "text", content: ctx.currentText });
+            ctx.assistantBlocks.push({
+              type: "text",
+              content: ctx.currentText,
+            });
             ctx.currentText = "";
           }
         }
@@ -519,11 +522,10 @@ export class PortalService {
     } catch (error) {
       // Thrown errors (e.g. network failures, validation) also land here.
       const message =
-        error instanceof Error ? error.message : "An error occurred during streaming";
-      logger.error(
-        { portalId, error: message },
-        "AI stream error"
-      );
+        error instanceof Error
+          ? error.message
+          : "An error occurred during streaming";
+      logger.error({ portalId, error: message }, "AI stream error");
       sse.sendError(message);
       return;
     }
@@ -602,9 +604,10 @@ const MAX_RESULT_ROWS = 50;
  * Extract rows from a tool result regardless of shape.
  * Returns the array of rows and a reference to the parent object (if wrapped).
  */
-function extractRows(
-  content: unknown
-): { rows: Record<string, unknown>[]; isWrapped: boolean } {
+function extractRows(content: unknown): {
+  rows: Record<string, unknown>[];
+  isWrapped: boolean;
+} {
   if (Array.isArray(content)) {
     return { rows: content as Record<string, unknown>[], isWrapped: false };
   }
@@ -629,7 +632,11 @@ function capResultRows(content: unknown): unknown {
   const note = `[Showing ${MAX_RESULT_ROWS} of ${rows.length} rows]`;
 
   if (isWrapped) {
-    return { ...(content as Record<string, unknown>), rows: capped, _truncated: note };
+    return {
+      ...(content as Record<string, unknown>),
+      rows: capped,
+      _truncated: note,
+    };
   }
   // Append a sentinel row so the model sees the note
   return [...capped, { _truncated: note }];
@@ -640,10 +647,7 @@ function capResultRows(content: unknown): unknown {
  * retains awareness that the tool was called without the full payload.
  * Includes column names and a sample row for context.
  */
-function summarizeToolResult(
-  toolName: string,
-  content: unknown
-): string {
+function summarizeToolResult(toolName: string, content: unknown): string {
   const { rows } = extractRows(content);
 
   if (rows.length === 0) {
@@ -654,7 +658,9 @@ function summarizeToolResult(
   const sample = rows[0];
   const sampleStr = columns
     .slice(0, 5)
-    .map((c) => `${c}: ${JSON.stringify((sample as Record<string, unknown>)[c])}`)
+    .map(
+      (c) => `${c}: ${JSON.stringify((sample as Record<string, unknown>)[c])}`
+    )
     .join(", ");
   const colExtra = columns.length > 5 ? `, +${columns.length - 5} more` : "";
 
@@ -813,4 +819,3 @@ function reconstructModelMessages(
 
   return coreMessages;
 }
-

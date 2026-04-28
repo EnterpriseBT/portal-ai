@@ -41,6 +41,10 @@ export default {
     "^@portalai/core$": "<rootDir>/../../packages/core/src/index.ts",
     // Force CJS build of uuid (jsdom env resolves to ESM browser build which Jest can't parse)
     "^uuid$": "<rootDir>/../../node_modules/uuid/dist/index.js",
+    // react-markdown / remark-gfm ship ESM-only; mock them so components that
+    // transitively depend on them still render in jsdom tests.
+    "^react-markdown$": "<rootDir>/src/__tests__/__mocks__/reactMarkdownMock.tsx",
+    "^remark-gfm$": "<rootDir>/src/__tests__/__mocks__/emptyMock.js",
   },
 
   // Setup files to run after Jest is initialized

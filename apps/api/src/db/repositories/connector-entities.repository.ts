@@ -7,12 +7,22 @@
 
 import { eq, and, inArray, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
-import type { IndexColumn } from "drizzle-orm/pg-core";
 
-import { connectorEntities, connectorInstances, fieldMappings, columnDefinitions } from "../schema/index.js";
+import {
+  connectorEntities,
+  connectorInstances,
+  fieldMappings,
+  columnDefinitions,
+} from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+import {
+  Repository,
+  type DbClient,
+  type ListOptions,
+} from "./base.repository.js";
 import { entityTagAssignmentsRepo } from "./entity-tag-assignments.repository.js";
+import { ApiCode } from "../../constants/api-codes.constants.js";
+import { ApiError } from "../../services/http.service.js";
 import type {
   ConnectorEntitySelect,
   ConnectorEntityInsert,
@@ -44,31 +54,41 @@ export class ConnectorEntitiesRepository extends Repository<
   ): Promise<ConnectorEntitySelect[]> {
     const entities = await super.findMany(where, opts, client);
     const { include } = opts;
-    if (entities.length === 0 || !include || include.length === 0) return entities;
+    if (entities.length === 0 || !include || include.length === 0)
+      return entities;
 
     const entityIds = entities.map((e) => e.id);
     const includes = new Set(include);
 
-    const [instanceMap, fieldMappingsByEntity, tagsByEntity] = await Promise.all([
-      includes.has("connectorInstance")
-        ? (client as typeof db)
-            .select()
-            .from(connectorInstances)
-            .where(inArray(connectorInstances.id, [...new Set(entities.map((e) => e.connectorInstanceId))]))
-            .then((rows) => new Map(rows.map((i) => [i.id, i])))
-        : Promise.resolve(null),
-      includes.has("fieldMappings")
-        ? this.findFieldMappingsByEntityIds(entityIds, client)
-        : Promise.resolve(null),
-      includes.has("tags")
-        ? entityTagAssignmentsRepo.findByConnectorEntityIds(entityIds, client)
-        : Promise.resolve(null),
-    ]);
+    const [instanceMap, fieldMappingsByEntity, tagsByEntity] =
+      await Promise.all([
+        includes.has("connectorInstance")
+          ? (client as typeof db)
+              .select()
+              .from(connectorInstances)
+              .where(
+                inArray(connectorInstances.id, [
+                  ...new Set(entities.map((e) => e.connectorInstanceId)),
+                ])
+              )
+              .then((rows) => new Map(rows.map((i) => [i.id, i])))
+          : Promise.resolve(null),
+        includes.has("fieldMappings")
+          ? this.findFieldMappingsByEntityIds(entityIds, client)
+          : Promise.resolve(null),
+        includes.has("tags")
+          ? entityTagAssignmentsRepo.findByConnectorEntityIds(entityIds, client)
+          : Promise.resolve(null),
+      ]);
 
     return entities.map((entity) => ({
       ...entity,
-      ...(instanceMap && { connectorInstance: instanceMap.get(entity.connectorInstanceId) ?? null }),
-      ...(fieldMappingsByEntity && { fieldMappings: fieldMappingsByEntity.get(entity.id) ?? [] }),
+      ...(instanceMap && {
+        connectorInstance: instanceMap.get(entity.connectorInstanceId) ?? null,
+      }),
+      ...(fieldMappingsByEntity && {
+        fieldMappings: fieldMappingsByEntity.get(entity.id) ?? [],
+      }),
       ...(tagsByEntity && { tags: tagsByEntity.get(entity.id) ?? [] }),
     })) as ConnectorEntitySelect[];
   }
@@ -116,26 +136,54 @@ export class ConnectorEntitiesRepository extends Repository<
   async findFieldMappingsByEntityIds(
     entityIds: string[],
     client: DbClient = db
-  ): Promise<Map<string, (FieldMappingSelect & { columnDefinition: ColumnDefinitionSelect | null })[]>> {
+  ): Promise<
+    Map<
+      string,
+      (FieldMappingSelect & {
+        columnDefinition: ColumnDefinitionSelect | null;
+      })[]
+    >
+  > {
     if (entityIds.length === 0) return new Map();
 
     const mappings = await (client as typeof db)
       .select()
       .from(fieldMappings)
-      .where(and(inArray(fieldMappings.connectorEntityId, entityIds), isNull(fieldMappings.deleted)));
+      .where(
+        and(
+          inArray(fieldMappings.connectorEntityId, entityIds),
+          isNull(fieldMappings.deleted)
+        )
+      );
 
-    const uniqueColDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
-    const colDefs = uniqueColDefIds.length > 0
-      ? await (client as typeof db)
-          .select()
-          .from(columnDefinitions)
-          .where(and(inArray(columnDefinitions.id, uniqueColDefIds), isNull(columnDefinitions.deleted)))
-      : [];
+    const uniqueColDefIds = [
+      ...new Set(mappings.map((m) => m.columnDefinitionId)),
+    ];
+    const colDefs =
+      uniqueColDefIds.length > 0
+        ? await (client as typeof db)
+            .select()
+            .from(columnDefinitions)
+            .where(
+              and(
+                inArray(columnDefinitions.id, uniqueColDefIds),
+                isNull(columnDefinitions.deleted)
+              )
+            )
+        : [];
 
     const colDefMap = new Map(colDefs.map((cd) => [cd.id, cd]));
-    const result = new Map<string, (FieldMappingSelect & { columnDefinition: ColumnDefinitionSelect | null })[]>();
+    const result = new Map<
+      string,
+      (FieldMappingSelect & {
+        columnDefinition: ColumnDefinitionSelect | null;
+      })[]
+    >();
     for (const m of mappings) {
-      const enriched = { ...(m as FieldMappingSelect), columnDefinition: colDefMap.get(m.columnDefinitionId) ?? null };
+      const enriched = {
+        ...(m as FieldMappingSelect),
+        columnDefinition: colDefMap.get(m.columnDefinitionId) ?? null,
+      };
       const list = result.get(m.connectorEntityId) ?? [];
       list.push(enriched);
       result.set(m.connectorEntityId, list);
@@ -167,30 +215,55 @@ export class ConnectorEntitiesRepository extends Repository<
   }
 
   /**
-   * Insert a connector entity or update it if a row with the same
-   * `(connector_instance_id, key)` already exists. Returns the resulting row.
+   * Insert a connector entity or update it when the same connector instance
+   * already owns this `(organization_id, key)`. Under C2 the key is unique
+   * per organization, so a collision from a *different* connector in the
+   * same org is a hard error — throws
+   * `CONNECTOR_ENTITY_KEY_IN_USE_BY_OTHER_CONNECTOR`.
    */
   async upsertByKey(
     data: ConnectorEntityInsert,
     client: DbClient = db
   ): Promise<ConnectorEntitySelect> {
-    const [row] = await (client as typeof db)
-      .insert(this.table)
-      .values(data as never)
-      .onConflictDoUpdate({
-        target: [
-          connectorEntities.connectorInstanceId,
-          connectorEntities.key,
-        ] as IndexColumn[],
-        targetWhere: isNull(connectorEntities.deleted),
-        set: {
-          label: data.label,
-          updated: data.updated ?? Date.now(),
-          updatedBy: data.updatedBy,
-        } as never,
-      })
+    const [existing] = (await (client as typeof db)
+      .select()
+      .from(this.table)
+      .where(
+        and(
+          eq(connectorEntities.organizationId, data.organizationId),
+          eq(connectorEntities.key, data.key),
+          isNull(connectorEntities.deleted)
+        )
+      )
+      .limit(1)) as ConnectorEntitySelect[];
+
+    if (!existing) {
+      const [row] = await (client as typeof db)
+        .insert(this.table)
+        .values(data as never)
+        .returning();
+      return row as ConnectorEntitySelect;
+    }
+
+    if (existing.connectorInstanceId !== data.connectorInstanceId) {
+      throw new ApiError(
+        400,
+        ApiCode.CONNECTOR_ENTITY_KEY_IN_USE_BY_OTHER_CONNECTOR,
+        `Entity key "${data.key}" is already used by connector "${existing.connectorInstanceId}" in this org.`,
+        { conflictingConnectorInstanceId: existing.connectorInstanceId }
+      );
+    }
+
+    const [updated] = await (client as typeof db)
+      .update(this.table)
+      .set({
+        label: data.label,
+        updated: data.updated ?? Date.now(),
+        updatedBy: data.updatedBy,
+      } as never)
+      .where(eq(connectorEntities.id, existing.id))
       .returning();
-    return row as ConnectorEntitySelect;
+    return updated as ConnectorEntitySelect;
   }
 }
 

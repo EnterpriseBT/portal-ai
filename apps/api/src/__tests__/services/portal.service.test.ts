@@ -38,7 +38,8 @@ jest.unstable_mockModule("../../services/analytics.service.js", () => ({
 }));
 
 // buildAnalyticsTools
-const mockBuildAnalyticsTools = jest.fn<() => Promise<Record<string, unknown>>>();
+const mockBuildAnalyticsTools =
+  jest.fn<() => Promise<Record<string, unknown>>>();
 
 jest.unstable_mockModule("../../services/tools.service.js", () => ({
   ToolService: {
@@ -81,7 +82,8 @@ jest.unstable_mockModule("../../utils/system.util.js", () => ({
 // Dynamic imports (after mocks)
 // ---------------------------------------------------------------------------
 
-const { PortalService, resolveDisplayBlock } = await import("../../services/portal.service.js");
+const { PortalService, resolveDisplayBlock } =
+  await import("../../services/portal.service.js");
 const { ApiCode } = await import("../../constants/api-codes.constants.js");
 
 // ---------------------------------------------------------------------------
@@ -115,8 +117,22 @@ const ENTITIES = [
     label: "Customers",
     connectorInstanceId: "ci-1",
     columns: [
-      { key: "id", label: "ID", type: "string", columnDefinitionId: "cd-1", fieldMappingId: "fm-1", sourceField: "ID" },
-      { key: "revenue", label: "Revenue", type: "number", columnDefinitionId: "cd-2", fieldMappingId: "fm-2", sourceField: "Revenue" },
+      {
+        key: "id",
+        label: "ID",
+        type: "string",
+        columnDefinitionId: "cd-1",
+        fieldMappingId: "fm-1",
+        sourceField: "ID",
+      },
+      {
+        key: "revenue",
+        label: "Revenue",
+        type: "number",
+        columnDefinitionId: "cd-2",
+        fieldMappingId: "fm-2",
+        sourceField: "Revenue",
+      },
     ],
   },
   {
@@ -124,7 +140,16 @@ const ENTITIES = [
     key: "orders",
     label: "Orders",
     connectorInstanceId: "ci-1",
-    columns: [{ key: "customer_id", label: "Customer ID", type: "string", columnDefinitionId: "cd-3", fieldMappingId: "fm-3", sourceField: "Customer ID" }],
+    columns: [
+      {
+        key: "customer_id",
+        label: "Customer ID",
+        type: "string",
+        columnDefinitionId: "cd-3",
+        fieldMappingId: "fm-3",
+        sourceField: "Customer ID",
+      },
+    ],
   },
 ];
 
@@ -283,7 +308,13 @@ describe("PortalService", () => {
 
   describe("getPortal", () => {
     it("returns portal, messages, and coreMessages", async () => {
-      const messages = [{ id: "msg-1", role: "user", blocks: [{ type: "text", content: "Hi" }] }];
+      const messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          blocks: [{ type: "text", content: "Hi" }],
+        },
+      ];
       mockFindById_portal.mockResolvedValue(PORTAL);
       mockFindByPortal.mockResolvedValue(messages);
 
@@ -307,8 +338,18 @@ describe("PortalService", () => {
           role: "assistant",
           blocks: [
             { type: "text", content: "Let me query that." },
-            { type: "tool-call", toolCallId: "tc-1", toolName: "sql_query", args: { query: "SELECT *" } },
-            { type: "tool-result", toolCallId: "tc-1", toolName: "sql_query", content: { rows: [{ id: 1 }] } },
+            {
+              type: "tool-call",
+              toolCallId: "tc-1",
+              toolName: "sql_query",
+              args: { query: "SELECT *" },
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tc-1",
+              toolName: "sql_query",
+              content: { rows: [{ id: 1 }] },
+            },
             { type: "data-table", columns: ["id"], rows: [{ id: 1 }] },
             { type: "text", content: "Here are the results." },
           ],
@@ -330,7 +371,12 @@ describe("PortalService", () => {
         role: "assistant",
         content: [
           { type: "text", text: "Let me query that." },
-          { type: "tool-call", toolCallId: "tc-1", toolName: "sql_query", input: { query: "SELECT *" } },
+          {
+            type: "tool-call",
+            toolCallId: "tc-1",
+            toolName: "sql_query",
+            input: { query: "SELECT *" },
+          },
         ],
       });
 
@@ -350,9 +396,7 @@ describe("PortalService", () => {
       // Trailing text after tool step
       expect(result.coreMessages[3]).toEqual({
         role: "assistant",
-        content: [
-          { type: "text", text: "Here are the results." },
-        ],
+        content: [{ type: "text", text: "Here are the results." }],
       });
     });
 
@@ -603,8 +647,18 @@ describe("PortalService", () => {
     it("persists vega display block in assistant message", async () => {
       const vegaResult = { data: [{ values: [] }], marks: [] };
       const chunks = [
-        { type: "tool-call", toolCallId: "tc-v", toolName: "visualize_tree", input: {} },
-        { type: "tool-result", toolCallId: "tc-v", toolName: "visualize_tree", output: vegaResult },
+        {
+          type: "tool-call",
+          toolCallId: "tc-v",
+          toolName: "visualize_tree",
+          input: {},
+        },
+        {
+          type: "tool-result",
+          toolCallId: "tc-v",
+          toolName: "visualize_tree",
+          output: vegaResult,
+        },
         { type: "finish" },
       ];
       mockStreamText.mockReturnValue({ fullStream: makeStream(chunks) });
@@ -727,8 +781,18 @@ describe("PortalService", () => {
     it("persists assistant message with tool-call, tool-result, and display blocks", async () => {
       const chunks = [
         { type: "text-delta", text: "Analysis: " },
-        { type: "tool-call", toolCallId: "tc-1", toolName: "visualize", input: { type: "bar" } },
-        { type: "tool-result", toolCallId: "tc-1", toolName: "visualize", output: { chart: true } },
+        {
+          type: "tool-call",
+          toolCallId: "tc-1",
+          toolName: "visualize",
+          input: { type: "bar" },
+        },
+        {
+          type: "tool-result",
+          toolCallId: "tc-1",
+          toolName: "visualize",
+          output: { chart: true },
+        },
         { type: "text-delta", text: "done" },
         { type: "finish" },
       ];
@@ -749,8 +813,18 @@ describe("PortalService", () => {
           role: "assistant",
           blocks: [
             { type: "text", content: "Analysis: " },
-            { type: "tool-call", toolCallId: "tc-1", toolName: "visualize", input: { type: "bar" } },
-            { type: "tool-result", toolCallId: "tc-1", toolName: "visualize", content: { chart: true } },
+            {
+              type: "tool-call",
+              toolCallId: "tc-1",
+              toolName: "visualize",
+              input: { type: "bar" },
+            },
+            {
+              type: "tool-result",
+              toolCallId: "tc-1",
+              toolName: "visualize",
+              content: { chart: true },
+            },
             { type: "vega-lite", content: { chart: true } },
             { type: "text", content: "done" },
           ],
@@ -761,7 +835,9 @@ describe("PortalService", () => {
     // ── system prompt: no entity groups ──────────────────────────────────────
 
     it("system prompt does NOT include Cross-Entity Relationships when entityGroups is empty", async () => {
-      mockStreamText.mockReturnValue({ fullStream: makeStream([{ type: "finish" }]) });
+      mockStreamText.mockReturnValue({
+        fullStream: makeStream([{ type: "finish" }]),
+      });
 
       let capturedSystem: string | undefined;
       (mockStreamText as any).mockImplementation((opts: any) => {
@@ -876,7 +952,7 @@ describe("PortalService", () => {
       expect(mockBuildAnalyticsTools).toHaveBeenCalledWith(
         ORG_ID,
         STATION_ID,
-        "user-001",
+        "user-001"
       );
       expect(capturedTools).toBe(tools);
     });
@@ -913,7 +989,9 @@ describe("resolveDisplayBlock → mutation-result", () => {
     });
     // sql_query is a row-set tool, not a mutation — should produce a data-table,
     // but the shape is handled by the row-set branch, not the mutation branch.
-    expect(result?.block.content).not.toMatchObject({ type: "mutation-result" });
+    expect(result?.block.content).not.toMatchObject({
+      type: "mutation-result",
+    });
   });
 
   it("returns null when tool result has no items", () => {

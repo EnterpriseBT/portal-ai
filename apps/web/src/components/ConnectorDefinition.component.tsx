@@ -8,12 +8,7 @@ import { sdk } from "../api/sdk";
 import { UseQueryResult } from "@tanstack/react-query";
 import { ConnectorDefinition } from "@portalai/core/models";
 import { ApiError } from "../utils";
-import {
-  Avatar,
-  DetailCard,
-  MetadataList,
-  Stack,
-} from "@portalai/core/ui";
+import { Avatar, DetailCard, MetadataList, Stack } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import LinkIcon from "@mui/icons-material/Link";
@@ -71,7 +66,12 @@ export const ConnectorDefinitionCardUI = ({
   );
 
   const actions: ActionSuiteItem[] = [
-    { label: "Connect", icon: <LinkIcon />, onClick: () => onConnect?.(cd), variant: "contained" },
+    {
+      label: "Connect",
+      icon: <LinkIcon />,
+      onClick: () => onConnect?.(cd),
+      variant: "contained",
+    },
   ];
 
   return (
@@ -81,7 +81,13 @@ export const ConnectorDefinitionCardUI = ({
         <Avatar
           src={cd.iconUrl ?? undefined}
           alt={cd.display}
-          sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: 1,
+            bgcolor: "white",
+            p: 0.5,
+          }}
         >
           {cd.display.charAt(0).toUpperCase()}
         </Avatar>

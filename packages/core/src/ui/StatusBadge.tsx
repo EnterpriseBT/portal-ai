@@ -22,10 +22,7 @@ export interface StatusBadgeProps {
   [key: `data-${string}`]: string;
 }
 
-const statusColorMap: Record<
-  StatusBadgeVariant,
-  ChipProps["color"]
-> = {
+const statusColorMap: Record<StatusBadgeVariant, ChipProps["color"]> = {
   pending: "default",
   active: "info",
   completed: "success",

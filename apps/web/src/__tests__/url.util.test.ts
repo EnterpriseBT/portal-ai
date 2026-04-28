@@ -36,7 +36,10 @@ describe("buildSearchParams", () => {
   });
 
   it("should skip undefined values", () => {
-    const result = buildSearchParams({ category: "database", search: undefined });
+    const result = buildSearchParams({
+      category: "database",
+      search: undefined,
+    });
     expect(result).toBe("category=database");
   });
 
@@ -87,7 +90,10 @@ describe("buildUrl", () => {
   });
 
   it("should return base when all params are undefined or null", () => {
-    const result = buildUrl("/api/items", { category: undefined, search: null });
+    const result = buildUrl("/api/items", {
+      category: undefined,
+      search: null,
+    });
     expect(result).toBe("/api/items");
   });
 

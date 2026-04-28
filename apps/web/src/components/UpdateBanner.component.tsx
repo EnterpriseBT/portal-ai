@@ -19,13 +19,21 @@ export const UpdateBannerUI: React.FC<UpdateBannerUIProps> = ({
   onReload,
   onDismiss,
 }) => (
-  <Snackbar open={open} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+  <Snackbar
+    open={open}
+    anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+  >
     <Alert
       severity="info"
       variant="filled"
       action={
         <>
-          <Button color="inherit" size="small" onClick={onDismiss} type="button">
+          <Button
+            color="inherit"
+            size="small"
+            onClick={onDismiss}
+            type="button"
+          >
             Dismiss
           </Button>
           <Button color="inherit" size="small" onClick={onReload} type="button">

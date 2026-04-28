@@ -60,7 +60,9 @@ const {
 
 const now = Date.now();
 
-function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>) {
+function createConnectorDefinition(
+  overrides?: Partial<Record<string, unknown>>
+) {
   return {
     id: generateId(),
     slug: `slug-${generateId()}`,
@@ -85,7 +87,7 @@ function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>)
 function createConnectorInstance(
   connectorDefinitionId: string,
   organizationId: string,
-  overrides?: Partial<Record<string, unknown>>,
+  overrides?: Partial<Record<string, unknown>>
 ) {
   return {
     id: generateId(),
@@ -148,7 +150,7 @@ function createFieldMapping(
   organizationId: string,
   connectorEntityId: string,
   columnDefinitionId: string,
-  sourceField: string,
+  sourceField: string
 ) {
   return {
     id: generateId(),
@@ -175,7 +177,7 @@ function createEntityRecord(
   organizationId: string,
   connectorEntityId: string,
   data: Record<string, unknown>,
-  sourceId: string,
+  sourceId: string
 ) {
   return {
     id: generateId(),
@@ -201,7 +203,7 @@ function createEntityRecord(
 function createActiveRevalidationJob(
   organizationId: string,
   connectorEntityId: string,
-  overrides?: Partial<Record<string, unknown>>,
+  overrides?: Partial<Record<string, unknown>>
 ) {
   return {
     id: generateId(),
@@ -243,7 +245,12 @@ async function seedFullStack(db: ReturnType<typeof drizzle>) {
   const colDef = createColumnDef(organizationId, "name", "string");
   await db.insert(columnDefinitions).values(colDef as never);
 
-  const mapping = createFieldMapping(organizationId, entity.id, colDef.id, "name");
+  const mapping = createFieldMapping(
+    organizationId,
+    entity.id,
+    colDef.id,
+    "name"
+  );
   await db.insert(fieldMappings).values(mapping as never);
 
   return {
@@ -286,7 +293,9 @@ describe("Revalidation — POST /revalidate endpoint", () => {
   });
 
   it("returns 202 with a job object on success", async () => {
-    const { connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
+    const { connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
+    );
 
     const res = await request(app)
       .post(revalidateUrl(connectorEntityId))
@@ -299,11 +308,18 @@ describe("Revalidation — POST /revalidate endpoint", () => {
   });
 
   it("returns existing active job on duplicate request (idempotent)", async () => {
-    const { organizationId, connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
+    const { organizationId, connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
+    );
 
     // Seed an active revalidation job directly
-    const existingJob = createActiveRevalidationJob(organizationId, connectorEntityId);
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(existingJob as never);
+    const existingJob = createActiveRevalidationJob(
+      organizationId,
+      connectorEntityId
+    );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(existingJob as never);
 
     const res = await request(app)
       .post(revalidateUrl(connectorEntityId))
@@ -333,10 +349,14 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
     `/api/connector-entities/${connectorEntityId}/records`;
 
   it("POST / (create record) returns 409 when revalidation active", async () => {
-    const { organizationId, connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
+    const { organizationId, connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
     );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .post(recordsUrl(connectorEntityId))
@@ -348,14 +368,25 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
   });
 
   it("PATCH /:recordId returns 409 when revalidation active", async () => {
-    const { organizationId, connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
-
-    const rec = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1");
-    await (db as ReturnType<typeof drizzle>).insert(entityRecords).values(rec as never);
-
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
+    const { organizationId, connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
     );
+
+    const rec = createEntityRecord(
+      organizationId,
+      connectorEntityId,
+      { name: "Alice" },
+      "src-1"
+    );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(entityRecords)
+      .values(rec as never);
+
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .patch(`${recordsUrl(connectorEntityId)}/${rec.id}`)
@@ -367,14 +398,25 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
   });
 
   it("DELETE /:recordId returns 409 when revalidation active", async () => {
-    const { organizationId, connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
-
-    const rec = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1");
-    await (db as ReturnType<typeof drizzle>).insert(entityRecords).values(rec as never);
-
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
+    const { organizationId, connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
     );
+
+    const rec = createEntityRecord(
+      organizationId,
+      connectorEntityId,
+      { name: "Alice" },
+      "src-1"
+    );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(entityRecords)
+      .values(rec as never);
+
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .delete(`${recordsUrl(connectorEntityId)}/${rec.id}`)
@@ -385,10 +427,14 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
   });
 
   it("DELETE / (clear all) returns 409 when revalidation active", async () => {
-    const { organizationId, connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
+    const { organizationId, connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
     );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .delete(recordsUrl(connectorEntityId))
@@ -399,17 +445,26 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
   });
 
   it("POST /import returns 409 when revalidation active", async () => {
-    const { organizationId, connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
+    const { organizationId, connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
     );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .post(`${recordsUrl(connectorEntityId)}/import`)
       .set("Authorization", "Bearer test-token")
       .send({
         records: [
-          { data: { name: "Alice" }, normalizedData: { name: "Alice" }, sourceId: "s1", checksum: "c1" },
+          {
+            data: { name: "Alice" },
+            normalizedData: { name: "Alice" },
+            sourceId: "s1",
+            checksum: "c1",
+          },
         ],
       });
 
@@ -418,7 +473,9 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
   });
 
   it("allows mutations when no revalidation job is active", async () => {
-    const { connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
+    const { connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
+    );
 
     const res = await request(app)
       .post(recordsUrl(connectorEntityId))
@@ -429,10 +486,16 @@ describe("Revalidation — Entity Record Mutation Guards", () => {
   });
 
   it("allows mutations when revalidation job is completed", async () => {
-    const { organizationId, connectorEntityId } = await seedFullStack(db as ReturnType<typeof drizzle>);
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId, { status: "completed" }) as never,
+    const { organizationId, connectorEntityId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
     );
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId, {
+          status: "completed",
+        }) as never
+      );
 
     const res = await request(app)
       .post(recordsUrl(connectorEntityId))
@@ -459,12 +522,17 @@ describe("Revalidation — Field Mapping Mutation Guards", () => {
   });
 
   it("PATCH /field-mappings/:id returns 409 when revalidation active", async () => {
-    const { organizationId, connectorEntityId, fieldMappingId, columnDefinitionId } = await seedFullStack(
-      db as ReturnType<typeof drizzle>,
-    );
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
-    );
+    const {
+      organizationId,
+      connectorEntityId,
+      fieldMappingId,
+      columnDefinitionId,
+    } = await seedFullStack(db as ReturnType<typeof drizzle>);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .patch(`/api/field-mappings/${fieldMappingId}`)
@@ -476,12 +544,13 @@ describe("Revalidation — Field Mapping Mutation Guards", () => {
   });
 
   it("DELETE /field-mappings/:id returns 409 when revalidation active", async () => {
-    const { organizationId, connectorEntityId, fieldMappingId } = await seedFullStack(
-      db as ReturnType<typeof drizzle>,
-    );
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
-    );
+    const { organizationId, connectorEntityId, fieldMappingId } =
+      await seedFullStack(db as ReturnType<typeof drizzle>);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .delete(`/api/field-mappings/${fieldMappingId}`)
@@ -508,12 +577,13 @@ describe("Revalidation — Column Definition Mutation Guards", () => {
   });
 
   it("PATCH /column-definitions/:id returns 409 when revalidation active for an entity using it", async () => {
-    const { organizationId, connectorEntityId, columnDefinitionId } = await seedFullStack(
-      db as ReturnType<typeof drizzle>,
-    );
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
-    );
+    const { organizationId, connectorEntityId, columnDefinitionId } =
+      await seedFullStack(db as ReturnType<typeof drizzle>);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .patch(`/api/column-definitions/${columnDefinitionId}`)
@@ -525,12 +595,13 @@ describe("Revalidation — Column Definition Mutation Guards", () => {
   });
 
   it("DELETE /column-definitions/:id returns 409 when revalidation active for an entity using it", async () => {
-    const { organizationId, connectorEntityId, columnDefinitionId } = await seedFullStack(
-      db as ReturnType<typeof drizzle>,
-    );
-    await (db as ReturnType<typeof drizzle>).insert(jobs).values(
-      createActiveRevalidationJob(organizationId, connectorEntityId) as never,
-    );
+    const { organizationId, connectorEntityId, columnDefinitionId } =
+      await seedFullStack(db as ReturnType<typeof drizzle>);
+    await (db as ReturnType<typeof drizzle>)
+      .insert(jobs)
+      .values(
+        createActiveRevalidationJob(organizationId, connectorEntityId) as never
+      );
 
     const res = await request(app)
       .delete(`/api/column-definitions/${columnDefinitionId}`)
@@ -541,7 +612,9 @@ describe("Revalidation — Column Definition Mutation Guards", () => {
   });
 
   it("allows PATCH when no revalidation is active", async () => {
-    const { columnDefinitionId } = await seedFullStack(db as ReturnType<typeof drizzle>);
+    const { columnDefinitionId } = await seedFullStack(
+      db as ReturnType<typeof drizzle>
+    );
 
     const res = await request(app)
       .patch(`/api/column-definitions/${columnDefinitionId}`)
@@ -573,21 +646,44 @@ describe("Entity Record Router — isValid Filter", () => {
   async function seedWithValidationMix(db: ReturnType<typeof drizzle>) {
     const seed = await seedFullStack(db);
 
-    const validRecord = createEntityRecord(seed.organizationId, seed.connectorEntityId, { name: "Alice" }, "src-1");
+    const validRecord = createEntityRecord(
+      seed.organizationId,
+      seed.connectorEntityId,
+      { name: "Alice" },
+      "src-1"
+    );
     const invalidRecord = {
-      ...createEntityRecord(seed.organizationId, seed.connectorEntityId, { name: "" }, "src-2"),
+      ...createEntityRecord(
+        seed.organizationId,
+        seed.connectorEntityId,
+        { name: "" },
+        "src-2"
+      ),
       isValid: false,
       validationErrors: [{ field: "name", error: "required" }],
     };
-    const validRecord2 = createEntityRecord(seed.organizationId, seed.connectorEntityId, { name: "Charlie" }, "src-3");
+    const validRecord2 = createEntityRecord(
+      seed.organizationId,
+      seed.connectorEntityId,
+      { name: "Charlie" },
+      "src-3"
+    );
 
-    await db.insert(entityRecords).values([validRecord, invalidRecord, validRecord2] as never);
+    await db
+      .insert(entityRecords)
+      .values([validRecord, invalidRecord, validRecord2] as never);
 
-    return { ...seed, validIds: [validRecord.id, validRecord2.id], invalidIds: [invalidRecord.id] };
+    return {
+      ...seed,
+      validIds: [validRecord.id, validRecord2.id],
+      invalidIds: [invalidRecord.id],
+    };
   }
 
   it("GET /?isValid=true returns only valid records", async () => {
-    const { connectorEntityId, validIds } = await seedWithValidationMix(db as ReturnType<typeof drizzle>);
+    const { connectorEntityId, validIds } = await seedWithValidationMix(
+      db as ReturnType<typeof drizzle>
+    );
 
     const res = await request(app)
       .get(recordsUrl(connectorEntityId))
@@ -601,7 +697,9 @@ describe("Entity Record Router — isValid Filter", () => {
   });
 
   it("GET /?isValid=false returns only invalid records", async () => {
-    const { connectorEntityId, invalidIds } = await seedWithValidationMix(db as ReturnType<typeof drizzle>);
+    const { connectorEntityId, invalidIds } = await seedWithValidationMix(
+      db as ReturnType<typeof drizzle>
+    );
 
     const res = await request(app)
       .get(recordsUrl(connectorEntityId))
@@ -615,7 +713,9 @@ describe("Entity Record Router — isValid Filter", () => {
   });
 
   it("GET / without isValid returns all records", async () => {
-    const { connectorEntityId } = await seedWithValidationMix(db as ReturnType<typeof drizzle>);
+    const { connectorEntityId } = await seedWithValidationMix(
+      db as ReturnType<typeof drizzle>
+    );
 
     const res = await request(app)
       .get(recordsUrl(connectorEntityId))
@@ -627,7 +727,9 @@ describe("Entity Record Router — isValid Filter", () => {
   });
 
   it("GET /?isValid=true works combined with search", async () => {
-    const { connectorEntityId } = await seedWithValidationMix(db as ReturnType<typeof drizzle>);
+    const { connectorEntityId } = await seedWithValidationMix(
+      db as ReturnType<typeof drizzle>
+    );
 
     const res = await request(app)
       .get(recordsUrl(connectorEntityId))

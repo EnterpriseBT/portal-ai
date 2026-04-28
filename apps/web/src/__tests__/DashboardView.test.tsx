@@ -42,9 +42,7 @@ describe("DashboardViewUI", () => {
   it("calls onNewPortal when Launch New Portal is clicked", () => {
     const onNewPortal = jest.fn();
     render(<DashboardViewUI {...defaultUIProps} onNewPortal={onNewPortal} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: /Launch New Portal/i })
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Launch New Portal/i }));
     expect(onNewPortal).toHaveBeenCalled();
   });
 });

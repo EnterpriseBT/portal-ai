@@ -4,31 +4,35 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 // Mocks — must be declared before dynamic import
 // ---------------------------------------------------------------------------
 
-const mockFindByStationId = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockConnInstanceFindById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockFindByStationId =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockConnInstanceFindById =
+  jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockConnDefFindById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockConnEntityFindById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockConnEntityFindByInstanceId = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockConnEntityFindById =
+  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockConnEntityFindByInstanceId =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
 
 jest.unstable_mockModule(
   "../../db/repositories/station-instances.repository.js",
   () => ({
     stationInstancesRepo: { findByStationId: mockFindByStationId },
-  }),
+  })
 );
 
 jest.unstable_mockModule(
   "../../db/repositories/connector-instances.repository.js",
   () => ({
     connectorInstancesRepo: { findById: mockConnInstanceFindById },
-  }),
+  })
 );
 
 jest.unstable_mockModule(
   "../../db/repositories/connector-definitions.repository.js",
   () => ({
     connectorDefinitionsRepo: { findById: mockConnDefFindById },
-  }),
+  })
 );
 
 jest.unstable_mockModule(
@@ -38,7 +42,7 @@ jest.unstable_mockModule(
       findById: mockConnEntityFindById,
       findByConnectorInstanceId: mockConnEntityFindByInstanceId,
     },
-  }),
+  })
 );
 
 const {
@@ -203,8 +207,14 @@ describe("resolveStationCapabilities", () => {
 
     const result = await resolveStationCapabilities("station-1");
     expect(result).toEqual([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true, push: false } },
-      { connectorInstanceId: "ci-2", capabilities: { read: true, write: false, push: false } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true, push: false },
+      },
+      {
+        connectorInstanceId: "ci-2",
+        capabilities: { read: true, write: false, push: false },
+      },
     ]);
   });
 
@@ -224,7 +234,10 @@ describe("resolveStationCapabilities", () => {
 
     const result = await resolveStationCapabilities("station-1");
     expect(result).toEqual([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: false, push: false } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: false, push: false },
+      },
     ]);
   });
 
@@ -244,7 +257,10 @@ describe("resolveStationCapabilities", () => {
 
     const result = await resolveStationCapabilities("station-1");
     expect(result).toEqual([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true, push: false } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true, push: false },
+      },
     ]);
   });
 
@@ -295,7 +311,7 @@ describe("assertStationScope", () => {
     ]);
 
     await expect(
-      assertStationScope("station-1", "entity-1"),
+      assertStationScope("station-1", "entity-1")
     ).resolves.toBeUndefined();
   });
 
@@ -303,7 +319,7 @@ describe("assertStationScope", () => {
     mockConnEntityFindById.mockResolvedValue(null);
 
     await expect(
-      assertStationScope("station-1", "entity-missing"),
+      assertStationScope("station-1", "entity-missing")
     ).rejects.toMatchObject({
       code: "CONNECTOR_ENTITY_NOT_FOUND",
     });
@@ -319,7 +335,7 @@ describe("assertStationScope", () => {
     ]);
 
     await expect(
-      assertStationScope("station-1", "entity-1"),
+      assertStationScope("station-1", "entity-1")
     ).rejects.toMatchObject({
       code: "STATION_SCOPE_VIOLATION",
     });

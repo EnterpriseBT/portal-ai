@@ -21,9 +21,7 @@ export interface PageGridProps {
  * Normalise a `ResponsiveValue<number>` into an `sx`-compatible responsive
  * `gridTemplateColumns` value.
  */
-const toGridTemplate = (
-  columns: ResponsiveValue<number>,
-): SxProps<Theme> => {
+const toGridTemplate = (columns: ResponsiveValue<number>): SxProps<Theme> => {
   if (typeof columns === "number") {
     return { gridTemplateColumns: `repeat(${columns}, 1fr)` };
   }
@@ -37,14 +35,8 @@ const toGridTemplate = (
 
 export const PageGrid = React.forwardRef<HTMLDivElement, PageGridProps>(
   (
-    {
-      children,
-      columns = { xs: 1, md: 2 },
-      spacing = 3,
-      className,
-      ...rest
-    },
-    ref,
+    { children, columns = { xs: 1, md: 2 }, spacing = 3, className, ...rest },
+    ref
   ) => {
     return (
       <Box
@@ -60,7 +52,7 @@ export const PageGrid = React.forwardRef<HTMLDivElement, PageGridProps>(
         {children}
       </Box>
     );
-  },
+  }
 );
 
 /* ------------------------------------------------------------------ */
@@ -77,7 +69,7 @@ export interface PageGridItemProps {
 }
 
 const toSpanValue = (
-  value: ResponsiveValue<number>,
+  value: ResponsiveValue<number>
 ): string | Record<string, string> => {
   if (typeof value === "number") {
     return `span ${value}`;
@@ -106,7 +98,5 @@ export const PageGridItem = React.forwardRef<HTMLDivElement, PageGridItemProps>(
         {children}
       </Box>
     );
-  },
+  }
 );
-
-

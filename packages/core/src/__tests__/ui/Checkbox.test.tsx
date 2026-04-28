@@ -62,11 +62,7 @@ describe("Checkbox Component", () => {
   describe("Error State", () => {
     it("should display error helper text", () => {
       render(
-        <Checkbox
-          label="Required"
-          error
-          helperText="This field is required"
-        />
+        <Checkbox label="Required" error helperText="This field is required" />
       );
       expect(screen.getByText("This field is required")).toBeInTheDocument();
     });

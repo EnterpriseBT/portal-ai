@@ -417,7 +417,11 @@ describe("Station Router", () => {
         .insert(portalMessages)
         .values([msg1 as never, msg2 as never]);
 
-      const result1 = createPortalResult(organizationId, station.id, portal1.id);
+      const result1 = createPortalResult(
+        organizationId,
+        station.id,
+        portal1.id
+      );
       await (db as ReturnType<typeof drizzle>)
         .insert(portalResults)
         .values(result1 as never);

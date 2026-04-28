@@ -9,7 +9,18 @@ import type {
   EntityGroupMemberWithDetails,
 } from "@portalai/core/contracts";
 import type { EntityGroup } from "@portalai/core/models";
-import { Box, Icon, IconName, MetadataList, PageGrid, PageGridItem, PageHeader, PageSection, Stack, Typography } from "@portalai/core/ui";
+import {
+  Box,
+  Icon,
+  IconName,
+  MetadataList,
+  PageGrid,
+  PageGridItem,
+  PageHeader,
+  PageSection,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
@@ -55,10 +66,13 @@ const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
   // Find the current entity's member to determine the link field
   const groupDetail = groupDetailResult.data?.entityGroup;
   const currentMember = groupDetail?.members.find(
-    (m: EntityGroupMemberWithDetails) => m.connectorEntityId === connectorEntityId
+    (m: EntityGroupMemberWithDetails) =>
+      m.connectorEntityId === connectorEntityId
   );
   const linkFieldKey = currentMember?.linkFieldMappingSourceField;
-  const linkValue = linkFieldKey ? String(record.normalizedData[linkFieldKey] ?? "") : "";
+  const linkValue = linkFieldKey
+    ? String(record.normalizedData[linkFieldKey] ?? "")
+    : "";
 
   // Resolve identity automatically when linkValue is available
   const resolveResult = sdk.entityGroups.resolve(
@@ -90,7 +104,8 @@ const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
         ) : (
           <Stack spacing={2}>
             <Typography variant="body2" color="text.secondary">
-              Link field: <strong>{linkFieldKey}</strong> = &quot;{linkValue}&quot;
+              Link field: <strong>{linkFieldKey}</strong> = &quot;{linkValue}
+              &quot;
             </Typography>
 
             {resolveResult.isLoading ? (
@@ -103,10 +118,17 @@ const RelatedRecordsGroupPanel: React.FC<RelatedRecordsGroupPanelProps> = ({
               <Stack spacing={2}>
                 {filteredResults.map((result) => (
                   <Box key={result.connectorEntityId}>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      sx={{ mb: 1 }}
+                    >
                       <Typography
                         variant="body1"
-                        sx={{ fontWeight: result.isPrimary ? "bold" : "normal" }}
+                        sx={{
+                          fontWeight: result.isPrimary ? "bold" : "normal",
+                        }}
                       >
                         {result.connectorEntityLabel}
                       </Typography>
@@ -218,7 +240,9 @@ export interface EntityRecordDetailViewUIProps {
   isRevalidating?: boolean;
 }
 
-export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> = ({
+export const EntityRecordDetailViewUI: React.FC<
+  EntityRecordDetailViewUIProps
+> = ({
   entity,
   record,
   columns,
@@ -256,13 +280,35 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
           icon={<Icon name={IconName.DataObject} />}
           secondaryActions={[
             ...(onRevalidate
-              ? [{ label: "Re-validate", icon: <RefreshIcon />, onClick: onRevalidate, disabled: isRevalidating }]
+              ? [
+                  {
+                    label: "Re-validate",
+                    icon: <RefreshIcon />,
+                    onClick: onRevalidate,
+                    disabled: isRevalidating,
+                  },
+                ]
               : []),
             ...(isWriteEnabled
-              ? [{ label: "Edit", icon: <EditIcon />, onClick: () => onOpenEditDialog?.(), disabled: isUpdating }]
+              ? [
+                  {
+                    label: "Edit",
+                    icon: <EditIcon />,
+                    onClick: () => onOpenEditDialog?.(),
+                    disabled: isUpdating,
+                  },
+                ]
               : []),
             ...(isWriteEnabled
-              ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onOpenDeleteDialog?.(), color: "error" as const, disabled: isDeleting }]
+              ? [
+                  {
+                    label: "Delete",
+                    icon: <DeleteIcon />,
+                    onClick: () => onOpenDeleteDialog?.(),
+                    color: "error" as const,
+                    disabled: isDeleting,
+                  },
+                ]
               : []),
           ]}
         />
@@ -285,7 +331,9 @@ export const EntityRecordDetailViewUI: React.FC<EntityRecordDetailViewUIProps> =
                               key={g.id}
                               component="button"
                               variant="body2"
-                              onClick={() => navigate({ to: `/entity-groups/${g.id}` })}
+                              onClick={() =>
+                                navigate({ to: `/entity-groups/${g.id}` })
+                              }
                               sx={{ cursor: "pointer" }}
                             >
                               {g.name}
@@ -384,7 +432,8 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   const revalidateMutation = sdk.entityRecords.revalidate(entityId);
 
   // Resolve write capability
-  const connectorInstanceId = entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
+  const connectorInstanceId =
+    entityResult.data?.connectorEntity?.connectorInstanceId ?? "";
   const instanceResult = sdk.connectorInstances.get(connectorInstanceId, {
     enabled: !!connectorInstanceId,
   });
@@ -396,8 +445,12 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
       updateMutation.mutate(body, {
         onSuccess: () => {
           setEditDialogOpen(false);
-          queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
-          queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.get(entityId, recordId) });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.entityRecords.root,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.entityRecords.get(entityId, recordId),
+          });
         },
       });
     },
@@ -407,7 +460,9 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
   const handleRevalidate = useCallback(() => {
     revalidateMutation.mutate(undefined, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.entityRecords.root,
+        });
         queryClient.invalidateQueries({ queryKey: queryKeys.jobs.root });
       },
     });
@@ -417,7 +472,9 @@ export const EntityRecordDetailView: React.FC<EntityRecordDetailViewProps> = ({
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        queryClient.invalidateQueries({ queryKey: queryKeys.entityRecords.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.entityRecords.root,
+        });
         navigate({ to: `/entities/${entityId}` });
       },
     });

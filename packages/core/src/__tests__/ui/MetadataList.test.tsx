@@ -50,7 +50,7 @@ describe("MetadataList", () => {
       render(
         <MetadataList
           items={[{ label: "Key", value: "some_key", variant: "mono" }]}
-        />,
+        />
       );
       const monoEl = screen.getByText("some_key");
       expect(monoEl).toHaveStyle({ fontFamily: "monospace" });
@@ -60,7 +60,7 @@ describe("MetadataList", () => {
       render(
         <MetadataList
           items={[{ label: "Type", value: "String", variant: "chip" }]}
-        />,
+        />
       );
       const chip = screen.getByText("String");
       expect(chip.closest(".MuiChip-root")).toBeInTheDocument();
@@ -76,14 +76,14 @@ describe("MetadataList", () => {
               variant: "chip",
             },
           ]}
-        />,
+        />
       );
       expect(screen.getByTestId("custom-chip")).toBeInTheDocument();
     });
 
     it("should render text variant for string values", () => {
       render(
-        <MetadataList items={[{ label: "Desc", value: "A description" }]} />,
+        <MetadataList items={[{ label: "Desc", value: "A description" }]} />
       );
       expect(screen.getByText("A description")).toBeInTheDocument();
     });
@@ -97,7 +97,7 @@ describe("MetadataList", () => {
               value: <a href="#">Click me</a>,
             },
           ]}
-        />,
+        />
       );
       expect(screen.getByText("Click me")).toBeInTheDocument();
     });
@@ -109,7 +109,7 @@ describe("MetadataList", () => {
         <MetadataList
           layout="inline"
           items={[{ label: "Job ID", value: "j-001" }]}
-        />,
+        />
       );
       expect(screen.getByText("Job ID:")).toBeInTheDocument();
       expect(screen.getByText("j-001")).toBeInTheDocument();
@@ -120,7 +120,7 @@ describe("MetadataList", () => {
         <MetadataList
           layout="stacked"
           items={[{ label: "Source", value: "ext_123" }]}
-        />,
+        />
       );
       expect(screen.getByText("Source")).toBeInTheDocument();
       expect(screen.getByText("ext_123")).toBeInTheDocument();
@@ -135,9 +135,7 @@ describe("MetadataList", () => {
 
   describe("Dividers", () => {
     it("should render dividers between items when dividers=true", () => {
-      const { container } = render(
-        <MetadataList dividers items={baseItems} />,
-      );
+      const { container } = render(<MetadataList dividers items={baseItems} />);
       const dividers = container.querySelectorAll("hr");
       // dividers appear between items, so count = items - 1
       expect(dividers).toHaveLength(baseItems.length - 1);
@@ -160,18 +158,14 @@ describe("MetadataList", () => {
 
   describe("Raised", () => {
     it("should wrap in an outlined Paper when raised=true", () => {
-      const { container } = render(
-        <MetadataList raised items={baseItems} />,
-      );
-      expect(
-        container.querySelector(".MuiPaper-outlined"),
-      ).toBeInTheDocument();
+      const { container } = render(<MetadataList raised items={baseItems} />);
+      expect(container.querySelector(".MuiPaper-outlined")).toBeInTheDocument();
     });
 
     it("should not wrap in Paper by default", () => {
       const { container } = render(<MetadataList items={baseItems} />);
       expect(
-        container.querySelector(".MuiPaper-outlined"),
+        container.querySelector(".MuiPaper-outlined")
       ).not.toBeInTheDocument();
     });
 
@@ -189,7 +183,7 @@ describe("MetadataList", () => {
           className="raised-meta"
           data-testid="raised-list"
           items={baseItems}
-        />,
+        />
       );
       const paper = screen.getByTestId("raised-list");
       expect(paper).toHaveClass("raised-meta");
@@ -205,15 +199,13 @@ describe("MetadataList", () => {
   describe("Custom Props", () => {
     it("should accept custom className", () => {
       const { container } = render(
-        <MetadataList className="my-meta" items={baseItems} />,
+        <MetadataList className="my-meta" items={baseItems} />
       );
       expect(container.firstChild).toHaveClass("my-meta");
     });
 
     it("should accept custom data attributes", () => {
-      render(
-        <MetadataList data-testid="custom-list" items={baseItems} />,
-      );
+      render(<MetadataList data-testid="custom-list" items={baseItems} />);
       expect(screen.getByTestId("custom-list")).toBeInTheDocument();
     });
   });

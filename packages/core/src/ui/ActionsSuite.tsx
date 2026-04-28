@@ -57,7 +57,7 @@ export const ActionsSuite = React.forwardRef<HTMLDivElement, ActionsSuiteProps>(
         ))}
       </Stack>
     );
-  },
+  }
 );
 
 export default ActionsSuite;

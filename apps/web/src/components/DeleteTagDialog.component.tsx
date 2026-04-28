@@ -40,7 +40,12 @@ export const DeleteTagDialog: React.FC<DeleteTagDialogProps> = ({
     }}
     actions={
       <Stack direction="row" spacing={1}>
-        <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+        <Button
+          type="button"
+          variant="outlined"
+          onClick={onClose}
+          disabled={isPending}
+        >
           Cancel
         </Button>
         <Button
@@ -61,8 +66,8 @@ export const DeleteTagDialog: React.FC<DeleteTagDialogProps> = ({
       </Typography>
       <Typography variant="body2" color="warning.main">
         All entity tag assignments that reference this tag will be removed. Any
-        entities currently tagged with &quot;{tag?.name}&quot; will have this tag
-        detached.
+        entities currently tagged with &quot;{tag?.name}&quot; will have this
+        tag detached.
       </Typography>
       <FormAlert serverError={serverError ?? null} />
     </Stack>

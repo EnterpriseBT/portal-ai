@@ -4,7 +4,10 @@ import { tool } from "ai";
 import { Tool } from "../types/tools.js";
 import { DbService } from "../services/db.service.js";
 import { AnalyticsService } from "../services/analytics.service.js";
-import { assertStationScope, assertWriteCapability } from "../utils/resolve-capabilities.util.js";
+import {
+  assertStationScope,
+  assertWriteCapability,
+} from "../utils/resolve-capabilities.util.js";
 import { FieldMappingValidationService } from "../services/field-mapping-validation.service.js";
 
 const ItemSchema = z.object({
@@ -12,15 +15,22 @@ const ItemSchema = z.object({
 });
 
 const InputSchema = z.object({
-  items: z.array(ItemSchema).min(1).max(100).describe("Field mappings to delete (1–100)"),
+  items: z
+    .array(ItemSchema)
+    .min(1)
+    .max(100)
+    .describe("Field mappings to delete (1–100)"),
 });
 
 export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
   slug = "field_mapping_delete";
   name = "Field Mapping Delete Tool";
-  description = "Deletes one or more field mappings and cascades to dependent group members. Accepts 1–100 items.";
+  description =
+    "Deletes one or more field mappings and cascades to dependent group members. Accepts 1–100 items.";
 
-  get schema() { return InputSchema; }
+  get schema() {
+    return InputSchema;
+  }
 
   build(stationId: string, organizationId: string, userId: string) {
     return tool({
@@ -35,7 +45,9 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
           const mappings: Record<string, any> = {};
 
           for (let i = 0; i < items.length; i++) {
-            const mapping = await DbService.repository.fieldMappings.findById(items[i].fieldMappingId);
+            const mapping = await DbService.repository.fieldMappings.findById(
+              items[i].fieldMappingId
+            );
             if (!mapping || mapping.organizationId !== organizationId) {
               failures.push({ index: i, error: "Field mapping not found" });
               continue;
@@ -44,11 +56,19 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // Scope checks grouped by connectorEntityId
-          const entityIds = [...new Set(Object.values(mappings).map((m: any) => m.connectorEntityId))];
+          const entityIds = [
+            ...new Set(
+              Object.values(mappings).map((m: any) => m.connectorEntityId)
+            ),
+          ];
           for (const entityId of entityIds) {
             try {
               await assertStationScope(stationId, entityId);
@@ -57,33 +77,55 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
               for (let i = 0; i < items.length; i++) {
                 const m = mappings[items[i].fieldMappingId];
                 if (m && m.connectorEntityId === entityId) {
-                  failures.push({ index: i, error: err.message ?? "Scope/capability check failed" });
+                  failures.push({
+                    index: i,
+                    error: err.message ?? "Scope/capability check failed",
+                  });
                 }
               }
             }
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // Dependency validation for all items
           for (let i = 0; i < items.length; i++) {
             try {
-              await FieldMappingValidationService.validateDelete(items[i].fieldMappingId);
+              await FieldMappingValidationService.validateDelete(
+                items[i].fieldMappingId
+              );
             } catch (err: any) {
-              failures.push({ index: i, error: err.message ?? "Delete validation failed" });
+              failures.push({
+                index: i,
+                error: err.message ?? "Delete validation failed",
+              });
             }
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // ── Phase 2: Execute sequentially (no wrapping transaction) ─
-          const deleteResults: { cascadedEntityGroupMembers: number; counterpartCleared: boolean }[] = [];
+          const deleteResults: {
+            cascadedEntityGroupMembers: number;
+            counterpartCleared: boolean;
+          }[] = [];
           for (const item of items) {
-            const result = await FieldMappingValidationService.executeDelete(item.fieldMappingId, userId);
+            const result = await FieldMappingValidationService.executeDelete(
+              item.fieldMappingId,
+              userId
+            );
             deleteResults.push(result);
           }
 
@@ -101,7 +143,8 @@ export class FieldMappingDeleteTool extends Tool<typeof InputSchema> {
               summary: {
                 sourceField: mappings[item.fieldMappingId]?.sourceField,
                 cascaded: {
-                  entityGroupMembers: deleteResults[idx].cascadedEntityGroupMembers,
+                  entityGroupMembers:
+                    deleteResults[idx].cascadedEntityGroupMembers,
                   counterpartCleared: deleteResults[idx].counterpartCleared,
                 },
               },

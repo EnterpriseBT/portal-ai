@@ -15,7 +15,7 @@ export const auth = {
     return {
       withGoogle: () =>
         loginWithRedirect({
-          openUrl: url => window.location.replace(url),
+          openUrl: (url) => window.location.replace(url),
           authorizationParams: {
             connection: "google-oauth2",
             redirect_uri: window.location.origin,

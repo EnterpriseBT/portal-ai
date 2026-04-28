@@ -43,11 +43,10 @@ export const PageSection = React.forwardRef<HTMLDivElement, PageSectionProps>(
       className,
       ...rest
     },
-    ref,
+    ref
   ) => {
     const hasTitle = title !== undefined;
-    const hasSecondaryActions =
-      secondaryActions && secondaryActions.length > 0;
+    const hasSecondaryActions = secondaryActions && secondaryActions.length > 0;
     const hasActions = primaryAction || hasSecondaryActions;
     const hasHeader = hasTitle || hasActions;
 
@@ -84,9 +83,7 @@ export const PageSection = React.forwardRef<HTMLDivElement, PageSectionProps>(
             sx={{ flexShrink: 0 }}
           >
             {primaryAction}
-            {hasSecondaryActions && (
-              <ActionsMenu items={secondaryActions} />
-            )}
+            {hasSecondaryActions && <ActionsMenu items={secondaryActions} />}
           </Stack>
         )}
       </Stack>
@@ -119,7 +116,7 @@ export const PageSection = React.forwardRef<HTMLDivElement, PageSectionProps>(
         {content}
       </Box>
     );
-  },
+  }
 );
 
 export default PageSection;

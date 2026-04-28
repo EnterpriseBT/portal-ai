@@ -32,7 +32,9 @@ describe("canonicalizeString", () => {
   });
 
   it('keeps raw digits for non-10-digit phone with "phone" format', () => {
-    expect(canonicalizeString("+44 20 7946 0958", "phone")).toBe("442079460958");
+    expect(canonicalizeString("+44 20 7946 0958", "phone")).toBe(
+      "442079460958"
+    );
   });
 
   it("returns value unchanged for unrecognized format", () => {
@@ -44,7 +46,7 @@ describe("canonicalizeString", () => {
     canonicalizeString("hello", "unknown_format");
     expect(mockWarn).toHaveBeenCalledWith(
       { canonicalFormat: "unknown_format" },
-      expect.stringContaining("Unrecognized"),
+      expect.stringContaining("Unrecognized")
     );
   });
 });

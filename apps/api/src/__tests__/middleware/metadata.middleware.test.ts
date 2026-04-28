@@ -32,9 +32,8 @@ jest.unstable_mockModule("../../utils/logger.util.js", () => ({
 }));
 
 // Dynamic import after mocks are registered
-const { getApplicationMetadata } = await import(
-  "../../middleware/metadata.middleware.js"
-);
+const { getApplicationMetadata } =
+  await import("../../middleware/metadata.middleware.js");
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

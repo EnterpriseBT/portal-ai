@@ -1,0 +1,197 @@
+import {
+  DEFAULT_WARNING_SEVERITY,
+  type Region,
+  type Segment,
+  type Warning,
+} from "../../plan/index.js";
+import type { InterpretState, RegionConfidence } from "../types.js";
+
+function emitWarning(
+  warnings: Warning[],
+  code: keyof typeof DEFAULT_WARNING_SEVERITY,
+  message: string,
+  extra: Partial<Warning> = {}
+): void {
+  warnings.push({
+    code,
+    severity: DEFAULT_WARNING_SEVERITY[code],
+    message,
+    ...extra,
+  });
+}
+
+function computeRegionConfidence(
+  region: Region,
+  classificationsCount: number,
+  classificationsResolved: number,
+  headerScore: number
+): RegionConfidence {
+  if (classificationsCount === 0) {
+    return { region: 0, aggregate: headerScore };
+  }
+  const coverage = classificationsResolved / classificationsCount;
+  const bindingMean =
+    region.columnBindings.length === 0
+      ? 0
+      : region.columnBindings.reduce((acc, b) => acc + b.confidence, 0) /
+        region.columnBindings.length;
+  const regionScore = 0.6 * bindingMean * coverage + 0.4 * headerScore;
+  const aggregate = (regionScore + headerScore) / 2;
+  return { region: regionScore, aggregate };
+}
+
+function duplicateTargetRegionIds(regions: readonly Region[]): Set<string> {
+  const seenTargets = new Map<string, string>();
+  const duplicates = new Set<string>();
+  for (const region of regions) {
+    if (!region.targetEntityDefinitionId) continue;
+    const prior = seenTargets.get(region.targetEntityDefinitionId);
+    if (prior !== undefined && prior !== region.id) {
+      duplicates.add(region.id);
+    } else {
+      seenTargets.set(region.targetEntityDefinitionId, region.id);
+    }
+  }
+  return duplicates;
+}
+
+function pivotSegments(region: Region): Segment[] {
+  const out: Segment[] = [];
+  for (const axis of ["row", "column"] as const) {
+    for (const seg of region.segmentsByAxis?.[axis] ?? []) {
+      if (seg.kind === "pivot") out.push(seg);
+    }
+  }
+  return out;
+}
+
+function segmentMissingAxisName(segment: Segment, region: Region): boolean {
+  if (segment.kind !== "pivot") return false;
+  if (segment.axisName === "") return true;
+  if (segment.axisNameSource === "anchor-cell") {
+    // Anchor-cell sourced names require an axis anchor; missing/empty anchor
+    // is treated as unresolved.
+    if (!region.axisAnchorCell) return true;
+  }
+  return false;
+}
+
+/**
+ * Stage 8 — consolidate per-stage signals into the plan's `confidence` fields
+ * and emit structured `Warning`s on each region.
+ */
+export function scoreAndWarn(state: InterpretState): InterpretState {
+  const duplicateTargets = duplicateTargetRegionIds(state.detectedRegions);
+  const detectedRegions: Region[] = state.detectedRegions.map((region) => {
+    const warnings: Warning[] = [...region.warnings];
+    const headers = state.headerCandidates.get(region.id) ?? [];
+    const classifications = state.columnClassifications.get(region.id) ?? [];
+    const classificationsResolved = classifications.filter(
+      (c) => c.columnDefinitionId !== null
+    ).length;
+
+    // ── DUPLICATE_ENTITY_TARGET (blocker) ────────────────────────────────
+    if (duplicateTargets.has(region.id)) {
+      emitWarning(
+        warnings,
+        "DUPLICATE_ENTITY_TARGET",
+        `Two regions target the same entity "${region.targetEntityDefinitionId}" — each entity must be produced by at most one region.`
+      );
+    }
+
+    // ── ROW_POSITION_IDENTITY ────────────────────────────────────────────
+    if (region.identityStrategy.kind === "rowPosition") {
+      emitWarning(
+        warnings,
+        "ROW_POSITION_IDENTITY",
+        "Identity falls back to row position — breaks if rows reorder."
+      );
+    }
+
+    // ── MULTIPLE_HEADER_CANDIDATES ───────────────────────────────────────
+    if (headers.length > 1 && headers[0].score - headers[1].score < 0.1) {
+      emitWarning(
+        warnings,
+        "MULTIPLE_HEADER_CANDIDATES",
+        "Multiple rows scored similarly as the header — the top candidate may be wrong."
+      );
+    }
+
+    // ── SEGMENT_MISSING_AXIS_NAME (blocker, per pivot segment) ───────────
+    // One warning per pivot segment whose axis name isn't resolved (user
+    // hasn't named it and anchor-cell lookup failed).
+    for (const seg of pivotSegments(region)) {
+      if (seg.kind !== "pivot") continue;
+      if (segmentMissingAxisName(seg, region)) {
+        emitWarning(
+          warnings,
+          "SEGMENT_MISSING_AXIS_NAME",
+          `Pivot segment "${seg.id}" missing axis name — required before commit.`
+        );
+      }
+    }
+
+    // ── SEGMENT_NOT_BOUND (warn, per pivot segment) ──────────────────────
+    // Parallel to CELL_VALUE_FIELD_NOT_BOUND but for the axis side of the
+    // pivot: classify-logical-fields tries to bind the segment's axisName to
+    // a ColumnDefinition; when it can't, the review UI needs to prompt.
+    for (const seg of pivotSegments(region)) {
+      if (seg.kind !== "pivot") continue;
+      if (!seg.columnDefinitionId) {
+        emitWarning(
+          warnings,
+          "SEGMENT_NOT_BOUND",
+          `Pivot segment "${seg.id}" (axisName "${seg.axisName}") has no columnDefinitionId — bind one to describe the axis field.`
+        );
+      }
+    }
+
+    // ── CELL_VALUE_FIELD_NOT_BOUND (warn, region-level) ──────────────────
+    // A pivot-bearing region needs `cellValueField` to describe the value
+    // each emitted cell carries; if the user hasn't bound it to a concrete
+    // ColumnDefinition yet, surface a soft warning so the review UI can
+    // prompt for one.
+    const hasPivot = pivotSegments(region).length > 0;
+    if (hasPivot) {
+      if (!region.cellValueField) {
+        emitWarning(
+          warnings,
+          "CELL_VALUE_FIELD_NOT_BOUND",
+          "Pivoted region missing cell-value field — bind a ColumnDefinition to describe the cell value."
+        );
+      } else if (!region.cellValueField.columnDefinitionId) {
+        emitWarning(
+          warnings,
+          "CELL_VALUE_FIELD_NOT_BOUND",
+          `cellValueField "${region.cellValueField.name}" has no columnDefinitionId — bind one to describe the cell value.`
+        );
+      }
+    }
+
+    // ── UNRECOGNIZED_COLUMN (info) ───────────────────────────────────────
+    for (const c of classifications) {
+      if (c.columnDefinitionId === null) {
+        emitWarning(
+          warnings,
+          "UNRECOGNIZED_COLUMN",
+          `Header "${c.sourceHeader}" has no matching ColumnDefinition — leaving unbound.`
+        );
+      }
+    }
+
+    const headerScore = headers[0]?.score ?? 0;
+    const confidence = computeRegionConfidence(
+      region,
+      classifications.length,
+      classificationsResolved,
+      headerScore
+    );
+
+    return { ...region, warnings, confidence };
+  });
+
+  const confidenceMap = new Map<string, RegionConfidence>();
+  for (const r of detectedRegions) confidenceMap.set(r.id, r.confidence);
+
+  return { ...state, detectedRegions, confidence: confidenceMap };
+}

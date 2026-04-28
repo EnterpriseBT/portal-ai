@@ -5,9 +5,12 @@ import type { Job as BullJob } from "bullmq";
 // Mocks
 // ---------------------------------------------------------------------------
 
-const mockFieldMappingsFindMany = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockEntityRecordsFindByConnectorEntityId = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockEntityRecordsUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockFieldMappingsFindMany =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockEntityRecordsFindByConnectorEntityId =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockEntityRecordsUpdate =
+  jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockNormalizeWithMappings = jest.fn<(...args: unknown[]) => unknown>();
 
 jest.unstable_mockModule("../../../services/db.service.js", () => ({
@@ -32,20 +35,25 @@ jest.unstable_mockModule("../../../db/schema/index.js", () => ({
   fieldMappings: { connectorEntityId: "connectorEntityId" },
 }));
 
-const { revalidationProcessor } = await import(
-  "../../../queues/processors/revalidation.processor.js"
-);
+const { revalidationProcessor } =
+  await import("../../../queues/processors/revalidation.processor.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockBullJob(
-  data: Record<string, unknown> = {},
-): BullJob {
+function createMockBullJob(data: Record<string, unknown> = {}): BullJob {
   return {
-    data: { jobId: "job-001", type: "revalidation", connectorEntityId: "ce-1", organizationId: "org-1", ...data },
-    updateProgress: jest.fn<(progress: number) => Promise<void>>().mockResolvedValue(undefined),
+    data: {
+      jobId: "job-001",
+      type: "revalidation",
+      connectorEntityId: "ce-1",
+      organizationId: "org-1",
+      ...data,
+    },
+    updateProgress: jest
+      .fn<(progress: number) => Promise<void>>()
+      .mockResolvedValue(undefined),
   } as unknown as BullJob;
 }
 
@@ -79,7 +87,14 @@ describe("revalidationProcessor", () => {
   });
 
   it("re-normalizes records and returns valid/invalid counts", async () => {
-    const mappings = [{ id: "fm-1", sourceField: "name", normalizedKey: "name", columnDefinition: { key: "name", type: "string" } }];
+    const mappings = [
+      {
+        id: "fm-1",
+        sourceField: "name",
+        normalizedKey: "name",
+        columnDefinition: { key: "name", type: "string" },
+      },
+    ];
     mockFieldMappingsFindMany.mockResolvedValue(mappings);
     mockEntityRecordsFindByConnectorEntityId.mockResolvedValue([
       record("r-1", { name: "Alice" }),
@@ -87,8 +102,16 @@ describe("revalidationProcessor", () => {
     ]);
 
     mockNormalizeWithMappings
-      .mockReturnValueOnce({ normalizedData: { name: "Alice" }, validationErrors: null, isValid: true })
-      .mockReturnValueOnce({ normalizedData: { name: null }, validationErrors: [{ field: "name", error: "required" }], isValid: false });
+      .mockReturnValueOnce({
+        normalizedData: { name: "Alice" },
+        validationErrors: null,
+        isValid: true,
+      })
+      .mockReturnValueOnce({
+        normalizedData: { name: null },
+        validationErrors: [{ field: "name", error: "required" }],
+        isValid: false,
+      });
 
     const bullJob = createMockBullJob();
     const result = await revalidationProcessor(bullJob);
@@ -138,7 +161,7 @@ describe("revalidationProcessor", () => {
     await revalidationProcessor(bullJob);
 
     const progressCalls = (bullJob.updateProgress as jest.Mock).mock.calls.map(
-      (c) => c[0],
+      (c) => c[0]
     );
     // Should include: 10 (after mappings), 20 (before batch loop), and 90 (end of single batch for 2 records)
     expect(progressCalls).toContain(10);
@@ -149,7 +172,11 @@ describe("revalidationProcessor", () => {
 
   it("uses raw data field for re-normalization", async () => {
     mockFieldMappingsFindMany.mockResolvedValue([]);
-    const rec = { id: "r-1", data: { raw_name: "Bob" }, normalizedData: { name: "Bob" } };
+    const rec = {
+      id: "r-1",
+      data: { raw_name: "Bob" },
+      normalizedData: { name: "Bob" },
+    };
     mockEntityRecordsFindByConnectorEntityId.mockResolvedValue([rec]);
     mockNormalizeWithMappings.mockReturnValue({
       normalizedData: { name: "Bob" },
@@ -161,9 +188,8 @@ describe("revalidationProcessor", () => {
     await revalidationProcessor(bullJob);
 
     // Should pass `data` (raw) not `normalizedData` to normalizeWithMappings
-    expect(mockNormalizeWithMappings).toHaveBeenCalledWith(
-      expect.anything(),
-      { raw_name: "Bob" },
-    );
+    expect(mockNormalizeWithMappings).toHaveBeenCalledWith(expect.anything(), {
+      raw_name: "Bob",
+    });
   });
 });

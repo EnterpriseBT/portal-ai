@@ -14,7 +14,15 @@ let currentGetQuery: Partial<GetQuery> = {};
 let currentFieldMappingListQuery: Partial<ListQuery> = {};
 const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
 
-const noopSearch = () => ({ onSearch: jest.fn(() => Promise.resolve([])), onSearchPending: false, onSearchError: null, getById: jest.fn(() => Promise.resolve(null)), getByIdPending: false, getByIdError: null, labelMap: {} });
+const noopSearch = () => ({
+  onSearch: jest.fn(() => Promise.resolve([])),
+  onSearchPending: false,
+  onSearchError: null,
+  getById: jest.fn(() => Promise.resolve(null)),
+  getByIdPending: false,
+  getByIdError: null,
+  labelMap: {},
+});
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -44,9 +52,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { ColumnDefinitionDetailView } = await import(
-  "../views/ColumnDefinitionDetail.view"
-);
+const { ColumnDefinitionDetailView } =
+  await import("../views/ColumnDefinitionDetail.view");
 
 const makeColumnDefinition = (
   overrides: Partial<ColumnDefinition> = {}
@@ -137,7 +144,9 @@ describe("ColumnDefinitionDetailView", () => {
     } as Partial<ListQuery>;
 
     render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
-    expect(screen.getByRole("heading", { name: "Email Address" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Email Address" })
+    ).toBeInTheDocument();
     expect(screen.getByText("email_address")).toBeInTheDocument();
     expect(screen.getByText("string")).toBeInTheDocument();
     expect(screen.getByText(/Primary email/)).toBeInTheDocument();
@@ -235,9 +244,7 @@ describe("ColumnDefinitionDetailView", () => {
     } as Partial<ListQuery>;
 
     render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
-    expect(
-      screen.getByText(/No field mappings found/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/No field mappings found/)).toBeInTheDocument();
   });
 
   it("should display error state for invalid column definition ID", () => {
@@ -269,7 +276,9 @@ describe("ColumnDefinitionDetailView", () => {
     } as Partial<ListQuery>;
 
     render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
-    const breadcrumbNav = screen.getByRole("navigation", { name: "breadcrumb" });
+    const breadcrumbNav = screen.getByRole("navigation", {
+      name: "breadcrumb",
+    });
     expect(breadcrumbNav).toBeInTheDocument();
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     // "Column Definitions" appears as a breadcrumb link
@@ -347,7 +356,9 @@ describe("ColumnDefinitionDetailView", () => {
 
     it("should display Create button in the Field Mappings section", () => {
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
-      expect(screen.getByRole("button", { name: /Create/ })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Create/ })
+      ).toBeInTheDocument();
     });
 
     it("should open create dialog when Create button is clicked", () => {
@@ -365,10 +376,16 @@ describe("ColumnDefinitionDetailView", () => {
   });
 
   describe("Write capability gating for field mappings", () => {
-    const setupWithCapability = (enabledCapabilityFlags: { write?: boolean } | null) => {
+    const setupWithCapability = (
+      enabledCapabilityFlags: { write?: boolean } | null
+    ) => {
       const cd = makeColumnDefinition();
       const fm = {
-        ...makeFieldMapping({ id: "fm-1", sourceField: "email", connectorEntityId: "ce-1" }),
+        ...makeFieldMapping({
+          id: "fm-1",
+          sourceField: "email",
+          connectorEntityId: "ce-1",
+        }),
         connectorEntity: {
           id: "ce-1",
           organizationId: "org-1",
@@ -404,8 +421,12 @@ describe("ColumnDefinitionDetailView", () => {
       setupWithCapability({ write: false });
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
-      expect(screen.queryByLabelText("Edit field mapping")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Delete field mapping")).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Edit field mapping")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Delete field mapping")
+      ).not.toBeInTheDocument();
     });
 
     it("shows field mapping edit/delete buttons when write is explicitly enabled", () => {
@@ -420,8 +441,12 @@ describe("ColumnDefinitionDetailView", () => {
       setupWithCapability(null);
       render(<ColumnDefinitionDetailView columnDefinitionId="cd-1" />);
 
-      expect(screen.queryByLabelText("Edit field mapping")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Delete field mapping")).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Edit field mapping")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Delete field mapping")
+      ).not.toBeInTheDocument();
     });
   });
 });

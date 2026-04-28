@@ -391,36 +391,34 @@ describe("Portal Router", () => {
         .insert(portals)
         .values(portal as never);
 
-      await (db as ReturnType<typeof drizzle>)
-        .insert(portalMessages)
-        .values([
-          {
-            id: generateId(),
-            portalId: portal.id,
-            organizationId,
-            role: "user",
-            blocks: [{ type: "text", content: "Hello" }],
-            created: now,
-            createdBy: "SYSTEM_TEST",
-            updated: null,
-            updatedBy: null,
-            deleted: null,
-            deletedBy: null,
-          } as never,
-          {
-            id: generateId(),
-            portalId: portal.id,
-            organizationId,
-            role: "assistant",
-            blocks: [{ type: "text", content: "Hi" }],
-            created: now + 1000,
-            createdBy: "SYSTEM_TEST",
-            updated: null,
-            updatedBy: null,
-            deleted: null,
-            deletedBy: null,
-          } as never,
-        ]);
+      await (db as ReturnType<typeof drizzle>).insert(portalMessages).values([
+        {
+          id: generateId(),
+          portalId: portal.id,
+          organizationId,
+          role: "user",
+          blocks: [{ type: "text", content: "Hello" }],
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+        {
+          id: generateId(),
+          portalId: portal.id,
+          organizationId,
+          role: "assistant",
+          blocks: [{ type: "text", content: "Hi" }],
+          created: now + 1000,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never,
+      ]);
 
       await request(app).delete(`/api/portals/${portal.id}`).expect(200);
 
@@ -448,23 +446,21 @@ describe("Portal Router", () => {
         .values(portal as never);
 
       const resultId = generateId();
-      await (db as ReturnType<typeof drizzle>)
-        .insert(portalResults)
-        .values({
-          id: resultId,
-          organizationId,
-          stationId: station.id,
-          portalId: portal.id,
-          name: "Pinned Result",
-          type: "text",
-          content: { value: "kept" },
-          created: now,
-          createdBy: "SYSTEM_TEST",
-          updated: null,
-          updatedBy: null,
-          deleted: null,
-          deletedBy: null,
-        } as never);
+      await (db as ReturnType<typeof drizzle>).insert(portalResults).values({
+        id: resultId,
+        organizationId,
+        stationId: station.id,
+        portalId: portal.id,
+        name: "Pinned Result",
+        type: "text",
+        content: { value: "kept" },
+        created: now,
+        createdBy: "SYSTEM_TEST",
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      } as never);
 
       await request(app).delete(`/api/portals/${portal.id}`).expect(200);
 
@@ -480,9 +476,7 @@ describe("Portal Router", () => {
     it("returns 404 for unknown portal", async () => {
       await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
 
-      await request(app)
-        .delete(`/api/portals/${generateId()}`)
-        .expect(404);
+      await request(app).delete(`/api/portals/${generateId()}`).expect(404);
     });
   });
 

@@ -165,7 +165,7 @@ export const MetadataList = React.forwardRef<HTMLDivElement, MetadataListProps>(
       className,
       ...rest
     },
-    ref,
+    ref
   ) => {
     const visible = items.filter((i) => !i.hidden);
 
@@ -192,14 +192,20 @@ export const MetadataList = React.forwardRef<HTMLDivElement, MetadataListProps>(
 
     if (raised) {
       return (
-        <Paper ref={ref} variant="outlined" className={className} sx={{ p: 2.5 }} {...rest}>
+        <Paper
+          ref={ref}
+          variant="outlined"
+          className={className}
+          sx={{ p: 2.5 }}
+          {...rest}
+        >
           {list}
         </Paper>
       );
     }
 
     return list;
-  },
+  }
 );
 
 export default MetadataList;

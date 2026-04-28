@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { EditConnectorInstanceDialog } = await import(
-  "../components/EditConnectorInstanceDialog.component"
-);
+const { EditConnectorInstanceDialog } =
+  await import("../components/EditConnectorInstanceDialog.component");
 
 const defaultProps = {
   open: true,
@@ -20,15 +19,11 @@ describe("EditConnectorInstanceDialog", () => {
 
   it("should render dialog when open is true", () => {
     render(<EditConnectorInstanceDialog {...defaultProps} />);
-    expect(
-      screen.getByText("Edit Connector Instance")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Edit Connector Instance")).toBeInTheDocument();
   });
 
   it("should not render content when open is false", () => {
-    render(
-      <EditConnectorInstanceDialog {...defaultProps} open={false} />
-    );
+    render(<EditConnectorInstanceDialog {...defaultProps} open={false} />);
     expect(
       screen.queryByText("Edit Connector Instance")
     ).not.toBeInTheDocument();
@@ -53,21 +48,14 @@ describe("EditConnectorInstanceDialog", () => {
   });
 
   it("should disable Save button when isPending is true", () => {
-    render(
-      <EditConnectorInstanceDialog {...defaultProps} isPending={true} />
-    );
-    expect(
-      screen.getByRole("button", { name: "Saving..." })
-    ).toBeDisabled();
+    render(<EditConnectorInstanceDialog {...defaultProps} isPending={true} />);
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
   });
 
   it("should call onConfirm with new name when Save is clicked", () => {
     const onConfirm = jest.fn();
     render(
-      <EditConnectorInstanceDialog
-        {...defaultProps}
-        onConfirm={onConfirm}
-      />
+      <EditConnectorInstanceDialog {...defaultProps} onConfirm={onConfirm} />
     );
     const input = screen.getByRole("textbox", { name: /name/i });
     fireEvent.change(input, { target: { value: "New Name" } });
@@ -78,10 +66,7 @@ describe("EditConnectorInstanceDialog", () => {
   it("should submit form on Enter key press in text field", () => {
     const onConfirm = jest.fn();
     render(
-      <EditConnectorInstanceDialog
-        {...defaultProps}
-        onConfirm={onConfirm}
-      />
+      <EditConnectorInstanceDialog {...defaultProps} onConfirm={onConfirm} />
     );
     const input = screen.getByRole("textbox", { name: /name/i });
     fireEvent.change(input, { target: { value: "New Name" } });
@@ -91,9 +76,7 @@ describe("EditConnectorInstanceDialog", () => {
 
   it("should call onClose when Cancel button is clicked", () => {
     const onClose = jest.fn();
-    render(
-      <EditConnectorInstanceDialog {...defaultProps} onClose={onClose} />
-    );
+    render(<EditConnectorInstanceDialog {...defaultProps} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
   });

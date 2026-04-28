@@ -39,12 +39,16 @@ export class ResetService {
    * Deletions are performed in FK-safe order within a single transaction.
    */
   static async resetOrganization(organizationId: string): Promise<void> {
-    const org = await DbService.repository.organizations.findById(organizationId);
+    const org =
+      await DbService.repository.organizations.findById(organizationId);
     if (!org) {
       throw new Error(`Organization not found: ${organizationId}`);
     }
 
-    logger.info({ organizationId, orgName: org.name }, "Resetting organization workspace");
+    logger.info(
+      { organizationId, orgName: org.name },
+      "Resetting organization workspace"
+    );
 
     await DbService.transaction(async (tx) => {
       // Delete in child → parent order to respect FK constraints
@@ -53,13 +57,17 @@ export class ResetService {
         .delete(entityGroupMembers)
         .where(eq(entityGroupMembers.organizationId, organizationId))
         .returning({ id: entityGroupMembers.id });
-      logger.info(`Deleted ${deletedEntityGroupMembers.length} entity group members`);
+      logger.info(
+        `Deleted ${deletedEntityGroupMembers.length} entity group members`
+      );
 
       const deletedEntityTagAssignments = await tx
         .delete(entityTagAssignments)
         .where(eq(entityTagAssignments.organizationId, organizationId))
         .returning({ id: entityTagAssignments.id });
-      logger.info(`Deleted ${deletedEntityTagAssignments.length} entity tag assignments`);
+      logger.info(
+        `Deleted ${deletedEntityTagAssignments.length} entity tag assignments`
+      );
 
       const deletedEntityRecords = await tx
         .delete(entityRecords)
@@ -108,7 +116,9 @@ export class ResetService {
         .delete(stationInstances)
         .where(inArray(stationInstances.stationId, orgStationIds))
         .returning({ id: stationInstances.id });
-      logger.info(`Deleted ${deletedStationInstances.length} station instances`);
+      logger.info(
+        `Deleted ${deletedStationInstances.length} station instances`
+      );
 
       await tx
         .update(organizations)
@@ -126,13 +136,17 @@ export class ResetService {
         .delete(connectorEntities)
         .where(eq(connectorEntities.organizationId, organizationId))
         .returning({ id: connectorEntities.id });
-      logger.info(`Deleted ${deletedConnectorEntities.length} connector entities`);
+      logger.info(
+        `Deleted ${deletedConnectorEntities.length} connector entities`
+      );
 
       const deletedConnectorInstances = await tx
         .delete(connectorInstances)
         .where(eq(connectorInstances.organizationId, organizationId))
         .returning({ id: connectorInstances.id });
-      logger.info(`Deleted ${deletedConnectorInstances.length} connector instances`);
+      logger.info(
+        `Deleted ${deletedConnectorInstances.length} connector instances`
+      );
 
       const deletedEntityGroups = await tx
         .delete(entityGroups)
@@ -150,7 +164,9 @@ export class ResetService {
         .delete(columnDefinitions)
         .where(eq(columnDefinitions.organizationId, organizationId))
         .returning({ id: columnDefinitions.id });
-      logger.info(`Deleted ${deletedColumnDefinitions.length} column definitions`);
+      logger.info(
+        `Deleted ${deletedColumnDefinitions.length} column definitions`
+      );
 
       const deletedJobs = await tx
         .delete(jobs)
@@ -168,10 +184,15 @@ export class ResetService {
           )
         )
         .returning({ id: organizationUsers.id });
-      logger.info(`Deleted ${deletedOrgUsers.length} non-owner organization users`);
+      logger.info(
+        `Deleted ${deletedOrgUsers.length} non-owner organization users`
+      );
     });
 
-    logger.info({ organizationId, orgName: org.name }, "Organization workspace reset complete");
+    logger.info(
+      { organizationId, orgName: org.name },
+      "Organization workspace reset complete"
+    );
   }
 
   /**
@@ -179,7 +200,9 @@ export class ResetService {
    * Convenience method for local dev when there's typically one org.
    */
   static async resetFirst(): Promise<void> {
-    const orgs = await DbService.repository.organizations.findMany(undefined, { limit: 1 });
+    const orgs = await DbService.repository.organizations.findMany(undefined, {
+      limit: 1,
+    });
     if (orgs.length === 0) {
       throw new Error("No organizations found in the database");
     }

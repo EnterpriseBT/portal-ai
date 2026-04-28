@@ -35,16 +35,24 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
       multiple
       options={options}
       value={selectedOptions}
-      onChange={(_event, selected) => onChange(selected.map((o) => String(o.value)))}
+      onChange={(_event, selected) =>
+        onChange(selected.map((o) => String(o.value)))
+      }
       isOptionEqualToValue={(option, val) => option.value === val.value}
       getOptionLabel={(option) => option.label}
       disabled={disabled}
       size={size}
       fullWidth={fullWidth}
       renderOption={(props, option) => {
-        const { key, ...optionProps } = props as React.HTMLAttributes<HTMLLIElement> & { key?: React.Key };
+        const { key, ...optionProps } =
+          props as React.HTMLAttributes<HTMLLIElement> & { key?: React.Key };
         return (
-          <Box component="li" key={key} {...optionProps} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box
+            component="li"
+            key={key}
+            {...optionProps}
+            sx={{ display: "flex", alignItems: "center", gap: 1 }}
+          >
             {option.icon}
             <span>{option.label}</span>
           </Box>
@@ -56,7 +64,9 @@ export const MultiSearchableSelect: React.FC<MultiSearchableSelectProps> = ({
           return (
             <Chip
               key={key}
-              icon={option.icon ? (option.icon as React.ReactElement) : undefined}
+              icon={
+                option.icon ? (option.icon as React.ReactElement) : undefined
+              }
               label={option.label}
               size={size}
               {...tagProps}

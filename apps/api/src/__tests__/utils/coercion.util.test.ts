@@ -145,14 +145,14 @@ describe("coerceBoolean", () => {
     'maps "%s" to true',
     (v) => {
       expect(coerceBoolean(v)).toEqual({ value: true });
-    },
+    }
   );
 
   it.each(["false", "no", "0", "off", "FALSE", "No"])(
     'maps "%s" to false',
     (v) => {
       expect(coerceBoolean(v)).toEqual({ value: false });
-    },
+    }
   );
 
   it("returns error for unrecognized string", () => {
@@ -233,15 +233,21 @@ describe("coerceDate", () => {
 
   it("parses YYYY-MM-DD format (moment.js convention) without throwing", () => {
     // AI tools emit moment.js tokens; YYYY must be normalised to yyyy before date-fns sees it
-    expect(coerceDate("2021-09-05", "YYYY-MM-DD")).toEqual({ value: "2021-09-05" });
+    expect(coerceDate("2021-09-05", "YYYY-MM-DD")).toEqual({
+      value: "2021-09-05",
+    });
   });
 
   it("parses DD/MM/YYYY format (moment.js convention) without throwing", () => {
-    expect(coerceDate("05/09/2021", "DD/MM/YYYY")).toEqual({ value: "2021-09-05" });
+    expect(coerceDate("05/09/2021", "DD/MM/YYYY")).toEqual({
+      value: "2021-09-05",
+    });
   });
 
   it("parses mixed-case format MM/DD/YYYY without throwing", () => {
-    expect(coerceDate("09/05/2021", "MM/DD/YYYY")).toEqual({ value: "2021-09-05" });
+    expect(coerceDate("09/05/2021", "MM/DD/YYYY")).toEqual({
+      value: "2021-09-05",
+    });
   });
 
   it("returns date error gracefully for a completely malformed format string", () => {
@@ -274,10 +280,7 @@ describe("coerceDatetime", () => {
   });
 
   it("parses with a format hint", () => {
-    const result = coerceDatetime(
-      "01/15/2024 14:30",
-      "MM/dd/yyyy HH:mm",
-    );
+    const result = coerceDatetime("01/15/2024 14:30", "MM/dd/yyyy HH:mm");
     expect(result.error).toBeUndefined();
     expect((result.value as string).startsWith("2024-01-15T")).toBe(true);
   });
@@ -479,8 +482,16 @@ describe("coerce", () => {
 
   it("returns null for null across all types", () => {
     const types: Array<import("@portalai/core/models").ColumnDataType> = [
-      "string", "number", "boolean", "date", "datetime",
-      "enum", "json", "array", "reference", "reference-array",
+      "string",
+      "number",
+      "boolean",
+      "date",
+      "datetime",
+      "enum",
+      "json",
+      "array",
+      "reference",
+      "reference-array",
     ];
     for (const t of types) {
       expect(coerce(t, null)).toEqual({ value: null });

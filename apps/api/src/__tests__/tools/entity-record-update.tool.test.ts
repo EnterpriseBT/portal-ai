@@ -3,18 +3,23 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockAssertStationScope = jest.fn<any>().mockResolvedValue(undefined);
 const mockAssertWriteCapability = jest.fn<any>().mockResolvedValue(undefined);
-const mockNormalizeMany = jest.fn<any>().mockResolvedValue([
-  { normalizedData: { name: "Bob" }, validationErrors: null, isValid: true },
-]);
+const mockNormalizeMany = jest
+  .fn<any>()
+  .mockResolvedValue([
+    { normalizedData: { name: "Bob" }, validationErrors: null, isValid: true },
+  ]);
 const mockFindRecordById = jest.fn<any>().mockResolvedValue({
   id: "rec-1",
   connectorEntityId: "ce-1",
   data: { Name: "Alice", Email: "alice@example.com" },
 });
-const mockUpdateMany = jest.fn<any>().mockImplementation(
-  (payloads: any[]) => Promise.resolve(payloads.map((p: any) => ({ id: p.id }))),
-);
-const mockTransaction = jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+const mockUpdateMany = jest
+  .fn<any>()
+  .mockImplementation((payloads: any[]) =>
+    Promise.resolve(payloads.map((p: any) => ({ id: p.id })))
+  );
+const mockTransaction = jest
+  .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
   .mockImplementation((fn) => fn("mock-tx"));
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
@@ -24,12 +29,17 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 jest.unstable_mockModule("../../services/normalization.service.js", () => ({
   NormalizationService: { normalizeMany: mockNormalizeMany },
 }));
-const mockFindEntityById = jest.fn<any>().mockResolvedValue({ id: "ce-1", key: "customers", label: "My Entity" });
+const mockFindEntityById = jest
+  .fn<any>()
+  .mockResolvedValue({ id: "ce-1", key: "customers", label: "My Entity" });
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
-      entityRecords: { findById: mockFindRecordById, updateMany: mockUpdateMany },
+      entityRecords: {
+        findById: mockFindRecordById,
+        updateMany: mockUpdateMany,
+      },
       connectorEntities: { findById: mockFindEntityById },
     },
   },
@@ -43,18 +53,36 @@ jest.unstable_mockModule("../../db/repositories/base.repository.js", () => ({
   Repository: { transaction: mockTransaction },
 }));
 
-const { EntityRecordUpdateTool } = await import("../../tools/entity-record-update.tool.js");
+const { EntityRecordUpdateTool } =
+  await import("../../tools/entity-record-update.tool.js");
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
-type ItemInput = { connectorEntityId: string; entityRecordId: string; data: Record<string, unknown> };
+type ItemInput = {
+  connectorEntityId: string;
+  entityRecordId: string;
+  data: Record<string, unknown>;
+};
 const exec = (input: { items: ItemInput[] }) =>
-  new EntityRecordUpdateTool().build("station-1", "user-1")
-    .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
+  new EntityRecordUpdateTool().build("station-1", "user-1").execute!(input, {
+    toolCallId: "t",
+    messages: [],
+    abortSignal: new AbortController().signal,
+  });
 
 describe("EntityRecordUpdateTool", () => {
   it("single-item regression — { items: [single] } behaves as before", async () => {
-    const result: any = await exec({ items: [{ connectorEntityId: "ce-1", entityRecordId: "rec-1", data: { Name: "Bob" } }] });
+    const result: any = await exec({
+      items: [
+        {
+          connectorEntityId: "ce-1",
+          entityRecordId: "rec-1",
+          data: { Name: "Bob" },
+        },
+      ],
+    });
     expect(result.success).toBe(true);
     expect(result.count).toBe(1);
     expect(result.items).toHaveLength(1);
@@ -73,11 +101,21 @@ describe("EntityRecordUpdateTool", () => {
       data: { id: "foo", name: "bar", desc: "fooz" },
     });
     mockNormalizeMany.mockResolvedValueOnce([
-      { normalizedData: { id: "foo", name: "baz", desc: "fooz" }, validationErrors: null, isValid: true },
+      {
+        normalizedData: { id: "foo", name: "baz", desc: "fooz" },
+        validationErrors: null,
+        isValid: true,
+      },
     ]);
 
     const result: any = await exec({
-      items: [{ connectorEntityId: "ce-1", entityRecordId: "rec-1", data: { name: "baz" } }],
+      items: [
+        {
+          connectorEntityId: "ce-1",
+          entityRecordId: "rec-1",
+          data: { name: "baz" },
+        },
+      ],
     });
 
     expect(result.success).toBe(true);
@@ -87,15 +125,35 @@ describe("EntityRecordUpdateTool", () => {
     ]);
     // The persisted `data` blob is the merged object, not the partial one
     const payloads = (mockUpdateMany.mock.calls[0] as any[])[0] as any[];
-    expect(payloads[0].data.data).toEqual({ id: "foo", name: "baz", desc: "fooz" });
-    expect(payloads[0].data.normalizedData).toEqual({ id: "foo", name: "baz", desc: "fooz" });
+    expect(payloads[0].data.data).toEqual({
+      id: "foo",
+      name: "baz",
+      desc: "fooz",
+    });
+    expect(payloads[0].data.normalizedData).toEqual({
+      id: "foo",
+      name: "baz",
+      desc: "fooz",
+    });
   });
 
   it("bulk update — 3 items updated in single transaction", async () => {
     mockFindRecordById
-      .mockResolvedValueOnce({ id: "rec-1", connectorEntityId: "ce-1", data: {} })
-      .mockResolvedValueOnce({ id: "rec-2", connectorEntityId: "ce-1", data: {} })
-      .mockResolvedValueOnce({ id: "rec-3", connectorEntityId: "ce-1", data: {} });
+      .mockResolvedValueOnce({
+        id: "rec-1",
+        connectorEntityId: "ce-1",
+        data: {},
+      })
+      .mockResolvedValueOnce({
+        id: "rec-2",
+        connectorEntityId: "ce-1",
+        data: {},
+      })
+      .mockResolvedValueOnce({
+        id: "rec-3",
+        connectorEntityId: "ce-1",
+        data: {},
+      });
     mockNormalizeMany.mockResolvedValueOnce([
       { normalizedData: { a: 1 }, validationErrors: null, isValid: true },
       { normalizedData: { b: 2 }, validationErrors: null, isValid: true },
@@ -137,7 +195,10 @@ describe("EntityRecordUpdateTool", () => {
   });
 
   it("validation failure — record belongs to wrong entity", async () => {
-    mockFindRecordById.mockResolvedValueOnce({ id: "rec-1", connectorEntityId: "ce-other" });
+    mockFindRecordById.mockResolvedValueOnce({
+      id: "rec-1",
+      connectorEntityId: "ce-other",
+    });
 
     const result: any = await exec({
       items: [{ connectorEntityId: "ce-1", entityRecordId: "rec-1", data: {} }],

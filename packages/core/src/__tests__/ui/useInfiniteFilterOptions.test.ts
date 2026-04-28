@@ -17,14 +17,18 @@ const ITEMS = [
 ];
 
 function makeConfig(
-  overrides?: Partial<InfiniteFilterOptionsConfig<MockResponse, { id: string; name: string }>>
+  overrides?: Partial<
+    InfiniteFilterOptionsConfig<MockResponse, { id: string; name: string }>
+  >
 ): InfiniteFilterOptionsConfig<MockResponse, { id: string; name: string }> {
   return {
     url: "/api/items",
-    fetcher: jest.fn<(url: string) => Promise<MockResponse>>().mockResolvedValue({
-      items: ITEMS,
-      total: 3,
-    }),
+    fetcher: jest
+      .fn<(url: string) => Promise<MockResponse>>()
+      .mockResolvedValue({
+        items: ITEMS,
+        total: 3,
+      }),
     getItems: (res) => res.items,
     getTotal: (res) => res.total,
     mapItem: (item) => ({ value: item.id, label: item.name }),
@@ -104,7 +108,11 @@ describe("useInfiniteFilterOptions", () => {
 
     let pageResult: Awaited<ReturnType<typeof result.current.fetchPage>>;
     await act(async () => {
-      pageResult = await result.current.fetchPage({ search: "", page: 0, pageSize: 10 });
+      pageResult = await result.current.fetchPage({
+        search: "",
+        page: 0,
+        pageSize: 10,
+      });
     });
 
     expect(pageResult!.options).toEqual([
@@ -117,16 +125,25 @@ describe("useInfiniteFilterOptions", () => {
 
   it("returns hasMore=true when more pages exist", async () => {
     const config = makeConfig({
-      fetcher: jest.fn<(url: string) => Promise<MockResponse>>().mockResolvedValue({
-        items: [{ id: "1", name: "Alpha" }, { id: "2", name: "Beta" }],
-        total: 5,
-      }),
+      fetcher: jest
+        .fn<(url: string) => Promise<MockResponse>>()
+        .mockResolvedValue({
+          items: [
+            { id: "1", name: "Alpha" },
+            { id: "2", name: "Beta" },
+          ],
+          total: 5,
+        }),
     });
     const { result } = renderHook(() => useInfiniteFilterOptions(config));
 
     let pageResult: Awaited<ReturnType<typeof result.current.fetchPage>>;
     await act(async () => {
-      pageResult = await result.current.fetchPage({ search: "", page: 0, pageSize: 2 });
+      pageResult = await result.current.fetchPage({
+        search: "",
+        page: 0,
+        pageSize: 2,
+      });
     });
 
     expect(pageResult!.hasMore).toBe(true);
@@ -223,9 +240,9 @@ describe("useInfiniteFilterOptions", () => {
 
   it("propagates fetcher errors", async () => {
     const config = makeConfig({
-      fetcher: jest.fn<(url: string) => Promise<MockResponse>>().mockRejectedValue(
-        new Error("Network error")
-      ),
+      fetcher: jest
+        .fn<(url: string) => Promise<MockResponse>>()
+        .mockRejectedValue(new Error("Network error")),
     });
     const { result } = renderHook(() => useInfiniteFilterOptions(config));
 

@@ -1,9 +1,5 @@
 import { jest } from "@jest/globals";
-import {
-  render as rtlRender,
-  screen,
-  fireEvent,
-} from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
 import { ThemeProvider } from "@portalai/core/ui";
 import {
   createRootRoute,
@@ -181,6 +177,9 @@ describe("HttpError Component", () => {
   it("should call router.navigate to home when Go Home is clicked", () => {
     renderWithTheme(<HttpError statusCode={404} title="Not Found" />);
     fireEvent.click(screen.getByRole("button", { name: /go home/i }));
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/", reloadDocument: true });
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/",
+      reloadDocument: true,
+    });
   });
 });

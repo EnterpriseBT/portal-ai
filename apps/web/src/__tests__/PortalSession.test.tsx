@@ -1,6 +1,9 @@
 import { jest } from "@jest/globals";
 import type { UseQueryResult } from "@tanstack/react-query";
-import type { PortalGetResponsePayload, PortalMessageResponse } from "@portalai/core/contracts";
+import type {
+  PortalGetResponsePayload,
+  PortalMessageResponse,
+} from "@portalai/core/contracts";
 import type { ApiError } from "../utils";
 
 // ── Mocks ────────────────────────────────────────────────────────────
@@ -39,7 +42,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
 
 jest.unstable_mockModule("@auth0/auth0-react", () => ({
   useAuth0: () => ({
-    getAccessTokenSilently: jest.fn<() => Promise<string>>().mockResolvedValue("test-token"),
+    getAccessTokenSilently: jest
+      .fn<() => Promise<string>>()
+      .mockResolvedValue("test-token"),
   }),
 }));
 
@@ -57,12 +62,10 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 // ── Imports ──────────────────────────────────────────────────────────
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { PortalSessionUI } = await import(
-  "../components/PortalSession.component"
-);
-const { CHAT_INPUT_PLACEHOLDER } = await import(
-  "../components/ChatWindow.component"
-);
+const { PortalSessionUI } =
+  await import("../components/PortalSession.component");
+const { CHAT_INPUT_PLACEHOLDER } =
+  await import("../components/ChatWindow.component");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -123,7 +126,9 @@ describe("PortalSessionUI", () => {
 
   it("renders ChatWindowUI input", () => {
     render(<PortalSessionUI {...defaultProps} />);
-    expect(screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER)
+    ).toBeInTheDocument();
   });
 
   it("renders the empty state when there are no messages or streaming content", () => {
@@ -133,10 +138,16 @@ describe("PortalSessionUI", () => {
 
   it("hides the empty state once messages are present", () => {
     const messages = [
-      makeMessage({ id: "msg-1", role: "user", blocks: [{ type: "text", content: "Hello" }] }),
+      makeMessage({
+        id: "msg-1",
+        role: "user",
+        blocks: [{ type: "text", content: "Hello" }],
+      }),
     ];
     render(<PortalSessionUI {...defaultProps} messages={messages} />);
-    expect(screen.queryByTestId("portal-session-empty")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-session-empty")
+    ).not.toBeInTheDocument();
   });
 
   it("hides the empty state while streaming blocks are rendering", () => {
@@ -146,13 +157,23 @@ describe("PortalSessionUI", () => {
         streamingBlocks={[{ type: "text", content: "..." }]}
       />
     );
-    expect(screen.queryByTestId("portal-session-empty")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("portal-session-empty")
+    ).not.toBeInTheDocument();
   });
 
   it("renders a list of messages", () => {
     const messages = [
-      makeMessage({ id: "msg-1", role: "user", blocks: [{ type: "text", content: "Hello" }] }),
-      makeMessage({ id: "msg-2", role: "assistant", blocks: [{ type: "text", content: "Hi there" }] }),
+      makeMessage({
+        id: "msg-1",
+        role: "user",
+        blocks: [{ type: "text", content: "Hello" }],
+      }),
+      makeMessage({
+        id: "msg-2",
+        role: "assistant",
+        blocks: [{ type: "text", content: "Hi there" }],
+      }),
     ];
     render(<PortalSessionUI {...defaultProps} messages={messages} />);
     expect(screen.getByText("Hello")).toBeInTheDocument();
@@ -183,10 +204,7 @@ describe("PortalSessionUI", () => {
       },
     };
     render(
-      <PortalSessionUI
-        {...defaultProps}
-        streamingBlocks={[dataTableBlock]}
-      />
+      <PortalSessionUI {...defaultProps} streamingBlocks={[dataTableBlock]} />
     );
     expect(screen.getByText("id")).toBeInTheDocument();
     expect(screen.getByText("value")).toBeInTheDocument();
@@ -198,23 +216,13 @@ describe("PortalSessionUI", () => {
       type: "vega",
       content: { data: [{ values: [] }], marks: [] },
     };
-    render(
-      <PortalSessionUI
-        {...defaultProps}
-        streamingBlocks={[vegaBlock]}
-      />
-    );
+    render(<PortalSessionUI {...defaultProps} streamingBlocks={[vegaBlock]} />);
     expect(await screen.findByTestId("vega-chart")).toBeInTheDocument();
   });
 
   it("calls onSubmit with message when submit button clicked", async () => {
     const onSubmit = jest.fn();
-    render(
-      <PortalSessionUI
-        {...defaultProps}
-        onSubmit={onSubmit}
-      />
-    );
+    render(<PortalSessionUI {...defaultProps} onSubmit={onSubmit} />);
     const textarea = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);
     fireEvent.change(textarea, { target: { value: "test message" } });
     fireEvent.click(screen.getByRole("button", { name: /submit/i }));
@@ -230,11 +238,16 @@ describe("PortalSession (container) via PortalSessionUI", () => {
 
   it("loads history on mount — messages from query appear", async () => {
     const messages = [
-      makeMessage({ id: "msg-1", role: "user", blocks: [{ type: "text", content: "First message" }] }),
+      makeMessage({
+        id: "msg-1",
+        role: "user",
+        blocks: [{ type: "text", content: "First message" }],
+      }),
     ];
     mockGetPortal.mockReturnValue(makeQueryResult(messages));
 
-    const { PortalSession } = await import("../components/PortalSession.component");
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
     render(<PortalSession portalId="portal-1" />);
 
     await waitFor(() => {
@@ -246,7 +259,8 @@ describe("PortalSession (container) via PortalSessionUI", () => {
     mockGetPortal.mockReturnValue(makeQueryResult([]));
     mockSendMessage.mockResolvedValue(undefined);
 
-    const { PortalSession } = await import("../components/PortalSession.component");
+    const { PortalSession } =
+      await import("../components/PortalSession.component");
     render(<PortalSession portalId="portal-1" />);
 
     const input = screen.getByPlaceholderText(CHAT_INPUT_PLACEHOLDER);

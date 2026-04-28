@@ -2,7 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import MuiAutocomplete from "@mui/material/Autocomplete";
 import TextField from "@mui/material/TextField";
 
-import type { SelectOption, SelectBaseProps, FetchPageParams, FetchPageResult } from "./types.js";
+import type {
+  SelectOption,
+  SelectBaseProps,
+  FetchPageParams,
+  FetchPageResult,
+} from "./types.js";
 import {
   InfiniteListboxComponent,
   SentinelRefContext,
@@ -18,7 +23,9 @@ export interface MultiInfiniteScrollSelectProps extends SelectBaseProps {
   debounceMs?: number;
 }
 
-export const MultiInfiniteScrollSelect: React.FC<MultiInfiniteScrollSelectProps> = ({
+export const MultiInfiniteScrollSelect: React.FC<
+  MultiInfiniteScrollSelectProps
+> = ({
   fetchPage,
   pageSize = 20,
   debounceMs = 300,
@@ -65,7 +72,9 @@ export const MultiInfiniteScrollSelect: React.FC<MultiInfiniteScrollSelectProps>
       try {
         const result = await fetchPage({ search, page: pg, pageSize });
         hasMoreRef.current = result.hasMore;
-        setOptions((prev) => (reset ? result.options : [...prev, ...result.options]));
+        setOptions((prev) =>
+          reset ? result.options : [...prev, ...result.options]
+        );
         pageRef.current = pg;
       } finally {
         loadingRef.current = false;
@@ -112,7 +121,11 @@ export const MultiInfiniteScrollSelect: React.FC<MultiInfiniteScrollSelectProps>
       observerRef.current = new IntersectionObserver(
         (entries) => {
           const entry = entries[0];
-          if (entry?.isIntersecting && hasMoreRef.current && !loadingRef.current) {
+          if (
+            entry?.isIntersecting &&
+            hasMoreRef.current &&
+            !loadingRef.current
+          ) {
             const nextPage = pageRef.current + 1;
             doFetch(searchRef.current, nextPage, false);
           }

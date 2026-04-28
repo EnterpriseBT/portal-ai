@@ -62,16 +62,19 @@ function computeChecksum(data: Record<string, unknown>): string {
  */
 export async function importRows(
   rows: AsyncIterable<Record<string, string>>,
-  params: ImportRowsParams,
+  params: ImportRowsParams
 ): Promise<ImportResult> {
   const { connectorEntityId, organizationId, userId } = params;
 
-  logger.info({ connectorEntityId }, "Starting record import from async iterable");
+  logger.info(
+    { connectorEntityId },
+    "Starting record import from async iterable"
+  );
 
   // 1. Fetch field mappings once
   const mappings = (await DbService.repository.fieldMappings.findMany(
     eq(fieldMappings.connectorEntityId, connectorEntityId),
-    { include: ["columnDefinition"] },
+    { include: ["columnDefinition"] }
   )) as any[];
 
   const factory = new EntityRecordModelFactory();
@@ -93,13 +96,12 @@ export async function importRows(
     const sourceIds = pending.map((p) => p.sourceId);
     const existing = await DbService.repository.entityRecords.findBySourceIds(
       connectorEntityId,
-      sourceIds,
+      sourceIds
     );
     const existingMap = new Map(
-      (existing as Array<{ sourceId: string; checksum: string; id: string }>).map((r) => [
-        r.sourceId,
-        r,
-      ]),
+      (
+        existing as Array<{ sourceId: string; checksum: string; id: string }>
+      ).map((r) => [r.sourceId, r])
     );
 
     const toUpsert: unknown[] = [];
@@ -133,7 +135,9 @@ export async function importRows(
     }
 
     if (toUpsert.length > 0) {
-      await DbService.repository.entityRecords.upsertManyBySourceId(toUpsert as any);
+      await DbService.repository.entityRecords.upsertManyBySourceId(
+        toUpsert as any
+      );
     }
 
     totalProcessed += pending.length;
@@ -169,7 +173,7 @@ export async function importRows(
       invalid++;
       logger.warn(
         { sourceId, error: err instanceof Error ? err.message : String(err) },
-        "Skipping row due to unexpected processing error",
+        "Skipping row due to unexpected processing error"
       );
     }
   }
@@ -180,13 +184,20 @@ export async function importRows(
   if (invalid > 0) {
     logger.warn(
       { connectorEntityId, invalid, total: totalProcessed },
-      "Record import completed with validation errors",
+      "Record import completed with validation errors"
     );
   }
 
   logger.info(
-    { connectorEntityId, created, updated, unchanged, invalid, total: totalProcessed },
-    "Record import completed",
+    {
+      connectorEntityId,
+      created,
+      updated,
+      unchanged,
+      invalid,
+      total: totalProcessed,
+    },
+    "Record import completed"
   );
 
   return { created, updated, unchanged, invalid };

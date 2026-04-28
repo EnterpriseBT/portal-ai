@@ -5,14 +5,26 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // ---------------------------------------------------------------------------
 
 const mockFindMappingById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockFindMany = jest.fn<(...args: unknown[]) => Promise<unknown[]>>().mockResolvedValue([]);
+const mockFindMany = jest
+  .fn<(...args: unknown[]) => Promise<unknown[]>>()
+  .mockResolvedValue([]);
 const mockCountByEntityId = jest.fn<(...args: unknown[]) => Promise<number>>();
-const mockSoftDeleteMapping = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
-const mockUpdate = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
-const mockFindCounterpart = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(null);
-const mockSoftDeleteGroupMembers = jest.fn<(...args: unknown[]) => Promise<number>>().mockResolvedValue(0);
-const mockConnectorEntitiesFindById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockTransaction = jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
+const mockSoftDeleteMapping = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue(undefined);
+const mockUpdate = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue(undefined);
+const mockFindCounterpart = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue(null);
+const mockSoftDeleteGroupMembers = jest
+  .fn<(...args: unknown[]) => Promise<number>>()
+  .mockResolvedValue(0);
+const mockConnectorEntitiesFindById =
+  jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockTransaction =
+  jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -48,9 +60,8 @@ jest.unstable_mockModule("../../db/schema/index.js", () => ({
   fieldMappings: { id: "field_mappings.id" },
 }));
 
-const { FieldMappingValidationService } = await import(
-  "../../services/field-mapping-validation.service.js"
-);
+const { FieldMappingValidationService } =
+  await import("../../services/field-mapping-validation.service.js");
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -67,26 +78,44 @@ beforeEach(() => {
 
 describe("FieldMappingValidationService.validateNormalizedKey", () => {
   it("accepts valid normalizedKey formats", () => {
-    expect(() => FieldMappingValidationService.validateNormalizedKey("email")).not.toThrow();
-    expect(() => FieldMappingValidationService.validateNormalizedKey("first_name")).not.toThrow();
-    expect(() => FieldMappingValidationService.validateNormalizedKey("field123")).not.toThrow();
-    expect(() => FieldMappingValidationService.validateNormalizedKey("a")).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("email")
+    ).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("first_name")
+    ).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("field123")
+    ).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("a")
+    ).not.toThrow();
   });
 
   it("rejects normalizedKey that does not match /^[a-z][a-z0-9_]*$/", () => {
-    expect(() => FieldMappingValidationService.validateNormalizedKey("Invalid")).toThrow(
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("Invalid")
+    ).toThrow(
       expect.objectContaining({ code: "FIELD_MAPPING_INVALID_NORMALIZED_KEY" })
     );
-    expect(() => FieldMappingValidationService.validateNormalizedKey("123abc")).toThrow(
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("123abc")
+    ).toThrow(
       expect.objectContaining({ code: "FIELD_MAPPING_INVALID_NORMALIZED_KEY" })
     );
-    expect(() => FieldMappingValidationService.validateNormalizedKey("_leading")).toThrow(
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("_leading")
+    ).toThrow(
       expect.objectContaining({ code: "FIELD_MAPPING_INVALID_NORMALIZED_KEY" })
     );
-    expect(() => FieldMappingValidationService.validateNormalizedKey("has space")).toThrow(
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("has space")
+    ).toThrow(
       expect.objectContaining({ code: "FIELD_MAPPING_INVALID_NORMALIZED_KEY" })
     );
-    expect(() => FieldMappingValidationService.validateNormalizedKey("")).toThrow(
+    expect(() =>
+      FieldMappingValidationService.validateNormalizedKey("")
+    ).toThrow(
       expect.objectContaining({ code: "FIELD_MAPPING_INVALID_NORMALIZED_KEY" })
     );
   });
@@ -101,15 +130,23 @@ describe("FieldMappingValidationService.validateNormalizedKeyUniqueness", () => 
     mockFindMany.mockResolvedValue([]);
 
     await expect(
-      FieldMappingValidationService.validateNormalizedKeyUniqueness("ce-1", "email")
+      FieldMappingValidationService.validateNormalizedKeyUniqueness(
+        "ce-1",
+        "email"
+      )
     ).resolves.toBeUndefined();
   });
 
   it("throws FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY when duplicate exists", async () => {
-    mockFindMany.mockResolvedValue([{ id: "fm-other", normalizedKey: "email" }]);
+    mockFindMany.mockResolvedValue([
+      { id: "fm-other", normalizedKey: "email" },
+    ]);
 
     await expect(
-      FieldMappingValidationService.validateNormalizedKeyUniqueness("ce-1", "email")
+      FieldMappingValidationService.validateNormalizedKeyUniqueness(
+        "ce-1",
+        "email"
+      )
     ).rejects.toMatchObject({ code: "FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY" });
   });
 
@@ -117,7 +154,11 @@ describe("FieldMappingValidationService.validateNormalizedKeyUniqueness", () => 
     mockFindMany.mockResolvedValue([{ id: "fm-self", normalizedKey: "email" }]);
 
     await expect(
-      FieldMappingValidationService.validateNormalizedKeyUniqueness("ce-1", "email", "fm-self")
+      FieldMappingValidationService.validateNormalizedKeyUniqueness(
+        "ce-1",
+        "email",
+        "fm-self"
+      )
     ).resolves.toBeUndefined();
   });
 
@@ -127,7 +168,11 @@ describe("FieldMappingValidationService.validateNormalizedKeyUniqueness", () => 
     ]);
 
     await expect(
-      FieldMappingValidationService.validateNormalizedKeyUniqueness("ce-1", "email", "fm-self")
+      FieldMappingValidationService.validateNormalizedKeyUniqueness(
+        "ce-1",
+        "email",
+        "fm-self"
+      )
     ).rejects.toMatchObject({ code: "FIELD_MAPPING_DUPLICATE_NORMALIZED_KEY" });
   });
 });
@@ -138,15 +183,21 @@ describe("FieldMappingValidationService.validateNormalizedKeyUniqueness", () => 
 
 describe("FieldMappingValidationService.validateEnumValues", () => {
   it("accepts null enumValues", () => {
-    expect(() => FieldMappingValidationService.validateEnumValues(null)).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateEnumValues(null)
+    ).not.toThrow();
   });
 
   it("accepts undefined enumValues", () => {
-    expect(() => FieldMappingValidationService.validateEnumValues(undefined)).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateEnumValues(undefined)
+    ).not.toThrow();
   });
 
   it("accepts valid array of non-empty strings", () => {
-    expect(() => FieldMappingValidationService.validateEnumValues(["a", "b", "c"])).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateEnumValues(["a", "b", "c"])
+    ).not.toThrow();
   });
 
   it("rejects empty array", () => {
@@ -156,13 +207,17 @@ describe("FieldMappingValidationService.validateEnumValues", () => {
   });
 
   it("rejects array with empty strings", () => {
-    expect(() => FieldMappingValidationService.validateEnumValues(["valid", ""])).toThrow(
+    expect(() =>
+      FieldMappingValidationService.validateEnumValues(["valid", ""])
+    ).toThrow(
       expect.objectContaining({ code: "FIELD_MAPPING_INVALID_ENUM_VALUES" })
     );
   });
 
   it("rejects array with whitespace-only strings", () => {
-    expect(() => FieldMappingValidationService.validateEnumValues(["valid", "   "])).toThrow(
+    expect(() =>
+      FieldMappingValidationService.validateEnumValues(["valid", "   "])
+    ).toThrow(
       expect.objectContaining({ code: "FIELD_MAPPING_INVALID_ENUM_VALUES" })
     );
   });
@@ -174,30 +229,50 @@ describe("FieldMappingValidationService.validateEnumValues", () => {
 
 describe("FieldMappingValidationService.validateFormat", () => {
   it("accepts null format for any type", () => {
-    expect(() => FieldMappingValidationService.validateFormat(null, "boolean")).not.toThrow();
-    expect(() => FieldMappingValidationService.validateFormat(null, "string")).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat(null, "boolean")
+    ).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat(null, "string")
+    ).not.toThrow();
   });
 
   it("accepts undefined format for any type", () => {
-    expect(() => FieldMappingValidationService.validateFormat(undefined, "boolean")).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat(undefined, "boolean")
+    ).not.toThrow();
   });
 
   it("accepts valid boolean format (trueLabel/falseLabel)", () => {
-    expect(() => FieldMappingValidationService.validateFormat("Yes/No", "boolean")).not.toThrow();
-    expect(() => FieldMappingValidationService.validateFormat("true/false", "boolean")).not.toThrow();
-    expect(() => FieldMappingValidationService.validateFormat("1/0", "boolean")).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat("Yes/No", "boolean")
+    ).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat("true/false", "boolean")
+    ).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat("1/0", "boolean")
+    ).not.toThrow();
   });
 
   it("rejects invalid boolean format (no separator)", () => {
-    expect(() => FieldMappingValidationService.validateFormat("yes", "boolean")).toThrow(
+    expect(() =>
+      FieldMappingValidationService.validateFormat("yes", "boolean")
+    ).toThrow(
       expect.objectContaining({ code: "FIELD_MAPPING_INVALID_FORMAT" })
     );
   });
 
   it("allows any format for non-boolean types", () => {
-    expect(() => FieldMappingValidationService.validateFormat("YYYY-MM-DD", "date")).not.toThrow();
-    expect(() => FieldMappingValidationService.validateFormat("email", "string")).not.toThrow();
-    expect(() => FieldMappingValidationService.validateFormat("anything", "number")).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat("YYYY-MM-DD", "date")
+    ).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat("email", "string")
+    ).not.toThrow();
+    expect(() =>
+      FieldMappingValidationService.validateFormat("anything", "number")
+    ).not.toThrow();
   });
 });
 
@@ -214,7 +289,7 @@ describe("FieldMappingValidationService.validateDelete", () => {
     mockCountByEntityId.mockResolvedValue(0);
 
     await expect(
-      FieldMappingValidationService.validateDelete("fm-1"),
+      FieldMappingValidationService.validateDelete("fm-1")
     ).resolves.toBeUndefined();
   });
 
@@ -226,7 +301,7 @@ describe("FieldMappingValidationService.validateDelete", () => {
     mockCountByEntityId.mockResolvedValue(10);
 
     await expect(
-      FieldMappingValidationService.validateDelete("fm-1"),
+      FieldMappingValidationService.validateDelete("fm-1")
     ).rejects.toMatchObject({
       code: "FIELD_MAPPING_DELETE_HAS_RECORDS",
     });
@@ -250,14 +325,14 @@ describe("FieldMappingValidationService.executeDelete", () => {
 
     const result = await FieldMappingValidationService.executeDelete(
       "fm-1",
-      "user-1",
+      "user-1"
     );
 
     expect(result.cascadedEntityGroupMembers).toBe(3);
     expect(mockSoftDeleteMapping).toHaveBeenCalledWith(
       "fm-1",
       "user-1",
-      "tx-mock",
+      "tx-mock"
     );
   });
 
@@ -269,17 +344,24 @@ describe("FieldMappingValidationService.executeDelete", () => {
       refEntityKey: "tags",
       refNormalizedKey: "contact_id",
     });
-    mockConnectorEntitiesFindById.mockResolvedValue({ id: "ce-1", key: "contacts" });
+    mockConnectorEntitiesFindById.mockResolvedValue({
+      id: "ce-1",
+      key: "contacts",
+    });
     mockFindCounterpart.mockResolvedValue({ id: "fm-2" });
 
     const result = await FieldMappingValidationService.executeDelete(
       "fm-1",
-      "user-1",
+      "user-1"
     );
 
     expect(result.counterpartCleared).toBe(true);
     expect(mockFindCounterpart).toHaveBeenCalledWith(
-      "org-1", "contacts", "tags", "contact_id", "tx-mock",
+      "org-1",
+      "contacts",
+      "tags",
+      "contact_id",
+      "tx-mock"
     );
     expect(mockUpdate).toHaveBeenCalledWith(
       "fm-2",
@@ -287,7 +369,7 @@ describe("FieldMappingValidationService.executeDelete", () => {
         refNormalizedKey: null,
         refEntityKey: null,
       }),
-      "tx-mock",
+      "tx-mock"
     );
   });
 
@@ -302,7 +384,7 @@ describe("FieldMappingValidationService.executeDelete", () => {
 
     const result = await FieldMappingValidationService.executeDelete(
       "fm-1",
-      "user-1",
+      "user-1"
     );
 
     expect(result.counterpartCleared).toBe(false);
@@ -318,12 +400,15 @@ describe("FieldMappingValidationService.executeDelete", () => {
       refEntityKey: "tags",
       refNormalizedKey: "contact_id",
     });
-    mockConnectorEntitiesFindById.mockResolvedValue({ id: "ce-1", key: "contacts" });
+    mockConnectorEntitiesFindById.mockResolvedValue({
+      id: "ce-1",
+      key: "contacts",
+    });
     mockFindCounterpart.mockResolvedValue(null);
 
     const result = await FieldMappingValidationService.executeDelete(
       "fm-1",
-      "user-1",
+      "user-1"
     );
 
     expect(result.counterpartCleared).toBe(false);
@@ -342,13 +427,17 @@ describe("FieldMappingValidationService.executeDelete", () => {
 
     const externalTx = "external-tx" as unknown;
 
-    await FieldMappingValidationService.executeDelete("fm-1", "user-1", externalTx as never);
+    await FieldMappingValidationService.executeDelete(
+      "fm-1",
+      "user-1",
+      externalTx as never
+    );
 
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockSoftDeleteMapping).toHaveBeenCalledWith(
       "fm-1",
       "user-1",
-      "external-tx",
+      "external-tx"
     );
   });
 });

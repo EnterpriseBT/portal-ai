@@ -1,11 +1,5 @@
 /* global AbortController */
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
@@ -17,11 +11,16 @@ import {
 } from "../utils/application.util.js";
 
 // We import tools directly — they use the real DbService/repos under the hood
-const { EntityRecordCreateTool } = await import("../../../tools/entity-record-create.tool.js");
-const { EntityRecordUpdateTool } = await import("../../../tools/entity-record-update.tool.js");
-const { EntityRecordDeleteTool } = await import("../../../tools/entity-record-delete.tool.js");
-const { ConnectorEntityDeleteTool } = await import("../../../tools/connector-entity-delete.tool.js");
-const { FieldMappingDeleteTool } = await import("../../../tools/field-mapping-delete.tool.js");
+const { EntityRecordCreateTool } =
+  await import("../../../tools/entity-record-create.tool.js");
+const { EntityRecordUpdateTool } =
+  await import("../../../tools/entity-record-update.tool.js");
+const { EntityRecordDeleteTool } =
+  await import("../../../tools/entity-record-delete.tool.js");
+const { ConnectorEntityDeleteTool } =
+  await import("../../../tools/connector-entity-delete.tool.js");
+const { FieldMappingDeleteTool } =
+  await import("../../../tools/field-mapping-delete.tool.js");
 
 const {
   connectorDefinitions,
@@ -31,14 +30,16 @@ const {
   fieldMappings,
   entityRecords,
   stations,
-  stationInstances
+  stationInstances,
 } = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
 const now = Date.now();
 
-function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>) {
+function createConnectorDefinition(
+  overrides?: Partial<Record<string, unknown>>
+) {
   return {
     id: generateId(),
     slug: `slug-${generateId()}`,
@@ -184,7 +185,11 @@ function createStationInstance(stationId: string, connectorInstanceId: string) {
   };
 }
 
-const toolOpts = { toolCallId: "t", messages: [] as never[], abortSignal: new AbortController().signal };
+const toolOpts = {
+  toolCallId: "t",
+  messages: [] as never[],
+  abortSignal: new AbortController().signal,
+};
 
 interface SeedResult {
   userId: string;
@@ -196,16 +201,26 @@ interface SeedResult {
   fieldMappingId: string;
 }
 
-async function seed(db: ReturnType<typeof drizzle>, overrides?: {
-  definitionOverrides?: Partial<Record<string, unknown>>;
-  instanceOverrides?: Partial<Record<string, unknown>>;
-}): Promise<SeedResult> {
-  const { userId, organizationId } = await seedUserAndOrg(db, "auth0|tool-test");
+async function seed(
+  db: ReturnType<typeof drizzle>,
+  overrides?: {
+    definitionOverrides?: Partial<Record<string, unknown>>;
+    instanceOverrides?: Partial<Record<string, unknown>>;
+  }
+): Promise<SeedResult> {
+  const { userId, organizationId } = await seedUserAndOrg(
+    db,
+    "auth0|tool-test"
+  );
 
   const def = createConnectorDefinition(overrides?.definitionOverrides);
   await db.insert(connectorDefinitions).values(def as never);
 
-  const inst = createConnectorInstance(def.id, organizationId, overrides?.instanceOverrides);
+  const inst = createConnectorInstance(
+    def.id,
+    organizationId,
+    overrides?.instanceOverrides
+  );
   await db.insert(connectorInstances).values(inst as never);
 
   const station = createStation(organizationId);
@@ -220,7 +235,12 @@ async function seed(db: ReturnType<typeof drizzle>, overrides?: {
   const colDef = createColumnDef(organizationId, "name", "string");
   await db.insert(columnDefinitions).values(colDef as never);
 
-  const mapping = createFieldMapping(organizationId, entity.id, colDef.id, "Name");
+  const mapping = createFieldMapping(
+    organizationId,
+    entity.id,
+    colDef.id,
+    "Name"
+  );
   await db.insert(fieldMappings).values(mapping as never);
 
   return {
@@ -256,18 +276,29 @@ describe("Entity management tool integration", () => {
   describe("entity_record_create", () => {
     it("creates record in DB with origin portal and auto-generated normalizedData", async () => {
       const s = await seed(db);
-      const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
+      const tool = new EntityRecordCreateTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
 
-      const result = await tool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Jane" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const result = (await tool.execute!(
+        {
+          items: [
+            { connectorEntityId: s.connectorEntityId, data: { Name: "Jane" } },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
       const recordId = (result.items as any[])[0].entityId as string;
 
       // Verify in DB
-      const rows = await db.select().from(entityRecords).where(eq(entityRecords.id, recordId));
+      const rows = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, recordId));
       expect(rows).toHaveLength(1);
       expect(rows[0].origin).toBe("portal");
       expect(rows[0].normalizedData).toEqual({ name: "Jane" });
@@ -277,17 +308,27 @@ describe("Entity management tool integration", () => {
       const s = await seed(db, {
         instanceOverrides: { enabledCapabilityFlags: { write: false } },
       });
-      const tool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
+      const tool = new EntityRecordCreateTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
 
-      const result = await tool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "X" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const result = (await tool.execute!(
+        {
+          items: [
+            { connectorEntityId: s.connectorEntityId, data: { Name: "X" } },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.error).toBeDefined();
 
       // No record created
-      const rows = await db.select().from(entityRecords)
+      const rows = await db
+        .select()
+        .from(entityRecords)
         .where(eq(entityRecords.connectorEntityId, s.connectorEntityId));
       expect(rows).toHaveLength(0);
     });
@@ -295,19 +336,30 @@ describe("Entity management tool integration", () => {
     it("rejects when entity not attached to station", async () => {
       const s = await seed(db);
       // Create another entity NOT attached to this station
-      const otherEntity = createConnEntity(s.organizationId, s.connectorInstanceId);
+      const otherEntity = createConnEntity(
+        s.organizationId,
+        s.connectorInstanceId
+      );
       await db.insert(connectorEntities).values(otherEntity as never);
 
       // Create a second station that does NOT have the instance
       const otherStation = createStation(s.organizationId);
       await db.insert(stations).values(otherStation as never);
 
-      const tool = new EntityRecordCreateTool().build(otherStation.id, s.organizationId, s.userId);
+      const tool = new EntityRecordCreateTool().build(
+        otherStation.id,
+        s.organizationId,
+        s.userId
+      );
 
-      const result = await tool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "X" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const result = (await tool.execute!(
+        {
+          items: [
+            { connectorEntityId: s.connectorEntityId, data: { Name: "X" } },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.error).toBeDefined();
     });
@@ -319,23 +371,45 @@ describe("Entity management tool integration", () => {
     it("updates record data and normalizedData in DB", async () => {
       const s = await seed(db);
       // Create a record first
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
-      const created = await createTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const createTool = new EntityRecordCreateTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
+      const created = (await createTool.execute!(
+        {
+          items: [
+            { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
       const recordId = (created.items as any[])[0].entityId as string;
 
       // Now update
-      const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
-      const result = await updateTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, entityRecordId: recordId, data: { Name: "Bob" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const updateTool = new EntityRecordUpdateTool().build(
+        s.stationId,
+        s.userId
+      );
+      const result = (await updateTool.execute!(
+        {
+          items: [
+            {
+              connectorEntityId: s.connectorEntityId,
+              entityRecordId: recordId,
+              data: { Name: "Bob" },
+            },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
 
-      const rows = await db.select().from(entityRecords).where(eq(entityRecords.id, recordId));
+      const rows = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, recordId));
       expect(rows[0].data).toEqual({ Name: "Bob" });
       expect(rows[0].normalizedData).toEqual({ name: "Bob" });
     });
@@ -346,50 +420,105 @@ describe("Entity management tool integration", () => {
       // Add a second field mapping (Email → email) so the record has two fields
       const emailColDef = createColumnDef(s.organizationId, "email", "string");
       await db.insert(columnDefinitions).values(emailColDef as never);
-      const emailMapping = createFieldMapping(s.organizationId, s.connectorEntityId, emailColDef.id, "Email");
+      const emailMapping = createFieldMapping(
+        s.organizationId,
+        s.connectorEntityId,
+        emailColDef.id,
+        "Email"
+      );
       await db.insert(fieldMappings).values(emailMapping as never);
 
       // Create a record with both fields populated
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
-      const created = await createTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice", Email: "alice@example.com" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const createTool = new EntityRecordCreateTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
+      const created = (await createTool.execute!(
+        {
+          items: [
+            {
+              connectorEntityId: s.connectorEntityId,
+              data: { Name: "Alice", Email: "alice@example.com" },
+            },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
       const recordId = (created.items as any[])[0].entityId as string;
 
       // Update ONLY `Name` — `Email` must not be cleared
-      const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
-      const result = await updateTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, entityRecordId: recordId, data: { Name: "Bob" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const updateTool = new EntityRecordUpdateTool().build(
+        s.stationId,
+        s.userId
+      );
+      const result = (await updateTool.execute!(
+        {
+          items: [
+            {
+              connectorEntityId: s.connectorEntityId,
+              entityRecordId: recordId,
+              data: { Name: "Bob" },
+            },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
 
-      const rows = await db.select().from(entityRecords).where(eq(entityRecords.id, recordId));
+      const rows = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, recordId));
       // Raw `data` blob must contain both original Email and updated Name
       expect(rows[0].data).toEqual({ Name: "Bob", Email: "alice@example.com" });
       // Normalized data must retain both fields — email must not be null
-      expect(rows[0].normalizedData).toEqual({ name: "Bob", email: "alice@example.com" });
+      expect(rows[0].normalizedData).toEqual({
+        name: "Bob",
+        email: "alice@example.com",
+      });
     });
 
     it("rejects update on record from different entity", async () => {
       const s = await seed(db);
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
-      const created = await createTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const createTool = new EntityRecordCreateTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
+      const created = (await createTool.execute!(
+        {
+          items: [
+            { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
 
       // Create a second entity on the same instance
-      const otherEntity = createConnEntity(s.organizationId, s.connectorInstanceId);
+      const otherEntity = createConnEntity(
+        s.organizationId,
+        s.connectorInstanceId
+      );
       await db.insert(connectorEntities).values(otherEntity as never);
 
-      const updateTool = new EntityRecordUpdateTool().build(s.stationId, s.userId);
-      const result = await updateTool.execute!(
-        { items: [{ connectorEntityId: otherEntity.id, entityRecordId: (created.items as any[])[0].entityId as string, data: { Name: "X" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const updateTool = new EntityRecordUpdateTool().build(
+        s.stationId,
+        s.userId
+      );
+      const result = (await updateTool.execute!(
+        {
+          items: [
+            {
+              connectorEntityId: otherEntity.id,
+              entityRecordId: (created.items as any[])[0].entityId as string,
+              data: { Name: "X" },
+            },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.error).toBeDefined();
     });
@@ -400,23 +529,44 @@ describe("Entity management tool integration", () => {
   describe("entity_record_delete", () => {
     it("soft-deletes record — deleted timestamp set, invisible to queries", async () => {
       const s = await seed(db);
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
-      const created = await createTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const createTool = new EntityRecordCreateTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
+      const created = (await createTool.execute!(
+        {
+          items: [
+            { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
       const recordId = (created.items as any[])[0].entityId as string;
 
-      const deleteTool = new EntityRecordDeleteTool().build(s.stationId, s.userId);
-      const result = await deleteTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, entityRecordId: recordId }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+      const deleteTool = new EntityRecordDeleteTool().build(
+        s.stationId,
+        s.userId
+      );
+      const result = (await deleteTool.execute!(
+        {
+          items: [
+            {
+              connectorEntityId: s.connectorEntityId,
+              entityRecordId: recordId,
+            },
+          ],
+        },
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
 
       // Verify deleted timestamp is set (raw query to bypass soft-delete filter)
-      const rows = await db.select().from(entityRecords).where(eq(entityRecords.id, recordId));
+      const rows = await db
+        .select()
+        .from(entityRecords)
+        .where(eq(entityRecords.id, recordId));
       // soft-delete aware findMany won't return it, but raw select will
       // We need to check the row has a deleted timestamp
       expect(rows.length).toBeLessThanOrEqual(1);
@@ -432,17 +582,25 @@ describe("Entity management tool integration", () => {
     it("cascade deletes all dependents in transaction", async () => {
       const s = await seed(db);
       // Create a record so cascades have something to delete
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
+      const createTool = new EntityRecordCreateTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
       await createTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
-        toolOpts,
+        {
+          items: [
+            { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+          ],
+        },
+        toolOpts
       );
 
       const tool = new ConnectorEntityDeleteTool().build(s.stationId, s.userId);
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         { items: [{ connectorEntityId: s.connectorEntityId }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
       const firstItem = (result.items as any[])[0];
@@ -457,29 +615,38 @@ describe("Entity management tool integration", () => {
       await db.insert(connectorEntities).values(entity2 as never);
 
       // Get the first entity's key
-      const [firstEntity] = await db.select().from(connectorEntities)
+      const [firstEntity] = await db
+        .select()
+        .from(connectorEntities)
         .where(eq(connectorEntities.id, s.connectorEntityId));
 
       const refColDef = createColumnDef(s.organizationId, "ref_col", "string");
       await db.insert(columnDefinitions).values(refColDef as never);
 
       const refMapping = {
-        ...createFieldMapping(s.organizationId, entity2.id, refColDef.id, "ref_field"),
+        ...createFieldMapping(
+          s.organizationId,
+          entity2.id,
+          refColDef.id,
+          "ref_field"
+        ),
         refEntityKey: firstEntity.key,
         refNormalizedKey: "name",
       };
       await db.insert(fieldMappings).values(refMapping as never);
 
       const tool = new ConnectorEntityDeleteTool().build(s.stationId, s.userId);
-      const result = await tool.execute!(
+      const result = (await tool.execute!(
         { items: [{ connectorEntityId: s.connectorEntityId }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.error).toBeDefined();
 
       // Entity should still exist
-      const [entity] = await db.select().from(connectorEntities)
+      const [entity] = await db
+        .select()
+        .from(connectorEntities)
         .where(eq(connectorEntities.id, s.connectorEntityId));
       expect(entity).toBeDefined();
       expect(entity.deleted).toBeNull();
@@ -492,34 +659,51 @@ describe("Entity management tool integration", () => {
     it("blocks when entity has records — error with record count", async () => {
       const s = await seed(db);
       // Create a record so the entity has records
-      const createTool = new EntityRecordCreateTool().build(s.stationId, s.organizationId, s.userId);
+      const createTool = new EntityRecordCreateTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
       await createTool.execute!(
-        { items: [{ connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } }] },
-        toolOpts,
+        {
+          items: [
+            { connectorEntityId: s.connectorEntityId, data: { Name: "Alice" } },
+          ],
+        },
+        toolOpts
       );
 
-      const tool = new FieldMappingDeleteTool().build(s.stationId, s.organizationId, s.userId);
-      const result = await tool.execute!(
+      const tool = new FieldMappingDeleteTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
+      const result = (await tool.execute!(
         { items: [{ fieldMappingId: s.fieldMappingId }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.error).toBeDefined();
-      const failureErrors = ((result.failures ?? []) as any[]).map((f: any) => f.error).join(" ");
+      const failureErrors = ((result.failures ?? []) as any[])
+        .map((f: any) => f.error)
+        .join(" ");
       expect(failureErrors).toContain("record");
     });
 
     it("succeeds and cascades when entity has no records", async () => {
       const s = await seed(db);
 
-      const tool = new FieldMappingDeleteTool().build(s.stationId, s.organizationId, s.userId);
-      const result = await tool.execute!(
+      const tool = new FieldMappingDeleteTool().build(
+        s.stationId,
+        s.organizationId,
+        s.userId
+      );
+      const result = (await tool.execute!(
         { items: [{ fieldMappingId: s.fieldMappingId }] },
-        toolOpts,
-      ) as Record<string, unknown>;
+        toolOpts
+      )) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
     });
   });
-
 });

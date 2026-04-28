@@ -28,7 +28,7 @@ export const portals = {
   get: (
     id: string,
     params?: PortalGetRequestQuery,
-    options?: QueryOptions<PortalGetResponsePayload>,
+    options?: QueryOptions<PortalGetResponsePayload>
   ) =>
     useAuthQuery<PortalGetResponsePayload>(
       queryKeys.portals.get(id, params),
@@ -48,10 +48,12 @@ export const portals = {
     }),
 
   rename: (id: string) =>
-    useAuthMutation<{ portal: { id: string; name: string } }, { name: string }>({
-      url: `/api/portals/${encodeURIComponent(id)}`,
-      method: "PATCH",
-    }),
+    useAuthMutation<{ portal: { id: string; name: string } }, { name: string }>(
+      {
+        url: `/api/portals/${encodeURIComponent(id)}`,
+        method: "PATCH",
+      }
+    ),
 
   remove: (id: string) =>
     useAuthMutation<{ id: string }, void>({

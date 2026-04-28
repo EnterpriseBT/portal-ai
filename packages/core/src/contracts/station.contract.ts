@@ -35,12 +35,15 @@ export const StationGetRequestQuerySchema = z.object({
   include: z.string().optional(),
 });
 
-export type StationGetRequestQuery = z.infer<typeof StationGetRequestQuerySchema>;
+export type StationGetRequestQuery = z.infer<
+  typeof StationGetRequestQuerySchema
+>;
 
 /** Station instance with its attached connector instance details. */
-export const StationInstanceWithConnectorInstanceSchema = StationInstanceSchema.extend({
-  connectorInstance: ConnectorInstanceSchema.optional(),
-});
+export const StationInstanceWithConnectorInstanceSchema =
+  StationInstanceSchema.extend({
+    connectorInstance: ConnectorInstanceSchema.optional(),
+  });
 
 export type StationInstanceWithConnectorInstance = z.infer<
   typeof StationInstanceWithConnectorInstanceSchema

@@ -23,7 +23,7 @@ export interface ResolvedCapabilities {
  */
 export function resolveCapabilities(
   definition: { capabilityFlags: CapabilityFlags },
-  instance: { enabledCapabilityFlags: EnabledCapabilityFlags | null },
+  instance: { enabledCapabilityFlags: EnabledCapabilityFlags | null }
 ): ResolvedCapabilities {
   const ceil = definition.capabilityFlags;
   const override = instance.enabledCapabilityFlags;
@@ -45,25 +45,25 @@ export function resolveCapabilities(
  * *is* enabled.
  */
 export async function assertWriteCapability(
-  connectorEntityId: string,
+  connectorEntityId: string
 ): Promise<void> {
   const entity = await connectorEntitiesRepo.findById(connectorEntityId);
   if (!entity) {
     throw new ApiError(
       404,
       ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-      "Connector entity not found.",
+      "Connector entity not found."
     );
   }
 
   const instance = await connectorInstancesRepo.findById(
-    entity.connectorInstanceId,
+    entity.connectorInstanceId
   );
   if (!instance) {
     throw new ApiError(
       404,
       ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
-      "Connector instance not found.",
+      "Connector instance not found."
     );
   }
 
@@ -71,7 +71,7 @@ export async function assertWriteCapability(
     throw new ApiError(
       422,
       ApiCode.CONNECTOR_INSTANCE_WRITE_DISABLED,
-      "Cannot perform write operation — the connector instance does not have write capability enabled.",
+      "Cannot perform write operation — the connector instance does not have write capability enabled."
     );
   }
 }
@@ -88,12 +88,11 @@ export interface StationInstanceCapability {
  * Returns one entry per station-instance link with the merged capability flags.
  */
 export async function resolveStationCapabilities(
-  stationId: string,
+  stationId: string
 ): Promise<StationInstanceCapability[]> {
-  const stationLinks = await stationInstancesRepo.findByStationId(
-    stationId,
-    { include: ["connectorInstance"] },
-  );
+  const stationLinks = await stationInstancesRepo.findByStationId(stationId, {
+    include: ["connectorInstance"],
+  });
 
   if (stationLinks.length === 0) return [];
 
@@ -103,24 +102,20 @@ export async function resolveStationCapabilities(
 
   // Load definitions for all instances
   const instances = await Promise.all(
-    instanceIds.map((id) => connectorInstancesRepo.findById(id)),
+    instanceIds.map((id) => connectorInstancesRepo.findById(id))
   );
   const instanceMap = new Map(
-    instances.filter(Boolean).map((i) => [i!.id, i!]),
+    instances.filter(Boolean).map((i) => [i!.id, i!])
   );
 
   const definitionIds = [
-    ...new Set(
-      instances
-        .filter(Boolean)
-        .map((i) => i!.connectorDefinitionId),
-    ),
+    ...new Set(instances.filter(Boolean).map((i) => i!.connectorDefinitionId)),
   ];
   const definitions = await Promise.all(
-    definitionIds.map((id) => connectorDefinitionsRepo.findById(id)),
+    definitionIds.map((id) => connectorDefinitionsRepo.findById(id))
   );
   const definitionMap = new Map(
-    definitions.filter(Boolean).map((d) => [d!.id, d!]),
+    definitions.filter(Boolean).map((d) => [d!.id, d!])
   );
 
   const result: StationInstanceCapability[] = [];
@@ -148,27 +143,27 @@ export async function resolveStationCapabilities(
  */
 export async function assertStationScope(
   stationId: string,
-  connectorEntityId: string,
+  connectorEntityId: string
 ): Promise<void> {
   const entity = await connectorEntitiesRepo.findById(connectorEntityId);
   if (!entity) {
     throw new ApiError(
       404,
       ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
-      "Connector entity not found.",
+      "Connector entity not found."
     );
   }
 
   const stationLinks = await stationInstancesRepo.findByStationId(stationId);
   const attachedInstanceIds = new Set(
-    stationLinks.map((l) => l.connectorInstanceId),
+    stationLinks.map((l) => l.connectorInstanceId)
   );
 
   if (!attachedInstanceIds.has(entity.connectorInstanceId)) {
     throw new ApiError(
       403,
       ApiCode.STATION_SCOPE_VIOLATION,
-      "Connector entity does not belong to an instance attached to this station.",
+      "Connector entity does not belong to an instance attached to this station."
     );
   }
 }
@@ -178,23 +173,21 @@ export async function assertStationScope(
  * reachable from a station's attached connector instances.
  */
 export async function resolveEntityCapabilities(
-  stationId: string,
+  stationId: string
 ): Promise<Record<string, ResolvedCapabilities>> {
   const stationCaps = await resolveStationCapabilities(stationId);
   if (stationCaps.length === 0) return {};
 
   const capsByInstance = new Map(
-    stationCaps.map((sc) => [sc.connectorInstanceId, sc.capabilities]),
+    stationCaps.map((sc) => [sc.connectorInstanceId, sc.capabilities])
   );
 
   // Load all entities for the attached instances
   const entities = (
     await Promise.all(
       stationCaps.map((sc) =>
-        connectorEntitiesRepo.findByConnectorInstanceId(
-          sc.connectorInstanceId,
-        ),
-      ),
+        connectorEntitiesRepo.findByConnectorInstanceId(sc.connectorInstanceId)
+      )
     )
   ).flat();
 

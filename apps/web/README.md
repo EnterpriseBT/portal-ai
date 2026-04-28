@@ -97,6 +97,7 @@ src/
 ├── stories/            # Storybook stories (*.stories.tsx)
 ├── utils/              # Utility functions and hooks
 ├── views/              # Page view components (*.view.tsx)
+├── modules/            # Large-scale reusable modules, context-agnostic (see below)
 ├── workflows/          # Multi-step workflow modules (see below)
 ├── __tests__/          # Test files and setup
 ├── App.tsx             # Root app component with providers
@@ -178,6 +179,17 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 };
 ```
 
+### Component File Policy
+
+Every `*.component.tsx`, `*.view.tsx`, and `*.layout.tsx` file follows the application-wide rules spelled out in the top-level [`CLAUDE.md`](../../CLAUDE.md#component-file-policy-application-wide). In short:
+
+- **Max two components per file.** Inline helper components are not allowed; if it deserves a name, it deserves its own file.
+- **Single-component file → pure UI component.** No hooks, no contexts, no data fetching — purely props-driven.
+- **Two-component file → UI + implementation pair only.** The second export must be the container/implementation of the UI component in the same file.
+- **Naming.** Pure UI component `<ComponentName>UI` (`<ComponentName>UIProps`). Implementation component `<ComponentName>` (`<ComponentName>Props`) — it wires hooks/state and renders `<ComponentName>UI />`.
+- **Tests target the UI component** so they don't need SDK, router, or provider mocks. Container wiring is exercised by higher-level integration tests.
+- **Stories render the UI component** so they don't need context setup.
+
 ### Workflow Modules
 
 Multi-step user workflows (wizards, import flows, etc.) live in `src/workflows/<WorkflowName>/` as self-contained modules:
@@ -208,6 +220,48 @@ workflows/
 - Each workflow exports a **container** (wires hooks) and a **pure UI component** (props-only, no hooks) for Storybook/testing
 - `index.ts` re-exports the public API
 
+### Modules
+
+Large-scale reusable building blocks live in `src/modules/<ModuleName>/`. A module is **structurally identical to a workflow** but is **context-agnostic** — it is intended to be embedded by multiple components and/or workflows rather than serving a single end-to-end user flow.
+
+Use a module (not a workflow) when:
+
+- The block is shared by two or more consumers (workflows, views, or other modules), or is planned to be.
+- The block has no single "owning" user flow — it's a surface, not a wizard.
+- The block knows nothing connector-, route-, or feature-specific; consumers seed it with inputs and read back emitted state.
+
+```
+modules/
+  RegionEditor/
+    index.ts                              # Barrel exports — public surface for consumers
+    RegionEditor.component.tsx            # Container + pure UI component
+    RegionDrawingStep.component.tsx       # Substep / panel (if multi-step)
+    ReviewStep.component.tsx              # Substep / panel
+    utils/
+      region-editor.util.ts               # State hooks, helpers
+    __tests__/
+      RegionEditor.test.tsx
+      RegionDrawingStep.test.tsx
+    stories/
+      RegionEditor.stories.tsx
+      RegionDrawingStep.stories.tsx
+```
+
+**Key conventions** (same as Workflow Modules):
+
+- Components (`*.component.tsx`) in the module root
+- Hooks and helpers (`*.util.ts`) in the `utils/` subfolder
+- Tests (`*.test.tsx`) in the `__tests__/` subfolder — co-located with the module
+- Stories (`*.stories.tsx`) in the `stories/` subfolder — co-located with the module
+- Each module exports a **container** (wires hooks) and a **pure UI component** (props-only, no hooks) for Storybook/testing
+- `index.ts` re-exports the public API
+
+**Module vs. Workflow vs. Component:**
+
+- **`components/`** — small, general-purpose UI primitives (a button variant, a form alert, a chip).
+- **`modules/`** — large, self-contained, reusable building blocks; may be multi-step internally, but do not own a user journey. Consumers embed them.
+- **`workflows/`** — end-to-end, context-specific user flows (e.g., `FileUploadConnector`). Own routing, entry/exit, commit actions. May embed one or more modules.
+
 ### Import Organization
 
 Organize imports in this order:
@@ -225,7 +279,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { Box } from "@mui/material";
 import { ThemeProvider } from "@portalai/core";
 import { Header } from "../components/Header.component";
-import { useAuthFetch } from "../utils/api.util";
+import { sdk } from "../api/sdk";
 import type { UserProfile } from "@portalai/types";
 ```
 
@@ -280,31 +334,73 @@ This app uses Auth0 for authentication with the following flow:
 1. **Login** - Users are redirected to Auth0 for authentication
 2. **Token Management** - Tokens are stored in localStorage with refresh token support
 3. **Protected Routes** - Routes wrapped in `AuthorizedLayout` require authentication
-4. **API Calls** - Use `useAuthFetch` hook to make authenticated API requests
+4. **API Calls** - Every authenticated request goes through the SDK (see below)
 
-### Using Authenticated API Calls
+## API Calls & SDK
+
+All API calls **must** route through the SDK in `src/api/`. Components never call `fetch`, `useAuthFetch`, or `fetchWithAuth` directly — the SDK is the only path.
+
+### Layout
+
+- `src/api/<domain>.api.ts` — one file per API domain, defining each endpoint as a hook.
+- `src/api/sdk.ts` — aggregates every domain into a single `sdk` object.
+- `src/api/keys.ts` — TanStack Query key factories, re-exported from `sdk.ts` as `queryKeys`.
+
+### Writing endpoints
+
+SDK endpoints are built on the helpers in `src/utils/api.util.ts`. These helpers handle Auth0 token fetching, response unwrapping, and TanStack Query integration — do not reimplement any of this.
+
+- **`useAuthMutation`** — write calls AND imperative reads. For a GET that needs to fire per-invocation (e.g. a viewport-driven fetch), set `method: "GET"`, `body: () => undefined`, and build the URL from variables via `url: (vars) => string`:
+
+  ```typescript
+  // src/api/file-uploads.api.ts
+  import { useAuthMutation } from "../utils/api.util";
+
+  export const fileUploads = {
+    sheetSlice: () =>
+      useAuthMutation<SheetSliceResponse, SheetSliceQuery>({
+        url: (vars) => {
+          const params = new URLSearchParams({
+            uploadSessionId: vars.uploadSessionId,
+            sheetId: vars.sheetId,
+            // …coords
+          });
+          return `/api/file-uploads/sheet-slice?${params}`;
+        },
+        method: "GET",
+        body: () => undefined,
+      }),
+  };
+  ```
+
+- **`useAuthQuery`** — declarative reads keyed by a stable `queryKeys.*` entry. TanStack Query handles caching and invalidation; see *Mutation Cache Invalidation* in the project-level `CLAUDE.md` for invalidation rules.
+
+- **Raw `useAuthFetch`** — reserved for search hooks that populate a bespoke label-map cache. Any other new endpoint should use the helpers above.
+
+### Consuming endpoints
+
+Containers destructure the imperative handle from the SDK hook and pass a narrow callback down to UI components. Pure UI components in `modules/` and `components/` stay context-agnostic — they accept callbacks, never import `sdk`.
 
 ```typescript
-import { useAuthFetch } from "../utils/api.util";
+// Container
+const { mutateAsync: sheetSliceMutate } = sdk.fileUploads.sheetSlice();
+const loadSlice = useCallback(
+  async ({ sheetId, rowStart, rowEnd, colStart, colEnd }) => {
+    const res = await sheetSliceMutate({
+      uploadSessionId: uploadSessionIdRef.current!,
+      sheetId,
+      rowStart,
+      rowEnd,
+      colStart,
+      colEnd,
+    });
+    return res.cells;
+  },
+  [sheetSliceMutate]
+);
 
-const MyComponent = () => {
-  const { fetchWithAuth } = useAuthFetch();
-
-  const fetchData = async () => {
-    const response = await fetchWithAuth("/api/profile");
-    const data = await response.json();
-    return data;
-  };
-
-  // Use with TanStack Query
-  const { data } = useQuery({
-    queryKey: ["profile"],
-    queryFn: async () => {
-      const response = await fetchWithAuth("/api/profile");
-      return response.json();
-    },
-  });
-};
+// Pure UI component (no `sdk` import)
+<SheetCanvasUI loadSlice={loadSlice} … />
 ```
 
 ### Getting Auth0 Tokens for Testing

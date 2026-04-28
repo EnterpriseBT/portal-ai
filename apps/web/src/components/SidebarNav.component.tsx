@@ -168,11 +168,19 @@ export const SidebarNav = () => {
               "&:hover": { textDecoration: "underline" },
             }}
           >
-            {isCollapsed ? `\u00A9 ${new Date().getFullYear()}` : `Portalsai \u00A9 ${new Date().getFullYear()}`}
+            {isCollapsed
+              ? `\u00A9 ${new Date().getFullYear()}`
+              : `Portalsai \u00A9 ${new Date().getFullYear()}`}
           </Typography>
-          <Dialog open={versionOpen} onClose={() => setVersionOpen(false)} maxWidth="xs">
+          <Dialog
+            open={versionOpen}
+            onClose={() => setVersionOpen(false)}
+            maxWidth="xs"
+          >
             <DialogContent>
-              <Typography variant="body2" sx={{ mb: 1, textAlign: "center" }}>App version</Typography>
+              <Typography variant="body2" sx={{ mb: 1, textAlign: "center" }}>
+                App version
+              </Typography>
               <Box
                 component="code"
                 sx={(theme) => ({
@@ -187,7 +195,8 @@ export const SidebarNav = () => {
                   py: 1,
                 })}
               >
-                {import.meta.env?.VITE_APP_VERSION ?? "dev"} ({import.meta.env?.VITE_APP_SHA ?? "local"})
+                {import.meta.env?.VITE_APP_VERSION ?? "dev"} (
+                {import.meta.env?.VITE_APP_SHA ?? "local"})
               </Box>
             </DialogContent>
           </Dialog>

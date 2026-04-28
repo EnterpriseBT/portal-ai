@@ -75,7 +75,10 @@ describe("StationsRepository Integration Tests", () => {
 
   describe("create", () => {
     it("should insert and return the full row", async () => {
-      const data = makeStation({ name: "my-station", description: "A test station" });
+      const data = makeStation({
+        name: "my-station",
+        description: "A test station",
+      });
       const created = await repo.create(data, db);
 
       expect(created.id).toBe(data.id);

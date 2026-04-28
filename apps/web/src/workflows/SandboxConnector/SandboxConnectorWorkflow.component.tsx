@@ -46,65 +46,65 @@ export const SandboxConnectorWorkflowUI: React.FC<
   touched,
   serverError,
 }) => {
-    const nameRef = useDialogAutoFocus(open);
+  const nameRef = useDialogAutoFocus(open);
 
-    return (
-      <Modal
-        open={open}
-        onClose={onClose}
-        title="Connect Sandbox"
-        maxWidth="sm"
-        fullWidth
-        slotProps={{
-          paper: {
-            component: "form",
-            onSubmit: (e: React.FormEvent) => {
-              e.preventDefault();
-              onSubmit();
-            },
-          } as object,
-        }}
-        actions={
-          <Stack direction="row" spacing={1}>
-            <Button
-              type="button"
-              variant="outlined"
-              onClick={onClose}
-              disabled={isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="contained"
-              onClick={onSubmit}
-              disabled={isPending}
-            >
-              {isPending ? "Connecting..." : "Connect"}
-            </Button>
-          </Stack>
-        }
-      >
-        <Stack spacing={2} sx={{ pt: 1 }}>
-          <FormAlert serverError={serverError} />
-          <TextField
-            inputRef={nameRef}
-            label="Name"
-            value={name}
-            onChange={(e) => onNameChange(e.target.value)}
-            onBlur={onBlur}
-            error={touched && !!errors.name}
-            helperText={touched && errors.name}
-            slotProps={{
-              htmlInput: { "aria-invalid": touched && !!errors.name },
-            }}
-            required
-            fullWidth
-          />
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Connect Sandbox"
+      maxWidth="sm"
+      fullWidth
+      slotProps={{
+        paper: {
+          component: "form",
+          onSubmit: (e: React.FormEvent) => {
+            e.preventDefault();
+            onSubmit();
+          },
+        } as object,
+      }}
+      actions={
+        <Stack direction="row" spacing={1}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="contained"
+            onClick={onSubmit}
+            disabled={isPending}
+          >
+            {isPending ? "Connecting..." : "Connect"}
+          </Button>
         </Stack>
-      </Modal>
-    );
-  };
+      }
+    >
+      <Stack spacing={2} sx={{ pt: 1 }}>
+        <FormAlert serverError={serverError} />
+        <TextField
+          inputRef={nameRef}
+          label="Name"
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          onBlur={onBlur}
+          error={touched && !!errors.name}
+          helperText={touched && errors.name}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched && !!errors.name },
+          }}
+          required
+          fullWidth
+        />
+      </Stack>
+    </Modal>
+  );
+};
 
 // ── Container Component (hooks + state) ─────────────────────────────
 
@@ -126,7 +126,13 @@ export const SandboxConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     if (touched) {
       const result = validateWithSchema(
         ConnectorInstanceCreateRequestBodySchema,
-        { connectorDefinitionId, organizationId, name: value, status: "active", enabledCapabilityFlags: { read: true, write: true, sync: false } }
+        {
+          connectorDefinitionId,
+          organizationId,
+          name: value,
+          status: "active",
+          enabledCapabilityFlags: { read: true, write: true, sync: false },
+        }
       );
       setErrors(result.success ? {} : result.errors);
     }
@@ -136,7 +142,13 @@ export const SandboxConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     setTouched(true);
     const result = validateWithSchema(
       ConnectorInstanceCreateRequestBodySchema,
-      { connectorDefinitionId, organizationId, name, status: "active", enabledCapabilityFlags: { read: true, write: true, sync: false } }
+      {
+        connectorDefinitionId,
+        organizationId,
+        name,
+        status: "active",
+        enabledCapabilityFlags: { read: true, write: true, sync: false },
+      }
     );
     setErrors(result.success ? {} : result.errors);
   };
@@ -145,7 +157,13 @@ export const SandboxConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
     setTouched(true);
     const result = validateWithSchema(
       ConnectorInstanceCreateRequestBodySchema,
-      { connectorDefinitionId, organizationId, name, status: "active", enabledCapabilityFlags: { read: true, write: true, sync: false } }
+      {
+        connectorDefinitionId,
+        organizationId,
+        name,
+        status: "active",
+        enabledCapabilityFlags: { read: true, write: true, sync: false },
+      }
     );
     if (!result.success) {
       setErrors(result.errors);

@@ -62,9 +62,7 @@ export const SingleSuccess: Story = {
     results: {
       user: makeQuery({ data: { name: "Alice" }, isSuccess: true }),
     },
-    children: (data) => (
-      <div>User: {(data.user as { name: string }).name}</div>
-    ),
+    children: (data) => <div>User: {(data.user as { name: string }).name}</div>,
   },
 };
 

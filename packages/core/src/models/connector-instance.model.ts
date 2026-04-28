@@ -52,7 +52,9 @@ export class ConnectorInstanceModelFactory extends ModelFactory<
 > {
   create(createdBy: string): ConnectorInstanceModel {
     const baseModel = this._coreModelFactory.create(createdBy);
-    const connectorInstanceModel = new ConnectorInstanceModel(baseModel.toJSON());
+    const connectorInstanceModel = new ConnectorInstanceModel(
+      baseModel.toJSON()
+    );
     return connectorInstanceModel;
   }
 }

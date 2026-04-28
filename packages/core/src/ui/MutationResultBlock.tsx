@@ -40,10 +40,13 @@ export interface MutationResultBlockProps {
   content: MutationResultContentBlock;
 }
 
-export const MutationResultBlock: React.FC<MutationResultBlockProps> = ({ content }) => {
-  const config =
-    OPERATION_LABELS[content.operation] ??
-    { label: content.operation, severity: "info" as const };
+export const MutationResultBlock: React.FC<MutationResultBlockProps> = ({
+  content,
+}) => {
+  const config = OPERATION_LABELS[content.operation] ?? {
+    label: content.operation,
+    severity: "info" as const,
+  };
 
   const isBulk = isBulkMutationResult(content);
   const subject = isBulk
@@ -60,13 +63,16 @@ export const MutationResultBlock: React.FC<MutationResultBlockProps> = ({ conten
     >
       <Typography variant="body2" component="span" sx={{ fontWeight: 600 }}>
         {config.label}
-      </Typography>
-      {" "}
+      </Typography>{" "}
       <Typography variant="body2" component="span">
         {subject}
       </Typography>
       {summaryText && (
-        <Typography variant="body2" component="span" sx={{ color: "text.secondary", ml: 1 }}>
+        <Typography
+          variant="body2"
+          component="span"
+          sx={{ color: "text.secondary", ml: 1 }}
+        >
           ({summaryText})
         </Typography>
       )}

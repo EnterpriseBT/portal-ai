@@ -12,7 +12,7 @@ import { requestContext } from "../utils/request-context.util.js";
 export const requestContextMiddleware = (
   req: Request,
   _res: Response,
-  next: NextFunction,
+  next: NextFunction
 ): void => {
   requestContext.run({ log: req.log }, () => next());
 };

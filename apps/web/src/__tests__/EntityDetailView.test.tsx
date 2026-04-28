@@ -49,8 +49,26 @@ const stubRecordsList = {
       },
     ],
     columns: [
-      { key: "first_name", normalizedKey: "first_name", label: "First Name", type: "string" as const, required: false, enumValues: null, defaultValue: null, canonicalFormat: null },
-      { key: "email", normalizedKey: "email", label: "Email", type: "string" as const, required: false, enumValues: null, defaultValue: null, canonicalFormat: null },
+      {
+        key: "first_name",
+        normalizedKey: "first_name",
+        label: "First Name",
+        type: "string" as const,
+        required: false,
+        enumValues: null,
+        defaultValue: null,
+        canonicalFormat: null,
+      },
+      {
+        key: "email",
+        normalizedKey: "email",
+        label: "Email",
+        type: "string" as const,
+        required: false,
+        enumValues: null,
+        defaultValue: null,
+        canonicalFormat: null,
+      },
     ],
     source: "cache" as const,
     total: 1,
@@ -79,7 +97,11 @@ jest.unstable_mockModule("../api/sdk", () => ({
   queryKeys: {
     entityTagAssignments: {
       root: ["entityTagAssignments"],
-      listByEntity: (id: string) => ["entityTagAssignments", "listByEntity", id],
+      listByEntity: (id: string) => [
+        "entityTagAssignments",
+        "listByEntity",
+        id,
+      ],
     },
   },
 }));
@@ -87,9 +109,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { EntityDetailViewUI } = await import("../views/EntityDetail.view");
-const { BidirectionalConsistencyBannerUI } = await import(
-  "../components/BidirectionalConsistencyBanner.component"
-);
+const { BidirectionalConsistencyBannerUI } =
+  await import("../components/BidirectionalConsistencyBanner.component");
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -158,15 +179,11 @@ describe("EntityDetailViewUI", () => {
         onSync={jest.fn()}
       />
     );
-    expect(
-      screen.getByRole("button", { name: "Sync" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sync" })).toBeInTheDocument();
   });
 
   it("hides sync button when canSync is false", () => {
-    render(
-      <EntityDetailViewUI entity={stubEntity} canSync={false} />
-    );
+    render(<EntityDetailViewUI entity={stubEntity} canSync={false} />);
     expect(
       screen.queryByRole("button", { name: "Sync" })
     ).not.toBeInTheDocument();
@@ -182,11 +199,7 @@ describe("EntityDetailViewUI", () => {
   it("calls onSync when sync button is clicked", async () => {
     const onSync = jest.fn();
     render(
-      <EntityDetailViewUI
-        entity={stubEntity}
-        canSync={true}
-        onSync={onSync}
-      />
+      <EntityDetailViewUI entity={stubEntity} canSync={true} onSync={onSync} />
     );
     const { fireEvent } = await import("@testing-library/react");
     fireEvent.click(screen.getByRole("button", { name: "Sync" }));
@@ -202,15 +215,15 @@ describe("EntityDetailViewUI", () => {
         onSync={jest.fn()}
       />
     );
-    expect(
-      screen.getByRole("button", { name: "Syncing…" })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Syncing…" })).toBeDisabled();
   });
 
   it("clicking a row calls onRecordClick with the correct recordId", async () => {
     const onRecordClick = jest.fn();
     mockRecordsList.mockReturnValue(stubRecordsList);
-    render(<EntityDetailViewUI entity={stubEntity} onRecordClick={onRecordClick} />);
+    render(
+      <EntityDetailViewUI entity={stubEntity} onRecordClick={onRecordClick} />
+    );
 
     const { fireEvent } = await import("@testing-library/react");
     fireEvent.click(screen.getByText("Jane"));
@@ -355,7 +368,9 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    expect(await screen.findByRole("button", { name: "Create" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Create" })
+    ).toBeInTheDocument();
   });
 
   it("hides New Record button when isWriteEnabled is false", () => {
@@ -369,7 +384,9 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create" })
+    ).not.toBeInTheDocument();
   });
 
   it("hides New Record button when no columns defined", () => {
@@ -384,7 +401,9 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create" })
+    ).not.toBeInTheDocument();
   });
 
   it("opens CreateEntityRecordDialog on New Record click", async () => {
@@ -399,7 +418,9 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    await userEvent.click(await screen.findByRole("button", { name: "Create" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Create" })
+    );
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
@@ -414,7 +435,11 @@ describe("EntityDetailViewUI — New Record button", () => {
         onCreateRecord={jest.fn()}
       />
     );
-    expect(screen.getByText("New Record", { selector: "h2, h6, [class*='MuiTypography']" })).toBeInTheDocument();
+    expect(
+      screen.getByText("New Record", {
+        selector: "h2, h6, [class*='MuiTypography']",
+      })
+    ).toBeInTheDocument();
   });
 });
 

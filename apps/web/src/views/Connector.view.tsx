@@ -68,7 +68,10 @@ export const ConnectorView = () => {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const deleteMutation = sdk.connectorInstances.delete(deleteTarget?.id ?? "");
   const impactQuery = sdk.connectorInstances.impact(deleteTarget?.id ?? "", {
@@ -85,10 +88,16 @@ export const ConnectorView = () => {
       onSuccess: () => {
         setDeleteDialogOpen(false);
         setDeleteTarget(null);
-        queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.connectorInstances.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.connectorEntities.root,
+        });
         queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.fieldMappings.root,
+        });
       },
     });
   }, [deleteMutation, queryClient]);
@@ -180,7 +189,9 @@ export const ConnectorView = () => {
         <Stack spacing={2}>
           <PaginationToolbar {...instancePagination.toolbarProps} />
           <ConnectorInstanceWithDefinitionDataList
-            query={instancePagination.queryParams as ConnectorInstanceListRequestQuery}
+            query={
+              instancePagination.queryParams as ConnectorInstanceListRequestQuery
+            }
           >
             {(response) => (
               <SyncTotal
@@ -190,7 +201,10 @@ export const ConnectorView = () => {
                 <DataResult results={{ connectorInstances: response }}>
                   {({ connectorInstances }) =>
                     connectorInstances.total === 0 ? (
-                      (instancePagination.search || Object.values(instancePagination.filters).some(v => v.length > 0)) ? (
+                      instancePagination.search ||
+                      Object.values(instancePagination.filters).some(
+                        (v) => v.length > 0
+                      ) ? (
                         <EmptyResults />
                       ) : (
                         <PageEmptyState
@@ -237,7 +251,10 @@ export const ConnectorView = () => {
                 <DataResult results={{ connectorDefinitions: response }}>
                   {({ connectorDefinitions }) =>
                     connectorDefinitions.total === 0 ? (
-                      (catalogPagination.search || Object.values(catalogPagination.filters).some(v => v.length > 0)) ? (
+                      catalogPagination.search ||
+                      Object.values(catalogPagination.filters).some(
+                        (v) => v.length > 0
+                      ) ? (
                         <EmptyResults />
                       ) : (
                         <PageEmptyState

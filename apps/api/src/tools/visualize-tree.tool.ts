@@ -22,11 +22,11 @@ const VegaSpecSchema = z
   .record(z.string(), z.unknown())
   .describe(
     "A complete Vega v5 JSON spec for hierarchical or network visualizations. " +
-    "Must include a `data` array — data[0].values will be overwritten with SQL query results. " +
-    "Use Vega transforms (stratify, tree, treelinks, treemap, force, pack, partition) " +
-    "to derive layout from flat row data. Include `marks` array with encode blocks " +
-    "(enter/update) for visual properties. Supports scales, axes, legends, signals, " +
-    "and projections as top-level arrays."
+      "Must include a `data` array — data[0].values will be overwritten with SQL query results. " +
+      "Use Vega transforms (stratify, tree, treelinks, treemap, force, pack, partition) " +
+      "to derive layout from flat row data. Include `marks` array with encode blocks " +
+      "(enter/update) for visual properties. Supports scales, axes, legends, signals, " +
+      "and projections as top-level arrays."
   );
 
 // -- Tool input & class ------------------------------------------------------
@@ -34,7 +34,7 @@ const VegaSpecSchema = z
 const InputSchema = z.object({
   sql: z.string().describe("SQL query to fetch node/link data"),
   vegaSpec: VegaSpecSchema.describe(
-    "Full Vega spec — data[0].values will be overwritten with query results",
+    "Full Vega spec — data[0].values will be overwritten with query results"
   ),
 });
 

@@ -150,17 +150,16 @@ describe("PortalMessageResponseSchema", () => {
 // ── PortalBlockTypeSchema ────────────────────────────────────────────
 
 describe("PortalBlockTypeSchema", () => {
-  it("should accept \"vega\" as a valid block type", () => {
+  it('should accept "vega" as a valid block type', () => {
     const result = PortalBlockTypeSchema.safeParse("vega");
     expect(result.success).toBe(true);
   });
-
 });
 
 // ── PINNABLE_BLOCK_TYPES ────────────────────────────────────────────
 
 describe("PINNABLE_BLOCK_TYPES", () => {
-  it("should contain \"vega\"", () => {
+  it('should contain "vega"', () => {
     expect(PINNABLE_BLOCK_TYPES.has("vega")).toBe(true);
   });
 });

@@ -34,12 +34,54 @@ export type FilterOperator = z.infer<typeof FilterOperatorEnum>;
 
 // ── Operators by column data type ───────────────────────────────────
 
-export const OPERATORS_BY_COLUMN_TYPE: Record<ColumnDataType, FilterOperator[]> = {
-  string: ["eq", "neq", "contains", "not_contains", "starts_with", "ends_with", "is_empty", "is_not_empty"],
-  number: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "is_empty", "is_not_empty"],
+export const OPERATORS_BY_COLUMN_TYPE: Record<
+  ColumnDataType,
+  FilterOperator[]
+> = {
+  string: [
+    "eq",
+    "neq",
+    "contains",
+    "not_contains",
+    "starts_with",
+    "ends_with",
+    "is_empty",
+    "is_not_empty",
+  ],
+  number: [
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "between",
+    "is_empty",
+    "is_not_empty",
+  ],
   boolean: ["eq", "neq"],
-  date: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "is_empty", "is_not_empty"],
-  datetime: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "is_empty", "is_not_empty"],
+  date: [
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "between",
+    "is_empty",
+    "is_not_empty",
+  ],
+  datetime: [
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "between",
+    "is_empty",
+    "is_not_empty",
+  ],
   enum: ["eq", "neq", "in", "not_in", "is_empty", "is_not_empty"],
   array: ["contains", "not_contains", "is_empty", "is_not_empty"],
   json: ["is_empty", "is_not_empty"],
@@ -49,7 +91,8 @@ export const OPERATORS_BY_COLUMN_TYPE: Record<ColumnDataType, FilterOperator[]> 
 
 // ── Compile-time exhaustiveness check ───────────────────────────────
 // Ensures every ColumnDataType is covered in the operator map.
-const _exhaustiveCheck: Record<ColumnDataType, FilterOperator[]> = OPERATORS_BY_COLUMN_TYPE;
+const _exhaustiveCheck: Record<ColumnDataType, FilterOperator[]> =
+  OPERATORS_BY_COLUMN_TYPE;
 void _exhaustiveCheck;
 
 // ── Filter condition schema ─────────────────────────────────────────
@@ -57,7 +100,13 @@ void _exhaustiveCheck;
 export const FilterConditionSchema = z.object({
   field: z.string().min(1),
   operator: FilterOperatorEnum,
-  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]),
+  value: z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.array(z.string()),
+    z.null(),
+  ]),
 });
 
 export type FilterCondition = z.infer<typeof FilterConditionSchema>;
@@ -76,8 +125,10 @@ export type FilterGroup = {
 export const FilterGroupSchema: z.ZodType<FilterGroup> = z.lazy(() =>
   z.object({
     combinator: FilterCombinatorEnum,
-    conditions: z.array(z.union([FilterConditionSchema, FilterGroupSchema])).min(1),
-  }),
+    conditions: z
+      .array(z.union([FilterConditionSchema, FilterGroupSchema]))
+      .min(1),
+  })
 );
 
 // ── Filter expression (top-level) ───────────────────────────────────
@@ -139,7 +190,7 @@ export function validateFilterLimits(expression: FilterGroup): string | null {
  */
 export function validateOperatorTypeCompat(
   expression: FilterGroup,
-  columnTypes: Record<string, ColumnDataType>,
+  columnTypes: Record<string, ColumnDataType>
 ): string[] {
   const errors: string[] = [];
 
@@ -156,7 +207,7 @@ export function validateOperatorTypeCompat(
         const allowed = OPERATORS_BY_COLUMN_TYPE[colType];
         if (!allowed.includes(item.operator)) {
           errors.push(
-            `Operator "${item.operator}" is not valid for field "${item.field}" of type "${colType}"`,
+            `Operator "${item.operator}" is not valid for field "${item.field}" of type "${colType}"`
           );
         }
       }

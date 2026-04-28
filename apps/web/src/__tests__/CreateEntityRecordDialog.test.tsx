@@ -10,17 +10,60 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 
 const { render, screen, fireEvent } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { CreateEntityRecordDialog } = await import(
-  "../components/CreateEntityRecordDialog.component"
-);
+const { CreateEntityRecordDialog } =
+  await import("../components/CreateEntityRecordDialog.component");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
 const columns: ResolvedColumn[] = [
-  { key: "name", normalizedKey: "name", label: "Name", type: "string", required: true, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "age", normalizedKey: "age", label: "Age", type: "number", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "active", normalizedKey: "active", label: "Active", type: "boolean", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
-  { key: "metadata", normalizedKey: "metadata", label: "Metadata", type: "json", required: false, enumValues: null, defaultValue: null, validationPattern: null, canonicalFormat: null, format: null },
+  {
+    key: "name",
+    normalizedKey: "name",
+    label: "Name",
+    type: "string",
+    required: true,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "age",
+    normalizedKey: "age",
+    label: "Age",
+    type: "number",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "active",
+    normalizedKey: "active",
+    label: "Active",
+    type: "boolean",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
+  {
+    key: "metadata",
+    normalizedKey: "metadata",
+    label: "Metadata",
+    type: "json",
+    required: false,
+    enumValues: null,
+    defaultValue: null,
+    validationPattern: null,
+    canonicalFormat: null,
+    format: null,
+  },
 ];
 
 const defaultProps = {
@@ -67,9 +110,25 @@ describe("CreateEntityRecordDialog — rendering", () => {
 
   it("pre-fills default values from columns", () => {
     const columnsWithDefault: ResolvedColumn[] = [
-      { key: "name", normalizedKey: "name", label: "Name", type: "string", required: false, enumValues: null, defaultValue: "Default Name", validationPattern: null, canonicalFormat: null, format: null },
+      {
+        key: "name",
+        normalizedKey: "name",
+        label: "Name",
+        type: "string",
+        required: false,
+        enumValues: null,
+        defaultValue: "Default Name",
+        validationPattern: null,
+        canonicalFormat: null,
+        format: null,
+      },
     ];
-    render(<CreateEntityRecordDialog {...defaultProps} columns={columnsWithDefault} />);
+    render(
+      <CreateEntityRecordDialog
+        {...defaultProps}
+        columns={columnsWithDefault}
+      />
+    );
     expect(screen.getByLabelText("Name")).toHaveValue("Default Name");
   });
 });
@@ -103,7 +162,9 @@ describe("CreateEntityRecordDialog — submission", () => {
   it("does not call onSubmit when JSON field is invalid", async () => {
     render(<CreateEntityRecordDialog {...defaultProps} />);
     await userEvent.type(screen.getByLabelText(/Name/), "Alice");
-    fireEvent.change(screen.getByLabelText("Metadata"), { target: { value: "{bad" } });
+    fireEvent.change(screen.getByLabelText("Metadata"), {
+      target: { value: "{bad" },
+    });
     await userEvent.click(screen.getByText("Create"));
     expect(defaultProps.onSubmit).not.toHaveBeenCalled();
   });
@@ -147,7 +208,10 @@ describe("CreateEntityRecordDialog — server errors", () => {
     render(
       <CreateEntityRecordDialog
         {...defaultProps}
-        serverError={{ message: "Server exploded", code: "ENTITY_RECORD_CREATE_FAILED" }}
+        serverError={{
+          message: "Server exploded",
+          code: "ENTITY_RECORD_CREATE_FAILED",
+        }}
       />
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
@@ -172,7 +236,9 @@ describe("CreateEntityRecordDialog — field validation", () => {
   it("shows JSON parse error for invalid JSON on submit", async () => {
     render(<CreateEntityRecordDialog {...defaultProps} />);
     await userEvent.type(screen.getByLabelText(/Name/), "Alice");
-    fireEvent.change(screen.getByLabelText("Metadata"), { target: { value: "{bad" } });
+    fireEvent.change(screen.getByLabelText("Metadata"), {
+      target: { value: "{bad" },
+    });
     await userEvent.click(screen.getByText("Create"));
     expect(screen.getByText(/Invalid JSON:/)).toBeInTheDocument();
   });
@@ -180,7 +246,10 @@ describe("CreateEntityRecordDialog — field validation", () => {
   it("sets aria-invalid=true on invalid fields", async () => {
     render(<CreateEntityRecordDialog {...defaultProps} />);
     await userEvent.click(screen.getByText("Create"));
-    expect(screen.getByLabelText(/Name/)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText(/Name/)).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
   });
 
   it("sets required attribute on required fields", () => {

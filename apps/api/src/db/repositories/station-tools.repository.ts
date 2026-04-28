@@ -41,7 +41,10 @@ export class StationToolsRepository extends Repository<
     const rows = await (client as typeof db)
       .select()
       .from(stationTools)
-      .innerJoin(organizationTools, eq(stationTools.organizationToolId, organizationTools.id))
+      .innerJoin(
+        organizationTools,
+        eq(stationTools.organizationToolId, organizationTools.id)
+      )
       .where(eq(stationTools.stationId, stationId));
 
     return rows.map((r) => ({

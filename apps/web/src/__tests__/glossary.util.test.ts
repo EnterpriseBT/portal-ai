@@ -11,7 +11,13 @@ import {
 describe("GlossaryCategory enum", () => {
   it("exposes the 5 documented categories", () => {
     expect(Object.keys(GlossaryCategory).sort()).toEqual(
-      ["Analytics", "DataModeling", "DataSources", "Organization", "System"].sort()
+      [
+        "Analytics",
+        "DataModeling",
+        "DataSources",
+        "Organization",
+        "System",
+      ].sort()
     );
   });
 
@@ -135,7 +141,9 @@ describe("GLOSSARY_ENTRIES", () => {
 
 describe("filterGlossary", () => {
   it("returns all entries when query is empty and no category set", () => {
-    expect(filterGlossary(GLOSSARY_ENTRIES)).toHaveLength(GLOSSARY_ENTRIES.length);
+    expect(filterGlossary(GLOSSARY_ENTRIES)).toHaveLength(
+      GLOSSARY_ENTRIES.length
+    );
     expect(filterGlossary(GLOSSARY_ENTRIES, {})).toHaveLength(
       GLOSSARY_ENTRIES.length
     );

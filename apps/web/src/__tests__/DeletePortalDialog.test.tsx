@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeletePortalDialog } = await import(
-  "../components/DeletePortalDialog.component"
-);
+const { DeletePortalDialog } =
+  await import("../components/DeletePortalDialog.component");
 
 const defaultProps = {
   open: true,
@@ -44,9 +43,7 @@ describe("DeletePortalDialog", () => {
 
   it("should show 'Deleting...' and disable buttons when pending", () => {
     render(<DeletePortalDialog {...defaultProps} isPending={true} />);
-    expect(
-      screen.getByRole("button", { name: "Deleting..." })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "@jest/globals";
-import { buildSystemPrompt, type StationContext } from "../../prompts/system.prompt.js";
+import {
+  buildSystemPrompt,
+  type StationContext,
+} from "../../prompts/system.prompt.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -16,8 +19,22 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
         label: "Contacts",
         connectorInstanceId: "ci-1",
         columns: [
-          { key: "name", type: "text", label: "Name", columnDefinitionId: "cd-1", fieldMappingId: "fm-1", sourceField: "Full Name" },
-          { key: "email", type: "text", label: "Email", columnDefinitionId: "cd-2", fieldMappingId: "fm-2", sourceField: "Email Address" },
+          {
+            key: "name",
+            type: "text",
+            label: "Name",
+            columnDefinitionId: "cd-1",
+            fieldMappingId: "fm-1",
+            sourceField: "Full Name",
+          },
+          {
+            key: "email",
+            type: "text",
+            label: "Email",
+            columnDefinitionId: "cd-2",
+            fieldMappingId: "fm-2",
+            sourceField: "Email Address",
+          },
         ],
       },
       {
@@ -26,7 +43,14 @@ function makeContext(overrides: Partial<StationContext> = {}): StationContext {
         label: "Orders",
         connectorInstanceId: "ci-1",
         columns: [
-          { key: "total", type: "number", label: "Total", columnDefinitionId: "cd-3", fieldMappingId: "fm-3", sourceField: "Order Total" },
+          {
+            key: "total",
+            type: "number",
+            label: "Total",
+            columnDefinitionId: "cd-3",
+            fieldMappingId: "fm-3",
+            sourceField: "Order Total",
+          },
         ],
       },
     ],
@@ -48,7 +72,7 @@ describe("buildSystemPrompt — entityCapabilities", () => {
           "entity-1": { read: true, write: true, push: false },
           "entity-2": { read: true, write: true, push: false },
         },
-      }),
+      })
     );
 
     expect(prompt).toContain("[read, write]");
@@ -64,11 +88,15 @@ describe("buildSystemPrompt — entityCapabilities", () => {
           "entity-1": { read: true, write: false, push: false },
           "entity-2": { read: true, write: true, push: false },
         },
-      }),
+      })
     );
 
-    expect(prompt).toContain("Contacts (`contacts`) [connectorEntityId: entity-1] [read]");
-    expect(prompt).toContain("Orders (`orders`) [connectorEntityId: entity-2] [read, write]");
+    expect(prompt).toContain(
+      "Contacts (`contacts`) [connectorEntityId: entity-1] [read]"
+    );
+    expect(prompt).toContain(
+      "Orders (`orders`) [connectorEntityId: entity-2] [read, write]"
+    );
   });
 
   it("omits capability flags when entityCapabilities is undefined", () => {
@@ -82,7 +110,7 @@ describe("buildSystemPrompt — entityCapabilities", () => {
 describe("buildSystemPrompt — entity management IDs", () => {
   it("renders connectorEntityId in heading when entity_management is in toolPacks", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] }),
+      makeContext({ toolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("[connectorEntityId: entity-1]");
@@ -91,11 +119,15 @@ describe("buildSystemPrompt — entity management IDs", () => {
 
   it("renders columnDefinitionId, fieldMappingId, sourceField per column", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] }),
+      makeContext({ toolPacks: ["entity_management"] })
     );
 
-    expect(prompt).toContain("[columnDefinitionId: cd-1, fieldMappingId: fm-1, sourceField: \"Full Name\"]");
-    expect(prompt).toContain("[columnDefinitionId: cd-3, fieldMappingId: fm-3, sourceField: \"Order Total\"]");
+    expect(prompt).toContain(
+      '[columnDefinitionId: cd-1, fieldMappingId: fm-1, sourceField: "Full Name"]'
+    );
+    expect(prompt).toContain(
+      '[columnDefinitionId: cd-3, fieldMappingId: fm-3, sourceField: "Order Total"]'
+    );
   });
 
   it("omits IDs when entity_management is not in toolPacks", () => {
@@ -111,7 +143,7 @@ describe("buildSystemPrompt — entity management IDs", () => {
 describe("buildSystemPrompt — entity management notes", () => {
   it('includes "Entity Management Notes" section when entity_management in toolPacks', () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query", "entity_management"] }),
+      makeContext({ toolPacks: ["data_query", "entity_management"] })
     );
 
     expect(prompt).toContain("## Entity Management Notes");
@@ -125,7 +157,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents normalizedKey concept", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] }),
+      makeContext({ toolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("normalizedKey");
@@ -134,7 +166,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents validationPattern and canonicalFormat on column definitions", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] }),
+      makeContext({ toolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("validationPattern");
@@ -145,7 +177,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("documents field mapping attributes: required, defaultValue, format, enumValues", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] }),
+      makeContext({ toolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("normalized_key");
@@ -156,7 +188,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it("does not reference currency type", () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["entity_management"] }),
+      makeContext({ toolPacks: ["entity_management"] })
     );
 
     expect(prompt).toContain("no `currency` type");
@@ -165,7 +197,7 @@ describe("buildSystemPrompt — entity management notes", () => {
 
   it('omits "Entity Management Notes" when entity_management not in toolPacks', () => {
     const prompt = buildSystemPrompt(
-      makeContext({ toolPacks: ["data_query"] }),
+      makeContext({ toolPacks: ["data_query"] })
     );
 
     expect(prompt).not.toContain("Entity Management Notes");

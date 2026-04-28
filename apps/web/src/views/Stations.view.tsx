@@ -87,7 +87,12 @@ export const StationsViewUI: React.FC<StationsViewUIProps> = ({
             onSetDefault={onSetDefault}
             onOpen={onOpen}
             onDelete={onDelete}
-            hasActiveFilters={!!(pagination.search || Object.values(pagination.filters).some(v => v.length > 0))}
+            hasActiveFilters={
+              !!(
+                pagination.search ||
+                Object.values(pagination.filters).some((v) => v.length > 0)
+              )
+            }
           />
         </Box>
       </Stack>
@@ -174,10 +179,18 @@ export const StationsView: React.FC = () => {
         handleDeleteClose();
         invalidate();
         invalidateOrg();
-        queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.portalResults.root,
+        });
       },
     });
-  }, [deleteMutation, handleDeleteClose, invalidate, invalidateOrg, queryClient]);
+  }, [
+    deleteMutation,
+    handleDeleteClose,
+    invalidate,
+    invalidateOrg,
+    queryClient,
+  ]);
 
   // Open station detail
   const handleOpen = useCallback(

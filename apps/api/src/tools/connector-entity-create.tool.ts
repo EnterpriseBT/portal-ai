@@ -11,21 +11,33 @@ import { resolveCapabilities } from "../utils/resolve-capabilities.util.js";
 import { Repository } from "../db/repositories/base.repository.js";
 
 const ItemSchema = z.object({
-  connectorInstanceId: z.string().describe("The connector instance to create the entity under"),
-  key: z.string().min(1).describe("Unique key for the entity (used as AlaSQL table name)"),
+  connectorInstanceId: z
+    .string()
+    .describe("The connector instance to create the entity under"),
+  key: z
+    .string()
+    .min(1)
+    .describe("Unique key for the entity (used as AlaSQL table name)"),
   label: z.string().min(1).describe("Human-readable label"),
 });
 
 const InputSchema = z.object({
-  items: z.array(ItemSchema).min(1).max(100).describe("Connector entities to create (1–100)"),
+  items: z
+    .array(ItemSchema)
+    .min(1)
+    .max(100)
+    .describe("Connector entities to create (1–100)"),
 });
 
 export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_create";
   name = "Connector Entity Create Tool";
-  description = "Creates one or more connector entities under attached connector instances. Accepts 1–100 items.";
+  description =
+    "Creates one or more connector entities under attached connector instances. Accepts 1–100 items.";
 
-  get schema() { return InputSchema; }
+  get schema() {
+    return InputSchema;
+  }
 
   build(stationId: string, userId: string) {
     return tool({
@@ -39,8 +51,11 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
           const failures: { index: number; error: string }[] = [];
 
           // Load station links once
-          const stationLinks = await stationInstancesRepo.findByStationId(stationId);
-          const attachedIds = new Set(stationLinks.map((l) => l.connectorInstanceId));
+          const stationLinks =
+            await stationInstancesRepo.findByStationId(stationId);
+          const attachedIds = new Set(
+            stationLinks.map((l) => l.connectorInstanceId)
+          );
 
           // Group by connectorInstanceId — validate once per instance
           const instanceGroups = new Map<string, typeof items>();
@@ -55,23 +70,37 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
           for (const [connectorInstanceId, groupItems] of instanceGroups) {
             if (!attachedIds.has(connectorInstanceId)) {
               for (const item of groupItems) {
-                failures.push({ index: items.indexOf(item), error: "Connector instance is not attached to this station" });
+                failures.push({
+                  index: items.indexOf(item),
+                  error: "Connector instance is not attached to this station",
+                });
               }
               continue;
             }
 
-            const instance = await DbService.repository.connectorInstances.findById(connectorInstanceId);
+            const instance =
+              await DbService.repository.connectorInstances.findById(
+                connectorInstanceId
+              );
             if (!instance) {
               for (const item of groupItems) {
-                failures.push({ index: items.indexOf(item), error: "Connector instance not found" });
+                failures.push({
+                  index: items.indexOf(item),
+                  error: "Connector instance not found",
+                });
               }
               continue;
             }
 
-            const definition = await connectorDefinitionsRepo.findById(instance.connectorDefinitionId);
+            const definition = await connectorDefinitionsRepo.findById(
+              instance.connectorDefinitionId
+            );
             if (!definition) {
               for (const item of groupItems) {
-                failures.push({ index: items.indexOf(item), error: "Connector definition not found" });
+                failures.push({
+                  index: items.indexOf(item),
+                  error: "Connector definition not found",
+                });
               }
               continue;
             }
@@ -79,7 +108,11 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
             const capabilities = resolveCapabilities(definition, instance);
             if (!capabilities.write) {
               for (const item of groupItems) {
-                failures.push({ index: items.indexOf(item), error: "Cannot create entity — the connector instance does not have write capability enabled" });
+                failures.push({
+                  index: items.indexOf(item),
+                  error:
+                    "Cannot create entity — the connector instance does not have write capability enabled",
+                });
               }
               continue;
             }
@@ -88,7 +121,11 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // ── Phase 2: Execute ───────────────────────────────────────
@@ -105,7 +142,11 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
                 key: item.key,
                 label: item.label,
               });
-              const result = await DbService.repository.connectorEntities.upsertByKey(model.parse(), tx);
+              const result =
+                await DbService.repository.connectorEntities.upsertByKey(
+                  model.parse(),
+                  tx
+                );
               results.push(result);
             }
           });
@@ -130,7 +171,8 @@ export class ConnectorEntityCreateTool extends Tool<typeof InputSchema> {
             })),
           };
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : "Failed to create entities";
+          const message =
+            err instanceof Error ? err.message : "Failed to create entities";
           return { error: message };
         }
       },

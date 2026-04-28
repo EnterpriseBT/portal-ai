@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type StationData } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type StationData,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 import { getRecords } from "../utils/tools.util.js";
 

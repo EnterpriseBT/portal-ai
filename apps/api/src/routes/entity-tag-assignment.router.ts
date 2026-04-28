@@ -67,14 +67,26 @@ entityTagAssignmentRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorEntityId } = req.params;
-      logger.info({ connectorEntityId }, "GET /connector-entities/:connectorEntityId/tags called");
+      logger.info(
+        { connectorEntityId },
+        "GET /connector-entities/:connectorEntityId/tags called"
+      );
 
-      const enrichedAssignments = await DbService.repository.entityTagAssignments
-        .findByConnectorEntityId(connectorEntityId, { include: ["entityTag"] })
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity tag assignments");
-        });
+      const enrichedAssignments =
+        await DbService.repository.entityTagAssignments
+          .findByConnectorEntityId(connectorEntityId, {
+            include: ["entityTag"],
+          })
+          .catch((error) => {
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_ASSIGNMENT_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list entity tag assignments"
+            );
+          });
 
       const tags = enrichedAssignments.map((a) => ({
         ...a.tag!,
@@ -89,7 +101,17 @@ entityTagAssignmentRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list entity tag assignments"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity tag assignments"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_ASSIGNMENT_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list entity tag assignments"
+            )
+      );
     }
   }
 );
@@ -168,32 +190,67 @@ entityTagAssignmentRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { connectorEntityId } = req.params;
-      const parsed = EntityTagAssignmentCreateRequestBodySchema.safeParse(req.body);
+      const parsed = EntityTagAssignmentCreateRequestBodySchema.safeParse(
+        req.body
+      );
       if (!parsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED, "Invalid entity tag assignment payload"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED,
+            "Invalid entity tag assignment payload"
+          )
+        );
       }
 
       const { organizationId, userId } = req.application!.metadata;
 
       // Verify connector entity exists and belongs to org
-      const connectorEntity = await DbService.repository.connectorEntities.findById(connectorEntityId);
-      if (!connectorEntity || connectorEntity.organizationId !== organizationId) {
-        return next(new ApiError(404, ApiCode.CONNECTOR_ENTITY_NOT_FOUND, "Connector entity not found"));
+      const connectorEntity =
+        await DbService.repository.connectorEntities.findById(
+          connectorEntityId
+        );
+      if (
+        !connectorEntity ||
+        connectorEntity.organizationId !== organizationId
+      ) {
+        return next(
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
+        );
       }
 
       // Verify tag exists and belongs to same org
-      const entityTag = await DbService.repository.entityTags.findById(parsed.data.entityTagId);
+      const entityTag = await DbService.repository.entityTags.findById(
+        parsed.data.entityTagId
+      );
       if (!entityTag || entityTag.organizationId !== organizationId) {
-        return next(new ApiError(404, ApiCode.ENTITY_TAG_NOT_FOUND, "Entity tag not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_TAG_NOT_FOUND,
+            "Entity tag not found"
+          )
+        );
       }
 
       // Check for duplicate assignment
-      const existing = await DbService.repository.entityTagAssignments.findExisting(
-        connectorEntityId,
-        parsed.data.entityTagId
-      );
+      const existing =
+        await DbService.repository.entityTagAssignments.findExisting(
+          connectorEntityId,
+          parsed.data.entityTagId
+        );
       if (existing) {
-        return next(new ApiError(409, ApiCode.ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS, "This tag is already assigned to this entity"));
+        return next(
+          new ApiError(
+            409,
+            ApiCode.ENTITY_TAG_ASSIGNMENT_ALREADY_EXISTS,
+            "This tag is already assigned to this entity"
+          )
+        );
       }
 
       const factory = new EntityTagAssignmentModelFactory();
@@ -204,18 +261,35 @@ entityTagAssignmentRouter.post(
         entityTagId: parsed.data.entityTagId,
       });
 
-      const entityTagAssignment = await DbService.repository.entityTagAssignments.create(
-        model.parse()
-      ).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity tag assignment");
-      });
+      const entityTagAssignment =
+        await DbService.repository.entityTagAssignments
+          .create(model.parse())
+          .catch((error) => {
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create entity tag assignment"
+            );
+          });
 
-      logger.info({ id: entityTagAssignment!.id, connectorEntityId, entityTagId: parsed.data.entityTagId }, "Entity tag assignment created");
+      logger.info(
+        {
+          id: entityTagAssignment!.id,
+          connectorEntityId,
+          entityTagId: parsed.data.entityTagId,
+        },
+        "Entity tag assignment created"
+      );
 
       return HttpService.success<EntityTagAssignmentCreateResponsePayload>(
         res,
-        { entityTagAssignment: entityTagAssignment as unknown as EntityTagAssignmentCreateResponsePayload["entityTagAssignment"] },
+        {
+          entityTagAssignment:
+            entityTagAssignment as unknown as EntityTagAssignmentCreateResponsePayload["entityTagAssignment"],
+        },
         201
       );
     } catch (error) {
@@ -223,7 +297,17 @@ entityTagAssignmentRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create entity tag assignment"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity tag assignment"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_ASSIGNMENT_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create entity tag assignment"
+            )
+      );
     }
   }
 );
@@ -286,17 +370,32 @@ entityTagAssignmentRouter.delete(
     try {
       const { assignmentId } = req.params;
 
-      const existing = await DbService.repository.entityTagAssignments.findById(assignmentId);
+      const existing =
+        await DbService.repository.entityTagAssignments.findById(assignmentId);
       if (!existing) {
-        return next(new ApiError(404, ApiCode.ENTITY_TAG_ASSIGNMENT_NOT_FOUND, "Entity tag assignment not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_TAG_ASSIGNMENT_NOT_FOUND,
+            "Entity tag assignment not found"
+          )
+        );
       }
 
       const { userId } = req.application!.metadata;
 
-      await DbService.repository.entityTagAssignments.softDelete(assignmentId, userId).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity tag assignment");
-      });
+      await DbService.repository.entityTagAssignments
+        .softDelete(assignmentId, userId)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_TAG_ASSIGNMENT_DELETE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to delete entity tag assignment"
+          );
+        });
 
       logger.info({ assignmentId }, "Entity tag assignment soft-deleted");
 
@@ -306,7 +405,17 @@ entityTagAssignmentRouter.delete(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to delete entity tag assignment"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_TAG_ASSIGNMENT_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity tag assignment"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_ASSIGNMENT_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete entity tag assignment"
+            )
+      );
     }
   }
 );

@@ -94,7 +94,11 @@ portalResultsRouter.post(
       const parsed = PinResultBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.PORTAL_RESULT_NOT_FOUND, "Invalid pin result payload")
+          new ApiError(
+            400,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Invalid pin result payload"
+          )
         );
       }
 
@@ -115,9 +119,13 @@ portalResultsRouter.post(
 
       let targetMsg;
       if (messageId) {
-        targetMsg = messages.find((m) => m.id === messageId && m.role === "assistant");
+        targetMsg = messages.find(
+          (m) => m.id === messageId && m.role === "assistant"
+        );
       } else {
-        const assistantMessages = messages.filter((m) => m.role === "assistant");
+        const assistantMessages = messages.filter(
+          (m) => m.role === "assistant"
+        );
         targetMsg = assistantMessages[assistantMessages.length - 1];
       }
 
@@ -158,7 +166,7 @@ portalResultsRouter.post(
       // All display blocks from resolveDisplayBlock follow { type, content }.
       const content = block.content as Record<string, unknown>;
 
-      const now = new DateFactory('UTC').now().getTime()
+      const now = new DateFactory("UTC").now().getTime();
       const portalResult = await DbService.repository.portalResults.create({
         id: SystemUtilities.id.v4.generate(),
         organizationId,
@@ -192,10 +200,10 @@ portalResultsRouter.post(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
-            "Failed to pin result"
-          )
+              500,
+              ApiCode.PORTAL_RESULT_NOT_FOUND,
+              "Failed to pin result"
+            )
       );
     }
   }
@@ -256,9 +264,7 @@ portalResultsRouter.get(
         PortalResultListRequestQuerySchema.parse(req.query);
       const { organizationId } = req.application!.metadata;
 
-      const filters: SQL[] = [
-        eq(portalResults.organizationId, organizationId),
-      ];
+      const filters: SQL[] = [eq(portalResults.organizationId, organizationId)];
       if (stationId) {
         filters.push(eq(portalResults.stationId, stationId));
       }
@@ -270,7 +276,10 @@ portalResultsRouter.get(
       }
       const where = and(...filters);
 
-      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
+      const include_ = include
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const listOpts = {
         limit,
         offset,
@@ -298,10 +307,10 @@ portalResultsRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
-            "Failed to list portal results"
-          )
+              500,
+              ApiCode.PORTAL_RESULT_NOT_FOUND,
+              "Failed to list portal results"
+            )
       );
     }
   }
@@ -317,10 +326,15 @@ portalResultsRouter.get(
       const { id } = req.params;
       const { organizationId } = req.application!.metadata;
 
-      const portalResult = await DbService.repository.portalResults.findById(id);
+      const portalResult =
+        await DbService.repository.portalResults.findById(id);
       if (!portalResult || portalResult.organizationId !== organizationId) {
         return next(
-          new ApiError(404, ApiCode.PORTAL_RESULT_NOT_FOUND, "Portal result not found")
+          new ApiError(
+            404,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Portal result not found"
+          )
         );
       }
 
@@ -334,10 +348,10 @@ portalResultsRouter.get(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
-            "Failed to get portal result"
-          )
+              500,
+              ApiCode.PORTAL_RESULT_NOT_FOUND,
+              "Failed to get portal result"
+            )
       );
     }
   }
@@ -425,14 +439,19 @@ portalResultsRouter.patch(
       const existing = await DbService.repository.portalResults.findById(id);
       if (!existing || existing.organizationId !== organizationId) {
         return next(
-          new ApiError(404, ApiCode.PORTAL_RESULT_NOT_FOUND, "Portal result not found")
+          new ApiError(
+            404,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Portal result not found"
+          )
         );
       }
 
-      const portalResult = await DbService.repository.portalResults.update(
-        id,
-        { name, updated: Date.now(), updatedBy: userId } as never
-      );
+      const portalResult = await DbService.repository.portalResults.update(id, {
+        name,
+        updated: Date.now(),
+        updatedBy: userId,
+      } as never);
 
       logger.info({ id }, "Portal result renamed");
 
@@ -446,10 +465,10 @@ portalResultsRouter.patch(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
-            "Failed to rename portal result"
-          )
+              500,
+              ApiCode.PORTAL_RESULT_NOT_FOUND,
+              "Failed to rename portal result"
+            )
       );
     }
   }
@@ -514,7 +533,11 @@ portalResultsRouter.delete(
       const existing = await DbService.repository.portalResults.findById(id);
       if (!existing || existing.organizationId !== organizationId) {
         return next(
-          new ApiError(404, ApiCode.PORTAL_RESULT_NOT_FOUND, "Portal result not found")
+          new ApiError(
+            404,
+            ApiCode.PORTAL_RESULT_NOT_FOUND,
+            "Portal result not found"
+          )
         );
       }
 
@@ -531,10 +554,10 @@ portalResultsRouter.delete(
         error instanceof ApiError
           ? error
           : new ApiError(
-            500,
-            ApiCode.PORTAL_RESULT_NOT_FOUND,
-            "Failed to delete portal result"
-          )
+              500,
+              ApiCode.PORTAL_RESULT_NOT_FOUND,
+              "Failed to delete portal result"
+            )
       );
     }
   }

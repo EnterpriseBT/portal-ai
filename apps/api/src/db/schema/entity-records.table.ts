@@ -25,7 +25,8 @@ export const entityRecordOriginEnum = pgEnum("entity_record_origin", [
   "portal",
 ]);
 
-export type EntityRecordOrigin = (typeof entityRecordOriginEnum.enumValues)[number];
+export type EntityRecordOrigin =
+  (typeof entityRecordOriginEnum.enumValues)[number];
 
 /**
  * Entity records table.
@@ -50,7 +51,8 @@ export const entityRecords = pgTable(
     checksum: text("checksum").notNull(),
     syncedAt: bigint("synced_at", { mode: "number" }).notNull(),
     origin: entityRecordOriginEnum("origin").notNull().default("manual"),
-    validationErrors: jsonb("validation_errors").$type<{ field: string; error: string }[]>(),
+    validationErrors:
+      jsonb("validation_errors").$type<{ field: string; error: string }[]>(),
     isValid: boolean("is_valid").notNull(),
   },
   (table) => [

@@ -133,7 +133,13 @@ webhookRouter.post(
 
       const result = await WebhookService.syncUser(parsed.data).catch(
         (error) => {
-          throw new ApiError(500, ApiCode.WEBHOOK_SYNC_FAILED, error instanceof Error ? error.message : "Failed to sync user from webhook");
+          throw new ApiError(
+            500,
+            ApiCode.WEBHOOK_SYNC_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to sync user from webhook"
+          );
         }
       );
 
@@ -146,7 +152,15 @@ webhookRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Webhook sync failed"
       );
-      return next(new ApiError(500, ApiCode.WEBHOOK_SYNC_FAILED, error instanceof Error ? error.message : "Failed to sync user from webhook"));
+      return next(
+        new ApiError(
+          500,
+          ApiCode.WEBHOOK_SYNC_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to sync user from webhook"
+        )
+      );
     }
   }
 );

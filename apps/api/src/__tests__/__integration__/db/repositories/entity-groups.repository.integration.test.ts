@@ -107,7 +107,9 @@ describe("EntityGroupsRepository Integration Tests", () => {
 
   // ── Helpers ──────────────────────────────────────────────────────
 
-  function makeGroup(overrides?: Partial<EntityGroupInsert>): EntityGroupInsert {
+  function makeGroup(
+    overrides?: Partial<EntityGroupInsert>
+  ): EntityGroupInsert {
     const now = Date.now();
     return {
       id: generateId(),
@@ -124,7 +126,9 @@ describe("EntityGroupsRepository Integration Tests", () => {
     } as EntityGroupInsert;
   }
 
-  function makeEntity(overrides?: Partial<ConnectorEntityInsert>): ConnectorEntityInsert {
+  function makeEntity(
+    overrides?: Partial<ConnectorEntityInsert>
+  ): ConnectorEntityInsert {
     const now = Date.now();
     return {
       id: generateId(),
@@ -142,7 +146,9 @@ describe("EntityGroupsRepository Integration Tests", () => {
     } as ConnectorEntityInsert;
   }
 
-  function makeColumnDef(overrides?: Partial<ColumnDefinitionInsert>): ColumnDefinitionInsert {
+  function makeColumnDef(
+    overrides?: Partial<ColumnDefinitionInsert>
+  ): ColumnDefinitionInsert {
     const now = Date.now();
     return {
       id: generateId(),
@@ -316,8 +322,14 @@ describe("EntityGroupsRepository Integration Tests", () => {
       const group1 = await repo.create(makeGroup({ name: "group-1" }), db);
       const group2 = await repo.create(makeGroup({ name: "group-2" }), db);
 
-      await membersRepo.create(makeMember(group1.id, entityId, fieldMappingId), db);
-      await membersRepo.create(makeMember(group2.id, entityId, fieldMappingId), db);
+      await membersRepo.create(
+        makeMember(group1.id, entityId, fieldMappingId),
+        db
+      );
+      await membersRepo.create(
+        makeMember(group2.id, entityId, fieldMappingId),
+        db
+      );
 
       const results = await repo.findByConnectorEntityId(entityId, db);
       expect(results).toHaveLength(2);
@@ -335,7 +347,10 @@ describe("EntityGroupsRepository Integration Tests", () => {
     it("should exclude soft-deleted groups", async () => {
       const { entityId, fieldMappingId } = await seedEntityWithMapping();
       const group = await repo.create(makeGroup(), db);
-      await membersRepo.create(makeMember(group.id, entityId, fieldMappingId), db);
+      await membersRepo.create(
+        makeMember(group.id, entityId, fieldMappingId),
+        db
+      );
       await repo.softDelete(group.id, "test-system", db);
 
       const results = await repo.findByConnectorEntityId(entityId, db);
@@ -347,7 +362,10 @@ describe("EntityGroupsRepository Integration Tests", () => {
 
   describe("update", () => {
     it("should modify fields and return updated row", async () => {
-      const group = await repo.create(makeGroup({ name: "original", description: null }), db);
+      const group = await repo.create(
+        makeGroup({ name: "original", description: null }),
+        db
+      );
 
       const updated = await repo.update(
         group.id,

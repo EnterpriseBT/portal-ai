@@ -61,7 +61,8 @@ const faqFixture: FAQEntry[] = [
 
 beforeEach(() => {
   // jsdom doesn't implement scrollIntoView; stub it.
-  Element.prototype.scrollIntoView = jest.fn() as unknown as Element["scrollIntoView"];
+  Element.prototype.scrollIntoView =
+    jest.fn() as unknown as Element["scrollIntoView"];
   // Provide a synchronous requestAnimationFrame for tests.
   jest
     .spyOn(window, "requestAnimationFrame")
@@ -90,17 +91,18 @@ const renderUI = (onNavigate = jest.fn()) =>
 describe("HelpViewUI", () => {
   it("renders three tabs labeled 'Getting Started', 'Glossary', 'FAQ'", () => {
     renderUI();
-    expect(screen.getByRole("tab", { name: "Getting Started" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Getting Started" })
+    ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Glossary" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "FAQ" })).toBeInTheDocument();
   });
 
   it("Getting Started is the default active tab", () => {
     renderUI();
-    expect(screen.getByRole("tab", { name: "Getting Started" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(
+      screen.getByRole("tab", { name: "Getting Started" })
+    ).toHaveAttribute("aria-selected", "true");
     // Step content is visible
     expect(screen.getByText("Connect a data source")).toBeInTheDocument();
   });
@@ -155,7 +157,9 @@ describe("HelpViewUI", () => {
 
   it("search bar is hidden on the Getting Started tab (filtering applies only to glossary/FAQ)", () => {
     renderUI();
-    expect(screen.queryByPlaceholderText("Search help")).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Search help")
+    ).not.toBeInTheDocument();
   });
 
   it("category chips on the Glossary tab filter entries to that category", async () => {
@@ -244,10 +248,9 @@ describe("HelpView container", () => {
     render(<HelpView />);
     // Default tab is Getting Started — first real step from GETTING_STARTED_STEPS.
     expect(screen.getByText("Connect a data source")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Getting Started" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(
+      screen.getByRole("tab", { name: "Getting Started" })
+    ).toHaveAttribute("aria-selected", "true");
     // Header.
     expect(screen.getByRole("heading", { name: "Help" })).toBeInTheDocument();
   });

@@ -50,21 +50,19 @@ describe("PortalsRepository Integration Tests", () => {
     // Seed a station for portal tests
     const now = Date.now();
     stationId = generateId();
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.stations)
-      .values({
-        id: stationId,
-        organizationId: orgId,
-        name: "Test Station",
-        description: null,
-        toolPacks: ["data_query"],
-        created: now,
-        createdBy: "SYSTEM_TEST",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
+    await (db as ReturnType<typeof drizzle>).insert(schema.stations).values({
+      id: stationId,
+      organizationId: orgId,
+      name: "Test Station",
+      description: null,
+      toolPacks: ["data_query"],
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
   });
 
   afterEach(async () => {
@@ -160,9 +158,18 @@ describe("PortalsRepository Integration Tests", () => {
   describe("findRecentByOrg", () => {
     it("should return portals ordered by lastOpened desc", async () => {
       const now = Date.now();
-      await repo.create(makePortal({ name: "oldest", created: now, lastOpened: now - 2000 }), db);
-      await repo.create(makePortal({ name: "middle", created: now, lastOpened: now - 1000 }), db);
-      await repo.create(makePortal({ name: "newest", created: now, lastOpened: now }), db);
+      await repo.create(
+        makePortal({ name: "oldest", created: now, lastOpened: now - 2000 }),
+        db
+      );
+      await repo.create(
+        makePortal({ name: "middle", created: now, lastOpened: now - 1000 }),
+        db
+      );
+      await repo.create(
+        makePortal({ name: "newest", created: now, lastOpened: now }),
+        db
+      );
 
       const results = await repo.findRecentByOrg(orgId, 10, db);
       expect(results).toHaveLength(3);
@@ -174,9 +181,23 @@ describe("PortalsRepository Integration Tests", () => {
     it("should order by lastOpened independent of created", async () => {
       const now = Date.now();
       // Portal created first but opened most recently
-      await repo.create(makePortal({ name: "old-but-recent", created: now - 5000, lastOpened: now }), db);
+      await repo.create(
+        makePortal({
+          name: "old-but-recent",
+          created: now - 5000,
+          lastOpened: now,
+        }),
+        db
+      );
       // Portal created last but opened earlier
-      await repo.create(makePortal({ name: "new-but-stale", created: now, lastOpened: now - 3000 }), db);
+      await repo.create(
+        makePortal({
+          name: "new-but-stale",
+          created: now,
+          lastOpened: now - 3000,
+        }),
+        db
+      );
 
       const results = await repo.findRecentByOrg(orgId, 10, db);
       expect(results[0].name).toBe("old-but-recent");
@@ -211,11 +232,7 @@ describe("PortalsRepository Integration Tests", () => {
     it("should modify fields and return updated row", async () => {
       const portal = await repo.create(makePortal({ name: "original" }), db);
 
-      const updated = await repo.update(
-        portal.id,
-        { name: "renamed" },
-        db
-      );
+      const updated = await repo.update(portal.id, { name: "renamed" }, db);
 
       expect(updated?.name).toBe("renamed");
     });

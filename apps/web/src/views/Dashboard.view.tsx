@@ -66,7 +66,10 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
 
       <PageGrid columns={{ xs: 1 }}>
         <PageGridItem>
-          <PageSection title="Recent Portals" icon={<Icon name={IconName.Portal} />}>
+          <PageSection
+            title="Recent Portals"
+            icon={<Icon name={IconName.Portal} />}
+          >
             <RecentPortalsListConnected
               onPortalClick={onPortalClick}
               onDeletePortal={onDeletePortal}
@@ -75,7 +78,10 @@ export const DashboardViewUI: React.FC<DashboardViewUIProps> = ({
         </PageGridItem>
 
         <PageGridItem>
-          <PageSection title="Pinned Results" icon={<Icon name={IconName.PushPin} />}>
+          <PageSection
+            title="Pinned Results"
+            icon={<Icon name={IconName.PushPin} />}
+          >
             <PinnedResultsListConnected
               onResultClick={onResultClick}
               onUnpin={onUnpin}
@@ -121,7 +127,10 @@ export const DashboardView: React.FC = () => {
   );
 
   // ── Delete portal ───────────────────────────────────────────
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<ServerError | null>(null);
 

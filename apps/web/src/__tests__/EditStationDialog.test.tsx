@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { Station } from "@portalai/core/models";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { EditStationDialog } = await import(
-  "../components/EditStationDialog.component"
-);
+const { EditStationDialog } =
+  await import("../components/EditStationDialog.component");
 
 const sampleStation: Station = {
   id: "station-1",
@@ -91,9 +90,7 @@ describe("EditStationDialog", () => {
 
   it("should show 'Saving...' and disable buttons when pending", () => {
     render(<EditStationDialog {...defaultProps} isPending={true} />);
-    expect(
-      screen.getByRole("button", { name: "Saving..." })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
@@ -107,12 +104,8 @@ describe("EditStationDialog", () => {
         }}
       />
     );
-    expect(
-      screen.getByText(/Station name already exists/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/STATION_DUPLICATE_NAME/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Station name already exists/)).toBeInTheDocument();
+    expect(screen.getByText(/STATION_DUPLICATE_NAME/)).toBeInTheDocument();
   });
 
   it("should call onClose when Cancel is clicked", () => {

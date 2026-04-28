@@ -11,7 +11,7 @@ export const Typography = React.forwardRef<HTMLElement, TypographyProps>(
         {children}
       </MuiTypography>
     );
-  },
+  }
 );
 
 export default Typography;

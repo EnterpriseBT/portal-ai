@@ -1,4 +1,11 @@
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -6,18 +13,23 @@ import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals
 
 const mockFindByStationId = jest.fn<() => Promise<unknown[]>>();
 const mockFindByConnectorInstanceId = jest.fn<() => Promise<unknown[]>>();
-const mockFindFieldMappingsByEntityIds = jest.fn<() => Promise<Map<string, unknown[]>>>();
+const mockFindFieldMappingsByEntityIds =
+  jest.fn<() => Promise<Map<string, unknown[]>>>();
 const mockFindByConnectorEntityId_records = jest.fn<() => Promise<unknown[]>>();
 const mockFindByConnectorEntityId_members = jest.fn<() => Promise<unknown[]>>();
 const mockFindByEntityGroupId = jest.fn<() => Promise<unknown[]>>();
 const mockFindById_group = jest.fn<() => Promise<unknown>>();
 const mockFindMany_entities = jest.fn<() => Promise<unknown[]>>();
-const mockFindByOrganizationId_colDefs = jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]);
+const mockFindByOrganizationId_colDefs = jest
+  .fn<() => Promise<unknown[]>>()
+  .mockResolvedValue([]);
 
 // Mock vega/vega-lite so data-injection tests don't require valid specs.
 // Dedicated validation tests use the real modules.
 const mockVegaParse = jest.fn<() => unknown>().mockReturnValue({});
-const mockViewRunAsync = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockViewRunAsync = jest
+  .fn<() => Promise<void>>()
+  .mockResolvedValue(undefined);
 const mockViewFinalize = jest.fn<() => void>();
 
 jest.unstable_mockModule("vega", () => ({
@@ -33,7 +45,10 @@ jest.unstable_mockModule("vega-lite", () => ({
 }));
 
 // Mock direct db import for _connector_instances metadata query in loadStation
-const _mockSelectChain = { from: () => _mockSelectChain, where: () => Promise.resolve([]) };
+const _mockSelectChain = {
+  from: () => _mockSelectChain,
+  where: () => Promise.resolve([]),
+};
 jest.unstable_mockModule("../../db/client.js", () => ({
   db: { select: () => _mockSelectChain },
 }));
@@ -66,9 +81,11 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const { AnalyticsService } = await import("../../services/analytics.service.js");
+const { AnalyticsService } =
+  await import("../../services/analytics.service.js");
 
-type VegaLiteSpecInput = import("../../tools/visualize.tool.js").VegaLiteSpecInput;
+type VegaLiteSpecInput =
+  import("../../tools/visualize.tool.js").VegaLiteSpecInput;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -83,48 +100,147 @@ const STATION_INSTANCES = [
 ];
 
 const ENTITIES = [
-  { id: "ent-1", key: "customers", label: "Customers", connectorInstanceId: "ci-1" },
+  {
+    id: "ent-1",
+    key: "customers",
+    label: "Customers",
+    connectorInstanceId: "ci-1",
+  },
   { id: "ent-2", key: "orders", label: "Orders", connectorInstanceId: "ci-1" },
-  { id: "ent-3", key: "products", label: "Products", connectorInstanceId: "ci-2" },
+  {
+    id: "ent-3",
+    key: "products",
+    label: "Products",
+    connectorInstanceId: "ci-2",
+  },
 ];
 
 const FIELD_MAPPINGS_MAP = new Map<string, unknown[]>([
   [
     "ent-1",
     [
-      { id: "fm-1", connectorEntityId: "ent-1", columnDefinitionId: "cd-1", columnDefinition: { key: "name", label: "Name", type: "string" } },
-      { id: "fm-2", connectorEntityId: "ent-1", columnDefinitionId: "cd-2", columnDefinition: { key: "email", label: "Email", type: "string" } },
-      { id: "fm-3", connectorEntityId: "ent-1", columnDefinitionId: "cd-3", columnDefinition: { key: "customer_id", label: "Customer ID", type: "string" } },
+      {
+        id: "fm-1",
+        connectorEntityId: "ent-1",
+        columnDefinitionId: "cd-1",
+        columnDefinition: { key: "name", label: "Name", type: "string" },
+      },
+      {
+        id: "fm-2",
+        connectorEntityId: "ent-1",
+        columnDefinitionId: "cd-2",
+        columnDefinition: { key: "email", label: "Email", type: "string" },
+      },
+      {
+        id: "fm-3",
+        connectorEntityId: "ent-1",
+        columnDefinitionId: "cd-3",
+        columnDefinition: {
+          key: "customer_id",
+          label: "Customer ID",
+          type: "string",
+        },
+      },
     ],
   ],
   [
     "ent-2",
     [
-      { id: "fm-4", connectorEntityId: "ent-2", columnDefinitionId: "cd-4", columnDefinition: { key: "order_id", label: "Order ID", type: "string" } },
-      { id: "fm-5", connectorEntityId: "ent-2", columnDefinitionId: "cd-5", columnDefinition: { key: "amount", label: "Amount", type: "number" } },
-      { id: "fm-6", connectorEntityId: "ent-2", columnDefinitionId: "cd-6", columnDefinition: { key: "customer_id", label: "Customer ID", type: "string" } },
+      {
+        id: "fm-4",
+        connectorEntityId: "ent-2",
+        columnDefinitionId: "cd-4",
+        columnDefinition: {
+          key: "order_id",
+          label: "Order ID",
+          type: "string",
+        },
+      },
+      {
+        id: "fm-5",
+        connectorEntityId: "ent-2",
+        columnDefinitionId: "cd-5",
+        columnDefinition: { key: "amount", label: "Amount", type: "number" },
+      },
+      {
+        id: "fm-6",
+        connectorEntityId: "ent-2",
+        columnDefinitionId: "cd-6",
+        columnDefinition: {
+          key: "customer_id",
+          label: "Customer ID",
+          type: "string",
+        },
+      },
     ],
   ],
   [
     "ent-3",
     [
-      { id: "fm-7", connectorEntityId: "ent-3", columnDefinitionId: "cd-7", columnDefinition: { key: "product_name", label: "Product Name", type: "string" } },
-      { id: "fm-8", connectorEntityId: "ent-3", columnDefinitionId: "cd-8", columnDefinition: { key: "price", label: "Price", type: "number" } },
+      {
+        id: "fm-7",
+        connectorEntityId: "ent-3",
+        columnDefinitionId: "cd-7",
+        columnDefinition: {
+          key: "product_name",
+          label: "Product Name",
+          type: "string",
+        },
+      },
+      {
+        id: "fm-8",
+        connectorEntityId: "ent-3",
+        columnDefinitionId: "cd-8",
+        columnDefinition: { key: "price", label: "Price", type: "number" },
+      },
     ],
   ],
 ]);
 
 const CUSTOMER_RECORDS = [
-  { id: "r1", normalizedData: { name: "Alice", email: "alice@example.com", customer_id: "C001" } },
-  { id: "r2", normalizedData: { name: "Bob", email: "bob@example.com", customer_id: "C002" } },
-  { id: "r3", normalizedData: { name: "Charlie", email: "charlie@example.com", customer_id: "C003" } },
+  {
+    id: "r1",
+    normalizedData: {
+      name: "Alice",
+      email: "alice@example.com",
+      customer_id: "C001",
+    },
+  },
+  {
+    id: "r2",
+    normalizedData: {
+      name: "Bob",
+      email: "bob@example.com",
+      customer_id: "C002",
+    },
+  },
+  {
+    id: "r3",
+    normalizedData: {
+      name: "Charlie",
+      email: "charlie@example.com",
+      customer_id: "C003",
+    },
+  },
 ];
 
 const ORDER_RECORDS = [
-  { id: "r4", normalizedData: { order_id: "O001", amount: 100, customer_id: "C001" } },
-  { id: "r5", normalizedData: { order_id: "O002", amount: 250, customer_id: "C002" } },
-  { id: "r6", normalizedData: { order_id: "O003", amount: 75, customer_id: "C001" } },
-  { id: "r7", normalizedData: { order_id: "O004", amount: 300, customer_id: "C003" } },
+  {
+    id: "r4",
+    normalizedData: { order_id: "O001", amount: 100, customer_id: "C001" },
+  },
+  {
+    id: "r5",
+    normalizedData: { order_id: "O002", amount: 250, customer_id: "C002" },
+  },
+  {
+    id: "r6",
+    normalizedData: { order_id: "O003", amount: 75, customer_id: "C001" },
+  },
+  {
+    id: "r7",
+    normalizedData: { order_id: "O004", amount: 300, customer_id: "C003" },
+  },
 ];
 
 const PRODUCT_RECORDS = [
@@ -210,7 +326,9 @@ describe("AnalyticsService", () => {
       ]);
 
       // Verify columns were built from field mappings
-      const customersEntity = result.entities.find((e) => e.key === "customers")!;
+      const customersEntity = result.entities.find(
+        (e) => e.key === "customers"
+      )!;
       expect(customersEntity.columns).toHaveLength(3);
       expect(customersEntity.columns.map((c) => c.key)).toContain("name");
       expect(customersEntity.columns.map((c) => c.key)).toContain("email");
@@ -254,8 +372,12 @@ describe("AnalyticsService", () => {
       const groupId = "eg-1";
       mockFindByConnectorEntityId_members
         .mockReset()
-        .mockResolvedValueOnce([{ id: "egm-1", entityGroupId: groupId, connectorEntityId: "ent-1" }])
-        .mockResolvedValueOnce([{ id: "egm-2", entityGroupId: groupId, connectorEntityId: "ent-2" }])
+        .mockResolvedValueOnce([
+          { id: "egm-1", entityGroupId: groupId, connectorEntityId: "ent-1" },
+        ])
+        .mockResolvedValueOnce([
+          { id: "egm-2", entityGroupId: groupId, connectorEntityId: "ent-2" },
+        ])
         .mockResolvedValueOnce([]); // products has no group memberships
 
       mockFindById_group.mockResolvedValue({
@@ -310,7 +432,9 @@ describe("AnalyticsService", () => {
       const groupId = "eg-1";
       mockFindByConnectorEntityId_members
         .mockReset()
-        .mockResolvedValueOnce([{ id: "egm-1", entityGroupId: groupId, connectorEntityId: "ent-1" }])
+        .mockResolvedValueOnce([
+          { id: "egm-1", entityGroupId: groupId, connectorEntityId: "ent-1" },
+        ])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
@@ -353,7 +477,10 @@ describe("AnalyticsService", () => {
       });
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toMatchObject({ name: "Alice", email: "alice@example.com" });
+      expect(result[0]).toMatchObject({
+        name: "Alice",
+        email: "alice@example.com",
+      });
     });
 
     it("should block SELECT INTO", () => {
@@ -431,8 +558,12 @@ describe("AnalyticsService", () => {
         stationId: STATION_ID,
       });
 
-      expect((result.data as unknown as Record<string, unknown>[])[0].values).toHaveLength(2);
-      expect((result.data as unknown as Record<string, unknown>[])[0].name).toBe("table");
+      expect(
+        (result.data as unknown as Record<string, unknown>[])[0].values
+      ).toHaveLength(2);
+      expect(
+        (result.data as unknown as Record<string, unknown>[])[0].name
+      ).toBe("table");
       expect(result.marks).toEqual([{ type: "rect" }]);
     });
 
@@ -452,7 +583,9 @@ describe("AnalyticsService", () => {
       });
 
       expect(Array.isArray(result.data)).toBe(true);
-      expect((result.data as unknown as Record<string, unknown>[])[0].values).toHaveLength(2);
+      expect(
+        (result.data as unknown as Record<string, unknown>[])[0].values
+      ).toHaveLength(2);
     });
 
     it("should preserve non-first data entries", async () => {
@@ -475,7 +608,10 @@ describe("AnalyticsService", () => {
 
       const data = result.data as unknown as Record<string, unknown>[];
       expect(data).toHaveLength(2);
-      expect(data[1]).toEqual({ name: "links", values: [{ source: "a", target: "b" }] });
+      expect(data[1]).toEqual({
+        name: "links",
+        values: [{ source: "a", target: "b" }],
+      });
     });
 
     it("should create a missing base dataset when data[0] has a source reference", async () => {
@@ -485,8 +621,16 @@ describe("AnalyticsService", () => {
       const spec = {
         $schema: "https://vega.github.io/schema/vega/v5.json",
         data: [
-          { name: "node-data", source: "table", transform: [{ type: "filter", expr: "datum.type === 'node'" }] },
-          { name: "link-data", source: "table", transform: [{ type: "filter", expr: "datum.type === 'edge'" }] },
+          {
+            name: "node-data",
+            source: "table",
+            transform: [{ type: "filter", expr: "datum.type === 'node'" }],
+          },
+          {
+            name: "link-data",
+            source: "table",
+            transform: [{ type: "filter", expr: "datum.type === 'edge'" }],
+          },
         ],
         marks: [],
       };
@@ -516,7 +660,11 @@ describe("AnalyticsService", () => {
       const spec = {
         data: [
           { name: "raw", values: [] },
-          { name: "filtered", source: "raw", transform: [{ type: "filter", expr: "true" }] },
+          {
+            name: "filtered",
+            source: "raw",
+            transform: [{ type: "filter", expr: "true" }],
+          },
         ],
         marks: [],
       };
@@ -571,10 +719,15 @@ describe("AnalyticsService", () => {
       await expect(
         AnalyticsService.visualizeVega({
           sql: "SELECT * FROM [products]",
-          vegaSpec: { data: [{ name: "table" }], marks: [{ type: "bad" }] } as Record<string, unknown>,
+          vegaSpec: {
+            data: [{ name: "table" }],
+            marks: [{ type: "bad" }],
+          } as Record<string, unknown>,
           stationId: STATION_ID,
         })
-      ).rejects.toThrow("Invalid Vega spec: Cannot read properties of undefined");
+      ).rejects.toThrow(
+        "Invalid Vega spec: Cannot read properties of undefined"
+      );
     });
   });
 
@@ -588,8 +741,18 @@ describe("AnalyticsService", () => {
         id: "eg-1",
         name: "Customer Identity",
         members: [
-          { entityKey: "customers", linkColumnKey: "customer_id", linkColumnLabel: "Customer ID", isPrimary: true },
-          { entityKey: "orders", linkColumnKey: "customer_id", linkColumnLabel: "Customer ID", isPrimary: false },
+          {
+            entityKey: "customers",
+            linkColumnKey: "customer_id",
+            linkColumnLabel: "Customer ID",
+            isPrimary: true,
+          },
+          {
+            entityKey: "orders",
+            linkColumnKey: "customer_id",
+            linkColumnLabel: "Customer ID",
+            isPrimary: false,
+          },
         ],
       },
     ];
@@ -610,7 +773,10 @@ describe("AnalyticsService", () => {
       expect(result.matches[0].entityKey).toBe("customers");
       expect(result.matches[0].isPrimary).toBe(true);
       expect(result.matches[0].records).toHaveLength(1);
-      expect(result.matches[0].records[0]).toMatchObject({ name: "Alice", customer_id: "C001" });
+      expect(result.matches[0].records[0]).toMatchObject({
+        name: "Alice",
+        customer_id: "C001",
+      });
 
       // Secondary entity (orders) should be second
       expect(result.matches[1].entityKey).toBe("orders");
@@ -1073,7 +1239,7 @@ describe("AnalyticsService", () => {
       const records = [
         { date: "2024-01-01", price: 100 },
         { date: "2024-01-02", price: 120 },
-        { date: "2024-01-03", price: 90 },  // trough after peak of 120
+        { date: "2024-01-03", price: 90 }, // trough after peak of 120
         { date: "2024-01-04", price: 110 },
         { date: "2024-01-05", price: 130 },
       ];
@@ -1180,9 +1346,17 @@ describe("AnalyticsService", () => {
     describe("applyRecordInsertMany", () => {
       it("inserts multiple rows in a single call", () => {
         const rows = [
-          { _record_id: "r-new-1", _connector_entity_id: "ent-1", name: "Dave" },
+          {
+            _record_id: "r-new-1",
+            _connector_entity_id: "ent-1",
+            name: "Dave",
+          },
           { _record_id: "r-new-2", _connector_entity_id: "ent-1", name: "Eve" },
-          { _record_id: "r-new-3", _connector_entity_id: "ent-1", name: "Frank" },
+          {
+            _record_id: "r-new-3",
+            _connector_entity_id: "ent-1",
+            name: "Frank",
+          },
         ];
         AnalyticsService.applyRecordInsertMany(STATION_ID, "customers", rows);
 
@@ -1202,8 +1376,16 @@ describe("AnalyticsService", () => {
     describe("applyRecordUpdateMany", () => {
       it("replaces existing rows by record ID", () => {
         // Insert rows first
-        AnalyticsService.applyRecordInsert(STATION_ID, "customers", { _record_id: "r-up-1", _connector_entity_id: "ent-1", name: "Old" });
-        AnalyticsService.applyRecordInsert(STATION_ID, "customers", { _record_id: "r-up-2", _connector_entity_id: "ent-1", name: "Old" });
+        AnalyticsService.applyRecordInsert(STATION_ID, "customers", {
+          _record_id: "r-up-1",
+          _connector_entity_id: "ent-1",
+          name: "Old",
+        });
+        AnalyticsService.applyRecordInsert(STATION_ID, "customers", {
+          _record_id: "r-up-2",
+          _connector_entity_id: "ent-1",
+          name: "Old",
+        });
 
         // Batch update
         AnalyticsService.applyRecordUpdateMany(STATION_ID, "customers", [
@@ -1224,11 +1406,26 @@ describe("AnalyticsService", () => {
     describe("applyRecordDeleteMany", () => {
       it("removes multiple rows by ID", () => {
         // Use orders table to avoid loadStation data conflicts with customers
-        AnalyticsService.applyRecordInsert(STATION_ID, "orders", { _record_id: "r-del-1", _connector_entity_id: "ent-2", name: "A" });
-        AnalyticsService.applyRecordInsert(STATION_ID, "orders", { _record_id: "r-del-2", _connector_entity_id: "ent-2", name: "B" });
-        AnalyticsService.applyRecordInsert(STATION_ID, "orders", { _record_id: "r-del-3", _connector_entity_id: "ent-2", name: "C" });
+        AnalyticsService.applyRecordInsert(STATION_ID, "orders", {
+          _record_id: "r-del-1",
+          _connector_entity_id: "ent-2",
+          name: "A",
+        });
+        AnalyticsService.applyRecordInsert(STATION_ID, "orders", {
+          _record_id: "r-del-2",
+          _connector_entity_id: "ent-2",
+          name: "B",
+        });
+        AnalyticsService.applyRecordInsert(STATION_ID, "orders", {
+          _record_id: "r-del-3",
+          _connector_entity_id: "ent-2",
+          name: "C",
+        });
 
-        AnalyticsService.applyRecordDeleteMany(STATION_ID, "orders", ["r-del-1", "r-del-2"]);
+        AnalyticsService.applyRecordDeleteMany(STATION_ID, "orders", [
+          "r-del-1",
+          "r-del-2",
+        ]);
 
         const result = AnalyticsService.sqlQuery({
           sql: "SELECT * FROM orders WHERE _record_id IN ('r-del-1','r-del-2','r-del-3')",
@@ -1242,8 +1439,20 @@ describe("AnalyticsService", () => {
     describe("applyFieldMappingInsertMany", () => {
       it("inserts multiple field mappings", () => {
         const rows = [
-          { id: "fm-new-1", connector_entity_id: "ent-1", column_definition_id: "cd-1", source_field: "A", is_primary_key: false },
-          { id: "fm-new-2", connector_entity_id: "ent-1", column_definition_id: "cd-2", source_field: "B", is_primary_key: true },
+          {
+            id: "fm-new-1",
+            connector_entity_id: "ent-1",
+            column_definition_id: "cd-1",
+            source_field: "A",
+            is_primary_key: false,
+          },
+          {
+            id: "fm-new-2",
+            connector_entity_id: "ent-1",
+            column_definition_id: "cd-2",
+            source_field: "B",
+            is_primary_key: true,
+          },
         ];
         AnalyticsService.applyFieldMappingInsertMany(STATION_ID, rows);
 
@@ -1257,10 +1466,25 @@ describe("AnalyticsService", () => {
 
     describe("applyFieldMappingDeleteMany", () => {
       it("deletes multiple field mappings", () => {
-        AnalyticsService.applyFieldMappingInsert(STATION_ID, { id: "fm-d-1", connector_entity_id: "ent-1", column_definition_id: "cd-1", source_field: "X", is_primary_key: false });
-        AnalyticsService.applyFieldMappingInsert(STATION_ID, { id: "fm-d-2", connector_entity_id: "ent-1", column_definition_id: "cd-2", source_field: "Y", is_primary_key: false });
+        AnalyticsService.applyFieldMappingInsert(STATION_ID, {
+          id: "fm-d-1",
+          connector_entity_id: "ent-1",
+          column_definition_id: "cd-1",
+          source_field: "X",
+          is_primary_key: false,
+        });
+        AnalyticsService.applyFieldMappingInsert(STATION_ID, {
+          id: "fm-d-2",
+          connector_entity_id: "ent-1",
+          column_definition_id: "cd-2",
+          source_field: "Y",
+          is_primary_key: false,
+        });
 
-        AnalyticsService.applyFieldMappingDeleteMany(STATION_ID, ["fm-d-1", "fm-d-2"]);
+        AnalyticsService.applyFieldMappingDeleteMany(STATION_ID, [
+          "fm-d-1",
+          "fm-d-2",
+        ]);
 
         const result = AnalyticsService.sqlQuery({
           sql: "SELECT * FROM _field_mappings WHERE id IN ('fm-d-1','fm-d-2')",
@@ -1273,8 +1497,18 @@ describe("AnalyticsService", () => {
     describe("applyEntityInsertMany", () => {
       it("inserts multiple connector entities", () => {
         const rows = [
-          { id: "ent-new-1", key: "batch_entity_1", label: "BE1", connectorInstanceId: "ci-1" },
-          { id: "ent-new-2", key: "batch_entity_2", label: "BE2", connectorInstanceId: "ci-1" },
+          {
+            id: "ent-new-1",
+            key: "batch_entity_1",
+            label: "BE1",
+            connectorInstanceId: "ci-1",
+          },
+          {
+            id: "ent-new-2",
+            key: "batch_entity_2",
+            label: "BE2",
+            connectorInstanceId: "ci-1",
+          },
         ];
         AnalyticsService.applyEntityInsertMany(STATION_ID, rows);
 
@@ -1288,10 +1522,24 @@ describe("AnalyticsService", () => {
 
     describe("applyEntityDeleteMany", () => {
       it("deletes multiple connector entities and their data tables", () => {
-        AnalyticsService.applyEntityInsert(STATION_ID, { id: "ent-d-1", key: "del_ent_1", label: "DE1", connectorInstanceId: "ci-1" });
-        AnalyticsService.applyEntityInsert(STATION_ID, { id: "ent-d-2", key: "del_ent_2", label: "DE2", connectorInstanceId: "ci-1" });
+        AnalyticsService.applyEntityInsert(STATION_ID, {
+          id: "ent-d-1",
+          key: "del_ent_1",
+          label: "DE1",
+          connectorInstanceId: "ci-1",
+        });
+        AnalyticsService.applyEntityInsert(STATION_ID, {
+          id: "ent-d-2",
+          key: "del_ent_2",
+          label: "DE2",
+          connectorInstanceId: "ci-1",
+        });
 
-        AnalyticsService.applyEntityDeleteMany(STATION_ID, ["ent-d-1", "ent-d-2"], ["del_ent_1", "del_ent_2"]);
+        AnalyticsService.applyEntityDeleteMany(
+          STATION_ID,
+          ["ent-d-1", "ent-d-2"],
+          ["del_ent_1", "del_ent_2"]
+        );
 
         const result = AnalyticsService.sqlQuery({
           sql: "SELECT * FROM _connector_entities WHERE id IN ('ent-d-1','ent-d-2')",

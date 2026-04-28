@@ -130,7 +130,12 @@ export const ConnectorEntityCardUI: React.FC<ConnectorEntityCardUIProps> = ({
               />
             </Stack>
           </Box>
-          <IconButton size="small" aria-label={expanded ? "Collapse field mappings" : "Expand field mappings"}>
+          <IconButton
+            size="small"
+            aria-label={
+              expanded ? "Collapse field mappings" : "Expand field mappings"
+            }
+          >
             {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
         </Stack>

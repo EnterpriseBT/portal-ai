@@ -58,7 +58,12 @@ export const WithContent: Story = {
           Last synced 2 hours ago
         </MuiTypography>
         <Stack direction="row" spacing={1}>
-          <Chip label="Active" color="success" size="small" variant="outlined" />
+          <Chip
+            label="Active"
+            color="success"
+            size="small"
+            variant="outlined"
+          />
           <Chip label="CSV" size="small" variant="outlined" />
         </Stack>
       </Stack>
@@ -102,7 +107,12 @@ export const ClickableWithActions: Story = {
     onClick: () => console.log("Card clicked"),
     actions: [
       { label: "Edit", onClick: () => console.log("Edit") },
-      { label: "Delete", onClick: () => console.log("Delete"), color: "error", icon: <Icon name={IconName.Delete} /> },
+      {
+        label: "Delete",
+        onClick: () => console.log("Delete"),
+        color: "error",
+        icon: <Icon name={IconName.Delete} />,
+      },
     ],
     children: (
       <MuiTypography variant="body2" color="text.secondary">
@@ -117,9 +127,7 @@ export const LongTitle: Story = {
     title:
       "This Is a Very Long Connector Name That Should Truncate When There Is Not Enough Space",
     icon: <Icon name={IconName.Link} />,
-    actions: [
-      { label: "Edit", onClick: () => console.log("Edit") },
-    ],
+    actions: [{ label: "Edit", onClick: () => console.log("Edit") }],
   },
 };
 
@@ -158,7 +166,11 @@ export const NoContent: Story = {
     title: "Empty Connector",
     icon: <Icon name={IconName.Link} />,
     actions: [
-      { label: "Configure", onClick: () => console.log("Configure"), variant: "contained" },
+      {
+        label: "Configure",
+        onClick: () => console.log("Configure"),
+        variant: "contained",
+      },
     ],
   },
 };

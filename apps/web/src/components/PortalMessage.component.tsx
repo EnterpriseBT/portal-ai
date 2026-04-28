@@ -1,10 +1,23 @@
 import React, { useRef, useState } from "react";
 import { Box, Paper } from "@portalai/core/ui";
-import { Typography, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from "@mui/material";
+import {
+  Typography,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+} from "@mui/material";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import { ContentBlockRenderer } from "@portalai/core";
-import type { PortalMessageResponse, PortalMessageBlock } from "@portalai/core/contracts";
+import type {
+  PortalMessageResponse,
+  PortalMessageBlock,
+} from "@portalai/core/contracts";
 import { PINNABLE_BLOCK_TYPES } from "@portalai/core/contracts";
 import type { PortalResultType } from "@portalai/core/models";
 
@@ -17,7 +30,8 @@ function hasPinnableContent(block: PortalMessageBlock): boolean {
   if (!PINNABLE_BLOCK_TYPES.has(block.type as PortalResultType)) return false;
   if (block.content == null) return false;
   if (typeof block.content === "string") return block.content.trim().length > 0;
-  if (typeof block.content === "object") return Object.keys(block.content as object).length > 0;
+  if (typeof block.content === "object")
+    return Object.keys(block.content as object).length > 0;
   return false;
 }
 
@@ -64,7 +78,12 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
       >
         <Paper
           elevation={1}
-          sx={{ p: 1.5, maxWidth: "80%", bgcolor: "primary.main", color: "primary.contrastText" }}
+          sx={{
+            p: 1.5,
+            maxWidth: "80%",
+            bgcolor: "primary.main",
+            color: "primary.contrastText",
+          }}
         >
           {message.blocks.map((block: PortalMessageBlock, i: number) => (
             <Typography key={i} variant="body2">
@@ -77,7 +96,10 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
   }
 
   return (
-    <Box data-message-id={message.id} sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}>
+    <Box
+      data-message-id={message.id}
+      sx={{ mb: 2, minWidth: 0, maxWidth: "100%" }}
+    >
       {message.blocks.map((block: PortalMessageBlock, i: number) => {
         const pinnable = hasPinnableContent(block);
         if (!pinnable) return null;
@@ -125,7 +147,12 @@ export const PortalMessageUI: React.FC<PortalMessageUIProps> = ({
                   className="pin-button"
                   aria-label="Pin result"
                   onClick={() => handlePinClick(i)}
-                  sx={{ flexShrink: 0, ml: 1, opacity: 0, transition: "opacity 0.15s" }}
+                  sx={{
+                    flexShrink: 0,
+                    ml: 1,
+                    opacity: 0,
+                    transition: "opacity 0.15s",
+                  }}
                 >
                   <PushPinOutlinedIcon fontSize="small" />
                 </IconButton>
@@ -192,17 +219,19 @@ export const PortalMessage: React.FC<PortalMessageProps> = ({
       { portalId, messageId, blockIndex, name },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.portalResults.root,
+          });
           onPinChange();
         },
-      },
+      }
     );
   };
 
   const handleUnpin = async (portalResultId: string) => {
     await fetchWithAuth(
       `/api/portal-results/${encodeURIComponent(portalResultId)}`,
-      { method: "DELETE" },
+      { method: "DELETE" }
     );
     queryClient.invalidateQueries({ queryKey: queryKeys.portalResults.root });
     onPinChange();

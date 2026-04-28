@@ -147,7 +147,9 @@ export const CustomEmptyMessage: Story = {
 // ── Interactive story with column config ────────────────────────────
 
 function DataTableWithConfig(
-  props: Omit<DataTableProps, "columnConfig" | "onColumnConfigChange"> & { header?: React.ReactNode }
+  props: Omit<DataTableProps, "columnConfig" | "onColumnConfigChange"> & {
+    header?: React.ReactNode;
+  }
 ) {
   const [columnConfig, setColumnConfig] = useColumnConfig(props.columns);
 
@@ -184,7 +186,9 @@ export const WithColumnConfig: Story = {
     columns,
     rows,
   },
-  render: (args) => <DataTableWithConfig columns={args.columns} rows={args.rows} />,
+  render: (args) => (
+    <DataTableWithConfig columns={args.columns} rows={args.rows} />
+  ),
 };
 
 export const WithCustomHeader: Story = {
@@ -211,9 +215,7 @@ export const WithCustomHeaderAndConfig: Story = {
     <DataTableWithConfig
       columns={args.columns}
       rows={args.rows}
-      header={
-        <Typography variant="h6">Users</Typography>
-      }
+      header={<Typography variant="h6">Users</Typography>}
     />
   ),
 };
@@ -241,7 +243,10 @@ export const CellClick: Story = {
         ? {
             ...col,
             onCellClick: (value: unknown, column: DataTableColumn) =>
-              console.log(`Cell clicked — column: ${column.key}, value:`, value),
+              console.log(
+                `Cell clicked — column: ${column.key}, value:`,
+                value
+              ),
           }
         : col
     ),

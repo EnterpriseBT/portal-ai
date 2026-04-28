@@ -111,10 +111,17 @@ portalRouter.post(
         "Portal created"
       );
 
-      return HttpService.success<PortalCreateResponsePayload & { portalId: string; stationContext: unknown }>(
+      return HttpService.success<
+        PortalCreateResponsePayload & {
+          portalId: string;
+          stationContext: unknown;
+        }
+      >(
         res,
         {
-          portal: { id: result.portalId } as unknown as PortalCreateResponsePayload["portal"],
+          portal: {
+            id: result.portalId,
+          } as unknown as PortalCreateResponsePayload["portal"],
           portalId: result.portalId,
           stationContext: result.stationContext,
         },
@@ -128,7 +135,11 @@ portalRouter.post(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to create portal")
+          : new ApiError(
+              500,
+              ApiCode.PORTAL_NOT_FOUND,
+              "Failed to create portal"
+            )
       );
     }
   }
@@ -200,7 +211,10 @@ portalRouter.get(
       const sortColumn =
         sortBy === "lastOpened" ? portals.lastOpened : portals.created;
 
-      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
+      const include_ = include
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const listOpts = {
         limit,
         offset,
@@ -227,7 +241,11 @@ portalRouter.get(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to list portals")
+          : new ApiError(
+              500,
+              ApiCode.PORTAL_NOT_FOUND,
+              "Failed to list portals"
+            )
       );
     }
   }
@@ -298,7 +316,7 @@ portalRouter.get(
 
       const { portal, messages, pinnedBlocks } = await PortalService.getPortal(
         id,
-        { include: include_ },
+        { include: include_ }
       );
 
       if (portal.organizationId !== organizationId) {
@@ -320,7 +338,11 @@ portalRouter.get(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to fetch portal")
+          : new ApiError(
+              500,
+              ApiCode.PORTAL_NOT_FOUND,
+              "Failed to fetch portal"
+            )
       );
     }
   }
@@ -404,7 +426,11 @@ portalRouter.delete(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to reset portal")
+          : new ApiError(
+              500,
+              ApiCode.PORTAL_NOT_FOUND,
+              "Failed to reset portal"
+            )
       );
     }
   }
@@ -539,7 +565,11 @@ portalRouter.patch(
 
       if (!hasName && !hasLastOpened) {
         return next(
-          new ApiError(400, ApiCode.PORTAL_NOT_FOUND, "name or lastOpened is required")
+          new ApiError(
+            400,
+            ApiCode.PORTAL_NOT_FOUND,
+            "name or lastOpened is required"
+          )
         );
       }
 
@@ -578,7 +608,11 @@ portalRouter.patch(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to update portal")
+          : new ApiError(
+              500,
+              ApiCode.PORTAL_NOT_FOUND,
+              "Failed to update portal"
+            )
       );
     }
   }
@@ -609,9 +643,7 @@ portalRouter.delete(
           .where(eq(portalResults.portalId, id));
 
         // Hard-delete messages — no value without the portal
-        await tx
-          .delete(portalMessages)
-          .where(eq(portalMessages.portalId, id));
+        await tx.delete(portalMessages).where(eq(portalMessages.portalId, id));
 
         // Soft-delete the portal
         await DbService.repository.portals.softDelete(id, userId, tx);
@@ -628,7 +660,11 @@ portalRouter.delete(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.PORTAL_NOT_FOUND, "Failed to delete portal")
+          : new ApiError(
+              500,
+              ApiCode.PORTAL_NOT_FOUND,
+              "Failed to delete portal"
+            )
       );
     }
   }

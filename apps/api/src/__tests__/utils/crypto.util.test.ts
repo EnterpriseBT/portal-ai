@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
 import crypto from "crypto";
 import { environment } from "../../environment.js";
-import { encryptCredentials, decryptCredentials } from "../../utils/crypto.util.js";
+import {
+  encryptCredentials,
+  decryptCredentials,
+} from "../../utils/crypto.util.js";
 
 // A valid base64-encoded 32-byte key for testing
 const TEST_KEY = crypto.randomBytes(32).toString("base64");

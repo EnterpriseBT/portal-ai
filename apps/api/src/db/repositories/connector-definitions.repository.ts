@@ -83,9 +83,7 @@ export class ConnectorDefinitionsRepository extends Repository<
     return (client as typeof db)
       .select()
       .from(this.table)
-      .where(
-        and(eq(connectorDefinitions.isActive, true), this.notDeleted())
-      );
+      .where(and(eq(connectorDefinitions.isActive, true), this.notDeleted()));
   }
 }
 

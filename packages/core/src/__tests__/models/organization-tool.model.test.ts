@@ -15,8 +15,14 @@ const validOrgToolFields = {
   organizationId: "org-1",
   name: "Custom Webhook",
   description: "Calls external API",
-  parameterSchema: { type: "object", properties: { query: { type: "string" } } },
-  implementation: { type: "webhook" as const, url: "https://api.example.com/hook" },
+  parameterSchema: {
+    type: "object",
+    properties: { query: { type: "string" } },
+  },
+  implementation: {
+    type: "webhook" as const,
+    url: "https://api.example.com/hook",
+  },
   updated: null,
   updatedBy: null,
   deleted: null,
@@ -38,8 +44,14 @@ describe("OrganizationToolSchema", () => {
       organizationId: "org-1",
       name: "Custom Webhook",
       description: "Calls external API",
-      parameterSchema: { type: "object", properties: { query: { type: "string" } } },
-      implementation: { type: "webhook" as const, url: "https://api.example.com/hook" },
+      parameterSchema: {
+        type: "object",
+        properties: { query: { type: "string" } },
+      },
+      implementation: {
+        type: "webhook" as const,
+        url: "https://api.example.com/hook",
+      },
     };
     const result = OrganizationToolSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -58,7 +70,10 @@ describe("OrganizationToolSchema", () => {
       name: "",
       description: null,
       parameterSchema: {},
-      implementation: { type: "webhook" as const, url: "https://api.example.com/hook" },
+      implementation: {
+        type: "webhook" as const,
+        url: "https://api.example.com/hook",
+      },
     };
     const result = OrganizationToolSchema.safeParse(data);
     expect(result.success).toBe(false);
@@ -77,7 +92,10 @@ describe("OrganizationToolSchema", () => {
       name: "Tool A",
       description: null,
       parameterSchema: {},
-      implementation: { type: "webhook" as const, url: "https://api.example.com/hook" },
+      implementation: {
+        type: "webhook" as const,
+        url: "https://api.example.com/hook",
+      },
     };
     const result = OrganizationToolSchema.safeParse(data);
     expect(result.success).toBe(true);
@@ -96,7 +114,10 @@ describe("OrganizationToolSchema", () => {
       name: "Tool A",
       description: null,
       parameterSchema: { nested: { deep: true }, list: [1, 2, 3] },
-      implementation: { type: "webhook" as const, url: "https://api.example.com/hook" },
+      implementation: {
+        type: "webhook" as const,
+        url: "https://api.example.com/hook",
+      },
     };
     const result = OrganizationToolSchema.safeParse(data);
     expect(result.success).toBe(true);

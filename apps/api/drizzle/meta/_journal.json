@@ -281,6 +281,34 @@
       "when": 1776297600000,
       "tag": "0039_rename_query_to_read_capability",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1776384000000,
+      "tag": "0040_add_connector_instance_layout_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1776470400000,
+      "tag": "0041_remove_file_upload_job_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1776556800000,
+      "tag": "0042_add_file_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1776643200000,
+      "tag": "0043_connector_entities_org_unique_key",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,11 @@ import TextField from "@mui/material/TextField";
 import { sdk } from "../api/sdk";
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
-import { validateWithSchema, focusFirstInvalidField, type FormErrors } from "../utils/form-validation.util";
+import {
+  validateWithSchema,
+  focusFirstInvalidField,
+  type FormErrors,
+} from "../utils/form-validation.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -52,7 +56,9 @@ export interface CreateConnectorEntityDialogProps {
   lockedConnectorInstance: { id: string; name: string } | null;
 }
 
-export const CreateConnectorEntityDialog: React.FC<CreateConnectorEntityDialogProps> = ({
+export const CreateConnectorEntityDialog: React.FC<
+  CreateConnectorEntityDialogProps
+> = ({
   open,
   onClose,
   onSubmit,
@@ -64,9 +70,10 @@ export const CreateConnectorEntityDialog: React.FC<CreateConnectorEntityDialogPr
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const labelRef = useDialogAutoFocus(open);
-  const { onSearch: handleSearchConnectorInstances } = sdk.connectorInstances.search({
-    defaultParams: { capability: "write" },
-  });
+  const { onSearch: handleSearchConnectorInstances } =
+    sdk.connectorInstances.search({
+      defaultParams: { capability: "write" },
+    });
 
   React.useEffect(() => {
     if (open) {
@@ -126,7 +133,12 @@ export const CreateConnectorEntityDialog: React.FC<CreateConnectorEntityDialogPr
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -149,7 +161,9 @@ export const CreateConnectorEntityDialog: React.FC<CreateConnectorEntityDialogPr
           onBlur={() => handleBlur("label")}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
-          slotProps={{ htmlInput: { "aria-invalid": touched.label && !!errors.label } }}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched.label && !!errors.label },
+          }}
           required
           fullWidth
         />
@@ -160,7 +174,9 @@ export const CreateConnectorEntityDialog: React.FC<CreateConnectorEntityDialogPr
           onBlur={() => handleBlur("key")}
           error={touched.key && !!errors.key}
           helperText={(touched.key && errors.key) || 'e.g. "customer_orders"'}
-          slotProps={{ htmlInput: { "aria-invalid": touched.key && !!errors.key } }}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched.key && !!errors.key },
+          }}
           required
           fullWidth
         />
@@ -179,7 +195,11 @@ export const CreateConnectorEntityDialog: React.FC<CreateConnectorEntityDialogPr
             onChange={(val) => handleChange("connectorInstanceId", val ?? "")}
             onSearch={handleSearchConnectorInstances}
             error={touched.connectorInstanceId && !!errors.connectorInstanceId}
-            helperText={touched.connectorInstanceId ? errors.connectorInstanceId : undefined}
+            helperText={
+              touched.connectorInstanceId
+                ? errors.connectorInstanceId
+                : undefined
+            }
             required
           />
         )}

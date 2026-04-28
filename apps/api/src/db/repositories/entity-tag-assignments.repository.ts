@@ -31,7 +31,10 @@ export class EntityTagAssignmentsRepository extends Repository<
     client: DbClient = db
   ): Promise<number> {
     if (connectorEntityIds.length === 0) return 0;
-    return this.count(inArray(entityTagAssignments.connectorEntityId, connectorEntityIds), client);
+    return this.count(
+      inArray(entityTagAssignments.connectorEntityId, connectorEntityIds),
+      client
+    );
   }
 
   /**

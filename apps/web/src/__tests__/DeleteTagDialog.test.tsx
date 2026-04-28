@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { EntityTag } from "@portalai/core/models";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeleteTagDialog } = await import(
-  "../components/DeleteTagDialog.component"
-);
+const { DeleteTagDialog } =
+  await import("../components/DeleteTagDialog.component");
 
 const sampleTag: EntityTag = {
   id: "tag-1",
@@ -60,7 +59,9 @@ describe("DeleteTagDialog", () => {
   it("should submit on Enter key press (form submission)", () => {
     const onConfirm = jest.fn();
     render(<DeleteTagDialog {...defaultProps} onConfirm={onConfirm} />);
-    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    const form = screen
+      .getByRole("button", { name: "Delete" })
+      .closest("form")!;
     fireEvent.submit(form);
     expect(onConfirm).toHaveBeenCalled();
   });
@@ -74,9 +75,7 @@ describe("DeleteTagDialog", () => {
 
   it("should show 'Deleting...' and disable buttons when pending", () => {
     render(<DeleteTagDialog {...defaultProps} isPending={true} />);
-    expect(
-      screen.getByRole("button", { name: "Deleting..." })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 

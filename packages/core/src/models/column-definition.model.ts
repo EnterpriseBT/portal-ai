@@ -34,12 +34,8 @@ export type ColumnDataType = z.infer<typeof ColumnDataTypeEnum>;
  * Used by both the API (to build type-aware ORDER BY expressions)
  * and the frontend (to enable sort controls on column headers).
  */
-export const SORTABLE_COLUMN_TYPES: ReadonlySet<ColumnDataType> = new Set<ColumnDataType>([
-  "string",
-  "number",
-  "date",
-  "datetime",
-]);
+export const SORTABLE_COLUMN_TYPES: ReadonlySet<ColumnDataType> =
+  new Set<ColumnDataType>(["string", "number", "date", "datetime"]);
 
 // ── Schema ───────────────────────────────────────────────────────────
 

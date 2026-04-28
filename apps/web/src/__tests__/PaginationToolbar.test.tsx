@@ -584,7 +584,9 @@ describe("PaginationToolbar", () => {
 
       await user.click(screen.getByText("Filter"));
       expect(screen.getByText("Status")).toBeInTheDocument();
-      expect(screen.getByPlaceholderText("Select status...")).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Select status...")
+      ).toBeInTheDocument();
     });
 
     it("should call onFilterValueChange when searchable-select option selected", async () => {

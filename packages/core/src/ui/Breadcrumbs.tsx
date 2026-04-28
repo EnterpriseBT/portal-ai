@@ -32,7 +32,7 @@ export interface BreadcrumbsProps {
 export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
   (
     { items, onNavigate, separator = "/", maxItems, className, ...rest },
-    ref,
+    ref
   ) => {
     return (
       <MuiBreadcrumbs
@@ -55,7 +55,12 @@ export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
                 key={index}
                 variant="inherit"
                 color="text.primary"
-                sx={{ display: "flex", alignItems: "center", fontSize: 14, lineHeight: "24px" }}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  fontSize: 14,
+                  lineHeight: "24px",
+                }}
               >
                 {icon}
                 {item.label}
@@ -69,7 +74,12 @@ export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
               href={item.href}
               underline="hover"
               color="inherit"
-              sx={{ display: "flex", alignItems: "center", fontSize: 14, lineHeight: "24px" }}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                fontSize: 14,
+                lineHeight: "24px",
+              }}
               onClick={(event: React.MouseEvent) => {
                 if (onNavigate) {
                   event.preventDefault();
@@ -84,7 +94,7 @@ export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
         })}
       </MuiBreadcrumbs>
     );
-  },
+  }
 );
 
 export default Breadcrumbs;

@@ -55,7 +55,9 @@ const {
 
 const now = Date.now();
 
-function createConnectorDefinition(overrides?: Partial<Record<string, unknown>>) {
+function createConnectorDefinition(
+  overrides?: Partial<Record<string, unknown>>
+) {
   return {
     id: generateId(),
     slug: `slug-${generateId()}`,
@@ -103,10 +105,7 @@ function createConnectorInstance(
   };
 }
 
-function createConnEntity(
-  organizationId: string,
-  connectorInstanceId: string
-) {
+function createConnEntity(organizationId: string, connectorInstanceId: string) {
   return {
     id: generateId(),
     organizationId,
@@ -219,14 +218,27 @@ async function seedFullStack(db: ReturnType<typeof drizzle>) {
     user_id: createColumnDef(organizationId, "user_id", "number", "User ID"),
     name: createColumnDef(organizationId, "name", "string", "Name"),
     score: createColumnDef(organizationId, "score", "number", "Score"),
-    is_active: createColumnDef(organizationId, "is_active", "boolean", "Active"),
-    signup_date: createColumnDef(organizationId, "signup_date", "date", "Signup Date"),
-    last_login: createColumnDef(organizationId, "last_login", "datetime", "Last Login"),
+    is_active: createColumnDef(
+      organizationId,
+      "is_active",
+      "boolean",
+      "Active"
+    ),
+    signup_date: createColumnDef(
+      organizationId,
+      "signup_date",
+      "date",
+      "Signup Date"
+    ),
+    last_login: createColumnDef(
+      organizationId,
+      "last_login",
+      "datetime",
+      "Last Login"
+    ),
   };
 
-  await db
-    .insert(columnDefinitions)
-    .values(Object.values(cols) as never);
+  await db.insert(columnDefinitions).values(Object.values(cols) as never);
 
   // Field mappings connect column definitions to the entity
   const mappings = Object.entries(cols).map(([key, col]) =>
@@ -311,10 +323,38 @@ describe("Entity Record Router — Sorting", () => {
 
   describe("number columns", () => {
     const records = [
-      { user_id: "3", name: "Charlie", score: "10.5", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" },
-      { user_id: "1", name: "Alice", score: "2.3", is_active: "false", signup_date: "2022-06-15", last_login: "2022-06-15T12:00:00Z" },
-      { user_id: "20", name: "Bob", score: "100", is_active: "true", signup_date: "2024-03-10", last_login: "2024-03-10T08:30:00Z" },
-      { user_id: "5", name: "Diana", score: "7.8", is_active: "false", signup_date: "2023-09-20", last_login: "2023-09-20T16:45:00Z" },
+      {
+        user_id: "3",
+        name: "Charlie",
+        score: "10.5",
+        is_active: "true",
+        signup_date: "2023-01-01",
+        last_login: "2023-01-01T00:00:00Z",
+      },
+      {
+        user_id: "1",
+        name: "Alice",
+        score: "2.3",
+        is_active: "false",
+        signup_date: "2022-06-15",
+        last_login: "2022-06-15T12:00:00Z",
+      },
+      {
+        user_id: "20",
+        name: "Bob",
+        score: "100",
+        is_active: "true",
+        signup_date: "2024-03-10",
+        last_login: "2024-03-10T08:30:00Z",
+      },
+      {
+        user_id: "5",
+        name: "Diana",
+        score: "7.8",
+        is_active: "false",
+        signup_date: "2023-09-20",
+        last_login: "2023-09-20T16:45:00Z",
+      },
     ];
 
     it("should sort by numeric column ascending (user_id)", async () => {
@@ -362,9 +402,30 @@ describe("Entity Record Router — Sorting", () => {
 
   describe("string columns", () => {
     const records = [
-      { user_id: "1", name: "Charlie", score: "1", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" },
-      { user_id: "2", name: "Alice", score: "2", is_active: "true", signup_date: "2023-01-02", last_login: "2023-01-02T00:00:00Z" },
-      { user_id: "3", name: "Bob", score: "3", is_active: "true", signup_date: "2023-01-03", last_login: "2023-01-03T00:00:00Z" },
+      {
+        user_id: "1",
+        name: "Charlie",
+        score: "1",
+        is_active: "true",
+        signup_date: "2023-01-01",
+        last_login: "2023-01-01T00:00:00Z",
+      },
+      {
+        user_id: "2",
+        name: "Alice",
+        score: "2",
+        is_active: "true",
+        signup_date: "2023-01-02",
+        last_login: "2023-01-02T00:00:00Z",
+      },
+      {
+        user_id: "3",
+        name: "Bob",
+        score: "3",
+        is_active: "true",
+        signup_date: "2023-01-03",
+        last_login: "2023-01-03T00:00:00Z",
+      },
     ];
 
     it("should sort by string column ascending (name)", async () => {
@@ -392,10 +453,38 @@ describe("Entity Record Router — Sorting", () => {
 
   describe("date columns", () => {
     const records = [
-      { user_id: "1", name: "A", score: "1", is_active: "true", signup_date: "2024-03-10", last_login: "2024-03-10T08:30:00Z" },
-      { user_id: "2", name: "B", score: "2", is_active: "true", signup_date: "2022-06-15", last_login: "2022-06-15T12:00:00Z" },
-      { user_id: "3", name: "C", score: "3", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" },
-      { user_id: "4", name: "D", score: "4", is_active: "true", signup_date: "2023-09-20", last_login: "2023-09-20T16:45:00Z" },
+      {
+        user_id: "1",
+        name: "A",
+        score: "1",
+        is_active: "true",
+        signup_date: "2024-03-10",
+        last_login: "2024-03-10T08:30:00Z",
+      },
+      {
+        user_id: "2",
+        name: "B",
+        score: "2",
+        is_active: "true",
+        signup_date: "2022-06-15",
+        last_login: "2022-06-15T12:00:00Z",
+      },
+      {
+        user_id: "3",
+        name: "C",
+        score: "3",
+        is_active: "true",
+        signup_date: "2023-01-01",
+        last_login: "2023-01-01T00:00:00Z",
+      },
+      {
+        user_id: "4",
+        name: "D",
+        score: "4",
+        is_active: "true",
+        signup_date: "2023-09-20",
+        last_login: "2023-09-20T16:45:00Z",
+      },
     ];
 
     it("should sort by date column ascending (signup_date)", async () => {
@@ -423,10 +512,38 @@ describe("Entity Record Router — Sorting", () => {
 
   describe("datetime columns", () => {
     const records = [
-      { user_id: "1", name: "A", score: "1", is_active: "true", signup_date: "2023-01-01", last_login: "2024-03-10T08:30:00Z" },
-      { user_id: "2", name: "B", score: "2", is_active: "true", signup_date: "2023-01-02", last_login: "2022-06-15T12:00:00Z" },
-      { user_id: "3", name: "C", score: "3", is_active: "true", signup_date: "2023-01-03", last_login: "2023-01-01T00:00:00Z" },
-      { user_id: "4", name: "D", score: "4", is_active: "true", signup_date: "2023-01-04", last_login: "2023-09-20T16:45:00Z" },
+      {
+        user_id: "1",
+        name: "A",
+        score: "1",
+        is_active: "true",
+        signup_date: "2023-01-01",
+        last_login: "2024-03-10T08:30:00Z",
+      },
+      {
+        user_id: "2",
+        name: "B",
+        score: "2",
+        is_active: "true",
+        signup_date: "2023-01-02",
+        last_login: "2022-06-15T12:00:00Z",
+      },
+      {
+        user_id: "3",
+        name: "C",
+        score: "3",
+        is_active: "true",
+        signup_date: "2023-01-03",
+        last_login: "2023-01-01T00:00:00Z",
+      },
+      {
+        user_id: "4",
+        name: "D",
+        score: "4",
+        is_active: "true",
+        signup_date: "2023-01-04",
+        last_login: "2023-09-20T16:45:00Z",
+      },
     ];
 
     it("should sort by datetime column ascending (last_login)", async () => {
@@ -468,9 +585,30 @@ describe("Entity Record Router — Sorting", () => {
         sortBy: "score",
         sortOrder: "asc",
         records: [
-          { user_id: "1", name: "A", score: "50", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" },
-          { user_id: "2", name: "B", score: "", is_active: "true", signup_date: "2023-01-02", last_login: "2023-01-02T00:00:00Z" },
-          { user_id: "3", name: "C", score: "10", is_active: "true", signup_date: "2023-01-03", last_login: "2023-01-03T00:00:00Z" },
+          {
+            user_id: "1",
+            name: "A",
+            score: "50",
+            is_active: "true",
+            signup_date: "2023-01-01",
+            last_login: "2023-01-01T00:00:00Z",
+          },
+          {
+            user_id: "2",
+            name: "B",
+            score: "",
+            is_active: "true",
+            signup_date: "2023-01-02",
+            last_login: "2023-01-02T00:00:00Z",
+          },
+          {
+            user_id: "3",
+            name: "C",
+            score: "10",
+            is_active: "true",
+            signup_date: "2023-01-03",
+            last_login: "2023-01-03T00:00:00Z",
+          },
         ],
         // Empty string treated as null, pushed to end
         expectedOrder: ["10", "50", ""],
@@ -483,9 +621,30 @@ describe("Entity Record Router — Sorting", () => {
         sortBy: "score",
         sortOrder: "desc",
         records: [
-          { user_id: "1", name: "A", score: "50", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" },
-          { user_id: "2", name: "B", score: "", is_active: "true", signup_date: "2023-01-02", last_login: "2023-01-02T00:00:00Z" },
-          { user_id: "3", name: "C", score: "10", is_active: "true", signup_date: "2023-01-03", last_login: "2023-01-03T00:00:00Z" },
+          {
+            user_id: "1",
+            name: "A",
+            score: "50",
+            is_active: "true",
+            signup_date: "2023-01-01",
+            last_login: "2023-01-01T00:00:00Z",
+          },
+          {
+            user_id: "2",
+            name: "B",
+            score: "",
+            is_active: "true",
+            signup_date: "2023-01-02",
+            last_login: "2023-01-02T00:00:00Z",
+          },
+          {
+            user_id: "3",
+            name: "C",
+            score: "10",
+            is_active: "true",
+            signup_date: "2023-01-03",
+            last_login: "2023-01-03T00:00:00Z",
+          },
         ],
         expectedOrder: ["50", "10", ""],
         fieldKey: "score",
@@ -497,9 +656,30 @@ describe("Entity Record Router — Sorting", () => {
         sortBy: "signup_date",
         sortOrder: "asc",
         records: [
-          { user_id: "1", name: "A", score: "1", is_active: "true", signup_date: "2024-01-15", last_login: "2024-01-15T00:00:00Z" },
-          { user_id: "2", name: "B", score: "2", is_active: "true", signup_date: "", last_login: "2023-01-01T00:00:00Z" },
-          { user_id: "3", name: "C", score: "3", is_active: "true", signup_date: "2023-06-01", last_login: "2023-06-01T00:00:00Z" },
+          {
+            user_id: "1",
+            name: "A",
+            score: "1",
+            is_active: "true",
+            signup_date: "2024-01-15",
+            last_login: "2024-01-15T00:00:00Z",
+          },
+          {
+            user_id: "2",
+            name: "B",
+            score: "2",
+            is_active: "true",
+            signup_date: "",
+            last_login: "2023-01-01T00:00:00Z",
+          },
+          {
+            user_id: "3",
+            name: "C",
+            score: "3",
+            is_active: "true",
+            signup_date: "2023-06-01",
+            last_login: "2023-06-01T00:00:00Z",
+          },
         ],
         expectedOrder: ["2023-06-01", "2024-01-15", ""],
         fieldKey: "signup_date",
@@ -507,20 +687,38 @@ describe("Entity Record Router — Sorting", () => {
     });
 
     it("should handle records where the sort key is entirely absent", async () => {
-      const { userId, organizationId, connectorEntityId } =
-        await seedFullStack(db as ReturnType<typeof drizzle>);
+      const { userId, organizationId, connectorEntityId } = await seedFullStack(
+        db as ReturnType<typeof drizzle>
+      );
 
       // One record has score, the other doesn't have the key at all
       const rows = [
         createEntityRecord(
-          organizationId, connectorEntityId,
-          { user_id: "1", name: "A", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" },
-          "1", userId
+          organizationId,
+          connectorEntityId,
+          {
+            user_id: "1",
+            name: "A",
+            is_active: "true",
+            signup_date: "2023-01-01",
+            last_login: "2023-01-01T00:00:00Z",
+          },
+          "1",
+          userId
         ),
         createEntityRecord(
-          organizationId, connectorEntityId,
-          { user_id: "2", name: "B", score: "42", is_active: "true", signup_date: "2023-01-02", last_login: "2023-01-02T00:00:00Z" },
-          "2", userId
+          organizationId,
+          connectorEntityId,
+          {
+            user_id: "2",
+            name: "B",
+            score: "42",
+            is_active: "true",
+            signup_date: "2023-01-02",
+            last_login: "2023-01-02T00:00:00Z",
+          },
+          "2",
+          userId
         ),
       ];
       await (db as ReturnType<typeof drizzle>)
@@ -550,9 +748,30 @@ describe("Entity Record Router — Sorting", () => {
         sortBy: "score",
         sortOrder: "asc",
         records: [
-          { user_id: "1", name: "A", score: "25", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" },
-          { user_id: "2", name: "B", score: "N/A", is_active: "true", signup_date: "2023-01-02", last_login: "2023-01-02T00:00:00Z" },
-          { user_id: "3", name: "C", score: "10", is_active: "true", signup_date: "2023-01-03", last_login: "2023-01-03T00:00:00Z" },
+          {
+            user_id: "1",
+            name: "A",
+            score: "25",
+            is_active: "true",
+            signup_date: "2023-01-01",
+            last_login: "2023-01-01T00:00:00Z",
+          },
+          {
+            user_id: "2",
+            name: "B",
+            score: "N/A",
+            is_active: "true",
+            signup_date: "2023-01-02",
+            last_login: "2023-01-02T00:00:00Z",
+          },
+          {
+            user_id: "3",
+            name: "C",
+            score: "10",
+            is_active: "true",
+            signup_date: "2023-01-03",
+            last_login: "2023-01-03T00:00:00Z",
+          },
         ],
         // Non-numeric "N/A" treated as NULL, pushed to end
         expectedOrder: ["10", "25", "N/A"],
@@ -561,12 +780,39 @@ describe("Entity Record Router — Sorting", () => {
     });
 
     it("should fall back to created sort for non-sortable boolean column", async () => {
-      const { userId, organizationId, connectorEntityId } =
-        await seedFullStack(db as ReturnType<typeof drizzle>);
+      const { userId, organizationId, connectorEntityId } = await seedFullStack(
+        db as ReturnType<typeof drizzle>
+      );
 
       const rows = [
-        createEntityRecord(organizationId, connectorEntityId, { user_id: "1", name: "A", score: "1", is_active: "false", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" }, "1", userId),
-        createEntityRecord(organizationId, connectorEntityId, { user_id: "2", name: "B", score: "2", is_active: "true", signup_date: "2023-01-02", last_login: "2023-01-02T00:00:00Z" }, "2", userId),
+        createEntityRecord(
+          organizationId,
+          connectorEntityId,
+          {
+            user_id: "1",
+            name: "A",
+            score: "1",
+            is_active: "false",
+            signup_date: "2023-01-01",
+            last_login: "2023-01-01T00:00:00Z",
+          },
+          "1",
+          userId
+        ),
+        createEntityRecord(
+          organizationId,
+          connectorEntityId,
+          {
+            user_id: "2",
+            name: "B",
+            score: "2",
+            is_active: "true",
+            signup_date: "2023-01-02",
+            last_login: "2023-01-02T00:00:00Z",
+          },
+          "2",
+          userId
+        ),
       ];
       rows[0].created = now - 1000;
       rows[1].created = now;
@@ -593,12 +839,39 @@ describe("Entity Record Router — Sorting", () => {
 
   describe("table column sorting", () => {
     it("should sort by built-in created column ascending", async () => {
-      const { userId, organizationId, connectorEntityId } =
-        await seedFullStack(db as ReturnType<typeof drizzle>);
+      const { userId, organizationId, connectorEntityId } = await seedFullStack(
+        db as ReturnType<typeof drizzle>
+      );
 
       const rows = [
-        createEntityRecord(organizationId, connectorEntityId, { user_id: "1", name: "A", score: "1", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" }, "1", userId),
-        createEntityRecord(organizationId, connectorEntityId, { user_id: "2", name: "B", score: "2", is_active: "true", signup_date: "2023-01-02", last_login: "2023-01-02T00:00:00Z" }, "2", userId),
+        createEntityRecord(
+          organizationId,
+          connectorEntityId,
+          {
+            user_id: "1",
+            name: "A",
+            score: "1",
+            is_active: "true",
+            signup_date: "2023-01-01",
+            last_login: "2023-01-01T00:00:00Z",
+          },
+          "1",
+          userId
+        ),
+        createEntityRecord(
+          organizationId,
+          connectorEntityId,
+          {
+            user_id: "2",
+            name: "B",
+            score: "2",
+            is_active: "true",
+            signup_date: "2023-01-02",
+            last_login: "2023-01-02T00:00:00Z",
+          },
+          "2",
+          userId
+        ),
       ];
       // Offset the created timestamps so ordering is deterministic
       rows[0].created = now - 1000;
@@ -621,12 +894,39 @@ describe("Entity Record Router — Sorting", () => {
     });
 
     it("should fall back to created when sortBy is unknown", async () => {
-      const { userId, organizationId, connectorEntityId } =
-        await seedFullStack(db as ReturnType<typeof drizzle>);
+      const { userId, organizationId, connectorEntityId } = await seedFullStack(
+        db as ReturnType<typeof drizzle>
+      );
 
       const rows = [
-        createEntityRecord(organizationId, connectorEntityId, { user_id: "1", name: "A", score: "1", is_active: "true", signup_date: "2023-01-01", last_login: "2023-01-01T00:00:00Z" }, "1", userId),
-        createEntityRecord(organizationId, connectorEntityId, { user_id: "2", name: "B", score: "2", is_active: "true", signup_date: "2023-01-02", last_login: "2023-01-02T00:00:00Z" }, "2", userId),
+        createEntityRecord(
+          organizationId,
+          connectorEntityId,
+          {
+            user_id: "1",
+            name: "A",
+            score: "1",
+            is_active: "true",
+            signup_date: "2023-01-01",
+            last_login: "2023-01-01T00:00:00Z",
+          },
+          "1",
+          userId
+        ),
+        createEntityRecord(
+          organizationId,
+          connectorEntityId,
+          {
+            user_id: "2",
+            name: "B",
+            score: "2",
+            is_active: "true",
+            signup_date: "2023-01-02",
+            last_login: "2023-01-02T00:00:00Z",
+          },
+          "2",
+          userId
+        ),
       ];
       rows[0].created = now - 1000;
       rows[1].created = now;
@@ -687,15 +987,56 @@ describe("Entity Record Router — Advanced Filters", () => {
     );
 
     const records = [
-      { user_id: "1", name: "Alice", score: "90", is_active: "true", signup_date: "2023-01-15", last_login: "2023-01-15T10:00:00Z" },
-      { user_id: "2", name: "Bob", score: "75", is_active: "false", signup_date: "2023-06-20", last_login: "2023-06-20T14:30:00Z" },
-      { user_id: "3", name: "Charlie", score: "60", is_active: "true", signup_date: "2024-01-10", last_login: "2024-01-10T08:00:00Z" },
-      { user_id: "4", name: "Diana", score: "85", is_active: "false", signup_date: "2022-11-05", last_login: "2022-11-05T16:45:00Z" },
-      { user_id: "5", name: "Eve", score: "", is_active: "true", signup_date: "", last_login: "" },
+      {
+        user_id: "1",
+        name: "Alice",
+        score: "90",
+        is_active: "true",
+        signup_date: "2023-01-15",
+        last_login: "2023-01-15T10:00:00Z",
+      },
+      {
+        user_id: "2",
+        name: "Bob",
+        score: "75",
+        is_active: "false",
+        signup_date: "2023-06-20",
+        last_login: "2023-06-20T14:30:00Z",
+      },
+      {
+        user_id: "3",
+        name: "Charlie",
+        score: "60",
+        is_active: "true",
+        signup_date: "2024-01-10",
+        last_login: "2024-01-10T08:00:00Z",
+      },
+      {
+        user_id: "4",
+        name: "Diana",
+        score: "85",
+        is_active: "false",
+        signup_date: "2022-11-05",
+        last_login: "2022-11-05T16:45:00Z",
+      },
+      {
+        user_id: "5",
+        name: "Eve",
+        score: "",
+        is_active: "true",
+        signup_date: "",
+        last_login: "",
+      },
     ];
 
     const rows = records.map((data, i) =>
-      createEntityRecord(organizationId, connectorEntityId, data, String(i + 1), userId)
+      createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        data,
+        String(i + 1),
+        userId
+      )
     );
     await (db as ReturnType<typeof drizzle>)
       .insert(entityRecords)
@@ -756,7 +1097,9 @@ describe("Entity Record Router — Advanced Filters", () => {
           limit: 100,
           filters: encodeFilters({
             combinator: "and",
-            conditions: [{ field: "name", operator: "starts_with", value: "Ch" }],
+            conditions: [
+              { field: "name", operator: "starts_with", value: "Ch" },
+            ],
           }),
         })
         .set("Authorization", "Bearer test-token");
@@ -808,7 +1151,9 @@ describe("Entity Record Router — Advanced Filters", () => {
           limit: 100,
           filters: encodeFilters({
             combinator: "and",
-            conditions: [{ field: "name", operator: "not_contains", value: "li" }],
+            conditions: [
+              { field: "name", operator: "not_contains", value: "li" },
+            ],
           }),
         })
         .set("Authorization", "Bearer test-token");
@@ -874,7 +1219,9 @@ describe("Entity Record Router — Advanced Filters", () => {
           limit: 100,
           filters: encodeFilters({
             combinator: "and",
-            conditions: [{ field: "score", operator: "between", value: ["70", "90"] }],
+            conditions: [
+              { field: "score", operator: "between", value: ["70", "90"] },
+            ],
           }),
         })
         .set("Authorization", "Bearer test-token");
@@ -964,7 +1311,9 @@ describe("Entity Record Router — Advanced Filters", () => {
           limit: 100,
           filters: encodeFilters({
             combinator: "and",
-            conditions: [{ field: "signup_date", operator: "gte", value: "2023-06-01" }],
+            conditions: [
+              { field: "signup_date", operator: "gte", value: "2023-06-01" },
+            ],
           }),
         })
         .set("Authorization", "Bearer test-token");
@@ -985,7 +1334,13 @@ describe("Entity Record Router — Advanced Filters", () => {
           limit: 100,
           filters: encodeFilters({
             combinator: "and",
-            conditions: [{ field: "signup_date", operator: "between", value: ["2023-01-01", "2023-12-31"] }],
+            conditions: [
+              {
+                field: "signup_date",
+                operator: "between",
+                value: ["2023-01-01", "2023-12-31"],
+              },
+            ],
           }),
         })
         .set("Authorization", "Bearer test-token");
@@ -1028,7 +1383,9 @@ describe("Entity Record Router — Advanced Filters", () => {
           limit: 100,
           filters: encodeFilters({
             combinator: "and",
-            conditions: [{ field: "score", operator: "is_not_empty", value: null }],
+            conditions: [
+              { field: "score", operator: "is_not_empty", value: null },
+            ],
           }),
         })
         .set("Authorization", "Bearer test-token");
@@ -1240,7 +1597,9 @@ describe("Entity Record Router — Advanced Filters", () => {
 
     it("should return 400 for invalid filter schema", async () => {
       const { connectorEntityId } = await seedFilterData();
-      const bad = Buffer.from(JSON.stringify({ bad: "data" })).toString("base64");
+      const bad = Buffer.from(JSON.stringify({ bad: "data" })).toString(
+        "base64"
+      );
       const res = await request(app)
         .get(recordsUrl(connectorEntityId))
         .query({ limit: 100, filters: bad })
@@ -1258,7 +1617,9 @@ describe("Entity Record Router — Advanced Filters", () => {
           limit: 100,
           filters: encodeFilters({
             combinator: "and",
-            conditions: [{ field: "nonexistent_col", operator: "eq", value: "x" }],
+            conditions: [
+              { field: "nonexistent_col", operator: "eq", value: "x" },
+            ],
           }),
         })
         .set("Authorization", "Bearer test-token");
@@ -1366,18 +1727,21 @@ describe("Entity Record Router — GIN Index Performance", () => {
         connectorEntityId,
         data,
         String(i + 1),
-        "user-placeholder",
-      ),
+        "user-placeholder"
+      )
     );
 
     // We need real org/user IDs — use the ones from seedFullStack
     // Re-seed to get the IDs
     await teardownOrg(db as ReturnType<typeof drizzle>);
-    const { userId, organizationId, connectorEntityId: entityId } =
-      await seedFullStack(db as ReturnType<typeof drizzle>);
+    const {
+      userId,
+      organizationId,
+      connectorEntityId: entityId,
+    } = await seedFullStack(db as ReturnType<typeof drizzle>);
 
     const seededRows = records.map((data, i) =>
-      createEntityRecord(organizationId, entityId, data, String(i + 1), userId),
+      createEntityRecord(organizationId, entityId, data, String(i + 1), userId)
     );
     await (db as ReturnType<typeof drizzle>)
       .insert(entityRecords)
@@ -1427,12 +1791,20 @@ describe("Entity Record Router — GET /:recordId", () => {
     `/api/connector-entities/${connectorEntityId}/records/${recordId}`;
 
   it("should return 200 with the record and columns", async () => {
-    const { userId, organizationId, connectorEntityId } = await seedFullStack(db);
+    const { userId, organizationId, connectorEntityId } =
+      await seedFullStack(db);
 
     const row = createEntityRecord(
       organizationId,
       connectorEntityId,
-      { user_id: "1", name: "Alice", score: "90", is_active: "true", signup_date: "2023-01-15", last_login: "2023-01-15T10:00:00Z" },
+      {
+        user_id: "1",
+        name: "Alice",
+        score: "90",
+        is_active: "true",
+        signup_date: "2023-01-15",
+        last_login: "2023-01-15T10:00:00Z",
+      },
       "src-1",
       userId
     );
@@ -1461,14 +1833,22 @@ describe("Entity Record Router — GET /:recordId", () => {
   });
 
   it("should return 404 when record belongs to a different entity", async () => {
-    const { userId, organizationId, connectorEntityId } = await seedFullStack(db);
+    const { userId, organizationId, connectorEntityId } =
+      await seedFullStack(db);
 
     const stack2 = await seedFullStack(db);
 
     const row = createEntityRecord(
       organizationId,
       connectorEntityId,
-      { user_id: "2", name: "Bob", score: "75", is_active: "false", signup_date: "2023-06-20", last_login: "2023-06-20T14:30:00Z" },
+      {
+        user_id: "2",
+        name: "Bob",
+        score: "75",
+        is_active: "false",
+        signup_date: "2023-06-20",
+        last_login: "2023-06-20T14:30:00Z",
+      },
       "src-2",
       userId
     );
@@ -1530,7 +1910,12 @@ describe("Entity Record Router — POST /", () => {
     const colDef = createColumnDef(organizationId, "name", "string", "Name");
     await db.insert(columnDefinitions).values(colDef as never);
 
-    const mapping = createFieldMapping(organizationId, entity.id, colDef.id, "name");
+    const mapping = createFieldMapping(
+      organizationId,
+      entity.id,
+      colDef.id,
+      "name"
+    );
     await db.insert(fieldMappings).values(mapping as never);
 
     return { userId, organizationId, connectorEntityId: entity.id };
@@ -1569,7 +1954,9 @@ describe("Entity Record Router — POST /", () => {
       .send({ normalizedData: { name: "Bob" } });
 
     expect(res.status).toBe(201);
-    expect(res.body.payload.record.data).toEqual(res.body.payload.record.normalizedData);
+    expect(res.body.payload.record.data).toEqual(
+      res.body.payload.record.normalizedData
+    );
   });
 
   it("should auto-generate sourceId when omitted", async () => {
@@ -1670,7 +2057,9 @@ describe("Entity Record Router — POST /", () => {
 
     expect(listRes.status).toBe(200);
     expect(listRes.body.payload.records).toHaveLength(1);
-    expect(listRes.body.payload.records[0].normalizedData).toEqual({ name: "Grace" });
+    expect(listRes.body.payload.records[0].normalizedData).toEqual({
+      name: "Grace",
+    });
   });
 
   // ── Error cases ────────────────────────────────────────────────────
@@ -1780,7 +2169,12 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     const colDef = createColumnDef(organizationId, "name", "string", "Name");
     await db.insert(columnDefinitions).values(colDef as never);
 
-    const mapping = createFieldMapping(organizationId, entity.id, colDef.id, "name");
+    const mapping = createFieldMapping(
+      organizationId,
+      entity.id,
+      colDef.id,
+      "name"
+    );
     await db.insert(fieldMappings).values(mapping as never);
 
     return { userId, organizationId, connectorEntityId: entity.id };
@@ -1796,12 +2190,19 @@ describe("Entity Record Router — Write Capability Deletes", () => {
 
   describe("DELETE /api/connector-entities/:id/records/:recordId", () => {
     it("should return 422 when instance has write disabled", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: false },
-      });
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: false },
+        });
 
-      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      const row = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Alice" },
+        "src-1",
+        userId
+      );
       await db.insert(entityRecords).values(row as never);
 
       const res = await request(app)
@@ -1813,12 +2214,19 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     });
 
     it("should soft-delete record when write capability is resolved to true", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: true },
-      });
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
 
-      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Charlie" }, "src-1", userId);
+      const row = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Charlie" },
+        "src-1",
+        userId
+      );
       await db.insert(entityRecords).values(row as never);
 
       const res = await request(app)
@@ -1844,12 +2252,19 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     });
 
     it("should return 422 when enabledCapabilityFlags is null even if definition has write: true", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: true,
-        enabledCapabilityFlags: null,
-      });
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: null,
+        });
 
-      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Dave" }, "src-1", userId);
+      const row = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Dave" },
+        "src-1",
+        userId
+      );
       await db.insert(entityRecords).values(row as never);
 
       const res = await request(app)
@@ -1861,12 +2276,19 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     });
 
     it("deleted record should no longer appear in GET records list", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: true },
-      });
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
 
-      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Eve" }, "src-1", userId);
+      const row = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Eve" },
+        "src-1",
+        userId
+      );
       await db.insert(entityRecords).values(row as never);
 
       // Delete
@@ -1889,12 +2311,19 @@ describe("Entity Record Router — Write Capability Deletes", () => {
 
   describe("PATCH /api/connector-entities/:id/records/:recordId", () => {
     it("should return 422 CONNECTOR_INSTANCE_WRITE_DISABLED when write is disabled", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: false },
-      });
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: false },
+        });
 
-      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      const row = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Alice" },
+        "src-1",
+        userId
+      );
       await db.insert(entityRecords).values(row as never);
 
       const res = await request(app)
@@ -1907,23 +2336,35 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     });
 
     it("should update record when write is enabled", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: true },
-      });
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
 
-      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Alice" }, "src-1", userId);
+      const row = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Alice" },
+        "src-1",
+        userId
+      );
       await db.insert(entityRecords).values(row as never);
 
       const res = await request(app)
         .patch(singleRecordUrl(connectorEntityId, row.id))
         .set("Authorization", "Bearer test-token")
-        .send({ data: { name: "Updated" }, normalizedData: { name: "Updated" } });
+        .send({
+          data: { name: "Updated" },
+          normalizedData: { name: "Updated" },
+        });
 
       expect(res.status).toBe(200);
       expect(res.body.payload.record.id).toBe(row.id);
       expect(res.body.payload.record.data).toEqual({ name: "Updated" });
-      expect(res.body.payload.record.normalizedData).toEqual({ name: "Updated" });
+      expect(res.body.payload.record.normalizedData).toEqual({
+        name: "Updated",
+      });
     });
 
     it("should return 404 for non-existent record", async () => {
@@ -1946,12 +2387,19 @@ describe("Entity Record Router — Write Capability Deletes", () => {
 
   describe("DELETE /api/connector-entities/:id/records (bulk)", () => {
     it("should return 422 when write is disabled", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: false },
-      });
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: false },
+        });
 
-      const row = createEntityRecord(organizationId, connectorEntityId, { name: "Frank" }, "src-1", userId);
+      const row = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Frank" },
+        "src-1",
+        userId
+      );
       await db.insert(entityRecords).values(row as never);
 
       const res = await request(app)
@@ -1963,13 +2411,26 @@ describe("Entity Record Router — Write Capability Deletes", () => {
     });
 
     it("should succeed when write capability is enabled", async () => {
-      const { userId, organizationId, connectorEntityId } = await seedWithCapabilities(db, {
-        definitionWrite: true,
-        enabledCapabilityFlags: { write: true },
-      });
+      const { userId, organizationId, connectorEntityId } =
+        await seedWithCapabilities(db, {
+          definitionWrite: true,
+          enabledCapabilityFlags: { write: true },
+        });
 
-      const row1 = createEntityRecord(organizationId, connectorEntityId, { name: "Gina" }, "src-1", userId);
-      const row2 = createEntityRecord(organizationId, connectorEntityId, { name: "Hank" }, "src-2", userId);
+      const row1 = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Gina" },
+        "src-1",
+        userId
+      );
+      const row2 = createEntityRecord(
+        organizationId,
+        connectorEntityId,
+        { name: "Hank" },
+        "src-2",
+        userId
+      );
       await db.insert(entityRecords).values([row1, row2] as never);
 
       const res = await request(app)

@@ -55,7 +55,9 @@ describe("serializeFilterExpression / deserializeFilterExpression", () => {
   });
 
   it("should return null for valid JSON but invalid schema", () => {
-    expect(deserializeFilterExpression(btoa(JSON.stringify({ bad: true })))).toBeNull();
+    expect(
+      deserializeFilterExpression(btoa(JSON.stringify({ bad: true })))
+    ).toBeNull();
   });
 
   it("should return null for empty string", () => {
@@ -67,7 +69,9 @@ describe("serializeFilterExpression / deserializeFilterExpression", () => {
 
 describe("isFilterExpressionEmpty", () => {
   it("should return true for expression with no conditions", () => {
-    expect(isFilterExpressionEmpty({ combinator: "and", conditions: [] })).toBe(true);
+    expect(isFilterExpressionEmpty({ combinator: "and", conditions: [] })).toBe(
+      true
+    );
   });
 
   it("should return true for expression with only empty groups", () => {
@@ -75,7 +79,7 @@ describe("isFilterExpressionEmpty", () => {
       isFilterExpressionEmpty({
         combinator: "and",
         conditions: [{ combinator: "or", conditions: [] }],
-      }),
+      })
     ).toBe(true);
   });
 
@@ -84,7 +88,7 @@ describe("isFilterExpressionEmpty", () => {
       isFilterExpressionEmpty({
         combinator: "and",
         conditions: [{ field: "name", operator: "eq", value: "x" }],
-      }),
+      })
     ).toBe(false);
   });
 });
@@ -104,7 +108,7 @@ describe("countActiveConditions", () => {
           { field: "a", operator: "eq", value: "1" },
           { field: "b", operator: "eq", value: "2" },
         ],
-      }),
+      })
     ).toBe(2);
   });
 
@@ -122,7 +126,7 @@ describe("countActiveConditions", () => {
             ],
           },
         ],
-      }),
+      })
     ).toBe(3);
   });
 });
@@ -304,7 +308,10 @@ describe("stripInvalidColumns", () => {
       ],
     };
     const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
-    expect(collectConditions(cleaned).map((c) => c.field)).toEqual(["name", "age"]);
+    expect(collectConditions(cleaned).map((c) => c.field)).toEqual([
+      "name",
+      "age",
+    ]);
     expect(removed).toEqual([]);
   });
 
@@ -318,7 +325,10 @@ describe("stripInvalidColumns", () => {
       ],
     };
     const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
-    expect(collectConditions(cleaned).map((c) => c.field)).toEqual(["name", "age"]);
+    expect(collectConditions(cleaned).map((c) => c.field)).toEqual([
+      "name",
+      "age",
+    ]);
     expect(removed).toEqual(["deleted_col"]);
   });
 
@@ -337,7 +347,10 @@ describe("stripInvalidColumns", () => {
       ],
     };
     const [cleaned, removed] = stripInvalidColumns(expr, validKeys);
-    expect(collectConditions(cleaned).map((c) => c.field)).toEqual(["name", "status"]);
+    expect(collectConditions(cleaned).map((c) => c.field)).toEqual([
+      "name",
+      "status",
+    ]);
     expect(removed).toEqual(["gone"]);
   });
 

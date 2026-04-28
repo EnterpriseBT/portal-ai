@@ -29,7 +29,13 @@ describe("portals.api", () => {
     });
 
     it("calls correct endpoint with stationId param", () => {
-      const params = { limit: 20, offset: 0, sortBy: "created", sortOrder: "asc" as const, stationId: "station-123" };
+      const params = {
+        limit: 20,
+        offset: 0,
+        sortBy: "created",
+        sortOrder: "asc" as const,
+        stationId: "station-123",
+      };
       portals.list(params);
       expect(mockUseAuthQuery).toHaveBeenCalledWith(
         queryKeys.portals.list(params),

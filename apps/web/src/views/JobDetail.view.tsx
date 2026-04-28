@@ -47,8 +47,12 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                 const progress = hasStreamData ? stream.progress : job.progress;
                 const error = hasStreamData ? stream.error : job.error;
                 const result = hasStreamData ? stream.result : job.result;
-                const startedAt = hasStreamData ? stream.startedAt : job.startedAt;
-                const completedAt = hasStreamData ? stream.completedAt : job.completedAt;
+                const startedAt = hasStreamData
+                  ? stream.startedAt
+                  : job.startedAt;
+                const completedAt = hasStreamData
+                  ? stream.completedAt
+                  : job.completedAt;
                 const isTerminal = JobModel.isTerminalStatus(status);
 
                 return (
@@ -82,31 +86,56 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                     </PageHeader>
 
                     {status === "active" && (
-                      <Progress value={progress} height={10} color="info" animated />
+                      <Progress
+                        value={progress}
+                        height={10}
+                        color="info"
+                        animated
+                      />
                     )}
 
-                    <PageSection title="Details" icon={<Icon name={IconName.Info} />} variant="outlined">
+                    <PageSection
+                      title="Details"
+                      icon={<Icon name={IconName.Info} />}
+                      variant="outlined"
+                    >
                       <MetadataList
                         layout="responsive"
                         size="medium"
                         items={[
                           { label: "Job ID", value: job.id, variant: "mono" },
                           { label: "Type", value: job.type },
-                          { label: "Progress", value: `${Math.round(progress)}%` },
+                          {
+                            label: "Progress",
+                            value: `${Math.round(progress)}%`,
+                          },
                           { label: "Created", value: formatDate(job.created) },
                           { label: "Started", value: formatDate(startedAt) },
-                          { label: "Completed", value: formatDate(completedAt) },
-                          { label: "Attempts", value: `${job.attempts} / ${job.maxAttempts}` },
+                          {
+                            label: "Completed",
+                            value: formatDate(completedAt),
+                          },
+                          {
+                            label: "Attempts",
+                            value: `${job.attempts} / ${job.maxAttempts}`,
+                          },
                         ]}
                       />
                     </PageSection>
 
                     {error && (
-                      <PageSection title="Error" icon={<Icon name={IconName.Error} />} variant="outlined">
+                      <PageSection
+                        title="Error"
+                        icon={<Icon name={IconName.Error} />}
+                        variant="outlined"
+                      >
                         <Typography
                           variant="body2"
                           color="error.main"
-                          sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}
+                          sx={{
+                            fontFamily: "monospace",
+                            whiteSpace: "pre-wrap",
+                          }}
                         >
                           {error}
                         </Typography>
@@ -118,7 +147,11 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                         <Typography
                           variant="body2"
                           component="pre"
-                          sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap", m: 0 }}
+                          sx={{
+                            fontFamily: "monospace",
+                            whiteSpace: "pre-wrap",
+                            m: 0,
+                          }}
                         >
                           {JSON.stringify(result, null, 2)}
                         </Typography>
@@ -130,7 +163,11 @@ export const JobDetailView = ({ jobId }: JobDetailViewProps) => {
                         <Typography
                           variant="body2"
                           component="pre"
-                          sx={{ fontFamily: "monospace", whiteSpace: "pre-wrap", m: 0 }}
+                          sx={{
+                            fontFamily: "monospace",
+                            whiteSpace: "pre-wrap",
+                            m: 0,
+                          }}
                         >
                           {JSON.stringify(job.metadata, null, 2)}
                         </Typography>

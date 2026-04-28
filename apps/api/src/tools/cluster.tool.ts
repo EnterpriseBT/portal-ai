@@ -1,23 +1,23 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type StationData } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type StationData,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 import { getRecords } from "../utils/tools.util.js";
 
 const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
-  columns: z
-    .array(z.string())
-    .describe("Numeric columns to cluster on"),
+  columns: z.array(z.string()).describe("Numeric columns to cluster on"),
   k: z.number().int().min(2).describe("Number of clusters"),
 });
 
 export class ClusterTool extends Tool<typeof InputSchema> {
   slug = "cluster";
   name = "Cluster";
-  description =
-    "Perform k-means clustering on specified numeric columns.";
+  description = "Perform k-means clustering on specified numeric columns.";
 
   get schema() {
     return InputSchema;

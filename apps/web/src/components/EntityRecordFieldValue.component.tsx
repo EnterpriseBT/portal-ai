@@ -91,6 +91,8 @@ export const EntityRecordFieldValue: React.FC<EntityRecordFieldValueProps> = ({
   }
 
   return (
-    <Typography variant="body2">{Formatter.format(value, type, { canonicalFormat })}</Typography>
+    <Typography variant="body2">
+      {Formatter.format(value, type, { canonicalFormat })}
+    </Typography>
   );
 };

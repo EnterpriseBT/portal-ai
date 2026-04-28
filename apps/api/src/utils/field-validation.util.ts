@@ -8,7 +8,7 @@ export function validateRequired(value: unknown): string | null {
 export function validatePattern(
   value: unknown,
   pattern: string,
-  message?: string | null,
+  message?: string | null
 ): string | null {
   if (value === null || value === undefined) return null;
   let regex: RegExp;
@@ -26,7 +26,7 @@ export function validatePattern(
 
 export function validateEnum(
   value: unknown,
-  enumValues: string[],
+  enumValues: string[]
 ): string | null {
   if (value === null || value === undefined) return null;
   if (!enumValues.includes(String(value))) {

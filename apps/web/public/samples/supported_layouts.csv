@@ -1,0 +1,147 @@
+Index: Table 1
+,Tabular Dataset Shape Inventory,
+,Row/column orientation pairs use identical underlying data so the structural difference is the only variable.,
+,,
+,Sheet,Description
+,Single Axis Static,Row/column oriented table with one set of purely static headers
+,Single Axis Dynamic,Row/column oriented table with one set of purely static headers
+,Pivot,Row/column hybrid static/dynamic columns along one axis
+,Crosstab,Row/column hybrid static/dynamic columns along both axes
+,Hybrid Crosstab,Multiple hybrid static/dynamic headers along both axes
+,,
+,Legend:,
+,Static header (field name),
+,Dynamic header (value label),
+,Data value,
+,Blank / corner cell,
+
+Single Axis Static: Table 1
+,Single Axis  ·  Row Orientation  ·  Static Headers,,,,
+,Each row = one record. Headers are fixed field names across columns.,,,,
+,,,,,
+,employee_id,name,department,salary,hire_date
+,101,Alice Nguyen,Engineering,95000,2021-03-15
+,102,Bob Okafor,Marketing,72000,2020-07-01
+,103,Carol Singh,Engineering,105000,2019-11-22
+,104,David Liu,HR,68000,2022-01-10
+,105,Eva Martínez,Marketing,76000,2023-05-18
+,,,,,
+,"→ JSON record:  { employee_id, name, department, salary, hire_date }",,,,
+,→ Parser config:  orientation=row  |  header_row=1 (static)  |  data_start_row=2,,,,
+
+Single Axis Static: Table 1-1
+,Single Axis  ·  Column Orientation  ·  Static Headers,,,,,
+,Each column = one record. Headers are fixed field names down the first column.,,,,,
+,,,,,,
+,employee_id,101,102,103,104,105
+,name,Alice Nguyen,Bob Okafor,Carol Singh,David Liu,Eva Martínez
+,department,Engineering,Marketing,Engineering,HR,Marketing
+,salary,95000,72000,105000,68000,76000
+,hire_date,2021-03-15,2020-07-01,2019-11-22,2022-01-10,2023-05-18
+,,,,,,
+,"→ JSON record:  { employee_id, name, department, salary, hire_date }",,,,,
+,→ Parser config:  orientation=column  |  header_col=1 (static)  |  data_start_col=2,,,,,
+
+Single Axis Dynamic: Table 1
+,Single Axis  ·  Row Orientation  ·  Dynamic headers,,,,,
+,Headers are value-labels (month names). The header axis has no declared field name — context implies ‘Month'. Values are context-defined (sales),,,,,
+,,,,,,
+,January,February,March,April,May,June
+,42300,39800,51200,55400,60100,58700
+,53210,32105,27463,19283,85342,14387
+,94325,75324,64234,41532,63642,32455
+,,,,,,
+,"→ JSON record (after unpivot):  { month, sales }  — 'month'/'sales' are user-supplied field names",,,,,
+,→ Parser config:  orientation=row  |  header_row=1 (dynamic)  |  row_label_col=1 (dynamic),,,,,
+
+Single Axis Dynamic: Table 1-1
+,Single Axis  ·  Column Orientation  ·  Dynamic headers,,,
+,Transposed: month names run down the first column,,,
+,,,,
+,January,42300,43423,43532
+,February,39800,54352,56245
+,March,51200,53243,64245
+,April,55400,53442,64425
+,May,60100,45532,43554
+,June,58700,42111,33444
+,,,,
+,"→ JSON record (after unpivot):  { month, sales }  — same record shape as sheet 3
+→ Parser config:  orientation=column  |  header_col=1 (dynamic)  |  col_label_row=1 (dynamic)",,,
+,,,,
+
+Pivot: Table 1
+,PIVOT  ·  Row Orientation  ·  Hybrid Static + Dynamic Column Headers,,,,,
+,"Column headers contain both static headers (account, product) and dynamic headers (year).",,,,,
+,,,,,,
+,Account,Product,2020,2021,2022,2023
+,Google,Product 1,100000,200000,300000,400000
+,Microsoft,Product 2,150000,250000,350000,450000
+,Costco,Product 3,200000,250000,300000,400000
+,Lowe’s,Product 4,300000,350000,400000,450000
+,,,,,,
+,"→ JSON record:  { account, product, year, revenue }  — static col names → fields; ‘year' is user-supplied column-label field name; 
+     ‘revenue is user-supplied value-label field’
+→ Parser config:  orientation=row  |  header_row=1 (static)  |  row_label_col=1 (dynamic)  |  row_label_field=‘revenue’ | row_label_value=‘revenue’",,,,,
+,,,,,,
+
+Pivot: Table 1-1
+,PIVOT  ·  Column Orientation  ·  Hybrid Static + Dynamic Column Headers,,,,
+,Transposed: headers run down the first column,,,,
+,,,,,
+,Account,Google,Microsoft,Costco,Lowe’s
+,Product,Product 1,Product 2,Product 3,Product 4
+,2020,100000,150000,100000,100000
+,2021,200000,120000,150000,150000
+,2022,100000,350000,250000,250000
+,2023,100000,541000,500000,500000
+,,,,,
+,"→ JSON record:  { account, product, year, revenue }  — static col names → fields; ‘year' is user-supplied column-label field name; 
+     ‘revenue is user-supplied value-label field’
+→ Parser config:  orientation=column  |  header_row=1 (static)  |  row_label_col=1 (dynamic)  |  row_label_field=‘revenue’ | row_label_value=‘revenue’",,,,
+,,,,,
+
+Crosstab: Table 1
+,CROSSTAB  ·  Both axes  ·  Dynamic × Dynamic headers,,,,
+,Both axes carry value-labels. Neither axis has a declared field name. Corner cell is blank.,,,,
+,,,,,
+,,Critical,High,Medium,Low
+,Platform,3,8,14,22
+,Mobile,1,5,18,30
+,Data,2,6,11,19
+,DevOps,5,12,9,15
+,QA,0,3,21,42
+,,,,,
+,"→ JSON record (after melt):  { team, severity, tickets }  — all three field names are user-supplied",,,,
+,→ Parser config:  orientation=both  |  row_label_col=1 (dynamic)  |  col_label_row=1 (dynamic)  |  corner=blank,,,,
+
+Crosstab: Table 1-1
+,CROSSTAB  ·  Both axes  ·  Static × Static headers,,,,
+,Both axes carry declared field names. Corner cell holds the row-axis field name 'team \ severity'.,,,,
+,,,,,
+,team \ severity,Critical,High,Medium,Low
+,Platform,3,8,14,22
+,Mobile,1,5,18,30
+,Data,2,6,11,19
+,DevOps,5,12,9,15
+,QA,0,3,21,42
+,,,,,
+,"→ JSON record (after melt):  { team, severity, tickets }  — same record shape as sheet 7; field names now self-describing",,,,
+,→ Parser config:  orientation=both  |  row_label_col=1 (static)  |  col_label_row=1 (static)  |  corner=row_field_name,,,,
+
+Hybrid Crosstab: Table 1-1-1
+,CROSSTAB  ·  Both axes  ·  Hybrid headers,,,,,,
+,Both axes carry multiple header names. Corner cell holds the row-axis field name 'revenue \ company’.,,,,,,
+,,,,,,,
+,revenue \ company & metadata \ year,Industry,HQ,2022-Q1,2022-Q2,2022-Q3,2022-Q4
+,Scope,,,Unaudited,Unaudited,Audited,Audited
+,Currency,,,USD,USD,USD,USD
+,Apple,Tech,Cupertino,100,120,130,140
+,Microsoft,Tech,Redmond,95,105,115,125
+,Walmart,Retail,Bentonville,150,160,170,180
+,Shell,Energy,The Hague,200,210,205,195
+,,,,,,,
+,"→ JSON record (after melt):  { company, quarter, revenue, currency, scope, industry, hq }",,,,,,
+,"→ Parser config:  orientation=both  |  row_label_col=1 (static)  |  col_label_col=1 (dynamic) |  
+     row_label_col=3 (dynamic)  | col_label_col=3 (dynamic) | corner=row_field_name",,,,,,
+,,,,,,,
+,,,,,,,

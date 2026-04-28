@@ -99,7 +99,12 @@ export const FileUploader = React.forwardRef<HTMLDivElement, FileUploaderProps>(
       onChange?.(next);
     };
 
-    const borderColor = error || errorMessage ? "error.main" : dragActive ? "primary.main" : "divider";
+    const borderColor =
+      error || errorMessage
+        ? "error.main"
+        : dragActive
+          ? "primary.main"
+          : "divider";
 
     return (
       <Box ref={ref} className={className} {...rest}>

@@ -4,15 +4,18 @@ import type { ColumnDefinitionListResponsePayload } from "@portalai/core/contrac
 import type { ColumnDefinition } from "@portalai/core/models";
 import type { ApiError } from "../utils";
 
-type ListQuery = UseQueryResult<
-  ColumnDefinitionListResponsePayload,
-  ApiError
->;
+type ListQuery = UseQueryResult<ColumnDefinitionListResponsePayload, ApiError>;
 
 let currentListQuery: Partial<ListQuery> = {};
 
 const noopMutation = { mutate: jest.fn(), isPending: false, error: null };
-const noopQuery = { data: undefined, isLoading: false, isError: false, isSuccess: false, error: null };
+const noopQuery = {
+  data: undefined,
+  isLoading: false,
+  isError: false,
+  isSuccess: false,
+  error: null,
+};
 
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
@@ -30,9 +33,8 @@ jest.unstable_mockModule("../api/sdk", () => ({
 }));
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { ColumnDefinitionListView } = await import(
-  "../views/ColumnDefinitionList.view"
-);
+const { ColumnDefinitionListView } =
+  await import("../views/ColumnDefinitionList.view");
 
 const makeColumnDefinition = (
   overrides: Partial<ColumnDefinition> = {}
@@ -75,8 +77,17 @@ describe("ColumnDefinitionListView", () => {
   });
 
   it("should display column definition cards with mock data", () => {
-    const cd1 = makeColumnDefinition({ id: "cd-1", label: "First Name", key: "first_name" });
-    const cd2 = makeColumnDefinition({ id: "cd-2", label: "Email", key: "email", type: "string" });
+    const cd1 = makeColumnDefinition({
+      id: "cd-1",
+      label: "First Name",
+      key: "first_name",
+    });
+    const cd2 = makeColumnDefinition({
+      id: "cd-2",
+      label: "Email",
+      key: "email",
+      type: "string",
+    });
 
     currentListQuery = {
       data: { columnDefinitions: [cd1, cd2], total: 2, limit: 10, offset: 0 },
@@ -165,7 +176,9 @@ describe("ColumnDefinitionListView", () => {
 
     render(<ColumnDefinitionListView />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    const breadcrumbNav = screen.getByRole("navigation", { name: "breadcrumb" });
+    const breadcrumbNav = screen.getByRole("navigation", {
+      name: "breadcrumb",
+    });
     expect(breadcrumbNav).toBeInTheDocument();
     // "Column Definitions" appears in both breadcrumb and heading
     expect(screen.getAllByText("Column Definitions")).toHaveLength(2);

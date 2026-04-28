@@ -63,7 +63,11 @@ const INITIAL_FORM: CreateFieldMappingFormState = {
 };
 
 function toSnakeCase(s: string): string {
-  return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
 }
 
 function validateForm(form: CreateFieldMappingFormState): FormErrors {
@@ -85,7 +89,9 @@ export interface CreateFieldMappingDialogProps {
   onClose: () => void;
   onSubmit: (body: FieldMappingCreateRequestBody) => void;
   onSearchConnectorEntities: (query: string) => Promise<SelectOption[]>;
-  onSearchConnectorEntitiesForRefKey: (query: string) => Promise<SelectOption[]>;
+  onSearchConnectorEntitiesForRefKey: (
+    query: string
+  ) => Promise<SelectOption[]>;
   isPending: boolean;
   serverError: ServerError | null;
   columnDefinitionId: string;
@@ -93,7 +99,9 @@ export interface CreateFieldMappingDialogProps {
   columnDefinitionType: string;
 }
 
-export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> = ({
+export const CreateFieldMappingDialog: React.FC<
+  CreateFieldMappingDialogProps
+> = ({
   open,
   onClose,
   onSubmit,
@@ -122,11 +130,15 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
 
   const handleChange = <K extends keyof CreateFieldMappingFormState>(
     field: K,
-    value: CreateFieldMappingFormState[K],
+    value: CreateFieldMappingFormState[K]
   ) => {
     let next = { ...form, [field]: value };
     // Auto-suggest normalizedKey from sourceField when not manually edited
-    if (field === "sourceField" && typeof value === "string" && !next.normalizedKeyManuallyEdited) {
+    if (
+      field === "sourceField" &&
+      typeof value === "string" &&
+      !next.normalizedKeyManuallyEdited
+    ) {
       const suggested = toSnakeCase(value);
       next = { ...next, normalizedKey: suggested };
     }
@@ -145,7 +157,11 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
   };
 
   const handleSubmit = () => {
-    setTouched({ connectorEntityId: true, sourceField: true, normalizedKey: true });
+    setTouched({
+      connectorEntityId: true,
+      sourceField: true,
+      normalizedKey: true,
+    });
     const formErrors = validateForm(form);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) {
@@ -167,7 +183,10 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
       format: trimFormat || null,
       enumValues:
         columnDefinitionType === "enum" && trimEnum
-          ? trimEnum.split(",").map((s) => s.trim()).filter(Boolean)
+          ? trimEnum
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
           : null,
       isPrimaryKey: form.isPrimaryKey,
       refNormalizedKey: form.refNormalizedKey,
@@ -193,10 +212,20 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
-          <Button type="button" variant="contained" onClick={handleSubmit} disabled={isPending}>
+          <Button
+            type="button"
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={isPending}
+          >
             {isPending ? "Creating..." : "Create"}
           </Button>
         </Stack>
@@ -216,7 +245,9 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
           onChange={(val) => handleChange("connectorEntityId", val ?? "")}
           onSearch={onSearchConnectorEntities}
           error={touched.connectorEntityId && !!errors.connectorEntityId}
-          helperText={touched.connectorEntityId ? errors.connectorEntityId : undefined}
+          helperText={
+            touched.connectorEntityId ? errors.connectorEntityId : undefined
+          }
           required
         />
         <TextField
@@ -226,7 +257,11 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
           onBlur={() => handleBlur("sourceField")}
           error={touched.sourceField && !!errors.sourceField}
           helperText={touched.sourceField && errors.sourceField}
-          slotProps={{ htmlInput: { "aria-invalid": touched.sourceField && !!errors.sourceField } }}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid": touched.sourceField && !!errors.sourceField,
+            },
+          }}
           required
           fullWidth
         />
@@ -236,8 +271,15 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
           onChange={(e) => handleChange("normalizedKey", e.target.value)}
           onBlur={() => handleBlur("normalizedKey")}
           error={touched.normalizedKey && !!errors.normalizedKey}
-          helperText={(touched.normalizedKey && errors.normalizedKey) || "Auto-suggested from source field"}
-          slotProps={{ htmlInput: { "aria-invalid": touched.normalizedKey && !!errors.normalizedKey } }}
+          helperText={
+            (touched.normalizedKey && errors.normalizedKey) ||
+            "Auto-suggested from source field"
+          }
+          slotProps={{
+            htmlInput: {
+              "aria-invalid": touched.normalizedKey && !!errors.normalizedKey,
+            },
+          }}
           required
           fullWidth
         />
@@ -282,7 +324,8 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
             helperText="Comma-separated list of allowed values"
           />
         )}
-        {(columnDefinitionType === "reference" || columnDefinitionType === "reference-array") && (
+        {(columnDefinitionType === "reference" ||
+          columnDefinitionType === "reference-array") && (
           <>
             <AsyncSearchableSelect
               label="Ref Entity Key"
@@ -293,7 +336,9 @@ export const CreateFieldMappingDialog: React.FC<CreateFieldMappingDialogProps> =
             <TextField
               label="Ref Normalized Key"
               value={form.refNormalizedKey ?? ""}
-              onChange={(e) => handleChange("refNormalizedKey", e.target.value || null)}
+              onChange={(e) =>
+                handleChange("refNormalizedKey", e.target.value || null)
+              }
               fullWidth
               helperText="Normalized key of the referenced field in the target entity"
             />

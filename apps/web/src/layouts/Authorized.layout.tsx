@@ -1,4 +1,10 @@
-import { AppBar, Box, ButtonGroup, Toolbar, Typography } from "@portalai/core/ui";
+import {
+  AppBar,
+  Box,
+  ButtonGroup,
+  Toolbar,
+  Typography,
+} from "@portalai/core/ui";
 import { HeaderMenu } from "../components/HeaderMenu.component";
 import { ThemeSwitcher } from "../components/ThemeSwitcher.component";
 import React from "react";

@@ -29,5 +29,5 @@ export const entityGroupMembers = pgTable(
     uniqueIndex("entity_group_members_group_entity_unique")
       .on(table.entityGroupId, table.connectorEntityId)
       .where(sql`deleted IS NULL`),
-  ],
+  ]
 );

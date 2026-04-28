@@ -5,13 +5,25 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 // ---------------------------------------------------------------------------
 
 const mockFindEntityById = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockFindRefEntityKey = jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
-const mockSoftDeleteGroupMembers = jest.fn<(...args: unknown[]) => Promise<number>>().mockResolvedValue(0);
-const mockSoftDeleteTagAssignments = jest.fn<(...args: unknown[]) => Promise<number>>().mockResolvedValue(0);
-const mockSoftDeleteFieldMappings = jest.fn<(...args: unknown[]) => Promise<number>>().mockResolvedValue(0);
-const mockSoftDeleteEntityRecords = jest.fn<(...args: unknown[]) => Promise<number>>().mockResolvedValue(0);
-const mockSoftDeleteEntity = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
-const mockTransaction = jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
+const mockFindRefEntityKey =
+  jest.fn<(...args: unknown[]) => Promise<unknown[]>>();
+const mockSoftDeleteGroupMembers = jest
+  .fn<(...args: unknown[]) => Promise<number>>()
+  .mockResolvedValue(0);
+const mockSoftDeleteTagAssignments = jest
+  .fn<(...args: unknown[]) => Promise<number>>()
+  .mockResolvedValue(0);
+const mockSoftDeleteFieldMappings = jest
+  .fn<(...args: unknown[]) => Promise<number>>()
+  .mockResolvedValue(0);
+const mockSoftDeleteEntityRecords = jest
+  .fn<(...args: unknown[]) => Promise<number>>()
+  .mockResolvedValue(0);
+const mockSoftDeleteEntity = jest
+  .fn<(...args: unknown[]) => Promise<unknown>>()
+  .mockResolvedValue(undefined);
+const mockTransaction =
+  jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>();
 
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
@@ -38,15 +50,16 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
   },
 }));
 
-const mockAssertWriteCapability = jest.fn<(...args: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
+const mockAssertWriteCapability = jest
+  .fn<(...args: unknown[]) => Promise<void>>()
+  .mockResolvedValue(undefined);
 
 jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
   assertWriteCapability: mockAssertWriteCapability,
 }));
 
-const { ConnectorEntityValidationService } = await import(
-  "../../services/connector-entity-validation.service.js"
-);
+const { ConnectorEntityValidationService } =
+  await import("../../services/connector-entity-validation.service.js");
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -69,7 +82,7 @@ describe("ConnectorEntityValidationService.validateDelete", () => {
     mockFindRefEntityKey.mockResolvedValue([]);
 
     await expect(
-      ConnectorEntityValidationService.validateDelete("ce-1"),
+      ConnectorEntityValidationService.validateDelete("ce-1")
     ).resolves.toBeUndefined();
   });
 
@@ -78,11 +91,11 @@ describe("ConnectorEntityValidationService.validateDelete", () => {
     mockAssertWriteCapability.mockRejectedValue(
       Object.assign(new Error("Write disabled"), {
         code: "CONNECTOR_INSTANCE_WRITE_DISABLED",
-      }),
+      })
     );
 
     await expect(
-      ConnectorEntityValidationService.validateDelete("ce-1"),
+      ConnectorEntityValidationService.validateDelete("ce-1")
     ).rejects.toMatchObject({
       code: "CONNECTOR_INSTANCE_WRITE_DISABLED",
     });
@@ -96,7 +109,7 @@ describe("ConnectorEntityValidationService.validateDelete", () => {
     ]);
 
     await expect(
-      ConnectorEntityValidationService.validateDelete("ce-1"),
+      ConnectorEntityValidationService.validateDelete("ce-1")
     ).rejects.toMatchObject({
       code: "ENTITY_HAS_EXTERNAL_REFERENCES",
     });
@@ -116,7 +129,7 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
 
     const result = await ConnectorEntityValidationService.executeDelete(
       "ce-1",
-      "user-1",
+      "user-1"
     );
 
     expect(result).toEqual({
@@ -140,7 +153,7 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
     expect(mockSoftDeleteGroupMembers).toHaveBeenCalledWith(
       ["ce-1"],
       "user-1",
-      "tx-mock",
+      "tx-mock"
     );
   });
 
@@ -152,13 +165,17 @@ describe("ConnectorEntityValidationService.executeDelete", () => {
 
     const externalTx = "external-tx" as unknown;
 
-    await ConnectorEntityValidationService.executeDelete("ce-1", "user-1", externalTx as never);
+    await ConnectorEntityValidationService.executeDelete(
+      "ce-1",
+      "user-1",
+      externalTx as never
+    );
 
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockSoftDeleteGroupMembers).toHaveBeenCalledWith(
       ["ce-1"],
       "user-1",
-      "external-tx",
+      "external-tx"
     );
   });
 });

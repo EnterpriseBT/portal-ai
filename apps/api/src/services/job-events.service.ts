@@ -76,7 +76,8 @@ export class JobEventsService {
       ...patch,
     };
     if (status === "active") dbPatch.startedAt = now;
-    if (status === "completed" || status === "failed") dbPatch.completedAt = now;
+    if (status === "completed" || status === "failed")
+      dbPatch.completedAt = now;
 
     // Persist to PostgreSQL
     await DbService.repository.jobs.update(jobId, dbPatch);
@@ -91,10 +92,7 @@ export class JobEventsService {
       timestamp: now,
     };
     const redis = getRedisClient();
-    await redis.publish(
-      `${JOB_CHANNEL_PREFIX}${jobId}`,
-      JSON.stringify(event)
-    );
+    await redis.publish(`${JOB_CHANNEL_PREFIX}${jobId}`, JSON.stringify(event));
     logger.debug({ jobId, status }, "Job event published");
   }
 
@@ -117,20 +115,14 @@ export class JobEventsService {
     } as JobUpdateEvent & { _eventType: string };
 
     const redis = getRedisClient();
-    await redis.publish(
-      `${JOB_CHANNEL_PREFIX}${jobId}`,
-      JSON.stringify(event)
-    );
+    await redis.publish(`${JOB_CHANNEL_PREFIX}${jobId}`, JSON.stringify(event));
     logger.debug({ jobId, eventType }, "Custom job event published");
   }
 
   /**
    * Update progress without a status transition.
    */
-  static async updateProgress(
-    jobId: string,
-    progress: number
-  ): Promise<void> {
+  static async updateProgress(jobId: string, progress: number): Promise<void> {
     const now = SystemUtilities.utc.now().getTime();
     await DbService.repository.jobs.update(jobId, {
       progress,
@@ -144,10 +136,7 @@ export class JobEventsService {
       timestamp: now,
     };
     const redis = getRedisClient();
-    await redis.publish(
-      `${JOB_CHANNEL_PREFIX}${jobId}`,
-      JSON.stringify(event)
-    );
+    await redis.publish(`${JOB_CHANNEL_PREFIX}${jobId}`, JSON.stringify(event));
   }
 
   /**

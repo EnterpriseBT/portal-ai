@@ -1,0 +1,36 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`buildAxisNameRecommenderPrompt is deterministic (snapshot) 1`] = `
+"These are the labels on the records axis of a pivoted spreadsheet region:
+
+["Jan","Feb","Mar","Apr"]
+
+Propose a short, user-facing name for the dimension these labels describe
+(e.g. 'Month' for Jan/Feb/Mar; 'Region' for North/South/East/West).
+Return JSON that validates \`AxisNameRecommenderResponseSchema\`: { name, confidence }."
+`;
+
+exports[`buildClassifierPrompt produces a deterministic string for the same input (snapshot) 1`] = `
+"You are matching spreadsheet source columns to a catalog of ColumnDefinitions.
+For each candidate, choose the single best ColumnDefinition id, or null if none fits.
+Emit confidence in [0, 1] and a short rationale.
+
+## Candidates
+- sourceHeader: "Email"
+  sourceCol: 1
+  samples: ["a@x.com","b@x.com"]
+- sourceHeader: "First Name"
+  sourceCol: 2
+  samples: ["Alice","Bob"]
+
+## Catalog
+- id: "col-email"
+  label: "Email Address"
+  normalizedKey: "email"
+  description: "Primary email"
+- id: "col-first-name"
+  label: "First Name"
+  normalizedKey: "first_name"
+
+Return JSON that validates \`ClassifierResponseSchema\`: { classifications: [{ sourceHeader, columnDefinitionId, confidence, rationale? }] }."
+`;

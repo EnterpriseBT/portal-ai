@@ -42,16 +42,15 @@ jest.unstable_mockModule("../utils/api.util", () => ({
   }),
   useAuthQuery: jest.fn(),
   useAuthMutation: jest.fn(),
-  toServerError: (error: unknown) => (error ? { message: String(error), code: "UNKNOWN" } : null),
+  toServerError: (error: unknown) =>
+    error ? { message: String(error), code: "UNKNOWN" } : null,
   resolveApiUrl: (path: string) => path,
 }));
 
 const { render, screen } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const {
-  EntityGroupDetailViewUI,
-  OverlapPreview,
-} = await import("../views/EntityGroupDetail.view");
+const { EntityGroupDetailViewUI, OverlapPreview } =
+  await import("../views/EntityGroupDetail.view");
 
 // ── Fixtures ────────────────────────────────────────────────────────
 
@@ -112,8 +111,12 @@ const defaultProps = {
   addMemberOpen: false,
   onOpenAddMember: jest.fn(),
   onCloseAddMember: jest.fn(),
-  onSearchEntities: jest.fn<(_: string) => Promise<SelectOption[]>>().mockResolvedValue([]),
-  onSearchFieldMappings: jest.fn<(_: string) => Promise<SelectOption[]>>().mockResolvedValue([]),
+  onSearchEntities: jest
+    .fn<(_: string) => Promise<SelectOption[]>>()
+    .mockResolvedValue([]),
+  onSearchFieldMappings: jest
+    .fn<(_: string) => Promise<SelectOption[]>>()
+    .mockResolvedValue([]),
   selectedEntityId: null as string | null,
   onEntityChange: jest.fn(),
   selectedFieldMappingId: null as string | null,
@@ -154,7 +157,9 @@ describe("EntityGroupDetailViewUI", () => {
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Entity Groups")).toBeInTheDocument();
     // Group name appears in both breadcrumbs and heading
-    expect(screen.getAllByText("Customer Identity").length).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getAllByText("Customer Identity").length
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it("renders members table with entity labels and link fields", () => {
@@ -210,7 +215,9 @@ describe("EntityGroupDetailViewUI", () => {
     const removeButtons = screen.getAllByLabelText("Remove member");
     await user.click(removeButtons[0]);
     expect(
-      screen.getByText("Are you sure you want to remove this member from the group?")
+      screen.getByText(
+        "Are you sure you want to remove this member from the group?"
+      )
     ).toBeInTheDocument();
   });
 
@@ -229,7 +236,9 @@ describe("EntityGroupDetailViewUI", () => {
     expect(screen.getByRole("button", { name: /Edit/i })).toBeInTheDocument();
     // Delete is now in the ActionsMenu
     await user.click(screen.getByRole("button", { name: /More actions/i }));
-    expect(screen.getByRole("menuitem", { name: /Delete/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /Delete/i })
+    ).toBeInTheDocument();
   });
 
   it("clicking Edit button calls onOpenEdit", async () => {
@@ -257,12 +266,7 @@ describe("EntityGroupDetailViewUI", () => {
   });
 
   it("edit dialog disables Save when nothing changed", () => {
-    render(
-      <EntityGroupDetailViewUI
-        {...defaultProps}
-        editOpen={true}
-      />
-    );
+    render(<EntityGroupDetailViewUI {...defaultProps} editOpen={true} />);
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(defaultProps.onUpdateGroup).not.toHaveBeenCalled();
   });
@@ -272,7 +276,10 @@ describe("EntityGroupDetailViewUI", () => {
       <EntityGroupDetailViewUI
         {...defaultProps}
         editOpen={true}
-        editServerError={{ message: "Name already taken", code: "ENTITY_GROUP_DUPLICATE" }}
+        editServerError={{
+          message: "Name already taken",
+          code: "ENTITY_GROUP_DUPLICATE",
+        }}
       />
     );
     expect(screen.getByText(/Name already taken/)).toBeInTheDocument();
@@ -290,11 +297,16 @@ describe("EntityGroupDetailViewUI", () => {
       <EntityGroupDetailViewUI
         {...defaultProps}
         addMemberOpen={true}
-        addMemberServerError={{ message: "Member already exists", code: "ENTITY_GROUP_DUPLICATE_MEMBER" }}
+        addMemberServerError={{
+          message: "Member already exists",
+          code: "ENTITY_GROUP_DUPLICATE_MEMBER",
+        }}
       />
     );
     expect(screen.getByText(/Member already exists/)).toBeInTheDocument();
-    expect(screen.getByText(/ENTITY_GROUP_DUPLICATE_MEMBER/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/ENTITY_GROUP_DUPLICATE_MEMBER/)
+    ).toBeInTheDocument();
   });
 
   it("delete confirmation dialog displays server error when provided", async () => {
@@ -302,7 +314,10 @@ describe("EntityGroupDetailViewUI", () => {
     render(
       <EntityGroupDetailViewUI
         {...defaultProps}
-        deleteServerError={{ message: "Cannot delete group", code: "ENTITY_GROUP_DELETE_FAILED" }}
+        deleteServerError={{
+          message: "Cannot delete group",
+          code: "ENTITY_GROUP_DELETE_FAILED",
+        }}
       />
     );
     // Delete is now in the ActionsMenu
@@ -318,7 +333,9 @@ describe("OverlapPreview", () => {
     const { container } = render(
       <OverlapPreview overlap={null} isLoading={false} />
     );
-    expect(container.querySelector("[data-testid='overlap-preview']")).not.toBeInTheDocument();
+    expect(
+      container.querySelector("[data-testid='overlap-preview']")
+    ).not.toBeInTheDocument();
   });
 
   it("shows loading text when loading", () => {

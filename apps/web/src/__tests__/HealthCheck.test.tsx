@@ -25,15 +25,18 @@ jest.unstable_mockModule("../api/sdk", () => ({
 
 const { render, screen, waitFor } = await import("./test-utils");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { HealthCheck, HealthCheckUI } = await import(
-  "../components/HealthCheck.component"
-);
+const { HealthCheck, HealthCheckUI } =
+  await import("../components/HealthCheck.component");
 
 describe("HealthCheckUI Component", () => {
   it("should render a green indicator", () => {
     render(
       <HealthCheckUI
-        data={{ timestamp: "2026-02-27T12:00:00.000Z", version: "v1.0.0", sha: "abc1234" }}
+        data={{
+          timestamp: "2026-02-27T12:00:00.000Z",
+          version: "v1.0.0",
+          sha: "abc1234",
+        }}
         data-testid="health"
       />
     );
@@ -43,7 +46,11 @@ describe("HealthCheckUI Component", () => {
   it("should show healthy tooltip with timestamp on hover", async () => {
     render(
       <HealthCheckUI
-        data={{ timestamp: "2026-02-27T12:00:00.000Z", version: "v1.0.0", sha: "abc1234" }}
+        data={{
+          timestamp: "2026-02-27T12:00:00.000Z",
+          version: "v1.0.0",
+          sha: "abc1234",
+        }}
         data-testid="health"
       />
     );
@@ -56,7 +63,12 @@ describe("HealthCheckUI Component", () => {
   });
 
   it("should show 'unknown' when timestamp is empty", async () => {
-    render(<HealthCheckUI data={{ timestamp: "", version: "dev", sha: "unknown" }} data-testid="health" />);
+    render(
+      <HealthCheckUI
+        data={{ timestamp: "", version: "dev", sha: "unknown" }}
+        data-testid="health"
+      />
+    );
     await userEvent.hover(screen.getByTestId("health"));
     await waitFor(() => {
       expect(screen.getByRole("tooltip")).toHaveTextContent("unknown");
@@ -76,7 +88,10 @@ describe("HealthCheckUI Component", () => {
 
   it("should pass data attributes", () => {
     render(
-      <HealthCheckUI data={{ timestamp: "", version: "dev", sha: "unknown" }} data-testid="health-indicator" />
+      <HealthCheckUI
+        data={{ timestamp: "", version: "dev", sha: "unknown" }}
+        data-testid="health-indicator"
+      />
     );
     expect(screen.getByTestId("health-indicator")).toBeInTheDocument();
   });
@@ -90,7 +105,11 @@ describe("HealthCheck Component", () => {
   describe("Success State", () => {
     it("should render a green indicator", () => {
       currentQuery = makeQuery({
-        data: { timestamp: "2026-02-27T12:00:00.000Z", version: "v1.0.0", sha: "abc1234" },
+        data: {
+          timestamp: "2026-02-27T12:00:00.000Z",
+          version: "v1.0.0",
+          sha: "abc1234",
+        },
         isSuccess: true,
       });
       render(<HealthCheck data-testid="health" />);
@@ -99,7 +118,11 @@ describe("HealthCheck Component", () => {
 
     it("should show healthy tooltip with timestamp on hover", async () => {
       currentQuery = makeQuery({
-        data: { timestamp: "2026-02-27T12:00:00.000Z", version: "v1.0.0", sha: "abc1234" },
+        data: {
+          timestamp: "2026-02-27T12:00:00.000Z",
+          version: "v1.0.0",
+          sha: "abc1234",
+        },
         isSuccess: true,
       });
       render(<HealthCheck data-testid="health" />);
@@ -158,13 +181,19 @@ describe("HealthCheck Component", () => {
 
   describe("Custom Props", () => {
     it("should pass className", () => {
-      currentQuery = makeQuery({ isSuccess: true, data: { timestamp: "", version: "dev", sha: "unknown" } });
+      currentQuery = makeQuery({
+        isSuccess: true,
+        data: { timestamp: "", version: "dev", sha: "unknown" },
+      });
       render(<HealthCheck className="my-class" data-testid="health" />);
       expect(screen.getByTestId("health")).toHaveClass("my-class");
     });
 
     it("should pass data attributes", () => {
-      currentQuery = makeQuery({ isSuccess: true, data: { timestamp: "", version: "dev", sha: "unknown" } });
+      currentQuery = makeQuery({
+        isSuccess: true,
+        data: { timestamp: "", version: "dev", sha: "unknown" },
+      });
       render(<HealthCheck data-testid="health-indicator" />);
       expect(screen.getByTestId("health-indicator")).toBeInTheDocument();
     });

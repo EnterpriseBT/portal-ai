@@ -143,12 +143,8 @@ describe("useJobStream", () => {
     renderHook(() => useJobStream("job-123"));
     const es = await waitForConnection();
 
-    expect(mockConnect).toHaveBeenCalledWith(
-      "/api/sse/jobs/job-123/events"
-    );
-    expect(es.url).toBe(
-      "https://api.test.com/api/sse/jobs/job-123/events"
-    );
+    expect(mockConnect).toHaveBeenCalledWith("/api/sse/jobs/job-123/events");
+    expect(es.url).toBe("https://api.test.com/api/sse/jobs/job-123/events");
   });
 
   it("should URL-encode the jobId", async () => {
@@ -309,7 +305,7 @@ describe("useJobStream", () => {
     const { result } = renderHook(() => useJobStream("job-123"));
 
     // Flush async openStream (token fetch is a microtask)
-    await act(async () => { });
+    await act(async () => {});
 
     expect(MockEventSource.lastInstance).not.toBeNull();
     const es = MockEventSource.lastInstance!;
@@ -324,7 +320,7 @@ describe("useJobStream", () => {
       jest.advanceTimersByTime(3000);
     });
     // Flush microtasks from the new openStream call
-    await act(async () => { });
+    await act(async () => {});
 
     expect(MockEventSource.instances.length).toBe(2);
 

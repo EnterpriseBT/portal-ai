@@ -101,13 +101,19 @@ fieldMappingRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, connectorEntityId, columnDefinitionId, include } =
-        FieldMappingListRequestQuerySchema.parse(req.query);
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        search,
+        connectorEntityId,
+        columnDefinitionId,
+        include,
+      } = FieldMappingListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
-      const filters: SQL[] = [
-        eq(fieldMappings.organizationId, organizationId),
-      ];
+      const filters: SQL[] = [eq(fieldMappings.organizationId, organizationId)];
 
       if (search) {
         filters.push(ilike(fieldMappings.sourceField, `%${search}%`));
@@ -123,20 +129,37 @@ fieldMappingRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
+      const include_ = include
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const listOpts = {
+        limit,
+        offset,
+        orderBy: { column, direction: sortOrder },
+        include: include_,
+      };
 
       const [data, total] = await Promise.all([
         DbService.repository.fieldMappings.findMany(where, listOpts),
         DbService.repository.fieldMappings.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.FIELD_MAPPING_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list field mappings");
+        throw new ApiError(
+          500,
+          ApiCode.FIELD_MAPPING_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to list field mappings"
+        );
       });
 
-      type ResponsePayload = FieldMappingListResponsePayload | FieldMappingListWithConnectorEntityResponsePayload;
+      type ResponsePayload =
+        | FieldMappingListResponsePayload
+        | FieldMappingListWithConnectorEntityResponsePayload;
       return HttpService.success<ResponsePayload>(res, {
-        fieldMappings: data as unknown as FieldMappingListWithConnectorEntityResponsePayload["fieldMappings"],
+        fieldMappings:
+          data as unknown as FieldMappingListWithConnectorEntityResponsePayload["fieldMappings"],
         total,
         limit,
         offset,
@@ -146,7 +169,17 @@ fieldMappingRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list field mappings"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list field mappings"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.FIELD_MAPPING_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list field mappings"
+            )
+      );
     }
   }
 );
@@ -201,26 +234,49 @@ fieldMappingRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/field-mappings/:id called");
 
-      const fieldMapping = await DbService.repository.fieldMappings.findById(id).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.FIELD_MAPPING_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch field mapping");
-      });
+      const fieldMapping = await DbService.repository.fieldMappings
+        .findById(id)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.FIELD_MAPPING_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch field mapping"
+          );
+        });
 
       if (!fieldMapping) {
         return next(
-          new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found")
+          new ApiError(
+            404,
+            ApiCode.FIELD_MAPPING_NOT_FOUND,
+            "Field mapping not found"
+          )
         );
       }
 
       return HttpService.success<FieldMappingGetResponsePayload>(res, {
-        fieldMapping: fieldMapping as unknown as FieldMappingGetResponsePayload["fieldMapping"],
+        fieldMapping:
+          fieldMapping as unknown as FieldMappingGetResponsePayload["fieldMapping"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch field mapping"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch field mapping"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.FIELD_MAPPING_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch field mapping"
+            )
+      );
     }
   }
 );
@@ -300,17 +356,26 @@ fieldMappingRouter.post(
       const parsed = FieldMappingCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.FIELD_MAPPING_INVALID_PAYLOAD, "Invalid field mapping payload")
+          new ApiError(
+            400,
+            ApiCode.FIELD_MAPPING_INVALID_PAYLOAD,
+            "Invalid field mapping payload"
+          )
         );
       }
 
       // Verify connector entity exists
-      const connectorEntity = await DbService.repository.connectorEntities.findById(
-        parsed.data.connectorEntityId
-      );
+      const connectorEntity =
+        await DbService.repository.connectorEntities.findById(
+          parsed.data.connectorEntityId
+        );
       if (!connectorEntity) {
         return next(
-          new ApiError(404, ApiCode.CONNECTOR_ENTITY_NOT_FOUND, "Connector entity not found")
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_ENTITY_NOT_FOUND,
+            "Connector entity not found"
+          )
         );
       }
 
@@ -318,36 +383,51 @@ fieldMappingRouter.post(
       await assertWriteCapability(parsed.data.connectorEntityId);
 
       // Verify column definition exists
-      const columnDefinition = await DbService.repository.columnDefinitions.findById(
-        parsed.data.columnDefinitionId
-      );
+      const columnDefinition =
+        await DbService.repository.columnDefinitions.findById(
+          parsed.data.columnDefinitionId
+        );
       if (!columnDefinition) {
         return next(
-          new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Column definition not found")
+          new ApiError(
+            404,
+            ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+            "Column definition not found"
+          )
         );
       }
 
       // Block if a revalidation job is active for the target entity
-      await RevalidationService.assertNoActiveJob(parsed.data.connectorEntityId);
+      await RevalidationService.assertNoActiveJob(
+        parsed.data.connectorEntityId
+      );
 
       // Check for duplicate mapping (same entity + column definition)
       const duplicate = await DbService.repository.fieldMappings.findMany(
         and(
           eq(fieldMappings.connectorEntityId, parsed.data.connectorEntityId),
-          eq(fieldMappings.columnDefinitionId, parsed.data.columnDefinitionId),
+          eq(fieldMappings.columnDefinitionId, parsed.data.columnDefinitionId)
         )
       );
       if (duplicate.length > 0) {
         return next(
-          new ApiError(409, ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN, "A field mapping already exists for this column definition on the same connector entity")
+          new ApiError(
+            409,
+            ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN,
+            "A field mapping already exists for this column definition on the same connector entity"
+          )
         );
       }
 
       // Validate new fields
       FieldMappingValidationService.validateEnumValues(parsed.data.enumValues);
-      FieldMappingValidationService.validateFormat(parsed.data.format, columnDefinition.type);
+      FieldMappingValidationService.validateFormat(
+        parsed.data.format,
+        columnDefinition.type
+      );
       await FieldMappingValidationService.validateNormalizedKeyUniqueness(
-        parsed.data.connectorEntityId, parsed.data.normalizedKey
+        parsed.data.connectorEntityId,
+        parsed.data.normalizedKey
       );
 
       const { userId, organizationId } = req.application!.metadata;
@@ -369,21 +449,33 @@ fieldMappingRouter.post(
         refEntityKey: parsed.data.refEntityKey,
       });
 
-      const fieldMapping = await DbService.repository.fieldMappings.create(
-        model.parse()
-      ).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.FIELD_MAPPING_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create field mapping");
-      });
+      const fieldMapping = await DbService.repository.fieldMappings
+        .create(model.parse())
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.FIELD_MAPPING_CREATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to create field mapping"
+          );
+        });
 
       logger.info(
-        { id: fieldMapping.id, connectorEntityId: parsed.data.connectorEntityId },
+        {
+          id: fieldMapping.id,
+          connectorEntityId: parsed.data.connectorEntityId,
+        },
         "Field mapping created"
       );
 
       return HttpService.success<FieldMappingCreateResponsePayload>(
         res,
-        { fieldMapping: fieldMapping as unknown as FieldMappingCreateResponsePayload["fieldMapping"] },
+        {
+          fieldMapping:
+            fieldMapping as unknown as FieldMappingCreateResponsePayload["fieldMapping"],
+        },
         201
       );
     } catch (error) {
@@ -391,7 +483,17 @@ fieldMappingRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create field mapping"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create field mapping"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.FIELD_MAPPING_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create field mapping"
+            )
+      );
     }
   }
 );
@@ -468,14 +570,22 @@ fieldMappingRouter.patch(
       const parsed = FieldMappingUpdateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.FIELD_MAPPING_INVALID_PAYLOAD, "Invalid field mapping payload")
+          new ApiError(
+            400,
+            ApiCode.FIELD_MAPPING_INVALID_PAYLOAD,
+            "Invalid field mapping payload"
+          )
         );
       }
 
       const existing = await DbService.repository.fieldMappings.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found")
+          new ApiError(
+            404,
+            ApiCode.FIELD_MAPPING_NOT_FOUND,
+            "Field mapping not found"
+          )
         );
       }
 
@@ -486,9 +596,14 @@ fieldMappingRouter.patch(
       await RevalidationService.assertNoActiveJob(existing.connectorEntityId);
 
       // Validate normalizedKey uniqueness if changed
-      if (parsed.data.normalizedKey && parsed.data.normalizedKey !== existing.normalizedKey) {
+      if (
+        parsed.data.normalizedKey &&
+        parsed.data.normalizedKey !== existing.normalizedKey
+      ) {
         await FieldMappingValidationService.validateNormalizedKeyUniqueness(
-          existing.connectorEntityId, parsed.data.normalizedKey, id
+          existing.connectorEntityId,
+          parsed.data.normalizedKey,
+          id
         );
       }
 
@@ -496,10 +611,16 @@ fieldMappingRouter.patch(
       FieldMappingValidationService.validateEnumValues(parsed.data.enumValues);
 
       if (parsed.data.columnDefinitionId) {
-        const colDef = await DbService.repository.columnDefinitions.findById(parsed.data.columnDefinitionId);
+        const colDef = await DbService.repository.columnDefinitions.findById(
+          parsed.data.columnDefinitionId
+        );
         if (!colDef) {
           return next(
-            new ApiError(404, ApiCode.COLUMN_DEFINITION_NOT_FOUND, "Target column definition not found")
+            new ApiError(
+              404,
+              ApiCode.COLUMN_DEFINITION_NOT_FOUND,
+              "Target column definition not found"
+            )
           );
         }
 
@@ -507,12 +628,19 @@ fieldMappingRouter.patch(
           const duplicate = await DbService.repository.fieldMappings.findMany(
             and(
               eq(fieldMappings.connectorEntityId, existing.connectorEntityId),
-              eq(fieldMappings.columnDefinitionId, parsed.data.columnDefinitionId),
+              eq(
+                fieldMappings.columnDefinitionId,
+                parsed.data.columnDefinitionId
+              )
             )
           );
           if (duplicate.length > 0) {
             return next(
-              new ApiError(409, ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN, "A field mapping already exists for this column definition on the same entity")
+              new ApiError(
+                409,
+                ApiCode.FIELD_MAPPING_DUPLICATE_COLUMN,
+                "A field mapping already exists for this column definition on the same entity"
+              )
             );
           }
         }
@@ -520,48 +648,90 @@ fieldMappingRouter.patch(
 
       // Validate format compatibility with column type
       if (parsed.data.format !== undefined) {
-        const resolvedColDefId = parsed.data.columnDefinitionId ?? existing.columnDefinitionId;
-        const resolvedColDef = await DbService.repository.columnDefinitions.findById(resolvedColDefId);
+        const resolvedColDefId =
+          parsed.data.columnDefinitionId ?? existing.columnDefinitionId;
+        const resolvedColDef =
+          await DbService.repository.columnDefinitions.findById(
+            resolvedColDefId
+          );
         if (resolvedColDef) {
-          FieldMappingValidationService.validateFormat(parsed.data.format, resolvedColDef.type);
+          FieldMappingValidationService.validateFormat(
+            parsed.data.format,
+            resolvedColDef.type
+          );
         }
       }
 
       const { userId } = req.application!.metadata;
 
-      const fieldMapping = await DbService.repository.fieldMappings.update(id, {
-        ...parsed.data,
-        updated: Date.now(),
-        updatedBy: userId,
-      } as never).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.FIELD_MAPPING_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update field mapping");
-      });
+      const fieldMapping = await DbService.repository.fieldMappings
+        .update(id, {
+          ...parsed.data,
+          updated: Date.now(),
+          updatedBy: userId,
+        } as never)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.FIELD_MAPPING_UPDATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to update field mapping"
+          );
+        });
 
       logger.info({ id }, "Field mapping updated");
 
       // Trigger revalidation if normalization-affecting fields changed
-      const REVALIDATION_FIELDS = ["format", "required", "enumValues", "defaultValue", "normalizedKey"] as const;
-      const needsRevalidation = REVALIDATION_FIELDS.some((field) =>
-        field in parsed.data && (parsed.data as Record<string, unknown>)[field] !== (existing as Record<string, unknown>)[field]
+      const REVALIDATION_FIELDS = [
+        "format",
+        "required",
+        "enumValues",
+        "defaultValue",
+        "normalizedKey",
+      ] as const;
+      const needsRevalidation = REVALIDATION_FIELDS.some(
+        (field) =>
+          field in parsed.data &&
+          (parsed.data as Record<string, unknown>)[field] !==
+            (existing as Record<string, unknown>)[field]
       );
 
       if (needsRevalidation) {
         const { organizationId } = req.application!.metadata;
-        await RevalidationService.enqueue(existing.connectorEntityId, organizationId, userId).catch((err) => {
-          logger.warn({ id, err }, "Failed to enqueue revalidation after field mapping update");
+        await RevalidationService.enqueue(
+          existing.connectorEntityId,
+          organizationId,
+          userId
+        ).catch((err) => {
+          logger.warn(
+            { id, err },
+            "Failed to enqueue revalidation after field mapping update"
+          );
         });
       }
 
       return HttpService.success<FieldMappingUpdateResponsePayload>(res, {
-        fieldMapping: fieldMapping as unknown as FieldMappingUpdateResponsePayload["fieldMapping"],
+        fieldMapping:
+          fieldMapping as unknown as FieldMappingUpdateResponsePayload["fieldMapping"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to update field mapping"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update field mapping"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.FIELD_MAPPING_UPDATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to update field mapping"
+            )
+      );
     }
   }
 );
@@ -624,25 +794,38 @@ fieldMappingRouter.get(
       const existing = await DbService.repository.fieldMappings.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found")
+          new ApiError(
+            404,
+            ApiCode.FIELD_MAPPING_NOT_FOUND,
+            "Field mapping not found"
+          )
         );
       }
 
       const [dependentMembers, entityRecordCount] = await Promise.all([
         DbService.repository.entityGroupMembers.findByLinkFieldMappingId(id),
-        DbService.repository.entityRecords.countByConnectorEntityId(existing.connectorEntityId),
+        DbService.repository.entityRecords.countByConnectorEntityId(
+          existing.connectorEntityId
+        ),
       ]);
 
-      let counterpartResult: { id: string; sourceField: string; normalizedKey: string } | null = null;
+      let counterpartResult: {
+        id: string;
+        sourceField: string;
+        normalizedKey: string;
+      } | null = null;
       if (existing.refEntityKey && existing.refNormalizedKey) {
-        const entity = await DbService.repository.connectorEntities.findById(existing.connectorEntityId);
+        const entity = await DbService.repository.connectorEntities.findById(
+          existing.connectorEntityId
+        );
         if (entity) {
-          const counterpart = await DbService.repository.fieldMappings.findCounterpart(
-            existing.organizationId,
-            entity.key,
-            existing.refEntityKey,
-            existing.refNormalizedKey,
-          );
+          const counterpart =
+            await DbService.repository.fieldMappings.findCounterpart(
+              existing.organizationId,
+              entity.key,
+              existing.refEntityKey,
+              existing.refNormalizedKey
+            );
           if (counterpart) {
             counterpartResult = {
               id: counterpart.id,
@@ -663,7 +846,17 @@ fieldMappingRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to assess field mapping impact"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_FETCH_FAILED, error instanceof Error ? error.message : "Failed to assess field mapping impact"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.FIELD_MAPPING_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to assess field mapping impact"
+            )
+      );
     }
   }
 );
@@ -729,21 +922,32 @@ fieldMappingRouter.delete(
       const { userId } = req.application!.metadata;
 
       // Block if a revalidation job is active for this mapping's entity
-      const mappingToDelete = await DbService.repository.fieldMappings.findById(id);
+      const mappingToDelete =
+        await DbService.repository.fieldMappings.findById(id);
       if (mappingToDelete) {
         // Assert write capability on the parent connector instance
         await assertWriteCapability(mappingToDelete.connectorEntityId);
 
-        await RevalidationService.assertNoActiveJob(mappingToDelete.connectorEntityId);
+        await RevalidationService.assertNoActiveJob(
+          mappingToDelete.connectorEntityId
+        );
       }
 
       await FieldMappingValidationService.validateDelete(id);
 
-      const result = await FieldMappingValidationService.executeDelete(id, userId)
-        .catch((error) => {
-          if (error instanceof ApiError) throw error;
-          throw new ApiError(500, ApiCode.FIELD_MAPPING_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete field mapping");
-        });
+      const result = await FieldMappingValidationService.executeDelete(
+        id,
+        userId
+      ).catch((error) => {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(
+          500,
+          ApiCode.FIELD_MAPPING_DELETE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to delete field mapping"
+        );
+      });
 
       logger.info({ id, ...result }, "Field mapping soft-deleted with cascade");
 
@@ -759,7 +963,17 @@ fieldMappingRouter.delete(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to delete field mapping"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete field mapping"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.FIELD_MAPPING_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete field mapping"
+            )
+      );
     }
   }
 );
@@ -805,44 +1019,75 @@ fieldMappingRouter.get(
       // 1. Load mapping
       const mapping = await DbService.repository.fieldMappings.findById(id);
       if (!mapping) {
-        return next(new ApiError(404, ApiCode.FIELD_MAPPING_NOT_FOUND, "Field mapping not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.FIELD_MAPPING_NOT_FOUND,
+            "Field mapping not found"
+          )
+        );
       }
 
       // 2. Load column definition to verify type
-      const columnDef = await DbService.repository.columnDefinitions.findById(mapping.columnDefinitionId);
+      const columnDef = await DbService.repository.columnDefinitions.findById(
+        mapping.columnDefinitionId
+      );
       if (!columnDef || columnDef.type !== "reference-array") {
-        return next(new ApiError(400, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED, "Field mapping column type must be reference-array"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED,
+            "Field mapping column type must be reference-array"
+          )
+        );
       }
 
       // 3. No back-reference configured — unidirectional mode
       if (!mapping.refEntityKey || !mapping.refNormalizedKey) {
-        return HttpService.success<FieldMappingBidirectionalValidationResponsePayload>(res, {
-          isConsistent: null,
-          inconsistentRecordIds: [],
-          totalChecked: 0,
-          reason: "no-back-reference-configured",
-        });
+        return HttpService.success<FieldMappingBidirectionalValidationResponsePayload>(
+          res,
+          {
+            isConsistent: null,
+            inconsistentRecordIds: [],
+            totalChecked: 0,
+            reason: "no-back-reference-configured",
+          }
+        );
       }
 
       // 4. Load counterpart mapping
-      const { counterpart } = await DbService.repository.fieldMappings.findBidirectionalPair(id);
+      const { counterpart } =
+        await DbService.repository.fieldMappings.findBidirectionalPair(id);
       if (!counterpart) {
-        return next(new ApiError(400, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND, "Configured back-reference field mapping no longer exists"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.FIELD_MAPPING_BIDIRECTIONAL_TARGET_NOT_FOUND,
+            "Configured back-reference field mapping no longer exists"
+          )
+        );
       }
 
-      const keyA = mapping.normalizedKey;       // e.g. "enrolled_student_ids"
-      const keyB = counterpart.normalizedKey;    // e.g. "classes_enrolled_ids"
+      const keyA = mapping.normalizedKey; // e.g. "enrolled_student_ids"
+      const keyB = counterpart.normalizedKey; // e.g. "classes_enrolled_ids"
 
       // 6. Load all records from both entities
       const [recordsA, recordsB] = await Promise.all([
-        DbService.repository.entityRecords.findByConnectorEntityId(mapping.connectorEntityId),
-        DbService.repository.entityRecords.findByConnectorEntityId(counterpart.connectorEntityId),
+        DbService.repository.entityRecords.findByConnectorEntityId(
+          mapping.connectorEntityId
+        ),
+        DbService.repository.entityRecords.findByConnectorEntityId(
+          counterpart.connectorEntityId
+        ),
       ]);
 
       // 7. Build a lookup: entity B sourceId → set of IDs in its reference-array field
       const bArrayBySourceId = new Map<string, Set<string>>();
       for (const rec of recordsB) {
-        const normalizedData = rec.normalizedData as Record<string, unknown> | null;
+        const normalizedData = rec.normalizedData as Record<
+          string,
+          unknown
+        > | null;
         const arr = normalizedData?.[keyB];
         const ids = Array.isArray(arr) ? arr.map(String) : [];
         bArrayBySourceId.set(rec.sourceId, new Set(ids));
@@ -852,7 +1097,10 @@ fieldMappingRouter.get(
       //    in entity B whose array includes entity A's sourceId
       const inconsistentRecordIds: string[] = [];
       for (const recA of recordsA) {
-        const normalizedData = recA.normalizedData as Record<string, unknown> | null;
+        const normalizedData = recA.normalizedData as Record<
+          string,
+          unknown
+        > | null;
         const arr = normalizedData?.[keyA];
         const idsInA = Array.isArray(arr) ? arr.map(String) : [];
         const isInconsistent = idsInA.some((targetId) => {
@@ -865,19 +1113,39 @@ fieldMappingRouter.get(
       }
 
       const isConsistent = inconsistentRecordIds.length === 0;
-      logger.info({ id, totalChecked: recordsA.length, inconsistentCount: inconsistentRecordIds.length }, "Bidirectional validation complete");
+      logger.info(
+        {
+          id,
+          totalChecked: recordsA.length,
+          inconsistentCount: inconsistentRecordIds.length,
+        },
+        "Bidirectional validation complete"
+      );
 
-      return HttpService.success<FieldMappingBidirectionalValidationResponsePayload>(res, {
-        isConsistent,
-        inconsistentRecordIds,
-        totalChecked: recordsA.length,
-      });
+      return HttpService.success<FieldMappingBidirectionalValidationResponsePayload>(
+        res,
+        {
+          isConsistent,
+          inconsistentRecordIds,
+          totalChecked: recordsA.length,
+        }
+      );
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to validate bidirectional field mapping"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED, error instanceof Error ? error.message : "Failed to validate bidirectional field mapping"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.FIELD_MAPPING_BIDIRECTIONAL_VALIDATION_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to validate bidirectional field mapping"
+            )
+      );
     }
   }
 );

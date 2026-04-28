@@ -9,11 +9,7 @@ import type {
   ConnectorInstanceGetResponsePayload,
 } from "@portalai/core/contracts";
 import type { ConnectorDefinition } from "@portalai/core/models";
-import {
-  Avatar,
-  DetailCard,
-  MetadataList,
-} from "@portalai/core/ui";
+import { Avatar, DetailCard, MetadataList } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -39,7 +35,10 @@ export const ConnectorInstanceDataList = (
 export interface ConnectorInstanceWithDefinitionDataListProps {
   query: ConnectorInstanceListRequestQuery;
   children: (
-    data: UseQueryResult<ConnectorInstanceListWithDefinitionResponsePayload, ApiError>
+    data: UseQueryResult<
+      ConnectorInstanceListWithDefinitionResponsePayload,
+      ApiError
+    >
   ) => React.ReactNode;
 }
 
@@ -89,7 +88,12 @@ export const ConnectorInstanceCardUI = ({
 }: ConnectorInstanceCardUIProps) => {
   const actions: ActionSuiteItem[] = [];
   if (onDelete) {
-    actions.push({ label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(ci), color: "error" });
+    actions.push({
+      label: "Delete",
+      icon: <DeleteIcon />,
+      onClick: () => onDelete(ci),
+      color: "error",
+    });
   }
 
   return (
@@ -99,7 +103,13 @@ export const ConnectorInstanceCardUI = ({
         <Avatar
           src={cd?.iconUrl ?? undefined}
           alt={ci.name}
-          sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: "white", p: 0.5 }}
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: 1,
+            bgcolor: "white",
+            p: 0.5,
+          }}
         >
           {ci.name.charAt(0).toUpperCase()}
         </Avatar>
@@ -122,8 +132,18 @@ export const ConnectorInstanceCardUI = ({
             variant: "chip",
           },
           { label: "Connector", value: cd?.display ?? "Unknown connector" },
-          { label: "Last sync", value: ci.lastSyncAt ? new Date(ci.lastSyncAt).toLocaleDateString() : "", hidden: !ci.lastSyncAt },
-          { label: "Error", value: ci.lastErrorMessage ?? "", hidden: !(ci.status === "error" && ci.lastErrorMessage) },
+          {
+            label: "Last sync",
+            value: ci.lastSyncAt
+              ? new Date(ci.lastSyncAt).toLocaleDateString()
+              : "",
+            hidden: !ci.lastSyncAt,
+          },
+          {
+            label: "Error",
+            value: ci.lastErrorMessage ?? "",
+            hidden: !(ci.status === "error" && ci.lastErrorMessage),
+          },
         ]}
       />
     </DetailCard>

@@ -59,7 +59,7 @@ describe("FAQ_ENTRIES", () => {
     "What happens when I sync an entity?",
     // Organization & Grouping (3)
     "What are entity groups and when should I use them?",
-    "What is a \"link field\" in an entity group?",
+    'What is a "link field" in an entity group?',
     "How do tags work?",
     // Analytics & Portals (3)
     "What are tool packs?",
@@ -129,7 +129,9 @@ describe("filterFAQ", () => {
     const result = filterFAQ(FAQ_ENTRIES, { query: "STATION" });
     expect(result.length).toBeGreaterThanOrEqual(1);
     expect(
-      result.some((e) => e.question === "What is a Station and why do I need one?")
+      result.some(
+        (e) => e.question === "What is a Station and why do I need one?"
+      )
     ).toBe(true);
   });
 
@@ -165,8 +167,8 @@ describe("filterFAQ", () => {
   });
 
   it("returns empty array on no matches", () => {
-    expect(
-      filterFAQ(FAQ_ENTRIES, { query: "zzz-no-such-term-zzz" })
-    ).toEqual([]);
+    expect(filterFAQ(FAQ_ENTRIES, { query: "zzz-no-such-term-zzz" })).toEqual(
+      []
+    );
   });
 });

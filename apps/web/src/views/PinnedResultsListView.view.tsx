@@ -1,7 +1,13 @@
 import React, { useCallback } from "react";
 
 import type { PortalResult } from "@portalai/core/models";
-import { Icon, IconName, PageEmptyState, PageHeader, Stack } from "@portalai/core/ui";
+import {
+  Icon,
+  IconName,
+  PageEmptyState,
+  PageHeader,
+  Stack,
+} from "@portalai/core/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -15,13 +21,18 @@ import {
 import { SyncTotal } from "../components/SyncTotal.component";
 import { sdk, queryKeys } from "../api/sdk";
 import { useAuthFetch } from "../utils/api.util";
-import type { PortalResultsListPayload, PortalResultsListParams } from "../api/portal-results.api";
+import type {
+  PortalResultsListPayload,
+  PortalResultsListParams,
+} from "../api/portal-results.api";
 
 // ── Data fetcher ────────────────────────────────────────────────────
 
 interface PinnedResultsDataListProps {
   query: PortalResultsListParams;
-  children: (data: ReturnType<typeof sdk.portalResults.list>) => React.ReactNode;
+  children: (
+    data: ReturnType<typeof sdk.portalResults.list>
+  ) => React.ReactNode;
 }
 
 const PinnedResultsDataList: React.FC<PinnedResultsDataListProps> = ({
@@ -54,10 +65,9 @@ export const PinnedResultsListView: React.FC = () => {
 
   const handleUnpin = useCallback(
     async (id: string) => {
-      await fetchWithAuth(
-        `/api/portal-results/${encodeURIComponent(id)}`,
-        { method: "DELETE" }
-      );
+      await fetchWithAuth(`/api/portal-results/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.portalResults.root,
       });
@@ -89,9 +99,14 @@ export const PinnedResultsListView: React.FC = () => {
               <DataResult results={{ pinned: response }}>
                 {({ pinned }) => {
                   const payload = pinned as unknown as PortalResultsListPayload;
-                  const results = payload.portalResults as unknown as PortalResult[];
+                  const results =
+                    payload.portalResults as unknown as PortalResult[];
                   if (payload.total === 0) {
-                    const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                    const hasActiveFilters =
+                      pagination.search ||
+                      Object.values(pagination.filters).some(
+                        (v) => v.length > 0
+                      );
                     return hasActiveFilters ? (
                       <EmptyResults />
                     ) : (

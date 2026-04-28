@@ -41,10 +41,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     title: "Stations",
-    breadcrumbs: [
-      { label: "Home", href: "/" },
-      { label: "Stations" },
-    ],
+    breadcrumbs: [{ label: "Home", href: "/" }, { label: "Stations" }],
   },
 };
 
@@ -52,10 +49,7 @@ export const WithIcon: Story = {
   args: {
     title: "Stations",
     icon: <Icon name={IconName.Hub} />,
-    breadcrumbs: [
-      { label: "Home", href: "/" },
-      { label: "Stations" },
-    ],
+    breadcrumbs: [{ label: "Home", href: "/" }, { label: "Stations" }],
   },
 };
 
@@ -63,10 +57,7 @@ export const WithPrimaryAction: Story = {
   args: {
     title: "Stations",
     icon: <Icon name={IconName.Hub} />,
-    breadcrumbs: [
-      { label: "Home", href: "/" },
-      { label: "Stations" },
-    ],
+    breadcrumbs: [{ label: "Home", href: "/" }, { label: "Stations" }],
     primaryAction: (
       <Button variant="contained" size="small">
         Create Station
@@ -143,7 +134,12 @@ export const WithMetadata: Story = {
           sensors.
         </MuiTypography>
         <Stack direction="row" spacing={1} flexWrap="wrap">
-          <Chip label="Active" color="success" size="small" variant="outlined" />
+          <Chip
+            label="Active"
+            color="success"
+            size="small"
+            variant="outlined"
+          />
           <Chip label="12 Connectors" size="small" variant="outlined" />
           <Chip label="Weather" size="small" variant="outlined" />
         </Stack>
@@ -156,10 +152,7 @@ export const SecondaryActionsOnly: Story = {
   args: {
     title: "Settings",
     icon: <Icon name={IconName.Settings} />,
-    breadcrumbs: [
-      { label: "Home", href: "/" },
-      { label: "Settings" },
-    ],
+    breadcrumbs: [{ label: "Home", href: "/" }, { label: "Settings" }],
     secondaryActions: [
       {
         label: "Export",

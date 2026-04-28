@@ -1,12 +1,7 @@
 import React from "react";
 
 import Alert from "@mui/material/Alert";
-import {
-  Button,
-  Modal,
-  Stack,
-  Typography,
-} from "@portalai/core/ui";
+import { Button, Modal, Stack, Typography } from "@portalai/core/ui";
 
 import { FormAlert } from "./FormAlert.component";
 import type { ServerError } from "../utils/api.util";
@@ -22,14 +17,7 @@ export interface DeleteEntityRecordDialogProps {
 
 export const DeleteEntityRecordDialog: React.FC<
   DeleteEntityRecordDialogProps
-> = ({
-  open,
-  onClose,
-  recordSourceId,
-  onConfirm,
-  isPending,
-  serverError,
-}) => {
+> = ({ open, onClose, recordSourceId, onConfirm, isPending, serverError }) => {
   return (
     <Modal
       open={open}
@@ -48,14 +36,21 @@ export const DeleteEntityRecordDialog: React.FC<
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
             type="button"
             variant="contained"
             color="error"
-            onClick={() => { if (!isPending) onConfirm(); }}
+            onClick={() => {
+              if (!isPending) onConfirm();
+            }}
             disabled={isPending}
           >
             {isPending ? "Deleting..." : "Delete"}
@@ -70,7 +65,8 @@ export const DeleteEntityRecordDialog: React.FC<
         </Typography>
 
         <Alert severity="warning">
-          This action will permanently delete this record. This cannot be undone.
+          This action will permanently delete this record. This cannot be
+          undone.
         </Alert>
         <FormAlert serverError={serverError ?? null} />
       </Stack>

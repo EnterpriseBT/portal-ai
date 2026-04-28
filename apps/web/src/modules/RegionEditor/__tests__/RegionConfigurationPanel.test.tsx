@@ -1,0 +1,861 @@
+import "@testing-library/jest-dom";
+import { useState } from "react";
+import { jest } from "@jest/globals";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+
+import { RegionConfigurationPanelUI } from "../RegionConfigurationPanel.component";
+import type { EntityOption, RegionDraft } from "../utils/region-editor.types";
+
+const ENTITY_OPTIONS: EntityOption[] = [
+  { value: "ent_a", label: "Contact", source: "db" },
+  { value: "ent_b", label: "Deal", source: "db" },
+];
+
+function baseRegion(overrides: Partial<RegionDraft> = {}): RegionDraft {
+  return {
+    id: "r1",
+    sheetId: "s1",
+    bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+    targetEntityDefinitionId: "ent_a",
+    targetEntityLabel: "Contact",
+    ...overrides,
+  };
+}
+
+describe("RegionConfigurationPanelUI", () => {
+  test("shows empty-state copy when no region is selected", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={null}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={[]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(
+      screen.getByText(/Draw a region on the canvas/i)
+    ).toBeInTheDocument();
+  });
+
+  test("renders region label and bounds caption", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion({ proposedLabel: "Leads" })}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.getByText("Leads")).toBeInTheDocument();
+    expect(screen.getByText(/A1:D5/)).toBeInTheDocument();
+    expect(screen.getByText(/5 rows/)).toBeInTheDocument();
+    expect(screen.getByText(/4 cols/)).toBeInTheDocument();
+  });
+
+  test("shows merge banner when siblings exist", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={2}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(
+      screen.getByText(/merges into entity with 2 other regions/i)
+    ).toBeInTheDocument();
+  });
+
+  test("calls onDelete when the trash button is clicked", () => {
+    const onDelete = jest.fn();
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={onDelete}
+      />
+    );
+    fireEvent.click(screen.getByLabelText(/delete region/i));
+    expect(onDelete).toHaveBeenCalled();
+  });
+
+  test("updates proposedLabel on text input change", () => {
+    const onUpdate = jest.fn();
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={onUpdate}
+        onDelete={jest.fn()}
+      />
+    );
+    const input = screen.getByPlaceholderText(/Optional region label/i);
+    fireEvent.change(input, { target: { value: "Pipeline" } });
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ proposedLabel: "Pipeline" })
+    );
+  });
+
+  test("displays entity-required error passed in props", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion({ targetEntityDefinitionId: null })}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={[]}
+        siblingsInSameEntity={0}
+        errors={{ targetEntityDefinitionId: "Target entity is required" }}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(screen.getByText(/Target entity is required/i)).toBeInTheDocument();
+  });
+
+  describe("PR-4 segment UI", () => {
+    function segmentedRegion(
+      overrides: Partial<RegionDraft> = {}
+    ): RegionDraft {
+      return baseRegion({
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [{ kind: "field", positionCount: 4 }],
+        },
+        ...overrides,
+      });
+    }
+
+    test("renders a SegmentStrip with one chip per segment", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(screen.getByLabelText(/row segment strip/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /edit row segment 1 \(field\)/i })
+      ).toBeInTheDocument();
+    });
+
+    test("renders the cell-value-field name input when a pivot segment exists", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            segmentsByAxis: {
+              row: [
+                {
+                  kind: "pivot",
+                  id: "p1",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 4,
+                },
+              ],
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      const input = screen.getByLabelText(/cell-value field name/i);
+      expect(input).toHaveValue("Revenue");
+    });
+
+    test("does not render the cell-value-field input when no pivot segments exist", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByLabelText(/cell-value field name/i)
+      ).not.toBeInTheDocument();
+    });
+
+    test("renders an 'Add column axis' button when only the row axis is present", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: /add column header axis/i })
+      ).toBeInTheDocument();
+    });
+
+    test("renders an Extent control for 1D regions and hides it for crosstabs", () => {
+      const { rerender } = render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: /extent: fixed bounds/i })
+      ).toBeInTheDocument();
+
+      rerender(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            headerAxes: ["row", "column"],
+            segmentsByAxis: {
+              row: [
+                { kind: "skip", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "p1",
+                  axisName: "Region",
+                  axisNameSource: "user",
+                  positionCount: 3,
+                },
+              ],
+              column: [
+                { kind: "skip", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "p2",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 3,
+                },
+              ],
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /extent:/i })
+      ).not.toBeInTheDocument();
+    });
+
+    test("surfaces dynamic-tail state in the chip label when segment.dynamic is set", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            segmentsByAxis: {
+              row: [
+                {
+                  kind: "pivot",
+                  id: "p1",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 4,
+                  dynamic: {
+                    terminator: {
+                      kind: "untilBlank",
+                      consecutiveBlanks: 2,
+                    },
+                  },
+                },
+              ],
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/quarter · 4 · ∞/i)).toBeInTheDocument();
+    });
+
+    test("headerless region surfaces Add row/column axis buttons and seeds a full-span field segment", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      // Both axis-promotion buttons appear for a headerless region.
+      const addRow = screen.getByRole("button", { name: /\+ add row axis/i });
+      const addCol = screen.getByRole("button", { name: /\+ add column axis/i });
+      expect(addRow).toBeInTheDocument();
+      expect(addCol).toBeInTheDocument();
+      fireEvent.click(addRow);
+      // Seeds headerAxes=["row"] with a full-span field segment (4 cols wide).
+      expect(onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headerAxes: ["row"],
+          segmentsByAxis: expect.objectContaining({
+            row: [{ kind: "field", positionCount: 4 }],
+          }),
+        })
+      );
+    });
+
+    test("renders one panel-level cell-value field input per pivot × pivot intersection on a 2D crosstab", () => {
+      // 2D crosstabs surface a per-intersection editor inside the
+      // configuration panel — one input per pivot × pivot pairing — so
+      // the user can name each block's cell-value field without leaving
+      // the panel. The standalone region-level input is intentionally
+      // gone for crosstabs.
+      function Harness() {
+        const [region, setRegion] = useState<RegionDraft>(
+          segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            headerAxes: ["row", "column"],
+            segmentsByAxis: {
+              row: [
+                { kind: "skip", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "rp1",
+                  axisName: "Region",
+                  axisNameSource: "user",
+                  positionCount: 3,
+                },
+              ],
+              column: [
+                { kind: "skip", positionCount: 1 },
+                {
+                  kind: "pivot",
+                  id: "cp1",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 4,
+                },
+              ],
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })
+        );
+        return (
+          <RegionConfigurationPanelUI
+            region={region}
+            entityOptions={ENTITY_OPTIONS}
+            entityOrder={["ent_a"]}
+            siblingsInSameEntity={0}
+            onUpdate={(patch) =>
+              setRegion((prev) => ({ ...prev, ...patch }))
+            }
+            onDelete={jest.fn()}
+          />
+        );
+      }
+      render(<Harness />);
+      // No standalone region-level "Cell-value field name" input on a
+      // crosstab — every visible cell-value input here is keyed by
+      // intersection (per its aria-label).
+      const allCellValueInputs = screen.getAllByLabelText(
+        /cell-value field name/i
+      );
+      for (const inp of allCellValueInputs) {
+        expect(inp.getAttribute("aria-label")).toMatch(
+          /cell-value field name for intersection/i
+        );
+      }
+      // Per-intersection input is present and inherits the region default.
+      const input = screen.getByLabelText(
+        /cell-value field name for intersection region × quarter/i
+      ) as HTMLInputElement;
+      expect(input).toBeInTheDocument();
+      expect(input.value).toBe("");
+      expect(input.placeholder).toBe("Revenue");
+      // Typing into the per-intersection input writes the override onto
+      // region.intersectionCellValueFields keyed by composite id.
+      fireEvent.change(input, { target: { value: "Headcount" } });
+      expect(
+        (
+          screen.getByLabelText(
+            /cell-value field name for intersection region × quarter/i
+          ) as HTMLInputElement
+        ).value
+      ).toBe("Headcount");
+    });
+
+    test("renders the panel-level cell-value field input when a 1D region becomes pivoted", async () => {
+      // 1D pivoted regions still have a single cell-value field — there are
+      // no intersections to carry per-block names — so the panel keeps its
+      // standalone input here, and autofocuses it the moment the region
+      // turns pivoted.
+      function Harness() {
+        const [region, setRegion] = useState<RegionDraft>(
+          segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            headerAxes: ["column"],
+            segmentsByAxis: {
+              column: [{ kind: "field", positionCount: 5 }],
+            },
+          })
+        );
+        return (
+          <RegionConfigurationPanelUI
+            region={region}
+            entityOptions={ENTITY_OPTIONS}
+            entityOrder={["ent_a"]}
+            siblingsInSameEntity={0}
+            onUpdate={(patch) =>
+              setRegion((prev) => ({ ...prev, ...patch }))
+            }
+            onDelete={jest.fn()}
+          />
+        );
+      }
+      render(<Harness />);
+      expect(
+        screen.queryByLabelText(/cell-value field name/i)
+      ).not.toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole("button", { name: /add column pivot segment/i })
+      );
+      const input = screen.getByLabelText(
+        /cell-value field name/i
+      ) as HTMLInputElement;
+      expect(input).toBeInTheDocument();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 75));
+      });
+      expect(document.activeElement).toBe(input);
+    });
+
+    test("adding a row-axis pivot does NOT autofocus the cell-value field name input", async () => {
+      function Harness() {
+        const [region, setRegion] = useState<RegionDraft>(
+          segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            headerAxes: ["row"],
+            segmentsByAxis: {
+              row: [{ kind: "field", positionCount: 4 }],
+            },
+          })
+        );
+        return (
+          <RegionConfigurationPanelUI
+            region={region}
+            entityOptions={ENTITY_OPTIONS}
+            entityOrder={["ent_a"]}
+            siblingsInSameEntity={0}
+            onUpdate={(patch) =>
+              setRegion((prev) => ({ ...prev, ...patch }))
+            }
+            onDelete={jest.fn()}
+          />
+        );
+      }
+      render(<Harness />);
+      fireEvent.click(
+        screen.getByRole("button", { name: /add row pivot segment/i })
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 75));
+      });
+      const cellValueInput = screen.getByLabelText(
+        /cell-value field name/i
+      );
+      expect(document.activeElement).not.toBe(cellValueInput);
+    });
+
+    test("adding a segment donates from the tail and keeps region bounds fixed", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            segmentsByAxis: { row: [{ kind: "field", positionCount: 4 }] },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /add row skip segment/i })
+      );
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const payload = onUpdate.mock.calls[0][0] as Partial<RegionDraft>;
+      expect(payload.segmentsByAxis?.row).toEqual([
+        { kind: "field", positionCount: 3 },
+        { kind: "skip", positionCount: 1 },
+      ]);
+      // Bounds are user-owned — the panel must not touch them when adding.
+      expect(payload.bounds).toBeUndefined();
+    });
+
+    test("adding a segment inserts before a dynamic-tail pivot and donates from a prior segment", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 3 },
+            segmentsByAxis: {
+              row: [
+                { kind: "field", positionCount: 3 },
+                {
+                  kind: "pivot",
+                  id: "p1",
+                  axisName: "Quarter",
+                  axisNameSource: "user",
+                  positionCount: 1,
+                  dynamic: {
+                    terminator: {
+                      kind: "untilBlank",
+                      consecutiveBlanks: 2,
+                    },
+                  },
+                },
+              ],
+              // Pivot present → cellValueField is required by the draft shape.
+            },
+            cellValueField: { name: "Revenue", nameSource: "user" },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /add row skip segment/i })
+      );
+      const payload = onUpdate.mock.calls[0][0] as Partial<RegionDraft>;
+      const nextRow = payload.segmentsByAxis!.row!;
+      // Dynamic pivot stays the tail (refinement 10).
+      expect(nextRow[nextRow.length - 1].kind).toBe("pivot");
+      // Donor is the field segment (walked from the tail, first with count > 1).
+      expect(nextRow[0]).toEqual({ kind: "field", positionCount: 2 });
+      // New skip inserts just before the dynamic pivot.
+      expect(nextRow[1]).toEqual({ kind: "skip", positionCount: 1 });
+      expect(payload.bounds).toBeUndefined();
+    });
+
+    test("delete-segment donates positions to the previous neighbour and keeps bounds fixed", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion({
+            bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 4 },
+            segmentsByAxis: {
+              row: [
+                { kind: "field", positionCount: 3 },
+                { kind: "skip", positionCount: 2 },
+              ],
+            },
+          })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /edit row segment 2 \(skip\)/i })
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /^delete segment$/i })
+      );
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const payload = onUpdate.mock.calls[0][0] as Partial<RegionDraft>;
+      // The skip's two positions fold into the preceding field segment; bounds stay put.
+      expect(payload.segmentsByAxis?.row).toEqual([
+        { kind: "field", positionCount: 5 },
+      ]);
+      expect(payload.bounds).toBeUndefined();
+    });
+
+    test("delete-segment on the only segment of an axis collapses that axis back out", () => {
+      const onUpdate = jest.fn();
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={onUpdate}
+          onDelete={jest.fn()}
+        />
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: /edit row segment 1 \(field\)/i })
+      );
+      const deleteBtn = screen.getByRole("button", {
+        name: /^delete segment$/i,
+      });
+      expect(deleteBtn).toBeEnabled();
+      fireEvent.click(deleteBtn);
+      const payload = onUpdate.mock.calls[0][0] as Partial<RegionDraft>;
+      // Axis collapses: headerAxes drops "row" entirely and segmentsByAxis.row is gone.
+      expect(payload.headerAxes).toEqual([]);
+      expect(payload.segmentsByAxis).toBeDefined();
+      expect(payload.segmentsByAxis?.row).toBeUndefined();
+      expect(payload.bounds).toBeUndefined();
+    });
+
+    test("no longer renders the orientation dropdown or boundsMode toggle", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={segmentedRegion()}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      // Pre-PR-4 headings that should be gone.
+      expect(screen.queryByText(/^Orientation$/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Header axis$/)).not.toBeInTheDocument();
+      // The per-kind buttons from the ToggleRow are gone too.
+      expect(
+        screen.queryByRole("button", { name: /^Fixed$/ })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Until empty/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^Rows$/ })
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  test("toggling the blank skip rule adds and removes a rule", () => {
+    const onUpdate = jest.fn();
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={onUpdate}
+        onDelete={jest.fn()}
+      />
+    );
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    expect(onUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ skipRules: [{ kind: "blank" }] })
+    );
+  });
+
+  describe("C2 picker labels", () => {
+    test("DB-backed options render as '<label> — <connectorInstanceName>' when provided", () => {
+      const options: EntityOption[] = [
+        {
+          value: "ent_a",
+          label: "Contact",
+          source: "db",
+          connectorInstanceName: "CRM Export",
+        },
+      ];
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: "ent_a" })}
+          entityOptions={options}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/Contact\s+—\s+CRM Export/)).toBeInTheDocument();
+    });
+
+    test("DB-backed options without connectorInstanceName render as plain label", () => {
+      const options: EntityOption[] = [
+        { value: "ent_a", label: "Contact", source: "db" },
+      ];
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: "ent_a" })}
+          entityOptions={options}
+          entityOrder={["ent_a"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      // No "— <connector>" suffix appears anywhere in the rendered output.
+      expect(screen.queryByText(/Contact\s+—/)).not.toBeInTheDocument();
+    });
+
+    test("staged options are unaffected by the connector suffix", () => {
+      const options: EntityOption[] = [
+        {
+          value: "ent_draft",
+          label: "Lead",
+          source: "staged",
+          // even if a connectorInstanceName slipped in, staged wins
+          connectorInstanceName: "should-not-render",
+        },
+      ];
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: "ent_draft" })}
+          entityOptions={options}
+          entityOrder={["ent_draft"]}
+          siblingsInSameEntity={0}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      expect(screen.getByText(/Lead\s+—\s+new/)).toBeInTheDocument();
+      expect(
+        screen.queryByText(/should-not-render/)
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  test("staged entities render with a '— new' suffix", () => {
+    const options: EntityOption[] = [
+      ...ENTITY_OPTIONS,
+      { value: "ent_draft", label: "Lead", source: "staged" },
+    ];
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion({
+          targetEntityDefinitionId: "ent_draft",
+          targetEntityLabel: "Lead",
+        })}
+        entityOptions={options}
+        entityOrder={["ent_draft"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    // The selected option is rendered inside the Select button.
+    expect(screen.getByText(/Lead\s+—\s+new/)).toBeInTheDocument();
+  });
+
+  test("hides '+ Create new entity' button when onCreateEntity is not provided", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    expect(
+      screen.queryByRole("button", { name: /create new entity/i })
+    ).not.toBeInTheDocument();
+  });
+
+  test("shows '+ Create new entity' button when onCreateEntity is provided", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        onCreateEntity={jest.fn<(key: string, label: string) => string>()}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /create new entity/i })
+    ).toBeInTheDocument();
+  });
+
+  describe("C1 entity picker", () => {
+    function openPicker() {
+      const select = screen.getByRole("combobox", { name: /target entity/i });
+      fireEvent.mouseDown(select);
+    }
+
+    test("disables options claimed by other regions", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: null })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={[]}
+          siblingsInSameEntity={0}
+          claimedEntityKeys={new Set(["ent_a"])}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      openPicker();
+      const contactOption = screen.getByRole("option", { name: /Contact/i });
+      expect(contactOption).toHaveAttribute("aria-disabled", "true");
+      const dealOption = screen.getByRole("option", { name: /Deal/i });
+      expect(dealOption).not.toHaveAttribute("aria-disabled", "true");
+    });
+
+    test("keeps the currently-editing region's own target selectable", () => {
+      render(
+        <RegionConfigurationPanelUI
+          region={baseRegion({ targetEntityDefinitionId: "ent_b" })}
+          entityOptions={ENTITY_OPTIONS}
+          entityOrder={["ent_b"]}
+          siblingsInSameEntity={0}
+          claimedEntityKeys={new Set(["ent_b"])}
+          onUpdate={jest.fn()}
+          onDelete={jest.fn()}
+        />
+      );
+      openPicker();
+      const dealOption = screen.getByRole("option", { name: /Deal/i });
+      expect(dealOption).not.toHaveAttribute("aria-disabled", "true");
+    });
+  });
+
+  test("renders an Identity help tooltip next to the section heading", () => {
+    render(
+      <RegionConfigurationPanelUI
+        region={baseRegion()}
+        entityOptions={ENTITY_OPTIONS}
+        entityOrder={["ent_a"]}
+        siblingsInSameEntity={0}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+      />
+    );
+    const help = screen.getByLabelText("What is the target entity?");
+    expect(help).toBeInTheDocument();
+  });
+});

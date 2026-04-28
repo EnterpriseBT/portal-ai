@@ -16,7 +16,15 @@ RUN apt-get update && apt-get install -y \
     && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" -o /tmp/awscliv2.zip \
     && unzip /tmp/awscliv2.zip -d /tmp \
     && /tmp/aws/install \
-    && rm -rf /tmp/awscliv2.zip /tmp/aws
+    && rm -rf /tmp/awscliv2.zip /tmp/aws \
+    && case "$ARCH" in \
+        x86_64) SMP_URL="ubuntu_64bit" ;; \
+        aarch64) SMP_URL="ubuntu_arm64" ;; \
+        *) echo "Unsupported arch for session-manager-plugin: $ARCH" && exit 1 ;; \
+    esac \
+    && curl -fsSL "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/${SMP_URL}/session-manager-plugin.deb" -o /tmp/ssm.deb \
+    && dpkg -i /tmp/ssm.deb \
+    && rm /tmp/ssm.deb
 
 # Install Docker CLI (for building/pushing images via host Docker socket)
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \

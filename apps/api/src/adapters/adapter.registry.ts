@@ -19,9 +19,7 @@ export class ConnectorAdapterRegistry {
   static get(slug: string): ConnectorAdapter {
     const adapter = this.adapters.get(slug);
     if (!adapter) {
-      throw new Error(
-        `No connector adapter registered for slug "${slug}"`
-      );
+      throw new Error(`No connector adapter registered for slug "${slug}"`);
     }
     return adapter;
   }

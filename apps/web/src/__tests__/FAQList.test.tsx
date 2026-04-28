@@ -66,7 +66,9 @@ describe("FAQList", () => {
     const entry = screen.getByTestId(
       "faq-entry-how-do-i-connect-my-first-data-source"
     );
-    await user.click(within(entry).getByText("How do I connect my first data source?"));
+    await user.click(
+      within(entry).getByText("How do I connect my first data source?")
+    );
     expect(
       within(entry).getByText(
         "Open the Connectors page and pick a connector definition."
@@ -80,7 +82,9 @@ describe("FAQList", () => {
     const entry = screen.getByTestId(
       "faq-entry-how-do-i-connect-my-first-data-source"
     );
-    await user.click(within(entry).getByText("How do I connect my first data source?"));
+    await user.click(
+      within(entry).getByText("How do I connect my first data source?")
+    );
     expect(within(entry).getByText("Related terms")).toBeInTheDocument();
     expect(within(entry).getByText("Connector Definition")).toBeInTheDocument();
     expect(within(entry).getByText("Connector Instance")).toBeInTheDocument();
@@ -94,7 +98,9 @@ describe("FAQList", () => {
     const entry = screen.getByTestId(
       "faq-entry-how-do-i-connect-my-first-data-source"
     );
-    await user.click(within(entry).getByText("How do I connect my first data source?"));
+    await user.click(
+      within(entry).getByText("How do I connect my first data source?")
+    );
     await user.click(within(entry).getByText("Connector Definition"));
     expect(onSelectTerm).toHaveBeenCalledWith("Connector Definition");
   });

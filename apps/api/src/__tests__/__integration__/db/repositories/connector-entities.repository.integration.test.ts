@@ -12,6 +12,7 @@ import { ConnectorEntitiesRepository } from "../../../../db/repositories/connect
 import type { DbClient } from "../../../../db/repositories/base.repository.js";
 import * as schema from "../../../../db/schema/index.js";
 import type { ConnectorEntityInsert } from "../../../../db/schema/zod.js";
+import { ApiCode } from "../../../../constants/api-codes.constants.js";
 import {
   generateId,
   teardownOrg,
@@ -209,12 +210,229 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
   // ── Unique constraint ──────────────────────────────────────────
 
   describe("unique constraint", () => {
-    it("should reject duplicate connector_instance_id + key via create", async () => {
+    it("rejects duplicate (organization_id, key) via create (C2)", async () => {
       const data = makeEntity({ key: "accounts" });
       await repo.create(data, db);
 
-      const duplicate = makeEntity({ key: "accounts" });
+      // Same org, same key, different connector — rejected by the partial
+      // unique index on (organization_id, key) WHERE deleted IS NULL.
+      const otherConnDefId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.connectorDefinitions)
+        .values({
+          id: otherConnDefId,
+          slug: `test-connector-${generateId().slice(0, 8)}`,
+          display: "Other Connector",
+          category: "crm",
+          authType: "oauth2",
+          configSchema: {},
+          capabilityFlags: { sync: true },
+          isActive: true,
+          version: "1.0.0",
+          iconUrl: null,
+          created: Date.now(),
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      const otherInstanceId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.connectorInstances)
+        .values({
+          id: otherInstanceId,
+          connectorDefinitionId: otherConnDefId,
+          organizationId: orgId,
+          name: "Other Instance",
+          status: "active",
+          config: {},
+          credentials: null,
+          lastSyncAt: null,
+          lastErrorMessage: null,
+          enabledCapabilityFlags: null,
+          created: Date.now(),
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+
+      const duplicate = makeEntity({
+        key: "accounts",
+        connectorInstanceId: otherInstanceId,
+      });
       await expect(repo.create(duplicate, db)).rejects.toThrow();
+    });
+  });
+
+  // ── upsertByKey (C2 behavior) ──────────────────────────────────
+
+  describe("upsertByKey — C2 org-wide uniqueness", () => {
+    async function seedOtherConnectorInstance(): Promise<string> {
+      const defId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.connectorDefinitions)
+        .values({
+          id: defId,
+          slug: `other-${generateId().slice(0, 8)}`,
+          display: "Other",
+          category: "crm",
+          authType: "oauth2",
+          configSchema: {},
+          capabilityFlags: { sync: true },
+          isActive: true,
+          version: "1.0.0",
+          iconUrl: null,
+          created: Date.now(),
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      const instId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.connectorInstances)
+        .values({
+          id: instId,
+          connectorDefinitionId: defId,
+          organizationId: orgId,
+          name: "Other",
+          status: "active",
+          config: {},
+          credentials: null,
+          lastSyncAt: null,
+          lastErrorMessage: null,
+          enabledCapabilityFlags: null,
+          created: Date.now(),
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      return instId;
+    }
+
+    async function seedOtherOrg(): Promise<string> {
+      const otherUser = createUser(`auth0|${generateId()}`);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(otherUser as never);
+      const otherOrg = createOrganization(otherUser.id);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.organizations)
+        .values(otherOrg as never);
+      return otherOrg.id;
+    }
+
+    it("updates the existing row when the same connector upserts the same key", async () => {
+      const first = await repo.upsertByKey(
+        makeEntity({ key: "contacts", label: "v1" }),
+        db
+      );
+      const second = await repo.upsertByKey(
+        makeEntity({
+          key: "contacts",
+          label: "v2",
+          updated: Date.now(),
+          updatedBy: "test-system",
+        }),
+        db
+      );
+      expect(second.id).toBe(first.id);
+      expect(second.label).toBe("v2");
+    });
+
+    it("throws CONNECTOR_ENTITY_KEY_IN_USE_BY_OTHER_CONNECTOR when another connector in the same org owns the key", async () => {
+      const otherInstanceId = await seedOtherConnectorInstance();
+      await repo.upsertByKey(makeEntity({ key: "shared" }), db);
+      await expect(
+        repo.upsertByKey(
+          makeEntity({
+            key: "shared",
+            connectorInstanceId: otherInstanceId,
+          }),
+          db
+        )
+      ).rejects.toMatchObject({
+        status: 400,
+        code: ApiCode.CONNECTOR_ENTITY_KEY_IN_USE_BY_OTHER_CONNECTOR,
+      });
+    });
+
+    it("succeeds when another organization owns the same key", async () => {
+      const otherOrgId = await seedOtherOrg();
+      // Need a connector instance in the other org.
+      const otherConnDefId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.connectorDefinitions)
+        .values({
+          id: otherConnDefId,
+          slug: `other-org-${generateId().slice(0, 8)}`,
+          display: "Other Org Connector",
+          category: "crm",
+          authType: "oauth2",
+          configSchema: {},
+          capabilityFlags: { sync: true },
+          isActive: true,
+          version: "1.0.0",
+          iconUrl: null,
+          created: Date.now(),
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+      const otherOrgInstanceId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.connectorInstances)
+        .values({
+          id: otherOrgInstanceId,
+          connectorDefinitionId: otherConnDefId,
+          organizationId: otherOrgId,
+          name: "Other Org Instance",
+          status: "active",
+          config: {},
+          credentials: null,
+          lastSyncAt: null,
+          lastErrorMessage: null,
+          enabledCapabilityFlags: null,
+          created: Date.now(),
+          createdBy: "test-system",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+
+      await repo.upsertByKey(makeEntity({ key: "cross_org" }), db);
+      const row = await repo.upsertByKey(
+        makeEntity({
+          key: "cross_org",
+          organizationId: otherOrgId,
+          connectorInstanceId: otherOrgInstanceId,
+        }),
+        db
+      );
+      expect(row.organizationId).toBe(otherOrgId);
+    });
+
+    it("creates a new entity for a key whose prior owner is soft-deleted", async () => {
+      const a = await repo.upsertByKey(makeEntity({ key: "reusable" }), db);
+      await repo.softDelete(a.id, "test-system", db);
+      const otherInstanceId = await seedOtherConnectorInstance();
+      const b = await repo.upsertByKey(
+        makeEntity({
+          key: "reusable",
+          connectorInstanceId: otherInstanceId,
+        }),
+        db
+      );
+      expect(b.id).not.toBe(a.id);
     });
   });
 
@@ -233,12 +451,18 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
     it("should attach connectorInstance when include contains connectorInstance", async () => {
       await repo.create(makeEntity(), db);
 
-      const results = await repo.findMany(undefined, { include: ["connectorInstance"] }, db);
+      const results = await repo.findMany(
+        undefined,
+        { include: ["connectorInstance"] },
+        db
+      );
 
       expect(results).toHaveLength(1);
       const entity = results[0] as Record<string, unknown>;
       expect(entity.connectorInstance).toBeDefined();
-      expect((entity.connectorInstance as { id: string }).id).toBe(connectorInstanceId);
+      expect((entity.connectorInstance as { id: string }).id).toBe(
+        connectorInstanceId
+      );
     });
 
     it("should attach fieldMappings when include contains fieldMappings", async () => {
@@ -286,18 +510,29 @@ describe("ConnectorEntitiesRepository Integration Tests", () => {
         deletedBy: null,
       } as never);
 
-      const results = await repo.findMany(undefined, { include: ["fieldMappings"] }, db);
+      const results = await repo.findMany(
+        undefined,
+        { include: ["fieldMappings"] },
+        db
+      );
 
       expect(results).toHaveLength(1);
       const enriched = results[0] as Record<string, unknown>;
       expect(enriched.fieldMappings as unknown[]).toHaveLength(1);
-      expect(((enriched.fieldMappings as unknown[])[0] as { sourceField: string }).sourceField).toBe("name");
+      expect(
+        ((enriched.fieldMappings as unknown[])[0] as { sourceField: string })
+          .sourceField
+      ).toBe("name");
     });
 
     it("should return empty arrays for includes with no matching data", async () => {
       await repo.create(makeEntity(), db);
 
-      const results = await repo.findMany(undefined, { include: ["fieldMappings", "tags"] }, db);
+      const results = await repo.findMany(
+        undefined,
+        { include: ["fieldMappings", "tags"] },
+        db
+      );
 
       expect(results).toHaveLength(1);
       const enriched = results[0] as Record<string, unknown>;

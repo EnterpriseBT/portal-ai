@@ -1,5 +1,14 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, or, ilike, inArray, sql, type SQL, type Column } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  ilike,
+  inArray,
+  sql,
+  type SQL,
+  type Column,
+} from "drizzle-orm";
 
 import { EntityGroupModelFactory } from "@portalai/core/models";
 import {
@@ -105,8 +114,15 @@ entityGroupRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, search, include, connectorEntityId } =
-        EntityGroupListRequestQuerySchema.parse(req.query);
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        search,
+        include,
+        connectorEntityId,
+      } = EntityGroupListRequestQuerySchema.parse(req.query);
 
       const organizationId = req.application!.metadata.organizationId;
       const filters: SQL[] = [eq(entityGroups.organizationId, organizationId)];
@@ -121,31 +137,47 @@ entityGroupRouter.get(
       }
 
       if (connectorEntityId) {
-        const memberRows = await DbService.repository.entityGroupMembers.findByConnectorEntityId(connectorEntityId);
+        const memberRows =
+          await DbService.repository.entityGroupMembers.findByConnectorEntityId(
+            connectorEntityId
+          );
         const groupIds = [...new Set(memberRows.map((m) => m.entityGroupId))];
         // inArray requires a non-empty array; use sql`false` to match nothing when empty
         filters.push(
-          groupIds.length > 0
-            ? inArray(entityGroups.id, groupIds)
-            : sql`false`
+          groupIds.length > 0 ? inArray(entityGroups.id, groupIds) : sql`false`
         );
       }
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
+      const include_ = include
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const listOpts = {
+        limit,
+        offset,
+        orderBy: { column, direction: sortOrder },
+        include: include_,
+      };
 
       const [data, total] = await Promise.all([
         DbService.repository.entityGroups.findMany(where, listOpts),
         DbService.repository.entityGroups.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_GROUP_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity groups");
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_GROUP_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to list entity groups"
+        );
       });
 
       return HttpService.success<EntityGroupListResponsePayload>(res, {
-        entityGroups: data as unknown as EntityGroupListResponsePayload["entityGroups"],
+        entityGroups:
+          data as unknown as EntityGroupListResponsePayload["entityGroups"],
         total,
         limit,
         offset,
@@ -155,7 +187,17 @@ entityGroupRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list entity groups"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity groups"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list entity groups"
+            )
+      );
     }
   }
 );
@@ -214,16 +256,33 @@ entityGroupRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/entity-groups/:id called");
 
-      const entityGroup = await DbService.repository.entityGroups.findById(id).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_GROUP_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch entity group");
-      });
+      const entityGroup = await DbService.repository.entityGroups
+        .findById(id)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_GROUP_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch entity group"
+          );
+        });
 
       if (!entityGroup) {
-        return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
       }
 
-      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(id, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] });
+      const enrichedMembers =
+        await DbService.repository.entityGroupMembers.findByEntityGroupId(id, {
+          include: ["connectorEntity", "fieldMapping", "columnDefinition"],
+        });
 
       const members = enrichedMembers.map((m) => ({
         ...m,
@@ -244,7 +303,17 @@ entityGroupRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch entity group"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch entity group"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch entity group"
+            )
+      );
     }
   }
 );
@@ -316,14 +385,29 @@ entityGroupRouter.post(
     try {
       const parsed = EntityGroupCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_INVALID_PAYLOAD, "Invalid entity group payload"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_INVALID_PAYLOAD,
+            "Invalid entity group payload"
+          )
+        );
       }
 
       const { organizationId, userId } = req.application!.metadata;
 
-      const duplicate = await DbService.repository.entityGroups.findByName(organizationId, parsed.data.name);
+      const duplicate = await DbService.repository.entityGroups.findByName(
+        organizationId,
+        parsed.data.name
+      );
       if (duplicate) {
-        return next(new ApiError(409, ApiCode.ENTITY_GROUP_DUPLICATE_NAME, "An entity group with this name already exists in this organization"));
+        return next(
+          new ApiError(
+            409,
+            ApiCode.ENTITY_GROUP_DUPLICATE_NAME,
+            "An entity group with this name already exists in this organization"
+          )
+        );
       }
 
       const factory = new EntityGroupModelFactory();
@@ -334,18 +418,30 @@ entityGroupRouter.post(
         description: parsed.data.description ?? null,
       });
 
-      const entityGroup = await DbService.repository.entityGroups.create(
-        model.parse()
-      ).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_GROUP_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity group");
-      });
+      const entityGroup = await DbService.repository.entityGroups
+        .create(model.parse())
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_GROUP_CREATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to create entity group"
+          );
+        });
 
-      logger.info({ id: entityGroup.id, organizationId }, "Entity group created");
+      logger.info(
+        { id: entityGroup.id, organizationId },
+        "Entity group created"
+      );
 
       return HttpService.success<EntityGroupCreateResponsePayload>(
         res,
-        { entityGroup: entityGroup as unknown as EntityGroupCreateResponsePayload["entityGroup"] },
+        {
+          entityGroup:
+            entityGroup as unknown as EntityGroupCreateResponsePayload["entityGroup"],
+        },
         201
       );
     } catch (error) {
@@ -353,7 +449,17 @@ entityGroupRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create entity group"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity group"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create entity group"
+            )
+      );
     }
   }
 );
@@ -436,43 +542,83 @@ entityGroupRouter.patch(
       const { id } = req.params;
       const parsed = EntityGroupUpdateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_INVALID_PAYLOAD, "Invalid entity group payload"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_INVALID_PAYLOAD,
+            "Invalid entity group payload"
+          )
+        );
       }
 
       const existing = await DbService.repository.entityGroups.findById(id);
       if (!existing) {
-        return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
       }
 
       if (parsed.data.name && parsed.data.name !== existing.name) {
-        const duplicate = await DbService.repository.entityGroups.findByName(existing.organizationId, parsed.data.name);
+        const duplicate = await DbService.repository.entityGroups.findByName(
+          existing.organizationId,
+          parsed.data.name
+        );
         if (duplicate) {
-          return next(new ApiError(409, ApiCode.ENTITY_GROUP_DUPLICATE_NAME, "An entity group with this name already exists in this organization"));
+          return next(
+            new ApiError(
+              409,
+              ApiCode.ENTITY_GROUP_DUPLICATE_NAME,
+              "An entity group with this name already exists in this organization"
+            )
+          );
         }
       }
 
       const { userId } = req.application!.metadata;
 
-      const entityGroup = await DbService.repository.entityGroups.update(id, {
-        ...parsed.data,
-        updated: Date.now(),
-        updatedBy: userId,
-      } as never).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_GROUP_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update entity group");
-      });
+      const entityGroup = await DbService.repository.entityGroups
+        .update(id, {
+          ...parsed.data,
+          updated: Date.now(),
+          updatedBy: userId,
+        } as never)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_GROUP_UPDATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to update entity group"
+          );
+        });
 
       logger.info({ id }, "Entity group updated");
 
       return HttpService.success<EntityGroupUpdateResponsePayload>(res, {
-        entityGroup: entityGroup as unknown as EntityGroupUpdateResponsePayload["entityGroup"],
+        entityGroup:
+          entityGroup as unknown as EntityGroupUpdateResponsePayload["entityGroup"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to update entity group"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update entity group"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_UPDATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to update entity group"
+            )
+      );
     }
   }
 );
@@ -524,10 +670,17 @@ entityGroupRouter.get(
 
       const existing = await DbService.repository.entityGroups.findById(id);
       if (!existing) {
-        return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
       }
 
-      const members = await DbService.repository.entityGroupMembers.findByEntityGroupId(id);
+      const members =
+        await DbService.repository.entityGroupMembers.findByEntityGroupId(id);
 
       return HttpService.success<EntityGroupImpactResponsePayload>(res, {
         entityGroupMembers: members.length,
@@ -540,7 +693,13 @@ entityGroupRouter.get(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.ENTITY_GROUP_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch entity group impact")
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch entity group impact"
+            )
       );
     }
   }
@@ -606,33 +765,67 @@ entityGroupRouter.delete(
 
       const existing = await DbService.repository.entityGroups.findById(id);
       if (!existing) {
-        return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
       }
 
       const { userId } = req.application!.metadata;
 
       const cascaded = await DbService.transaction(async (tx) => {
-        const members = await DbService.repository.entityGroupMembers.findByEntityGroupId(id, {}, tx);
+        const members =
+          await DbService.repository.entityGroupMembers.findByEntityGroupId(
+            id,
+            {},
+            tx
+          );
         const memberIds = members.map((m) => m.id);
         if (memberIds.length > 0) {
-          await DbService.repository.entityGroupMembers.softDeleteMany(memberIds, userId, tx);
+          await DbService.repository.entityGroupMembers.softDeleteMany(
+            memberIds,
+            userId,
+            tx
+          );
         }
         await DbService.repository.entityGroups.softDelete(id, userId, tx);
         return { entityGroupMembers: memberIds.length };
       }).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_GROUP_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity group");
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_GROUP_DELETE_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to delete entity group"
+        );
       });
 
       logger.info({ id, cascaded }, "Entity group soft-deleted");
 
-      return HttpService.success<EntityGroupDeleteResponsePayload>(res, { id, cascaded });
+      return HttpService.success<EntityGroupDeleteResponsePayload>(res, {
+        id,
+        cascaded,
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to delete entity group"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity group"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete entity group"
+            )
+      );
     }
   }
 );
@@ -703,19 +896,36 @@ entityGroupRouter.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const queryParsed = EntityGroupResolveRequestQuerySchema.safeParse(req.query);
+      const queryParsed = EntityGroupResolveRequestQuerySchema.safeParse(
+        req.query
+      );
       if (!queryParsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_GROUP_INVALID_PAYLOAD, "linkValue query parameter is required"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_GROUP_INVALID_PAYLOAD,
+            "linkValue query parameter is required"
+          )
+        );
       }
 
       const { linkValue } = queryParsed.data;
 
       const entityGroup = await DbService.repository.entityGroups.findById(id);
       if (!entityGroup) {
-        return next(new ApiError(404, ApiCode.ENTITY_GROUP_NOT_FOUND, "Entity group not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_GROUP_NOT_FOUND,
+            "Entity group not found"
+          )
+        );
       }
 
-      const enrichedMembers = await DbService.repository.entityGroupMembers.findByEntityGroupId(id, { include: ["connectorEntity", "fieldMapping", "columnDefinition"] });
+      const enrichedMembers =
+        await DbService.repository.entityGroupMembers.findByEntityGroupId(id, {
+          include: ["connectorEntity", "fieldMapping", "columnDefinition"],
+        });
 
       const results: EntityGroupResolveResponsePayload["results"] = [];
 
@@ -735,17 +945,30 @@ entityGroupRouter.get(
           connectorEntityId: member.connectorEntityId,
           connectorEntityLabel: member.connectorEntity!.label,
           isPrimary: member.isPrimary,
-          records: records as unknown as EntityGroupResolveResponsePayload["results"][number]["records"],
+          records:
+            records as unknown as EntityGroupResolveResponsePayload["results"][number]["records"],
         });
       }
 
-      return HttpService.success<EntityGroupResolveResponsePayload>(res, { results });
+      return HttpService.success<EntityGroupResolveResponsePayload>(res, {
+        results,
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to resolve entity group"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_GROUP_FETCH_FAILED, error instanceof Error ? error.message : "Failed to resolve entity group"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_GROUP_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to resolve entity group"
+            )
+      );
     }
   }
 );

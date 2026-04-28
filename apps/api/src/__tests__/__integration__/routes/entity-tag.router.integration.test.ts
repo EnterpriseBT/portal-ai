@@ -40,7 +40,13 @@ jest.unstable_mockModule("../../../services/auth0.service.js", () => ({
 
 const { app } = await import("../../../app.js");
 
-const { entityTags, entityTagAssignments, connectorEntities, connectorInstances, connectorDefinitions } = schema;
+const {
+  entityTags,
+  entityTagAssignments,
+  connectorEntities,
+  connectorInstances,
+  connectorDefinitions,
+} = schema;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -87,7 +93,10 @@ function createConnectorDefinition() {
   };
 }
 
-function createConnectorInstance(connectorDefinitionId: string, organizationId: string) {
+function createConnectorInstance(
+  connectorDefinitionId: string,
+  organizationId: string
+) {
   return {
     id: generateId(),
     connectorDefinitionId,
@@ -108,7 +117,10 @@ function createConnectorInstance(connectorDefinitionId: string, organizationId: 
   };
 }
 
-function createConnectorEntity(organizationId: string, connectorInstanceId: string) {
+function createConnectorEntity(
+  organizationId: string,
+  connectorInstanceId: string
+) {
   return {
     id: generateId(),
     organizationId,
@@ -193,7 +205,9 @@ describe("Entity Tag Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.entityTags).toHaveLength(2);
-      const names = res.body.payload.entityTags.map((t: { name: string }) => t.name);
+      const names = res.body.payload.entityTags.map(
+        (t: { name: string }) => t.name
+      );
       expect(names).toContain("customers");
       expect(names).toContain("custom-fields");
     });
@@ -279,7 +293,9 @@ describe("Entity Tag Router", () => {
 
       await (db as ReturnType<typeof drizzle>)
         .insert(entityTags)
-        .values(createEntityTag(organizationId, { name: "duplicate" }) as never);
+        .values(
+          createEntityTag(organizationId, { name: "duplicate" }) as never
+        );
 
       const res = await request(app)
         .post("/api/entity-tags")
@@ -340,7 +356,9 @@ describe("Entity Tag Router", () => {
           createEntityTag(organizationId, { name: "existing" }),
         ] as never);
 
-      const tagToUpdate = createEntityTag(organizationId, { name: "to-update" });
+      const tagToUpdate = createEntityTag(organizationId, {
+        name: "to-update",
+      });
       await (db as ReturnType<typeof drizzle>)
         .insert(entityTags)
         .values(tagToUpdate as never);

@@ -142,7 +142,9 @@ describe("PortalHeaderMeta", () => {
     it("does not render the mobile toggle on desktop", () => {
       mockStationsGet.mockReturnValue(mockStationResult(stationFixture));
       render(<PortalHeaderMeta stationId="station-1" />);
-      expect(screen.queryByTestId("portal-header-meta-toggle")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("portal-header-meta-toggle")
+      ).not.toBeInTheDocument();
     });
 
     it("hides the Connectors section when the station has no instances", () => {
@@ -176,7 +178,9 @@ describe("PortalHeaderMeta", () => {
       expect(toggle).toHaveTextContent(/show session details/i);
       expect(toggle).toHaveAttribute("aria-expanded", "false");
       // unmountOnExit → metadata nodes are not in the DOM while collapsed
-      expect(screen.queryByTestId("portal-header-station-link")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("portal-header-station-link")
+      ).not.toBeInTheDocument();
     });
 
     it("expands to reveal the metadata when the toggle is clicked", () => {
@@ -186,7 +190,9 @@ describe("PortalHeaderMeta", () => {
       fireEvent.click(toggle);
       expect(toggle).toHaveAttribute("aria-expanded", "true");
       expect(toggle).toHaveTextContent(/hide session details/i);
-      expect(screen.getByTestId("portal-header-station-link")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("portal-header-station-link")
+      ).toBeInTheDocument();
       expect(screen.getByText("My CRM")).toBeInTheDocument();
     });
 

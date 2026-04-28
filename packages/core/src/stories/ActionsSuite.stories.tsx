@@ -76,7 +76,11 @@ export const WithDisabled: Story = {
   args: {
     items: [
       { label: "Edit", onClick: () => console.log("Edit") },
-      { label: "Archive", onClick: () => console.log("Archive"), disabled: true },
+      {
+        label: "Archive",
+        onClick: () => console.log("Archive"),
+        disabled: true,
+      },
       { label: "Delete", onClick: () => console.log("Delete"), color: "error" },
     ],
   },

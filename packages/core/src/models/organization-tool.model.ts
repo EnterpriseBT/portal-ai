@@ -52,9 +52,7 @@ export class OrganizationToolModelFactory extends ModelFactory<
 > {
   create(createdBy: string): OrganizationToolModel {
     const baseModel = this._coreModelFactory.create(createdBy);
-    const organizationToolModel = new OrganizationToolModel(
-      baseModel.toJSON()
-    );
+    const organizationToolModel = new OrganizationToolModel(baseModel.toJSON());
     return organizationToolModel;
   }
 }

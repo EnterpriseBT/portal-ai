@@ -9,7 +9,10 @@ import { eq } from "drizzle-orm";
 import { portalMessages } from "../schema/index.js";
 import { db } from "../client.js";
 import { Repository, type DbClient } from "./base.repository.js";
-import type { PortalMessageSelect, PortalMessageInsert } from "../schema/zod.js";
+import type {
+  PortalMessageSelect,
+  PortalMessageInsert,
+} from "../schema/zod.js";
 
 export class PortalMessagesRepository extends Repository<
   typeof portalMessages,

@@ -5,27 +5,24 @@ import { SampleFiles } from "../SampleFiles.component";
 describe("SampleFiles", () => {
   it("renders a prompt explaining what the links are", () => {
     render(<SampleFiles />);
-    expect(
-      screen.getByText(/recommended layout/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/recommended layout/i)).toBeInTheDocument();
   });
 
-  it("renders a CSV sample link pointing at /samples/sample-contacts.csv", () => {
+  it("renders the supported-layouts CSV link", () => {
     render(<SampleFiles />);
-    const csvLink = screen.getByRole("link", { name: "sample-contacts.csv" });
-    expect(csvLink).toHaveAttribute("href", "/samples/sample-contacts.csv");
-    expect(csvLink).toHaveAttribute("download", "sample-contacts.csv");
+    const link = screen.getByRole("link", {
+      name: "supported_layouts.csv",
+    });
+    expect(link).toHaveAttribute("href", "/samples/supported_layouts.csv");
+    expect(link).toHaveAttribute("download", "supported_layouts.csv");
   });
 
-  it("renders an XLSX sample link pointing at /samples/sample-data.xlsx", () => {
+  it("renders the supported-layouts XLSX link", () => {
     render(<SampleFiles />);
-    const xlsxLink = screen.getByRole("link", { name: "sample-data.xlsx" });
-    expect(xlsxLink).toHaveAttribute("href", "/samples/sample-data.xlsx");
-    expect(xlsxLink).toHaveAttribute("download", "sample-data.xlsx");
-  });
-
-  it("describes the XLSX sample as multi-sheet", () => {
-    render(<SampleFiles />);
-    expect(screen.getByText(/Multi-sheet/i)).toBeInTheDocument();
+    const link = screen.getByRole("link", {
+      name: "supported_layouts.xlsx",
+    });
+    expect(link).toHaveAttribute("href", "/samples/supported_layouts.xlsx");
+    expect(link).toHaveAttribute("download", "supported_layouts.xlsx");
   });
 });

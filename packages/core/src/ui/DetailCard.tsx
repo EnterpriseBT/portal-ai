@@ -38,7 +38,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
       className,
       ...rest
     },
-    ref,
+    ref
   ) => {
     const hasActions = actions && actions.length > 0;
 
@@ -135,7 +135,7 @@ export const DetailCard = React.forwardRef<HTMLDivElement, DetailCardProps>(
         </CardContent>
       </MuiCard>
     );
-  },
+  }
 );
 
 export default DetailCard;

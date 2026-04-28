@@ -16,7 +16,12 @@ jest.unstable_mockModule("@portalai/core/ui", () => ({
 const { columnDefinitions } = await import("../../api/column-definitions.api");
 const { queryKeys } = await import("../../api/keys");
 
-const basePagination = { limit: 20, offset: 0, sortBy: "created", sortOrder: "asc" as const };
+const basePagination = {
+  limit: 20,
+  offset: 0,
+  sortBy: "created",
+  sortOrder: "asc" as const,
+};
 
 describe("column-definitions.api", () => {
   beforeEach(() => {

@@ -17,7 +17,10 @@ describe("createLogger + requestContext", () => {
   it("uses the request logger's bindings when inside a request context", () => {
     const reqLog = pino(
       { level: "info" },
-      pino.transport({ target: "pino/file", options: { destination: "/dev/null" } }),
+      pino.transport({
+        target: "pino/file",
+        options: { destination: "/dev/null" },
+      })
     ).child({ reqId: "req-abc", userId: "user-xyz" });
 
     const moduleLog = createLogger({ module: "service-a" });

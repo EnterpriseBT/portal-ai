@@ -27,9 +27,7 @@ describe("BidirectionalConsistencyBannerUI", () => {
         totalChecked={10}
       />
     );
-    expect(
-      screen.getByText(/related_contacts/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/related_contacts/)).toBeInTheDocument();
     expect(screen.getByText(/3 of 10 records/)).toBeInTheDocument();
     expect(
       screen.getByText(/inconsistent back-references/)

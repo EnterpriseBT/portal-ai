@@ -11,7 +11,14 @@ const meta = {
   argTypes: {
     status: {
       control: "select",
-      options: ["pending", "active", "completed", "failed", "stalled", "cancelled"],
+      options: [
+        "pending",
+        "active",
+        "completed",
+        "failed",
+        "stalled",
+        "cancelled",
+      ],
       description: "The status to display",
     },
     label: {

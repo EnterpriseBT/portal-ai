@@ -7,7 +7,17 @@ import type {
   ConnectorInstanceGetResponsePayload,
   ConnectorInstancePatchRequestBody,
 } from "@portalai/core/contracts";
-import { Box, Button, Icon, IconName, MetadataList, PageEmptyState, PageHeader, PageSection, Stack } from "@portalai/core/ui";
+import {
+  Box,
+  Button,
+  Icon,
+  IconName,
+  MetadataList,
+  PageEmptyState,
+  PageHeader,
+  PageSection,
+  Stack,
+} from "@portalai/core/ui";
 import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -71,10 +81,16 @@ export const ConnectorInstanceView = ({
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         setDeleteDialogOpen(false);
-        queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.connectorInstances.root,
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.connectorEntities.root,
+        });
         queryClient.invalidateQueries({ queryKey: queryKeys.stations.root });
-        queryClient.invalidateQueries({ queryKey: queryKeys.fieldMappings.root });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.fieldMappings.root,
+        });
         navigate({ to: "/connectors" });
       },
     });
@@ -82,13 +98,20 @@ export const ConnectorInstanceView = ({
 
   const handleRename = useCallback(
     (newName: string) => {
-      renameMutation.mutate({ name: newName }, {
-        onSuccess: () => {
-          setEditDialogOpen(false);
-          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
-          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.get(connectorInstanceId) });
-        },
-      });
+      renameMutation.mutate(
+        { name: newName },
+        {
+          onSuccess: () => {
+            setEditDialogOpen(false);
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.connectorInstances.root,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.connectorInstances.get(connectorInstanceId),
+            });
+          },
+        }
+      );
     },
     [renameMutation, queryClient, connectorInstanceId]
   );
@@ -97,8 +120,12 @@ export const ConnectorInstanceView = ({
     (body: ConnectorInstancePatchRequestBody) => {
       updateMutation.mutate(body, {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.root });
-          queryClient.invalidateQueries({ queryKey: queryKeys.connectorInstances.get(connectorInstanceId) });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorInstances.root,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorInstances.get(connectorInstanceId),
+          });
         },
       });
     },
@@ -115,7 +142,9 @@ export const ConnectorInstanceView = ({
       createEntityMutation.mutate(body, {
         onSuccess: () => {
           handleCreateEntityClose();
-          queryClient.invalidateQueries({ queryKey: queryKeys.connectorEntities.root });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.connectorEntities.root,
+          });
         },
       });
     },
@@ -165,7 +194,12 @@ export const ConnectorInstanceView = ({
                       </Button>
                     }
                     secondaryActions={[
-                      { label: "Delete", icon: <DeleteIcon />, onClick: () => setDeleteDialogOpen(true), color: "error" },
+                      {
+                        label: "Delete",
+                        icon: <DeleteIcon />,
+                        onClick: () => setDeleteDialogOpen(true),
+                        color: "error",
+                      },
                     ]}
                   >
                     <MetadataList
@@ -182,75 +216,136 @@ export const ConnectorInstanceView = ({
                           ),
                           variant: "chip",
                         },
-                        { label: "Connector", value: ci.connectorDefinition?.display ?? "", hidden: !ci.connectorDefinition },
-                        { label: "Config", value: ci.config ? JSON.stringify(ci.config) : "", hidden: !ci.config || Object.keys(ci.config).length === 0, variant: "mono" },
-                        { label: "Last sync", value: ci.lastSyncAt ? new Date(ci.lastSyncAt).toLocaleString() : "", hidden: !ci.lastSyncAt },
-                        { label: "Error", value: ci.lastErrorMessage ?? "", hidden: !(ci.status === "error" && ci.lastErrorMessage) },
-                        { label: "Created", value: new Date(ci.created).toLocaleString() },
+                        {
+                          label: "Connector",
+                          value: ci.connectorDefinition?.display ?? "",
+                          hidden: !ci.connectorDefinition,
+                        },
+                        {
+                          label: "Config",
+                          value: ci.config ? JSON.stringify(ci.config) : "",
+                          hidden:
+                            !ci.config || Object.keys(ci.config).length === 0,
+                          variant: "mono",
+                        },
+                        {
+                          label: "Last sync",
+                          value: ci.lastSyncAt
+                            ? new Date(ci.lastSyncAt).toLocaleString()
+                            : "",
+                          hidden: !ci.lastSyncAt,
+                        },
+                        {
+                          label: "Error",
+                          value: ci.lastErrorMessage ?? "",
+                          hidden: !(
+                            ci.status === "error" && ci.lastErrorMessage
+                          ),
+                        },
+                        {
+                          label: "Created",
+                          value: new Date(ci.created).toLocaleString(),
+                        },
                         {
                           label: "Capabilities",
                           value: (() => {
-                            const defFlags = ci.connectorDefinition?.capabilityFlags;
+                            const defFlags =
+                              ci.connectorDefinition?.capabilityFlags;
                             const flags = ci.enabledCapabilityFlags;
                             const writeSupported = !!defFlags?.write;
                             const syncSupported = !!defFlags?.sync;
                             const pushSupported = !!defFlags?.push;
 
-                            const makeHandler = (flag: "write" | "sync" | "push") => (
-                              _e: React.ChangeEvent<HTMLInputElement>,
-                              checked: boolean
-                            ) => {
-                              handleCapabilityChange({
-                                name: ci.name,
-                                enabledCapabilityFlags: {
-                                  ...flags,
-                                  read: true,
-                                  [flag]: checked,
-                                },
-                              });
-                            };
+                            const makeHandler =
+                              (flag: "write" | "sync" | "push") =>
+                              (
+                                _e: React.ChangeEvent<HTMLInputElement>,
+                                checked: boolean
+                              ) => {
+                                handleCapabilityChange({
+                                  name: ci.name,
+                                  enabledCapabilityFlags: {
+                                    ...flags,
+                                    read: true,
+                                    [flag]: checked,
+                                  },
+                                });
+                              };
 
                             return (
-                              <Stack direction="row" spacing={1} alignItems="center">
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                              >
                                 <Tooltip title="Allow reading data from this connector">
                                   <FormControlLabel
-                                    control={<Checkbox checked disabled size="small" />}
+                                    control={
+                                      <Checkbox checked disabled size="small" />
+                                    }
                                     label="Read"
                                   />
                                 </Tooltip>
-                                <Tooltip title={writeSupported ? "Allow creating, editing, and deleting entities, records, and field mappings" : "This connector type does not support writes"}>
+                                <Tooltip
+                                  title={
+                                    writeSupported
+                                      ? "Allow creating, editing, and deleting entities, records, and field mappings"
+                                      : "This connector type does not support writes"
+                                  }
+                                >
                                   <FormControlLabel
                                     control={
                                       <Checkbox
                                         checked={!!flags?.write}
                                         onChange={makeHandler("write")}
-                                        disabled={!writeSupported || updateMutation.isPending}
+                                        disabled={
+                                          !writeSupported ||
+                                          updateMutation.isPending
+                                        }
                                         size="small"
                                       />
                                     }
                                     label="Write"
                                   />
                                 </Tooltip>
-                                <Tooltip title={syncSupported ? "Allow data synchronization with the source" : "This connector type does not support sync"}>
+                                <Tooltip
+                                  title={
+                                    syncSupported
+                                      ? "Allow data synchronization with the source"
+                                      : "This connector type does not support sync"
+                                  }
+                                >
                                   <FormControlLabel
                                     control={
                                       <Checkbox
                                         checked={!!flags?.sync}
                                         onChange={makeHandler("sync")}
-                                        disabled={!syncSupported || updateMutation.isPending}
+                                        disabled={
+                                          !syncSupported ||
+                                          updateMutation.isPending
+                                        }
                                         size="small"
                                       />
                                     }
                                     label="Sync"
                                   />
                                 </Tooltip>
-                                <Tooltip title={pushSupported ? "Allow pushing normalized data to external destinations" : "This connector type does not support push"}>
+                                <Tooltip
+                                  title={
+                                    pushSupported
+                                      ? "Allow pushing normalized data to external destinations"
+                                      : "This connector type does not support push"
+                                  }
+                                >
                                   <FormControlLabel
                                     control={
                                       <Checkbox
                                         checked={!!flags?.push}
                                         onChange={makeHandler("push")}
-                                        disabled={!pushSupported || updateMutation.isPending}
+                                        disabled={
+                                          !pushSupported ||
+                                          updateMutation.isPending
+                                        }
                                         size="small"
                                       />
                                     }
@@ -271,20 +366,28 @@ export const ConnectorInstanceView = ({
                     title="Entities"
                     icon={<Icon name={IconName.DataObject} />}
                     primaryAction={
-                      isWriteEnabled ? <Button variant="contained" size="small" onClick={() => setCreateEntityOpen(true)}>
-                        Create Entity
-                      </Button> : null
+                      isWriteEnabled ? (
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => setCreateEntityOpen(true)}
+                        >
+                          Create Entity
+                        </Button>
+                      ) : null
                     }
                   >
                     <PaginationToolbar {...pagination.toolbarProps} />
 
                     <Box sx={{ mt: 2 }}>
                       <ConnectorEntityDataList
-                        query={{
-                          connectorInstanceIds: connectorInstanceId,
-                          include: "fieldMappings",
-                          ...pagination.queryParams,
-                        } as ConnectorEntityListRequestQuery}
+                        query={
+                          {
+                            connectorInstanceIds: connectorInstanceId,
+                            include: "fieldMappings",
+                            ...pagination.queryParams,
+                          } as ConnectorEntityListRequestQuery
+                        }
                       >
                         {(entitiesResult) => (
                           <SyncTotal
@@ -350,7 +453,10 @@ export const ConnectorInstanceView = ({
                     onSubmit={handleCreateEntitySubmit}
                     isPending={createEntityMutation.isPending}
                     serverError={toServerError(createEntityMutation.error)}
-                    lockedConnectorInstance={{ id: connectorInstanceId, name: ci.name }}
+                    lockedConnectorInstance={{
+                      id: connectorInstanceId,
+                      name: ci.name,
+                    }}
                   />
                 </Stack>
               );

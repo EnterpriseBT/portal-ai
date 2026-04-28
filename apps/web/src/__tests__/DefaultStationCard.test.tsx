@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { Station } from "@portalai/core/models";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DefaultStationCardUI } = await import(
-  "../components/DefaultStationCard.component"
-);
+const { DefaultStationCardUI } =
+  await import("../components/DefaultStationCard.component");
 
 const makeStation = (overrides: Partial<Station> = {}): Station => ({
   id: "station-1",
@@ -35,9 +34,7 @@ describe("DefaultStationCardUI", () => {
   it("should render station name and description", () => {
     render(<DefaultStationCardUI {...defaultProps} />);
     expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
-    expect(
-      screen.getByText("Sales data analysis station")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Sales data analysis station")).toBeInTheDocument();
   });
 
   it("should render tool packs as chips", () => {
@@ -81,9 +78,7 @@ describe("DefaultStationCardUI", () => {
 
   it("should show empty state when station is null", () => {
     render(<DefaultStationCardUI {...defaultProps} station={null} />);
-    expect(
-      screen.getByText(/No default station/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/No default station/)).toBeInTheDocument();
   });
 
   it("should show 'Go to Stations' button in empty state", () => {

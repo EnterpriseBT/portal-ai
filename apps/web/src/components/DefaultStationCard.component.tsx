@@ -5,7 +5,16 @@ import type {
   OrganizationGetResponse,
   StationGetResponsePayload,
 } from "@portalai/core/contracts";
-import { Button, DetailCard, Icon, IconName, MetadataList, PageEmptyState, Stack, Typography } from "@portalai/core/ui";
+import {
+  Button,
+  DetailCard,
+  Icon,
+  IconName,
+  MetadataList,
+  PageEmptyState,
+  Stack,
+  Typography,
+} from "@portalai/core/ui";
 import Link from "@mui/material/Link";
 
 import DataResult from "./DataResult.component";
@@ -72,14 +81,24 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
     >
       <Stack spacing={1}>
         <Stack direction="row" spacing={0.5} alignItems="baseline">
-          <Typography variant="caption" color="text.secondary">Default Station</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Default Station
+          </Typography>
           <Link
             component="span"
             variant="caption"
             role="link"
             tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); onChangeDefault(); }}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onChangeDefault(); } }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChangeDefault();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.stopPropagation();
+                onChangeDefault();
+              }
+            }}
             sx={{ cursor: "pointer" }}
           >
             (change)
@@ -88,7 +107,11 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
         <MetadataList
           layout="stacked"
           items={[
-            { label: "Description", value: station.description ?? "", hidden: !station.description },
+            {
+              label: "Description",
+              value: station.description ?? "",
+              hidden: !station.description,
+            },
             {
               label: "Tool Packs",
               value: (
@@ -98,7 +121,7 @@ export const DefaultStationCardUI: React.FC<DefaultStationCardUIProps> = ({
                   ))}
                 </Stack>
               ),
-              variant: 'chip',
+              variant: "chip",
               hidden: station.toolPacks.length === 0,
             },
           ]}

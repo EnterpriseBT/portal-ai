@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { CreateColumnDefinitionDialog } = await import(
-  "../components/CreateColumnDefinitionDialog.component"
-);
+const { CreateColumnDefinitionDialog } =
+  await import("../components/CreateColumnDefinitionDialog.component");
 
 const defaultProps = {
   open: true,
@@ -35,9 +34,7 @@ describe("CreateColumnDefinitionDialog", () => {
   // #3
   it("should not render content when open is false", () => {
     render(<CreateColumnDefinitionDialog {...defaultProps} open={false} />);
-    expect(
-      screen.queryByText("New Column Definition")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("New Column Definition")).not.toBeInTheDocument();
   });
 
   // #4
@@ -174,12 +171,8 @@ describe("CreateColumnDefinitionDialog", () => {
 
   // #11
   it("should show 'Creating...' and disable buttons when pending", () => {
-    render(
-      <CreateColumnDefinitionDialog {...defaultProps} isPending={true} />
-    );
-    expect(
-      screen.getByRole("button", { name: "Creating..." })
-    ).toBeDisabled();
+    render(<CreateColumnDefinitionDialog {...defaultProps} isPending={true} />);
+    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
@@ -301,7 +294,9 @@ describe("CreateColumnDefinitionDialog", () => {
   it("should not include 'currency' in type select options", () => {
     render(<CreateColumnDefinitionDialog {...defaultProps} />);
     fireEvent.mouseDown(screen.getByLabelText(/^Type/));
-    expect(screen.queryByRole("option", { name: "currency" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "currency" })
+    ).not.toBeInTheDocument();
   });
 
   // #24
@@ -316,8 +311,12 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
     fireEvent.click(screen.getByRole("option", { name: "Email" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
-      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("Must be a valid email address");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue(
+        "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+      );
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue(
+        "Must be a valid email address"
+      );
     });
   });
 
@@ -327,8 +326,12 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
     fireEvent.click(screen.getByRole("option", { name: "URL" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^https?://.*");
-      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("Must be a valid URL");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue(
+        "^https?://.*"
+      );
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue(
+        "Must be a valid URL"
+      );
     });
   });
 
@@ -338,8 +341,12 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
     fireEvent.click(screen.getByRole("option", { name: "UUID" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
-      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue("Must be a valid UUID");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue(
+        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      );
+      expect(screen.getByLabelText(/^Validation Message/)).toHaveValue(
+        "Must be a valid UUID"
+      );
     });
   });
 
@@ -350,13 +357,17 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
     fireEvent.click(screen.getByRole("option", { name: "Email" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue(
+        "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+      );
     });
     // Manually override
     fireEvent.change(screen.getByLabelText(/^Validation Pattern/), {
       target: { value: "^custom@.*$" },
     });
-    expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^custom@.*$");
+    expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue(
+      "^custom@.*$"
+    );
   });
 
   // #29 — type-aware field disabling
@@ -366,7 +377,10 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Type/));
     fireEvent.click(screen.getByRole("option", { name: "boolean" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Preset/)).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByLabelText(/^Validation Preset/)).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
       expect(screen.getByLabelText(/^Validation Pattern/)).toBeDisabled();
       expect(screen.getByLabelText(/^Validation Message/)).toBeDisabled();
     });
@@ -379,7 +393,10 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Type/));
     fireEvent.click(screen.getByRole("option", { name: "boolean" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Canonical Format/)).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByLabelText(/^Canonical Format/)).toHaveAttribute(
+        "aria-disabled",
+        "true"
+      );
     });
   });
 
@@ -389,19 +406,29 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Type/));
     fireEvent.click(screen.getByRole("option", { name: "boolean" }));
     await waitFor(() => {
-      expect(screen.getAllByText(/Not applicable for this column type/).length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText(/Not applicable for this column type/).length
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 
   // #32 — regex validation
   it("should show error for invalid regex in validation pattern", async () => {
     render(<CreateColumnDefinitionDialog {...defaultProps} />);
-    fireEvent.change(screen.getByLabelText(/^Key/), { target: { value: "test_key" } });
-    fireEvent.change(screen.getByLabelText(/^Label/), { target: { value: "Test" } });
-    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), { target: { value: "[invalid(" } });
+    fireEvent.change(screen.getByLabelText(/^Key/), {
+      target: { value: "test_key" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Label/), {
+      target: { value: "Test" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Validation Pattern/), {
+      target: { value: "[invalid(" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => {
-      expect(screen.getByText("Invalid regular expression")).toBeInTheDocument();
+      expect(
+        screen.getByText("Invalid regular expression")
+      ).toBeInTheDocument();
     });
     expect(defaultProps.onSubmit).not.toHaveBeenCalled();
   });
@@ -413,7 +440,9 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
     fireEvent.click(screen.getByRole("option", { name: "Email" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue(
+        "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+      );
     });
     // Switch to boolean — should clear validation fields
     fireEvent.mouseDown(screen.getByLabelText(/^Type/));
@@ -431,7 +460,9 @@ describe("CreateColumnDefinitionDialog", () => {
     fireEvent.mouseDown(screen.getByLabelText(/^Validation Preset/));
     fireEvent.click(screen.getByRole("option", { name: "Email" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+      expect(screen.getByLabelText(/^Validation Pattern/)).toHaveValue(
+        "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+      );
     });
     // Select None — use getAllByLabelText since MUI may render multiple matching nodes when listbox is open
     fireEvent.mouseDown(screen.getAllByLabelText(/^Validation Preset/)[0]);

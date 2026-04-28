@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 
-import { AnalyticsService, type StationData } from "../services/analytics.service.js";
+import {
+  AnalyticsService,
+  type StationData,
+} from "../services/analytics.service.js";
 import { Tool } from "../types/tools.js";
 import { getRecords } from "../utils/tools.util.js";
 
@@ -9,9 +12,7 @@ const InputSchema = z.object({
   entity: z.string().describe("Entity key (table name)"),
   x: z.string().describe("Independent variable column"),
   y: z.string().describe("Dependent variable column"),
-  type: z
-    .enum(["linear", "polynomial"])
-    .describe("Regression type"),
+  type: z.enum(["linear", "polynomial"]).describe("Regression type"),
 });
 
 export class RegressionTool extends Tool<typeof InputSchema> {

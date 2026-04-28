@@ -23,7 +23,12 @@ export const PortalCardUI: React.FC<PortalCardUIProps> = ({
   onDelete,
 }) => {
   const actions: ActionSuiteItem[] = [
-    { label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(id), color: "error" },
+    {
+      label: "Delete",
+      icon: <DeleteIcon />,
+      onClick: () => onDelete(id),
+      color: "error",
+    },
   ];
 
   return (

@@ -1,11 +1,6 @@
 import React, { useState, useCallback } from "react";
 
-import {
-  TextField,
-  Checkbox,
-  FormControlLabel,
-  MenuItem,
-} from "@mui/material";
+import { TextField, Checkbox, FormControlLabel, MenuItem } from "@mui/material";
 import type { ResolvedColumn } from "@portalai/core/contracts";
 
 // ── Props ────────────────────────────────────────────────────────────

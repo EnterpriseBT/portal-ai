@@ -115,9 +115,9 @@ describe("MultiAsyncSearchableSelect", () => {
 
   it("calls onSearch after debounce and shows results", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "banana", label: "Banana" },
-    ]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([{ value: "banana", label: "Banana" }]);
 
     await act(async () => {
       render(
@@ -138,7 +138,9 @@ describe("MultiAsyncSearchableSelect", () => {
     // Not called before debounce (beyond initial mount call)
     expect(onSearch).toHaveBeenCalledTimes(initialCallCount);
 
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => {
       expect(onSearch).toHaveBeenCalledWith("ban");
@@ -148,10 +150,12 @@ describe("MultiAsyncSearchableSelect", () => {
   it("calls onChange with accumulated values on selection", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const handleChange = jest.fn();
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "banana", label: "Banana" },
-      { value: "blueberry", label: "Blueberry" },
-    ]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([
+        { value: "banana", label: "Banana" },
+        { value: "blueberry", label: "Blueberry" },
+      ]);
 
     render(
       <MultiAsyncSearchableSelect
@@ -165,7 +169,9 @@ describe("MultiAsyncSearchableSelect", () => {
 
     const input = screen.getByRole("combobox");
     await user.type(input, "b");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(onSearch).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText("Banana")).toBeInTheDocument());
@@ -177,9 +183,14 @@ describe("MultiAsyncSearchableSelect", () => {
   it("shows a loading indicator while the search is in-flight", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     let resolveSearch!: (options: SelectOption[]) => void;
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockImplementation(
-      () => new Promise<SelectOption[]>((resolve) => { resolveSearch = resolve; })
-    );
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockImplementation(
+        () =>
+          new Promise<SelectOption[]>((resolve) => {
+            resolveSearch = resolve;
+          })
+      );
 
     render(
       <MultiAsyncSearchableSelect
@@ -193,19 +204,23 @@ describe("MultiAsyncSearchableSelect", () => {
 
     const input = screen.getByRole("combobox");
     await user.type(input, "ban");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(onSearch).toHaveBeenCalled());
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
 
-    await act(async () => { resolveSearch([{ value: "banana", label: "Banana" }]); });
+    await act(async () => {
+      resolveSearch([{ value: "banana", label: "Banana" }]);
+    });
   });
 
   it("retains input value after search results are loaded", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    const onSearch = jest.fn<() => Promise<SelectOption[]>>().mockResolvedValue([
-      { value: "banana", label: "Banana" },
-    ]);
+    const onSearch = jest
+      .fn<() => Promise<SelectOption[]>>()
+      .mockResolvedValue([{ value: "banana", label: "Banana" }]);
 
     render(
       <MultiAsyncSearchableSelect
@@ -219,7 +234,9 @@ describe("MultiAsyncSearchableSelect", () => {
 
     const input = screen.getByRole("combobox");
     await user.type(input, "ban");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(screen.getByText("Banana")).toBeInTheDocument());
 
@@ -232,7 +249,11 @@ describe("MultiAsyncSearchableSelect", () => {
 
 describe("MultiInfiniteScrollSelect", () => {
   let observerCallback: IntersectionObserverCallback;
-  let mockObserver: { observe: jest.Mock; disconnect: jest.Mock; unobserve: jest.Mock };
+  let mockObserver: {
+    observe: jest.Mock;
+    disconnect: jest.Mock;
+    unobserve: jest.Mock;
+  };
 
   beforeEach(() => {
     mockObserver = {
@@ -254,7 +275,8 @@ describe("MultiInfiniteScrollSelect", () => {
   });
 
   it("calls fetchPage on open with page 0", async () => {
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
       .mockResolvedValue({ options: OPTIONS, hasMore: false });
 
     render(
@@ -270,13 +292,18 @@ describe("MultiInfiniteScrollSelect", () => {
     await userEvent.click(screen.getByRole("combobox"));
 
     await waitFor(() => {
-      expect(fetchPage).toHaveBeenCalledWith({ search: "", page: 0, pageSize: 5 });
+      expect(fetchPage).toHaveBeenCalledWith({
+        search: "",
+        page: 0,
+        pageSize: 5,
+      });
     });
   });
 
   it("calls onChange with selected values", async () => {
     const handleChange = jest.fn();
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
       .mockResolvedValue({ options: OPTIONS, hasMore: false });
 
     render(
@@ -300,7 +327,8 @@ describe("MultiInfiniteScrollSelect", () => {
     const page0 = OPTIONS.slice(0, 3).map((o) => ({ ...o }));
     const page1 = OPTIONS.slice(3).map((o) => ({ ...o }));
 
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
       .mockResolvedValueOnce({ options: page0, hasMore: true })
       .mockResolvedValueOnce({ options: page1, hasMore: false });
 
@@ -327,15 +355,23 @@ describe("MultiInfiniteScrollSelect", () => {
     });
 
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
-    expect(fetchPage).toHaveBeenLastCalledWith({ search: "", page: 1, pageSize: 3 });
+    expect(fetchPage).toHaveBeenLastCalledWith({
+      search: "",
+      page: 1,
+      pageSize: 3,
+    });
   });
 
   it("resets options and refetches on search input change", async () => {
     jest.useFakeTimers();
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
-      .mockResolvedValue({ options: [{ value: "apple", label: "Apple" }], hasMore: false });
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+      .mockResolvedValue({
+        options: [{ value: "apple", label: "Apple" }],
+        hasMore: false,
+      });
 
     render(
       <MultiInfiniteScrollSelect
@@ -354,12 +390,20 @@ describe("MultiInfiniteScrollSelect", () => {
     const input = screen.getByRole("combobox");
     await user.type(input, "app");
 
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
-    expect(fetchPage).toHaveBeenLastCalledWith({ search: "app", page: 0, pageSize: 20 });
+    expect(fetchPage).toHaveBeenLastCalledWith({
+      search: "app",
+      page: 0,
+      pageSize: 20,
+    });
 
-    act(() => { jest.runOnlyPendingTimers(); });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
     jest.useRealTimers();
   });
 
@@ -367,8 +411,12 @@ describe("MultiInfiniteScrollSelect", () => {
     jest.useFakeTimers();
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
-      .mockResolvedValue({ options: [{ value: "apple", label: "Apple" }], hasMore: false });
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+      .mockResolvedValue({
+        options: [{ value: "apple", label: "Apple" }],
+        hasMore: false,
+      });
 
     render(
       <MultiInfiniteScrollSelect
@@ -386,7 +434,9 @@ describe("MultiInfiniteScrollSelect", () => {
 
     const input = screen.getByRole("combobox");
     await user.type(input, "app");
-    act(() => { jest.advanceTimersByTime(300); });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
 
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByText("Apple")).toBeInTheDocument());
@@ -394,12 +444,15 @@ describe("MultiInfiniteScrollSelect", () => {
     // Input must not be reset by MUI's internal "reset" event when options load
     expect(input).toHaveValue("app");
 
-    act(() => { jest.runOnlyPendingTimers(); });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
     jest.useRealTimers();
   });
 
   it("does not fetch the next page when hasMore is false", async () => {
-    const fetchPage = jest.fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
+    const fetchPage = jest
+      .fn<() => Promise<{ options: SelectOption[]; hasMore: boolean }>>()
       .mockResolvedValue({ options: OPTIONS, hasMore: false });
 
     render(

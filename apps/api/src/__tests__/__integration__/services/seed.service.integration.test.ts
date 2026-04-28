@@ -174,14 +174,20 @@ describe("SeedService Integration Tests", () => {
     let organizationId: string;
 
     beforeEach(async () => {
-      const seed = await seedUserAndOrg(db as ReturnType<typeof drizzle>, "auth0|seed-col-test");
+      const seed = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        "auth0|seed-col-test"
+      );
       organizationId = seed.organizationId;
     });
 
     it("should insert 26 system column definitions for the organization", async () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
 
-      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+      const rows = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
 
       expect(rows).toHaveLength(26);
     });
@@ -189,7 +195,10 @@ describe("SeedService Integration Tests", () => {
     it("should persist system: true for every seeded definition", async () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
 
-      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+      const rows = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
 
       expect(rows.length).toBeGreaterThan(0);
       expect(rows.every((r) => r.system === true)).toBe(true);
@@ -198,7 +207,10 @@ describe("SeedService Integration Tests", () => {
     it("should create column definitions with correct keys", async () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
 
-      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+      const rows = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
       const keys = rows.map((r) => r.key).sort();
 
       expect(keys).toEqual([
@@ -248,7 +260,11 @@ describe("SeedService Integration Tests", () => {
     it("should create currency column definition with correct fields", async () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
 
-      const currency = await columnDefsRepo.findByKey(organizationId, "currency", db);
+      const currency = await columnDefsRepo.findByKey(
+        organizationId,
+        "currency",
+        db
+      );
 
       expect(currency).toBeDefined();
       expect(currency?.label).toBe("Currency");
@@ -272,7 +288,10 @@ describe("SeedService Integration Tests", () => {
       await seedService.seedSystemColumnDefinitions(organizationId, db);
       await seedService.seedSystemColumnDefinitions(organizationId, db);
 
-      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+      const rows = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
 
       expect(rows).toHaveLength(26);
     });
@@ -288,13 +307,22 @@ describe("SeedService Integration Tests", () => {
     });
 
     it("should scope definitions to the given organization", async () => {
-      const seedB = await seedUserAndOrg(db as ReturnType<typeof drizzle>, "auth0|seed-col-test-b");
+      const seedB = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        "auth0|seed-col-test-b"
+      );
 
       await seedService.seedSystemColumnDefinitions(organizationId, db);
       await seedService.seedSystemColumnDefinitions(seedB.organizationId, db);
 
-      const rowsA = await columnDefsRepo.findByOrganizationId(organizationId, db);
-      const rowsB = await columnDefsRepo.findByOrganizationId(seedB.organizationId, db);
+      const rowsA = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
+      const rowsB = await columnDefsRepo.findByOrganizationId(
+        seedB.organizationId,
+        db
+      );
 
       expect(rowsA).toHaveLength(26);
       expect(rowsB).toHaveLength(26);
@@ -311,7 +339,10 @@ describe("SeedService Integration Tests", () => {
       await seedService.seedSystemColumnDefinitions(organizationId, tx);
       await rollback();
 
-      const rows = await columnDefsRepo.findByOrganizationId(organizationId, db);
+      const rows = await columnDefsRepo.findByOrganizationId(
+        organizationId,
+        db
+      );
 
       expect(rows).toHaveLength(0);
     });

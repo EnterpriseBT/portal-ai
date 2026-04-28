@@ -14,8 +14,7 @@ export interface RadioOption {
   disabled?: boolean;
 }
 
-export interface RadioGroupProps
-  extends Omit<MuiRadioGroupProps, "children"> {
+export interface RadioGroupProps extends Omit<MuiRadioGroupProps, "children"> {
   label?: string;
   options: RadioOption[];
   helperText?: string;

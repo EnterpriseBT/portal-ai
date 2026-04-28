@@ -1,5 +1,13 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { eq, and, ilike, inArray, sql, type SQL, type Column } from "drizzle-orm";
+import {
+  eq,
+  and,
+  ilike,
+  inArray,
+  sql,
+  type SQL,
+  type Column,
+} from "drizzle-orm";
 import { ConnectorInstanceModelFactory } from "@portalai/core/models";
 import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
@@ -107,18 +115,37 @@ connectorInstanceRouter.get(
   getApplicationMetadata,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { limit, offset, sortBy, sortOrder, connectorDefinitionId, status, search, include, capability } =
-        ConnectorInstanceListRequestQuerySchema.parse(req.query);
+      const {
+        limit,
+        offset,
+        sortBy,
+        sortOrder,
+        connectorDefinitionId,
+        status,
+        search,
+        include,
+        capability,
+      } = ConnectorInstanceListRequestQuerySchema.parse(req.query);
 
       const VALID_CAPABILITIES = ["sync", "read", "write", "push"] as const;
 
-      const filters: SQL[] = [eq(connectorInstances.organizationId, req.application?.metadata.organizationId as string)];
+      const filters: SQL[] = [
+        eq(
+          connectorInstances.organizationId,
+          req.application?.metadata.organizationId as string
+        ),
+      ];
 
       if (connectorDefinitionId) {
-        filters.push(eq(connectorInstances.connectorDefinitionId, connectorDefinitionId));
+        filters.push(
+          eq(connectorInstances.connectorDefinitionId, connectorDefinitionId)
+        );
       }
       if (status) {
-        const statuses = status.split(",").map((s) => s.trim()).filter(Boolean);
+        const statuses = status
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
         if (statuses.length === 1) {
           filters.push(eq(connectorInstances.status, statuses[0] as never));
         } else if (statuses.length > 1) {
@@ -129,29 +156,56 @@ connectorInstanceRouter.get(
         filters.push(ilike(connectorInstances.name, `%${search}%`));
       }
       if (capability) {
-        const caps = capability.split(",").map((s) => s.trim()).filter(Boolean);
+        const caps = capability
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
         for (const cap of caps) {
-          if (VALID_CAPABILITIES.includes(cap as (typeof VALID_CAPABILITIES)[number])) {
-            filters.push(sql`${connectorInstances.enabledCapabilityFlags}->>${sql.raw(`'${cap}'`)} = 'true'`);
+          if (
+            VALID_CAPABILITIES.includes(
+              cap as (typeof VALID_CAPABILITIES)[number]
+            )
+          ) {
+            filters.push(
+              sql`${connectorInstances.enabledCapabilityFlags}->>${sql.raw(`'${cap}'`)} = 'true'`
+            );
           }
         }
       }
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-      const include_ = include?.split(",").map((s) => s.trim()).filter(Boolean);
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder }, include: include_ };
+      const include_ = include
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const listOpts = {
+        limit,
+        offset,
+        orderBy: { column, direction: sortOrder },
+        include: include_,
+      };
 
       const [data, total] = await Promise.all([
         DbService.repository.connectorInstances.findMany(where, listOpts),
         DbService.repository.connectorInstances.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector instances");
+        throw new ApiError(
+          500,
+          ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+          error instanceof Error
+            ? error.message
+            : "Failed to list connector instances"
+        );
       });
 
-      return HttpService.success<ConnectorInstanceListResponsePayload | ConnectorInstanceListWithDefinitionResponsePayload>(res, {
-        connectorInstances: data as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
+      return HttpService.success<
+        | ConnectorInstanceListResponsePayload
+        | ConnectorInstanceListWithDefinitionResponsePayload
+      >(res, {
+        connectorInstances:
+          data as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
         total,
         limit,
         offset,
@@ -161,7 +215,17 @@ connectorInstanceRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list connector instances"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list connector instances"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list connector instances"
+            )
+      );
     }
   }
 );
@@ -215,10 +279,17 @@ connectorInstanceRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/connector-instances/:id called");
 
-      const connectorInstance =
-        await DbService.repository.connectorInstances.findById(id).catch((error) => {
+      const connectorInstance = await DbService.repository.connectorInstances
+        .findById(id)
+        .catch((error) => {
           if (error instanceof ApiError) throw error;
-          throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector instance");
+          throw new ApiError(
+            500,
+            ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch connector instance"
+          );
         });
 
       if (!connectorInstance) {
@@ -231,9 +302,10 @@ connectorInstanceRouter.get(
         );
       }
 
-      const connectorDefinition = await DbService.repository.connectorDefinitions
-        .findById(connectorInstance.connectorDefinitionId)
-        .catch(() => null);
+      const connectorDefinition =
+        await DbService.repository.connectorDefinitions
+          .findById(connectorInstance.connectorDefinitionId)
+          .catch(() => null);
 
       return HttpService.success<ConnectorInstanceGetResponsePayload>(res, {
         connectorInstance: {
@@ -246,7 +318,17 @@ connectorInstanceRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch connector instance"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector instance"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch connector instance"
+            )
+      );
     }
   }
 );
@@ -285,24 +367,41 @@ connectorInstanceRouter.get(
     try {
       const { id } = req.params;
 
-      const existing = await DbService.repository.connectorInstances.findById(id);
+      const existing =
+        await DbService.repository.connectorInstances.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND, "Connector instance not found")
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
         );
       }
 
-      const entities = await DbService.repository.connectorEntities.findByConnectorInstanceId(id);
+      const entities =
+        await DbService.repository.connectorEntities.findByConnectorInstanceId(
+          id
+        );
       const entityIds = entities.map((e) => e.id);
 
-      const [entityRecords, fieldMappings, entityTagAssignments, entityGroupMembers, stations] =
-        await Promise.all([
-          DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
-          DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
-          DbService.repository.entityTagAssignments.countByConnectorEntityIds(entityIds),
-          DbService.repository.entityGroupMembers.countByConnectorEntityIds(entityIds),
-          DbService.repository.stationInstances.countByConnectorInstanceId(id),
-        ]);
+      const [
+        entityRecords,
+        fieldMappings,
+        entityTagAssignments,
+        entityGroupMembers,
+        stations,
+      ] = await Promise.all([
+        DbService.repository.entityRecords.countByConnectorEntityIds(entityIds),
+        DbService.repository.fieldMappings.countByConnectorEntityIds(entityIds),
+        DbService.repository.entityTagAssignments.countByConnectorEntityIds(
+          entityIds
+        ),
+        DbService.repository.entityGroupMembers.countByConnectorEntityIds(
+          entityIds
+        ),
+        DbService.repository.stationInstances.countByConnectorInstanceId(id),
+      ]);
 
       return HttpService.success(res, {
         connectorEntities: entities.length,
@@ -320,7 +419,13 @@ connectorInstanceRouter.get(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector instance impact")
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_INSTANCE_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch connector instance impact"
+            )
       );
     }
   }
@@ -395,7 +500,9 @@ connectorInstanceRouter.post(
   "/",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = ConnectorInstanceCreateRequestBodySchema.safeParse(req.body);
+      const parsed = ConnectorInstanceCreateRequestBodySchema.safeParse(
+        req.body
+      );
       if (!parsed.success) {
         return next(
           new ApiError(
@@ -406,13 +513,29 @@ connectorInstanceRouter.post(
         );
       }
 
-      const { connectorDefinitionId, organizationId, name, status, enabledCapabilityFlags, config, credentials } = parsed.data;
+      const {
+        connectorDefinitionId,
+        organizationId,
+        name,
+        status,
+        enabledCapabilityFlags,
+        config,
+        credentials,
+      } = parsed.data;
 
       // Verify the connector definition exists
-      const definition = await DbService.repository.connectorDefinitions.findById(connectorDefinitionId).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch connector definition");
-      });
+      const definition = await DbService.repository.connectorDefinitions
+        .findById(connectorDefinitionId)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.CONNECTOR_DEFINITION_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch connector definition"
+          );
+        });
       if (!definition) {
         return next(
           new ApiError(
@@ -424,10 +547,16 @@ connectorInstanceRouter.post(
       }
 
       const auth0Id = req.auth?.payload.sub as string;
-      const user = await DbService.repository.users.findByAuth0Id(auth0Id).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_USER_NOT_FOUND, error instanceof Error ? error.message : "Failed to fetch user");
-      });
+      const user = await DbService.repository.users
+        .findByAuth0Id(auth0Id)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.CONNECTOR_INSTANCE_USER_NOT_FOUND,
+            error instanceof Error ? error.message : "Failed to fetch user"
+          );
+        });
       if (!user) {
         return next(
           new ApiError(
@@ -452,12 +581,18 @@ connectorInstanceRouter.post(
         enabledCapabilityFlags,
       });
 
-      const connectorInstance = await DbService.repository.connectorInstances.create(
-        model.parse()
-      ).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create connector instance");
-      });
+      const connectorInstance = await DbService.repository.connectorInstances
+        .create(model.parse())
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to create connector instance"
+          );
+        });
 
       logger.info(
         { id: connectorInstance.id, connectorDefinitionId, organizationId },
@@ -466,7 +601,10 @@ connectorInstanceRouter.post(
 
       return HttpService.success<ConnectorInstanceCreateResponsePayload>(
         res,
-        { connectorInstance: connectorInstance as unknown as ConnectorInstanceApi },
+        {
+          connectorInstance:
+            connectorInstance as unknown as ConnectorInstanceApi,
+        },
         201
       );
     } catch (error) {
@@ -474,7 +612,17 @@ connectorInstanceRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create connector instance"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create connector instance"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_INSTANCE_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create connector instance"
+            )
+      );
     }
   }
 );
@@ -528,35 +676,71 @@ connectorInstanceRouter.delete(
       const { id } = req.params;
       const { userId } = req.application!.metadata;
 
-      const existing = await DbService.repository.connectorInstances.findById(id);
+      const existing =
+        await DbService.repository.connectorInstances.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND, "Connector instance not found")
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
         );
       }
 
       await DbService.transaction(async (tx) => {
         // Hard-delete station_instances join rows (unlink from stations)
-        await DbService.repository.stationInstances.hardDeleteByConnectorInstanceId(id, tx);
+        await DbService.repository.stationInstances.hardDeleteByConnectorInstanceId(
+          id,
+          tx
+        );
 
         // Find all connector entities for this instance
-        const entities = await DbService.repository.connectorEntities.findByConnectorInstanceId(id, tx);
+        const entities =
+          await DbService.repository.connectorEntities.findByConnectorInstanceId(
+            id,
+            tx
+          );
         const entityIds = entities.map((e) => e.id);
 
         if (entityIds.length > 0) {
           // Soft-delete leaf records first, then entities
           await Promise.all([
-            DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-            DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-            DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(entityIds, userId, tx),
-            DbService.repository.entityRecords.softDeleteByConnectorEntityIds(entityIds, userId, tx),
+            DbService.repository.entityGroupMembers.softDeleteByConnectorEntityIds(
+              entityIds,
+              userId,
+              tx
+            ),
+            DbService.repository.entityTagAssignments.softDeleteByConnectorEntityIds(
+              entityIds,
+              userId,
+              tx
+            ),
+            DbService.repository.fieldMappings.softDeleteByConnectorEntityIds(
+              entityIds,
+              userId,
+              tx
+            ),
+            DbService.repository.entityRecords.softDeleteByConnectorEntityIds(
+              entityIds,
+              userId,
+              tx
+            ),
           ]);
 
-          await DbService.repository.connectorEntities.softDeleteByConnectorInstanceId(id, userId, tx);
+          await DbService.repository.connectorEntities.softDeleteByConnectorInstanceId(
+            id,
+            userId,
+            tx
+          );
         }
 
         // Soft-delete the connector instance itself
-        await DbService.repository.connectorInstances.softDelete(id, userId, tx);
+        await DbService.repository.connectorInstances.softDelete(
+          id,
+          userId,
+          tx
+        );
       });
 
       logger.info({ id }, "Connector instance deleted");
@@ -569,7 +753,13 @@ connectorInstanceRouter.delete(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete connector instance")
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_INSTANCE_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete connector instance"
+            )
       );
     }
   }
@@ -630,25 +820,37 @@ connectorInstanceRouter.patch(
       const { id } = req.params;
       const { userId } = req.application!.metadata;
 
-      const parsed = ConnectorInstancePatchRequestBodySchema.safeParse(req.body);
+      const parsed = ConnectorInstancePatchRequestBodySchema.safeParse(
+        req.body
+      );
       if (!parsed.success) {
         return next(
-          new ApiError(400, ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD, "Invalid connector instance payload")
+          new ApiError(
+            400,
+            ApiCode.CONNECTOR_INSTANCE_INVALID_PAYLOAD,
+            "Invalid connector instance payload"
+          )
         );
       }
 
-      const existing = await DbService.repository.connectorInstances.findById(id);
+      const existing =
+        await DbService.repository.connectorInstances.findById(id);
       if (!existing) {
         return next(
-          new ApiError(404, ApiCode.CONNECTOR_INSTANCE_NOT_FOUND, "Connector instance not found")
+          new ApiError(
+            404,
+            ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+            "Connector instance not found"
+          )
         );
       }
 
       // Validate enabledCapabilityFlags against the definition's ceiling
       if (parsed.data.enabledCapabilityFlags) {
-        const definition = await DbService.repository.connectorDefinitions.findById(
-          existing.connectorDefinitionId
-        );
+        const definition =
+          await DbService.repository.connectorDefinitions.findById(
+            existing.connectorDefinitionId
+          );
         const defFlags = definition?.capabilityFlags;
 
         if (parsed.data.enabledCapabilityFlags.read && !defFlags?.read) {
@@ -689,15 +891,23 @@ connectorInstanceRouter.patch(
         }
       }
 
-      const updateData: Record<string, unknown> = { name: parsed.data.name, updatedBy: userId };
+      const updateData: Record<string, unknown> = {
+        name: parsed.data.name,
+        updatedBy: userId,
+      };
       if (parsed.data.enabledCapabilityFlags !== undefined) {
         updateData.enabledCapabilityFlags = parsed.data.enabledCapabilityFlags;
       }
 
-      const updated = await DbService.repository.connectorInstances.update(id, updateData);
+      const updated = await DbService.repository.connectorInstances.update(
+        id,
+        updateData
+      );
 
       logger.info({ id }, "Connector instance updated");
-      return HttpService.success(res, { connectorInstance: updated as unknown as ConnectorInstanceApi });
+      return HttpService.success(res, {
+        connectorInstance: updated as unknown as ConnectorInstanceApi,
+      });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
@@ -706,7 +916,13 @@ connectorInstanceRouter.patch(
       return next(
         error instanceof ApiError
           ? error
-          : new ApiError(500, ApiCode.CONNECTOR_INSTANCE_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update connector instance")
+          : new ApiError(
+              500,
+              ApiCode.CONNECTOR_INSTANCE_UPDATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to update connector instance"
+            )
       );
     }
   }

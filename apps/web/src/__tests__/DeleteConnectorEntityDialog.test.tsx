@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { ConnectorEntityImpactResponsePayload } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeleteConnectorEntityDialog } = await import(
-  "../components/DeleteConnectorEntityDialog.component"
-);
+const { DeleteConnectorEntityDialog } =
+  await import("../components/DeleteConnectorEntityDialog.component");
 
 const fullImpact: ConnectorEntityImpactResponsePayload = {
   entityRecords: 50,
@@ -47,9 +46,7 @@ describe("DeleteConnectorEntityDialog", () => {
 
   it("should render dialog when open is true", () => {
     render(<DeleteConnectorEntityDialog {...defaultProps} />);
-    expect(
-      screen.getByText("Delete Connector Entity")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Delete Connector Entity")).toBeInTheDocument();
   });
 
   it("should not render when open is false", () => {
@@ -69,10 +66,7 @@ describe("DeleteConnectorEntityDialog", () => {
 
   it("should show blocked state when refFieldMappings > 0", () => {
     render(
-      <DeleteConnectorEntityDialog
-        {...defaultProps}
-        impact={blockedImpact}
-      />
+      <DeleteConnectorEntityDialog {...defaultProps} impact={blockedImpact} />
     );
     expect(
       screen.getByText(/cannot be deleted because other entities reference it/)
@@ -122,21 +116,14 @@ describe("DeleteConnectorEntityDialog", () => {
         isLoadingImpact={true}
       />
     );
-    expect(
-      screen.getByText("Checking associated data...")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Checking associated data...")).toBeInTheDocument();
   });
 
   it("should show 'No associated data found' when all counts are zero", () => {
     render(
-      <DeleteConnectorEntityDialog
-        {...defaultProps}
-        impact={zeroImpact}
-      />
+      <DeleteConnectorEntityDialog {...defaultProps} impact={zeroImpact} />
     );
-    expect(
-      screen.getByText("No associated data found.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("No associated data found.")).toBeInTheDocument();
   });
 
   it("should submit on Enter key press (form submission)", () => {
@@ -148,16 +135,16 @@ describe("DeleteConnectorEntityDialog", () => {
         onConfirm={onConfirm}
       />
     );
-    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    const form = screen
+      .getByRole("button", { name: "Delete" })
+      .closest("form")!;
     fireEvent.submit(form);
     expect(onConfirm).toHaveBeenCalled();
   });
 
   it("should call onClose on Cancel click", () => {
     const onClose = jest.fn();
-    render(
-      <DeleteConnectorEntityDialog {...defaultProps} onClose={onClose} />
-    );
+    render(<DeleteConnectorEntityDialog {...defaultProps} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
   });
@@ -174,11 +161,7 @@ describe("DeleteConnectorEntityDialog", () => {
   });
 
   it("should show 'Deleting...' when isPending is true", () => {
-    render(
-      <DeleteConnectorEntityDialog {...defaultProps} isPending={true} />
-    );
-    expect(
-      screen.getByRole("button", { name: "Deleting..." })
-    ).toBeDisabled();
+    render(<DeleteConnectorEntityDialog {...defaultProps} isPending={true} />);
+    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
   });
 });

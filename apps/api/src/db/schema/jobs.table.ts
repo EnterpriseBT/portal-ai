@@ -1,4 +1,11 @@
-import { bigint, integer, jsonb, pgTable, text, pgEnum } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  pgEnum,
+} from "drizzle-orm/pg-core";
 import { baseColumns } from "./base.columns.js";
 
 export const jobStatusEnum = pgEnum("job_status", [
@@ -12,7 +19,6 @@ export const jobStatusEnum = pgEnum("job_status", [
 ]);
 
 export const jobTypeEnum = pgEnum("job_type", [
-  "file_upload",
   "system_check",
   "revalidation",
 ]);
@@ -28,7 +34,10 @@ export const jobs = pgTable("jobs", {
   type: jobTypeEnum("type").notNull(),
   status: jobStatusEnum("status").notNull().default("pending"),
   progress: integer("progress").notNull().default(0),
-  metadata: jsonb("metadata").notNull().default({}).$type<Record<string, unknown>>(),
+  metadata: jsonb("metadata")
+    .notNull()
+    .default({})
+    .$type<Record<string, unknown>>(),
   result: jsonb("result").$type<Record<string, unknown>>(),
   error: text("error"),
   startedAt: bigint("started_at", { mode: "number" }),

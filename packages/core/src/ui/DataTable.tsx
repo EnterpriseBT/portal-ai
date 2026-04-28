@@ -432,9 +432,9 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                     sx={
                       onRowClick
                         ? {
-                          cursor: "pointer",
-                          "&:hover": { backgroundColor: "action.hover" },
-                        }
+                            cursor: "pointer",
+                            "&:hover": { backgroundColor: "action.hover" },
+                          }
                         : undefined
                     }
                   >
@@ -444,19 +444,19 @@ export const DataTable = React.forwardRef<HTMLDivElement, DataTableProps>(
                         onClick={
                           col.onCellClick
                             ? (e) => {
-                              e.stopPropagation();
-                              col.onCellClick!(row[col.key], col, row);
-                            }
+                                e.stopPropagation();
+                                col.onCellClick!(row[col.key], col, row);
+                              }
                             : undefined
                         }
                         sx={
                           col.onCellClick
                             ? {
-                              cursor: "pointer",
-                              "&:hover": {
-                                backgroundColor: "action.selected",
-                              },
-                            }
+                                cursor: "pointer",
+                                "&:hover": {
+                                  backgroundColor: "action.selected",
+                                },
+                              }
                             : undefined
                         }
                       >

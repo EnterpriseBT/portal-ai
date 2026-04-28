@@ -2,7 +2,10 @@ import React, { Component, Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import type { PortalMessageBlock, MutationResultContentBlock } from "../contracts/portal.contract.js";
+import type {
+  PortalMessageBlock,
+  MutationResultContentBlock,
+} from "../contracts/portal.contract.js";
 import { DataTableBlock } from "./DataTableBlock.js";
 import { MutationResultBlock } from "./MutationResultBlock.js";
 
@@ -50,7 +53,7 @@ function ensureBaseDataset(data: Obj[]): Obj[] {
  */
 function fixForceLayout(
   data: Obj[],
-  marks: Obj[],
+  marks: Obj[]
 ): { data: Obj[]; marks: Obj[] } {
   // Find data sources whose transforms include a force transform.
   const forceDataIndices: number[] = [];
@@ -68,9 +71,7 @@ function fixForceLayout(
     const ds = data[idx];
     const dsName = ds.name as string;
     const dsSource = ds.source as string | undefined;
-    const dsForce = (ds.transform as Obj[]).find(
-      (t) => t.type === "force",
-    )!;
+    const dsForce = (ds.transform as Obj[]).find((t) => t.type === "force")!;
 
     // Find any mark that reads from this force data source.
     const mark = marks.find((m) => {
@@ -113,7 +114,9 @@ function fixForceLayout(
   }
 
   // Remove the force-only data sources.
-  const filteredData = data.filter((d) => !removedDataNames.has(d.name as string));
+  const filteredData = data.filter(
+    (d) => !removedDataNames.has(d.name as string)
+  );
 
   return { data: filteredData, marks };
 }
@@ -229,9 +232,7 @@ export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
   }
 
   if (block.type === "vega") {
-    const spec = normalizeVegaSpec(
-      block.content as Record<string, unknown>,
-    );
+    const spec = normalizeVegaSpec(block.content as Record<string, unknown>);
     return (
       <VegaErrorBoundary>
         <Suspense fallback={null}>
@@ -252,7 +253,11 @@ export const ContentBlockRenderer: React.FC<ContentBlockRendererProps> = ({
   }
 
   if (block.type === "mutation-result") {
-    return <MutationResultBlock content={block.content as MutationResultContentBlock} />;
+    return (
+      <MutationResultBlock
+        content={block.content as MutationResultContentBlock}
+      />
+    );
   }
 
   return null;

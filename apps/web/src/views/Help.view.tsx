@@ -126,16 +126,10 @@ export const HelpViewUI: React.FC<HelpViewUIProps> = ({
   return (
     <Box>
       <Stack spacing={3}>
-        <PageHeader
-          title="Help"
-          icon={<Icon name={IconName.HelpOutline} />}
-        >
+        <PageHeader title="Help" icon={<Icon name={IconName.HelpOutline} />}>
           <Typography variant="caption" color="text.secondary">
             For any issues or questions, email{" "}
-            <Link href="mailto:ben.turner@btdev.io">
-              ben.turner@btdev.io
-            </Link>
-            .
+            <Link href="mailto:ben.turner@btdev.io">ben.turner@btdev.io</Link>.
           </Typography>
         </PageHeader>
 

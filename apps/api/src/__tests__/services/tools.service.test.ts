@@ -9,14 +9,18 @@ const mockFindById_station = jest.fn<() => Promise<unknown>>();
 const mockFindByStationId_instances = jest.fn<() => Promise<unknown[]>>();
 const mockFindByStationId_tools = jest.fn<() => Promise<unknown[]>>();
 const mockFindByConnectorInstanceId = jest.fn<() => Promise<unknown[]>>();
-const mockFindFieldMappingsByEntityIds = jest.fn<() => Promise<Map<string, unknown[]>>>();
+const mockFindFieldMappingsByEntityIds =
+  jest.fn<() => Promise<Map<string, unknown[]>>>();
 const mockFindByConnectorEntityId_records = jest.fn<() => Promise<unknown[]>>();
 const mockFindByConnectorEntityId_members = jest.fn<() => Promise<unknown[]>>();
 const mockFindByEntityGroupId = jest.fn<() => Promise<unknown[]>>();
 const mockFindById_group = jest.fn<() => Promise<unknown>>();
 
 // Mock direct db import for _connector_instances metadata query in loadStation
-const _mockSelectChain = { from: () => _mockSelectChain, where: () => Promise.resolve([]) };
+const _mockSelectChain = {
+  from: () => _mockSelectChain,
+  where: () => Promise.resolve([]),
+};
 jest.unstable_mockModule("../../db/client.js", () => ({
   db: { select: () => _mockSelectChain },
 }));
@@ -38,7 +42,11 @@ jest.unstable_mockModule("../../services/db.service.js", () => ({
         findByEntityGroupId: mockFindByEntityGroupId,
       },
       entityGroups: { findById: mockFindById_group },
-      columnDefinitions: { findByOrganizationId: jest.fn<() => Promise<unknown[]>>().mockResolvedValue([]) },
+      columnDefinitions: {
+        findByOrganizationId: jest
+          .fn<() => Promise<unknown[]>>()
+          .mockResolvedValue([]),
+      },
       stationTools: { findByStationId: mockFindByStationId_tools },
     },
   },
@@ -79,12 +87,11 @@ jest.unstable_mockModule("../../utils/resolve-capabilities.util.js", () => ({
 }));
 
 // Mock fetch for webhook tests
-const mockFetch = jest.fn<(url: string, options?: Record<string, any>) => Promise<unknown>>();
+const mockFetch =
+  jest.fn<(url: string, options?: Record<string, any>) => Promise<unknown>>();
 (globalThis as any).fetch = mockFetch;
 
-const { ToolService } = await import(
-  "../../services/tools.service.js"
-);
+const { ToolService } = await import("../../services/tools.service.js");
 const buildAnalyticsTools = ToolService.buildAnalyticsTools.bind(ToolService);
 const callWebhook = ToolService.callWebhook.bind(ToolService);
 
@@ -112,14 +119,25 @@ function makeStation(toolPacks: string[]) {
 }
 
 const ENTITIES = [
-  { id: "ent-1", key: "customers", label: "Customers", connectorInstanceId: "ci-1" },
+  {
+    id: "ent-1",
+    key: "customers",
+    label: "Customers",
+    connectorInstanceId: "ci-1",
+  },
 ];
 
 const FIELD_MAPPINGS_MAP = new Map<string, unknown[]>([
   [
     "ent-1",
     [
-      { id: "fm-1", connectorEntityId: "ent-1", columnDefinitionId: "cd-1", sourceField: "Name", columnDefinition: { key: "name", label: "Name", type: "string" } },
+      {
+        id: "fm-1",
+        connectorEntityId: "ent-1",
+        columnDefinitionId: "cd-1",
+        sourceField: "Name",
+        columnDefinition: { key: "name", label: "Name", type: "string" },
+      },
     ],
   ],
 ]);
@@ -176,7 +194,6 @@ describe("buildAnalyticsTools()", () => {
     expect(tools.visualize_tree).toBeUndefined();
   });
 
-
   it("should register statistics tools when statistics pack is selected", async () => {
     setupStationMocks(["statistics"]);
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
@@ -224,7 +241,13 @@ describe("buildAnalyticsTools()", () => {
   });
 
   it("should register tools from all selected packs", async () => {
-    setupStationMocks(["data_query", "statistics", "regression", "financial", "web_search"]);
+    setupStationMocks([
+      "data_query",
+      "statistics",
+      "regression",
+      "financial",
+      "web_search",
+    ]);
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
 
@@ -262,26 +285,48 @@ describe("buildAnalyticsTools()", () => {
     // Add a second entity so we can have 2 loaded members
     mockFindByConnectorInstanceId.mockResolvedValue([
       ...ENTITIES,
-      { id: "ent-2", key: "orders", label: "Orders", connectorInstanceId: "ci-1" },
+      {
+        id: "ent-2",
+        key: "orders",
+        label: "Orders",
+        connectorInstanceId: "ci-1",
+      },
     ]);
     mockFindFieldMappingsByEntityIds.mockResolvedValue(
       new Map([
         ...FIELD_MAPPINGS_MAP,
         [
           "ent-2",
-          [{ id: "fm-2", connectorEntityId: "ent-2", columnDefinitionId: "cd-2", columnDefinition: { key: "order_id", label: "Order ID", type: "string" } }],
+          [
+            {
+              id: "fm-2",
+              connectorEntityId: "ent-2",
+              columnDefinitionId: "cd-2",
+              columnDefinition: {
+                key: "order_id",
+                label: "Order ID",
+                type: "string",
+              },
+            },
+          ],
         ],
       ])
     );
     mockFindByConnectorEntityId_records
       .mockResolvedValueOnce(CUSTOMER_RECORDS)
-      .mockResolvedValueOnce([{ id: "r3", normalizedData: { order_id: "O001" } }]);
+      .mockResolvedValueOnce([
+        { id: "r3", normalizedData: { order_id: "O001" } },
+      ]);
 
     // Entity group with 2 loaded members
     const groupId = "eg-1";
     mockFindByConnectorEntityId_members
-      .mockResolvedValueOnce([{ id: "egm-1", entityGroupId: groupId, connectorEntityId: "ent-1" }])
-      .mockResolvedValueOnce([{ id: "egm-2", entityGroupId: groupId, connectorEntityId: "ent-2" }]);
+      .mockResolvedValueOnce([
+        { id: "egm-1", entityGroupId: groupId, connectorEntityId: "ent-1" },
+      ])
+      .mockResolvedValueOnce([
+        { id: "egm-2", entityGroupId: groupId, connectorEntityId: "ent-2" },
+      ]);
 
     mockFindById_group.mockResolvedValue({
       id: groupId,
@@ -327,9 +372,9 @@ describe("buildAnalyticsTools()", () => {
 
   it("should throw when station.toolPacks is empty", async () => {
     mockFindById_station.mockResolvedValue(makeStation([]));
-    await expect(buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")).rejects.toThrow(
-      "Station must have at least one tool pack enabled"
-    );
+    await expect(
+      buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")
+    ).rejects.toThrow("Station must have at least one tool pack enabled");
   });
 
   // -----------------------------------------------------------------------
@@ -453,7 +498,10 @@ describe("buildAnalyticsTools()", () => {
   it("should not register write tools when no instances have write capability", async () => {
     setupStationMocks(["entity_management"]);
     mockResolveStationCapabilities.mockResolvedValue([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: false } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: false },
+      },
     ]);
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
@@ -469,7 +517,10 @@ describe("buildAnalyticsTools()", () => {
   it("should register the 9 write tools when any instance has write, without column_definition_* tools", async () => {
     setupStationMocks(["entity_management"]);
     mockResolveStationCapabilities.mockResolvedValue([
-      { connectorInstanceId: "ci-1", capabilities: { read: true, write: true } },
+      {
+        connectorInstanceId: "ci-1",
+        capabilities: { read: true, write: true },
+      },
     ]);
 
     const tools = await buildAnalyticsTools(ORG_ID, STATION_ID, "user-001");
@@ -518,7 +569,9 @@ describe("buildAnalyticsTools()", () => {
       },
     ]);
 
-    await expect(buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")).rejects.toThrow(
+    await expect(
+      buildAnalyticsTools(ORG_ID, STATION_ID, "user-001")
+    ).rejects.toThrow(
       'Custom tool "sql_query" conflicts with a built-in pack tool name'
     );
   });
@@ -569,10 +622,7 @@ describe("callWebhook()", () => {
     });
 
     await expect(
-      callWebhook(
-        { type: "webhook", url: "https://api.example.com/hook" },
-        {}
-      )
+      callWebhook({ type: "webhook", url: "https://api.example.com/hook" }, {})
     ).rejects.toThrow("Webhook returned 500: Internal Server Error");
   });
 

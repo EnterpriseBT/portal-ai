@@ -1,6 +1,10 @@
 import { describe, it, expect } from "@jest/globals";
 import { v5 } from "uuid";
-import { UUIDv4Factory, UUIDv5Factory, DateFactory } from "@portalai/core/utils";
+import {
+  UUIDv4Factory,
+  UUIDv5Factory,
+  DateFactory,
+} from "@portalai/core/utils";
 import { SystemUtilities } from "../../utils/system.util.js";
 import { environment } from "../../environment.js";
 

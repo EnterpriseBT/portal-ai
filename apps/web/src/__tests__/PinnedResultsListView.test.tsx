@@ -24,7 +24,9 @@ jest.unstable_mockModule("../api/sdk", () => ({
 
 jest.unstable_mockModule("../utils/api.util", () => ({
   useAuthFetch: () => ({
-    fetchWithAuth: jest.fn<() => Promise<unknown>>().mockResolvedValue(undefined),
+    fetchWithAuth: jest
+      .fn<() => Promise<unknown>>()
+      .mockResolvedValue(undefined),
   }),
   useAuthQuery: jest.fn(),
   useAuthMutation: jest.fn(),
@@ -32,9 +34,8 @@ jest.unstable_mockModule("../utils/api.util", () => ({
 }));
 
 const { render, screen } = await import("./test-utils");
-const { PinnedResultsListView } = await import(
-  "../views/PinnedResultsListView.view"
-);
+const { PinnedResultsListView } =
+  await import("../views/PinnedResultsListView.view");
 
 const makePinnedResult = (
   overrides: Partial<PortalResult> = {}
@@ -137,6 +138,8 @@ describe("PinnedResultsListView", () => {
     render(<PinnedResultsListView />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     // "Pinned Results" appears in both breadcrumb and heading
-    expect(screen.getAllByText("Pinned Results").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Pinned Results").length).toBeGreaterThanOrEqual(
+      2
+    );
   });
 });

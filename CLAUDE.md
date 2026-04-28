@@ -92,6 +92,29 @@ export const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => 
 };
 ```
 
+## Component File Policy (application-wide)
+
+This rule applies to **every** `*.component.tsx`, `*.view.tsx`, and `*.layout.tsx` file across the monorepo (`apps/web`, `packages/core`, anywhere else React components live). It generalizes — and supersedes — the "container + pure UI" bullet in the Workflow Module Pattern and Module Pattern sections below.
+
+### One or two components per file
+
+- A component file may define and export **at most two** components.
+- **Inline helper components are not allowed.** If a JSX fragment is worth naming, it is worth its own file. A new component always goes in a new file.
+- **Single-component file:** the component must be a **pure UI component** — it receives all data and callbacks via props and is free of data fetching, routing, context consumption, state machines, effects against external systems, or any other wiring. It renders from its props and nothing else.
+- **Two-component file:** the second export is allowed **only** when it is the implementation (container) of the pure UI component also exported from the same file. The container wires hooks/state/contexts, then delegates rendering to the UI component. No other pairing (e.g. "UI + another unrelated UI", "UI + small header", "container + container") is permitted.
+
+### Naming
+
+- Pure UI component: `<ComponentName>UI` — props type `<ComponentName>UIProps`.
+- Implementation component: `<ComponentName>` — props type `<ComponentName>Props`. Its render method is `<ComponentName>UI {...uiProps} />`.
+- The file is named after the implementation: `<ComponentName>.component.tsx`. A file containing only a pure UI component is still named `<ComponentName>.component.tsx` (not `<ComponentName>UI.component.tsx`).
+
+### Testing
+
+- Unit tests render the pure UI component (`<ComponentName>UI`) so they can drive behavior through props and need no SDK, router, or provider mocks.
+- Implementation components are exercised through higher-level integration tests (container/workflow/view level) where covering the wiring is genuinely the point.
+- Storybook stories also render the pure UI component so stories need no context setup.
+
 ## Form & Dialog Pattern (apps/web)
 
 Every data-submission dialog must follow this structure:
@@ -141,6 +164,17 @@ Every form with user input must:
 - `<FormAlert>` uses MUI `<Alert>` which provides `role="alert"` automatically — do not add custom alert roles
 - Searchable select components (`AsyncSearchableSelect`, `SearchableSelect`, etc.) accept `inputRef` for focus management
 
+## API Calls & SDK Helpers (apps/web)
+
+All API calls route through the SDK. No component — view, workflow, module, or primitive — may call `fetch`, `useAuthFetch`, or `fetchWithAuth` directly. The SDK is the only path.
+
+- **Where**: `apps/web/src/api/<domain>.api.ts` defines the endpoints; `apps/web/src/api/sdk.ts` exposes them as `sdk.<domain>.<action>()`. Every network call originates here.
+- **What to use**: SDK endpoints are built on the helpers in `utils/api.util.ts`:
+  - `useAuthMutation` — write calls AND imperative reads. For GET endpoints that must fire per-invocation (e.g. viewport-driven fetches), use `method: "GET"`, `body: () => undefined`, and build the URL from variables via `url: (vars) => string`. Consumers get `mutateAsync` for imperative use.
+  - `useAuthQuery` — declarative reads keyed by a stable `queryKeys.*` entry. React Query handles caching + invalidation.
+- **What to avoid**: hand-rolled `useAuthFetch` + `useCallback` wrappers are the exception, not the rule — reserved for search hooks that populate a bespoke label-map cache. Every other endpoint uses the helpers above so auth-error handling, response unwrapping, and react-query integration stay uniform.
+- **Consumption pattern**: containers destructure the imperative handle (`const { mutateAsync: fooMutate } = sdk.foo.bar()`) and hand a narrow callback down as a prop. Pure UI components in `modules/` and `components/` stay context-agnostic — they accept callbacks, they never import `sdk`.
+
 ## Mutation Cache Invalidation (apps/web)
 
 - Every mutation's `onSuccess` callback must invalidate at minimum its own entity's `.root` query key via `queryClient.invalidateQueries({ queryKey: queryKeys.<entity>.root })`
@@ -176,7 +210,7 @@ workflows/
 - **Hooks and helpers** (`*.util.ts`) go in the `utils/` subfolder — these are the data-fetching, state management, and business logic pieces
 - **Tests** (`*.test.tsx`) go in the `__tests__/` subfolder — co-located with the workflow, not in the top-level `src/__tests__/`
 - **Stories** (`*.stories.tsx`) go in the `stories/` subfolder — co-located with the workflow, not in the top-level `src/stories/`
-- **Container vs. UI**: Each workflow exports both a container component (wires hooks) and a pure `*UI` component (props-only, no hooks) for Storybook and testing
+- **Container vs. UI**: Each workflow exports both a container component (wires hooks) and a pure `*UI` component (props-only, no hooks) for Storybook and testing. Naming and file-shape follow the [Component File Policy](#component-file-policy-application-wide): the pair lives in one file, UI is suffixed `UI`, implementation is unsuffixed.
 - **Barrel export** (`index.ts`) re-exports the public API: container, UI component, UI props type, and hooks
 
 ### Stepper Validation
@@ -189,6 +223,38 @@ workflows/
 ### Reference Implementation
 
 `workflows/CSVConnector/` — CSV file upload workflow with 4-step stepper
+
+## Module Pattern (apps/web)
+
+Large-scale reusable building blocks live in `apps/web/src/modules/<ModuleName>/`. A module is **structurally identical to a workflow** but is **context-agnostic**: it is intended for reuse across multiple components and/or workflows rather than owning a single end-to-end user flow. Apply all the rules below from the Workflow Module Pattern — same folder layout, same container + pure-UI split, same test and story co-location, same barrel `index.ts` — substituting "module" for "workflow".
+
+```
+modules/
+  <ModuleName>/
+    index.ts                            # Barrel exports — the public surface consumers embed
+    <ModuleName>.component.tsx          # Container + pure UI component
+    <StepName>Step.component.tsx         # Sub-panels (if multi-step)
+    utils/
+      <feature>.util.ts                 # Hooks, state machines, helpers
+    __tests__/
+      <ModuleName>.test.tsx
+      <StepName>Step.test.tsx
+    stories/
+      <ModuleName>.stories.tsx
+      <StepName>Step.stories.tsx
+```
+
+### When to use a module vs. a workflow vs. a component
+
+- **`components/`** — small, general-purpose UI primitives (button variant, form alert, chip).
+- **`modules/`** — large, self-contained, reusable building blocks. Context-agnostic: no knowledge of connectors, routes, or specific features. Consumers seed them with inputs and read back emitted state. May be multi-step internally but do not own a user journey.
+- **`workflows/`** — end-to-end, context-specific user flows (e.g., `FileUploadConnector`). Own routing, entry/exit, commit actions. May embed one or more modules.
+
+**Promote to a module when**: the block is shared by two or more consumers (workflows, views, or other modules), or is planned to be; it has no single "owning" user flow; it knows nothing connector- or feature-specific.
+
+### Reference Implementation
+
+`modules/RegionEditor/` — spreadsheet region-drawing editor embedded by file-upload and cloud-spreadsheet connector workflows (see `docs/SPREADSHEET_PARSING.frontend.spec.md`).
 
 ## Database Schema Workflow (Dual-Schema)
 
@@ -264,7 +330,7 @@ Concrete repositories extend `ListOptions` with `include?: string[]` and overrid
 
 ## Authentication
 
-- **Frontend**: Auth0 React SDK — `useAuth0()` for login, `useAuthFetch()` hook for authenticated API calls
+- **Frontend**: Auth0 React SDK — `useAuth0()` for login. All authenticated API calls go through the SDK (`sdk.<domain>.<action>()`) built on `useAuthMutation`/`useAuthQuery`; see *API Calls & SDK Helpers (apps/web)* above.
 - **Backend**: Auth0 JWT middleware — `Authorization: Bearer <token>` header on all `/api/*` routes
 - **Protected routes**: Frontend routes wrapped in `AuthorizedLayout` require authentication
 

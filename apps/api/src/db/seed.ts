@@ -1,6 +1,5 @@
 import { SeedService } from "../services/seed.service.js";
 
-
 const seedService = new SeedService();
 
 async function main() {

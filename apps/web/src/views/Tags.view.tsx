@@ -76,10 +76,7 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
     <Box>
       <Stack spacing={4}>
         <PageHeader
-          breadcrumbs={[
-            { label: "Dashboard", href: "/" },
-            { label: "Tags" },
-          ]}
+          breadcrumbs={[{ label: "Dashboard", href: "/" }, { label: "Tags" }]}
           onNavigate={(href) => navigate({ to: href })}
           title="Tags"
           icon={<Icon name={IconName.Label} />}
@@ -110,7 +107,11 @@ export const TagsViewUI: React.FC<TagsViewUIProps> = ({
                     const list =
                       data.list as unknown as EntityTagListResponsePayload;
                     if (list.entityTags.length === 0) {
-                      const hasActiveFilters = pagination.search || Object.values(pagination.filters).some(v => v.length > 0);
+                      const hasActiveFilters =
+                        pagination.search ||
+                        Object.values(pagination.filters).some(
+                          (v) => v.length > 0
+                        );
                       return hasActiveFilters ? (
                         <EmptyResults />
                       ) : (

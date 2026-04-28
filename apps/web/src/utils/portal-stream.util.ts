@@ -44,13 +44,16 @@ export interface PortalStreamActions {
  *   after refetching server data without a circular dependency.
  */
 export const usePortalStream = (
-  onDone?: (clearLocalMessages: () => void) => void,
+  onDone?: (clearLocalMessages: () => void) => void
 ): [PortalStreamState, PortalStreamActions] => {
   const createSSEConnection = sse.create();
 
-  const [localMessages, setLocalMessages] = useState<PortalMessageResponse[]>([]);
-  const [streamingBlocks, setStreamingBlocks] =
-    useState<PortalMessageBlock[] | null>(null);
+  const [localMessages, setLocalMessages] = useState<PortalMessageResponse[]>(
+    []
+  );
+  const [streamingBlocks, setStreamingBlocks] = useState<
+    PortalMessageBlock[] | null
+  >(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -141,9 +144,17 @@ export const usePortalStream = (
           block = { type: "vega-lite", content: result };
         } else if (isVega) {
           block = { type: "vega", content: result };
-        } else if (result && typeof result === "object" && result["type"] === "data-table") {
+        } else if (
+          result &&
+          typeof result === "object" &&
+          result["type"] === "data-table"
+        ) {
           block = { type: "data-table", content: result };
-        } else if (result && typeof result === "object" && result["type"] === "mutation-result") {
+        } else if (
+          result &&
+          typeof result === "object" &&
+          result["type"] === "mutation-result"
+        ) {
           block = { type: "mutation-result", content: result };
         }
 

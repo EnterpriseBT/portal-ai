@@ -49,21 +49,19 @@ describe("PortalResultsRepository Integration Tests", () => {
 
     const now = Date.now();
     stationId = generateId();
-    await (db as ReturnType<typeof drizzle>)
-      .insert(schema.stations)
-      .values({
-        id: stationId,
-        organizationId: orgId,
-        name: "Test Station",
-        description: null,
-        toolPacks: ["data_query"],
-        created: now,
-        createdBy: "SYSTEM_TEST",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
+    await (db as ReturnType<typeof drizzle>).insert(schema.stations).values({
+      id: stationId,
+      organizationId: orgId,
+      name: "Test Station",
+      description: null,
+      toolPacks: ["data_query"],
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
   });
 
   afterEach(async () => {
@@ -174,16 +172,9 @@ describe("PortalResultsRepository Integration Tests", () => {
 
   describe("update", () => {
     it("should modify name and return updated row", async () => {
-      const result = await repo.create(
-        makeResult({ name: "original" }),
-        db
-      );
+      const result = await repo.create(makeResult({ name: "original" }), db);
 
-      const updated = await repo.update(
-        result.id,
-        { name: "renamed" },
-        db
-      );
+      const updated = await repo.update(result.id, { name: "renamed" }, db);
 
       expect(updated?.name).toBe("renamed");
     });

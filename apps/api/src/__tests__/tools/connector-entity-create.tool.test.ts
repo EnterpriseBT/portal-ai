@@ -1,25 +1,42 @@
 /* global AbortController */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
-const mockFindByStationId = jest.fn<() => Promise<unknown[]>>().mockResolvedValue([
-  { connectorInstanceId: "ci-1", stationId: "station-1" },
-]);
-const mockFindInstanceById = jest.fn<() => Promise<unknown>>().mockResolvedValue({
-  id: "ci-1", organizationId: "org-1", connectorDefinitionId: "cd-1", enabledCapabilityFlags: null,
-});
-const mockFindDefinitionById = jest.fn<() => Promise<unknown>>().mockResolvedValue({
-  id: "cd-1", capabilityFlags: { read: true, write: true },
-});
-const mockUpsertByKey = jest.fn<() => Promise<unknown>>().mockResolvedValue({ id: "ce-new" });
-const mockTransaction = jest.fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
+const mockFindByStationId = jest
+  .fn<() => Promise<unknown[]>>()
+  .mockResolvedValue([{ connectorInstanceId: "ci-1", stationId: "station-1" }]);
+const mockFindInstanceById = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({
+    id: "ci-1",
+    organizationId: "org-1",
+    connectorDefinitionId: "cd-1",
+    enabledCapabilityFlags: null,
+  });
+const mockFindDefinitionById = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({
+    id: "cd-1",
+    capabilityFlags: { read: true, write: true },
+  });
+const mockUpsertByKey = jest
+  .fn<() => Promise<unknown>>()
+  .mockResolvedValue({ id: "ce-new" });
+const mockTransaction = jest
+  .fn<(fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>>()
   .mockImplementation((fn) => fn("mock-tx"));
 
-jest.unstable_mockModule("../../db/repositories/station-instances.repository.js", () => ({
-  stationInstancesRepo: { findByStationId: mockFindByStationId },
-}));
-jest.unstable_mockModule("../../db/repositories/connector-definitions.repository.js", () => ({
-  connectorDefinitionsRepo: { findById: mockFindDefinitionById },
-}));
+jest.unstable_mockModule(
+  "../../db/repositories/station-instances.repository.js",
+  () => ({
+    stationInstancesRepo: { findByStationId: mockFindByStationId },
+  })
+);
+jest.unstable_mockModule(
+  "../../db/repositories/connector-definitions.repository.js",
+  () => ({
+    connectorDefinitionsRepo: { findById: mockFindDefinitionById },
+  })
+);
 jest.unstable_mockModule("../../services/db.service.js", () => ({
   DbService: {
     repository: {
@@ -32,29 +49,41 @@ jest.unstable_mockModule("../../services/analytics.service.js", () => ({
   AnalyticsService: { applyEntityInsertMany: jest.fn() },
 }));
 jest.unstable_mockModule("../../db/repositories/base.repository.js", () => {
-  class MockRepository { static transaction = mockTransaction; }
+  class MockRepository {
+    static transaction = mockTransaction;
+  }
   return { Repository: MockRepository };
 });
 
-const { ConnectorEntityCreateTool } = await import("../../tools/connector-entity-create.tool.js");
+const { ConnectorEntityCreateTool } =
+  await import("../../tools/connector-entity-create.tool.js");
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
 type Item = { connectorInstanceId: string; key: string; label: string };
 const exec = (input: { items: Item[] }) =>
-  new ConnectorEntityCreateTool().build("station-1", "user-1")
-    .execute!(input, { toolCallId: "t", messages: [], abortSignal: new AbortController().signal });
+  new ConnectorEntityCreateTool().build("station-1", "user-1").execute!(input, {
+    toolCallId: "t",
+    messages: [],
+    abortSignal: new AbortController().signal,
+  });
 
 describe("ConnectorEntityCreateTool", () => {
   it("single-item regression — creates entity via upsertByKey", async () => {
-    const result: any = await exec({ items: [{ connectorInstanceId: "ci-1", key: "contacts", label: "Contacts" }] });
+    const result: any = await exec({
+      items: [
+        { connectorInstanceId: "ci-1", key: "contacts", label: "Contacts" },
+      ],
+    });
     expect(result.success).toBe(true);
     expect(result.count).toBe(1);
     expect(result.items).toHaveLength(1);
     expect(result.items[0].entityId).toBe("ce-new");
     expect(mockUpsertByKey).toHaveBeenCalledWith(
       expect.objectContaining({ key: "contacts", label: "Contacts" }),
-      "mock-tx",
+      "mock-tx"
     );
   });
 
@@ -86,8 +115,18 @@ describe("ConnectorEntityCreateTool", () => {
       { connectorInstanceId: "ci-2", stationId: "station-1" },
     ]);
     mockFindInstanceById
-      .mockResolvedValueOnce({ id: "ci-1", organizationId: "org-1", connectorDefinitionId: "cd-1", enabledCapabilityFlags: null })
-      .mockResolvedValueOnce({ id: "ci-2", organizationId: "org-1", connectorDefinitionId: "cd-1", enabledCapabilityFlags: null });
+      .mockResolvedValueOnce({
+        id: "ci-1",
+        organizationId: "org-1",
+        connectorDefinitionId: "cd-1",
+        enabledCapabilityFlags: null,
+      })
+      .mockResolvedValueOnce({
+        id: "ci-2",
+        organizationId: "org-1",
+        connectorDefinitionId: "cd-1",
+        enabledCapabilityFlags: null,
+      });
     mockUpsertByKey
       .mockResolvedValueOnce({ id: "ce-1" })
       .mockResolvedValueOnce({ id: "ce-2" });
@@ -116,7 +155,8 @@ describe("ConnectorEntityCreateTool", () => {
 
   it("validation failure — write capability disabled", async () => {
     mockFindDefinitionById.mockResolvedValueOnce({
-      id: "cd-1", capabilityFlags: { read: true, write: false },
+      id: "cd-1",
+      capabilityFlags: { read: true, write: false },
     });
 
     const result: any = await exec({

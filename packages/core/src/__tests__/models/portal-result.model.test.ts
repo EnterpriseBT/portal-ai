@@ -113,7 +113,7 @@ describe("PortalResultSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("should accept type \"text\"", () => {
+  it('should accept type "text"', () => {
     const data = {
       id: "pr-1",
       created: Date.now(),
@@ -135,7 +135,7 @@ describe("PortalResultSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should accept type \"vega-lite\"", () => {
+  it('should accept type "vega-lite"', () => {
     const data = {
       id: "pr-1",
       created: Date.now(),
@@ -157,7 +157,7 @@ describe("PortalResultSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should accept type \"vega\"", () => {
+  it('should accept type "vega"', () => {
     const data = {
       id: "pr-1",
       created: Date.now(),

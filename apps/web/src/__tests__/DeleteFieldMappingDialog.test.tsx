@@ -2,9 +2,8 @@ import { jest } from "@jest/globals";
 import type { FieldMappingImpactResponsePayload } from "@portalai/core/contracts";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeleteFieldMappingDialog } = await import(
-  "../components/DeleteFieldMappingDialog.component"
-);
+const { DeleteFieldMappingDialog } =
+  await import("../components/DeleteFieldMappingDialog.component");
 
 const impactWithCascade: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 5,
@@ -21,13 +20,21 @@ const zeroImpact: FieldMappingImpactResponsePayload = {
 const impactWithBidirectional: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 0,
   entityRecords: 0,
-  counterpart: { id: "fm-counterpart", sourceField: "related_id", normalizedKey: "related_id" },
+  counterpart: {
+    id: "fm-counterpart",
+    sourceField: "related_id",
+    normalizedKey: "related_id",
+  },
 };
 
 const impactWithBoth: FieldMappingImpactResponsePayload = {
   entityGroupMembers: 3,
   entityRecords: 0,
-  counterpart: { id: "fm-counterpart", sourceField: "related_id", normalizedKey: "related_id" },
+  counterpart: {
+    id: "fm-counterpart",
+    sourceField: "related_id",
+    normalizedKey: "related_id",
+  },
 };
 
 const impactWithRecords: FieldMappingImpactResponsePayload = {
@@ -53,24 +60,17 @@ describe("DeleteFieldMappingDialog", () => {
 
   it("should render dialog when open is true", () => {
     render(<DeleteFieldMappingDialog {...defaultProps} />);
-    expect(
-      screen.getByText("Delete Field Mapping")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Delete Field Mapping")).toBeInTheDocument();
   });
 
   it("should not render when open is false", () => {
     render(<DeleteFieldMappingDialog {...defaultProps} open={false} />);
-    expect(
-      screen.queryByText("Delete Field Mapping")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete Field Mapping")).not.toBeInTheDocument();
   });
 
   it("should show cascade warning with group member count", () => {
     render(
-      <DeleteFieldMappingDialog
-        {...defaultProps}
-        impact={impactWithCascade}
-      />
+      <DeleteFieldMappingDialog {...defaultProps} impact={impactWithCascade} />
     );
     expect(screen.getByText("5 entity group members")).toBeInTheDocument();
     expect(
@@ -95,10 +95,7 @@ describe("DeleteFieldMappingDialog", () => {
 
   it("should show both entity group members and bidirectional counterpart", () => {
     render(
-      <DeleteFieldMappingDialog
-        {...defaultProps}
-        impact={impactWithBoth}
-      />
+      <DeleteFieldMappingDialog {...defaultProps} impact={impactWithBoth} />
     );
     expect(screen.getByText("3 entity group members")).toBeInTheDocument();
     expect(
@@ -109,44 +106,33 @@ describe("DeleteFieldMappingDialog", () => {
   it("should call onConfirm on confirm click", () => {
     const onConfirm = jest.fn();
     render(
-      <DeleteFieldMappingDialog
-        {...defaultProps}
-        onConfirm={onConfirm}
-      />
+      <DeleteFieldMappingDialog {...defaultProps} onConfirm={onConfirm} />
     );
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(onConfirm).toHaveBeenCalled();
   });
 
   it("should show loading state when isPending is true", () => {
-    render(
-      <DeleteFieldMappingDialog {...defaultProps} isPending={true} />
-    );
-    expect(
-      screen.getByRole("button", { name: "Deleting..." })
-    ).toBeDisabled();
+    render(<DeleteFieldMappingDialog {...defaultProps} isPending={true} />);
+    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
   });
 
   it("should render FormAlert when serverError is provided", () => {
     render(
       <DeleteFieldMappingDialog
         {...defaultProps}
-        serverError={{ message: "Delete failed", code: "MAPPING_DELETE_FAILED" }}
+        serverError={{
+          message: "Delete failed",
+          code: "MAPPING_DELETE_FAILED",
+        }}
       />
     );
     expect(screen.getByText(/Delete failed/)).toBeInTheDocument();
   });
 
   it("should show 'No associated data found' when entityGroupMembers is 0", () => {
-    render(
-      <DeleteFieldMappingDialog
-        {...defaultProps}
-        impact={zeroImpact}
-      />
-    );
-    expect(
-      screen.getByText("No associated data found.")
-    ).toBeInTheDocument();
+    render(<DeleteFieldMappingDialog {...defaultProps} impact={zeroImpact} />);
+    expect(screen.getByText("No associated data found.")).toBeInTheDocument();
   });
 
   it("should show loading indicator when isLoadingImpact is true", () => {
@@ -157,29 +143,24 @@ describe("DeleteFieldMappingDialog", () => {
         isLoadingImpact={true}
       />
     );
-    expect(
-      screen.getByText("Checking associated data...")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Checking associated data...")).toBeInTheDocument();
   });
 
   it("should submit on Enter key press (form submission)", () => {
     const onConfirm = jest.fn();
     render(
-      <DeleteFieldMappingDialog
-        {...defaultProps}
-        onConfirm={onConfirm}
-      />
+      <DeleteFieldMappingDialog {...defaultProps} onConfirm={onConfirm} />
     );
-    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    const form = screen
+      .getByRole("button", { name: "Delete" })
+      .closest("form")!;
     fireEvent.submit(form);
     expect(onConfirm).toHaveBeenCalled();
   });
 
   it("should call onClose on Cancel click", () => {
     const onClose = jest.fn();
-    render(
-      <DeleteFieldMappingDialog {...defaultProps} onClose={onClose} />
-    );
+    render(<DeleteFieldMappingDialog {...defaultProps} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
   });
@@ -196,7 +177,9 @@ describe("DeleteFieldMappingDialog", () => {
       <DeleteFieldMappingDialog {...defaultProps} impact={impactWithRecords} />
     );
     expect(
-      screen.getByText(/cannot be deleted because its connector entity has existing records/)
+      screen.getByText(
+        /cannot be deleted because its connector entity has existing records/
+      )
     ).toBeInTheDocument();
   });
 
@@ -231,7 +214,9 @@ describe("DeleteFieldMappingDialog", () => {
         onConfirm={onConfirm}
       />
     );
-    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    const form = screen
+      .getByRole("button", { name: "Delete" })
+      .closest("form")!;
     fireEvent.submit(form);
     expect(onConfirm).not.toHaveBeenCalled();
   });

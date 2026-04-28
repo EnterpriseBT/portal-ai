@@ -52,8 +52,7 @@ const StationPicker: React.FC<StationPickerProps> = ({
   return (
     <DataResult results={{ stations: result }}>
       {(data) => {
-        const payload =
-          data.stations as unknown as StationListResponsePayload;
+        const payload = data.stations as unknown as StationListResponsePayload;
         const options: StationOption[] = payload.stations.map((s) => ({
           value: s.id,
           label: s.name,
@@ -109,9 +108,9 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
   const [stationId, setStationId] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const stationRef = useDialogAutoFocus(open);
-  const [orgDefaultStationId, setOrgDefaultStationId] = useState<
-    string | null
-  >(null);
+  const [orgDefaultStationId, setOrgDefaultStationId] = useState<string | null>(
+    null
+  );
 
   React.useEffect(() => {
     if (open) {
@@ -153,7 +152,12 @@ export const CreatePortalDialog: React.FC<CreatePortalDialogProps> = ({
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button

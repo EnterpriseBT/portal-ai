@@ -34,7 +34,14 @@ const EditForm: React.FC<{
   onClose: () => void;
   isPending?: boolean;
   serverError?: ServerError | null;
-}> = ({ columns, normalizedData, onSubmit, onClose, isPending, serverError }) => {
+}> = ({
+  columns,
+  normalizedData,
+  onSubmit,
+  onClose,
+  isPending,
+  serverError,
+}) => {
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     initializeRecordFields(columns, normalizedData)
   );
@@ -116,10 +123,20 @@ const EditForm: React.FC<{
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
-          <Button type="button" variant="contained" onClick={handleSubmit} disabled={isPending}>
+          <Button
+            type="button"
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={isPending}
+          >
             {isPending ? "Saving..." : "Save"}
           </Button>
         </Stack>

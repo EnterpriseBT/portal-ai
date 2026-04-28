@@ -56,9 +56,7 @@ export interface ConnectorAdapter {
     entityKey: string
   ): Promise<SyncResult>;
 
-  discoverEntities(
-    instance: ConnectorInstance
-  ): Promise<DiscoveredEntity[]>;
+  discoverEntities(instance: ConnectorInstance): Promise<DiscoveredEntity[]>;
 
   discoverColumns(
     instance: ConnectorInstance,

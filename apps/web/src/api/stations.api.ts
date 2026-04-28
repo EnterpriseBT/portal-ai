@@ -51,7 +51,10 @@ export const stations = {
     }),
 
   setDefault: (orgId: string) =>
-    useAuthMutation<OrganizationGetResponse, { defaultStationId: string | null }>({
+    useAuthMutation<
+      OrganizationGetResponse,
+      { defaultStationId: string | null }
+    >({
       url: `/api/organization/${encodeURIComponent(orgId)}`,
       method: "PATCH",
     }),

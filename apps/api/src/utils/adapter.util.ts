@@ -40,9 +40,7 @@ export async function resolveColumns(
   const colDefIds = [...new Set(mappings.map((m) => m.columnDefinitionId))];
 
   const colDefs = await Promise.all(
-    colDefIds.map((id) =>
-      columnDefinitionsRepo.findById(id, client)
-    )
+    colDefIds.map((id) => columnDefinitionsRepo.findById(id, client))
   );
 
   const colDefMap = new Map(
@@ -93,15 +91,10 @@ export async function importModeQueryRows(
   }
 
   // Load column metadata
-  const columns = await resolveColumns(
-    entity.id,
-    entity.organizationId
-  );
+  const columns = await resolveColumns(entity.id, entity.organizationId);
 
   // Build a set of requested column keys for filtering
-  const requestedKeys = query.columns
-    ? new Set(query.columns)
-    : null;
+  const requestedKeys = query.columns ? new Set(query.columns) : null;
 
   // Fetch records from entity_records
   const [records, total] = await Promise.all([

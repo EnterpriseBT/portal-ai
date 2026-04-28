@@ -30,16 +30,13 @@ const mockBreakpoint = (breakpoint: "mobile" | "tablet" | "desktop") => {
       let matches = false;
       if (breakpoint === "mobile") {
         // down("sm") produces a max-width-only query (no min-width)
-        matches =
-          query.includes("max-width") && !query.includes("min-width");
+        matches = query.includes("max-width") && !query.includes("min-width");
       } else if (breakpoint === "tablet") {
         // between("sm","md") produces a query with both min-width and max-width
-        matches =
-          query.includes("min-width") && query.includes("max-width");
+        matches = query.includes("min-width") && query.includes("max-width");
       } else if (breakpoint === "desktop") {
         // up("md") produces a min-width query (without max-width)
-        matches =
-          query.includes("min-width") && !query.includes("max-width");
+        matches = query.includes("min-width") && !query.includes("max-width");
       }
       return {
         matches,
@@ -153,10 +150,7 @@ describe("useLayout", () => {
       "should set correct mobile flags for %s sidebar",
       (sidebarState, expected) => {
         mockBreakpoint("mobile");
-        window.localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(sidebarState)
-        );
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sidebarState));
 
         const { result } = renderHook(() => useLayout(), {
           wrapper: createWrapper(),
@@ -165,9 +159,7 @@ describe("useLayout", () => {
         expect(result.current.isMobileCollapsed).toBe(
           expected.isMobileCollapsed
         );
-        expect(result.current.isMobileExpanded).toBe(
-          expected.isMobileExpanded
-        );
+        expect(result.current.isMobileExpanded).toBe(expected.isMobileExpanded);
       }
     );
   });
@@ -192,10 +184,7 @@ describe("useLayout", () => {
       "should set correct tablet flags for %s sidebar",
       (sidebarState, expected) => {
         mockBreakpoint("tablet");
-        window.localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(sidebarState)
-        );
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sidebarState));
 
         const { result } = renderHook(() => useLayout(), {
           wrapper: createWrapper(),
@@ -204,9 +193,7 @@ describe("useLayout", () => {
         expect(result.current.isTabletCollapsed).toBe(
           expected.isTabletCollapsed
         );
-        expect(result.current.isTabletExpanded).toBe(
-          expected.isTabletExpanded
-        );
+        expect(result.current.isTabletExpanded).toBe(expected.isTabletExpanded);
       }
     );
   });
@@ -231,10 +218,7 @@ describe("useLayout", () => {
       "should set correct desktop flags for %s sidebar",
       (sidebarState, expected) => {
         mockBreakpoint("desktop");
-        window.localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(sidebarState)
-        );
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sidebarState));
 
         const { result } = renderHook(() => useLayout(), {
           wrapper: createWrapper(),
@@ -253,10 +237,7 @@ describe("useLayout", () => {
   describe("combination flags are false when breakpoint does not match", () => {
     it("should have all combination flags false when no breakpoint matches", () => {
       // Default matchMedia returns false for all queries
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify("expanded")
-      );
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify("expanded"));
 
       const { result } = renderHook(() => useLayout(), {
         wrapper: createWrapper(),
@@ -359,9 +340,9 @@ describe("useLayout", () => {
         </ThemeProvider>
       );
 
-      expect(() =>
-        renderHook(() => useLayout(), { wrapper })
-      ).toThrow("useLayout must be used within a LayoutProvider");
+      expect(() => renderHook(() => useLayout(), { wrapper })).toThrow(
+        "useLayout must be used within a LayoutProvider"
+      );
     });
   });
 });

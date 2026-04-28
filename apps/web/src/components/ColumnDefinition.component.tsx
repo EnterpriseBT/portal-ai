@@ -7,10 +7,7 @@ import type {
   ColumnDefinitionListResponsePayload,
 } from "@portalai/core/contracts";
 import type { ColumnDefinition } from "@portalai/core/models";
-import {
-  DetailCard,
-  MetadataList,
-} from "@portalai/core/ui";
+import { DetailCard, MetadataList } from "@portalai/core/ui";
 import type { ActionSuiteItem } from "@portalai/core/ui";
 import Chip from "@mui/material/Chip";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -50,7 +47,10 @@ export const ColumnDefinitionDataItem = (
 
 // ── Card UI ─────────────────────────────────────────────────────────
 
-const TYPE_COLOR: Record<string, "primary" | "secondary" | "success" | "warning" | "error" | "info" | "default"> = {
+const TYPE_COLOR: Record<
+  string,
+  "primary" | "secondary" | "success" | "warning" | "error" | "info" | "default"
+> = {
   string: "primary",
   number: "info",
   boolean: "success",
@@ -74,9 +74,17 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
   onClick,
   onDelete,
 }) => {
-  const actions: ActionSuiteItem[] = !cd.system && onDelete
-    ? [{ label: "Delete", icon: <DeleteIcon />, onClick: () => onDelete(cd), color: "error" }]
-    : [];
+  const actions: ActionSuiteItem[] =
+    !cd.system && onDelete
+      ? [
+          {
+            label: "Delete",
+            icon: <DeleteIcon />,
+            onClick: () => onDelete(cd),
+            color: "error",
+          },
+        ]
+      : [];
 
   return (
     <DetailCard
@@ -111,7 +119,11 @@ export const ColumnDefinitionCardUI: React.FC<ColumnDefinitionCardUIProps> = ({
             variant: "chip",
           },
           { label: "Key", value: cd.key, variant: "mono" },
-          { label: "Description", value: cd.description ?? "", hidden: !cd.description },
+          {
+            label: "Description",
+            value: cd.description ?? "",
+            hidden: !cd.description,
+          },
         ]}
       />
     </DetailCard>

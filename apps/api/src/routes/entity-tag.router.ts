@@ -107,18 +107,27 @@ entityTagRouter.get(
 
       const where = and(...filters);
       const column = SORTABLE_COLUMNS[sortBy] ?? SORTABLE_COLUMNS.created;
-      const listOpts = { limit, offset, orderBy: { column, direction: sortOrder } };
+      const listOpts = {
+        limit,
+        offset,
+        orderBy: { column, direction: sortOrder },
+      };
 
       const [data, total] = await Promise.all([
         DbService.repository.entityTags.findMany(where, listOpts),
         DbService.repository.entityTags.count(where),
       ]).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_TAG_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity tags");
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_TAG_FETCH_FAILED,
+          error instanceof Error ? error.message : "Failed to list entity tags"
+        );
       });
 
       return HttpService.success<EntityTagListResponsePayload>(res, {
-        entityTags: data as unknown as EntityTagListResponsePayload["entityTags"],
+        entityTags:
+          data as unknown as EntityTagListResponsePayload["entityTags"],
         total,
         limit,
         offset,
@@ -128,7 +137,17 @@ entityTagRouter.get(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to list entity tags"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_TAG_FETCH_FAILED, error instanceof Error ? error.message : "Failed to list entity tags"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to list entity tags"
+            )
+      );
     }
   }
 );
@@ -186,24 +205,49 @@ entityTagRouter.get(
       const { id } = req.params;
       logger.info({ id }, "GET /api/entity-tags/:id called");
 
-      const entityTag = await DbService.repository.entityTags.findById(id).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_TAG_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch entity tag");
-      });
+      const entityTag = await DbService.repository.entityTags
+        .findById(id)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_TAG_FETCH_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch entity tag"
+          );
+        });
 
       if (!entityTag) {
-        return next(new ApiError(404, ApiCode.ENTITY_TAG_NOT_FOUND, "Entity tag not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_TAG_NOT_FOUND,
+            "Entity tag not found"
+          )
+        );
       }
 
       return HttpService.success<EntityTagGetResponsePayload>(res, {
-        entityTag: entityTag as unknown as EntityTagGetResponsePayload["entityTag"],
+        entityTag:
+          entityTag as unknown as EntityTagGetResponsePayload["entityTag"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to fetch entity tag"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_TAG_FETCH_FAILED, error instanceof Error ? error.message : "Failed to fetch entity tag"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_FETCH_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch entity tag"
+            )
+      );
     }
   }
 );
@@ -278,14 +322,29 @@ entityTagRouter.post(
     try {
       const parsed = EntityTagCreateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_TAG_INVALID_PAYLOAD, "Invalid entity tag payload"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_TAG_INVALID_PAYLOAD,
+            "Invalid entity tag payload"
+          )
+        );
       }
 
       const { organizationId, userId } = req.application!.metadata;
 
-      const duplicate = await DbService.repository.entityTags.findByName(organizationId, parsed.data.name);
+      const duplicate = await DbService.repository.entityTags.findByName(
+        organizationId,
+        parsed.data.name
+      );
       if (duplicate) {
-        return next(new ApiError(409, ApiCode.ENTITY_TAG_DUPLICATE_NAME, "An entity tag with this name already exists in this organization"));
+        return next(
+          new ApiError(
+            409,
+            ApiCode.ENTITY_TAG_DUPLICATE_NAME,
+            "An entity tag with this name already exists in this organization"
+          )
+        );
       }
 
       const factory = new EntityTagModelFactory();
@@ -297,18 +356,27 @@ entityTagRouter.post(
         description: parsed.data.description ?? null,
       });
 
-      const entityTag = await DbService.repository.entityTags.create(
-        model.parse()
-      ).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_TAG_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity tag");
-      });
+      const entityTag = await DbService.repository.entityTags
+        .create(model.parse())
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_TAG_CREATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to create entity tag"
+          );
+        });
 
       logger.info({ id: entityTag.id, organizationId }, "Entity tag created");
 
       return HttpService.success<EntityTagCreateResponsePayload>(
         res,
-        { entityTag: entityTag as unknown as EntityTagCreateResponsePayload["entityTag"] },
+        {
+          entityTag:
+            entityTag as unknown as EntityTagCreateResponsePayload["entityTag"],
+        },
         201
       );
     } catch (error) {
@@ -316,7 +384,17 @@ entityTagRouter.post(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to create entity tag"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_TAG_CREATE_FAILED, error instanceof Error ? error.message : "Failed to create entity tag"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_CREATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to create entity tag"
+            )
+      );
     }
   }
 );
@@ -402,43 +480,83 @@ entityTagRouter.patch(
       const { id } = req.params;
       const parsed = EntityTagUpdateRequestBodySchema.safeParse(req.body);
       if (!parsed.success) {
-        return next(new ApiError(400, ApiCode.ENTITY_TAG_INVALID_PAYLOAD, "Invalid entity tag payload"));
+        return next(
+          new ApiError(
+            400,
+            ApiCode.ENTITY_TAG_INVALID_PAYLOAD,
+            "Invalid entity tag payload"
+          )
+        );
       }
 
       const existing = await DbService.repository.entityTags.findById(id);
       if (!existing) {
-        return next(new ApiError(404, ApiCode.ENTITY_TAG_NOT_FOUND, "Entity tag not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_TAG_NOT_FOUND,
+            "Entity tag not found"
+          )
+        );
       }
 
       if (parsed.data.name && parsed.data.name !== existing.name) {
-        const duplicate = await DbService.repository.entityTags.findByName(existing.organizationId, parsed.data.name);
+        const duplicate = await DbService.repository.entityTags.findByName(
+          existing.organizationId,
+          parsed.data.name
+        );
         if (duplicate) {
-          return next(new ApiError(409, ApiCode.ENTITY_TAG_DUPLICATE_NAME, "An entity tag with this name already exists in this organization"));
+          return next(
+            new ApiError(
+              409,
+              ApiCode.ENTITY_TAG_DUPLICATE_NAME,
+              "An entity tag with this name already exists in this organization"
+            )
+          );
         }
       }
 
       const { userId } = req.application!.metadata;
 
-      const entityTag = await DbService.repository.entityTags.update(id, {
-        ...parsed.data,
-        updated: Date.now(),
-        updatedBy: userId,
-      } as never).catch((error) => {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_TAG_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update entity tag");
-      });
+      const entityTag = await DbService.repository.entityTags
+        .update(id, {
+          ...parsed.data,
+          updated: Date.now(),
+          updatedBy: userId,
+        } as never)
+        .catch((error) => {
+          if (error instanceof ApiError) throw error;
+          throw new ApiError(
+            500,
+            ApiCode.ENTITY_TAG_UPDATE_FAILED,
+            error instanceof Error
+              ? error.message
+              : "Failed to update entity tag"
+          );
+        });
 
       logger.info({ id }, "Entity tag updated");
 
       return HttpService.success<EntityTagUpdateResponsePayload>(res, {
-        entityTag: entityTag as unknown as EntityTagUpdateResponsePayload["entityTag"],
+        entityTag:
+          entityTag as unknown as EntityTagUpdateResponsePayload["entityTag"],
       });
     } catch (error) {
       logger.error(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to update entity tag"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_TAG_UPDATE_FAILED, error instanceof Error ? error.message : "Failed to update entity tag"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_UPDATE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to update entity tag"
+            )
+      );
     }
   }
 );
@@ -498,21 +616,39 @@ entityTagRouter.delete(
 
       const existing = await DbService.repository.entityTags.findById(id);
       if (!existing) {
-        return next(new ApiError(404, ApiCode.ENTITY_TAG_NOT_FOUND, "Entity tag not found"));
+        return next(
+          new ApiError(
+            404,
+            ApiCode.ENTITY_TAG_NOT_FOUND,
+            "Entity tag not found"
+          )
+        );
       }
 
       const { userId } = req.application!.metadata;
 
       await DbService.transaction(async (tx) => {
-        const assignments = await DbService.repository.entityTagAssignments.findByEntityTagId(id, tx);
+        const assignments =
+          await DbService.repository.entityTagAssignments.findByEntityTagId(
+            id,
+            tx
+          );
         const assignmentIds = assignments.map((a) => a.id);
         if (assignmentIds.length > 0) {
-          await DbService.repository.entityTagAssignments.softDeleteMany(assignmentIds, userId, tx);
+          await DbService.repository.entityTagAssignments.softDeleteMany(
+            assignmentIds,
+            userId,
+            tx
+          );
         }
         await DbService.repository.entityTags.softDelete(id, userId, tx);
       }).catch((error) => {
         if (error instanceof ApiError) throw error;
-        throw new ApiError(500, ApiCode.ENTITY_TAG_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity tag");
+        throw new ApiError(
+          500,
+          ApiCode.ENTITY_TAG_DELETE_FAILED,
+          error instanceof Error ? error.message : "Failed to delete entity tag"
+        );
       });
 
       logger.info({ id }, "Entity tag soft-deleted");
@@ -523,7 +659,17 @@ entityTagRouter.delete(
         { error: error instanceof Error ? error.message : "Unknown error" },
         "Failed to delete entity tag"
       );
-      return next(error instanceof ApiError ? error : new ApiError(500, ApiCode.ENTITY_TAG_DELETE_FAILED, error instanceof Error ? error.message : "Failed to delete entity tag"));
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.ENTITY_TAG_DELETE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to delete entity tag"
+            )
+      );
     }
   }
 );

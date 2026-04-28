@@ -12,15 +12,22 @@ const ItemSchema = z.object({
 });
 
 const InputSchema = z.object({
-  items: z.array(ItemSchema).min(1).max(100).describe("Connector entities to delete (1–100)"),
+  items: z
+    .array(ItemSchema)
+    .min(1)
+    .max(100)
+    .describe("Connector entities to delete (1–100)"),
 });
 
 export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
   slug = "connector_entity_delete";
   name = "Connector Entity Delete Tool";
-  description = "Deletes one or more connector entities and all dependent records, field mappings, tags, and group memberships. Accepts 1–100 items.";
+  description =
+    "Deletes one or more connector entities and all dependent records, field mappings, tags, and group memberships. Accepts 1–100 items.";
 
-  get schema() { return InputSchema; }
+  get schema() {
+    return InputSchema;
+  }
 
   build(stationId: string, userId: string) {
     return tool({
@@ -39,35 +46,60 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
             try {
               await assertStationScope(stationId, item.connectorEntityId);
             } catch (err: any) {
-              failures.push({ index: i, error: err.message ?? "Scope check failed" });
+              failures.push({
+                index: i,
+                error: err.message ?? "Scope check failed",
+              });
               continue;
             }
 
-            const entity = await DbService.repository.connectorEntities.findById(item.connectorEntityId);
+            const entity =
+              await DbService.repository.connectorEntities.findById(
+                item.connectorEntityId
+              );
             if (entity) entities[item.connectorEntityId] = entity;
 
             try {
-              await ConnectorEntityValidationService.validateDelete(item.connectorEntityId);
+              await ConnectorEntityValidationService.validateDelete(
+                item.connectorEntityId
+              );
             } catch (err: any) {
-              failures.push({ index: i, error: err.message ?? "Delete validation failed" });
+              failures.push({
+                index: i,
+                error: err.message ?? "Delete validation failed",
+              });
             }
           }
 
           if (failures.length > 0) {
-            return { success: false, error: `${failures.length} of ${items.length} items failed validation`, failures };
+            return {
+              success: false,
+              error: `${failures.length} of ${items.length} items failed validation`,
+              failures,
+            };
           }
 
           // ── Phase 2: Execute sequentially (no wrapping tx) ─────────
           const cascadedResults: any[] = [];
           for (const item of items) {
-            const cascaded = await ConnectorEntityValidationService.executeDelete(item.connectorEntityId, userId);
+            const cascaded =
+              await ConnectorEntityValidationService.executeDelete(
+                item.connectorEntityId,
+                userId
+              );
             cascadedResults.push(cascaded);
           }
 
           // ── Phase 3: Cache ─────────────────────────────────────────
           const entityIds = items.map((item) => item.connectorEntityId);
-          const entityKeys = items.map((item) => entities[item.connectorEntityId]?.key).filter(Boolean);
-          AnalyticsService.applyEntityDeleteMany(stationId, entityIds, entityKeys);
+          const entityKeys = items
+            .map((item) => entities[item.connectorEntityId]?.key)
+            .filter(Boolean);
+          AnalyticsService.applyEntityDeleteMany(
+            stationId,
+            entityIds,
+            entityKeys
+          );
 
           return {
             success: true,
@@ -77,7 +109,9 @@ export class ConnectorEntityDeleteTool extends Tool<typeof InputSchema> {
             items: items.map((item, idx) => ({
               entityId: item.connectorEntityId,
               summary: {
-                label: entities[item.connectorEntityId]?.label ?? item.connectorEntityId,
+                label:
+                  entities[item.connectorEntityId]?.label ??
+                  item.connectorEntityId,
                 cascaded: cascadedResults[idx],
               },
             })),

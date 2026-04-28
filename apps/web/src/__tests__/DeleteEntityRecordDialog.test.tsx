@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { DeleteEntityRecordDialog } = await import(
-  "../components/DeleteEntityRecordDialog.component"
-);
+const { DeleteEntityRecordDialog } =
+  await import("../components/DeleteEntityRecordDialog.component");
 
 const defaultProps = {
   open: true,
@@ -20,16 +19,12 @@ describe("DeleteEntityRecordDialog", () => {
 
   it("should render dialog when open is true", () => {
     render(<DeleteEntityRecordDialog {...defaultProps} />);
-    expect(
-      screen.getByText("Delete Entity Record")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Delete Entity Record")).toBeInTheDocument();
   });
 
   it("should not render when open is false", () => {
     render(<DeleteEntityRecordDialog {...defaultProps} open={false} />);
-    expect(
-      screen.queryByText("Delete Entity Record")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete Entity Record")).not.toBeInTheDocument();
   });
 
   it("should display record source ID in confirmation text", () => {
@@ -47,12 +42,8 @@ describe("DeleteEntityRecordDialog", () => {
   });
 
   it("should show loading state when isPending is true", () => {
-    render(
-      <DeleteEntityRecordDialog {...defaultProps} isPending={true} />
-    );
-    expect(
-      screen.getByRole("button", { name: "Deleting..." })
-    ).toBeDisabled();
+    render(<DeleteEntityRecordDialog {...defaultProps} isPending={true} />);
+    expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
   });
 
   it("should render FormAlert when serverError is provided", () => {
@@ -67,9 +58,7 @@ describe("DeleteEntityRecordDialog", () => {
   });
 
   it("should not render FormAlert when serverError is null", () => {
-    render(
-      <DeleteEntityRecordDialog {...defaultProps} serverError={null} />
-    );
+    render(<DeleteEntityRecordDialog {...defaultProps} serverError={null} />);
     const alerts = screen.getAllByRole("alert");
     alerts.forEach((alert) => {
       expect(alert).not.toHaveTextContent("Delete failed");
@@ -81,16 +70,16 @@ describe("DeleteEntityRecordDialog", () => {
     render(
       <DeleteEntityRecordDialog {...defaultProps} onConfirm={onConfirm} />
     );
-    const form = screen.getByRole("button", { name: "Delete" }).closest("form")!;
+    const form = screen
+      .getByRole("button", { name: "Delete" })
+      .closest("form")!;
     fireEvent.submit(form);
     expect(onConfirm).toHaveBeenCalled();
   });
 
   it("should call onClose on Cancel click", () => {
     const onClose = jest.fn();
-    render(
-      <DeleteEntityRecordDialog {...defaultProps} onClose={onClose} />
-    );
+    render(<DeleteEntityRecordDialog {...defaultProps} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
   });

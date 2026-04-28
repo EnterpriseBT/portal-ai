@@ -224,7 +224,10 @@ describe("ConnectorDefinitionCardUI", () => {
     const cd = makeConnectorDefinition();
     const onConnect = jest.fn();
     render(
-      <ConnectorDefinitionCardUI connectorDefinition={cd} onConnect={onConnect} />
+      <ConnectorDefinitionCardUI
+        connectorDefinition={cd}
+        onConnect={onConnect}
+      />
     );
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     expect(onConnect).toHaveBeenCalledWith(cd);

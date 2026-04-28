@@ -21,12 +21,12 @@ const VegaLiteSpecSchema = z
   .record(z.string(), z.unknown())
   .describe(
     "A complete Vega-Lite v5 JSON spec (unit, layered, or composed). " +
-    "Do NOT include a `data` field — it will be populated from the SQL query results. " +
-    "Must contain `mark` + `encoding` for single views, or a composition key " +
-    "(`layer`, `concat`, `hconcat`, `vconcat`, `facet`, `repeat`). " +
-    "Use standard Vega-Lite encoding channels (x, y, color, size, tooltip, etc.) " +
-    "with field, type (quantitative/ordinal/nominal/temporal), and optional " +
-    "aggregate/bin/timeUnit/scale/axis properties."
+      "Do NOT include a `data` field — it will be populated from the SQL query results. " +
+      "Must contain `mark` + `encoding` for single views, or a composition key " +
+      "(`layer`, `concat`, `hconcat`, `vconcat`, `facet`, `repeat`). " +
+      "Use standard Vega-Lite encoding channels (x, y, color, size, tooltip, etc.) " +
+      "with field, type (quantitative/ordinal/nominal/temporal), and optional " +
+      "aggregate/bin/timeUnit/scale/axis properties."
   );
 
 export type VegaLiteSpecInput = Record<string, unknown>;

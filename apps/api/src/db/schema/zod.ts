@@ -28,6 +28,8 @@ import { portalMessages } from "./portal-messages.table.js";
 import { portalResults } from "./portal-results.table.js";
 import { organizationTools } from "./organization-tools.table.js";
 import { stationTools } from "./station-tools.table.js";
+import { connectorInstanceLayoutPlans } from "./connector-instance-layout-plans.table.js";
+import { fileUploads } from "./file-uploads.table.js";
 
 // ── Users ─────────────────────────────────────────────────────────────
 
@@ -148,12 +150,8 @@ export const ConnectorEntityInsertSchema =
   createInsertSchema(connectorEntities);
 
 /** Inferred types */
-export type ConnectorEntitySelect = z.infer<
-  typeof ConnectorEntitySelectSchema
->;
-export type ConnectorEntityInsert = z.infer<
-  typeof ConnectorEntityInsertSchema
->;
+export type ConnectorEntitySelect = z.infer<typeof ConnectorEntitySelectSchema>;
+export type ConnectorEntityInsert = z.infer<typeof ConnectorEntityInsertSchema>;
 
 // ── Field Mappings ───────────────────────────────────────────────────
 
@@ -254,20 +252,14 @@ export type StationInsert = z.infer<typeof StationInsertSchema>;
 // ── Station Instances ──────────────────────────────────────────────────
 
 /** Zod schema for a `station_instances` row returned by SELECT. */
-export const StationInstanceSelectSchema =
-  createSelectSchema(stationInstances);
+export const StationInstanceSelectSchema = createSelectSchema(stationInstances);
 
 /** Zod schema for inserting into `station_instances`. */
-export const StationInstanceInsertSchema =
-  createInsertSchema(stationInstances);
+export const StationInstanceInsertSchema = createInsertSchema(stationInstances);
 
 /** Inferred types */
-export type StationInstanceSelect = z.infer<
-  typeof StationInstanceSelectSchema
->;
-export type StationInstanceInsert = z.infer<
-  typeof StationInstanceInsertSchema
->;
+export type StationInstanceSelect = z.infer<typeof StationInstanceSelectSchema>;
+export type StationInstanceInsert = z.infer<typeof StationInstanceInsertSchema>;
 
 // ── Portals ────────────────────────────────────────────────────────────
 
@@ -334,3 +326,35 @@ export const StationToolInsertSchema = createInsertSchema(stationTools);
 /** Inferred types */
 export type StationToolSelect = z.infer<typeof StationToolSelectSchema>;
 export type StationToolInsert = z.infer<typeof StationToolInsertSchema>;
+
+// ── Connector Instance Layout Plans ──────────────────────────────────
+
+/** Zod schema for a `connector_instance_layout_plans` row returned by SELECT. */
+export const ConnectorInstanceLayoutPlanSelectSchema = createSelectSchema(
+  connectorInstanceLayoutPlans
+);
+
+/** Zod schema for inserting into `connector_instance_layout_plans`. */
+export const ConnectorInstanceLayoutPlanInsertSchema = createInsertSchema(
+  connectorInstanceLayoutPlans
+);
+
+/** Inferred types */
+export type ConnectorInstanceLayoutPlanSelect = z.infer<
+  typeof ConnectorInstanceLayoutPlanSelectSchema
+>;
+export type ConnectorInstanceLayoutPlanInsert = z.infer<
+  typeof ConnectorInstanceLayoutPlanInsertSchema
+>;
+
+// ── File Uploads ──────────────────────────────────────────────────────
+
+/** Zod schema for a `file_uploads` row returned by SELECT. */
+export const FileUploadSelectSchema = createSelectSchema(fileUploads);
+
+/** Zod schema for inserting into `file_uploads`. */
+export const FileUploadInsertSchema = createInsertSchema(fileUploads);
+
+/** Inferred types */
+export type FileUploadSelect = z.infer<typeof FileUploadSelectSchema>;
+export type FileUploadInsert = z.infer<typeof FileUploadInsertSchema>;

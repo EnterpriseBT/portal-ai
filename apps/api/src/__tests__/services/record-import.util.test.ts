@@ -78,7 +78,11 @@ const FIELD_MAPPINGS = [
 ];
 
 function params() {
-  return { connectorEntityId: ENTITY_ID, organizationId: ORG_ID, userId: USER_ID };
+  return {
+    connectorEntityId: ENTITY_ID,
+    organizationId: ORG_ID,
+    userId: USER_ID,
+  };
 }
 
 async function* asyncFrom<T>(arr: T[]): AsyncIterable<T> {
@@ -105,9 +109,16 @@ describe("importRows", () => {
 
     const result = await importRows(rows, params());
 
-    expect(result).toEqual({ created: 2, updated: 0, unchanged: 0, invalid: 0 });
+    expect(result).toEqual({
+      created: 2,
+      updated: 0,
+      unchanged: 0,
+      invalid: 0,
+    });
     expect(mockUpsertManyBySourceId).toHaveBeenCalledTimes(1);
-    const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+      Record<string, unknown>
+    >;
     expect(upserted).toHaveLength(2);
     expect(upserted[0].data).toEqual({ Name: "Alice", Email: "a@x.com" });
     expect(upserted[0].sourceId).toBe("0");
@@ -122,15 +133,20 @@ describe("importRows", () => {
       { Name: "C", Email: "c@x.com" },
     ]);
     await importRows(rows, params());
-    const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+      Record<string, unknown>
+    >;
     expect(upserted.map((r) => r.sourceId)).toEqual(["0", "1", "2"]);
   });
 
   it("computes SHA-256 checksums that are deterministic per row", async () => {
     const row = { Name: "Alice", Email: "a@x.com" };
     await importRows(asyncFrom([row]), params());
-    const first = (mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>)[0]
-      .checksum;
+    const first = (
+      mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >
+    )[0].checksum;
 
     jest.clearAllMocks();
     mockFieldMappingsFindMany.mockResolvedValue(FIELD_MAPPINGS);
@@ -138,8 +154,11 @@ describe("importRows", () => {
     mockUpsertManyBySourceId.mockResolvedValue([]);
 
     await importRows(asyncFrom([row]), params());
-    const second = (mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>)[0]
-      .checksum;
+    const second = (
+      mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >
+    )[0].checksum;
 
     expect(first).toBe(second);
     expect(typeof first).toBe("string");
@@ -148,7 +167,8 @@ describe("importRows", () => {
 
   it("flushes batches of 500 rows (calls upsert once per batch)", async () => {
     const big: Record<string, string>[] = [];
-    for (let i = 0; i < 1200; i++) big.push({ Name: `n${i}`, Email: `${i}@x.com` });
+    for (let i = 0; i < 1200; i++)
+      big.push({ Name: `n${i}`, Email: `${i}@x.com` });
 
     const result = await importRows(asyncFrom(big), params());
 
@@ -156,7 +176,7 @@ describe("importRows", () => {
     // 1200 rows → 500 + 500 + 200 → 3 upsert calls
     expect(mockUpsertManyBySourceId).toHaveBeenCalledTimes(3);
     const sizes = mockUpsertManyBySourceId.mock.calls.map(
-      (c) => (c[0] as unknown[]).length,
+      (c) => (c[0] as unknown[]).length
     );
     expect(sizes).toEqual([500, 500, 200]);
   });
@@ -169,12 +189,19 @@ describe("importRows", () => {
     ]);
     await importRows(rows, params());
     expect(mockUpsertManyBySourceId).toHaveBeenCalledTimes(1);
-    expect((mockUpsertManyBySourceId.mock.calls[0][0] as unknown[]).length).toBe(3);
+    expect(
+      (mockUpsertManyBySourceId.mock.calls[0][0] as unknown[]).length
+    ).toBe(3);
   });
 
   it("handles empty iterable (no DB calls, all-zero counts)", async () => {
     const result = await importRows(asyncFrom([]), params());
-    expect(result).toEqual({ created: 0, updated: 0, unchanged: 0, invalid: 0 });
+    expect(result).toEqual({
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+      invalid: 0,
+    });
     expect(mockUpsertManyBySourceId).not.toHaveBeenCalled();
   });
 
@@ -183,8 +210,11 @@ describe("importRows", () => {
 
     // First import to discover the real checksum
     await importRows(asyncFrom([row]), params());
-    const checksum = (mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>)[0]
-      .checksum as string;
+    const checksum = (
+      mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+        Record<string, unknown>
+      >
+    )[0].checksum as string;
 
     jest.clearAllMocks();
     mockFieldMappingsFindMany.mockResolvedValue(FIELD_MAPPINGS);
@@ -237,23 +267,32 @@ describe("importRows", () => {
     const result = await importRows(rows, params());
     expect(result.invalid).toBe(1);
 
-    const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const upserted = mockUpsertManyBySourceId.mock.calls[0][0] as Array<
+      Record<string, unknown>
+    >;
     expect(upserted[0].isValid).toBe(true);
     expect(upserted[1].isValid).toBe(false);
   });
 
   it("fetches field mappings exactly once regardless of row count", async () => {
     const rows = asyncFrom(
-      Array.from({ length: 100 }, (_, i) => ({ Name: `n${i}`, Email: `${i}@x.com` })),
+      Array.from({ length: 100 }, (_, i) => ({
+        Name: `n${i}`,
+        Email: `${i}@x.com`,
+      }))
     );
     await importRows(rows, params());
     expect(mockFieldMappingsFindMany).toHaveBeenCalledTimes(1);
   });
 
   it("propagates DB errors (does not swallow upsert failures)", async () => {
-    mockUpsertManyBySourceId.mockRejectedValueOnce(new Error("DB connection lost"));
+    mockUpsertManyBySourceId.mockRejectedValueOnce(
+      new Error("DB connection lost")
+    );
     const rows = asyncFrom([{ Name: "A", Email: "a@x.com" }]);
-    await expect(importRows(rows, params())).rejects.toThrow("DB connection lost");
+    await expect(importRows(rows, params())).rejects.toThrow(
+      "DB connection lost"
+    );
   });
 
   it("does not pre-materialize the full iterable (verifies streaming)", async () => {

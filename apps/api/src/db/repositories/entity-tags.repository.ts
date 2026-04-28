@@ -8,7 +8,11 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { entityTags } from "../schema/index.js";
 import { db } from "../client.js";
-import { Repository, type DbClient, type ListOptions } from "./base.repository.js";
+import {
+  Repository,
+  type DbClient,
+  type ListOptions,
+} from "./base.repository.js";
 import type { EntityTagSelect, EntityTagInsert } from "../schema/zod.js";
 
 export class EntityTagsRepository extends Repository<
@@ -26,7 +30,11 @@ export class EntityTagsRepository extends Repository<
     opts: ListOptions = {},
     client: DbClient = db
   ): Promise<EntityTagSelect[]> {
-    return this.findMany(eq(entityTags.organizationId, organizationId), opts, client);
+    return this.findMany(
+      eq(entityTags.organizationId, organizationId),
+      opts,
+      client
+    );
   }
 
   /** Find a single tag by exact name within an organization (used for duplicate detection). */

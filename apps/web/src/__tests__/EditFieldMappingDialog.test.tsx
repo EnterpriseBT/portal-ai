@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { EditFieldMappingDialog } = await import(
-  "../components/EditFieldMappingDialog.component"
-);
+const { EditFieldMappingDialog } =
+  await import("../components/EditFieldMappingDialog.component");
 
 const defaultFieldMapping = {
   sourceField: "user_email",
@@ -25,7 +24,9 @@ const defaultProps = {
   onClose: jest.fn(),
   onSubmit: jest.fn(),
   fieldMapping: defaultFieldMapping,
-  onSearchConnectorEntitiesForRefKey: jest.fn<(q: string) => Promise<{ value: string; label: string }[]>>().mockResolvedValue([]),
+  onSearchConnectorEntitiesForRefKey: jest
+    .fn<(q: string) => Promise<{ value: string; label: string }[]>>()
+    .mockResolvedValue([]),
   isPending: false,
   serverError: null,
   columnDefinitionType: "string",
@@ -63,7 +64,9 @@ describe("EditFieldMappingDialog", () => {
   });
 
   it("should show Enum Values only when column type is enum", () => {
-    render(<EditFieldMappingDialog {...defaultProps} columnDefinitionType="string" />);
+    render(
+      <EditFieldMappingDialog {...defaultProps} columnDefinitionType="string" />
+    );
     expect(screen.queryByLabelText(/Enum Values/)).not.toBeInTheDocument();
   });
 
@@ -93,7 +96,9 @@ describe("EditFieldMappingDialog", () => {
     });
     fireEvent.blur(screen.getByLabelText(/Normalized Key/));
     await waitFor(() => {
-      expect(screen.getByText(/Must be lowercase alphanumeric/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Must be lowercase alphanumeric/)
+      ).toBeInTheDocument();
     });
   });
 
@@ -104,7 +109,10 @@ describe("EditFieldMappingDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/Normalized Key/)).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByLabelText(/Normalized Key/)).toHaveAttribute(
+        "aria-invalid",
+        "true"
+      );
     });
   });
 
@@ -133,12 +141,20 @@ describe("EditFieldMappingDialog", () => {
       <EditFieldMappingDialog
         {...defaultProps}
         onSubmit={onSubmit}
-        fieldMapping={{ ...defaultFieldMapping, defaultValue: "old", format: "old" }}
+        fieldMapping={{
+          ...defaultFieldMapping,
+          defaultValue: "old",
+          format: "old",
+        }}
       />
     );
     // Clear both — this triggers revalidation since defaultValue and format changed
-    fireEvent.change(screen.getByLabelText(/Default Value/), { target: { value: "  " } });
-    fireEvent.change(screen.getByLabelText(/^Format/), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText(/Default Value/), {
+      target: { value: "  " },
+    });
+    fireEvent.change(screen.getByLabelText(/^Format/), {
+      target: { value: "" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(screen.getByText(/trigger re-validation/)).toBeInTheDocument();
@@ -275,10 +291,15 @@ describe("EditFieldMappingDialog", () => {
 
   it("should set aria-invalid on sourceField when validation fails", async () => {
     render(<EditFieldMappingDialog {...defaultProps} />);
-    fireEvent.change(screen.getByLabelText(/Source Field/), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText(/Source Field/), {
+      target: { value: "" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(screen.getByLabelText(/Source Field/)).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByLabelText(/Source Field/)).toHaveAttribute(
+        "aria-invalid",
+        "true"
+      );
     });
   });
 
@@ -291,19 +312,25 @@ describe("EditFieldMappingDialog", () => {
   // ── Type-aware Format field ──────────────────────────────────────────
 
   it("should disable Format field when column type does not support it", () => {
-    render(<EditFieldMappingDialog {...defaultProps} columnDefinitionType="string" />);
+    render(
+      <EditFieldMappingDialog {...defaultProps} columnDefinitionType="string" />
+    );
     expect(screen.getByLabelText(/^Format/)).toBeDisabled();
     expect(screen.getByText("Not used for string columns")).toBeInTheDocument();
   });
 
   it("should enable Format field with type-specific helper text for date type", () => {
-    render(<EditFieldMappingDialog {...defaultProps} columnDefinitionType="date" />);
+    render(
+      <EditFieldMappingDialog {...defaultProps} columnDefinitionType="date" />
+    );
     expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
     expect(screen.getByText(/Date format for parsing/)).toBeInTheDocument();
   });
 
   it("should enable Format field with type-specific helper text for number type", () => {
-    render(<EditFieldMappingDialog {...defaultProps} columnDefinitionType="number" />);
+    render(
+      <EditFieldMappingDialog {...defaultProps} columnDefinitionType="number" />
+    );
     expect(screen.getByLabelText(/^Format/)).not.toBeDisabled();
     expect(screen.getByText(/currency for 2 decimals/)).toBeInTheDocument();
   });

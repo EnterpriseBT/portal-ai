@@ -48,9 +48,7 @@ function getKey(): Buffer {
  * Encrypt a plain-text credentials object into an opaque string
  * suitable for storage in a `text` column.
  */
-export function encryptCredentials(
-  data: Record<string, unknown>
-): string {
+export function encryptCredentials(data: Record<string, unknown>): string {
   const key = getKey();
   const iv = crypto.randomBytes(IV_LENGTH);
 
@@ -76,9 +74,7 @@ export function encryptCredentials(
  * Decrypt a previously-encrypted credentials blob back into a
  * plain-text object.
  */
-export function decryptCredentials(
-  blob: string
-): Record<string, unknown> {
+export function decryptCredentials(blob: string): Record<string, unknown> {
   const key = getKey();
   const { iv, authTag, data } = JSON.parse(blob) as EncryptedPayload;
 

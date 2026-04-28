@@ -18,17 +18,19 @@ interface SampleFile {
 
 const SAMPLE_FILES: SampleFile[] = [
   {
-    label: "sample-contacts.csv",
-    description: "Single-entity CSV (comma-delimited, UTF-8, header row)",
-    href: "/samples/sample-contacts.csv",
-    downloadName: "sample-contacts.csv",
+    label: "supported_layouts.csv",
+    description:
+      "Every region-config permutation (orientation × headerAxis × role pattern) in one CSV",
+    href: "/samples/supported_layouts.csv",
+    downloadName: "supported_layouts.csv",
     icon: <DescriptionOutlinedIcon fontSize="small" color="action" />,
   },
   {
-    label: "sample-data.xlsx",
-    description: "Multi-sheet workbook (Contacts, Companies, Deals)",
-    href: "/samples/sample-data.xlsx",
-    downloadName: "sample-data.xlsx",
+    label: "supported_layouts.xlsx",
+    description:
+      "Same permutation matrix, one permutation per sheet — easier to draw against",
+    href: "/samples/supported_layouts.xlsx",
+    downloadName: "supported_layouts.xlsx",
     icon: <TableChartOutlinedIcon fontSize="small" color="action" />,
   },
 ];
@@ -37,7 +39,10 @@ const SAMPLE_FILES: SampleFile[] = [
 
 export const SampleFiles: React.FC = () => {
   return (
-    <Stack spacing={0.5} aria-label="Sample files illustrating the recommended upload format">
+    <Stack
+      spacing={0.5}
+      aria-label="Sample files illustrating the recommended upload format"
+    >
       <Typography variant="caption" color="text.secondary">
         Need a template? Download a sample illustrating the recommended layout:
       </Typography>

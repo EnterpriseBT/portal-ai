@@ -3,16 +3,16 @@ import userEvent from "@testing-library/user-event";
 
 // ── Mocks ───────────────────────────────────────────────────────────
 
-const mockUseAppVersion = jest.fn<() => { updateAvailable: boolean; dismiss: () => void }>();
+const mockUseAppVersion =
+  jest.fn<() => { updateAvailable: boolean; dismiss: () => void }>();
 
 jest.unstable_mockModule("../utils/app-version.util", () => ({
   useAppVersion: mockUseAppVersion,
 }));
 
 const { render, screen } = await import("./test-utils");
-const { UpdateBannerUI, UpdateBanner } = await import(
-  "../components/UpdateBanner.component"
-);
+const { UpdateBannerUI, UpdateBanner } =
+  await import("../components/UpdateBanner.component");
 
 // ── UpdateBannerUI (pure) ───────────────────────────────────────────
 
@@ -24,18 +24,12 @@ describe("UpdateBannerUI", () => {
 
     expect(screen.getByText("A new version is available.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Dismiss" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
   });
 
   it("does not render the alert when open is false", () => {
     render(
-      <UpdateBannerUI
-        open={false}
-        onReload={jest.fn()}
-        onDismiss={jest.fn()}
-      />
+      <UpdateBannerUI open={false} onReload={jest.fn()} onDismiss={jest.fn()} />
     );
 
     expect(

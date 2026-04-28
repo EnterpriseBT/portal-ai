@@ -23,10 +23,15 @@ export class EntityTagAssignmentModel extends CoreModel<EntityTagAssignment> {
   }
 }
 
-export class EntityTagAssignmentModelFactory extends ModelFactory<EntityTagAssignment, EntityTagAssignmentModel> {
+export class EntityTagAssignmentModelFactory extends ModelFactory<
+  EntityTagAssignment,
+  EntityTagAssignmentModel
+> {
   create(createdBy: string): EntityTagAssignmentModel {
     const baseModel = this._coreModelFactory.create(createdBy);
-    const entityTagAssignmentModel = new EntityTagAssignmentModel(baseModel.toJSON());
+    const entityTagAssignmentModel = new EntityTagAssignmentModel(
+      baseModel.toJSON()
+    );
     return entityTagAssignmentModel;
   }
 }

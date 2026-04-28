@@ -9,10 +9,11 @@ const mockPin = jest.fn();
 jest.unstable_mockModule("../api/sdk", () => ({
   sdk: {
     portalResults: {
-      pin: () => ({
-        mutate: mockPin,
-        isPending: false,
-      } as Partial<UseMutationResult>),
+      pin: () =>
+        ({
+          mutate: mockPin,
+          isPending: false,
+        }) as Partial<UseMutationResult>,
     },
   },
   queryKeys: {
@@ -34,9 +35,8 @@ jest.unstable_mockModule("remark-gfm", () => ({ default: () => {} }));
 // ── Imports ──────────────────────────────────────────────────────────
 
 const { render, screen, fireEvent } = await import("./test-utils");
-const { PortalMessageUI } = await import(
-  "../components/PortalMessage.component"
-);
+const { PortalMessageUI } =
+  await import("../components/PortalMessage.component");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -57,15 +57,34 @@ const makeMessage = (
 describe("PortalMessageUI", () => {
   describe("user messages", () => {
     it("renders user message content as plain text", () => {
-      const message = makeMessage({ role: "user", blocks: [{ type: "text", content: "Hi there" }] });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
+      const message = makeMessage({
+        role: "user",
+        blocks: [{ type: "text", content: "Hi there" }],
+      });
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
       expect(screen.getByText("Hi there")).toBeInTheDocument();
     });
 
     it("does not show pin button for user messages", () => {
       const message = makeMessage({ role: "user" });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
-      expect(screen.queryByRole("button", { name: /pin result/i })).not.toBeInTheDocument();
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /pin result/i })
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -75,7 +94,14 @@ describe("PortalMessageUI", () => {
         role: "assistant",
         blocks: [{ type: "text", content: "Here is your answer" }],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
       expect(screen.getByText("Here is your answer")).toBeInTheDocument();
     });
 
@@ -87,7 +113,14 @@ describe("PortalMessageUI", () => {
           { type: "text", content: "Block 2" },
         ],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
       const pinButtons = screen.getAllByRole("button", { name: /pin result/i });
       expect(pinButtons).toHaveLength(2);
     });
@@ -99,7 +132,14 @@ describe("PortalMessageUI", () => {
         role: "assistant",
         blocks: [{ type: "vega-lite", content: { mark: "bar" } }],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
       expect(await screen.findByTestId("vega-lite-chart")).toBeInTheDocument();
     });
 
@@ -108,8 +148,17 @@ describe("PortalMessageUI", () => {
         role: "assistant",
         blocks: [{ type: "vega-lite", content: { mark: "point" } }],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
-      expect(screen.getByRole("button", { name: /pin result/i })).toBeInTheDocument();
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: /pin result/i })
+      ).toBeInTheDocument();
     });
   });
 
@@ -119,8 +168,17 @@ describe("PortalMessageUI", () => {
         role: "assistant",
         blocks: [{ type: "vega-lite", content: {} }],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
-      expect(screen.queryByRole("button", { name: /pin result/i })).not.toBeInTheDocument();
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /pin result/i })
+      ).not.toBeInTheDocument();
     });
 
     it("does not render blocks with null content", () => {
@@ -128,8 +186,17 @@ describe("PortalMessageUI", () => {
         role: "assistant",
         blocks: [{ type: "text", content: null }],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
-      expect(screen.queryByRole("button", { name: /pin result/i })).not.toBeInTheDocument();
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /pin result/i })
+      ).not.toBeInTheDocument();
     });
 
     it("does not render blocks with empty string content", () => {
@@ -137,8 +204,17 @@ describe("PortalMessageUI", () => {
         role: "assistant",
         blocks: [{ type: "text", content: "   " }],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
-      expect(screen.queryByRole("button", { name: /pin result/i })).not.toBeInTheDocument();
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /pin result/i })
+      ).not.toBeInTheDocument();
     });
 
     it("does not render tool-call or tool-result blocks", () => {
@@ -149,8 +225,17 @@ describe("PortalMessageUI", () => {
           { type: "tool-result", content: { result: "ok" } },
         ],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
-      expect(screen.queryByRole("button", { name: /pin result/i })).not.toBeInTheDocument();
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /pin result/i })
+      ).not.toBeInTheDocument();
     });
 
     it("only renders pin buttons for blocks with content", () => {
@@ -163,7 +248,14 @@ describe("PortalMessageUI", () => {
           { type: "vega-lite", content: { mark: "bar" } },
         ],
       });
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
       const pinButtons = screen.getAllByRole("button", { name: /pin result/i });
       expect(pinButtons).toHaveLength(2);
     });
@@ -172,7 +264,14 @@ describe("PortalMessageUI", () => {
   describe("pin dialog", () => {
     it("opens the name dialog when a pin button is clicked", () => {
       const message = makeMessage();
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
       fireEvent.click(screen.getByRole("button", { name: /pin result/i }));
       expect(screen.getByText("Name this result")).toBeInTheDocument();
     });
@@ -180,16 +279,32 @@ describe("PortalMessageUI", () => {
     it("calls onPin with messageId, blockIndex, and name when confirmed", () => {
       const onPin = jest.fn();
       const message = makeMessage();
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={onPin} onUnpin={jest.fn()} />);
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={onPin}
+          onUnpin={jest.fn()}
+        />
+      );
       fireEvent.click(screen.getByRole("button", { name: /pin result/i }));
-      fireEvent.change(screen.getByRole("textbox", { name: /name/i }), { target: { value: "My result" } });
+      fireEvent.change(screen.getByRole("textbox", { name: /name/i }), {
+        target: { value: "My result" },
+      });
       fireEvent.click(screen.getByRole("button", { name: /^pin$/i }));
       expect(onPin).toHaveBeenCalledWith("msg-1", 0, "My result");
     });
 
     it("disables the confirm button when name is empty", () => {
       const message = makeMessage();
-      render(<PortalMessageUI message={message} pinnedBlocks={new Map()} onPin={jest.fn()} onUnpin={jest.fn()} />);
+      render(
+        <PortalMessageUI
+          message={message}
+          pinnedBlocks={new Map()}
+          onPin={jest.fn()}
+          onUnpin={jest.fn()}
+        />
+      );
       fireEvent.click(screen.getByRole("button", { name: /pin result/i }));
       expect(screen.getByRole("button", { name: /^pin$/i })).toBeDisabled();
     });
@@ -209,8 +324,12 @@ describe("PortalMessageUI", () => {
           onUnpin={jest.fn()}
         />
       );
-      expect(screen.getByRole("button", { name: /unpin result/i })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /^pin result$/i })).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /unpin result/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /^pin result$/i })
+      ).not.toBeInTheDocument();
     });
 
     it("calls onUnpin with portalResultId when unpin button is clicked", () => {
@@ -247,8 +366,12 @@ describe("PortalMessageUI", () => {
           onUnpin={jest.fn()}
         />
       );
-      expect(screen.getByRole("button", { name: /^pin result$/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /unpin result/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^pin result$/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /unpin result/i })
+      ).toBeInTheDocument();
     });
   });
 });

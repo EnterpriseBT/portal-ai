@@ -1,9 +1,8 @@
 import { jest } from "@jest/globals";
 
 const { render, screen, fireEvent, waitFor } = await import("./test-utils");
-const { CreateStationDialog } = await import(
-  "../components/CreateStationDialog.component"
-);
+const { CreateStationDialog } =
+  await import("../components/CreateStationDialog.component");
 
 const defaultProps = {
   open: true,
@@ -79,9 +78,7 @@ describe("CreateStationDialog", () => {
 
   it("should show 'Creating...' and disable buttons when pending", () => {
     render(<CreateStationDialog {...defaultProps} isPending={true} />);
-    expect(
-      screen.getByRole("button", { name: "Creating..." })
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
@@ -98,9 +95,7 @@ describe("CreateStationDialog", () => {
     expect(
       screen.getByText(/A station with this name already exists/)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/STATION_DUPLICATE_NAME/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/STATION_DUPLICATE_NAME/)).toBeInTheDocument();
   });
 
   it("should call onClose when Cancel is clicked", () => {

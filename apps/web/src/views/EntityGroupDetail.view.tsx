@@ -41,7 +41,11 @@ import { DeleteEntityGroupDialog } from "../components/DeleteEntityGroupDialog.c
 import { EditEntityGroupDialog } from "../components/EditEntityGroupDialog.component";
 import { FormAlert } from "../components/FormAlert.component";
 import { sdk, queryKeys } from "../api/sdk";
-import { useAuthFetch, toServerError, type ServerError } from "../utils/api.util";
+import {
+  useAuthFetch,
+  toServerError,
+  type ServerError,
+} from "../utils/api.util";
 import { useDialogAutoFocus } from "../utils/use-dialog-autofocus.util";
 import type { ApiSuccessResponse } from "@portalai/core/contracts";
 
@@ -184,7 +188,9 @@ export const AddMemberDialog: React.FC<AddMemberDialogProps> = ({
           <Button
             type="button"
             variant="contained"
-            onClick={() => { if (!addDisabled) onAddMember(); }}
+            onClick={() => {
+              if (!addDisabled) onAddMember();
+            }}
             disabled={addDisabled}
           >
             Submit
@@ -270,203 +276,218 @@ export const EntityGroupDetailViewUI: React.FC<
   isLoadingDeleteImpact,
   onDeleteDialogOpenChange,
 }) => {
-    const navigate = useNavigate();
-    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-    const [removeDialogMemberId, setRemoveDialogMemberId] = useState<
-      string | null
-    >(null);
+  const navigate = useNavigate();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [removeDialogMemberId, setRemoveDialogMemberId] = useState<
+    string | null
+  >(null);
 
-    const openDeleteDialog = () => {
-      setDeleteDialogOpen(true);
-      onDeleteDialogOpenChange?.(true);
-    };
-    const closeDeleteDialog = () => {
-      setDeleteDialogOpen(false);
-      onDeleteDialogOpenChange?.(false);
-    };
-
-    const handleConfirmDelete = () => {
-      closeDeleteDialog();
-      onDeleteGroup();
-    };
-
-    const handleConfirmRemove = () => {
-      if (removeDialogMemberId) {
-        onRemoveMember(removeDialogMemberId);
-      }
-      setRemoveDialogMemberId(null);
-    };
-
-    const membersColumns: DataTableColumn[] = [
-      {
-        key: "connectorEntityLabel",
-        label: "Entity Label",
-      },
-      {
-        key: "linkFieldMappingSourceField",
-        label: "Link Field"
-      },
-      {
-        key: "isPrimary",
-        label: "Primary",
-        render: (_value, row) => (
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (row.isPrimary) onDemoteMember(row.id as string)
-              else onPromoteMember(row.id as string)
-            }
-            }
-            aria-label={row.isPrimary ? "Remove as primary" : "Set as primary"}
-          >
-            {row.isPrimary ? <StarIcon color="primary" /> : <StarOutlineIcon />}
-          </IconButton>
-        ),
-      },
-      {
-        key: "actions",
-        label: "Actions",
-        render: (_value, row) => (
-          <IconButton
-            size="small"
-            color="error"
-            onClick={(e) => {
-              e.stopPropagation();
-              setRemoveDialogMemberId(row.id as string)
-            }}
-            aria-label="Remove member"
-          >
-            <DeleteIcon fontSize="small" />
-          </IconButton>
-        ),
-      },
-    ];
-
-    return (
-      <Box>
-        <Stack spacing={4}>
-          <PageHeader
-            breadcrumbs={[
-              { label: "Dashboard", href: "/" },
-              { label: "Entity Groups", href: "/entity-groups" },
-              { label: group.name },
-            ]}
-            onNavigate={(href) => navigate({ to: href })}
-            title={group.name}
-            icon={<Icon name={IconName.Hub} />}
-            primaryAction={
-              <Button
-                variant="contained"
-                startIcon={<EditIcon />}
-                onClick={onOpenEdit}
-                disabled={isUpdatingGroup}
-              >
-                Edit
-              </Button>
-            }
-            secondaryActions={[
-              { label: "Delete", icon: <DeleteIcon />, onClick: openDeleteDialog, color: "error", disabled: isDeletingGroup },
-            ]}
-          >
-            <MetadataList
-              size="medium"
-              items={[
-                { label: "Description", value: group.description ?? "", hidden: !group.description },
-              ]}
-            />
-          </PageHeader>
-
-          {/* Members table */}
-          <PageSection
-            title="Members"
-            icon={<Icon name={IconName.Person} />}
-            primaryAction={
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={onOpenAddMember}
-              >
-                Add Member
-              </Button>
-            }
-          >
-            <DataTable
-              columns={membersColumns}
-              rows={group.members.map((m) => ({ ...m } as Record<string, unknown>))}
-              emptyMessage="No members yet"
-              onRowClick={(row) => navigate({ to: "/entities/$entityId", params: { entityId: row.connectorEntityId as string } })}
-            />
-          </PageSection>
-
-        </Stack>
-
-        {/* Add member dialog */}
-        <AddMemberDialog
-          open={addMemberOpen}
-          onClose={onCloseAddMember}
-          onSearchEntities={onSearchEntities}
-          onSearchFieldMappings={onSearchFieldMappings}
-          selectedEntityId={selectedEntityId}
-          onEntityChange={onEntityChange}
-          selectedFieldMappingId={selectedFieldMappingId}
-          onFieldMappingChange={onFieldMappingChange}
-          isPrimary={addMemberIsPrimary}
-          onPrimaryChange={onAddMemberPrimaryChange}
-          overlap={overlap}
-          overlapLoading={overlapLoading}
-          onAddMember={onAddMember}
-          isAdding={isAddingMember}
-          serverError={addMemberServerError}
-        />
-
-        {/* Edit group dialog */}
-        <EditEntityGroupDialog
-          open={editOpen}
-          onClose={onCloseEdit}
-          group={group}
-          onSubmit={onUpdateGroup}
-          isPending={!!isUpdatingGroup}
-          serverError={editServerError}
-        />
-
-        {/* Delete group confirmation */}
-        <DeleteEntityGroupDialog
-          open={deleteDialogOpen}
-          onClose={closeDeleteDialog}
-          entityGroupName={group.name}
-          onConfirm={handleConfirmDelete}
-          isPending={isDeletingGroup}
-          impact={deleteImpact ?? null}
-          isLoadingImpact={isLoadingDeleteImpact}
-          serverError={deleteServerError ?? null}
-        />
-
-        {/* Remove member confirmation */}
-        <Dialog
-          open={!!removeDialogMemberId}
-          onClose={() => setRemoveDialogMemberId(null)}
-        >
-          <DialogTitle>Remove Member</DialogTitle>
-          <DialogContent>
-            <Typography>
-              Are you sure you want to remove this member from the group?
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setRemoveDialogMemberId(null)}>Cancel</Button>
-            <Button
-              color="error"
-              variant="contained"
-              onClick={handleConfirmRemove}
-            >
-              Remove
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </Box>
-    );
+  const openDeleteDialog = () => {
+    setDeleteDialogOpen(true);
+    onDeleteDialogOpenChange?.(true);
   };
+  const closeDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    onDeleteDialogOpenChange?.(false);
+  };
+
+  const handleConfirmDelete = () => {
+    closeDeleteDialog();
+    onDeleteGroup();
+  };
+
+  const handleConfirmRemove = () => {
+    if (removeDialogMemberId) {
+      onRemoveMember(removeDialogMemberId);
+    }
+    setRemoveDialogMemberId(null);
+  };
+
+  const membersColumns: DataTableColumn[] = [
+    {
+      key: "connectorEntityLabel",
+      label: "Entity Label",
+    },
+    {
+      key: "linkFieldMappingSourceField",
+      label: "Link Field",
+    },
+    {
+      key: "isPrimary",
+      label: "Primary",
+      render: (_value, row) => (
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (row.isPrimary) onDemoteMember(row.id as string);
+            else onPromoteMember(row.id as string);
+          }}
+          aria-label={row.isPrimary ? "Remove as primary" : "Set as primary"}
+        >
+          {row.isPrimary ? <StarIcon color="primary" /> : <StarOutlineIcon />}
+        </IconButton>
+      ),
+    },
+    {
+      key: "actions",
+      label: "Actions",
+      render: (_value, row) => (
+        <IconButton
+          size="small"
+          color="error"
+          onClick={(e) => {
+            e.stopPropagation();
+            setRemoveDialogMemberId(row.id as string);
+          }}
+          aria-label="Remove member"
+        >
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      ),
+    },
+  ];
+
+  return (
+    <Box>
+      <Stack spacing={4}>
+        <PageHeader
+          breadcrumbs={[
+            { label: "Dashboard", href: "/" },
+            { label: "Entity Groups", href: "/entity-groups" },
+            { label: group.name },
+          ]}
+          onNavigate={(href) => navigate({ to: href })}
+          title={group.name}
+          icon={<Icon name={IconName.Hub} />}
+          primaryAction={
+            <Button
+              variant="contained"
+              startIcon={<EditIcon />}
+              onClick={onOpenEdit}
+              disabled={isUpdatingGroup}
+            >
+              Edit
+            </Button>
+          }
+          secondaryActions={[
+            {
+              label: "Delete",
+              icon: <DeleteIcon />,
+              onClick: openDeleteDialog,
+              color: "error",
+              disabled: isDeletingGroup,
+            },
+          ]}
+        >
+          <MetadataList
+            size="medium"
+            items={[
+              {
+                label: "Description",
+                value: group.description ?? "",
+                hidden: !group.description,
+              },
+            ]}
+          />
+        </PageHeader>
+
+        {/* Members table */}
+        <PageSection
+          title="Members"
+          icon={<Icon name={IconName.Person} />}
+          primaryAction={
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={onOpenAddMember}
+            >
+              Add Member
+            </Button>
+          }
+        >
+          <DataTable
+            columns={membersColumns}
+            rows={group.members.map(
+              (m) => ({ ...m }) as Record<string, unknown>
+            )}
+            emptyMessage="No members yet"
+            onRowClick={(row) =>
+              navigate({
+                to: "/entities/$entityId",
+                params: { entityId: row.connectorEntityId as string },
+              })
+            }
+          />
+        </PageSection>
+      </Stack>
+
+      {/* Add member dialog */}
+      <AddMemberDialog
+        open={addMemberOpen}
+        onClose={onCloseAddMember}
+        onSearchEntities={onSearchEntities}
+        onSearchFieldMappings={onSearchFieldMappings}
+        selectedEntityId={selectedEntityId}
+        onEntityChange={onEntityChange}
+        selectedFieldMappingId={selectedFieldMappingId}
+        onFieldMappingChange={onFieldMappingChange}
+        isPrimary={addMemberIsPrimary}
+        onPrimaryChange={onAddMemberPrimaryChange}
+        overlap={overlap}
+        overlapLoading={overlapLoading}
+        onAddMember={onAddMember}
+        isAdding={isAddingMember}
+        serverError={addMemberServerError}
+      />
+
+      {/* Edit group dialog */}
+      <EditEntityGroupDialog
+        open={editOpen}
+        onClose={onCloseEdit}
+        group={group}
+        onSubmit={onUpdateGroup}
+        isPending={!!isUpdatingGroup}
+        serverError={editServerError}
+      />
+
+      {/* Delete group confirmation */}
+      <DeleteEntityGroupDialog
+        open={deleteDialogOpen}
+        onClose={closeDeleteDialog}
+        entityGroupName={group.name}
+        onConfirm={handleConfirmDelete}
+        isPending={isDeletingGroup}
+        impact={deleteImpact ?? null}
+        isLoadingImpact={isLoadingDeleteImpact}
+        serverError={deleteServerError ?? null}
+      />
+
+      {/* Remove member confirmation */}
+      <Dialog
+        open={!!removeDialogMemberId}
+        onClose={() => setRemoveDialogMemberId(null)}
+      >
+        <DialogTitle>Remove Member</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to remove this member from the group?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRemoveDialogMemberId(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleConfirmRemove}
+          >
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
 
 // ── Container (wires hooks) ─────────────────────────────────────────
 
@@ -490,7 +511,8 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   const addMemberMutation = sdk.entityGroups.addMember(entityGroupId);
 
   // Delete impact - the dialog state is inside the UI, but we track it here for the query
-  const [deleteDialogOpenForImpact, setDeleteDialogOpenForImpact] = useState(false);
+  const [deleteDialogOpenForImpact, setDeleteDialogOpenForImpact] =
+    useState(false);
   const impactQuery = sdk.entityGroups.impact(entityGroupId, {
     enabled: deleteDialogOpenForImpact,
   });
@@ -511,7 +533,9 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.root });
-    queryClient.invalidateQueries({ queryKey: queryKeys.entityGroups.get(entityGroupId) });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.entityGroups.get(entityGroupId),
+    });
   }, [queryClient, entityGroupId]);
 
   const fetchOverlap = useCallback(
@@ -671,10 +695,12 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
   ]);
 
   return (
-    <DataResult results={{ group: groupResult }} data-testid="entity-group-detail">
+    <DataResult
+      results={{ group: groupResult }}
+      data-testid="entity-group-detail"
+    >
       {(data) => {
-        const payload =
-          data.group as unknown as EntityGroupGetResponsePayload;
+        const payload = data.group as unknown as EntityGroupGetResponsePayload;
         return (
           <EntityGroupDetailViewUI
             group={payload.entityGroup}
@@ -707,7 +733,9 @@ export const EntityGroupDetailView: React.FC<EntityGroupDetailViewProps> = ({
             isDeletingGroup={deleteMutation.isPending}
             deleteServerError={toServerError(deleteMutation.error)}
             deleteImpact={impactQuery.data ?? null}
-            isLoadingDeleteImpact={impactQuery.isLoading && deleteDialogOpenForImpact}
+            isLoadingDeleteImpact={
+              impactQuery.isLoading && deleteDialogOpenForImpact
+            }
             onDeleteDialogOpenChange={setDeleteDialogOpenForImpact}
           />
         );

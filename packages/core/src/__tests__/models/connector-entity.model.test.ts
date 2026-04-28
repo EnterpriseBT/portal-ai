@@ -149,7 +149,9 @@ describe("ConnectorEntityModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(false);
       if (!result.success) {
-        const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
         expect(paths).toContain("connectorInstanceId");
         expect(paths).toContain("key");
         expect(paths).toContain("label");
@@ -166,7 +168,9 @@ describe("ConnectorEntityModelFactory", () => {
       const result = model.validate();
       expect(result.success).toBe(false);
       if (!result.success) {
-        const paths = result.error.issues.map((i: { path: unknown[] }) => i.path[0]);
+        const paths = result.error.issues.map(
+          (i: { path: unknown[] }) => i.path[0]
+        );
         expect(paths).toContain("key");
       }
     });

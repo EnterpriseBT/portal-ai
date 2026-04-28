@@ -95,7 +95,10 @@ function createConnectorDefinition() {
   };
 }
 
-function createConnectorInstance(connectorDefinitionId: string, organizationId: string) {
+function createConnectorInstance(
+  connectorDefinitionId: string,
+  organizationId: string
+) {
   return {
     id: generateId(),
     connectorDefinitionId,
@@ -116,7 +119,11 @@ function createConnectorInstance(connectorDefinitionId: string, organizationId: 
   };
 }
 
-function createConnectorEntity(organizationId: string, connectorInstanceId: string, overrides?: Partial<Record<string, unknown>>) {
+function createConnectorEntity(
+  organizationId: string,
+  connectorInstanceId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
   return {
     id: generateId(),
     organizationId,
@@ -133,7 +140,10 @@ function createConnectorEntity(organizationId: string, connectorInstanceId: stri
   };
 }
 
-function createColumnDef(organizationId: string, overrides?: Partial<Record<string, unknown>>) {
+function createColumnDef(
+  organizationId: string,
+  overrides?: Partial<Record<string, unknown>>
+) {
   return {
     id: generateId(),
     organizationId,
@@ -280,7 +290,9 @@ describe("Entity Group Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.entityGroups).toHaveLength(2);
-      const names = res.body.payload.entityGroups.map((g: { name: string }) => g.name);
+      const names = res.body.payload.entityGroups.map(
+        (g: { name: string }) => g.name
+      );
       expect(names).toContain("People");
       expect(names).toContain("People-Extended");
     });
@@ -296,35 +308,53 @@ describe("Entity Group Router", () => {
       );
 
       const group = createEntityGroup(organizationId, { name: "People" });
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
 
       // Create connector entity with field mapping
       const connDef = createConnectorDefinition();
-      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(connDef as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(connDef as never);
       const connInst = createConnectorInstance(connDef.id, organizationId);
-      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(connInst as never);
-      const entity = createConnectorEntity(organizationId, connInst.id, { label: "Employees" });
-      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(connInst as never);
+      const entity = createConnectorEntity(organizationId, connInst.id, {
+        label: "Employees",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity as never);
       const colDef = createColumnDef(organizationId, { key: "email" });
-      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef as never);
-      const mapping = createFieldMapping(organizationId, entity.id, colDef.id, { sourceField: "email" });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
+      const mapping = createFieldMapping(organizationId, entity.id, colDef.id, {
+        sourceField: "email",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
 
       // Add member
-      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values({
-        id: generateId(),
-        organizationId,
-        entityGroupId: group.id,
-        connectorEntityId: entity.id,
-        linkFieldMappingId: mapping.id,
-        isPrimary: true,
-        created: now,
-        createdBy: "SYSTEM_TEST",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values({
+          id: generateId(),
+          organizationId,
+          entityGroupId: group.id,
+          connectorEntityId: entity.id,
+          linkFieldMappingId: mapping.id,
+          isPrimary: true,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
 
       const res = await request(app)
         .get(`/api/entity-groups/${group.id}`)
@@ -334,8 +364,12 @@ describe("Entity Group Router", () => {
       expect(res.body.success).toBe(true);
       expect(res.body.payload.entityGroup.id).toBe(group.id);
       expect(res.body.payload.entityGroup.members).toHaveLength(1);
-      expect(res.body.payload.entityGroup.members[0].connectorEntityLabel).toBe("Employees");
-      expect(res.body.payload.entityGroup.members[0].linkFieldMappingSourceField).toBe("email");
+      expect(res.body.payload.entityGroup.members[0].connectorEntityLabel).toBe(
+        "Employees"
+      );
+      expect(
+        res.body.payload.entityGroup.members[0].linkFieldMappingSourceField
+      ).toBe("email");
     });
 
     it("should return 404 for unknown ID", async () => {
@@ -379,7 +413,9 @@ describe("Entity Group Router", () => {
 
       await (db as ReturnType<typeof drizzle>)
         .insert(entityGroups)
-        .values(createEntityGroup(organizationId, { name: "duplicate" }) as never);
+        .values(
+          createEntityGroup(organizationId, { name: "duplicate" }) as never
+        );
 
       const res = await request(app)
         .post("/api/entity-groups")
@@ -401,7 +437,9 @@ describe("Entity Group Router", () => {
       );
 
       const group = createEntityGroup(organizationId, { name: "original" });
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
 
       const res = await request(app)
         .patch(`/api/entity-groups/${group.id}`)
@@ -422,10 +460,16 @@ describe("Entity Group Router", () => {
 
       await (db as ReturnType<typeof drizzle>)
         .insert(entityGroups)
-        .values(createEntityGroup(organizationId, { name: "existing" }) as never);
+        .values(
+          createEntityGroup(organizationId, { name: "existing" }) as never
+        );
 
-      const groupToUpdate = createEntityGroup(organizationId, { name: "to-update" });
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(groupToUpdate as never);
+      const groupToUpdate = createEntityGroup(organizationId, {
+        name: "to-update",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(groupToUpdate as never);
 
       const res = await request(app)
         .patch(`/api/entity-groups/${groupToUpdate.id}`)
@@ -447,35 +491,49 @@ describe("Entity Group Router", () => {
       );
 
       const group = createEntityGroup(organizationId, { name: "to-delete" });
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
 
       // Create member
       const connDef = createConnectorDefinition();
-      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(connDef as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(connDef as never);
       const connInst = createConnectorInstance(connDef.id, organizationId);
-      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(connInst as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(connInst as never);
       const entity = createConnectorEntity(organizationId, connInst.id);
-      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity as never);
       const colDef = createColumnDef(organizationId, { key: "email" });
-      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
       const mapping = createFieldMapping(organizationId, entity.id, colDef.id);
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping as never);
 
       const memberId = generateId();
-      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values({
-        id: memberId,
-        organizationId,
-        entityGroupId: group.id,
-        connectorEntityId: entity.id,
-        linkFieldMappingId: mapping.id,
-        isPrimary: false,
-        created: now,
-        createdBy: "SYSTEM_TEST",
-        updated: null,
-        updatedBy: null,
-        deleted: null,
-        deletedBy: null,
-      } as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values({
+          id: memberId,
+          organizationId,
+          entityGroupId: group.id,
+          connectorEntityId: entity.id,
+          linkFieldMappingId: mapping.id,
+          isPrimary: false,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
 
       const deleteRes = await request(app)
         .delete(`/api/entity-groups/${group.id}`)
@@ -521,39 +579,81 @@ describe("Entity Group Router", () => {
       );
 
       const group = createEntityGroup(organizationId, { name: "impact-test" });
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
 
       // Create two members
       const connDef = createConnectorDefinition();
-      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(connDef as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(connDef as never);
       const connInst = createConnectorInstance(connDef.id, organizationId);
-      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(connInst as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(connInst as never);
 
-      const entity1 = createConnectorEntity(organizationId, connInst.id, { label: "Entity A" });
-      const entity2 = createConnectorEntity(organizationId, connInst.id, { label: "Entity B" });
-      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values([entity1, entity2] as never);
+      const entity1 = createConnectorEntity(organizationId, connInst.id, {
+        label: "Entity A",
+      });
+      const entity2 = createConnectorEntity(organizationId, connInst.id, {
+        label: "Entity B",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values([entity1, entity2] as never);
 
       const colDef = createColumnDef(organizationId, { key: "email" });
-      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef as never);
 
-      const mapping1 = createFieldMapping(organizationId, entity1.id, colDef.id);
-      const mapping2 = createFieldMapping(organizationId, entity2.id, colDef.id);
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values([mapping1, mapping2] as never);
+      const mapping1 = createFieldMapping(
+        organizationId,
+        entity1.id,
+        colDef.id
+      );
+      const mapping2 = createFieldMapping(
+        organizationId,
+        entity2.id,
+        colDef.id
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values([mapping1, mapping2] as never);
 
-      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values([
-        {
-          id: generateId(), organizationId, entityGroupId: group.id,
-          connectorEntityId: entity1.id, linkFieldMappingId: mapping1.id,
-          isPrimary: true, created: now, createdBy: "SYSTEM_TEST",
-          updated: null, updatedBy: null, deleted: null, deletedBy: null,
-        },
-        {
-          id: generateId(), organizationId, entityGroupId: group.id,
-          connectorEntityId: entity2.id, linkFieldMappingId: mapping2.id,
-          isPrimary: false, created: now, createdBy: "SYSTEM_TEST",
-          updated: null, updatedBy: null, deleted: null, deletedBy: null,
-        },
-      ] as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values([
+          {
+            id: generateId(),
+            organizationId,
+            entityGroupId: group.id,
+            connectorEntityId: entity1.id,
+            linkFieldMappingId: mapping1.id,
+            isPrimary: true,
+            created: now,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+          {
+            id: generateId(),
+            organizationId,
+            entityGroupId: group.id,
+            connectorEntityId: entity2.id,
+            linkFieldMappingId: mapping2.id,
+            isPrimary: false,
+            created: now,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+        ] as never);
 
       const res = await request(app)
         .get(`/api/entity-groups/${group.id}/impact`)
@@ -585,64 +685,133 @@ describe("Entity Group Router", () => {
       );
 
       const group = createEntityGroup(organizationId, { name: "People" });
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
 
       // Create two entities with field mappings
       const connDef = createConnectorDefinition();
-      await (db as ReturnType<typeof drizzle>).insert(connectorDefinitions).values(connDef as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(connDef as never);
       const connInst = createConnectorInstance(connDef.id, organizationId);
-      await (db as ReturnType<typeof drizzle>).insert(connectorInstances).values(connInst as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(connInst as never);
 
-      const entity1 = createConnectorEntity(organizationId, connInst.id, { label: "Employees" });
-      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity1 as never);
+      const entity1 = createConnectorEntity(organizationId, connInst.id, {
+        label: "Employees",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity1 as never);
       const colDef1 = createColumnDef(organizationId, { key: "email" });
-      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef1 as never);
-      const mapping1 = createFieldMapping(organizationId, entity1.id, colDef1.id, { sourceField: "email" });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping1 as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef1 as never);
+      const mapping1 = createFieldMapping(
+        organizationId,
+        entity1.id,
+        colDef1.id,
+        { sourceField: "email" }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping1 as never);
 
-      const entity2 = createConnectorEntity(organizationId, connInst.id, { label: "Contacts" });
-      await (db as ReturnType<typeof drizzle>).insert(connectorEntities).values(entity2 as never);
+      const entity2 = createConnectorEntity(organizationId, connInst.id, {
+        label: "Contacts",
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorEntities)
+        .values(entity2 as never);
       const colDef2 = createColumnDef(organizationId, { key: "contact_email" });
-      await (db as ReturnType<typeof drizzle>).insert(columnDefinitions).values(colDef2 as never);
-      const mapping2 = createFieldMapping(organizationId, entity2.id, colDef2.id, { sourceField: "contact_email" });
-      await (db as ReturnType<typeof drizzle>).insert(fieldMappings).values(mapping2 as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(columnDefinitions)
+        .values(colDef2 as never);
+      const mapping2 = createFieldMapping(
+        organizationId,
+        entity2.id,
+        colDef2.id,
+        { sourceField: "contact_email" }
+      );
+      await (db as ReturnType<typeof drizzle>)
+        .insert(fieldMappings)
+        .values(mapping2 as never);
 
       // Add members
-      await (db as ReturnType<typeof drizzle>).insert(entityGroupMembers).values([
-        {
-          id: generateId(), organizationId, entityGroupId: group.id,
-          connectorEntityId: entity1.id, linkFieldMappingId: mapping1.id,
-          isPrimary: true, created: now, createdBy: "SYSTEM_TEST",
-          updated: null, updatedBy: null, deleted: null, deletedBy: null,
-        },
-        {
-          id: generateId(), organizationId, entityGroupId: group.id,
-          connectorEntityId: entity2.id, linkFieldMappingId: mapping2.id,
-          isPrimary: false, created: now, createdBy: "SYSTEM_TEST",
-          updated: null, updatedBy: null, deleted: null, deletedBy: null,
-        },
-      ] as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroupMembers)
+        .values([
+          {
+            id: generateId(),
+            organizationId,
+            entityGroupId: group.id,
+            connectorEntityId: entity1.id,
+            linkFieldMappingId: mapping1.id,
+            isPrimary: true,
+            created: now,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+          {
+            id: generateId(),
+            organizationId,
+            entityGroupId: group.id,
+            connectorEntityId: entity2.id,
+            linkFieldMappingId: mapping2.id,
+            isPrimary: false,
+            created: now,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          },
+        ] as never);
 
       // Create records
-      await (db as ReturnType<typeof drizzle>).insert(entityRecords).values([
-        createEntityRecord(organizationId, entity1.id, { email: "test@example.com", name: "Alice" }),
-        createEntityRecord(organizationId, entity1.id, { email: "other@example.com", name: "Bob" }),
-        createEntityRecord(organizationId, entity2.id, { contact_email: "test@example.com", phone: "555" }),
-      ] as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityRecords)
+        .values([
+          createEntityRecord(organizationId, entity1.id, {
+            email: "test@example.com",
+            name: "Alice",
+          }),
+          createEntityRecord(organizationId, entity1.id, {
+            email: "other@example.com",
+            name: "Bob",
+          }),
+          createEntityRecord(organizationId, entity2.id, {
+            contact_email: "test@example.com",
+            phone: "555",
+          }),
+        ] as never);
 
       const res = await request(app)
-        .get(`/api/entity-groups/${group.id}/resolve?linkValue=test@example.com`)
+        .get(
+          `/api/entity-groups/${group.id}/resolve?linkValue=test@example.com`
+        )
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.payload.results).toHaveLength(2);
 
-      const employeeResult = res.body.payload.results.find((r: { connectorEntityLabel: string }) => r.connectorEntityLabel === "Employees");
+      const employeeResult = res.body.payload.results.find(
+        (r: { connectorEntityLabel: string }) =>
+          r.connectorEntityLabel === "Employees"
+      );
       expect(employeeResult.records).toHaveLength(1);
       expect(employeeResult.isPrimary).toBe(true);
 
-      const contactResult = res.body.payload.results.find((r: { connectorEntityLabel: string }) => r.connectorEntityLabel === "Contacts");
+      const contactResult = res.body.payload.results.find(
+        (r: { connectorEntityLabel: string }) =>
+          r.connectorEntityLabel === "Contacts"
+      );
       expect(contactResult.records).toHaveLength(1);
       expect(contactResult.isPrimary).toBe(false);
     });
@@ -654,10 +823,14 @@ describe("Entity Group Router", () => {
       );
 
       const group = createEntityGroup(organizationId, { name: "People" });
-      await (db as ReturnType<typeof drizzle>).insert(entityGroups).values(group as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(entityGroups)
+        .values(group as never);
 
       const res = await request(app)
-        .get(`/api/entity-groups/${group.id}/resolve?linkValue=nobody@example.com`)
+        .get(
+          `/api/entity-groups/${group.id}/resolve?linkValue=nobody@example.com`
+        )
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);

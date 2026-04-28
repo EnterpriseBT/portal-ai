@@ -5,13 +5,7 @@ import {
   type ColumnDefinitionUpdateRequestBody,
 } from "@portalai/core/contracts";
 import type { ColumnDefinition, ColumnDataType } from "@portalai/core/models";
-import {
-  Button,
-  Modal,
-  Stack,
-  Typography,
-  Select,
-} from "@portalai/core/ui";
+import { Button, Modal, Stack, Typography, Select } from "@portalai/core/ui";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import MenuItem from "@mui/material/MenuItem";
@@ -77,28 +71,47 @@ const EditForm: React.FC<{
   isPending?: boolean;
   serverError?: ServerError | null;
   warnings?: string[];
-}> = ({ columnDefinition: cd, onSubmit, onClose, isPending, serverError, warnings }) => {
+}> = ({
+  columnDefinition: cd,
+  onSubmit,
+  onClose,
+  isPending,
+  serverError,
+  warnings,
+}) => {
   const [label, setLabel] = useState(cd.label);
   const [type, setType] = useState<ColumnDataType>(cd.type);
   const [description, setDescription] = useState(cd.description ?? "");
-  const [preset, setPreset] = useState(() => findPresetByPattern(cd.validationPattern));
-  const [validationPattern, setValidationPattern] = useState(cd.validationPattern ?? "");
-  const [validationMessage, setValidationMessage] = useState(cd.validationMessage ?? "");
-  const [canonicalFormat, setCanonicalFormat] = useState(cd.canonicalFormat ?? "");
+  const [preset, setPreset] = useState(() =>
+    findPresetByPattern(cd.validationPattern)
+  );
+  const [validationPattern, setValidationPattern] = useState(
+    cd.validationPattern ?? ""
+  );
+  const [validationMessage, setValidationMessage] = useState(
+    cd.validationMessage ?? ""
+  );
+  const [canonicalFormat, setCanonicalFormat] = useState(
+    cd.canonicalFormat ?? ""
+  );
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [showRevalidationWarning, setShowRevalidationWarning] = useState(false);
-  const [pendingBody, setPendingBody] = useState<ColumnDefinitionUpdateRequestBody | null>(null);
+  const [pendingBody, setPendingBody] =
+    useState<ColumnDefinitionUpdateRequestBody | null>(null);
   const labelRef = useDialogAutoFocus(true);
 
   const allowedTargetTypes = BLOCKED_TYPES.has(cd.type)
     ? []
-    : ALLOWED_TYPE_TRANSITIONS[cd.type] ?? [];
+    : (ALLOWED_TYPE_TRANSITIONS[cd.type] ?? []);
 
   const typeConfig = getTypeConfig(type);
 
   const validate = (data: Record<string, unknown>, vp?: string): FormErrors => {
-    const result = validateWithSchema(ColumnDefinitionUpdateRequestBodySchema, data);
+    const result = validateWithSchema(
+      ColumnDefinitionUpdateRequestBodySchema,
+      data
+    );
     const errs = result.success ? {} : { ...result.errors };
     const regexError = validateRegex(vp ?? validationPattern);
     if (regexError) errs.validationPattern = regexError;
@@ -114,7 +127,10 @@ const EditForm: React.FC<{
       setValidationMessage("");
       setPreset("");
     }
-    if (!newConfig.canonicalFormat.enabled || newConfig.canonicalFormat.options !== prevConfig.canonicalFormat.options) {
+    if (
+      !newConfig.canonicalFormat.enabled ||
+      newConfig.canonicalFormat.options !== prevConfig.canonicalFormat.options
+    ) {
       setCanonicalFormat("");
     }
   };
@@ -138,15 +154,21 @@ const EditForm: React.FC<{
 
     if (trimLabel !== cd.label) body.label = trimLabel;
     if (type !== cd.type) body.type = type;
-    if (trimDesc !== (cd.description ?? "")) body.description = trimDesc || null;
-    if (trimValidationPattern !== (cd.validationPattern ?? "")) body.validationPattern = trimValidationPattern || null;
-    if (trimValidationMessage !== (cd.validationMessage ?? "")) body.validationMessage = trimValidationMessage || null;
-    if (trimCanonicalFormat !== (cd.canonicalFormat ?? "")) body.canonicalFormat = trimCanonicalFormat || null;
+    if (trimDesc !== (cd.description ?? ""))
+      body.description = trimDesc || null;
+    if (trimValidationPattern !== (cd.validationPattern ?? ""))
+      body.validationPattern = trimValidationPattern || null;
+    if (trimValidationMessage !== (cd.validationMessage ?? ""))
+      body.validationMessage = trimValidationMessage || null;
+    if (trimCanonicalFormat !== (cd.canonicalFormat ?? ""))
+      body.canonicalFormat = trimCanonicalFormat || null;
 
     return body;
   };
 
-  const needsRevalidation = (body: ColumnDefinitionUpdateRequestBody): boolean =>
+  const needsRevalidation = (
+    body: ColumnDefinitionUpdateRequestBody
+  ): boolean =>
     body.validationPattern !== undefined || body.canonicalFormat !== undefined;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -197,7 +219,12 @@ const EditForm: React.FC<{
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -229,7 +256,8 @@ const EditForm: React.FC<{
           value={label}
           onChange={(e) => {
             setLabel(e.target.value);
-            if (touched.label) setErrors(validate({ label: e.target.value.trim() }));
+            if (touched.label)
+              setErrors(validate({ label: e.target.value.trim() }));
           }}
           onBlur={() => {
             setTouched((p) => ({ ...p, label: true }));
@@ -237,7 +265,9 @@ const EditForm: React.FC<{
           }}
           error={touched.label && !!errors.label}
           helperText={touched.label && errors.label}
-          slotProps={{ htmlInput: { "aria-invalid": touched.label && !!errors.label } }}
+          slotProps={{
+            htmlInput: { "aria-invalid": touched.label && !!errors.label },
+          }}
           required
           fullWidth
           size="small"
@@ -251,7 +281,9 @@ const EditForm: React.FC<{
           onChange={(e) => handleTypeChange(e.target.value as ColumnDataType)}
           fullWidth
           size="small"
-          disabled={BLOCKED_TYPES.has(cd.type) && allowedTargetTypes.length === 0}
+          disabled={
+            BLOCKED_TYPES.has(cd.type) && allowedTargetTypes.length === 0
+          }
         >
           {ALL_TYPES.map((t) => {
             const isCurrent = t === cd.type;
@@ -260,7 +292,9 @@ const EditForm: React.FC<{
               <MenuItem key={t} value={t} disabled={!isAllowed}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <span>{t}</span>
-                  {isCurrent && <Chip label="current" size="small" variant="outlined" />}
+                  {isCurrent && (
+                    <Chip label="current" size="small" variant="outlined" />
+                  )}
                 </Stack>
               </MenuItem>
             );
@@ -300,7 +334,8 @@ const EditForm: React.FC<{
           value={validationPattern}
           onChange={(e) => {
             setValidationPattern(e.target.value);
-            if (touched.validationPattern) setErrors(validate({ label: label.trim() }, e.target.value));
+            if (touched.validationPattern)
+              setErrors(validate({ label: label.trim() }, e.target.value));
           }}
           onBlur={() => {
             setTouched((p) => ({ ...p, validationPattern: true }));
@@ -313,9 +348,15 @@ const EditForm: React.FC<{
           helperText={
             !typeConfig.validation.enabled
               ? "Not applicable for this column type"
-              : (touched.validationPattern && errors.validationPattern) || "Regex that values must match after coercion"
+              : (touched.validationPattern && errors.validationPattern) ||
+                "Regex that values must match after coercion"
           }
-          slotProps={{ htmlInput: { "aria-invalid": touched.validationPattern && !!errors.validationPattern } }}
+          slotProps={{
+            htmlInput: {
+              "aria-invalid":
+                touched.validationPattern && !!errors.validationPattern,
+            },
+          }}
         />
 
         {/* Validation Message */}
@@ -365,7 +406,8 @@ const EditForm: React.FC<{
             }
           >
             <Typography variant="body2">
-              Changing validation pattern or canonical format will trigger re-validation of affected records. This may take a moment.
+              Changing validation pattern or canonical format will trigger
+              re-validation of affected records. This may take a moment.
             </Typography>
           </Alert>
         )}
@@ -392,7 +434,15 @@ const EditForm: React.FC<{
 
 export const EditColumnDefinitionDialog: React.FC<
   EditColumnDefinitionDialogProps
-> = ({ open, onClose, columnDefinition, onSubmit, isPending, serverError, warnings }) => {
+> = ({
+  open,
+  onClose,
+  columnDefinition,
+  onSubmit,
+  isPending,
+  serverError,
+  warnings,
+}) => {
   if (!open) return null;
 
   return (

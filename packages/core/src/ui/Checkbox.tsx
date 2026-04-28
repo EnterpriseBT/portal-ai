@@ -10,7 +10,10 @@ export interface CheckboxProps extends Omit<MuiCheckboxProps, "onChange"> {
   label?: React.ReactNode;
   helperText?: string;
   error?: boolean;
-  onChange?: (checked: boolean, event: React.ChangeEvent<HTMLInputElement>) => void;
+  onChange?: (
+    checked: boolean,
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => void;
   [key: `data-${string}`]: string;
 }
 

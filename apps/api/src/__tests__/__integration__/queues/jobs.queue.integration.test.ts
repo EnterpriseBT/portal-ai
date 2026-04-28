@@ -6,16 +6,14 @@
  * and lifecycle event forwarding.
  */
 
-import {
-  describe,
-  it,
-  expect,
-  afterEach,
-  jest,
-} from "@jest/globals";
+import { describe, it, expect, afterEach, jest } from "@jest/globals";
 import { Queue, Worker, Job as BullJob } from "bullmq";
 
-import { connectionOpts, uniqueQueueName, waitForJobState } from "./queue.util.js";
+import {
+  connectionOpts,
+  uniqueQueueName,
+  waitForJobState,
+} from "./queue.util.js";
 
 // ── Tests ────────────────────────────────────────────────────────────────
 

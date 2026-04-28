@@ -19,14 +19,14 @@ describe("ActionsMenu Component", () => {
     it("should render the trigger button with default aria-label", () => {
       render(<ActionsMenu items={items} />);
       expect(
-        screen.getByRole("button", { name: "More actions" }),
+        screen.getByRole("button", { name: "More actions" })
       ).toBeInTheDocument();
     });
 
     it("should render the trigger button with a custom aria-label", () => {
       render(<ActionsMenu items={items} ariaLabel="Station actions" />);
       expect(
-        screen.getByRole("button", { name: "Station actions" }),
+        screen.getByRole("button", { name: "Station actions" })
       ).toBeInTheDocument();
     });
 
@@ -37,29 +37,35 @@ describe("ActionsMenu Component", () => {
 
     it("should set aria-haspopup on the trigger", () => {
       render(<ActionsMenu items={items} />);
-      expect(screen.getByRole("button", { name: "More actions" })).toHaveAttribute(
-        "aria-haspopup",
-        "true",
-      );
+      expect(
+        screen.getByRole("button", { name: "More actions" })
+      ).toHaveAttribute("aria-haspopup", "true");
     });
 
     it("should set aria-expanded to false when closed", () => {
       render(<ActionsMenu items={items} />);
-      expect(screen.getByRole("button", { name: "More actions" })).toHaveAttribute(
-        "aria-expanded",
-        "false",
-      );
+      expect(
+        screen.getByRole("button", { name: "More actions" })
+      ).toHaveAttribute("aria-expanded", "false");
     });
   });
 
   describe("Opening and Closing", () => {
     it("should show all menu items when the trigger is clicked", async () => {
       render(<ActionsMenu items={items} />);
-      await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "More actions" })
+      );
 
-      expect(screen.getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
-      expect(screen.getByRole("menuitem", { name: "Duplicate" })).toBeInTheDocument();
-      expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Edit" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Duplicate" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Delete" })
+      ).toBeInTheDocument();
     });
 
     it("should set aria-expanded to true when open", async () => {
@@ -72,7 +78,9 @@ describe("ActionsMenu Component", () => {
 
     it("should close the menu after clicking a menu item", async () => {
       render(<ActionsMenu items={items} />);
-      await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "More actions" })
+      );
       await userEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
 
       expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
@@ -82,7 +90,9 @@ describe("ActionsMenu Component", () => {
   describe("Item Callbacks", () => {
     it("should call the item onClick handler when clicked", async () => {
       render(<ActionsMenu items={items} />);
-      await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "More actions" })
+      );
       await userEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
 
       expect(items[0].onClick).toHaveBeenCalledTimes(1);
@@ -95,9 +105,13 @@ describe("ActionsMenu Component", () => {
         { label: "Disabled Action", onClick: jest.fn(), disabled: true },
       ];
       render(<ActionsMenu items={disabledItems} />);
-      await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "More actions" })
+      );
 
-      const menuItem = screen.getByRole("menuitem", { name: "Disabled Action" });
+      const menuItem = screen.getByRole("menuitem", {
+        name: "Disabled Action",
+      });
       expect(menuItem).toHaveAttribute("aria-disabled", "true");
     });
   });
@@ -112,7 +126,9 @@ describe("ActionsMenu Component", () => {
         },
       ];
       render(<ActionsMenu items={itemsWithIcon} />);
-      await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "More actions" })
+      );
 
       expect(screen.getByTestId("settings-icon")).toBeInTheDocument();
     });
@@ -120,11 +136,13 @@ describe("ActionsMenu Component", () => {
     it("should not render icon containers when icons are not provided", async () => {
       const plainItems = [{ label: "Plain", onClick: jest.fn() }];
       render(<ActionsMenu items={plainItems} />);
-      await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "More actions" })
+      );
 
       const menuItem = screen.getByRole("menuitem", { name: "Plain" });
       expect(
-        menuItem.querySelector(".MuiListItemIcon-root"),
+        menuItem.querySelector(".MuiListItemIcon-root")
       ).not.toBeInTheDocument();
     });
   });

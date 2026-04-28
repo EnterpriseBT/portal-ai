@@ -109,14 +109,21 @@ export const DeleteConnectorInstanceDialog: React.FC<
       }}
       actions={
         <Stack direction="row" spacing={1}>
-          <Button type="button" variant="outlined" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outlined"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button
             type="button"
             variant="contained"
             color="error"
-            onClick={() => { if (!deleteDisabled) onConfirm(); }}
+            onClick={() => {
+              if (!deleteDisabled) onConfirm();
+            }}
             disabled={deleteDisabled}
           >
             {isPending ? "Deleting..." : "Delete"}
