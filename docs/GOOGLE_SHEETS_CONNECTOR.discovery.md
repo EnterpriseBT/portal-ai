@@ -2,19 +2,20 @@
 
 ## Goal
 
-Add a `google-sheets` connector that lets a user authorize Portal.ai against their Google account, pick one or more sheets to bring in, run the same region-editing workflow that file uploads use, and have the data **periodically sync** into `entity_records` from those source sheets.
+Add a `google-sheets` connector that lets a user authorize Portal.ai against their Google account, pick one or more sheets to bring in, run the same region-editing workflow that file uploads use, and let them **manually re-sync** the data into `entity_records` from the source sheet on demand.
 
 Concretely, this means:
 
 1. **OAuth2 authorization flow.** The user grants Portal.ai read access to their Google Drive/Sheets. We persist refresh-token-bearing credentials per `ConnectorInstance`.
 2. **Sheet discovery + selection.** After auth, the user picks a Google Drive sheet (single or multiple) from their authorized scope. Each selected workbook becomes the input to the region-drawing step.
 3. **Region editing — same UX as file upload.** We reuse the `modules/RegionEditor` (and the shared interpret/commit pipeline) so the user can draw regions, get an LLM-interpreted plan, and review/commit bindings exactly like the file-upload workflow.
-4. **Cadenced sync.** Once committed, the connector instance has a sync cadence. A scheduled job re-fetches the source sheet, replays the persisted `LayoutPlan` against the new bytes, and upserts into `entity_records`. Liveness is the cadence, not a mode flag (per project's connector model — see `feedback_connector_domain_model`).
+4. **Manual re-sync.** Once committed, the user can hit a "Sync now" affordance on the connector. The server re-fetches the source sheet, replays the persisted `LayoutPlan` against the new bytes, and upserts into `entity_records`. Liveness is sync invocation, not a mode flag (per project's connector model — see `feedback_connector_domain_model`). **No scheduled cadence in v1** — see "Sync Model" below for the rationale.
 
 Non-goals for this discovery:
 
 - Two-way write-back to Sheets (we only `read`/`sync`, not `write`/`push`).
-- Cell-level real-time push (Google's push notifications via webhook). Polling cadence first; webhooks can come later as an optimization.
+- Scheduled / repeating sync (hourly, daily, weekly). v1 ships manual-only; a cadence option can be layered in once the identity-strategy requirements (below) are enforced and we have signal that automatic sync is wanted.
+- Cell-level real-time push (Google's push notifications via webhook).
 - Office 365 / Excel Online — same shape, separate definition slug; out of scope here.
 
 ---
@@ -77,7 +78,13 @@ Portal.ai becomes its own OAuth2 client against Google. Per-instance flow:
 
 **Scopes**: `https://www.googleapis.com/auth/drive.readonly` + `https://www.googleapis.com/auth/spreadsheets.readonly`. Drive scope is needed to *list* the user's sheets; Sheets scope is needed to *read* their cells. We can narrow to `drive.file` later if we adopt the Google Picker UI (only files the user explicitly picks via Google's own picker are visible to us).
 
-**Credential storage**: encrypt the credential JSON (`{ refresh_token, scopes, googleAccountEmail }`) using AES-GCM keyed off `ENCRYPTION_KEY`, store base64 in `connector_instances.credentials`. Decrypt on demand inside the adapter when a sync runs. We **do not** store access tokens.
+**Token exchange**: the API speaks to Google directly (`https://oauth2.googleapis.com/token`) using `googleapis` (or a thin `fetch` wrapper). No Auth0 Action in the path — Auth0 stays a sign-in concern; the connector dependency graph stays clean.
+
+**Credential storage**: encrypt the credential JSON (`{ refresh_token, scopes, googleAccountEmail }`) using AES-GCM keyed off `ENCRYPTION_KEY`, store base64 in `connector_instances.credentials`. Decrypt on demand inside the adapter when a sync runs. We **do not** store access tokens. `googleAccountEmail` is also surfaced in the connector instance's API response (out of the credentials blob — read once at decrypt, returned alongside non-secret config) so the UI can render an account chip on the connector card.
+
+**Account scoping**: one `ConnectorInstance` per `(organization, googleAccountEmail)`. A user with personal + work Google accounts gets two instances; the chip on each card disambiguates which account a sheet is being read from. The OAuth callback enforces this — if the just-authorized email matches an existing instance for the org, we update its credentials instead of creating a duplicate.
+
+**Workbook scoping**: one `ConnectorInstance` per Drive workbook (a workbook = potentially many tabs, but one Drive file). One persisted `LayoutPlan` describes regions across all tabs in that workbook. We do not split per-tab — a per-tab model would force the user to re-auth and re-pick a sheet for every tab they care about, and the plan schema already happily spans multiple sheets in one workbook.
 
 **Refresh**: a small `GoogleAuthService` lazily refreshes the access token (using `refresh_token`) and caches it in Redis under `gsheets:access:{connectorInstanceId}` for ~50 min (Google's tokens last 60 min). Concurrent syncs share the cached token.
 
@@ -97,19 +104,19 @@ Portal.ai becomes its own OAuth2 client against Google. Per-instance flow:
 
 ## Sheet Discovery & Selection
 
-After authorization, before region drawing, the user needs to pick which sheet(s) to ingest. Two UX options:
+After authorization, before region drawing, the user needs to pick which sheet(s) to ingest. **Decision: Option B (API-driven list).**
 
-### Option A — Google Picker iframe (best UX, more setup)
-
-Google ships a JS library that renders an authorized file picker against the user's Drive. Pros: the user sees their real Drive folder structure; we only see the files they explicitly pick (lets us narrow to `drive.file` scope). Cons: requires loading Google's JS, an extra API key, and an additional OAuth scope just for the picker.
-
-### Option B — API-driven list (simpler v1)
+### Option B — API-driven list (chosen)
 
 After auth, hit Google Drive's `files.list` endpoint server-side and stream a paginated list of `mimeType = 'application/vnd.google-apps.spreadsheet'` files into the workflow UI. Render an `AsyncSearchableSelect` (already a `modules/` primitive) with debounced search.
 
-**Recommendation: ship Option B for v1.** Simpler, no extra Google JS dependency, and the `AsyncSearchableSelect` pattern is already idiomatic in the app (per `feedback_use_include_joins`). Picker can come later if users want narrower scope.
+Why this over Option A: simpler, no extra Google JS dependency, and the `AsyncSearchableSelect` pattern is already idiomatic in the app (per `feedback_use_include_joins`). Implication: v1 ships with the broader `drive.readonly` scope (we can list every spreadsheet in the user's Drive, not just files the user picked); narrowing to `drive.file` is the main reason to revisit Option A later.
 
 The selected sheet's `spreadsheetId` (and a snapshot of its title) gets stored in `ConnectorInstance.config: { spreadsheetId, title, fetchedAt }`.
+
+### Option A — Google Picker iframe (deferred)
+
+Google ships a JS library that renders an authorized file picker against the user's Drive. Pros: the user sees their real Drive folder structure; we only see the files they explicitly pick (lets us narrow to `drive.file` scope). Cons: requires loading Google's JS, an extra API key, and an additional OAuth scope just for the picker. Revisit if/when scope narrowing becomes a customer ask or a security requirement.
 
 ---
 
@@ -154,23 +161,101 @@ Steps:
 
 ---
 
-## Sync Model: Cadenced Replay
+## Sync Model: Manual Replay (v1)
 
-Per the project's connector model, liveness is a sync cadence, not a separate mode. Sync model:
+v1 ships **manual sync only**. The user clicks "Sync now" on the connector instance; the server re-fetches the spreadsheet, replays the persisted `LayoutPlan` against the new bytes, upserts records, and soft-deletes records whose source rows have disappeared. No background cadence, no repeating BullMQ job.
 
-- **Cadence on `ConnectorInstance.config.syncCadence`**: `"manual" | "hourly" | "daily" | "weekly"`. Default `daily` for v1; `manual`-only is fine for the first ship.
-- **A repeating BullMQ job** `gsheets-sync` (this would be our first repeat job — adds `addRepeatable` wiring to `jobs.queue.ts`) ticks every hour and looks up due instances. Or — simpler and cheaper — a single `gsheets-sync-tick` cron (every 15 min) that queries instances where `lastSyncAt + cadence < now()` and enqueues them individually.
+- **No `syncCadence` config**. `ConnectorInstance.config` carries `{ spreadsheetId, title }` only. If/when scheduled sync ships later, it adds a `syncCadence` field — but only after the identity-strategy guard below is in place.
+- **On-demand only** — `POST /api/connector-instances/:id/sync` enqueues a one-shot BullMQ job (no `addRepeatable` wiring needed) and returns a job id the UI polls. The connector detail view exposes the trigger button + a "last synced at" timestamp.
 - **Per-sync work** (inside `gsheets.adapter.syncEntity`):
-  1. Decrypt credentials → get fresh access token.
-  2. Re-fetch the spreadsheet via `spreadsheets.get?includeGridData=true`.
-  3. Build a `WorkbookData`.
-  4. Load the persisted `LayoutPlan` from `connector_instance_layout_plans`.
-  5. Run replay (`@portalai/spreadsheet-parsing/replay`) against the new `WorkbookData` to materialize records.
-  6. Diff against existing `entity_records` for this instance — `upsertManyBySourceId` handles the upsert; we delete records whose source rows no longer exist.
-  7. Update `lastSyncAt`, clear `lastErrorMessage`, or set `status="error"` + message on failure.
-- **On-demand sync** — a `POST /api/connector-instances/:id/sync` route enqueues the same job immediately and returns a job id the UI can poll.
+  1. Guard: refuse to run if the persisted `LayoutPlan` has any region with a `rowPosition` identity strategy — see "Sync identity requirement" below.
+  2. Decrypt credentials → get fresh access token.
+  3. Re-fetch the spreadsheet via `spreadsheets.get?includeGridData=true`.
+  4. Build a `WorkbookData`.
+  5. Load the persisted `LayoutPlan` from `connector_instance_layout_plans`.
+  6. Run replay (`@portalai/spreadsheet-parsing/replay`) against the new `WorkbookData` to materialize `ExtractedRecord[]`.
+  7. Per `connectorEntityId`: upsert via `entityRecords.upsertManyBySourceId`, then soft-delete the diff (see "Disappeared-records reconciliation" below).
+  8. Update `lastSyncAt`, clear `lastErrorMessage`, or set `status="error"` + message on failure.
 
 **Drift handling.** The persisted `LayoutPlan` is anchored to specific cells/headers. If the user reshapes the sheet (renamed columns, moved a region), the next sync may produce drift warnings or zero rows. Same drift surface that already exists for file uploads after re-interpret is reused; the UI surfaces a "Re-edit regions" affordance from the connector detail view.
+
+### Sync identity requirement
+
+The existing commit pipeline (`apps/api/src/services/layout-plan-commit.service.ts:writeRecords`) upserts `entity_records` on `(connector_entity_id, source_id)`. `source_id` is derived during replay by `deriveSourceId()` from the region's `IdentityStrategy`, which interpret picks per region:
+
+| Strategy | sourceId | Sync-safe? |
+|---|---|---|
+| `column` | value of one identifier column (e.g. `id`, `email`) | ✅ stable across syncs |
+| `composite` | `col1.value + "|" + col2.value` for two columns that together are unique | ✅ stable across syncs |
+| `rowPosition` | synthesized: `cell-{r}-{c}` / `col-{c}` / `row-{r}` | ❌ shifts on row insert/delete — every sync looks like full churn |
+
+**Therefore: a region whose chosen `identityStrategy.kind === "rowPosition"` is not eligible for sync.** Two enforcement points:
+
+1. **Commit-time UX**. The review step inspects the plan; for any region landing on `rowPosition`, surface a banner ("This region uses positional row IDs — it can be imported once but not re-synced. Add an identifier column to enable sync.") and either block the commit or let the user proceed with a one-shot import. Decision: let them proceed with one-shot import; just disable the "Sync now" button for that connector instance.
+2. **Adapter-time guard**. `gsheets.adapter.syncEntity` re-checks the loaded `LayoutPlan` and refuses with a clear `LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY` error if any region is `rowPosition`. Belt-and-suspenders: prevents stale UI state from triggering a churn-storm.
+
+The persisted `LayoutPlan` already carries the chosen `identityStrategy` per region (`packages/spreadsheet-parsing/src/plan/region.schema.ts`), so both checks are pure reads against the plan — no extra schema work.
+
+This guard is also why scheduled cadence is deferred: enabling per-cadence config without the guard would let a single committed plan with `rowPosition` identity churn `entity_records` indefinitely.
+
+### Disappeared-records reconciliation (watermark)
+
+Today's `writeRecords` only inserts/updates — there is no path that removes records whose source rows have been deleted from the spreadsheet. Sync needs a new step, and the implementation has to scale to large sheets where holding two sets of `sourceId`s in memory is not OK.
+
+Use the existing `entity_records.syncedAt` column as a **per-run watermark** — it's already `notNull`, already updated on every upsert, and already indexed via `entity_records_entity_synced_at_idx (connector_entity_id, synced_at)`:
+
+1. At sync entry, capture `runStartedAt = Date.now()`.
+2. Every record the run touches (upsert) sets `syncedAt = runStartedAt`.
+3. After the upsert phase completes for the entity, issue a single indexed soft-delete:
+   ```sql
+   UPDATE entity_records
+   SET deleted = $now, deleted_by = $userId
+   WHERE connector_entity_id = $entityId
+     AND synced_at < $runStartedAt
+     AND deleted IS NULL
+   ```
+   New repository method: `softDeleteBeforeWatermark(connectorEntityId, watermark, deletedBy)`.
+4. Tally `deleted` (the `UPDATE`'s rowcount) alongside `created/updated/unchanged` in `recordCounts` so the sync result UI can render "X added, Y updated, Z removed".
+
+Why this beats a set-diff: no `SELECT` of all live `sourceId`s, no in-memory set arithmetic, one indexed `UPDATE`. Works identically at 100 rows or 100 million.
+
+Why soft-delete over hard-delete: `entity_records` is referenced by analytics queries and entity-group membership; a hard-delete during sync would create dangling references. Soft-delete preserves history and matches how every other entity in the system handles removal.
+
+Failure semantics: the watermark UPDATE only runs if the upsert phase succeeded. Partial upsert failures abort the whole sync (the BullMQ job throws, no records get reaped, the next retry redoes the upsert phase from scratch with a new watermark). Result: never a partial-delete state.
+
+The same logic could later be lifted into `layout-plan-commit.service.ts` and reused by any future sync-capable connector (Airtable, Notion, etc.); for v1 it lives inside `gsheets.adapter.syncEntity` until a second consumer materializes.
+
+---
+
+## Large Spreadsheet Handling
+
+Sheets that hit Google's per-workbook limit (currently 10M cells) will arrive eventually. The pipeline has to assume that, not assume it away. The good news: the file-upload pipeline already solved most of the same problem set — `apps/api/src/environment.ts:74-85` defines `FILE_UPLOAD_INLINE_CELLS_MAX = 1_000_000` (sheets above the cap are returned with `cells: []` + `sliced: true` and the client pulls rectangles via `/api/file-uploads/sheet-slice`, capped at `FILE_UPLOAD_SLICE_CELLS_MAX = 50_000` cells per request). Google Sheets fits the same shape; reuse the pattern rather than inventing one.
+
+### Where size hurts
+
+| Stage | Risk on a 10M-cell sheet | Existing safeguard |
+|---|---|---|
+| Fetch | `spreadsheets.get?includeGridData=true` returns the whole grid in one HTTP response → OOM / response-size failure | none (yet) |
+| In-memory `WorkbookData` | gigabytes of strings held in the API process | none (yet) |
+| Redis workbook cache | exceeds Redis' 512 MB per-key ceiling | inline-or-sliced model already exists for file uploads |
+| LLM classifier sample | none — the parser caps at 200 rows × 30 cols (`MAX_SHEET_SAMPLE`) | already bounded |
+| Replay materialization | `ExtractedRecord[]` holding millions of records | none (yet) |
+| Single SQL upsert | Postgres' 65 535 bind-parameter limit hits at ~5 000 rows × 12 cols | none (yet) |
+| Disappeared-records diff | pulling every live `source_id` into memory | superseded by the watermark approach above |
+| Sync wall-clock | minutes-long sync timing out the HTTP request | already enqueues a BullMQ job; client polls |
+
+### Recommended approach
+
+1. **Range-scoped fetch.** Sync never asks Google for the whole grid. After auth, hit `spreadsheets.get?fields=sheets.properties` once for cheap dimension metadata, then `spreadsheets.values.batchGet` with one range per persisted region (the plan already carries region bounds — `region.bounds.startRow/endRow/startCol/endCol`). For replay we only ever pull cells the user actually bound; cells outside drawn regions are ignored.
+2. **Reuse the inline-or-sliced cache pattern for the editor.** During the interpret/commit flow (when the user is drawing regions), the API caches a parsed `WorkbookData` in Redis under `gsheets:wb:{connectorInstanceId}` — same shape as `uploadSessionId` keys. Sheets ≤ `FILE_UPLOAD_INLINE_CELLS_MAX` come inline; over-cap sheets come back with `sliced: true` and the editor fetches via a new `GET /api/connectors/google-sheets/instances/:id/sheet-slice` that proxies `spreadsheets.values.get` for the requested rectangle (≤ `FILE_UPLOAD_SLICE_CELLS_MAX` cells per call). The shared `FILE_UPLOAD_*` env vars apply to both pipelines — rename them to `WORKBOOK_*` if a second consumer feels worth the rename, otherwise leave as-is.
+3. **Chunked replay during sync.** Replay is already per-region, but a single region can dwarf process memory. Walk each region in row-bands of e.g. `INTERPRET_REPLAY_BAND_ROWS = 5_000`: pull the band's range from Google → build a band-scoped `WorkbookData` → run replay → batch-upsert → discard → next band. Peak memory is bounded regardless of total region size. The parser already supports replay against a sub-bounded workbook because the plan's `bounds` are the only contract.
+4. **Batched upserts.** Cap each `entityRecords.upsertManyBySourceId` call at e.g. `WRITE_BATCH_ROWS = 500` (with ~12 columns per insert that's ~6 000 bind params, well under Postgres' 65 535). The repository can stay as-is; the chunking lives in `gsheets.adapter.syncEntity`.
+5. **Watermark reconciliation.** Use `synced_at` as the run watermark — see "Disappeared-records reconciliation (watermark)" above. This is the piece that wouldn't scale with the in-memory diff.
+6. **Per-region row guard.** Hard-cap individual regions at `MAX_ROWS_PER_REGION = 250_000` and refuse the commit (or the sync, on pre-flight) above it with a clear error. A user with a 1M-row table can decompose into multiple regions or talk to us about lifting the cap; either is better than silently OOMing the worker. The cap is policy, easy to relax once the pipeline has empirical headroom.
+
+### Interpret-time UX caveat
+
+The RegionEditor renders cells the user can click. For a 10M-cell sheet, the inline-or-sliced model means the editor only renders cells inside the current viewport rectangle (already how the file-upload editor works at scale). The new bit is: drawing a region whose bounds exceed the loaded rectangle. v1 answer — let the user type explicit row/col bounds in the binding popover instead of dragging across off-screen cells; the slice endpoint handles the visual render. This may require a small RegionEditor enhancement (numeric bounds inputs); flagging in Open Questions rather than committing to scope here.
 
 ---
 
@@ -180,7 +265,7 @@ Minimal schema additions:
 
 | Change | Reason |
 |--------|--------|
-| Insert `google-sheets` row in `connector_definitions` (slug, display "Google Sheets", category "File-based" or new "Spreadsheet" category, `auth_type: "oauth2"`, `capability_flags: { sync: true, read: true, write: false, push: false }`, `config_schema` describing `{ spreadsheetId, title, syncCadence }`, icon URL). | Seeded via `seed.service.ts` alongside sandbox + file-upload. |
+| Insert `google-sheets` row in `connector_definitions` (slug, display "Google Sheets", category "File-based" or new "Spreadsheet" category, `auth_type: "oauth2"`, `capability_flags: { sync: true, read: true, write: false, push: false }`, `config_schema` describing `{ spreadsheetId, title }` (manual-only sync; no `syncCadence` until scheduled cadence ships), icon URL). | Seeded via `seed.service.ts` alongside sandbox + file-upload. |
 | New ENUM value `oauth2` in `auth_type` column? — currently `text`, no enum. ✓ no migration. | — |
 | `connector_instances.credentials` already exists. | We start using it; adapt repository to expose encrypted-blob helpers. |
 | Optional: add `last_sync_started_at` to `connector_instances` for in-flight sync indication. | Not required for v1; can derive from job state. |
@@ -225,27 +310,34 @@ The interpret + commit calls reuse `sdk.layoutPlans.*` (or whatever they're name
 
 - **Phase A** — OAuth2 client + credentials encryption + seed `google-sheets` definition. No UI yet. Verifiable by running the OAuth dance in Postman/curl and seeing a `connector_instances` row with encrypted credentials.
 - **Phase B** — Sheet listing + workbook fetch + cache. UI: just a debug page that lets a developer connect, list sheets, and inspect the cached workbook JSON.
-- **Phase C** — Region-editing workflow shell (steps 1 & 2: authorize + select). Reuses RegionEditor for steps 3 & 4 unchanged.
-- **Phase D** — On-demand sync (manual cadence only). `lastSyncAt` updates; we can manually re-trigger and see records re-materialize.
-- **Phase E** — Repeating cadence (the first repeating BullMQ job in the codebase). Daily default, configurable per instance.
-- **Phase F** — Reconnect / error recovery flow (handles `invalid_grant` from Google).
+- **Phase C** — Region-editing workflow shell (steps 1 & 2: authorize + select). Reuses RegionEditor for steps 3 & 4 unchanged. Review step surfaces the `rowPosition`-identity banner.
+- **Phase D** — Manual sync. Adds the disappeared-records reconciliation, the identity-strategy guard in `gsheets.adapter.syncEntity`, and the "Sync now" UI affordance. `lastSyncAt` updates; counts include `created/updated/unchanged/deleted`.
+- **Phase E** — Reconnect / error recovery flow (handles `invalid_grant` from Google).
+
+**Deferred (post-v1):** scheduled cadence. Requires the identity-strategy guard from Phase D to be in place and would add an `addRepeatable` BullMQ job + a `syncCadence` field to `ConnectorInstance.config`. Not on this discovery's roadmap.
 
 Each phase is independently shippable behind the connector definition's `is_active` flag.
 
 ---
 
+## Decisions
+
+The following were open during discovery and have since been confirmed:
+
+- **Token exchange goes direct to Google.** No Auth0 Action in the path. Folded into the Auth section above.
+- **One `ConnectorInstance` per Google account.** Multi-account per user is supported by treating each `(organization, googleAccountEmail)` as its own instance; the UI shows an account chip sourced from the decrypted credentials blob. Folded into the Auth section above.
+- **One `ConnectorInstance` per workbook.** Tabs are addressed inside a single plan; we do not split per-tab. Folded into the Auth section above.
+- **Sync vs active edit is a non-issue.** Manual-only sync means the user is the one triggering both the edit and the sync — there's no background process that could mutate state under them. The Redis snapshot taken at "select sheet" time still scopes the editor's view; on commit, replay re-reads the live sheet.
+- **API quota is a non-issue for v1.** No cadence means no fan-out of background calls; per-user manual syncs are far below Google's 300 read req/min/project default.
+- **No inbound webhooks.** Drive push notifications are not on the roadmap. If manual sync proves too coarse later, this is the path to revisit.
+
 ## Open Questions
 
 1. **`modules/RegionEditor` audit.** It's only ever had one consumer. Worth a quick pass to confirm there are no upload-only assumptions in the prop surface (e.g., it doesn't expect a `File`, it doesn't reach for upload-specific keys). Discovery suggests it's clean (workbook-shape-only), but should be verified.
-2. **Token-exchange surface.** Does the API speak to Google directly, or via an Auth0 Action? Direct keeps Auth0 out of the connector dependency graph (preferred); confirm with infra owner.
-3. **Multiple Google accounts per user.** The flow above supports it (one `ConnectorInstance` per Google account), but the UI needs to make it clear which account a sheet is being read from. Probably a chip on the connector card showing the `googleAccountEmail` we capture during callback.
-4. **Sheet-level vs workbook-level instance.** Today's design: one `ConnectorInstance` per workbook (a workbook = many tabs, but one Drive file). Alternative: one instance per tab. Workbook-level is simpler and matches the current `LayoutPlan` shape (one plan describes regions across all sheets in one workbook). Going with workbook-level unless a stakeholder objects.
-5. **Sync collision with active region-edit session.** If a sync runs while the user is mid-edit, the cached workbook may change under them. v1 answer: editing operates on a *snapshot* taken at "select sheet" time (already cached in Redis); syncs work against a fresh fetch and don't touch the active session's snapshot.
-6. **Quota.** Google Sheets API has a default 300 read req/min/project. Daily-cadence sync against tens of thousands of instances eventually pinches; quota uplift is straightforward but should be tracked once usage is measurable. Not a v1 blocker.
-7. **Inbound webhooks (push).** Google Drive supports push notifications for file changes. Skipping for v1 — if cadence becomes the bottleneck, add a webhook receiver and use it as a "wake the sync now" signal rather than replacing the polling job entirely.
+2. **RegionEditor numeric-bounds input for large sheets.** Today the editor expects the user to drag across cells to define a region. For sheets that exceed the inline cell cap, regions may extend past the loaded rectangle. v1 likely needs a small editor enhancement (typed row/col bounds in the binding popover) so the user can specify a region's `endRow` without scrolling there. Confirm with the design owner of `modules/RegionEditor` whether this is in-scope or a separate ticket.
 
 ---
 
 ## Summary
 
-The Google Sheets connector is a **thin shell around an existing pipeline**: OAuth2 + Drive listing + sheet-bytes fetch on the front end of the workflow, and a cadenced sync job on the back. The region-editing core (`modules/RegionEditor` + interpret/commit services) is reused unchanged. The largest new investment is the OAuth2 client + encrypted-credential plumbing, which is worth doing well because it's also the foundation for any future third-party connector (Dropbox, Notion, Airtable…).
+The Google Sheets connector is a **thin shell around an existing pipeline**: OAuth2 + Drive listing + sheet-bytes fetch on the front end of the workflow, and a manual-sync job on the back. The region-editing core (`modules/RegionEditor` + interpret/commit services) is reused unchanged. Large-sheet handling reuses the inline-or-sliced cache shape that file uploads already established and the existing `synced_at` column as a reconciliation watermark — so the new infra is bounded to the OAuth client, encrypted credentials, range-scoped Sheets API calls, and chunked replay. The OAuth2 client + encrypted-credential plumbing is the largest new investment and is worth doing well because it's also the foundation for any future third-party connector (Dropbox, Notion, Airtable…).
