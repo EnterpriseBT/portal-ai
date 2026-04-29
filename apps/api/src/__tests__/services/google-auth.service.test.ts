@@ -251,7 +251,98 @@ describe("GoogleAuthService.exchangeCode", () => {
 
 // ── Slice 5 — fetchUserEmail ───────────────────────────────────────
 
-describe("GoogleAuthService.fetchUserEmail", () => {
+// ── Slice B2 — refreshAccessToken ─────────────────────────────────
+
+describe("GoogleAuthService.refreshAccessToken", () => {
+  it("POSTs form-encoded body with grant_type=refresh_token (no redirect_uri)", async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
+      mockFetchResponse({
+        body: {
+          access_token: "ya29.refreshed",
+          expires_in: 3599,
+          scope: "https://www.googleapis.com/auth/drive.readonly",
+          token_type: "Bearer",
+        },
+      })
+    );
+
+    await GoogleAuthService.refreshAccessToken("1//refresh-token", fetchMock);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(calledUrl).toBe("https://oauth2.googleapis.com/token");
+    expect(init.method).toBe("POST");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    const body = new URLSearchParams(init.body as string);
+    expect(body.get("client_id")).toBe("test-client-id");
+    expect(body.get("client_secret")).toBe("test-client-secret");
+    expect(body.get("refresh_token")).toBe("1//refresh-token");
+    expect(body.get("grant_type")).toBe("refresh_token");
+    // Google rejects redirect_uri on refresh; explicitly assert it's absent.
+    expect(body.get("redirect_uri")).toBeNull();
+  });
+
+  it("returns { accessToken, expiresIn } on 200 (no refreshToken — Google doesn't rotate it)", async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
+      mockFetchResponse({
+        body: {
+          access_token: "ya29.refreshed",
+          expires_in: 3599,
+          scope: "https://www.googleapis.com/auth/drive.readonly",
+          token_type: "Bearer",
+        },
+      })
+    );
+    const out = await GoogleAuthService.refreshAccessToken(
+      "1//refresh-token",
+      fetchMock
+    );
+    expect(out).toEqual({
+      accessToken: "ya29.refreshed",
+      expiresIn: 3599,
+    });
+  });
+
+  it("throws GoogleAuthError('refresh_failed') on a 4xx response (e.g. invalid_grant)", async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
+      mockFetchResponse({
+        status: 400,
+        body: {
+          error: "invalid_grant",
+          error_description: "Token has been expired or revoked.",
+        },
+      })
+    );
+    try {
+      await GoogleAuthService.refreshAccessToken("1//rotten", fetchMock);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(GoogleAuthError);
+      expect((err as GoogleAuthError).kind).toBe("refresh_failed");
+      expect((err as GoogleAuthError).message).toContain("invalid_grant");
+    }
+  });
+
+  it("throws GoogleAuthError('refresh_failed') when access_token is missing", async () => {
+    const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
+      mockFetchResponse({
+        body: { expires_in: 3599 },
+      })
+    );
+    try {
+      await GoogleAuthService.refreshAccessToken("1//refresh", fetchMock);
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(GoogleAuthError);
+      expect((err as GoogleAuthError).kind).toBe("refresh_failed");
+    }
+  });
+});
+
+// ── Slice 5 — fetchUserEmail ───────────────────────────────────────
+
+describe("GoogleAuthService.fetchUserEmail (existing)", () => {
   it("GETs userinfo with Bearer auth and returns the email on 200", async () => {
     const fetchMock = jest.fn<typeof fetch>().mockResolvedValue(
       mockFetchResponse({

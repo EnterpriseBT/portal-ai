@@ -20,7 +20,11 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { ApiError, HttpService } from "../services/http.service.js";
-import { GoogleAuthService } from "../services/google-auth.service.js";
+import { DbService } from "../services/db.service.js";
+import {
+  GoogleAuthError,
+  GoogleAuthService,
+} from "../services/google-auth.service.js";
 import { GoogleSheetsConnectorService } from "../services/google-sheets-connector.service.js";
 import { createLogger } from "../utils/logger.util.js";
 
@@ -172,6 +176,314 @@ googleSheetsConnectorPublicRouter.get(
  * can tighten to a specific origin once the prod web app's domain is
  * known to the API process.
  */
+/**
+ * Resolve a `connectorInstanceId` to an owned `ConnectorInstance` row.
+ * Used by every Phase B/D route that operates on a specific instance.
+ *
+ * - Throws 404 when the row doesn't exist (or has been soft-deleted).
+ * - Throws 403 when the row exists but belongs to a different org.
+ * - Returns the decrypted-credentials row otherwise.
+ */
+async function resolveOwnedInstance(
+  connectorInstanceId: string,
+  organizationId: string
+) {
+  const instance =
+    await DbService.repository.connectorInstances.findById(
+      connectorInstanceId
+    );
+  if (!instance) {
+    throw new ApiError(
+      404,
+      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+      "Connector instance not found"
+    );
+  }
+  if (instance.organizationId !== organizationId) {
+    throw new ApiError(
+      403,
+      ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+      "Connector instance not accessible to this organization"
+    );
+  }
+  return instance;
+}
+
+/** Map upstream GoogleAuthError kinds to ApiError responses. */
+function mapGoogleAuthError(err: unknown): ApiError {
+  if (err instanceof ApiError) return err;
+  if (
+    err instanceof GoogleAuthError ||
+    (err as Error).name === "GoogleAuthError"
+  ) {
+    const kind = (err as GoogleAuthError).kind;
+    const message = (err as Error).message;
+    switch (kind) {
+      case "refresh_failed":
+        return new ApiError(
+          502,
+          ApiCode.GOOGLE_OAUTH_REFRESH_FAILED,
+          message
+        );
+      case "listSheets_failed":
+        return new ApiError(502, ApiCode.GOOGLE_SHEETS_LIST_FAILED, message);
+      case "fetchSheet_failed":
+        return new ApiError(502, ApiCode.GOOGLE_SHEETS_FETCH_FAILED, message);
+      case "userinfo_failed":
+        return new ApiError(
+          502,
+          ApiCode.GOOGLE_OAUTH_USERINFO_FAILED,
+          message
+        );
+      case "exchange_failed":
+        return new ApiError(
+          502,
+          ApiCode.GOOGLE_OAUTH_EXCHANGE_FAILED,
+          message
+        );
+      default:
+        return new ApiError(502, ApiCode.GOOGLE_SHEETS_LIST_FAILED, message);
+    }
+  }
+  return new ApiError(
+    500,
+    ApiCode.GOOGLE_SHEETS_LIST_FAILED,
+    err instanceof Error ? err.message : "Unknown error"
+  );
+}
+
+/**
+ * @openapi
+ * /api/connectors/google-sheets/sheets:
+ *   get:
+ *     tags: [Google Sheets Connector]
+ *     summary: List the user's spreadsheets via Drive's files.list
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: connectorInstanceId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *       - in: query
+ *         name: pageToken
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Sheets listed
+ *       400:
+ *         description: connectorInstanceId missing
+ *       403:
+ *         description: Instance belongs to a different organization
+ *       404:
+ *         description: Instance not found
+ *       502:
+ *         description: Google rejected the listing or refresh
+ */
+googleSheetsConnectorRouter.get(
+  "/sheets",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const organizationId = req.application?.metadata
+        .organizationId as string;
+      const connectorInstanceId =
+        typeof req.query.connectorInstanceId === "string"
+          ? req.query.connectorInstanceId
+          : "";
+      if (!connectorInstanceId) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.GOOGLE_SHEETS_INVALID_INSTANCE_ID,
+            "connectorInstanceId query parameter is required"
+          )
+        );
+      }
+      const search =
+        typeof req.query.search === "string" ? req.query.search : "";
+      const pageToken =
+        typeof req.query.pageToken === "string"
+          ? req.query.pageToken
+          : undefined;
+
+      await resolveOwnedInstance(connectorInstanceId, organizationId);
+
+      const result = await GoogleSheetsConnectorService.listSheets({
+        connectorInstanceId,
+        search,
+        pageToken,
+      });
+
+      return HttpService.success(res, result);
+    } catch (err) {
+      return next(mapGoogleAuthError(err));
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connectors/google-sheets/instances/{id}/select-sheet:
+ *   post:
+ *     tags: [Google Sheets Connector]
+ *     summary: Pick a spreadsheet to import + cache its parsed workbook
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [spreadsheetId]
+ *             properties:
+ *               spreadsheetId: { type: string }
+ *     responses:
+ *       200:
+ *         description: Sheet selected; preview returned
+ *       400:
+ *         description: Missing spreadsheetId
+ *       404:
+ *         description: Connector instance not found
+ *       502:
+ *         description: Google Sheets fetch failed
+ */
+googleSheetsConnectorRouter.post(
+  "/instances/:id/select-sheet",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const organizationId = req.application?.metadata
+        .organizationId as string;
+      const userId = req.application?.metadata.userId as string;
+      const connectorInstanceId = req.params.id ?? "";
+      const spreadsheetId =
+        typeof req.body?.spreadsheetId === "string"
+          ? req.body.spreadsheetId
+          : "";
+      if (!spreadsheetId) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.GOOGLE_SHEETS_INVALID_PAYLOAD,
+            "spreadsheetId is required"
+          )
+        );
+      }
+
+      await resolveOwnedInstance(connectorInstanceId, organizationId);
+
+      const result = await GoogleSheetsConnectorService.selectSheet({
+        connectorInstanceId,
+        spreadsheetId,
+        organizationId,
+        userId,
+      });
+      return HttpService.success(res, result);
+    } catch (err) {
+      return next(mapGoogleAuthError(err));
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connectors/google-sheets/instances/{id}/sheet-slice:
+ *   get:
+ *     tags: [Google Sheets Connector]
+ *     summary: Fetch a cell rectangle from the cached workbook
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: sheetId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: rowStart
+ *         required: true
+ *         schema: { type: integer, minimum: 0 }
+ *       - in: query
+ *         name: rowEnd
+ *         required: true
+ *         schema: { type: integer, minimum: 0 }
+ *       - in: query
+ *         name: colStart
+ *         required: true
+ *         schema: { type: integer, minimum: 0 }
+ *       - in: query
+ *         name: colEnd
+ *         required: true
+ *         schema: { type: integer, minimum: 0 }
+ */
+googleSheetsConnectorRouter.get(
+  "/instances/:id/sheet-slice",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const organizationId = req.application?.metadata
+        .organizationId as string;
+      const connectorInstanceId = req.params.id ?? "";
+
+      const sheetIdParam =
+        typeof req.query.sheetId === "string" ? req.query.sheetId : "";
+      const rowStart = parseIntStrict(req.query.rowStart);
+      const rowEnd = parseIntStrict(req.query.rowEnd);
+      const colStart = parseIntStrict(req.query.colStart);
+      const colEnd = parseIntStrict(req.query.colEnd);
+
+      if (
+        !sheetIdParam ||
+        rowStart === undefined ||
+        rowEnd === undefined ||
+        colStart === undefined ||
+        colEnd === undefined
+      ) {
+        return next(
+          new ApiError(
+            400,
+            ApiCode.GOOGLE_SHEETS_INVALID_PAYLOAD,
+            "sheetId, rowStart, rowEnd, colStart, and colEnd are required"
+          )
+        );
+      }
+
+      await resolveOwnedInstance(connectorInstanceId, organizationId);
+
+      const out = await GoogleSheetsConnectorService.sheetSlice({
+        connectorInstanceId,
+        sheetId: sheetIdParam,
+        rowStart,
+        rowEnd,
+        colStart,
+        colEnd,
+      });
+      return HttpService.success(res, out);
+    } catch (err) {
+      return next(mapGoogleAuthError(err));
+    }
+  }
+);
+
+function parseIntStrict(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  if (!/^-?\d+$/.test(value)) return undefined;
+  return parseInt(value, 10);
+}
+
 function renderCallbackHtml(
   connectorInstanceId: string,
   accountInfo: unknown

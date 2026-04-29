@@ -13,7 +13,16 @@
 import { environment } from "../environment.js";
 import { signState } from "../utils/oauth-state.util.js";
 
+/**
+ * `openid` + `email` are required so the access token can call
+ * `oauth2/v3/userinfo` for the authenticated email — without one of
+ * these, Google returns 401 "Invalid Credentials" on userinfo even
+ * though the Drive / Sheets scopes are working. They're treated as
+ * non-sensitive scopes by Google and don't require app verification.
+ */
 export const GOOGLE_OAUTH_SCOPES = [
+  "openid",
+  "email",
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ] as const;
@@ -26,7 +35,9 @@ export type GoogleAuthErrorKind =
   | "exchange_failed"
   | "no_refresh_token"
   | "userinfo_failed"
-  | "refresh_failed";
+  | "refresh_failed"
+  | "listSheets_failed"
+  | "fetchSheet_failed";
 
 export class GoogleAuthError extends Error {
   override readonly name = "GoogleAuthError" as const;
@@ -152,6 +163,62 @@ export class GoogleAuthService {
       refreshToken: json.refresh_token,
       expiresIn: json.expires_in ?? 0,
       scope: json.scope ?? "",
+    };
+  }
+
+  /**
+   * Trade a refresh token for a fresh access token.
+   *
+   * Used by `GoogleAccessTokenCacheService` to lazily refresh — concurrent
+   * callers de-dup against an in-memory single-flight Map. Google does not
+   * rotate the refresh token on this endpoint, so the response is just
+   * `{ access_token, expires_in }`. An `invalid_grant` upstream means the
+   * refresh token was revoked (user removed access in Google account
+   * settings, or scope changed) and the connector instance must be marked
+   * `status="error"` for Phase E's reconnect flow.
+   */
+  static async refreshAccessToken(
+    refreshToken: string,
+    fetchFn: FetchFn = fetch
+  ): Promise<{ accessToken: string; expiresIn: number }> {
+    if (!environment.GOOGLE_OAUTH_CLIENT_ID) {
+      throw new Error("GOOGLE_OAUTH_CLIENT_ID is not configured");
+    }
+    if (!environment.GOOGLE_OAUTH_CLIENT_SECRET) {
+      throw new Error("GOOGLE_OAUTH_CLIENT_SECRET is not configured");
+    }
+
+    const body = new URLSearchParams({
+      client_id: environment.GOOGLE_OAUTH_CLIENT_ID,
+      client_secret: environment.GOOGLE_OAUTH_CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    });
+
+    const res = await fetchFn(GOOGLE_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+
+    if (!res.ok) {
+      const errBody = await safeReadText(res);
+      throw new GoogleAuthError(
+        "refresh_failed",
+        `Google token refresh failed (${res.status}): ${errBody}`
+      );
+    }
+
+    const json = (await res.json()) as GoogleTokenResponse;
+    if (!json.access_token) {
+      throw new GoogleAuthError(
+        "refresh_failed",
+        "Google response missing access_token"
+      );
+    }
+    return {
+      accessToken: json.access_token,
+      expiresIn: json.expires_in ?? 0,
     };
   }
 

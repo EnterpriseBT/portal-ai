@@ -6,31 +6,27 @@ import { createLogger } from "../utils/logger.util.js";
 
 const logger = createLogger({ module: "workbook-cache" });
 
-const KEY_PREFIX = "upload-session:";
-
-function keyFor(uploadSessionId: string): string {
-  return `${KEY_PREFIX}${uploadSessionId}`;
-}
-
 /**
- * Redis-backed cache for the parsed `WorkbookData`. Keyed by
- * `uploadSessionId`, TTL'd per `FILE_UPLOAD_CACHE_TTL_SEC`. Miss handling is
- * the caller's responsibility — the streaming pipeline re-streams from S3 +
- * re-parses on miss, which is transparent to the client.
+ * Redis-backed cache for parsed `WorkbookData`, TTL'd per
+ * `FILE_UPLOAD_CACHE_TTL_SEC`. Callers own the cache key (and its
+ * prefix) — `upload-session:{id}` for file-upload, `gsheets:wb:{id}`
+ * for google-sheets, etc. Miss handling is the caller's
+ * responsibility: parse-from-source-and-refill is transparent to the
+ * client.
  */
 export const WorkbookCacheService = {
-  async set(uploadSessionId: string, workbook: WorkbookData): Promise<void> {
+  async set(cacheKey: string, workbook: WorkbookData): Promise<void> {
     const redis = getRedisClient();
     const payload = JSON.stringify(workbook);
     await redis.set(
-      keyFor(uploadSessionId),
+      cacheKey,
       payload,
       "EX",
       environment.FILE_UPLOAD_CACHE_TTL_SEC
     );
     logger.debug(
       {
-        uploadSessionId,
+        cacheKey,
         sheetCount: workbook.sheets.length,
         bytes: payload.length,
       },
@@ -38,27 +34,27 @@ export const WorkbookCacheService = {
     );
   },
 
-  async get(uploadSessionId: string): Promise<WorkbookData | null> {
+  async get(cacheKey: string): Promise<WorkbookData | null> {
     const redis = getRedisClient();
-    const payload = await redis.get(keyFor(uploadSessionId));
+    const payload = await redis.get(cacheKey);
     if (!payload) {
-      logger.debug({ uploadSessionId, event: "cache.miss" }, "cache miss");
+      logger.debug({ cacheKey, event: "cache.miss" }, "cache miss");
       return null;
     }
     try {
       return JSON.parse(payload) as WorkbookData;
     } catch (err) {
       logger.warn(
-        { uploadSessionId, err: err instanceof Error ? err.message : err },
+        { cacheKey, err: err instanceof Error ? err.message : err },
         "Cached workbook failed JSON.parse — evicting"
       );
-      await redis.del(keyFor(uploadSessionId));
+      await redis.del(cacheKey);
       return null;
     }
   },
 
-  async delete(uploadSessionId: string): Promise<void> {
+  async delete(cacheKey: string): Promise<void> {
     const redis = getRedisClient();
-    await redis.del(keyFor(uploadSessionId));
+    await redis.del(cacheKey);
   },
 };

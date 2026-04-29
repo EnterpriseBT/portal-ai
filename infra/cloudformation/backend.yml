@@ -57,6 +57,12 @@ Parameters:
   SecretArnTavilyApiKey:
     Type: String
     Description: Full ARN of portalai/{env}/tavily-api-key secret
+  SecretArnGoogleOauthClientSecret:
+    Type: String
+    Description: Full ARN of portalai/{env}/google-oauth-client-secret secret
+  SecretArnOauthStateSecret:
+    Type: String
+    Description: Full ARN of portalai/{env}/oauth-state-secret secret
 
 Resources:
   # ── ECR Repository ───────────────────────────────────────
@@ -213,6 +219,8 @@ Resources:
               - !Ref SecretArnAuth0WebhookSecret
               - !Ref SecretArnAnthropicApiKey
               - !Ref SecretArnTavilyApiKey
+              - !Ref SecretArnGoogleOauthClientSecret
+              - !Ref SecretArnOauthStateSecret
               - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!*"
           - Effect: Allow
             Action:
@@ -431,6 +439,8 @@ Resources:
               Value: !Ref AWS::Region
             - Name: UPLOAD_S3_PREFIX
               Value: uploads
+            - Name: GOOGLE_OAUTH_REDIRECT_URI
+              Value: !Sub "https://api-${Environment}.portalsai.io/api/connectors/google-sheets/callback"
             - Name: REDIS_URL
               Value: !Sub
                 - "redis://${Endpoint}:${Port}"
@@ -449,6 +459,12 @@ Resources:
               ValueFrom: !Ref SecretArnAnthropicApiKey
             - Name: TAVILY_API_KEY
               ValueFrom: !Ref SecretArnTavilyApiKey
+            - Name: GOOGLE_OAUTH_CLIENT_SECRET
+              ValueFrom: !Ref SecretArnGoogleOauthClientSecret
+            - Name: OAUTH_STATE_SECRET
+              ValueFrom: !Ref SecretArnOauthStateSecret
+            - Name: GOOGLE_OAUTH_CLIENT_ID
+              ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/google-oauth-client-id"
             - Name: AUTH0_DOMAIN
               ValueFrom: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/portalai/${Environment}/auth0-domain"
             - Name: AUTH0_AUDIENCE

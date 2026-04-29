@@ -364,7 +364,7 @@ export class SeedService {
           },
           version: "1.0.0",
           iconUrl:
-            "https://res.cloudinary.com/dvloutv7e/image/upload/v1777417496/google-sheets-svgrepo-com_placeholder.svg",
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1777482548/500px-Google_Sheets_logo__2014-2020.svg_d7fj9r.png",
         })
         .parse(),
     ];
