@@ -110,6 +110,11 @@ export const ConnectorInstanceCardUI = ({
             bgcolor: "white",
             p: 0.5,
           }}
+          // Connector icons come in mixed aspect ratios (square logos for
+          // some connectors, wider PNGs for others). `contain` letterboxes
+          // the image inside the fixed 40×40 frame so list rows align,
+          // while preserving the image's native ratio (no stretch, no crop).
+          slotProps={{ img: { style: { objectFit: "contain" } } }}
         >
           {ci.name.charAt(0).toUpperCase()}
         </Avatar>
