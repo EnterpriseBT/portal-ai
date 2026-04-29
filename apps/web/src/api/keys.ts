@@ -194,4 +194,7 @@ export const queryKeys = {
         colEnd,
       ] as const,
   },
+  googleSheets: {
+    root: ["googleSheets"] as const,
+  },
 };
