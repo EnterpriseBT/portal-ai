@@ -644,4 +644,212 @@ describe("Layout Plans Draft Router", () => {
       });
     });
   });
+
+  // ── connectorInstanceId path (google-sheets et al.) ────────────────
+
+  /**
+   * Seed a pending google-sheets ConnectorInstance + cache its workbook
+   * in the mocked Redis under `gsheets:wb:{id}`. Mirrors what
+   * `GoogleSheetsConnectorService.selectSheet` writes in production.
+   */
+  async function seedPendingGoogleSheetsInstance(
+    db: Db,
+    organizationId: string,
+    workbook: WorkbookData
+  ): Promise<string> {
+    const instanceId = generateId();
+    await db.insert(connectorInstances).values({
+      id: instanceId,
+      organizationId,
+      connectorDefinitionId,
+      name: "Pending GS instance",
+      status: "pending" as const,
+      config: null,
+      credentials: null,
+      lastSyncAt: null,
+      lastErrorMessage: null,
+      enabledCapabilityFlags: null,
+      created: now,
+      createdBy: "SYSTEM_TEST",
+      updated: null,
+      updatedBy: null,
+      deleted: null,
+      deletedBy: null,
+    } as never);
+    redisStore.set(`gsheets:wb:${instanceId}`, JSON.stringify(workbook));
+    return instanceId;
+  }
+
+  describe("POST /api/layout-plans/interpret — connectorInstanceId path", () => {
+    it("reads the workbook from gsheets:wb:{id} cache and returns the plan", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      mockAnalyze.mockResolvedValue(makePlan(emailId, nameId));
+
+      const ciId = await seedPendingGoogleSheetsInstance(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/interpret")
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId: ciId, regionHints: [] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.plan.regions).toHaveLength(1);
+    });
+
+    it("rejects body with both uploadSessionId and connectorInstanceId", async () => {
+      const ciId = await seedPendingGoogleSheetsInstance(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
+      const uploadSessionId = await seedUploadSession(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/interpret")
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId: ciId, uploadSessionId, regionHints: [] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+    });
+
+    it("rejects body with neither session id", async () => {
+      const res = await request(app)
+        .post("/api/layout-plans/interpret")
+        .set("Authorization", "Bearer test-token")
+        .send({ regionHints: [] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD);
+    });
+
+    it("returns 404 when the connector instance does not exist", async () => {
+      const res = await request(app)
+        .post("/api/layout-plans/interpret")
+        .set("Authorization", "Bearer test-token")
+        .send({ connectorInstanceId: "nonexistent", regionHints: [] });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+    });
+  });
+
+  describe("POST /api/layout-plans/commit — connectorInstanceId path", () => {
+    it("flips the pending instance to active without creating a new one", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+      const ciId = await seedPendingGoogleSheetsInstance(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/commit")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId,
+          name: "GS commit",
+          plan: makePlan(emailId, nameId),
+          connectorInstanceId: ciId,
+        });
+
+      expect(res.status).toBe(200);
+      // Returns the SAME instance id — not a fresh one.
+      expect(res.body.payload.connectorInstanceId).toBe(ciId);
+
+      const all = await (db as Db)
+        .select()
+        .from(connectorInstances)
+        .where(eq(connectorInstances.organizationId, organizationId));
+      expect(all).toHaveLength(1);
+      expect(all[0]?.status).toBe("active");
+    });
+
+    it("does not delete the pending instance when commit fails (rollback path)", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      // Use a definitely-bogus columnDefinitionId in the plan so commit fails.
+      const ciId = await seedPendingGoogleSheetsInstance(
+        db as Db,
+        organizationId,
+        makeWorkbook()
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/commit")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId,
+          name: "GS bad",
+          plan: makePlan(emailId, "nonexistent-cd"),
+          connectorInstanceId: ciId,
+        });
+
+      expect(res.status).toBeGreaterThanOrEqual(400);
+
+      // Pending instance must STILL be present (rollback didn't remove it).
+      const after = await (db as Db)
+        .select()
+        .from(connectorInstances)
+        .where(eq(connectorInstances.id, ciId));
+      expect(after).toHaveLength(1);
+      // And status remains pending — the success-path "flip to active" did not run.
+      expect(after[0]?.status).toBe("pending");
+    });
+
+    it("returns 404 when the connectorInstanceId does not exist", async () => {
+      const emailId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "email"
+      );
+      const nameId = await seedColumnDefinition(
+        db as Db,
+        organizationId,
+        "name"
+      );
+
+      const res = await request(app)
+        .post("/api/layout-plans/commit")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId,
+          name: "GS missing",
+          plan: makePlan(emailId, nameId),
+          connectorInstanceId: "nonexistent",
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+    });
+  });
 });

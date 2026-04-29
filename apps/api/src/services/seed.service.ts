@@ -344,9 +344,9 @@ export class SeedService {
             "https://res.cloudinary.com/dvloutv7e/image/upload/v1777417496/file-upload-svgrepo-com_uyhuzm.svg",
         })
         .parse(),
-      // Phase A: definition seeded but `isActive: false` so the UI doesn't
-      // surface it until Phase C wires the workflow. See
-      // docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md §Slice 6.
+      // Phase C flipped this on once the workflow shell + interpret/commit
+      // wiring landed. Phase A originally seeded `isActive: false` to keep
+      // the UI from showing an unfinished connector.
       new GoogleSheetsConnectorDefinitionModelFactory()
         .create(SystemUtilities.id.system)
         .update({
@@ -354,7 +354,7 @@ export class SeedService {
           display: "Google Sheets",
           category: "File-based",
           authType: "oauth2",
-          isActive: false,
+          isActive: true,
           configSchema: {},
           capabilityFlags: {
             sync: true,

@@ -13,6 +13,7 @@ import {
   EMPTY_ACCOUNT_INFO,
   type PublicAccountInfo,
 } from "@portalai/core/contracts";
+import type { WorkbookData } from "@portalai/spreadsheet-parsing";
 
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { ApiError } from "./http.service.js";
@@ -317,6 +318,52 @@ export class GoogleSheetsConnectorService {
     });
 
     return sliced ? { sheets, sliced: true } : { sheets };
+  }
+
+  /**
+   * Resolve the cached `WorkbookData` for a google-sheets pending
+   * instance. Mirrors `FileUploadSessionService.resolveWorkbook` so the
+   * layout-plan-draft service can dispatch by connectorInstanceId.
+   *
+   * Cache miss is fatal here — there's no S3 fallback like file-upload
+   * has, and re-fetching the spreadsheet would burn Drive API quota
+   * silently. The caller (frontend workflow) is expected to re-call
+   * `selectSheet` when the cache TTL has elapsed; that's also where the
+   * cache TTL collision handling described in the discovery doc lives.
+   */
+  static async resolveWorkbook(
+    connectorInstanceId: string,
+    organizationId: string
+  ): Promise<WorkbookData> {
+    const instance =
+      await DbService.repository.connectorInstances.findById(
+        connectorInstanceId
+      );
+    if (!instance) {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        `Connector instance ${connectorInstanceId} not found`
+      );
+    }
+    if (instance.organizationId !== organizationId) {
+      throw new ApiError(
+        403,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        "Connector instance belongs to a different organization"
+      );
+    }
+    const cached = await WorkbookCacheService.get(
+      googleSheetsWorkbookCacheKey(connectorInstanceId)
+    );
+    if (!cached) {
+      throw new ApiError(
+        404,
+        ApiCode.FILE_UPLOAD_SESSION_NOT_FOUND,
+        `No cached workbook for instance ${connectorInstanceId} — call select-sheet first`
+      );
+    }
+    return cached;
   }
 
   /**

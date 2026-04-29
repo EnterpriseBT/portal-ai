@@ -129,8 +129,8 @@ describe("SeedService Integration Tests", () => {
       expect(gsheets?.display).toBe("Google Sheets");
       expect(gsheets?.category).toBe("File-based");
       expect(gsheets?.authType).toBe("oauth2");
-      // Phase A gates the connector behind isActive=false; flips on in Phase C.
-      expect(gsheets?.isActive).toBe(false);
+      // Phase C flipped this on once the workflow shell landed.
+      expect(gsheets?.isActive).toBe(true);
       expect(gsheets?.version).toBe("1.0.0");
       expect(gsheets?.configSchema).toEqual({});
       expect(gsheets?.capabilityFlags).toEqual({

@@ -28,6 +28,7 @@ import type { WorkbookData } from "@portalai/spreadsheet-parsing";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "./db.service.js";
 import { FileUploadSessionService } from "./file-upload-session.service.js";
+import { GoogleSheetsConnectorService } from "./google-sheets-connector.service.js";
 import { LayoutPlanCommitService } from "./layout-plan-commit.service.js";
 import { LayoutPlanInterpretService } from "./layout-plan-interpret.service.js";
 import { ApiError } from "./http.service.js";
@@ -89,43 +90,69 @@ export class LayoutPlanDraftService {
     }
     const plan: LayoutPlan = parsedPlan.data;
 
-    // ── Resolve the workbook (inline body OR cached upload session) ───
+    // ── Resolve the workbook (file-upload OR google-sheets cache) ────
     const workbook = await resolveWorkbook(body, organizationId);
 
-    // ── Load the connector definition so the new instance inherits every
-    //    capability its definition supports (future-proof — if a new flag
-    //    is added to the definition schema, the instance picks it up). ──
-    const definition = await DbService.repository.connectorDefinitions.findById(
-      body.connectorDefinitionId
-    );
-    if (!definition) {
-      throw new ApiError(
-        404,
-        ApiCode.CONNECTOR_DEFINITION_NOT_FOUND,
-        `Connector definition not found: ${body.connectorDefinitionId}`
-      );
+    // ── Resolve the target ConnectorInstance ──────────────────────────
+    // Two paths: create-fresh (uploadSessionId) or use-existing-pending
+    // (connectorInstanceId). The latter flips a pending instance to
+    // active without touching credentials, config, or name — those came
+    // from the OAuth callback.
+    let connectorInstanceId: string;
+    let isExistingInstance = false;
+    if (body.connectorInstanceId) {
+      const existing =
+        await DbService.repository.connectorInstances.findById(
+          body.connectorInstanceId
+        );
+      if (!existing) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+          `Connector instance not found: ${body.connectorInstanceId}`
+        );
+      }
+      if (existing.organizationId !== organizationId) {
+        throw new ApiError(
+          403,
+          ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+          "Connector instance belongs to a different organization"
+        );
+      }
+      connectorInstanceId = existing.id;
+      isExistingInstance = true;
+    } else {
+      const definition =
+        await DbService.repository.connectorDefinitions.findById(
+          body.connectorDefinitionId
+        );
+      if (!definition) {
+        throw new ApiError(
+          404,
+          ApiCode.CONNECTOR_DEFINITION_NOT_FOUND,
+          `Connector definition not found: ${body.connectorDefinitionId}`
+        );
+      }
+      connectorInstanceId = SystemUtilities.id.v4.generate();
+      await DbService.repository.connectorInstances.create({
+        id: connectorInstanceId,
+        organizationId,
+        connectorDefinitionId: body.connectorDefinitionId,
+        name: body.name,
+        status: "active",
+        enabledCapabilityFlags: { ...definition.capabilityFlags },
+        config: null,
+        credentials: null,
+        created: Date.now(),
+        createdBy: userId,
+        updated: null,
+        updatedBy: null,
+        deleted: null,
+        deletedBy: null,
+      });
     }
 
-    // ── Create the ConnectorInstance ─────────────────────────────────
-    const connectorInstanceId = SystemUtilities.id.v4.generate();
-    await DbService.repository.connectorInstances.create({
-      id: connectorInstanceId,
-      organizationId,
-      connectorDefinitionId: body.connectorDefinitionId,
-      name: body.name,
-      status: "active",
-      enabledCapabilityFlags: { ...definition.capabilityFlags },
-      config: null,
-      credentials: null,
-      created: Date.now(),
-      createdBy: userId,
-      updated: null,
-      updatedBy: null,
-      deleted: null,
-      deletedBy: null,
-    });
-
-    // ── Create the layout-plan row FK-bound to the fresh instance ────
+    // ── Create the layout-plan row FK-bound to the instance ──────────
     const planId = SystemUtilities.id.v4.generate();
     try {
       await DbService.repository.connectorInstanceLayoutPlans.create({
@@ -144,11 +171,14 @@ export class LayoutPlanDraftService {
         deletedBy: null,
       });
     } catch (err) {
-      // Roll back the instance so we don't leave an orphan when the plan
-      // row insert fails (e.g. validation trigger, FK timing).
-      await DbService.repository.connectorInstances
-        .hardDelete(connectorInstanceId)
-        .catch(() => undefined);
+      // Roll back the instance ONLY if we just created it. Existing-instance
+      // path (google-sheets) leaves the pending instance untouched so the
+      // user can retry without re-authorizing.
+      if (!isExistingInstance) {
+        await DbService.repository.connectorInstances
+          .hardDelete(connectorInstanceId)
+          .catch(() => undefined);
+      }
       throw err;
     }
 
@@ -163,14 +193,12 @@ export class LayoutPlanDraftService {
         { workbook }
       );
     } catch (err) {
-      // Tear down both rows so the UI never shows a half-committed
-      // connector. Failures here are likely drift/blocker gates (409s) or
-      // unexpected replay errors — either way the client can retry.
       logger.warn(
         {
           event: "commit-draft.rollback",
           connectorInstanceId,
           planId,
+          isExistingInstance,
           reason: err instanceof Error ? err.message : String(err),
         },
         "rolling back draft commit"
@@ -178,15 +206,19 @@ export class LayoutPlanDraftService {
       await DbService.repository.connectorInstanceLayoutPlans
         .hardDelete(planId)
         .catch(() => undefined);
-      await DbService.repository.connectorInstances
-        .hardDelete(connectorInstanceId)
-        .catch(() => undefined);
+      // Only delete the instance if we created it. The existing-instance
+      // (google-sheets) path leaves the pending instance in place.
+      if (!isExistingInstance) {
+        await DbService.repository.connectorInstances
+          .hardDelete(connectorInstanceId)
+          .catch(() => undefined);
+      }
       throw err;
     }
 
-    // Commit succeeded — if the workbook came from an upload session, mark
-    // it committed + best-effort delete the S3 objects.
+    // Commit succeeded.
     if (body.uploadSessionId) {
+      // file-upload pipeline — mark session committed + S3 cleanup.
       FileUploadSessionService.markSessionCommitted(body.uploadSessionId).catch(
         (err) => {
           logger.warn(
@@ -198,6 +230,21 @@ export class LayoutPlanDraftService {
           );
         }
       );
+    } else if (isExistingInstance) {
+      // google-sheets pipeline — flip the pending instance to active.
+      // (The instance was never deleted on rollback paths above so this
+      // is the first state mutation on the success path.)
+      await DbService.repository.connectorInstances
+        .update(connectorInstanceId, { status: "active", updatedBy: userId })
+        .catch((err) => {
+          logger.warn(
+            {
+              connectorInstanceId,
+              err: err instanceof Error ? err.message : err,
+            },
+            "Failed to flip pending → active after commit (non-fatal)"
+          );
+        });
     }
 
     return {
@@ -209,10 +256,14 @@ export class LayoutPlanDraftService {
 }
 
 /**
- * Resolve the workbook for a draft-flow request. The workbook always lives
- * in the streaming upload session — Redis cache with a transparent S3
- * re-stream on miss. The inline-body variant was retired in the PR 5
- * cutover.
+ * Resolve the workbook for a draft-flow request. Dispatches by which
+ * session id the body carries:
+ *   - `uploadSessionId`     → file-upload Redis cache (`upload-session:{id}`)
+ *                             with S3 re-stream fallback on cache miss.
+ *   - `connectorInstanceId` → google-sheets Redis cache (`gsheets:wb:{id}`).
+ *                             No fallback; cache miss is a 404.
+ *
+ * The contract refinement guarantees exactly one is present.
  */
 async function resolveWorkbook(
   body:
@@ -220,8 +271,21 @@ async function resolveWorkbook(
     | LayoutPlanCommitDraftRequestBody,
   organizationId: string
 ): Promise<WorkbookData> {
-  return FileUploadSessionService.resolveWorkbook(
-    body.uploadSessionId,
-    organizationId
+  if (body.uploadSessionId) {
+    return FileUploadSessionService.resolveWorkbook(
+      body.uploadSessionId,
+      organizationId
+    );
+  }
+  if (body.connectorInstanceId) {
+    return GoogleSheetsConnectorService.resolveWorkbook(
+      body.connectorInstanceId,
+      organizationId
+    );
+  }
+  throw new ApiError(
+    400,
+    ApiCode.LAYOUT_PLAN_INVALID_PAYLOAD,
+    "Body must include either uploadSessionId or connectorInstanceId"
   );
 }
