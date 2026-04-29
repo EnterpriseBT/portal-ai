@@ -75,6 +75,15 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
+    // OAuth popup connectors (google-sheets et al.) need to be able to read
+    // `popup.closed` and receive the postMessage from a cross-origin popup.
+    // Default browsers + COOP=same-origin sever the popup reference → the
+    // poll loop sees popup.closed=true even while the popup is still open,
+    // and rejects the promise prematurely. `same-origin-allow-popups` keeps
+    // COOP's protections for everything except popups *we* opened.
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    },
     fs: {
       allow: ["../.."],
     },

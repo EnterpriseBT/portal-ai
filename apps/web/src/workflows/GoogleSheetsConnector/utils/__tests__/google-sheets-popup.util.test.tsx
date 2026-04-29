@@ -99,6 +99,40 @@ describe("useGooglePopupAuthorize", () => {
     });
   });
 
+  it("falls back to the redirect_uri's origin when allowedOrigin is empty/wildcard", async () => {
+    const { result } = renderHook(() =>
+      useGooglePopupAuthorize({ allowedOrigin: "" })
+    );
+    let resolved: { connectorInstanceId: string } | null = null;
+    let pending!: Promise<unknown>;
+    // Consent URL with redirect_uri pointing at the API origin.
+    const consentUrl = `https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=${encodeURIComponent(
+      "http://localhost:3001/api/connectors/google-sheets/callback"
+    )}&client_id=x&response_type=code`;
+    act(() => {
+      pending = result.current.start(consentUrl).then((v) => {
+        resolved = v;
+      });
+    });
+    // Message from the redirect_uri's origin must be accepted, even
+    // though `allowedOrigin: ""` was passed.
+    act(() => {
+      dispatchMessage(
+        {
+          type: "google-sheets-authorized",
+          connectorInstanceId: "ci-fallback",
+          accountInfo: { identity: null, metadata: {} },
+        },
+        "http://localhost:3001"
+      );
+    });
+    await pending;
+    expect(resolved).toEqual({
+      connectorInstanceId: "ci-fallback",
+      accountInfo: { identity: null, metadata: {} },
+    });
+  });
+
   it("ignores messages from the wrong origin (popup stays open)", () => {
     const { result } = renderHook(() =>
       useGooglePopupAuthorize({ allowedOrigin: ALLOWED_ORIGIN })
@@ -131,7 +165,7 @@ describe("useGooglePopupAuthorize", () => {
     expect(fakePopup.closed).toBe(false);
   });
 
-  it("rejects with PopupClosedError when popup is closed without a message", async () => {
+  it("rejects with PopupClosedError after the 5-minute timeout when no message arrives", async () => {
     const { result } = renderHook(() =>
       useGooglePopupAuthorize({ allowedOrigin: ALLOWED_ORIGIN })
     );
@@ -144,9 +178,11 @@ describe("useGooglePopupAuthorize", () => {
           rejected = err;
         });
     });
+    // Advance past the 5-minute popup timeout. We don't poll
+    // popup.closed (Chrome lies about it under COOP) — only the
+    // timeout can reject.
     act(() => {
-      fakePopup.close();
-      jest.advanceTimersByTime(1000);
+      jest.advanceTimersByTime(5 * 60 * 1000 + 100);
     });
     await pending;
     expect(rejected).toBeInstanceOf(PopupClosedError);
