@@ -12,8 +12,8 @@ import type {
 import {
   mintRegionId as sharedMintRegionId,
   toServerErrorFromUnknown,
-  useConnectorWorkflow,
-} from "../../_shared/use-connector-workflow.util";
+  useSpreadsheetWorkflow,
+} from "../../_shared/spreadsheet/use-spreadsheet-workflow.util";
 import type { FileUploadWorkflowState, UploadPhase } from "./file-upload-fixtures.util";
 
 /**
@@ -122,7 +122,7 @@ const EMPTY_FILE_UPLOAD_STAGE: FileUploadStageState = {
 };
 
 /**
- * File-upload workflow hook. Wraps the shared `useConnectorWorkflow`
+ * File-upload workflow hook. Wraps the shared `useSpreadsheetWorkflow`
  * with the upload-specific pre-stage (file list, progress, parseFile).
  * Once parse succeeds the wrapper hands control to the shared core via
  * `core.setWorkbook(...)`.
@@ -133,7 +133,7 @@ const EMPTY_FILE_UPLOAD_STAGE: FileUploadStageState = {
 export function useFileUploadWorkflow(
   callbacks: FileUploadWorkflowCallbacks
 ): UseFileUploadWorkflowReturn {
-  const core = useConnectorWorkflow({
+  const core = useSpreadsheetWorkflow({
     runInterpret: callbacks.runInterpret,
     runCommit: callbacks.runCommit,
     onCommitSuccess: callbacks.onCommitSuccess,
@@ -251,7 +251,7 @@ export function useFileUploadWorkflow(
   );
 
   return {
-    // ConnectorWorkflowState (mapped to FileUploadWorkflowState shape)
+    // SpreadsheetWorkflowState (mapped to FileUploadWorkflowState shape)
     step,
     workbook: core.workbook,
     regions: core.regions,

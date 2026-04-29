@@ -1,7 +1,13 @@
 /**
- * Connector-agnostic workflow state machine.
+ * Spreadsheet-connector workflow state machine.
  *
- * Both `useFileUploadWorkflow` and `useGoogleSheetsWorkflow` wrap this.
+ * Shared by every connector whose import flow ends in a `Workbook` →
+ * `RegionEditor` → `LayoutPlan` pipeline:
+ *
+ *   - `useFileUploadWorkflow`    (FileUpload, .csv/.xlsx)
+ *   - `useGoogleSheetsWorkflow`  (GoogleSheets)
+ *   - `useExcelCloudWorkflow`    (Microsoft Excel cloud — next)
+ *
  * The shared core owns the post-workbook lifecycle:
  *
  *   pending  → setWorkbook(workbook, sourceSessionId) →  draw  → onInterpret → review → onCommit
@@ -10,6 +16,11 @@
  * and call `setWorkbook(...)` once they have a `Workbook` ready. Everything
  * downstream — region drafting, binding patches, interpret/commit — is
  * shared.
+ *
+ * **Not for non-spreadsheet connectors.** SQL / API / event-stream
+ * connectors do not have workbooks, regions, or LayoutPlans. They get
+ * their own peer hook (e.g. `_shared/sql/use-sql-connector-workflow.util.ts`)
+ * with a different state shape; do not bend this hook to fit them.
  *
  * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-C.plan.md` §Slice 7.
  */
@@ -23,17 +34,17 @@ import type {
   ColumnBindingDraft,
   RegionDraft,
   Workbook,
-} from "../../modules/RegionEditor";
-import { ApiError } from "../../utils/api.util";
-import type { ServerError } from "../../utils/api.util";
-import { serializeLocator } from "../FileUploadConnector/utils/layout-plan-mapping.util";
+} from "../../../modules/RegionEditor";
+import { ApiError } from "../../../utils/api.util";
+import type { ServerError } from "../../../utils/api.util";
+import { serializeLocator } from "../../FileUploadConnector/utils/layout-plan-mapping.util";
 
 // ── Shared types ────────────────────────────────────────────────────
 
-export type ConnectorWorkflowPhase = "pending" | "draw" | "review";
+export type SpreadsheetWorkflowPhase = "pending" | "draw" | "review";
 
-export interface ConnectorWorkflowState {
-  phase: ConnectorWorkflowPhase;
+export interface SpreadsheetWorkflowState {
+  phase: SpreadsheetWorkflowPhase;
   workbook: Workbook | null;
   /**
    * Opaque session handle the wrapper supplied alongside the workbook
@@ -52,7 +63,7 @@ export interface ConnectorWorkflowState {
   overallConfidence?: number;
 }
 
-export interface ConnectorWorkflowCallbacks {
+export interface SpreadsheetWorkflowCallbacks {
   /**
    * Pure-compute interpret — server must NOT persist anything. The
    * returned `plan` is held in memory until commit.
@@ -73,7 +84,7 @@ export interface ConnectorWorkflowCallbacks {
   onCommitSuccess?: (connectorInstanceId: string) => void;
 }
 
-export interface UseConnectorWorkflowReturn extends ConnectorWorkflowState {
+export interface UseSpreadsheetWorkflowReturn extends SpreadsheetWorkflowState {
   setWorkbook: (workbook: Workbook, sourceSessionId: string | null) => void;
   setServerError: (err: ServerError | null) => void;
 
@@ -110,7 +121,7 @@ export interface UseConnectorWorkflowReturn extends ConnectorWorkflowState {
   currentRunToken: () => number;
 }
 
-const EMPTY_STATE: ConnectorWorkflowState = {
+const EMPTY_STATE: SpreadsheetWorkflowState = {
   phase: "pending",
   workbook: null,
   sourceSessionId: null,
@@ -476,10 +487,10 @@ export function patchBinding<S extends BindingPatchableState>(
 
 // ── The shared hook ─────────────────────────────────────────────────
 
-export function useConnectorWorkflow(
-  callbacks: ConnectorWorkflowCallbacks
-): UseConnectorWorkflowReturn {
-  const [state, setState] = useState<ConnectorWorkflowState>(EMPTY_STATE);
+export function useSpreadsheetWorkflow(
+  callbacks: SpreadsheetWorkflowCallbacks
+): UseSpreadsheetWorkflowReturn {
+  const [state, setState] = useState<SpreadsheetWorkflowState>(EMPTY_STATE);
   // Bumped on every reset; in-flight async resolutions check this before
   // committing state so a reset mid-flow doesn't resurrect stale state.
   const runTokenRef = useRef(0);

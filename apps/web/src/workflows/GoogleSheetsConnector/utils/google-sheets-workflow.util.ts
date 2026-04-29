@@ -1,5 +1,5 @@
 /**
- * Google-sheets-specific stage on top of the shared `useConnectorWorkflow`.
+ * Google-sheets-specific stage on top of the shared `useSpreadsheetWorkflow`.
  *
  * The pre-stage owns: connector instance id (from OAuth callback),
  * account info, currently-selected spreadsheetId, and a `loadSheet`
@@ -35,8 +35,8 @@ import type {
 import type { ServerError } from "../../../utils/api.util";
 import {
   toServerErrorFromUnknown,
-  useConnectorWorkflow,
-} from "../../_shared/use-connector-workflow.util";
+  useSpreadsheetWorkflow,
+} from "../../_shared/spreadsheet/use-spreadsheet-workflow.util";
 
 export const GOOGLE_SHEETS_WORKFLOW_STEPS: StepConfig[] = [
   { label: "Authorize", description: "Connect your Google account" },
@@ -169,7 +169,7 @@ const EMPTY_AUTH_STAGE: AuthStageState = {
 export function useGoogleSheetsWorkflow(
   callbacks: GoogleSheetsWorkflowCallbacks
 ): UseGoogleSheetsWorkflowReturn {
-  const core = useConnectorWorkflow({
+  const core = useSpreadsheetWorkflow({
     runInterpret: callbacks.runInterpret,
     runCommit: callbacks.runCommit,
     onCommitSuccess: callbacks.onCommitSuccess,
