@@ -64,6 +64,7 @@ export interface SelectSheetInput {
 }
 
 export interface SelectSheetResult {
+  title: string;
   sheets: PreviewSheet[];
   sliced?: true;
 }
@@ -317,7 +318,7 @@ export class GoogleSheetsConnectorService {
       return inflated.sheet;
     });
 
-    return sliced ? { sheets, sliced: true } : { sheets };
+    return sliced ? { title, sheets, sliced: true } : { title, sheets };
   }
 
   /**

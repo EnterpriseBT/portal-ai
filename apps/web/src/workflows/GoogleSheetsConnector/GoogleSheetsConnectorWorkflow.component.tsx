@@ -120,6 +120,10 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
     async ({ connectorInstanceId, spreadsheetId }) => {
       const res = await selectSheetMutate({ connectorInstanceId, spreadsheetId });
       connectorInstanceIdRef.current = connectorInstanceId;
+      // Capture the workbook title so the commit's `name` field shows
+      // the user-recognizable spreadsheet name on the connector card
+      // (rather than the opaque spreadsheetId fallback).
+      spreadsheetTitleRef.current = res.title;
       return res;
     },
     [selectSheetMutate]
@@ -247,10 +251,6 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
 
   const handleSelectSheet = useCallback(
     (spreadsheetId: string) => {
-      // Find the title from the most recent search results would require
-      // threading state; simplest path is to derive at commit time from
-      // the workbook's sourceLabel. For now use spreadsheetId.
-      spreadsheetTitleRef.current = spreadsheetId;
       void workflow.selectSpreadsheet(spreadsheetId);
     },
     [workflow]

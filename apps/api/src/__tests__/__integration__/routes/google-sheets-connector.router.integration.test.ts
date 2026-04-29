@@ -846,6 +846,9 @@ describe("Google Sheets Connector Router — POST /instances/:id/select-sheet", 
       .send({ spreadsheetId: "1abcXYZ" });
 
     expect(res.status).toBe(200);
+    // Title surfaces in the response so the workflow can use it as the
+    // commit's `name` field (instead of falling back to spreadsheetId).
+    expect(res.body.payload.title).toBe("Q3 Forecast");
     expect(res.body.payload.sheets).toHaveLength(1);
     expect(res.body.payload.sheets[0].name).toBe("Forecast");
     // Inline cell present (small sheet under FILE_UPLOAD_INLINE_CELLS_MAX).

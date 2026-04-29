@@ -73,6 +73,11 @@ export type GoogleSheetsSelectSheetRequest = z.infer<
 >;
 
 export const GoogleSheetsSelectSheetResponsePayloadSchema = z.object({
+  /** Workbook title from `spreadsheets.get.properties.title`. The frontend
+   *  uses this as the connector-instance name on the commit step so the
+   *  card chip / detail page show "Q3 Forecast" rather than the opaque
+   *  spreadsheet id. */
+  title: z.string(),
   sheets: z.array(FileUploadParseSheetSchema),
   sliced: z.boolean().optional(),
 });
