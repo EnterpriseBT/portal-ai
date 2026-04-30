@@ -32,6 +32,10 @@ import {
   preserveUserRegionConfig,
   regionDraftsToHints,
 } from "./utils/layout-plan-mapping.util";
+import {
+  buildIdentityUpdater,
+  resolveLocatorOptionsFor,
+} from "../../modules/RegionEditor/utils/identity-panel-wiring.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
 import { putToS3 } from "../../api/file-uploads.api";
@@ -310,6 +314,14 @@ export const FileUploadConnectorWorkflowUI: React.FC<
                   resolveColumnDefinitionDescription
                 }
                 resolveColumnLabel={resolveColumnLabel}
+                resolveIdentityLocatorOptions={(region) =>
+                  resolveLocatorOptionsFor(workbook, region)
+                }
+                onIdentityUpdate={buildIdentityUpdater({
+                  workbook,
+                  regions,
+                  onRegionUpdate,
+                })}
                 onCommit={onCommit}
                 onBack={onBack}
                 isCommitting={isCommitting}

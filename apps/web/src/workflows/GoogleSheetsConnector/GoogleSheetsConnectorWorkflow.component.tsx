@@ -35,6 +35,10 @@ import {
   preserveUserRegionConfig,
   regionDraftsToHints,
 } from "../FileUploadConnector/utils/layout-plan-mapping.util";
+import {
+  buildIdentityUpdater,
+  resolveLocatorOptionsFor,
+} from "../../modules/RegionEditor/utils/identity-panel-wiring.util";
 
 import { sdk, queryKeys } from "../../api/sdk";
 import type {
@@ -504,6 +508,14 @@ export const GoogleSheetsConnectorWorkflow: React.FC<
                 resolveColumnDefinitionDescription
               }
               resolveColumnLabel={resolveColumnLabel}
+              resolveIdentityLocatorOptions={(region) =>
+                resolveLocatorOptionsFor(workflow.workbook, region)
+              }
+              onIdentityUpdate={buildIdentityUpdater({
+                workbook: workflow.workbook,
+                regions: workflow.regions,
+                onRegionUpdate: workflow.onRegionUpdate,
+              })}
               onCommit={() => {
                 void workflow.onCommit();
               }}

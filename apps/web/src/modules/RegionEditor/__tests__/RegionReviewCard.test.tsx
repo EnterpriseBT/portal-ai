@@ -446,3 +446,94 @@ describe("RegionReviewCardUI — invalid chip styling", () => {
     expect(screen.queryByText(/^invalid$/i)).not.toBeInTheDocument();
   });
 });
+
+describe("RegionReviewCardUI — IdentityPanel", () => {
+  test("renders the IdentityPanel when locator options + onIdentityUpdate are provided", () => {
+    const onIdentityUpdate =
+      jest.fn<
+        (
+          regionId: string,
+          change:
+            | {
+                kind: "column";
+                locator: { axis: "row" | "column"; index: number };
+              }
+            | { kind: "rowPosition" }
+        ) => void
+      >();
+    render(
+      <RegionReviewCardUI
+        region={makeRegion()}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+        identityLocatorOptions={[
+          {
+            key: "col:0",
+            label: "id",
+            uniqueness: "unique",
+            axis: "column",
+            index: 0,
+          },
+        ]}
+        onIdentityUpdate={onIdentityUpdate}
+      />
+    );
+    expect(
+      screen.getByText(/no stable identity|record identity/i)
+    ).toBeInTheDocument();
+  });
+
+  test("does not render the IdentityPanel when the prop pair is missing", () => {
+    render(
+      <RegionReviewCardUI
+        region={makeRegion()}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+      />
+    );
+    expect(screen.queryByText(/use position-based ids/i)).toBeNull();
+  });
+
+  test("propagates onIdentityUpdate calls with the region id from the card", () => {
+    const onIdentityUpdate =
+      jest.fn<
+        (
+          regionId: string,
+          change:
+            | {
+                kind: "column";
+                locator: { axis: "row" | "column"; index: number };
+              }
+            | { kind: "rowPosition" }
+        ) => void
+      >();
+    render(
+      <RegionReviewCardUI
+        region={makeRegion()}
+        onJump={jest.fn()}
+        onEditBinding={jest.fn()}
+        identityLocatorOptions={[
+          {
+            key: "col:0",
+            label: "id",
+            uniqueness: "unique",
+            axis: "column",
+            index: 0,
+          },
+        ]}
+        onIdentityUpdate={onIdentityUpdate}
+      />
+    );
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    // Pick the "id" locator option from the menu — `role="option"`
+    // disambiguates from the rendered Select input value (which would
+    // otherwise duplicate the matching text when the current selection is
+    // already rowPosition).
+    fireEvent.click(screen.getByRole("option", { name: /^id\b/i }));
+    expect(onIdentityUpdate).toHaveBeenCalledTimes(1);
+    expect(onIdentityUpdate).toHaveBeenCalledWith("region-a", {
+      kind: "column",
+      locator: { axis: "column", index: 0 },
+    });
+  });
+});
