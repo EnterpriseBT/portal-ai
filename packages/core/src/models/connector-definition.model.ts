@@ -140,3 +140,37 @@ export class SandboxConnectorDefinitionModelFactory extends ModelFactory<
     return sandboxConnectorDefinitionModel;
   }
 }
+
+// ── Google Sheets Connector Definition ───────────────────────────────
+
+export const GoogleSheetsConnectorDefinitionSchema =
+  ConnectorDefinitionSchema.extend({});
+
+export type GoogleSheetsConnectorDefinition = z.infer<
+  typeof GoogleSheetsConnectorDefinitionSchema
+>;
+
+export class GoogleSheetsConnectorDefinitionModel extends CoreModel<GoogleSheetsConnectorDefinition> {
+  get schema() {
+    return GoogleSheetsConnectorDefinitionSchema;
+  }
+
+  parse(): GoogleSheetsConnectorDefinition {
+    return this.schema.parse(this._model);
+  }
+
+  validate(): z.ZodSafeParseResult<GoogleSheetsConnectorDefinition> {
+    return this.schema.safeParse(this._model);
+  }
+}
+
+export class GoogleSheetsConnectorDefinitionModelFactory extends ModelFactory<
+  GoogleSheetsConnectorDefinition,
+  GoogleSheetsConnectorDefinitionModel
+> {
+  create(createdBy: string): GoogleSheetsConnectorDefinitionModel {
+    const baseModel = this._coreModelFactory.create(createdBy);
+    const model = new GoogleSheetsConnectorDefinitionModel(baseModel.toJSON());
+    return model;
+  }
+}

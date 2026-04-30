@@ -1,0 +1,23 @@
+-- Add the `connector_sync` value to the `job_type` enum so the new
+-- BullMQ processor can persist its job rows. Postgres supports
+-- `ADD VALUE` on enums, so no swap-the-enum dance is needed (unlike
+-- 0041 which removed a value).
+--
+-- The `connector_sync` job type is connector-agnostic: the shared
+-- sync route resolves the appropriate adapter via the connector
+-- definition's slug and dispatches `adapter.syncInstance` to it. All
+-- sync-capable connectors (gsheets, future Microsoft Excel, future
+-- SQL/database, etc.) reuse the same job type — only the adapter
+-- implementation varies.
+--
+-- This migration supersedes 0044 (which added the now-unused
+-- `gsheets_sync` value). The earlier value stays in the enum because
+-- Postgres `DROP VALUE` requires recreating the enum + remapping
+-- every dependent column — too invasive to be worth it for a single
+-- unused string.
+--
+-- Application-layer JobTypeEnum (packages/core/src/models/job.model.ts)
+-- already lists `connector_sync`; this migration brings the database
+-- enum into agreement so insertions succeed.
+
+ALTER TYPE "job_type" ADD VALUE IF NOT EXISTS 'connector_sync';

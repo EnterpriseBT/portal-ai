@@ -40,6 +40,7 @@ import {
 } from "../components/PaginationToolbar.component";
 import { SyncTotal } from "../components/SyncTotal.component";
 import { FileUploadConnectorWorkflow } from "../workflows/FileUploadConnector";
+import { GoogleSheetsConnectorWorkflow } from "../workflows/GoogleSheetsConnector";
 import { SandboxConnectorWorkflow } from "../workflows/SandboxConnector";
 
 export interface ConnectorWorkflowProps {
@@ -54,6 +55,7 @@ const WORKFLOW_REGISTRY: Record<
   ComponentType<ConnectorWorkflowProps>
 > = {
   "file-upload": FileUploadConnectorWorkflow,
+  "google-sheets": GoogleSheetsConnectorWorkflow,
   sandbox: SandboxConnectorWorkflow,
 };
 

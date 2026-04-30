@@ -31,6 +31,11 @@ import { upperFirst } from "lodash-es";
 import { sdk, queryKeys } from "../api/sdk";
 import { toServerError } from "../utils/api.util";
 import { ConnectorInstanceDataItem } from "../components/ConnectorInstance.component";
+import { ConnectorInstanceReconnectButtonUI } from "../components/ConnectorInstanceReconnectButton.component";
+import { ConnectorInstanceSyncButtonUI } from "../components/ConnectorInstanceSyncButton.component";
+import { ConnectorInstanceSyncFeedbackUI } from "../components/ConnectorInstanceSyncFeedback.component";
+import { useConnectorInstanceSync } from "../utils/use-connector-instance-sync.util";
+import { useReconnectConnectorInstance } from "../utils/use-reconnect-connector-instance.util";
 import {
   ConnectorEntityDataList,
   ConnectorEntityCardUI,
@@ -55,6 +60,25 @@ const STATUS_COLOR: Record<
   inactive: "default",
 };
 
+/**
+ * Heuristic: does the sync failure message indicate Google rejected
+ * our refresh token? If so, the inline Reconnect CTA appears in the
+ * sync-failure alert. We pattern-match the upstream `GoogleAuthError`
+ * kinds (`refresh_failed`, `invalid_grant`) which the access-token
+ * cache surfaces verbatim. A future plan note (Phase E §Slice 4
+ * refactor) is to upgrade the SSE event to carry a structured `code`
+ * field so this branch doesn't depend on string matching.
+ */
+function isAuthFailureMessage(message: string | null): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("invalid_grant") ||
+    lower.includes("refresh_failed") ||
+    lower.includes("refresh_token")
+  );
+}
+
 interface ConnectorInstanceViewProps {
   connectorInstanceId: string;
 }
@@ -76,6 +100,8 @@ export const ConnectorInstanceView = ({
   const impactQuery = sdk.connectorInstances.impact(connectorInstanceId, {
     enabled: deleteDialogOpen,
   });
+  const syncState = useConnectorInstanceSync(connectorInstanceId);
+  const reconnectState = useReconnectConnectorInstance(connectorInstanceId);
 
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(undefined, {
@@ -173,6 +199,65 @@ export const ConnectorInstanceView = ({
             }) => {
               const ci = instance.connectorInstance;
               const isWriteEnabled = ci.enabledCapabilityFlags?.write === true;
+              // Primary action decision tree (ordered from most-urgent
+              // to least): error → reconnect; sync configured → sync;
+              // else → edit. The reconnect path supersedes sync because
+              // sync can't succeed against revoked credentials anyway,
+              // and we don't want the user clicking Sync first only to
+              // see another auth error.
+              const isInError = ci.status === "error";
+              const isSyncConfigured =
+                ci.enabledCapabilityFlags?.sync === true;
+              const editAction = (
+                <Button
+                  variant="contained"
+                  startIcon={<EditIcon />}
+                  onClick={() => setEditDialogOpen(true)}
+                >
+                  Edit
+                </Button>
+              );
+              const syncAction = (
+                <ConnectorInstanceSyncButtonUI
+                  syncEligible={ci.syncEligible ?? false}
+                  isStarting={syncState.isStarting}
+                  jobStatus={syncState.jobStatus}
+                  onSync={syncState.onSync}
+                  variant="contained"
+                />
+              );
+              const reconnectAction = (
+                <ConnectorInstanceReconnectButtonUI
+                  status={ci.status}
+                  isReconnecting={reconnectState.isReconnecting}
+                  errorMessage={reconnectState.errorMessage}
+                  onReconnect={reconnectState.onReconnect}
+                  onDismissError={reconnectState.onDismissError}
+                  variant="contained"
+                />
+              );
+              const primaryAction = isInError
+                ? reconnectAction
+                : isSyncConfigured
+                  ? syncAction
+                  : editAction;
+              const secondaryActions = [
+                ...(isInError || isSyncConfigured
+                  ? [
+                      {
+                        label: "Edit",
+                        icon: <EditIcon />,
+                        onClick: () => setEditDialogOpen(true),
+                      },
+                    ]
+                  : []),
+                {
+                  label: "Delete",
+                  icon: <DeleteIcon />,
+                  onClick: () => setDeleteDialogOpen(true),
+                  color: "error" as const,
+                },
+              ];
               return (
                 <Stack spacing={4}>
                   <PageHeader
@@ -184,24 +269,25 @@ export const ConnectorInstanceView = ({
                     onNavigate={(href) => navigate({ to: href })}
                     title={ci.name}
                     icon={<Icon name={IconName.MemoryChip} />}
-                    primaryAction={
-                      <Button
-                        variant="contained"
-                        startIcon={<EditIcon />}
-                        onClick={() => setEditDialogOpen(true)}
-                      >
-                        Edit
-                      </Button>
-                    }
-                    secondaryActions={[
-                      {
-                        label: "Delete",
-                        icon: <DeleteIcon />,
-                        onClick: () => setDeleteDialogOpen(true),
-                        color: "error",
-                      },
-                    ]}
+                    primaryAction={primaryAction}
+                    secondaryActions={secondaryActions}
                   >
+                    {isSyncConfigured ? (
+                      <Box sx={{ mt: 1, mb: 2 }}>
+                        <ConnectorInstanceSyncFeedbackUI
+                          jobStatus={syncState.jobStatus}
+                          progress={syncState.progress}
+                          recordCounts={syncState.recordCounts}
+                          errorMessage={syncState.errorMessage}
+                          onDismissResult={syncState.onDismissResult}
+                          showReconnect={isAuthFailureMessage(
+                            syncState.errorMessage
+                          )}
+                          onReconnect={reconnectState.onReconnect}
+                          isReconnecting={reconnectState.isReconnecting}
+                        />
+                      </Box>
+                    ) : null}
                     <MetadataList
                       items={[
                         {
@@ -223,10 +309,27 @@ export const ConnectorInstanceView = ({
                         },
                         {
                           label: "Config",
-                          value: ci.config ? JSON.stringify(ci.config) : "",
+                          value: (
+                            <Box
+                              component="pre"
+                              sx={{
+                                fontFamily: "monospace",
+                                fontSize: "0.8125rem",
+                                backgroundColor: "action.hover",
+                                borderRadius: 1,
+                                px: 1.5,
+                                py: 1,
+                                m: 0,
+                                overflow: "auto",
+                                maxHeight: 320,
+                                whiteSpace: "pre",
+                              }}
+                            >
+                              {JSON.stringify(ci.config, null, 2)}
+                            </Box>
+                          ),
                           hidden:
                             !ci.config || Object.keys(ci.config).length === 0,
-                          variant: "mono",
                         },
                         {
                           label: "Last sync",

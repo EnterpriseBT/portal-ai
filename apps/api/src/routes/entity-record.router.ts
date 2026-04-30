@@ -20,7 +20,6 @@ import {
   type EntityRecordGetResponsePayload,
   EntityRecordImportRequestBodySchema,
   type EntityRecordImportResponsePayload,
-  type EntityRecordSyncResponsePayload,
   EntityRecordCreateRequestBodySchema,
   type EntityRecordCreateResponsePayload,
   EntityRecordPatchRequestBodySchema,
@@ -39,7 +38,6 @@ import { DbService } from "../services/db.service.js";
 import { entityRecords } from "../db/schema/index.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import { assertWriteCapability } from "../utils/resolve-capabilities.util.js";
-import { SyncService } from "../services/sync.service.js";
 import { RevalidationService } from "../services/revalidation.service.js";
 import { fieldMappingsRepo } from "../db/repositories/field-mappings.repository.js";
 import { columnDefinitionsRepo } from "../db/repositories/column-definitions.repository.js";
@@ -648,43 +646,6 @@ entityRecordRouter.post(
               error instanceof Error
                 ? error.message
                 : "Failed to import entity records"
-            )
-      );
-    }
-  }
-);
-
-// ── POST /sync — Trigger sync ───────────────────────────────────────
-
-entityRecordRouter.post(
-  "/sync",
-  getApplicationMetadata,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const connectorEntityId = req.params.connectorEntityId;
-      const entity = await resolveEntityOrThrow(connectorEntityId, next);
-      if (!entity) return;
-
-      await RevalidationService.assertNoActiveJob(connectorEntityId);
-
-      const { userId } = req.application!.metadata;
-      const result = await SyncService.syncEntity(connectorEntityId, userId);
-
-      return HttpService.success<EntityRecordSyncResponsePayload>(res, result);
-    } catch (error) {
-      logger.error(
-        { error: error instanceof Error ? error.message : "Unknown error" },
-        "Failed to sync entity records"
-      );
-      return next(
-        error instanceof ApiError
-          ? error
-          : new ApiError(
-              500,
-              ApiCode.ENTITY_RECORD_SYNC_FAILED,
-              error instanceof Error
-                ? error.message
-                : "Failed to sync entity records"
             )
       );
     }

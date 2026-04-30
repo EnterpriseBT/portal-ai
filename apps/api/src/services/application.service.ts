@@ -102,7 +102,8 @@ export class ApplicationService {
         };
       }
 
-      // Create connector instance
+      // Create connector instance — inherits capability flags from the
+      // sandbox definition's ceiling.
       const instanceModel = new ConnectorInstanceModelFactory()
         .create(systemId)
         .update({
@@ -114,12 +115,7 @@ export class ApplicationService {
           credentials: null,
           lastSyncAt: null,
           lastErrorMessage: null,
-          enabledCapabilityFlags: {
-            sync: false,
-            read: true,
-            write: true,
-            push: false,
-          },
+          enabledCapabilityFlags: { ...sandboxDef.capabilityFlags },
         });
 
       const createdInstance =

@@ -11,6 +11,47 @@ const logger = createLogger({ module: "jobs-worker" });
 /** Untyped processor — accepts any BullMQ job. Used by the registry map. */
 export type JobProcessor = (job: BullJob) => Promise<unknown>;
 
+/**
+ * Build a failure message that surfaces the actual root cause.
+ *
+ * Drizzle wraps postgres errors so that `.message` only contains the
+ * failed SQL + bound params — not the reason. The underlying postgres
+ * error (e.g. "duplicate key value violates unique constraint") lives
+ * on `.cause`. We walk the cause chain and prefer postgres's `detail` /
+ * `code` / `message` fields when present, falling back to the wrapper
+ * message on plain errors.
+ */
+function formatJobError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+
+  let cursor: unknown = err;
+  let depth = 0;
+  while (cursor instanceof Error && depth < 5) {
+    const causeCandidate = (cursor as { cause?: unknown }).cause;
+    if (causeCandidate instanceof Error) {
+      cursor = causeCandidate;
+      depth++;
+      continue;
+    }
+    break;
+  }
+
+  const root = cursor instanceof Error ? cursor : err;
+  const pg = root as Error & {
+    code?: string;
+    detail?: string;
+    constraint_name?: string;
+    table_name?: string;
+  };
+
+  const parts: string[] = [];
+  if (pg.message) parts.push(pg.message);
+  if (pg.detail) parts.push(`detail: ${pg.detail}`);
+  if (pg.code) parts.push(`code: ${pg.code}`);
+  if (pg.constraint_name) parts.push(`constraint: ${pg.constraint_name}`);
+  return parts.join(" | ");
+}
+
 /** BullMQ job data shape for a given job type (jobId + type + typed metadata). */
 export type JobData<T extends JobType = JobType> = {
   jobId: string;
@@ -55,7 +96,8 @@ export const createJobsWorker = (
         });
         return result;
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = formatJobError(err);
+        logger.error({ jobId, err }, "Job failed");
         await JobEventsService.transition(jobId, "failed", { error: message });
         throw err;
       }

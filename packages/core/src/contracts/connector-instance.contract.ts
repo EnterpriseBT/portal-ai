@@ -7,12 +7,53 @@ import {
 } from "./pagination.contract.js";
 
 /**
- * API-facing schema for connector instances.
- * Overrides `credentials` from the DB-layer `string | null` back to the
- * decrypted `Record<string, unknown> | null` that API consumers expect.
+ * Connector-defined public projection of a credential blob.
+ *
+ * Adapters opt into surfacing fields by implementing
+ * `ConnectorAdapter.toPublicAccountInfo`. The `identity` field is the
+ * one-line summary the connector card chip renders (typically an email
+ * or workspace name); `metadata` is a free-form bag of additional public
+ * fields the detail view renders generically. Primitive-only values in
+ * `metadata` so the UI can humanize keys + stringify values without
+ * recursion.
+ *
+ * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 9.
  */
-export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.extend({
-  credentials: z.record(z.string(), z.unknown()).nullable(),
+export const PublicAccountInfoSchema = z.object({
+  identity: z.string().nullable(),
+  metadata: z.record(
+    z.string(),
+    z.union([z.string(), z.number(), z.boolean()])
+  ),
+});
+
+export type PublicAccountInfo = z.infer<typeof PublicAccountInfoSchema>;
+
+export const EMPTY_ACCOUNT_INFO: PublicAccountInfo = {
+  identity: null,
+  metadata: {},
+};
+
+/**
+ * API-facing schema for connector instances. The repository decrypts
+ * `credentials` on read; the API layer redacts it before responding and
+ * surfaces only the connector-defined `accountInfo` projection.
+ */
+export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.omit({
+  credentials: true,
+}).extend({
+  accountInfo: PublicAccountInfoSchema,
+  /**
+   * Whether this instance can run a manual sync. `true` if it has a
+   * committed plan with stable identity strategies (`column`/`composite`);
+   * `false` if it has no plan or a plan using `rowPosition` identity
+   * (positional ids shift on every row insert/delete, making sync
+   * pathological). `undefined` on list endpoints to avoid n+1 plan
+   * lookups — the UI's sync affordance reads from the detail view only.
+   *
+   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 5.
+   */
+  syncEligible: z.boolean().optional(),
 });
 
 export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;
@@ -70,12 +111,21 @@ export const ConnectorInstanceCreateRequestBodySchema = z.object({
   organizationId: z.string(),
   name: z.string().min(1),
   status: z.enum(["active", "inactive", "error", "pending"]),
-  enabledCapabilityFlags: z.object({
-    sync: z.boolean().optional(),
-    read: z.boolean().optional(),
-    write: z.boolean().optional(),
-    push: z.boolean().optional(),
-  }),
+  /**
+   * Per-instance capability overrides. When omitted, the server copies
+   * `definition.capabilityFlags` so the instance inherits whatever the
+   * connector type supports. Callers only send this field when they
+   * want to opt out of one or more capabilities at creation time
+   * (e.g. read-only against a write-capable connector).
+   */
+  enabledCapabilityFlags: z
+    .object({
+      sync: z.boolean().optional(),
+      read: z.boolean().optional(),
+      write: z.boolean().optional(),
+      push: z.boolean().optional(),
+    })
+    .optional(),
   config: z.record(z.string(), z.unknown()).nullable().optional(),
   credentials: z.record(z.string(), z.unknown()).nullable().optional(),
 });

@@ -112,6 +112,37 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  # ── CloudFront Response Headers Policy ───────────────────────────────────
+  # OAuth-popup connectors (google-sheets, future excel-cloud) need to
+  # postMessage from the popup back to the opener. Without
+  # `Cross-Origin-Opener-Policy: same-origin-allow-popups` on the opener,
+  # browsers either sever the opener reference outright or refuse the
+  # postMessage. `same-origin-allow-popups` keeps COOP's protection for
+  # everything *except* popups we explicitly opened — exactly what an
+  # OAuth flow needs.
+  #
+  # The dev-server equivalent lives in `apps/web/vite.config.ts`.
+  FrontendResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "portalai-${Environment}-frontend-headers"
+        Comment: "Sets COOP=same-origin-allow-popups so OAuth popup connectors work."
+        SecurityHeadersConfig:
+          # `Override: true` ensures CloudFront always wins over any
+          # header an upstream origin (S3) might emit.
+          ContentTypeOptions:
+            Override: true
+          # Note: `CrossOriginOpenerPolicy` is not yet a first-class
+          # property on `SecurityHeadersConfig` in CloudFormation. Set
+          # it via `CustomHeadersConfig` instead — same response-header
+          # outcome, just a different config slot.
+        CustomHeadersConfig:
+          Items:
+            - Header: Cross-Origin-Opener-Policy
+              Value: same-origin-allow-popups
+              Override: true
+
   # ── CloudFront Distribution ──────────────────────────────────────────────
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -143,6 +174,7 @@ Resources:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized (AWS managed)
+          ResponseHeadersPolicyId: !Ref FrontendResponseHeadersPolicy
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD]
           Compress: true

@@ -11,6 +11,7 @@ import crypto from "crypto";
 import request from "supertest";
 import { Request, Response, NextFunction } from "express";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { eq as eqRaw } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../../../db/schema/index.js";
 import type { DbClient } from "../../../db/repositories/base.repository.js";
@@ -1225,6 +1226,77 @@ describe("Connector Instance Router", () => {
       expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_USER_NOT_FOUND);
     });
 
+    it("inherits enabledCapabilityFlags from the definition when the body omits them", async () => {
+      const def = createConnectorDefinition({
+        capabilityFlags: { sync: true, read: true, write: false, push: true },
+      });
+      const user = createUser(AUTH0_ID);
+      const orgId = generateId();
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(user as never);
+
+      const res = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId: def.id,
+          organizationId: orgId,
+          name: "Inherits flags",
+          status: "active",
+        });
+
+      expect(res.status).toBe(201);
+      const created = res.body.payload.connectorInstance;
+      expect(created.enabledCapabilityFlags).toEqual({
+        sync: true,
+        read: true,
+        write: false,
+        push: true,
+      });
+    });
+
+    it("merges partial enabledCapabilityFlags overrides on top of the definition's defaults", async () => {
+      const def = createConnectorDefinition({
+        capabilityFlags: { sync: true, read: true, write: true, push: false },
+      });
+      const user = createUser(AUTH0_ID);
+      const orgId = generateId();
+
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.users)
+        .values(user as never);
+
+      const res = await request(app)
+        .post("/api/connector-instances")
+        .set("Authorization", "Bearer test-token")
+        .send({
+          connectorDefinitionId: def.id,
+          organizationId: orgId,
+          name: "Partial override",
+          status: "active",
+          // Caller opts out of `write` only — `sync`/`read`/`push` should
+          // still inherit from the definition rather than fall to `false`.
+          enabledCapabilityFlags: { write: false },
+        });
+
+      expect(res.status).toBe(201);
+      const created = res.body.payload.connectorInstance;
+      expect(created.enabledCapabilityFlags).toEqual({
+        sync: true,
+        read: true,
+        write: false,
+        push: false,
+      });
+    });
+
     it("should create a connector instance successfully", async () => {
       const def = createConnectorDefinition();
       const user = createUser(AUTH0_ID);
@@ -1256,10 +1328,13 @@ describe("Connector Instance Router", () => {
       expect(created.organizationId).toBe(orgId);
       expect(created.status).toBe("active");
       expect(created.config).toBeNull();
-      expect(created.credentials).toBeNull();
+      // `credentials` is redacted from every response shape (see Slice 9).
+      expect(created.credentials).toBeUndefined();
+      // Connectors with no `toPublicAccountInfo` get the empty default.
+      expect(created.accountInfo).toEqual({ identity: null, metadata: {} });
     });
 
-    it("should create an instance with config and credentials", async () => {
+    it("should create an instance with config and credentials but redact credentials from the response", async () => {
       const def = createConnectorDefinition();
       const user = createUser(AUTH0_ID);
       const orgId = generateId();
@@ -1287,8 +1362,13 @@ describe("Connector Instance Router", () => {
       expect(res.status).toBe(201);
       const created = res.body.payload.connectorInstance;
       expect(created.config).toEqual({ endpoint: "https://api.example.com" });
-      // Credentials should be returned decrypted through the API
-      expect(created.credentials).toEqual({ apiKey: "secret-key-123" });
+      // Credentials must NEVER be returned over the wire — the API redacts
+      // them. Deep-scan the body so a future regression slipping the field
+      // through any nested object fails this test.
+      expect(JSON.stringify(res.body)).not.toContain("secret-key-123");
+      expect(created.credentials).toBeUndefined();
+      // The unrecognized slug has no adapter — accountInfo defaults to empty.
+      expect(created.accountInfo).toEqual({ identity: null, metadata: {} });
     });
 
     it("created instance should be retrievable via GET", async () => {
@@ -1325,6 +1405,438 @@ describe("Connector Instance Router", () => {
       expect(getRes.body.payload.connectorInstance.name).toBe(
         "Retrievable Instance"
       );
+    });
+
+    it("surfaces accountInfo.identity for google-sheets instances and never leaks credentials", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({ slug: "google-sheets" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+
+      // Insert a row directly with already-encrypted credentials, mirroring
+      // what the OAuth callback writes. The repository decrypts on read; the
+      // serializer projects it to accountInfo.identity = email.
+      const { encryptCredentials } = await import(
+        "../../../utils/crypto.util.js"
+      );
+      const credentialsBlob = encryptCredentials({
+        refresh_token: "1//super-secret-refresh-token",
+        scopes: ["drive.readonly"],
+        googleAccountEmail: "alice@example.com",
+      });
+      const instanceId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(
+          createConnectorInstance(def.id, organizationId, {
+            id: instanceId,
+            status: "pending",
+            credentials: credentialsBlob,
+          }) as never
+        );
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${instanceId}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      const body = res.body.payload.connectorInstance;
+      expect(body.accountInfo).toEqual({
+        identity: "alice@example.com",
+        metadata: {},
+      });
+      expect(body.credentials).toBeUndefined();
+      // Deep-scan: refresh_token must not appear anywhere in the response.
+      expect(JSON.stringify(res.body)).not.toContain("super-secret-refresh-token");
+    });
+  });
+
+  // ── POST /api/connector-instances/:id/sync ───────────────────────
+
+  describe("POST /api/connector-instances/:id/sync", () => {
+    /** Build a minimal-but-valid `LayoutPlan` for the gsheets-style sync gate. */
+    function makeSyncPlan(opts: {
+      identityKind?: "column" | "rowPosition";
+    }): Record<string, unknown> {
+      const identity =
+        opts.identityKind === "rowPosition"
+          ? { kind: "rowPosition", confidence: 0.3 }
+          : {
+              kind: "column",
+              sourceLocator: {
+                kind: "column",
+                sheet: "Sheet1",
+                col: 1,
+              },
+              confidence: 0.9,
+            };
+      return {
+        planVersion: "1.0.0",
+        workbookFingerprint: {
+          sheetNames: ["Sheet1"],
+          dimensions: { Sheet1: { rows: 2, cols: 2 } },
+          anchorCells: [{ sheet: "Sheet1", row: 1, col: 1, value: "email" }],
+        },
+        regions: [
+          {
+            id: "r1",
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+            targetEntityDefinitionId: "people",
+            headerAxes: ["row"],
+            segmentsByAxis: {
+              row: [{ kind: "field", positionCount: 2 }],
+            },
+            headerStrategyByAxis: {
+              row: {
+                kind: "row",
+                locator: { kind: "row", sheet: "Sheet1", row: 1 },
+                confidence: 0.95,
+              },
+            },
+            identityStrategy: identity,
+            columnBindings: [],
+            skipRules: [],
+            drift: {
+              headerShiftRows: 0,
+              addedColumns: "halt",
+              removedColumns: { max: 0, action: "halt" },
+            },
+            confidence: { region: 0.9, aggregate: 0.9 },
+            warnings: [],
+          },
+        ],
+        confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
+      };
+    }
+
+    async function seedSyncFixture(opts: {
+      identityKind?: "column" | "rowPosition";
+      withPlan?: boolean;
+    }) {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({ slug: "google-sheets" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const inst = createConnectorInstance(def.id, organizationId, {
+        config: { spreadsheetId: "1abc", title: "x" },
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(inst as never);
+
+      if (opts.withPlan !== false) {
+        await (db as ReturnType<typeof drizzle>)
+          .insert(schema.connectorInstanceLayoutPlans)
+          .values({
+            id: generateId(),
+            connectorInstanceId: inst.id,
+            planVersion: "1.0.0",
+            revisionTag: null,
+            plan: makeSyncPlan({ identityKind: opts.identityKind }),
+            interpretationTrace: null,
+            supersededBy: null,
+            created: now,
+            createdBy: "SYSTEM_TEST",
+            updated: null,
+            updatedBy: null,
+            deleted: null,
+            deletedBy: null,
+          } as never);
+      }
+
+      return { organizationId, instanceId: inst.id, definitionId: def.id };
+    }
+
+    it("returns 404 when the instance does not exist", async () => {
+      await seedUserAndOrg(db as ReturnType<typeof drizzle>, AUTH0_ID);
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${generateId()}/sync`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.CONNECTOR_INSTANCE_NOT_FOUND);
+    });
+
+    it("returns 404 when the instance has no committed plan", async () => {
+      const { instanceId } = await seedSyncFixture({ withPlan: false });
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(404);
+      expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_NOT_FOUND);
+    });
+
+    it("returns 409 when the plan uses rowPosition identity", async () => {
+      const { instanceId } = await seedSyncFixture({
+        identityKind: "rowPosition",
+      });
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(
+        ApiCode.LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY
+      );
+    });
+
+    it("returns 202 + jobId and persists a pending connector_sync job", async () => {
+      const { instanceId, organizationId } = await seedSyncFixture({});
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(202);
+      expect(res.body.success).toBe(true);
+      expect(typeof res.body.payload.jobId).toBe("string");
+
+      const [jobRow] = await (db as ReturnType<typeof drizzle>)
+        .select()
+        .from(schema.jobs)
+        .where(eqRaw(schema.jobs.id, res.body.payload.jobId));
+      expect(jobRow).toBeDefined();
+      expect(jobRow!.type).toBe("connector_sync");
+      expect(jobRow!.organizationId).toBe(organizationId);
+      const meta = jobRow!.metadata as Record<string, unknown>;
+      expect(meta.connectorInstanceId).toBe(instanceId);
+    });
+
+    it("returns 409 SYNC_ALREADY_RUNNING when a sync is already in flight", async () => {
+      const { instanceId, organizationId } = await seedSyncFixture({});
+
+      // Seed an in-flight job directly so we don't race the queue.
+      const inFlightJobId = generateId();
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.jobs)
+        .values({
+          id: inFlightJobId,
+          organizationId,
+          type: "connector_sync",
+          status: "active",
+          progress: 50,
+          metadata: { connectorInstanceId: instanceId, organizationId },
+          result: null,
+          error: null,
+          startedAt: now,
+          completedAt: null,
+          bullJobId: null,
+          attempts: 1,
+          maxAttempts: 3,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+
+      const res = await request(app)
+        .post(`/api/connector-instances/${instanceId}/sync`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe(ApiCode.SYNC_ALREADY_RUNNING);
+      expect(res.body.details?.jobId).toBe(inFlightJobId);
+    });
+  });
+
+  // ── GET /api/connector-instances/:id (syncEligible field) ────────
+
+  describe("GET /api/connector-instances/:id syncEligible", () => {
+    function makePlanWithIdentity(
+      identityKind: "column" | "rowPosition"
+    ): Record<string, unknown> {
+      const identity =
+        identityKind === "rowPosition"
+          ? { kind: "rowPosition", confidence: 0.3 }
+          : {
+              kind: "column",
+              sourceLocator: {
+                kind: "column",
+                sheet: "Sheet1",
+                col: 1,
+              },
+              confidence: 0.9,
+            };
+      return {
+        planVersion: "1.0.0",
+        workbookFingerprint: {
+          sheetNames: ["Sheet1"],
+          dimensions: { Sheet1: { rows: 2, cols: 2 } },
+          anchorCells: [
+            { sheet: "Sheet1", row: 1, col: 1, value: "email" },
+          ],
+        },
+        regions: [
+          {
+            id: "r1",
+            sheet: "Sheet1",
+            bounds: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+            targetEntityDefinitionId: "people",
+            headerAxes: ["row"],
+            segmentsByAxis: { row: [{ kind: "field", positionCount: 2 }] },
+            headerStrategyByAxis: {
+              row: {
+                kind: "row",
+                locator: { kind: "row", sheet: "Sheet1", row: 1 },
+                confidence: 0.95,
+              },
+            },
+            identityStrategy: identity,
+            columnBindings: [],
+            skipRules: [],
+            drift: {
+              headerShiftRows: 0,
+              addedColumns: "halt",
+              removedColumns: { max: 0, action: "halt" },
+            },
+            confidence: { region: 0.9, aggregate: 0.9 },
+            warnings: [],
+          },
+        ],
+        confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
+      };
+    }
+
+    it("is true when the plan uses column identity (sync-capable connector)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({ slug: "google-sheets" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const inst = createConnectorInstance(def.id, organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(inst as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.connectorInstanceLayoutPlans)
+        .values({
+          id: generateId(),
+          connectorInstanceId: inst.id,
+          planVersion: "1.0.0",
+          revisionTag: null,
+          plan: makePlanWithIdentity("column"),
+          interpretationTrace: null,
+          supersededBy: null,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${inst.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstance.syncEligible).toBe(true);
+    });
+
+    it("is false when the plan uses rowPosition identity", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({ slug: "google-sheets" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const inst = createConnectorInstance(def.id, organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(inst as never);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(schema.connectorInstanceLayoutPlans)
+        .values({
+          id: generateId(),
+          connectorInstanceId: inst.id,
+          planVersion: "1.0.0",
+          revisionTag: null,
+          plan: makePlanWithIdentity("rowPosition"),
+          interpretationTrace: null,
+          supersededBy: null,
+          created: now,
+          createdBy: "SYSTEM_TEST",
+          updated: null,
+          updatedBy: null,
+          deleted: null,
+          deletedBy: null,
+        } as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${inst.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstance.syncEligible).toBe(false);
+    });
+
+    it("is false when the instance has no committed plan", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({ slug: "google-sheets" });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const inst = createConnectorInstance(def.id, organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(inst as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${inst.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.payload.connectorInstance.syncEligible).toBe(false);
+    });
+
+    it("is undefined for connectors without sync capability (skips plan lookup)", async () => {
+      const { organizationId } = await seedUserAndOrg(
+        db as ReturnType<typeof drizzle>,
+        AUTH0_ID
+      );
+      const def = createConnectorDefinition({
+        slug: `nosync-${generateId()}`,
+        capabilityFlags: { sync: false, read: true, write: false },
+      });
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorDefinitions)
+        .values(def as never);
+      const inst = createConnectorInstance(def.id, organizationId);
+      await (db as ReturnType<typeof drizzle>)
+        .insert(connectorInstances)
+        .values(inst as never);
+
+      const res = await request(app)
+        .get(`/api/connector-instances/${inst.id}`)
+        .set("Authorization", "Bearer test-token");
+
+      expect(res.status).toBe(200);
+      expect(
+        res.body.payload.connectorInstance.syncEligible
+      ).toBeUndefined();
     });
   });
 });

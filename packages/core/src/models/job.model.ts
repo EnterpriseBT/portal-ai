@@ -32,7 +32,11 @@ export const TERMINAL_JOB_STATUSES: JobStatus[] = [
   "cancelled",
 ];
 
-export const JobTypeEnum = z.enum(["system_check", "revalidation"]);
+export const JobTypeEnum = z.enum([
+  "system_check",
+  "revalidation",
+  "connector_sync",
+]);
 export type JobType = z.infer<typeof JobTypeEnum>;
 
 // --- Per-Type Metadata & Result Schemas ---
@@ -68,6 +72,31 @@ export const RevalidationResultSchema = z.object({
 });
 export type RevalidationResult = z.infer<typeof RevalidationResultSchema>;
 
+/**
+ * connector_sync — generic per-instance sync. The shared sync route
+ * resolves the connector adapter via the instance's definition slug
+ * and dispatches the full pipeline to `adapter.syncInstance`. Used by
+ * every sync-capable connector (gsheets, future Microsoft Excel,
+ * future SQL/database, etc.) — the metadata + result shape are
+ * connector-agnostic.
+ */
+export const ConnectorSyncMetadataSchema = z.object({
+  connectorInstanceId: z.string(),
+  organizationId: z.string(),
+  userId: z.string(),
+});
+export type ConnectorSyncMetadata = z.infer<typeof ConnectorSyncMetadataSchema>;
+
+export const ConnectorSyncResultSchema = z.object({
+  recordCounts: z.object({
+    created: z.number().int().nonnegative(),
+    updated: z.number().int().nonnegative(),
+    unchanged: z.number().int().nonnegative(),
+    deleted: z.number().int().nonnegative(),
+  }),
+});
+export type ConnectorSyncResult = z.infer<typeof ConnectorSyncResultSchema>;
+
 // --- Type Map ---
 
 /**
@@ -81,6 +110,10 @@ export type RevalidationResult = z.infer<typeof RevalidationResultSchema>;
 export interface JobTypeMap {
   system_check: { metadata: SystemCheckMetadata; result: SystemCheckResult };
   revalidation: { metadata: RevalidationMetadata; result: RevalidationResult };
+  connector_sync: {
+    metadata: ConnectorSyncMetadata;
+    result: ConnectorSyncResult;
+  };
 }
 
 /**
@@ -100,6 +133,10 @@ export const JOB_TYPE_SCHEMAS: {
   revalidation: {
     metadata: RevalidationMetadataSchema,
     result: RevalidationResultSchema,
+  },
+  connector_sync: {
+    metadata: ConnectorSyncMetadataSchema,
+    result: ConnectorSyncResultSchema,
   },
 };
 

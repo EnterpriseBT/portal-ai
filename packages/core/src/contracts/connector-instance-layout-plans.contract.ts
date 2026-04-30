@@ -102,17 +102,35 @@ export type LayoutPlanCommitResult = z.infer<
 
 /**
  * Body for `POST /api/layout-plans/interpret`. Pure-compute: the server runs
- * `interpret()` and returns the resulting plan without any DB writes. The
- * workbook is always resolved via the streaming upload session — the server
- * pulls it from Redis, falling back to re-streaming from S3 on cache miss.
+ * `interpret()` and returns the resulting plan without any DB writes.
+ *
+ * Workbook source — exactly one of:
+ *   - `uploadSessionId` — file-upload pipeline. Server reads from
+ *     `WorkbookCacheService` under `upload-session:{id}` (or re-streams
+ *     from S3 on cache miss).
+ *   - `connectorInstanceId` — google-sheets pipeline (and any future
+ *     spreadsheet connector that already owns a pending instance).
+ *     Server reads from `gsheets:wb:{id}` cache.
  */
-export const LayoutPlanInterpretDraftRequestBodySchema = z.object({
-  uploadSessionId: z.string().min(1),
-  regionHints: InterpretInputSchema.shape.regionHints,
-  priorPlan: InterpretInputSchema.shape.priorPlan,
-  driftReport: InterpretInputSchema.shape.driftReport,
-  userHints: InterpretInputSchema.shape.userHints,
-});
+export const LayoutPlanInterpretDraftRequestBodySchema = z
+  .object({
+    uploadSessionId: z.string().min(1).optional(),
+    connectorInstanceId: z.string().min(1).optional(),
+    regionHints: InterpretInputSchema.shape.regionHints,
+    priorPlan: InterpretInputSchema.shape.priorPlan,
+    driftReport: InterpretInputSchema.shape.driftReport,
+    userHints: InterpretInputSchema.shape.userHints,
+  })
+  .refine(
+    (v) =>
+      (v.uploadSessionId && !v.connectorInstanceId) ||
+      (!v.uploadSessionId && v.connectorInstanceId),
+    {
+      message:
+        "Exactly one of `uploadSessionId` or `connectorInstanceId` must be provided",
+      path: ["uploadSessionId"],
+    }
+  );
 export type LayoutPlanInterpretDraftRequestBody = z.infer<
   typeof LayoutPlanInterpretDraftRequestBodySchema
 >;
@@ -129,12 +147,42 @@ export type LayoutPlanInterpretDraftResponsePayload = z.infer<
  * layout plan row + records in one server-side call. On any failure, the
  * instance and plan row are rolled back so no orphan survives.
  */
-export const LayoutPlanCommitDraftRequestBodySchema = z.object({
-  connectorDefinitionId: z.string().min(1),
-  name: z.string().min(1),
-  plan: LayoutPlanSchema,
-  uploadSessionId: z.string().min(1),
-});
+/**
+ * Body for `POST /api/layout-plans/commit`.
+ *
+ * Two paths, discriminated by which session id is present:
+ *
+ * **uploadSessionId path (file-upload):** server CREATES a fresh
+ * ConnectorInstance with the supplied `connectorDefinitionId` + `name`,
+ * runs the commit pipeline, and on failure rolls back the instance +
+ * plan row.
+ *
+ * **connectorInstanceId path (google-sheets et al.):** server uses the
+ * EXISTING pending ConnectorInstance (created earlier by the OAuth
+ * callback). Commit flips its status from "pending" → "active". The
+ * `connectorDefinitionId` and `name` fields are still required and used
+ * as-is — the server does not validate them against the existing
+ * instance for this path; the frontend is expected to pass values that
+ * match. The file_uploads-committed bookkeeping step is skipped.
+ */
+export const LayoutPlanCommitDraftRequestBodySchema = z
+  .object({
+    connectorDefinitionId: z.string().min(1),
+    name: z.string().min(1),
+    plan: LayoutPlanSchema,
+    uploadSessionId: z.string().min(1).optional(),
+    connectorInstanceId: z.string().min(1).optional(),
+  })
+  .refine(
+    (v) =>
+      (v.uploadSessionId && !v.connectorInstanceId) ||
+      (!v.uploadSessionId && v.connectorInstanceId),
+    {
+      message:
+        "Exactly one of `uploadSessionId` or `connectorInstanceId` must be provided",
+      path: ["uploadSessionId"],
+    }
+  );
 export type LayoutPlanCommitDraftRequestBody = z.infer<
   typeof LayoutPlanCommitDraftRequestBodySchema
 >;

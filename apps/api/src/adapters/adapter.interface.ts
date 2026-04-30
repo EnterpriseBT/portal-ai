@@ -1,5 +1,8 @@
 import type { ConnectorInstance, ColumnDataType } from "@portalai/core/models";
-import type { ResolvedColumn } from "@portalai/core/contracts";
+import type {
+  PublicAccountInfo,
+  ResolvedColumn,
+} from "@portalai/core/contracts";
 
 // ── Query / Result types ────────────────────────────────────────────
 
@@ -24,11 +27,33 @@ export interface EntityDataResult {
   source: "cache" | "live";
 }
 
-export interface SyncResult {
-  created: number;
-  updated: number;
-  unchanged: number;
-  errors: number;
+/**
+ * Per-instance sync result. Phase D's `syncInstance` returns this; the
+ * frontend toast displays "X added, Y updated, Z unchanged, W removed".
+ */
+export interface SyncInstanceResult {
+  recordCounts: {
+    created: number;
+    updated: number;
+    unchanged: number;
+    deleted: number;
+  };
+}
+
+/**
+ * Result shape for `ConnectorAdapter.assertSyncEligibility`.
+ *
+ * `reasonCode` is the `ApiCode` string the shared sync route surfaces
+ * to the client on refusal. Adapters define and own the codes for
+ * connector-specific failure modes (e.g. gsheets's
+ * `LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY`); the route maps the code into
+ * a 409 response body verbatim.
+ */
+export interface SyncEligibility {
+  ok: boolean;
+  reasonCode?: string;
+  reason?: string;
+  details?: Record<string, unknown>;
 }
 
 export interface DiscoveredEntity {
@@ -51,15 +76,68 @@ export interface ConnectorAdapter {
     query: EntityDataQuery
   ): Promise<EntityDataResult>;
 
-  syncEntity(
-    instance: ConnectorInstance,
-    entityKey: string
-  ): Promise<SyncResult>;
-
   discoverEntities(instance: ConnectorInstance): Promise<DiscoveredEntity[]>;
 
   discoverColumns(
     instance: ConnectorInstance,
     entityKey: string
   ): Promise<DiscoveredColumn[]>;
+
+  /**
+   * Project the decrypted credentials blob into the public `accountInfo`
+   * shape rendered on the connector card chip + detail view. Adapters
+   * implement this to surface non-secret fields (e.g. the authenticated
+   * account's email); omit the method entirely to opt out (the serializer
+   * defaults to `EMPTY_ACCOUNT_INFO`).
+   *
+   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-A.plan.md` §Slice 9.
+   */
+  toPublicAccountInfo?(
+    credentials: Record<string, unknown> | null
+  ): PublicAccountInfo;
+
+  /**
+   * Per-instance sync. Optional — connectors that don't support sync
+   * (file-upload, sandbox) omit it. The shared sync route resolves
+   * the adapter via the connector definition slug and delegates the
+   * full pipeline to this method.
+   *
+   * Per Phase D: load the persisted plan, fetch the source data,
+   * replay against the plan, upsert records with a shared
+   * `runStartedAt` watermark, soft-delete stale rows, update
+   * `lastSyncAt` + clear `lastErrorMessage`. Returns the tally for
+   * the SSE consumer's success toast.
+   *
+   * `progress?: (percent) => void` is the BullMQ processor's
+   * `bullJob.updateProgress` callback — fans out to SSE consumers.
+   * Optional so unit tests can call `syncInstance` directly.
+   *
+   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 4.
+   */
+  syncInstance?(
+    instance: ConnectorInstance,
+    userId: string,
+    progress?: (percent: number) => void
+  ): Promise<SyncInstanceResult>;
+
+  /**
+   * Optional connector-specific sync-eligibility gate. Called by the
+   * shared sync route + serializer before enqueueing the job (and on
+   * GET-by-id to render the disabled-state affordance) so we refuse
+   * syncs that we know upfront will fail. Adapters that always accept
+   * sync requests (no preconditions beyond `syncInstance` existing)
+   * omit the method entirely — the route assumes eligibility.
+   *
+   * Examples: gsheets refuses when no layout plan is committed or the
+   * plan uses positional row identity; a future SQL adapter could
+   * refuse when credentials lack SELECT permission on the configured
+   * tables.
+   *
+   * Returns `{ ok: true }` on success or
+   * `{ ok: false, reasonCode, reason, details? }` which the route
+   * maps to a 4xx ApiError (typically 409).
+   */
+  assertSyncEligibility?(
+    instance: ConnectorInstance
+  ): Promise<SyncEligibility>;
 }

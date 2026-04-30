@@ -119,6 +119,38 @@ describe("SeedService Integration Tests", () => {
       expect(sandboxRows).toHaveLength(1);
     });
 
+    it("should create a Google Sheets connector definition with correct fields", async () => {
+      await seedService.seed();
+
+      const rows = await connectorDefsRepo.findMany(undefined, {}, db);
+      const gsheets = rows.find((r) => r.slug === "google-sheets");
+
+      expect(gsheets).toBeDefined();
+      expect(gsheets?.display).toBe("Google Sheets");
+      expect(gsheets?.category).toBe("File-based");
+      expect(gsheets?.authType).toBe("oauth2");
+      // Phase C flipped this on once the workflow shell landed.
+      expect(gsheets?.isActive).toBe(true);
+      expect(gsheets?.version).toBe("1.0.0");
+      expect(gsheets?.configSchema).toEqual({});
+      expect(gsheets?.capabilityFlags).toEqual({
+        sync: true,
+        read: true,
+        write: false,
+        push: false,
+      });
+    });
+
+    it("should be idempotent for google-sheets — running seed twice should not duplicate rows", async () => {
+      await seedService.seed();
+      await seedService.seed();
+
+      const rows = await connectorDefsRepo.findMany(undefined, {}, db);
+      const gsheetsRows = rows.filter((r) => r.slug === "google-sheets");
+
+      expect(gsheetsRows).toHaveLength(1);
+    });
+
     it("should update existing connector definitions on re-seed (upsert)", async () => {
       await seedService.seed();
 

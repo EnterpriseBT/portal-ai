@@ -103,9 +103,6 @@ export interface EntityDetailViewUIProps {
   connectorInstanceName?: string;
   recordCount?: number;
   lastSyncAt?: number | null;
-  canSync?: boolean;
-  onSync?: () => void;
-  isSyncing?: boolean;
   /** Field mappings of type reference-array that have a back-reference configured. */
   bidirectionalFieldMappings?: BidirectionalFieldMappingRef[];
   /** Called when a record row is clicked. Overrides the default navigation behaviour — useful for testing. */
@@ -165,9 +162,6 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   connectorInstanceName,
   recordCount,
   lastSyncAt,
-  canSync,
-  onSync,
-  isSyncing,
   bidirectionalFieldMappings,
   onRecordClick,
   tags,
@@ -199,8 +193,6 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
   isRevalidating,
 }) => {
   const navigate = useNavigate();
-
-  const showSyncButton = !!canSync;
 
   // Column definitions captured from the first successful API response.
   // Used to populate the advanced filter builder and validate persisted filters.
@@ -273,29 +265,19 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
           title={entity.label}
           icon={<Icon name={IconName.DataObject} />}
           primaryAction={
-            showSyncButton ? (
+            isWriteEnabled ? (
               <Button
                 variant="contained"
-                startIcon={<RefreshIcon />}
-                onClick={onSync}
-                disabled={isSyncing}
+                startIcon={<EditIcon />}
+                onClick={() => onOpenEditDialog?.()}
+                disabled={isUpdating}
               >
-                {isSyncing ? "Syncing…" : "Sync"}
+                Edit
               </Button>
             ) : undefined
           }
-          secondaryActions={[
-            ...(isWriteEnabled
-              ? [
-                  {
-                    label: "Edit",
-                    icon: <EditIcon />,
-                    onClick: () => onOpenEditDialog?.(),
-                    disabled: isUpdating,
-                  },
-                ]
-              : []),
-            ...(isWriteEnabled
+          secondaryActions={
+            isWriteEnabled
               ? [
                   {
                     label: "Delete",
@@ -305,8 +287,8 @@ export const EntityDetailViewUI: React.FC<EntityDetailViewUIProps> = ({
                     disabled: isDeleting,
                   },
                 ]
-              : []),
-          ]}
+              : []
+          }
         >
           <MetadataList
             items={[
@@ -549,7 +531,6 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
   });
 
   const countResult = sdk.entityRecords.count(entityId);
-  const syncMutation = sdk.entityRecords.sync(entityId);
   const revalidateMutation = sdk.entityRecords.revalidate(entityId);
   const createRecordMutation = sdk.entityRecords.create(entityId);
   const updateMutation = sdk.connectorEntities.update(entityId);
@@ -677,16 +658,12 @@ export const EntityDetailView: React.FC<EntityDetailViewProps> = ({
         const instance = instanceResult.data?.connectorInstance;
 
         const isWriteEnabled = instance?.enabledCapabilityFlags?.write === true;
-        const canSync = instance?.enabledCapabilityFlags?.sync === true;
 
         return (
           <EntityDetailViewUI
             entity={entity}
             connectorInstanceName={instance?.name}
             recordCount={countData?.total}
-            canSync={canSync}
-            onSync={() => syncMutation.mutate(undefined)}
-            isSyncing={syncMutation.isPending}
             bidirectionalFieldMappings={
               bidirectionalFieldMappings.length > 0
                 ? bidirectionalFieldMappings

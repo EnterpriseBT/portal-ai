@@ -24,6 +24,15 @@ export class ConnectorAdapterRegistry {
     return adapter;
   }
 
+  /**
+   * Retrieve the adapter for a slug, returning `undefined` if none is
+   * registered. Used by the redaction serializer where an unregistered
+   * slug is a valid state (defaults to `EMPTY_ACCOUNT_INFO`).
+   */
+  static find(slug: string): ConnectorAdapter | undefined {
+    return this.adapters.get(slug);
+  }
+
   /** Check whether an adapter is registered for the given slug. */
   static has(slug: string): boolean {
     return this.adapters.has(slug);

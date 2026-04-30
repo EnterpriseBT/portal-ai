@@ -1,6 +1,7 @@
 import type { JobProcessor } from "../jobs.worker.js";
 import { systemCheckProcessor } from "./system-check.processor.js";
 import { revalidationProcessor } from "./revalidation.processor.js";
+import { connectorSyncProcessor } from "./connector-sync.processor.js";
 
 /**
  * Declarative processor map.
@@ -13,4 +14,5 @@ import { revalidationProcessor } from "./revalidation.processor.js";
 export const processors: Record<string, JobProcessor> = {
   system_check: systemCheckProcessor,
   revalidation: revalidationProcessor,
+  connector_sync: connectorSyncProcessor,
 };

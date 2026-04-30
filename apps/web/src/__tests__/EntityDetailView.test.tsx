@@ -171,51 +171,11 @@ describe("EntityDetailViewUI", () => {
     expect(screen.getByText("Last sync")).toBeInTheDocument();
   });
 
-  it("renders sync button when canSync is true", () => {
-    render(
-      <EntityDetailViewUI
-        entity={stubEntity}
-        canSync={true}
-        onSync={jest.fn()}
-      />
-    );
-    expect(screen.getByRole("button", { name: "Sync" })).toBeInTheDocument();
-  });
-
-  it("hides sync button when canSync is false", () => {
-    render(<EntityDetailViewUI entity={stubEntity} canSync={false} />);
+  it("never renders a Sync button (entity-level sync was removed; sync now happens at the connector instance level)", () => {
+    render(<EntityDetailViewUI entity={stubEntity} isWriteEnabled={true} />);
     expect(
-      screen.queryByRole("button", { name: "Sync" })
+      screen.queryByRole("button", { name: /^sync/i })
     ).not.toBeInTheDocument();
-  });
-
-  it("hides sync button when canSync is not set", () => {
-    render(<EntityDetailViewUI entity={stubEntity} />);
-    expect(
-      screen.queryByRole("button", { name: "Sync" })
-    ).not.toBeInTheDocument();
-  });
-
-  it("calls onSync when sync button is clicked", async () => {
-    const onSync = jest.fn();
-    render(
-      <EntityDetailViewUI entity={stubEntity} canSync={true} onSync={onSync} />
-    );
-    const { fireEvent } = await import("@testing-library/react");
-    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
-    expect(onSync).toHaveBeenCalled();
-  });
-
-  it("shows syncing state when isSyncing is true", () => {
-    render(
-      <EntityDetailViewUI
-        entity={stubEntity}
-        canSync={true}
-        isSyncing={true}
-        onSync={jest.fn()}
-      />
-    );
-    expect(screen.getByRole("button", { name: "Syncing…" })).toBeDisabled();
   });
 
   it("clicking a row calls onRecordClick with the correct recordId", async () => {

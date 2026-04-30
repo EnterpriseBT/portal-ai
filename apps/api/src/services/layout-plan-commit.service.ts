@@ -46,13 +46,34 @@ import type {
 } from "../db/schema/zod.js";
 import type { DbClient } from "../db/repositories/base.repository.js";
 
+/**
+ * Optional behavioral overrides for the commit pipeline. Used by Phase D's
+ * sync flow, which calls into the same replay + per-entity write
+ * machinery but with two differences:
+ *
+ *   - `syncedAt` overrides the per-record `synced_at` timestamp so
+ *     `softDeleteBeforeWatermark` (Phase D Slice 1) can reap rows that
+ *     pre-date the run. Commit's default is `Date.now()` per-record.
+ *   - `skipDriftGate` lets sync proceed against a workbook whose
+ *     structure has shifted since the plan was committed. Commit's drift
+ *     gate is the user's safety net at first write; sync runs after
+ *     that gate has already been passed once.
+ */
+export interface CommitSyncOptions {
+  /** Run-scoped watermark stamped on every upserted row's `syncedAt`. */
+  syncedAt?: number;
+  /** When true, skip the drift-allows-commit gate. */
+  skipDriftGate?: boolean;
+}
+
 export class LayoutPlanCommitService {
   static async commit(
     connectorInstanceId: string,
     planId: string,
     organizationId: string,
     userId: string,
-    body: { workbook: unknown }
+    body: { workbook: unknown },
+    syncOptions: CommitSyncOptions = {}
   ): Promise<LayoutPlanCommitResult> {
     // ── 1. Verify ownership + load plan row ────────────────────────────
     await LayoutPlanCommitService.ensureInstanceInOrg(
@@ -107,7 +128,12 @@ export class LayoutPlanCommitService {
     }
 
     // ── 3. Drift gating ───────────────────────────────────────────────
-    LayoutPlanCommitService.assertDriftAllowsCommit(drift);
+    // Sync (Phase D) bypasses the gate — drift between the persisted
+    // plan and the live spreadsheet is exactly what sync exists to
+    // surface.
+    if (!syncOptions.skipDriftGate) {
+      LayoutPlanCommitService.assertDriftAllowsCommit(drift);
+    }
 
     // ── 4. Load ColumnDefinition catalog for normalizedKey resolution ──
     const catalogRows =
@@ -330,7 +356,8 @@ export class LayoutPlanCommitService {
           normalizedKeyByRecordFieldKey,
           organizationId,
           userId,
-          tx
+          tx,
+          syncOptions.syncedAt
         );
         totals.created += counts.created;
         totals.updated += counts.updated;
@@ -481,7 +508,14 @@ export class LayoutPlanCommitService {
     normalizedKeyByRecordFieldKey: Map<string, string>,
     organizationId: string,
     userId: string,
-    tx: DbClient
+    tx: DbClient,
+    /**
+     * Run-scoped watermark for `synced_at`. When undefined, defaults to
+     * `Date.now()` per record (commit's original behavior). Sync passes
+     * `runStartedAt` so a downstream `softDeleteBeforeWatermark` can
+     * reap rows that pre-date the run.
+     */
+    syncedAtOverride?: number
   ): Promise<LayoutPlanCommitResult["recordCounts"]> {
     if (records.length === 0) {
       return { created: 0, updated: 0, unchanged: 0, invalid: 0 };
@@ -522,15 +556,29 @@ export class LayoutPlanCommitService {
     );
 
     const toUpsert: EntityRecordInsert[] = [];
+    const toResurrect: Array<{
+      id: string;
+      data: Partial<EntityRecordInsert>;
+    }> = [];
+    /**
+     * IDs of unchanged rows. The data hasn't changed so we skip the
+     * upsert to avoid churn — but we still need to bump `synced_at` to
+     * the run's watermark, otherwise the post-write
+     * `softDeleteBeforeWatermark` reap would treat them as "didn't
+     * appear in this run" and soft-delete them all.
+     */
+    const unchangedIds: string[] = [];
     let created = 0;
     let updated = 0;
     let unchanged = 0;
     const now = Date.now();
+    const syncedAt = syncedAtOverride ?? now;
 
     for (const record of dedupedRecords) {
       const prev = existingBySourceId.get(record.sourceId);
       if (prev && prev.checksum === record.checksum && prev.deleted === null) {
         unchanged++;
+        unchangedIds.push(prev.id);
         continue;
       }
 
@@ -547,6 +595,36 @@ export class LayoutPlanCommitService {
         normalizedData[key] = v;
       }
 
+      // Resurrection branch: a prior soft-delete (manual "clear records"
+      // or watermark reap) left a row with this `(connector_entity_id,
+      // source_id)` and `deleted IS NOT NULL`. The partial unique index
+      // backing the upsert excludes that row, so reusing its id in the
+      // bulk INSERT would collide on the primary key. Instead, do an
+      // explicit per-row UPDATE that clears `deleted`/`deletedBy` and
+      // stamps the fresh data. Preserves the original row's id so any
+      // group-membership / tag-assignment FKs still resolve.
+      if (prev && prev.deleted !== null) {
+        toResurrect.push({
+          id: prev.id,
+          data: {
+            data: record.fields,
+            normalizedData,
+            checksum: record.checksum,
+            syncedAt,
+            validationErrors: null,
+            isValid: true,
+            updated: now,
+            updatedBy: userId,
+            deleted: null,
+            deletedBy: null,
+          },
+        });
+        // Conceptually a "create" from the user's perspective: the row
+        // wasn't visible before this sync, now it is.
+        created++;
+        continue;
+      }
+
       toUpsert.push({
         id: prev?.id ?? SystemUtilities.id.v4.generate(),
         organizationId,
@@ -555,7 +633,7 @@ export class LayoutPlanCommitService {
         normalizedData,
         sourceId: record.sourceId,
         checksum: record.checksum,
-        syncedAt: now,
+        syncedAt,
         origin: "sync",
         validationErrors: null,
         isValid: true,
@@ -573,6 +651,16 @@ export class LayoutPlanCommitService {
     if (toUpsert.length > 0) {
       await DbService.repository.entityRecords.upsertManyBySourceId(
         toUpsert,
+        tx
+      );
+    }
+    if (toResurrect.length > 0) {
+      await DbService.repository.entityRecords.bulkResurrect(toResurrect, tx);
+    }
+    if (unchangedIds.length > 0) {
+      await DbService.repository.entityRecords.bulkUpdateSyncedAt(
+        unchangedIds,
+        syncedAt,
         tx
       );
     }

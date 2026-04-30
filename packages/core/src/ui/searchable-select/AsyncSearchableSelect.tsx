@@ -19,6 +19,8 @@ export interface AsyncSearchableSelectProps extends SelectBaseProps {
    * be resolved even if a generic search wouldn't include it.
    */
   loadSelectedOption?: (value: string) => Promise<SelectOption | null>;
+  /** Override the empty-results message; passed through to MUI Autocomplete. */
+  noOptionsText?: React.ReactNode;
 }
 
 export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
@@ -36,6 +38,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
   fullWidth,
   inputRef,
   loadSelectedOption,
+  noOptionsText,
 }) => {
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [selectedOption, setSelectedOption] = useState<SelectOption | null>(
@@ -142,6 +145,7 @@ export const AsyncSearchableSelect: React.FC<AsyncSearchableSelectProps> = ({
         disabled={disabled}
         size={size}
         fullWidth={fullWidth}
+        {...(noOptionsText !== undefined ? { noOptionsText } : {})}
         renderInput={(params) => (
           <TextField
             {...params}

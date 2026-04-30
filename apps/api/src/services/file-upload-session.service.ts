@@ -39,6 +39,22 @@ import { ApiError } from "./http.service.js";
 import { DbService } from "./db.service.js";
 import { S3Service } from "./s3.service.js";
 import { WorkbookCacheService } from "./workbook-cache.service.js";
+import {
+  findSheetById,
+  inflateSheetPreview,
+  sliceWorkbookRectangle,
+  type PreviewSheet,
+} from "../utils/workbook-preview.util.js";
+
+/**
+ * Cache key for an upload-session-scoped workbook. The cache service is
+ * shared with google-sheets (`gsheets:wb:{id}`) — the prefix lives here
+ * so the file-upload pipeline owns its namespace.
+ */
+function uploadSessionCacheKey(uploadSessionId: string): string {
+  return `upload-session:${uploadSessionId}`;
+}
+
 import { csvToWorkbook } from "./workbook-adapters/csv.adapter.js";
 import { xlsxToWorkbook } from "./workbook-adapters/xlsx.adapter.js";
 import { ProcessorError } from "../utils/processor-error.util.js";
@@ -84,70 +100,9 @@ function uniqueSheetName(name: string, taken: Set<string>): string {
   throw new Error(`Could not generate unique sheet name for "${name}"`);
 }
 
-/** Stable sheet id the client uses as `value` in entity options. */
-function sheetId(index: number, name: string): string {
-  const slug = name.replace(/\s+/g, "_").toLowerCase();
-  return `sheet_${index}_${slug}`;
-}
-
-/** Coerce the parser's rich `CellValue` into the preview's JSON-safe union. */
-function coerceToPreviewCell(value: unknown): string | number | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "string") return value;
-  if (typeof value === "number") return value;
-  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
-}
-
-/**
- * Build a dense 2-D preview grid from the sparse parsed `WorkbookData`.
- * Sheets over the per-sheet cell cap come back with `cells: []`; callers
- * rely on the top-level `sliced` flag to know to use the slice endpoint.
- */
-function inflateSheetPreview(
-  sheet: WorkbookData["sheets"][number],
-  index: number,
-  inlineCellsMax: number
-): { sheet: FileUploadParseSheet; sliced: boolean } {
-  const id = sheetId(index, sheet.name);
-  const totalCells = sheet.dimensions.rows * sheet.dimensions.cols;
-  const sliced = totalCells > inlineCellsMax;
-
-  if (sliced) {
-    return {
-      sheet: {
-        id,
-        name: sheet.name,
-        dimensions: sheet.dimensions,
-        cells: [],
-      },
-      sliced: true,
-    };
-  }
-
-  const cells: (string | number | null)[][] = Array.from(
-    { length: sheet.dimensions.rows },
-    () => Array.from({ length: sheet.dimensions.cols }, () => "" as string)
-  );
-  for (const cell of sheet.cells) {
-    const r = cell.row - 1;
-    const c = cell.col - 1;
-    if (r < 0 || r >= sheet.dimensions.rows) continue;
-    if (c < 0 || c >= sheet.dimensions.cols) continue;
-    cells[r][c] = coerceToPreviewCell(cell.value);
-  }
-
-  return {
-    sheet: {
-      id,
-      name: sheet.name,
-      dimensions: sheet.dimensions,
-      cells,
-    },
-    sliced: false,
-  };
-}
+// Preview shape helpers (sheetId / coerceToPreviewCell / inflateSheetPreview /
+// findSheetById / sliceWorkbookRectangle) live in `utils/workbook-preview.util.ts`
+// — shared with the google-sheets pipeline.
 
 async function parseSingle(
   stream: Readable,
@@ -415,7 +370,7 @@ export const FileUploadSessionService = {
     const workbook = await parseUploadsToWorkbook(uploads);
 
     const uploadSessionId = SystemUtilities.id.v4.generate();
-    await WorkbookCacheService.set(uploadSessionId, workbook);
+    await WorkbookCacheService.set(uploadSessionCacheKey(uploadSessionId), workbook);
     await DbService.repository.fileUploads.updateStatusMany(
       uploads.map((u) => u.id),
       "parsed",
@@ -424,7 +379,7 @@ export const FileUploadSessionService = {
 
     const inlineCellsMax = environment.FILE_UPLOAD_INLINE_CELLS_MAX;
     let sliced = false;
-    const sheets: FileUploadParseSheet[] = workbook.sheets.map((sheet, i) => {
+    const sheets: PreviewSheet[] = workbook.sheets.map((sheet, i) => {
       const inflated = inflateSheetPreview(sheet, i, inlineCellsMax);
       if (inflated.sliced) sliced = true;
       return inflated.sheet;
@@ -463,17 +418,7 @@ export const FileUploadSessionService = {
       query.uploadSessionId,
       organizationId
     );
-    // Match sheet by minted id; mirrors `sheetId(index, name)` above.
-    let match:
-      | { sheet: WorkbookData["sheets"][number]; index: number }
-      | undefined;
-    for (let i = 0; i < workbook.sheets.length; i++) {
-      const expectedId = sheetId(i, workbook.sheets[i].name);
-      if (expectedId === query.sheetId) {
-        match = { sheet: workbook.sheets[i], index: i };
-        break;
-      }
-    }
+    const match = findSheetById(workbook, query.sheetId);
     if (!match) {
       throw new ApiError(
         404,
@@ -481,40 +426,7 @@ export const FileUploadSessionService = {
         `Sheet ${query.sheetId} not present in session ${query.uploadSessionId}`
       );
     }
-    const { sheet } = match;
-
-    const rowStart = Math.max(0, Math.min(query.rowStart, sheet.dimensions.rows));
-    const rowEnd = Math.max(0, Math.min(query.rowEnd, sheet.dimensions.rows));
-    const colStart = Math.max(0, Math.min(query.colStart, sheet.dimensions.cols));
-    const colEnd = Math.max(0, Math.min(query.colEnd, sheet.dimensions.cols));
-
-    if (rowEnd <= rowStart || colEnd <= colStart) {
-      return { cells: [], rowStart, colStart };
-    }
-
-    const rows = rowEnd - rowStart;
-    const cols = colEnd - colStart;
-    if (rows * cols > environment.FILE_UPLOAD_SLICE_CELLS_MAX) {
-      throw new ApiError(
-        400,
-        ApiCode.FILE_UPLOAD_SLICE_TOO_LARGE,
-        `Slice of ${rows * cols} cells exceeds ${environment.FILE_UPLOAD_SLICE_CELLS_MAX}`
-      );
-    }
-
-    const cells: (string | number | null)[][] = Array.from(
-      { length: rows },
-      () => Array.from({ length: cols }, () => "" as string)
-    );
-    for (const cell of sheet.cells) {
-      const r = cell.row - 1 - rowStart;
-      const c = cell.col - 1 - colStart;
-      if (r < 0 || r >= rows) continue;
-      if (c < 0 || c >= cols) continue;
-      cells[r][c] = coerceToPreviewCell(cell.value);
-    }
-
-    return { cells, rowStart, colStart };
+    return sliceWorkbookRectangle(match.sheet, query);
   },
 
   // ── Shared: resolve workbook for interpret/commit ──────────────────
@@ -523,7 +435,9 @@ export const FileUploadSessionService = {
     uploadSessionId: string,
     organizationId: string
   ): Promise<WorkbookData> {
-    const cached = await WorkbookCacheService.get(uploadSessionId);
+    const cached = await WorkbookCacheService.get(
+      uploadSessionCacheKey(uploadSessionId)
+    );
     if (cached) return cached;
 
     // Cache miss — re-stream from S3 using the file_uploads rows keyed to
@@ -553,7 +467,7 @@ export const FileUploadSessionService = {
       "Re-streaming workbook from S3 (cache miss)"
     );
     const workbook = await parseUploadsToWorkbook(uploads);
-    await WorkbookCacheService.set(uploadSessionId, workbook);
+    await WorkbookCacheService.set(uploadSessionCacheKey(uploadSessionId), workbook);
     return workbook;
   },
 
@@ -623,7 +537,7 @@ export const FileUploadSessionService = {
       "committed",
       {}
     );
-    await WorkbookCacheService.delete(uploadSessionId);
+    await WorkbookCacheService.delete(uploadSessionCacheKey(uploadSessionId));
     // Fire-and-forget S3 deletes; residual objects are also swept by the
     // bucket lifecycle rule.
     for (const upload of uploads) {

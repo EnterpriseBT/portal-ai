@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import type { StepConfig } from "@portalai/core/ui";
 import type { LayoutPlan } from "@portalai/core/contracts";
@@ -9,19 +9,15 @@ import type {
   RegionDraft,
   Workbook,
 } from "../../../modules/RegionEditor";
-import { ApiError } from "../../../utils/api.util";
-import type { ServerError } from "../../../utils/api.util";
-import type {
-  FileUploadWorkflowState,
-  UploadPhase,
-} from "./file-upload-fixtures.util";
-import { serializeLocator } from "./layout-plan-mapping.util";
+import {
+  mintRegionId as sharedMintRegionId,
+  toServerErrorFromUnknown,
+  useSpreadsheetWorkflow,
+} from "../../_shared/spreadsheet/use-spreadsheet-workflow.util";
+import type { FileUploadWorkflowState, UploadPhase } from "./file-upload-fixtures.util";
 
 /**
- * Per-file upload progress shape rendered by the UploadStep. Migrated into
- * the workflow util in `SPREADSHEET_PARSING.frontend.plan.md` §Phase 6.8
- * when the legacy `utils/file-upload.util.ts` (and its presign/S3 hook) was
- * retired.
+ * Per-file upload progress shape rendered by the UploadStep.
  */
 export interface FileUploadProgress {
   fileName: string;
@@ -32,8 +28,7 @@ export interface FileUploadProgress {
 
 /**
  * Progress event reported by the container's `parseFile` callback while the
- * streaming upload pipeline runs. Surfaced into the hook's `fileProgress`
- * state so the UploadStep's progress bars reflect real XHR upload events.
+ * streaming upload pipeline runs.
  */
 export interface ParseFileProgressEvent {
   fileName: string;
@@ -57,21 +52,11 @@ export interface FileUploadWorkflowCallbacks {
     files: File[],
     options?: ParseFileOptions
   ) => Promise<{ workbook: Workbook; uploadSessionId: string }>;
-  /**
-   * Pure-compute interpret — the server must NOT persist anything here. The
-   * returned `plan` is held in memory until commit.
-   */
   runInterpret: (regions: RegionDraft[]) => Promise<{
     regions: RegionDraft[];
     plan: LayoutPlan;
     overallConfidence: number;
   }>;
-  /**
-   * Atomic commit — the server creates the ConnectorInstance, persists the
-   * plan, and writes records in one call. On any server-side failure the
-   * instance + plan row are rolled back, so there's no orphan cleanup to
-   * coordinate on the client.
-   */
   runCommit: (
     plan: LayoutPlan
   ) => Promise<{ connectorInstanceId: string }>;
@@ -79,11 +64,6 @@ export interface FileUploadWorkflowCallbacks {
 }
 
 export interface UseFileUploadWorkflowReturn extends FileUploadWorkflowState {
-  /**
-   * Map-shaped view of `state.fileProgress` for callers that want the
-   * existing `Map<string, FileUploadProgress>` API. Derived fresh each render
-   * from the underlying record so the reference stability matches state.
-   */
   fileProgressMap: Map<string, FileUploadProgress>;
 
   addFiles: (files: File[]) => void;
@@ -112,333 +92,7 @@ export interface UseFileUploadWorkflowReturn extends FileUploadWorkflowState {
   reset: () => void;
 }
 
-const EMPTY_STATE: FileUploadWorkflowState = {
-  step: 0,
-  files: [],
-  uploadPhase: "idle",
-  overallUploadPercent: 0,
-  fileProgress: {},
-  workbook: null,
-  regions: [],
-  selectedRegionId: null,
-  activeSheetId: null,
-  serverError: null,
-  isInterpreting: false,
-  isCommitting: false,
-  plan: null,
-  uploadSessionId: null,
-};
-
-export function mintRegionId(sheetId: string): string {
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${sheetId}-r${suffix}`;
-}
-
-function toServerErrorFromUnknown(err: unknown): ServerError {
-  if (err instanceof ApiError) {
-    return { message: err.message, code: err.code || "UNKNOWN_CODE" };
-  }
-  if (err instanceof Error) {
-    return { message: err.message, code: "UNKNOWN_ERROR" };
-  }
-  return { message: "Unknown error", code: "UNKNOWN_ERROR" };
-}
-
-/**
- * Fields shared between the frontend `ColumnBindingDraft` and the backend
- * `ColumnBinding`. `patchBinding` filters the incoming patch against this
- * allowlist before mirroring it into `state.plan` so frontend-only fields
- * (`columnDefinitionLabel`, `columnDefinitionType`, the string form of
- * `sourceLocator`) never leak into the commit payload.
- */
-const PLAN_MIRROR_KEYS = [
-  "columnDefinitionId",
-  "excluded",
-  "normalizedKey",
-  "required",
-  "defaultValue",
-  "format",
-  "enumValues",
-  "refEntityKey",
-  "refNormalizedKey",
-  "confidence",
-  "rationale",
-] as const;
-
-function toPlanPatch(
-  patch: Partial<ColumnBindingDraft>
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const key of PLAN_MIRROR_KEYS) {
-    if (key in patch) {
-      out[key] = (patch as Record<string, unknown>)[key];
-    }
-  }
-  return out;
-}
-
-/**
- * Fields a synthetic-locator (pivot / cellValueField) patch may carry.
- * Each one has a schema slot on the Segment / CellValueField shape; other
- * ColumnBinding override fields (normalizedKey, required, defaultValue,
- * etc.) have no home and are silently dropped at the popover apply step.
- *
- * `sourceField` carries the user-edited "Axis name" / "Field name" input
- * — applies onto `segment.axisName` for pivot patches and
- * `cellValueField.name` for cellValueField patches.
- */
-const SYNTHETIC_PATCH_KEYS = [
-  "columnDefinitionId",
-  "excluded",
-  "sourceField",
-] as const;
-type SyntheticPatchKey = (typeof SYNTHETIC_PATCH_KEYS)[number];
-
-function pickSyntheticPatch(
-  patch: Partial<ColumnBindingDraft>
-): Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>> | null {
-  const out: Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>> = {};
-  let touched = false;
-  for (const key of SYNTHETIC_PATCH_KEYS) {
-    if (key in patch) {
-      (out as Record<string, unknown>)[key] = (
-        patch as Record<string, unknown>
-      )[key];
-      touched = true;
-    }
-  }
-  return touched ? out : null;
-}
-
-/**
- * Apply a synthetic-locator patch (`pivot:<segId>` chip) to the matching
- * pivot segment in both the regions state and the plan mirror. Currently
- * `columnDefinitionId` (rebind) and `excluded` (omit toggle) are the only
- * fields that carry through — pivot Segment doesn't have schema slots for
- * the other ColumnBinding overrides.
- */
-function patchPivotSegmentBinding(
-  prev: FileUploadWorkflowState,
-  regionId: string,
-  segmentId: string,
-  patch: Partial<ColumnBindingDraft>
-): FileUploadWorkflowState {
-  const synthetic = pickSyntheticPatch(patch);
-  if (!synthetic) return prev;
-
-  type DraftSegments = NonNullable<RegionDraft["segmentsByAxis"]>;
-  type DraftSegment = NonNullable<DraftSegments["row"]>[number];
-  const remapDraft = (
-    segs: DraftSegment[] | undefined
-  ): { next: DraftSegment[] | undefined; touched: boolean } => {
-    if (!segs) return { next: segs, touched: false };
-    let touched = false;
-    const next = segs.map((s) => {
-      if (s.kind !== "pivot" || s.id !== segmentId) return s;
-      touched = true;
-      return applyPivotFields(s, synthetic);
-    });
-    return { next, touched };
-  };
-
-  let regionTouched = false;
-  const nextRegions = prev.regions.map((r) => {
-    if (r.id !== regionId) return r;
-    const row = remapDraft(r.segmentsByAxis?.row);
-    const column = remapDraft(r.segmentsByAxis?.column);
-    if (!row.touched && !column.touched) return r;
-    regionTouched = true;
-    return {
-      ...r,
-      segmentsByAxis: {
-        ...r.segmentsByAxis,
-        row: row.next,
-        column: column.next,
-      },
-    };
-  });
-  if (!regionTouched) return prev;
-
-  let nextPlan = prev.plan;
-  if (prev.plan) {
-    type PlanRegion = LayoutPlan["regions"][number];
-    type PlanSegments = NonNullable<PlanRegion["segmentsByAxis"]>;
-    type PlanSegment = NonNullable<PlanSegments["row"]>[number];
-    const remapPlan = (segs: PlanSegment[] | undefined): PlanSegment[] | undefined => {
-      if (!segs) return segs;
-      return segs.map((s) =>
-        s.kind === "pivot" && s.id === segmentId
-          ? applyPivotFields(s, synthetic)
-          : s
-      );
-    };
-    nextPlan = {
-      ...prev.plan,
-      regions: prev.plan.regions.map((planRegion) => {
-        if (planRegion.id !== regionId) return planRegion;
-        const row = remapPlan(planRegion.segmentsByAxis?.row);
-        const column = remapPlan(planRegion.segmentsByAxis?.column);
-        return {
-          ...planRegion,
-          segmentsByAxis: {
-            ...planRegion.segmentsByAxis,
-            row,
-            column,
-          },
-        };
-      }),
-    };
-  }
-  return { ...prev, regions: nextRegions, plan: nextPlan };
-}
-
-function applyPivotFields<
-  S extends {
-    kind: "pivot";
-    axisName: string;
-    axisNameSource: "user" | "ai" | "anchor-cell";
-    columnDefinitionId?: string;
-    excluded?: boolean;
-  },
->(seg: S, patch: Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>>): S {
-  const next: S = { ...seg };
-  if ("columnDefinitionId" in patch) {
-    next.columnDefinitionId = patch.columnDefinitionId ?? undefined;
-  }
-  if ("excluded" in patch) {
-    next.excluded = patch.excluded ?? undefined;
-  }
-  // The Segment schema requires a non-empty axisName, so only apply when
-  // the popover sent a real value. Empty / absent edits leave the
-  // existing axisName untouched. Flip the source to "user" so the
-  // recommender stage doesn't overwrite the user's edit on re-interpret.
-  if (patch.sourceField !== undefined && patch.sourceField !== "") {
-    next.axisName = patch.sourceField;
-    next.axisNameSource = "user";
-  }
-  return next;
-}
-
-/**
- * Apply a synthetic-locator patch (`intersection:<id>` chip) to a single
- * entry in `region.intersectionCellValueFields`. Routes the same patch
- * shape `patchCellValueFieldBinding` accepts (columnDefinitionId,
- * excluded, sourceField → name) onto the intersection's slot.
- */
-function patchIntersectionCellValueField(
-  prev: FileUploadWorkflowState,
-  regionId: string,
-  intersectionId: string,
-  patch: Partial<ColumnBindingDraft>
-): FileUploadWorkflowState {
-  const synthetic = pickSyntheticPatch(patch);
-  if (!synthetic) return prev;
-
-  let regionTouched = false;
-  const nextRegions = prev.regions.map((r) => {
-    if (r.id !== regionId) return r;
-    const prior = r.intersectionCellValueFields?.[intersectionId];
-    if (!prior) return r;
-    regionTouched = true;
-    return {
-      ...r,
-      intersectionCellValueFields: {
-        ...r.intersectionCellValueFields,
-        [intersectionId]: applyCellValueFields(prior, synthetic),
-      },
-    };
-  });
-  if (!regionTouched) return prev;
-
-  let nextPlan = prev.plan;
-  if (prev.plan) {
-    nextPlan = {
-      ...prev.plan,
-      regions: prev.plan.regions.map((planRegion) => {
-        if (planRegion.id !== regionId) return planRegion;
-        const prior =
-          planRegion.intersectionCellValueFields?.[intersectionId];
-        if (!prior) return planRegion;
-        return {
-          ...planRegion,
-          intersectionCellValueFields: {
-            ...planRegion.intersectionCellValueFields,
-            [intersectionId]: applyCellValueFields(prior, synthetic),
-          },
-        };
-      }),
-    };
-  }
-  return { ...prev, regions: nextRegions, plan: nextPlan };
-}
-
-/**
- * Apply a synthetic-locator patch (`cellValueField` chip) to the region's
- * cellValueField slot in both the regions state and the plan mirror.
- * `columnDefinitionId` (rebind) and `excluded` (omit toggle) are the only
- * fields that carry through.
- */
-function patchCellValueFieldBinding(
-  prev: FileUploadWorkflowState,
-  regionId: string,
-  patch: Partial<ColumnBindingDraft>
-): FileUploadWorkflowState {
-  const synthetic = pickSyntheticPatch(patch);
-  if (!synthetic) return prev;
-
-  let regionTouched = false;
-  const nextRegions = prev.regions.map((r) => {
-    if (r.id !== regionId || !r.cellValueField) return r;
-    regionTouched = true;
-    return { ...r, cellValueField: applyCellValueFields(r.cellValueField, synthetic) };
-  });
-  if (!regionTouched) return prev;
-
-  let nextPlan = prev.plan;
-  if (prev.plan) {
-    nextPlan = {
-      ...prev.plan,
-      regions: prev.plan.regions.map((planRegion) => {
-        if (planRegion.id !== regionId || !planRegion.cellValueField) {
-          return planRegion;
-        }
-        return {
-          ...planRegion,
-          cellValueField: applyCellValueFields(
-            planRegion.cellValueField,
-            synthetic
-          ),
-        };
-      }),
-    };
-  }
-  return { ...prev, regions: nextRegions, plan: nextPlan };
-}
-
-function applyCellValueFields<
-  C extends {
-    name: string;
-    nameSource: "user" | "ai" | "anchor-cell";
-    columnDefinitionId?: string;
-    excluded?: boolean;
-  },
->(field: C, patch: Partial<Pick<ColumnBindingDraft, SyntheticPatchKey>>): C {
-  const next: C = { ...field };
-  if ("columnDefinitionId" in patch) {
-    next.columnDefinitionId = patch.columnDefinitionId ?? undefined;
-  }
-  if ("excluded" in patch) {
-    next.excluded = patch.excluded ?? undefined;
-  }
-  // Same `min(1)` constraint as pivot's axisName — drop empty edits.
-  if (patch.sourceField !== undefined && patch.sourceField !== "") {
-    next.name = patch.sourceField;
-    // User-typed via the popover, so the source flips to "user" — the
-    // parser's recommender never overrides a user-sourced name.
-    next.nameSource = "user";
-  }
-  return next;
-}
+export const mintRegionId = sharedMintRegionId;
 
 function mergeFilesByName(existing: File[], incoming: File[]): File[] {
   const seen = new Set(existing.map((f) => f.name));
@@ -451,36 +105,68 @@ function mergeFilesByName(existing: File[], incoming: File[]): File[] {
   return merged;
 }
 
+interface FileUploadStageState {
+  files: File[];
+  uploadPhase: UploadPhase;
+  overallUploadPercent: number;
+  fileProgress: Record<string, FileUploadProgress>;
+  uploadSessionId: string | null;
+}
+
+const EMPTY_FILE_UPLOAD_STAGE: FileUploadStageState = {
+  files: [],
+  uploadPhase: "idle",
+  overallUploadPercent: 0,
+  fileProgress: {},
+  uploadSessionId: null,
+};
+
+/**
+ * File-upload workflow hook. Wraps the shared `useSpreadsheetWorkflow`
+ * with the upload-specific pre-stage (file list, progress, parseFile).
+ * Once parse succeeds the wrapper hands control to the shared core via
+ * `core.setWorkbook(...)`.
+ *
+ * The external API is unchanged from the pre-refactor shape so
+ * `FileUploadConnectorWorkflow.component.tsx` consumers don't move.
+ */
 export function useFileUploadWorkflow(
   callbacks: FileUploadWorkflowCallbacks
 ): UseFileUploadWorkflowReturn {
-  const [state, setState] = useState<FileUploadWorkflowState>(EMPTY_STATE);
-  // Bumped on every reset; in-flight async resolutions check this before
-  // committing state so a reset mid-parse doesn't resurrect stale state.
-  const runTokenRef = useRef(0);
+  const core = useSpreadsheetWorkflow({
+    runInterpret: callbacks.runInterpret,
+    runCommit: callbacks.runCommit,
+    onCommitSuccess: callbacks.onCommitSuccess,
+  });
+  const [stage, setStage] = useState<FileUploadStageState>(
+    EMPTY_FILE_UPLOAD_STAGE
+  );
+
+  // Derive the legacy `step: 0 | 1 | 2` from the wrapper's stage + the
+  // core's phase. step 0 = upload-stage active; step 1 = draw; step 2 = review.
+  const step: 0 | 1 | 2 =
+    core.phase === "review" ? 2 : core.phase === "draw" ? 1 : 0;
 
   const addFiles = useCallback((next: File[]) => {
-    setState((prev) => ({
+    setStage((prev) => ({
       ...prev,
       files: mergeFilesByName(prev.files, next),
     }));
   }, []);
 
   const removeFile = useCallback((filename: string) => {
-    setState((prev) => ({
+    setStage((prev) => ({
       ...prev,
       files: prev.files.filter((f) => f.name !== filename),
     }));
   }, []);
 
   const startParse = useCallback(async () => {
-    const currentFiles = state.files;
+    const currentFiles = stage.files;
     if (currentFiles.length === 0) return;
 
-    const token = ++runTokenRef.current;
-    // Seed per-file progress so the UploadStep can render a zeroed bar per
-    // file immediately, rather than popping in only after the first chunk.
-    const seededProgress: FileUploadWorkflowState["fileProgress"] = {};
+    const token = core.claimRunToken();
+    const seededProgress: Record<string, FileUploadProgress> = {};
     for (const f of currentFiles) {
       seededProgress[f.name] = {
         fileName: f.name,
@@ -489,17 +175,17 @@ export function useFileUploadWorkflow(
         percent: 0,
       };
     }
-    setState((prev) => ({
+    setStage((prev) => ({
       ...prev,
       uploadPhase: "uploading",
       overallUploadPercent: 0,
       fileProgress: seededProgress,
-      serverError: null,
     }));
+    core.setServerError(null);
 
     const handleProgress = (event: ParseFileProgressEvent): void => {
-      if (token !== runTokenRef.current) return;
-      setState((prev) => {
+      if (token !== core.currentRunToken()) return;
+      setStage((prev) => {
         const next = { ...prev.fileProgress };
         const total = event.total > 0 ? event.total : 1;
         const percent = Math.min(
@@ -538,294 +224,67 @@ export function useFileUploadWorkflow(
         currentFiles,
         { onProgress: handleProgress }
       );
-      if (token !== runTokenRef.current) return;
+      if (token !== core.currentRunToken()) return;
 
-      setState((prev) => ({
+      setStage((prev) => ({
         ...prev,
         uploadPhase: "parsed",
         overallUploadPercent: 100,
-        workbook,
         uploadSessionId,
-        activeSheetId: workbook.sheets[0]?.id ?? null,
-        step: 1,
       }));
+      core.setWorkbook(workbook, uploadSessionId);
     } catch (err) {
-      if (token !== runTokenRef.current) return;
-      setState((prev) => ({
-        ...prev,
-        uploadPhase: "error",
-        serverError: toServerErrorFromUnknown(err),
-      }));
+      if (token !== core.currentRunToken()) return;
+      setStage((prev) => ({ ...prev, uploadPhase: "error" }));
+      core.setServerError(toServerErrorFromUnknown(err));
     }
-  }, [callbacks, state.files]);
-
-  const onActiveSheetChange = useCallback((sheetId: string) => {
-    setState((prev) => ({ ...prev, activeSheetId: sheetId }));
-  }, []);
-
-  const onSelectRegion = useCallback((regionId: string | null) => {
-    setState((prev) => ({ ...prev, selectedRegionId: regionId }));
-  }, []);
-
-  const onRegionDraft = useCallback(
-    (draft: { sheetId: string; bounds: CellBounds }) => {
-      // Regions are drafted headerless: bounds are user-owned and no segment
-      // is seeded. The user opts in to a header axis explicitly from the
-      // config panel — that moment also locks the region's bounds, so the
-      // auto-default here could otherwise lock the region before the user
-      // has finished framing it.
-      const newRegion: RegionDraft = {
-        id: mintRegionId(draft.sheetId),
-        sheetId: draft.sheetId,
-        bounds: draft.bounds,
-        targetEntityDefinitionId: null,
-      };
-      setState((prev) => ({
-        ...prev,
-        regions: [...prev.regions, newRegion],
-        selectedRegionId: newRegion.id,
-        activeSheetId: prev.activeSheetId ?? draft.sheetId,
-      }));
-    },
-    []
-  );
-
-  const onRegionUpdate = useCallback(
-    (regionId: string, updates: Partial<RegionDraft>) => {
-      setState((prev) => {
-        if (!prev.regions.some((r) => r.id === regionId)) return prev;
-        return {
-          ...prev,
-          regions: prev.regions.map((r) =>
-            r.id === regionId ? { ...r, ...updates } : r
-          ),
-        };
-      });
-    },
-    []
-  );
-
-  const onRegionDelete = useCallback((regionId: string) => {
-    setState((prev) => ({
-      ...prev,
-      regions: prev.regions.filter((r) => r.id !== regionId),
-      selectedRegionId:
-        prev.selectedRegionId === regionId ? null : prev.selectedRegionId,
-    }));
-  }, []);
-
-  const onJumpToRegion = useCallback((regionId: string) => {
-    setState((prev) => {
-      const target = prev.regions.find((r) => r.id === regionId);
-      if (!target) return prev;
-      return {
-        ...prev,
-        step: 1,
-        selectedRegionId: regionId,
-        activeSheetId: target.sheetId,
-      };
-    });
-  }, []);
-
-  /**
-   * Apply `patch` to the matching binding in both `state.regions` (the
-   * draft-side store that drives the editor) and `state.plan` (the source of
-   * truth for commit). Matching is by `regionId` + the string-serialised
-   * `sourceLocator` — same form as `ColumnBindingDraft.sourceLocator`.
-   *
-   * Returns `prev` unchanged when any lookup fails so React skips the rerender.
-   */
-  const patchBinding = useCallback(
-    (
-      prev: FileUploadWorkflowState,
-      regionId: string,
-      sourceLocator: string,
-      patch: Partial<ColumnBindingDraft>
-    ): FileUploadWorkflowState => {
-      const region = prev.regions.find((r) => r.id === regionId);
-      if (!region) return prev;
-
-      // Synthetic locators issued by review-step pivot / cellValueField /
-      // intersection chips. Only `columnDefinitionId`, `excluded`, and
-      // `sourceField → name` persist — these slots don't carry the full
-      // override surface ColumnBinding does.
-      if (sourceLocator === "cellValueField") {
-        return patchCellValueFieldBinding(prev, regionId, patch);
-      }
-      if (sourceLocator.startsWith("pivot:")) {
-        return patchPivotSegmentBinding(
-          prev,
-          regionId,
-          sourceLocator.slice("pivot:".length),
-          patch
-        );
-      }
-      if (sourceLocator.startsWith("intersection:")) {
-        return patchIntersectionCellValueField(
-          prev,
-          regionId,
-          sourceLocator.slice("intersection:".length),
-          patch
-        );
-      }
-
-      const existingBindings = region.columnBindings ?? [];
-      const bindingIndex = existingBindings.findIndex(
-        (b) => b.sourceLocator === sourceLocator
-      );
-      if (bindingIndex === -1) return prev;
-
-      const nextBindings: ColumnBindingDraft[] = existingBindings.map(
-        (b, i) => (i === bindingIndex ? { ...b, ...patch } : b)
-      );
-      const nextRegions = prev.regions.map((r) =>
-        r.id === regionId ? { ...r, columnBindings: nextBindings } : r
-      );
-
-      // Mirror into the plan so the commit payload reflects the edit.
-      let nextPlan = prev.plan;
-      if (prev.plan) {
-        const planPatch = toPlanPatch(patch);
-        nextPlan = {
-          ...prev.plan,
-          regions: prev.plan.regions.map((planRegion) => {
-            if (planRegion.id !== regionId) return planRegion;
-            return {
-              ...planRegion,
-              columnBindings: planRegion.columnBindings.map((pb) =>
-                serializeLocator(pb.sourceLocator) === sourceLocator
-                  ? { ...pb, ...planPatch }
-                  : pb
-              ),
-            };
-          }),
-        };
-      }
-      return { ...prev, regions: nextRegions, plan: nextPlan };
-    },
-    []
-  );
-
-  const onUpdateBinding = useCallback(
-    (
-      regionId: string,
-      sourceLocator: string,
-      patch: Partial<ColumnBindingDraft>
-    ) => {
-      setState((prev) => patchBinding(prev, regionId, sourceLocator, patch));
-    },
-    [patchBinding]
-  );
-
-  const onToggleBindingExcluded = useCallback(
-    (regionId: string, sourceLocator: string, excluded: boolean) => {
-      setState((prev) =>
-        patchBinding(prev, regionId, sourceLocator, { excluded })
-      );
-    },
-    [patchBinding]
-  );
-
-  const onInterpret = useCallback(async () => {
-    if (state.regions.length === 0) return;
-    const token = ++runTokenRef.current;
-    setState((prev) => ({
-      ...prev,
-      isInterpreting: true,
-      serverError: null,
-    }));
-    try {
-      const {
-        regions: nextRegions,
-        plan,
-        overallConfidence,
-      } = await callbacks.runInterpret(state.regions);
-      if (token !== runTokenRef.current) return;
-      setState((prev) => ({
-        ...prev,
-        regions: nextRegions,
-        plan,
-        overallConfidence,
-        isInterpreting: false,
-        step: 2,
-      }));
-    } catch (err) {
-      if (token !== runTokenRef.current) return;
-      setState((prev) => ({
-        ...prev,
-        isInterpreting: false,
-        serverError: toServerErrorFromUnknown(err),
-      }));
-    }
-  }, [callbacks, state.regions]);
-
-  const onSkipToReview = useCallback(() => {
-    setState((prev) => {
-      if (!prev.plan) return prev;
-      return { ...prev, step: 2 };
-    });
-  }, []);
-
-  const onCommit = useCallback(async () => {
-    if (!state.plan) return;
-    const plan = state.plan;
-    const token = ++runTokenRef.current;
-    setState((prev) => ({
-      ...prev,
-      isCommitting: true,
-      serverError: null,
-    }));
-    try {
-      const result = await callbacks.runCommit(plan);
-      if (token !== runTokenRef.current) return;
-      setState((prev) => ({ ...prev, isCommitting: false }));
-      callbacks.onCommitSuccess?.(result.connectorInstanceId);
-    } catch (err) {
-      if (token !== runTokenRef.current) return;
-      setState((prev) => ({
-        ...prev,
-        isCommitting: false,
-        serverError: toServerErrorFromUnknown(err),
-      }));
-    }
-  }, [callbacks, state.plan]);
-
-  const goBack = useCallback(() => {
-    setState((prev) => {
-      if (prev.step === 0) return prev;
-      return { ...prev, step: (prev.step - 1) as 0 | 1 };
-    });
-  }, []);
+  }, [callbacks, core, stage.files]);
 
   const reset = useCallback(() => {
-    runTokenRef.current += 1;
-    setState(EMPTY_STATE);
-  }, []);
+    core.reset();
+    setStage(EMPTY_FILE_UPLOAD_STAGE);
+  }, [core]);
 
   const fileProgressMap = useMemo<Map<string, FileUploadProgress>>(
-    () => new Map(Object.entries(state.fileProgress)),
-    [state.fileProgress]
+    () => new Map(Object.entries(stage.fileProgress)),
+    [stage.fileProgress]
   );
 
   return {
-    ...state,
+    // SpreadsheetWorkflowState (mapped to FileUploadWorkflowState shape)
+    step,
+    workbook: core.workbook,
+    regions: core.regions,
+    selectedRegionId: core.selectedRegionId,
+    activeSheetId: core.activeSheetId,
+    serverError: core.serverError,
+    isInterpreting: core.isInterpreting,
+    isCommitting: core.isCommitting,
+    plan: core.plan,
+    overallConfidence: core.overallConfidence,
+    // File-upload stage
+    files: stage.files,
+    uploadPhase: stage.uploadPhase,
+    overallUploadPercent: stage.overallUploadPercent,
+    fileProgress: stage.fileProgress,
+    uploadSessionId: stage.uploadSessionId,
     fileProgressMap,
 
     addFiles,
     removeFile,
     startParse,
-    onActiveSheetChange,
-    onSelectRegion,
-    onRegionDraft,
-    onRegionUpdate,
-    onRegionDelete,
-    onJumpToRegion,
-    onUpdateBinding,
-    onToggleBindingExcluded,
-    onInterpret,
-    onSkipToReview,
-    onCommit,
-    goBack,
+    onActiveSheetChange: core.onActiveSheetChange,
+    onSelectRegion: core.onSelectRegion,
+    onRegionDraft: core.onRegionDraft,
+    onRegionUpdate: core.onRegionUpdate,
+    onRegionDelete: core.onRegionDelete,
+    onJumpToRegion: core.onJumpToRegion,
+    onUpdateBinding: core.onUpdateBinding,
+    onToggleBindingExcluded: core.onToggleBindingExcluded,
+    onInterpret: core.onInterpret,
+    onSkipToReview: core.onSkipToReview,
+    onCommit: core.onCommit,
+    goBack: core.goBack,
     reset,
   };
 }

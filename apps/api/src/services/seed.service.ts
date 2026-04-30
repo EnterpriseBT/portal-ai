@@ -3,6 +3,7 @@ import {
   ColumnDefinition,
   ColumnDefinitionModelFactory,
   FileUploadConnectorDefinitionModelFactory,
+  GoogleSheetsConnectorDefinitionModelFactory,
   SandboxConnectorDefinitionModelFactory,
 } from "@portalai/core/models";
 import type { ColumnDataType } from "@portalai/core/models";
@@ -340,7 +341,30 @@ export class SeedService {
           },
           version: "1.0.0",
           iconUrl:
-            "https://res.cloudinary.com/dvloutv7e/image/upload/v1776277003/upload_rgefyq.png",
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1777417496/file-upload-svgrepo-com_uyhuzm.svg",
+        })
+        .parse(),
+      // Phase C flipped this on once the workflow shell + interpret/commit
+      // wiring landed. Phase A originally seeded `isActive: false` to keep
+      // the UI from showing an unfinished connector.
+      new GoogleSheetsConnectorDefinitionModelFactory()
+        .create(SystemUtilities.id.system)
+        .update({
+          slug: "google-sheets",
+          display: "Google Sheets",
+          category: "File-based",
+          authType: "oauth2",
+          isActive: true,
+          configSchema: {},
+          capabilityFlags: {
+            sync: true,
+            read: true,
+            write: false,
+            push: false,
+          },
+          version: "1.0.0",
+          iconUrl:
+            "https://res.cloudinary.com/dvloutv7e/image/upload/v1777482548/500px-Google_Sheets_logo__2014-2020.svg_d7fj9r.png",
         })
         .parse(),
     ];

@@ -13,7 +13,10 @@ import { createLogger } from "../utils/logger.util.js";
 import { HttpService, ApiError } from "../services/http.service.js";
 import { ApiCode } from "../constants/api-codes.constants.js";
 import { DbService } from "../services/db.service.js";
-import { connectorInstances } from "../db/schema/index.js";
+import {
+  connectorDefinitions,
+  connectorInstances,
+} from "../db/schema/index.js";
 import {
   ConnectorInstanceListRequestQuerySchema,
   type ConnectorInstanceListResponsePayload,
@@ -27,6 +30,12 @@ import {
 } from "@portalai/core/contracts";
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
+import {
+  computeSyncEligible,
+  redactInstance,
+  redactInstances,
+} from "../services/connector-instances.service.js";
+import { SyncService } from "../services/sync.service.js";
 
 const logger = createLogger({ module: "connector-instance" });
 
@@ -200,12 +209,33 @@ connectorInstanceRouter.get(
         );
       });
 
+      // Resolve slug for each row's adapter lookup. When the caller asked
+      // for `include=connectorDefinition`, the rows already carry the slug;
+      // otherwise we batch-load it from the definition repository so the
+      // redaction never falls back to "unknown adapter" on a slug that's
+      // actually registered.
+      const definitionIds = Array.from(
+        new Set(data.map((r) => r.connectorDefinitionId))
+      );
+      const definitions = definitionIds.length
+        ? await DbService.repository.connectorDefinitions.findMany(
+            inArray(connectorDefinitions.id, definitionIds)
+          )
+        : [];
+      const slugByDefinitionId = new Map(
+        definitions.map((d) => [d.id, d.slug])
+      );
+      const redacted = redactInstances(
+        data as unknown as Parameters<typeof redactInstances>[0],
+        slugByDefinitionId
+      );
+
       return HttpService.success<
         | ConnectorInstanceListResponsePayload
         | ConnectorInstanceListWithDefinitionResponsePayload
       >(res, {
         connectorInstances:
-          data as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
+          redacted as unknown as ConnectorInstanceListWithDefinitionResponsePayload["connectorInstances"],
         total,
         limit,
         offset,
@@ -307,11 +337,31 @@ connectorInstanceRouter.get(
           .findById(connectorInstance.connectorDefinitionId)
           .catch(() => null);
 
+      // Only resolve syncEligible for sync-capable connectors. For
+      // sandbox/file-upload (and anything else without `sync` in
+      // `capabilityFlags`), the detail view has no sync button so the
+      // field stays `undefined` and we skip the adapter call.
+      const supportsSync =
+        connectorDefinition?.capabilityFlags?.sync === true;
+      const syncEligible =
+        supportsSync && connectorDefinition
+          ? await computeSyncEligible(
+              connectorInstance as unknown as Parameters<
+                typeof computeSyncEligible
+              >[0],
+              connectorDefinition.slug
+            )
+          : undefined;
+
       return HttpService.success<ConnectorInstanceGetResponsePayload>(res, {
-        connectorInstance: {
-          ...connectorInstance,
+        connectorInstance: redactInstance({
+          instance: connectorInstance as unknown as Parameters<
+            typeof redactInstance
+          >[0]["instance"],
+          slug: connectorDefinition?.slug ?? "",
           connectorDefinition: connectorDefinition ?? null,
-        } as unknown as ConnectorInstanceWithDefinitionApi,
+          syncEligible,
+        }) as unknown as ConnectorInstanceWithDefinitionApi,
       });
     } catch (error) {
       logger.error(
@@ -567,6 +617,17 @@ connectorInstanceRouter.post(
         );
       }
 
+      // Inherit capability flags from the definition by default. Callers
+      // can opt out of one or more capabilities by sending an explicit
+      // `enabledCapabilityFlags` object — anything they omit then falls
+      // back to the definition's value here, NOT to `false`. This keeps
+      // the typical create call flag-free while still allowing partial
+      // overrides at creation time.
+      const inheritedCapabilityFlags = {
+        ...definition.capabilityFlags,
+        ...(enabledCapabilityFlags ?? {}),
+      };
+
       const factory = new ConnectorInstanceModelFactory();
       const model = factory.create(user.id);
       model.update({
@@ -578,7 +639,7 @@ connectorInstanceRouter.post(
         credentials: credentials ? encryptCredentials(credentials) : null,
         lastSyncAt: null,
         lastErrorMessage: null,
-        enabledCapabilityFlags,
+        enabledCapabilityFlags: inheritedCapabilityFlags,
       });
 
       const connectorInstance = await DbService.repository.connectorInstances
@@ -602,8 +663,12 @@ connectorInstanceRouter.post(
       return HttpService.success<ConnectorInstanceCreateResponsePayload>(
         res,
         {
-          connectorInstance:
-            connectorInstance as unknown as ConnectorInstanceApi,
+          connectorInstance: redactInstance({
+            instance: connectorInstance as unknown as Parameters<
+              typeof redactInstance
+            >[0]["instance"],
+            slug: definition?.slug ?? "",
+          }) as unknown as ConnectorInstanceApi,
         },
         201
       );
@@ -905,8 +970,20 @@ connectorInstanceRouter.patch(
       );
 
       logger.info({ id }, "Connector instance updated");
+      const updatedDefinition = updated
+        ? await DbService.repository.connectorDefinitions.findById(
+            updated.connectorDefinitionId
+          )
+        : null;
       return HttpService.success(res, {
-        connectorInstance: updated as unknown as ConnectorInstanceApi,
+        connectorInstance: updated
+          ? (redactInstance({
+              instance: updated as unknown as Parameters<
+                typeof redactInstance
+              >[0]["instance"],
+              slug: updatedDefinition?.slug ?? "",
+            }) as unknown as ConnectorInstanceApi)
+          : null,
       });
     } catch (error) {
       logger.error(
@@ -922,6 +999,88 @@ connectorInstanceRouter.patch(
               error instanceof Error
                 ? error.message
                 : "Failed to update connector instance"
+            )
+      );
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/connector-instances/{id}/sync:
+ *   post:
+ *     tags:
+ *       - Connector Instances
+ *     summary: Trigger a manual sync for a connector instance
+ *     description: >
+ *       Enqueues a `connector_sync` BullMQ job. The processor resolves
+ *       the appropriate adapter (gsheets, future SQL, etc.) via the
+ *       connector definition's slug and dispatches its `syncInstance`
+ *       pipeline. Returns the jobId so the client can subscribe to its
+ *       SSE stream for progress.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Connector instance ID
+ *     responses:
+ *       202:
+ *         description: Sync job enqueued
+ *       400:
+ *         description: Connector type does not support sync
+ *       404:
+ *         description: Instance not found, or eligibility prerequisites missing
+ *       409:
+ *         description: >
+ *           Sync already running for this instance, or the adapter's
+ *           eligibility gate refused the sync
+ *       500:
+ *         description: Internal server error
+ */
+connectorInstanceRouter.post(
+  "/:id/sync",
+  getApplicationMetadata,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { userId, organizationId } = req.application!.metadata;
+
+      // Resolve adapter, run ownership + adapter eligibility checks in one
+      // pass. Predictable refusals (no plan, rowPosition, sync-not-supported)
+      // surface here as ApiErrors so they stay out of the SSE event stream.
+      await SyncService.assertEligibleForSync(id, organizationId);
+
+      // Single-flight: refuse if a sync is already running for this
+      // instance. The 409 carries the in-flight jobId so the UI can
+      // latch onto its SSE stream instead of erroring.
+      await SyncService.assertNoActiveSyncJob(id);
+
+      const job = await SyncService.enqueueSync(id, organizationId, userId);
+
+      logger.info(
+        { connectorInstanceId: id, jobId: job.id },
+        "connector_sync job enqueued"
+      );
+
+      return HttpService.success(res, { jobId: job.id }, 202);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        "Failed to enqueue sync job"
+      );
+      return next(
+        error instanceof ApiError
+          ? error
+          : new ApiError(
+              500,
+              ApiCode.JOB_ENQUEUE_FAILED,
+              error instanceof Error
+                ? error.message
+                : "Failed to enqueue sync job"
             )
       );
     }

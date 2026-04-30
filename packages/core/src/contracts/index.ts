@@ -75,3 +75,6 @@ export * from "./connector-instance-layout-plans.contract.js";
 
 /** File upload endpoint contracts */
 export * from "./file-uploads.contract.js";
+
+/** Google Sheets connector endpoint contracts */
+export * from "./google-sheets.contract.js";

@@ -18,6 +18,7 @@ import { organizationToolsRouter } from "./organization-tools.router.js";
 import { stationToolsRouter } from "./station-tools.router.js";
 import { connectorInstanceLayoutPlansRouter } from "./connector-instance-layout-plans.router.js";
 import { layoutPlansRouter } from "./layout-plans.router.js";
+import { googleSheetsConnectorRouter } from "./google-sheets-connector.router.js";
 
 export const protectedRouter = Router();
 
@@ -43,3 +44,7 @@ protectedRouter.use("/stations", stationToolsRouter);
 protectedRouter.use("/portals", portalRouter);
 protectedRouter.use("/portal-results", portalResultsRouter);
 protectedRouter.use("/organization-tools", organizationToolsRouter);
+protectedRouter.use(
+  "/connectors/google-sheets",
+  googleSheetsConnectorRouter
+);
