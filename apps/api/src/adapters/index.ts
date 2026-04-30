@@ -5,7 +5,8 @@ export type {
   DiscoveredEntity,
   EntityDataQuery,
   EntityDataResult,
-  SyncResult,
+  SyncEligibility,
+  SyncInstanceResult,
 } from "./adapter.interface.js";
 
 export { ConnectorAdapterRegistry } from "./adapter.registry.js";

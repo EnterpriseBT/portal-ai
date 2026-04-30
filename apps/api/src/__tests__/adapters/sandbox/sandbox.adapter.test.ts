@@ -315,20 +315,6 @@ describe("sandboxAdapter", () => {
     });
   });
 
-  // ── syncEntity ──────────────────────────────────────────────────
-
-  describe("syncEntity", () => {
-    it("returns zero counts (no-op)", async () => {
-      const result = await sandboxAdapter.syncEntity(stubInstance, "contacts");
-      expect(result).toEqual({
-        created: 0,
-        updated: 0,
-        unchanged: 0,
-        errors: 0,
-      });
-    });
-  });
-
   // ── discoverEntities ────────────────────────────────────────────
 
   describe("discoverEntities", () => {

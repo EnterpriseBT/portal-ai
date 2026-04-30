@@ -102,19 +102,6 @@ export type EntityRecordImportResponsePayload = z.infer<
   typeof EntityRecordImportResponsePayloadSchema
 >;
 
-// ── Sync ────────────────────────────────────────────────────────────
-
-export const EntityRecordSyncResponsePayloadSchema = z.object({
-  created: z.number(),
-  updated: z.number(),
-  unchanged: z.number(),
-  errors: z.number(),
-});
-
-export type EntityRecordSyncResponsePayload = z.infer<
-  typeof EntityRecordSyncResponsePayloadSchema
->;
-
 // ── Get single record ────────────────────────────────────────────────
 
 export const EntityRecordGetResponsePayloadSchema = z.object({

@@ -16,6 +16,7 @@ import {
   type ConnectorInstanceWithDefinitionApi,
   type PublicAccountInfo,
 } from "@portalai/core/contracts";
+import type { ConnectorInstance } from "@portalai/core/models";
 import type { ConnectorDefinitionSelect } from "../db/schema/zod.js";
 
 import { ConnectorAdapterRegistry } from "../adapters/adapter.registry.js";
@@ -41,6 +42,14 @@ interface RedactInstanceArgs {
    * is returned without a `connectorDefinition` field.
    */
   connectorDefinition?: ConnectorDefinitionSelect | null;
+  /**
+   * Pre-resolved sync eligibility for the instance. Computed by the
+   * caller (typically the GET-by-id route) via `computeSyncEligible`
+   * below. Omit on list endpoints where computing it per row would be
+   * n+1 — the field becomes `undefined` on the wire and the UI hides
+   * the sync affordance until the detail view resolves it.
+   */
+  syncEligible?: boolean;
 }
 
 export function redactInstance(
@@ -52,12 +61,16 @@ export function redactInstance(
 export function redactInstance(
   args: RedactInstanceArgs
 ): ConnectorInstanceApi | ConnectorInstanceWithDefinitionApi {
-  const { instance, slug, connectorDefinition } = args;
+  const { instance, slug, connectorDefinition, syncEligible } = args;
   const accountInfo = projectAccountInfo(instance.credentials ?? null, slug);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { credentials: _omit, ...rest } = instance;
-  const redacted = { ...rest, accountInfo } as unknown as ConnectorInstanceApi;
+  const redacted = {
+    ...rest,
+    accountInfo,
+    ...(syncEligible !== undefined ? { syncEligible } : {}),
+  } as unknown as ConnectorInstanceApi;
   if (connectorDefinition !== undefined) {
     return {
       ...redacted,
@@ -65,6 +78,30 @@ export function redactInstance(
     } as unknown as ConnectorInstanceWithDefinitionApi;
   }
   return redacted;
+}
+
+/**
+ * Resolve `syncEligible` for a single instance by delegating to the
+ * connector adapter's `assertSyncEligibility` (when defined). Returns:
+ *   - `true`  — adapter accepts a sync now (or has no eligibility gate)
+ *   - `false` — adapter refuses (e.g. gsheets without a committed plan,
+ *               or with a `rowPosition`-identity region)
+ *   - `false` — connector type does not support sync at all
+ *
+ * Used by GET-by-id; list endpoints skip this to avoid n+1. The route
+ * passes the already-fetched instance + slug so we don't double-fetch.
+ *
+ * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 5.
+ */
+export async function computeSyncEligible(
+  instance: ConnectorInstance,
+  slug: string
+): Promise<boolean> {
+  const adapter = ConnectorAdapterRegistry.find(slug);
+  if (!adapter?.syncInstance) return false;
+  if (!adapter.assertSyncEligibility) return true;
+  const result = await adapter.assertSyncEligibility(instance);
+  return result.ok;
 }
 
 /**

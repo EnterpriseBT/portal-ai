@@ -43,6 +43,17 @@ export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.omit({
   credentials: true,
 }).extend({
   accountInfo: PublicAccountInfoSchema,
+  /**
+   * Whether this instance can run a manual sync. `true` if it has a
+   * committed plan with stable identity strategies (`column`/`composite`);
+   * `false` if it has no plan or a plan using `rowPosition` identity
+   * (positional ids shift on every row insert/delete, making sync
+   * pathological). `undefined` on list endpoints to avoid n+1 plan
+   * lookups — the UI's sync affordance reads from the detail view only.
+   *
+   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 5.
+   */
+  syncEligible: z.boolean().optional(),
 });
 
 export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;
@@ -100,12 +111,21 @@ export const ConnectorInstanceCreateRequestBodySchema = z.object({
   organizationId: z.string(),
   name: z.string().min(1),
   status: z.enum(["active", "inactive", "error", "pending"]),
-  enabledCapabilityFlags: z.object({
-    sync: z.boolean().optional(),
-    read: z.boolean().optional(),
-    write: z.boolean().optional(),
-    push: z.boolean().optional(),
-  }),
+  /**
+   * Per-instance capability overrides. When omitted, the server copies
+   * `definition.capabilityFlags` so the instance inherits whatever the
+   * connector type supports. Callers only send this field when they
+   * want to opt out of one or more capabilities at creation time
+   * (e.g. read-only against a write-capable connector).
+   */
+  enabledCapabilityFlags: z
+    .object({
+      sync: z.boolean().optional(),
+      read: z.boolean().optional(),
+      write: z.boolean().optional(),
+      push: z.boolean().optional(),
+    })
+    .optional(),
   config: z.record(z.string(), z.unknown()).nullable().optional(),
   credentials: z.record(z.string(), z.unknown()).nullable().optional(),
 });

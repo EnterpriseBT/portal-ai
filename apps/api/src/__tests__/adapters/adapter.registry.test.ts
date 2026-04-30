@@ -5,7 +5,6 @@ import type {
   ConnectorAdapter,
   EntityDataQuery,
   EntityDataResult,
-  SyncResult,
   DiscoveredEntity,
   DiscoveredColumn,
 } from "../../adapters/adapter.interface.js";
@@ -23,15 +22,6 @@ function createStubAdapter(): ConnectorAdapter {
       total: 0,
       columns: [],
       source: "cache",
-    }),
-    syncEntity: async (
-      _instance: ConnectorInstance,
-      _entityKey: string
-    ): Promise<SyncResult> => ({
-      created: 0,
-      updated: 0,
-      unchanged: 0,
-      errors: 0,
     }),
     discoverEntities: async (
       _instance: ConnectorInstance

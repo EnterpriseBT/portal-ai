@@ -45,16 +45,7 @@ describe("googleSheetsAdapter.toPublicAccountInfo", () => {
 });
 
 describe("googleSheetsAdapter — Phase A stub", () => {
-  it("syncEntity throws not-implemented (Phase D wires it)", async () => {
-    await expect(
-      googleSheetsAdapter.syncEntity(
-        {} as Parameters<typeof googleSheetsAdapter.syncEntity>[0],
-        "anything"
-      )
-    ).rejects.toThrow(/not implemented/i);
-  });
-
-  it("queryRows throws not-implemented (Phase D wires it)", async () => {
+  it("queryRows throws not-implemented (Phase E wires it)", async () => {
     await expect(
       googleSheetsAdapter.queryRows(
         {} as Parameters<typeof googleSheetsAdapter.queryRows>[0],

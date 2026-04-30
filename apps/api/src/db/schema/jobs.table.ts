@@ -21,6 +21,7 @@ export const jobStatusEnum = pgEnum("job_status", [
 export const jobTypeEnum = pgEnum("job_type", [
   "system_check",
   "revalidation",
+  "connector_sync",
 ]);
 
 /**

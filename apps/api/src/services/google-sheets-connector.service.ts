@@ -152,10 +152,17 @@ export class GoogleSheetsConnectorService {
 
     let connectorInstanceId: string;
     if (existing) {
+      // Phase E reconnect: reset status + clear lastErrorMessage so an
+      // instance that was flipped to `error` by the access-token cache
+      // (on `invalid_grant`) returns to `active` once Google has issued
+      // fresh credentials. Without this, the user reconnects but the UI
+      // keeps showing the error chip and the Sync button stays disabled.
       const updated = await DbService.repository.connectorInstances.update(
         existing.id,
         {
           credentials: credentials as unknown as string,
+          status: "active",
+          lastErrorMessage: null,
           updatedBy: userId,
         }
       );
@@ -171,7 +178,9 @@ export class GoogleSheetsConnectorService {
         credentials: credentials as unknown as string,
         lastSyncAt: null,
         lastErrorMessage: null,
-        enabledCapabilityFlags: null,
+        // Inherit the definition's capability ceiling by default — the
+        // user can narrow specific flags later via PATCH.
+        enabledCapabilityFlags: { ...definition.capabilityFlags },
         created: Date.now(),
         createdBy: userId,
         updated: null,
@@ -263,35 +272,12 @@ export class GoogleSheetsConnectorService {
       input.connectorInstanceId
     );
 
-    // `fields` trims the response so we don't pull format metadata for
-    // every cell unless it's date-format-specific. `includeGridData=true`
-    // is required to receive cell values.
-    const url = new URL(`${SHEETS_GET_URL_BASE}/${input.spreadsheetId}`);
-    url.searchParams.set("includeGridData", "true");
-    url.searchParams.set(
-      "fields",
-      "properties.title,sheets.properties(title,gridProperties),sheets.data(startRow,startColumn,rowData.values(userEnteredValue,effectiveValue,formattedValue,effectiveFormat.numberFormat))"
+    const { workbook, title: rawTitle } = await fetchSpreadsheet(
+      accessToken,
+      input.spreadsheetId,
+      fetchFn
     );
-
-    const res = await fetchFn(url.toString(), {
-      method: "GET",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) {
-      const body = await safeReadText(res);
-      throw new GoogleAuthError(
-        "fetchSheet_failed",
-        `Sheets API spreadsheets.get failed (${res.status}): ${body}`
-      );
-    }
-
-    const json = (await res.json()) as Record<string, unknown>;
-    const workbook = googleSheetsToWorkbook(
-      json as Parameters<typeof googleSheetsToWorkbook>[0]
-    );
-    const title =
-      (json.properties as { title?: string } | undefined)?.title ??
-      input.spreadsheetId;
+    const title = rawTitle ?? input.spreadsheetId;
 
     await WorkbookCacheService.set(
       googleSheetsWorkbookCacheKey(input.connectorInstanceId),
@@ -319,6 +305,66 @@ export class GoogleSheetsConnectorService {
     });
 
     return sliced ? { title, sheets, sliced: true } : { title, sheets };
+  }
+
+  /**
+   * Re-fetch the spreadsheet for an existing connector instance and
+   * return the mapped `WorkbookData`. Phase D's sync path calls this
+   * (the editor session uses `selectSheet` instead, which also caches).
+   *
+   * Reads `spreadsheetId` from the instance's persisted `config` —
+   * sync runs against whichever spreadsheet was last picked, not a
+   * caller-supplied id. Does **not** write to the workbook cache:
+   * sync wants fresh Google data on every run, and the cache is
+   * scoped to the interactive editor session.
+   *
+   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 3.
+   */
+  static async fetchWorkbookForSync(
+    connectorInstanceId: string,
+    organizationId: string,
+    fetchFn: FetchFn = fetch
+  ): Promise<WorkbookData> {
+    const instance =
+      await DbService.repository.connectorInstances.findById(
+        connectorInstanceId
+      );
+    if (!instance) {
+      throw new ApiError(
+        404,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        `Connector instance not found: ${connectorInstanceId}`
+      );
+    }
+    if (instance.organizationId !== organizationId) {
+      throw new ApiError(
+        403,
+        ApiCode.CONNECTOR_INSTANCE_NOT_FOUND,
+        "Connector instance belongs to a different organization"
+      );
+    }
+    const cfg = instance.config as
+      | { spreadsheetId?: string }
+      | null
+      | undefined;
+    const spreadsheetId = cfg?.spreadsheetId;
+    if (!spreadsheetId) {
+      throw new ApiError(
+        400,
+        ApiCode.GOOGLE_SHEETS_INVALID_PAYLOAD,
+        `Instance ${connectorInstanceId} has no spreadsheetId in config — call select-sheet first`
+      );
+    }
+
+    const accessToken = await GoogleAccessTokenCacheService.getOrRefresh(
+      connectorInstanceId
+    );
+    const { workbook } = await fetchSpreadsheet(
+      accessToken,
+      spreadsheetId,
+      fetchFn
+    );
+    return workbook;
   }
 
   /**
@@ -504,4 +550,46 @@ async function safeReadText(res: Response): Promise<string> {
   } catch {
     return "<no body>";
   }
+}
+
+/**
+ * Hit `spreadsheets.get?includeGridData=true` for the given
+ * spreadsheetId and return the mapped `WorkbookData` plus the workbook's
+ * title from `properties.title`. Shared by `selectSheet` (caches the
+ * workbook + persists the title to instance.config) and
+ * `fetchWorkbookForSync` (does neither — sync uses fresh data each run).
+ */
+async function fetchSpreadsheet(
+  accessToken: string,
+  spreadsheetId: string,
+  fetchFn: typeof fetch
+): Promise<{ workbook: WorkbookData; title: string | undefined }> {
+  // `fields` trims the response so we don't pull format metadata for
+  // every cell unless it's date-format-specific. `includeGridData=true`
+  // is required to receive cell values.
+  const url = new URL(`${SHEETS_GET_URL_BASE}/${spreadsheetId}`);
+  url.searchParams.set("includeGridData", "true");
+  url.searchParams.set(
+    "fields",
+    "properties.title,sheets.properties(title,gridProperties),sheets.data(startRow,startColumn,rowData.values(userEnteredValue,effectiveValue,formattedValue,effectiveFormat.numberFormat))"
+  );
+
+  const res = await fetchFn(url.toString(), {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const body = await safeReadText(res);
+    throw new GoogleAuthError(
+      "fetchSheet_failed",
+      `Sheets API spreadsheets.get failed (${res.status}): ${body}`
+    );
+  }
+
+  const json = (await res.json()) as Record<string, unknown>;
+  const workbook = googleSheetsToWorkbook(
+    json as Parameters<typeof googleSheetsToWorkbook>[0]
+  );
+  const title = (json.properties as { title?: string } | undefined)?.title;
+  return { workbook, title };
 }

@@ -131,7 +131,6 @@ export const SandboxConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
           organizationId,
           name: value,
           status: "active",
-          enabledCapabilityFlags: { read: true, write: true, sync: false },
         }
       );
       setErrors(result.success ? {} : result.errors);
@@ -147,7 +146,6 @@ export const SandboxConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
         organizationId,
         name,
         status: "active",
-        enabledCapabilityFlags: { read: true, write: true, sync: false },
       }
     );
     setErrors(result.success ? {} : result.errors);
@@ -162,7 +160,6 @@ export const SandboxConnectorWorkflow: React.FC<ConnectorWorkflowProps> = ({
         organizationId,
         name,
         status: "active",
-        enabledCapabilityFlags: { read: true, write: true, sync: false },
       }
     );
     if (!result.success) {

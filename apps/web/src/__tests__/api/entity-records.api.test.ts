@@ -119,15 +119,6 @@ describe("entity-records.api", () => {
     });
   });
 
-  describe("sync", () => {
-    it("sends POST to records/sync endpoint", () => {
-      entityRecords.sync("ce-1");
-      expect(mockUseAuthMutation).toHaveBeenCalledWith({
-        url: "/api/connector-entities/ce-1/records/sync",
-      });
-    });
-  });
-
   describe("update", () => {
     it("sends PATCH to records/:recordId endpoint", () => {
       entityRecords.update("ce-1", "rec-1");

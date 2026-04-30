@@ -13,6 +13,11 @@ import type {
   ConnectorInstanceListWithDefinitionResponsePayload,
   ConnectorInstancePatchRequestBody,
 } from "@portalai/core/contracts";
+
+/** Response shape from `POST /api/connector-instances/:id/sync`. */
+export interface ConnectorInstanceSyncResponsePayload {
+  jobId: string;
+}
 import { useInfiniteFilterOptions } from "@portalai/core/ui";
 import type {
   InfiniteFilterOptionsConfig,
@@ -121,6 +126,29 @@ export const connectorInstances = {
     >({
       url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}`,
       method: "PATCH",
+    }),
+
+  /**
+   * Trigger a manual sync for a sync-capable connector instance.
+   *
+   * Connector-agnostic: the API resolves the appropriate adapter
+   * (gsheets today, future Microsoft Excel, future SQL/database, etc.)
+   * via the connector definition slug and dispatches its `syncInstance`
+   * pipeline. The route is fast-return — it enqueues a `connector_sync`
+   * BullMQ job and replies with the `{ jobId }` so the caller can
+   * subscribe to its SSE event stream via `sdk.jobs.stream(jobId)` for
+   * live progress.
+   *
+   * On 409 `SYNC_ALREADY_RUNNING`, the in-flight jobId is returned in
+   * `error.details.jobId` — UIs should latch onto that stream rather
+   * than show an error to the user.
+   *
+   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 6.
+   */
+  sync: (id: string) =>
+    useAuthMutation<ConnectorInstanceSyncResponsePayload, void>({
+      url: `${CONNECTOR_INSTANCES_URL}/${encodeURIComponent(id)}/sync`,
+      method: "POST",
     }),
 
   search: <TOption extends SelectOption = SelectOption>(

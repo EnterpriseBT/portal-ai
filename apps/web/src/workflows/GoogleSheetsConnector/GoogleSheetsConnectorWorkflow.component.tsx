@@ -26,6 +26,7 @@ import {
 } from "./utils/google-sheets-workflow.util";
 import type { GoogleSheetsWorkflowCallbacks } from "./utils/google-sheets-workflow.util";
 import { useGooglePopupAuthorize } from "./utils/google-sheets-popup.util";
+import { apiOrigin } from "../../utils/api-origin.util";
 import {
   entityOptionsFromWorkbook,
   mergeStagedEntityOptions,
@@ -55,15 +56,6 @@ interface GoogleSheetsConnectorWorkflowProps {
   connectorDefinitionId: string;
 }
 
-/** Allowed origin for the OAuth popup's postMessage — derived from the API base URL. */
-function apiOrigin(): string {
-  const raw = import.meta.env.VITE_API_BASE_URL ?? "";
-  try {
-    return new URL(raw).origin;
-  } catch {
-    return "*";
-  }
-}
 
 export const GoogleSheetsConnectorWorkflow: React.FC<
   GoogleSheetsConnectorWorkflowProps

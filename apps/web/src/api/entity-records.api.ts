@@ -6,7 +6,6 @@ import type {
   EntityRecordCreateResponsePayload,
   EntityRecordImportRequestBody,
   EntityRecordImportResponsePayload,
-  EntityRecordSyncResponsePayload,
   EntityRecordDeleteResponsePayload,
   EntityRecordGetResponsePayload,
   EntityRecordPatchRequestBody,
@@ -61,11 +60,6 @@ export const entityRecords = {
       EntityRecordImportRequestBody
     >({
       url: recordsUrl(connectorEntityId, "/import"),
-    }),
-
-  sync: (connectorEntityId: string) =>
-    useAuthMutation<EntityRecordSyncResponsePayload, void>({
-      url: recordsUrl(connectorEntityId, "/sync"),
     }),
 
   clear: (connectorEntityId: string) =>
