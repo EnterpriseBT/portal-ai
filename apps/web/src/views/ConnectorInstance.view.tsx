@@ -220,6 +220,7 @@ export const ConnectorInstanceView = ({
               const syncAction = (
                 <ConnectorInstanceSyncButtonUI
                   syncEligible={ci.syncEligible ?? false}
+                  identityWarnings={ci.identityWarnings}
                   isStarting={syncState.isStarting}
                   jobStatus={syncState.jobStatus}
                   onSync={syncState.onSync}

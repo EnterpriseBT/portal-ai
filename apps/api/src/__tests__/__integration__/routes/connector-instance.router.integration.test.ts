@@ -1791,6 +1791,9 @@ describe("Connector Instance Router", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.payload.connectorInstance.syncEligible).toBe(true);
+      expect(
+        res.body.payload.connectorInstance.identityWarnings
+      ).toEqual([{ regionId: "r1" }]);
     });
 
     it("is false when the instance has no committed plan", async () => {

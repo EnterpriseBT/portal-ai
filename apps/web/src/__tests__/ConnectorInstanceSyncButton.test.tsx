@@ -21,7 +21,7 @@ describe("ConnectorInstanceSyncButtonUI", () => {
     expect(btn).not.toBeDisabled();
   });
 
-  it("disables the button and surfaces a tooltip when not sync-eligible", () => {
+  it("disables the button when not sync-eligible", () => {
     render(
       <ConnectorInstanceSyncButtonUI {...baseProps} syncEligible={false} />
     );
@@ -72,5 +72,43 @@ describe("ConnectorInstanceSyncButtonUI", () => {
 
     const btn = container.querySelector("button");
     expect(btn?.className ?? "").toMatch(/MuiButton-contained/);
+  });
+
+  it("stays enabled when identityWarnings are present (advisory, not blocking)", () => {
+    render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        identityWarnings={[{ regionId: "r1" }]}
+      />
+    );
+    const btn = screen.getByRole("button", { name: /sync now/i });
+    expect(btn).not.toBeDisabled();
+  });
+
+  it("surfaces an advisory tooltip when identityWarnings are present", async () => {
+    render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        identityWarnings={[{ regionId: "r1" }, { regionId: "r2" }]}
+      />
+    );
+    const btn = screen.getByRole("button", { name: /sync now/i });
+    fireEvent.mouseOver(btn);
+    // Tooltip portals into the document, not into the button container.
+    expect(
+      await screen.findByText(/recreates all records/i)
+    ).toBeInTheDocument();
+  });
+
+  it("does not render the advisory tooltip when identityWarnings is empty", () => {
+    render(
+      <ConnectorInstanceSyncButtonUI
+        {...baseProps}
+        identityWarnings={[]}
+      />
+    );
+    const btn = screen.getByRole("button", { name: /sync now/i });
+    fireEvent.mouseOver(btn);
+    expect(screen.queryByText(/recreates all records/i)).toBeNull();
   });
 });

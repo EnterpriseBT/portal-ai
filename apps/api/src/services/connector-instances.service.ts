@@ -50,6 +50,13 @@ interface RedactInstanceArgs {
    * the sync affordance until the detail view resolves it.
    */
   syncEligible?: boolean;
+  /**
+   * Non-blocking advisories from the adapter's `assertSyncEligibility`
+   * (e.g. `rowPosition`-identity regions on the gsheets adapter).
+   * Resolved by the GET-by-id route via `computeIdentityWarnings`;
+   * omitted on list endpoints to avoid n+1 plan lookups.
+   */
+  identityWarnings?: { regionId: string }[];
 }
 
 export function redactInstance(
@@ -61,7 +68,8 @@ export function redactInstance(
 export function redactInstance(
   args: RedactInstanceArgs
 ): ConnectorInstanceApi | ConnectorInstanceWithDefinitionApi {
-  const { instance, slug, connectorDefinition, syncEligible } = args;
+  const { instance, slug, connectorDefinition, syncEligible, identityWarnings } =
+    args;
   const accountInfo = projectAccountInfo(instance.credentials ?? null, slug);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -70,6 +78,7 @@ export function redactInstance(
     ...rest,
     accountInfo,
     ...(syncEligible !== undefined ? { syncEligible } : {}),
+    ...(identityWarnings !== undefined ? { identityWarnings } : {}),
   } as unknown as ConnectorInstanceApi;
   if (connectorDefinition !== undefined) {
     return {
@@ -101,6 +110,29 @@ export async function computeSyncEligible(
   if (!adapter.assertSyncEligibility) return true;
   const result = await adapter.assertSyncEligibility(instance);
   return result.ok;
+}
+
+/**
+ * Resolve the adapter's `identityWarnings` for the given instance. Returns
+ * the array verbatim from `assertSyncEligibility` (typically empty for
+ * stable plans, populated for `rowPosition` regions on gsheets), `[]`
+ * when the adapter doesn't define an eligibility gate, or `undefined`
+ * when the connector type doesn't support sync at all (the field is
+ * meaningless there).
+ *
+ * Used by GET-by-id alongside `computeSyncEligible`. List endpoints skip
+ * this — populating it per row would be n+1 across the workspace's
+ * connector instances.
+ */
+export async function computeIdentityWarnings(
+  instance: ConnectorInstance,
+  slug: string
+): Promise<{ regionId: string }[] | undefined> {
+  const adapter = ConnectorAdapterRegistry.find(slug);
+  if (!adapter?.syncInstance) return undefined;
+  if (!adapter.assertSyncEligibility) return [];
+  const result = await adapter.assertSyncEligibility(instance);
+  return result.identityWarnings ?? [];
 }
 
 /**

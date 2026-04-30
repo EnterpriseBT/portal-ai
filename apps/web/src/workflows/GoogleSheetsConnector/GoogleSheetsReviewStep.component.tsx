@@ -34,25 +34,28 @@ export const GoogleSheetsReviewStep: React.FC<GoogleSheetsReviewStepUIProps> = (
     [reviewProps.regions]
   );
 
+  const isPlural = rowPositionRegions.length !== 1;
+
   return (
     <Stack spacing={2}>
       {serverError && <FormAlert serverError={serverError} />}
 
       {rowPositionRegions.length > 0 && (
-        <Alert severity="warning" role="status" variant="outlined">
-          <AlertTitle>One-shot import only</AlertTitle>
+        <Alert severity="info" role="status" variant="outlined">
+          <AlertTitle>
+            No stable identity for {isPlural ? "these regions" : "this region"}
+          </AlertTitle>
           <p>
-            {rowPositionRegions.length === 1
-              ? "This region uses positional row IDs"
-              : "These regions use positional row IDs"}
+            {isPlural
+              ? "These regions have no identity field"
+              : "This region has no identity field"}
             : {rowPositionRegions.map((r) => regionLabel(r)).join(", ")}.
           </p>
           <p>
-            They can be imported once but won't be eligible for re-sync.{" "}
-            <strong>Add an identifier column</strong> (something unique per row
-            — an id, email, slug) and the connector will be able to keep the
-            rows in sync as the source sheet changes. You can still commit and
-            edit later.
+            Records will be reaped and re-created on every sync. To keep
+            records stable across syncs, <strong>pick an identity field</strong>
+            {" "}(something unique per row — an id, email, slug). You can still
+            commit and edit later.
           </p>
         </Alert>
       )}
