@@ -43,17 +43,23 @@ export interface SyncInstanceResult {
 /**
  * Result shape for `ConnectorAdapter.assertSyncEligibility`.
  *
- * `reasonCode` is the `ApiCode` string the shared sync route surfaces
- * to the client on refusal. Adapters define and own the codes for
- * connector-specific failure modes (e.g. gsheets's
- * `LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY`); the route maps the code into
- * a 409 response body verbatim.
+ * `reasonCode` is the `ApiCode` string the shared sync route surfaces to
+ * the client on refusal. Adapters define and own the codes for
+ * connector-specific failure modes (e.g. gsheets's `LAYOUT_PLAN_NOT_FOUND`);
+ * the route maps the code into a 4xx response body verbatim.
+ *
+ * `identityWarnings` is an additive advisory channel: regions whose plan
+ * uses `rowPosition` identity sync correctly but produce reap-and-recreate
+ * deltas on every structural change, so the UI surfaces a non-blocking
+ * warning rather than refusing the sync. Adapters that don't emit it can
+ * leave the field undefined.
  */
 export interface SyncEligibility {
   ok: boolean;
   reasonCode?: string;
   reason?: string;
   details?: Record<string, unknown>;
+  identityWarnings?: { regionId: string }[];
 }
 
 export interface DiscoveredEntity {

@@ -83,15 +83,14 @@ export function redactInstance(
 /**
  * Resolve `syncEligible` for a single instance by delegating to the
  * connector adapter's `assertSyncEligibility` (when defined). Returns:
- *   - `true`  — adapter accepts a sync now (or has no eligibility gate)
- *   - `false` — adapter refuses (e.g. gsheets without a committed plan,
- *               or with a `rowPosition`-identity region)
+ *   - `true`  — adapter accepts a sync now (or has no eligibility gate),
+ *               including plans whose regions use `rowPosition` identity
+ *               (those produce `identityWarnings` advisories, not refusals)
+ *   - `false` — adapter refuses (e.g. gsheets without a committed plan)
  *   - `false` — connector type does not support sync at all
  *
  * Used by GET-by-id; list endpoints skip this to avoid n+1. The route
  * passes the already-fetched instance + slug so we don't double-fetch.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 5.
  */
 export async function computeSyncEligible(
   instance: ConnectorInstance,

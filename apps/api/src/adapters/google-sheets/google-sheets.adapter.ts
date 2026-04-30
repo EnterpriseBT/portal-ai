@@ -5,14 +5,12 @@
  * Phase D: `syncInstance` + `assertSyncEligibility` for manual sync.
  *
  * The shared sync route (`POST /api/connector-instances/:id/sync`) is
- * connector-agnostic — it resolves this adapter via the definition
- * slug and dispatches the eligibility gate + sync pipeline here. The
- * gsheets-specific layout-plan + rowPosition guard lives below in
- * `assertSyncEligibility`; the same logic is mirrored on the
- * `syncEligible` field served from GET-by-id so the UI's
- * "Sync now" button can disable upfront.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-{A,D}.plan.md`.
+ * connector-agnostic — it resolves this adapter via the definition slug
+ * and dispatches the eligibility gate + sync pipeline here. The only
+ * gsheets-specific blocking case is missing layout plan; `rowPosition`
+ * regions sync (with reap-and-recreate semantics) and surface as
+ * `identityWarnings` for the UI banner. See
+ * `docs/RECORD_IDENTITY_REVIEW.spec.md` for the advisory model.
  */
 
 import {
@@ -44,12 +42,12 @@ function notImplemented(method: string): never {
 }
 
 /**
- * Gsheets-specific eligibility gate. The instance must have a current
- * (non-superseded) layout plan, and that plan's regions must all use
- * stable identity strategies (`column` or `composite`). A region using
- * `rowPosition` identity has synthesized cell-position ids that shift
- * on every row insert/delete in the source sheet, making sync
- * pathological churn — refuse upfront.
+ * Gsheets-specific eligibility gate. The only hard refusal is a missing
+ * layout plan — the user must commit the workflow before syncing. Plans
+ * whose regions use `rowPosition` identity sync correctly but produce
+ * reap-and-recreate deltas on every structural change in the source sheet,
+ * so they're surfaced as an advisory `identityWarnings` rather than gated.
+ * The frontend renders a non-blocking banner from those warnings.
  */
 async function assertSyncEligibility(
   instance: ConnectorInstance
@@ -65,16 +63,8 @@ async function assertSyncEligibility(
       reason: `No layout plan committed for instance ${instance.id} — commit the workflow before syncing`,
     };
   }
-  const eligibility = assertSyncEligibleIdentity(planRow.plan as LayoutPlan);
-  if (!eligibility.ok) {
-    return {
-      ok: false,
-      reasonCode: ApiCode.LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY,
-      reason: `Plan has ${eligibility.ineligibleRegionIds.length} region(s) using row-position identity; not eligible for sync. Re-edit the regions to add an identifier column.`,
-      details: { ineligibleRegionIds: eligibility.ineligibleRegionIds },
-    };
-  }
-  return { ok: true };
+  const check = assertSyncEligibleIdentity(planRow.plan as LayoutPlan);
+  return { ok: true, identityWarnings: check.identityWarnings };
 }
 
 export const googleSheetsAdapter: ConnectorAdapter = {

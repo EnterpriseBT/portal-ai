@@ -25,43 +25,51 @@ function makePlan(
 }
 
 describe("assertSyncEligibleIdentity", () => {
-  it("returns ok for an empty plan (no regions)", () => {
+  // The helper now always returns `ok: true` — `rowPosition` regions are
+  // surfaced as a non-blocking advisory (`identityWarnings`) rather than a
+  // hard refusal. The frontend reads the warnings to render the soft banner
+  // (Phase C) but sync proceeds either way.
+
+  it("returns ok with no warnings for an empty plan", () => {
     const out = assertSyncEligibleIdentity(makePlan([]));
-    expect(out).toEqual({ ok: true, ineligibleRegionIds: [] });
+    expect(out).toEqual({ ok: true, identityWarnings: [] });
   });
 
-  it("returns ok when every region uses column identity", () => {
+  it("returns ok with no warnings when every region uses column identity", () => {
     const out = assertSyncEligibleIdentity(
       makePlan([makeRegion("r1", "column"), makeRegion("r2", "column")])
     );
-    expect(out).toEqual({ ok: true, ineligibleRegionIds: [] });
+    expect(out).toEqual({ ok: true, identityWarnings: [] });
   });
 
-  it("returns ok when every region uses composite identity", () => {
+  it("returns ok with no warnings when every region uses composite identity", () => {
     const out = assertSyncEligibleIdentity(
       makePlan([makeRegion("r1", "composite"), makeRegion("r2", "composite")])
     );
-    expect(out).toEqual({ ok: true, ineligibleRegionIds: [] });
+    expect(out).toEqual({ ok: true, identityWarnings: [] });
   });
 
-  it("returns ok with mixed column + composite", () => {
+  it("returns ok with no warnings on mixed column + composite", () => {
     const out = assertSyncEligibleIdentity(
       makePlan([makeRegion("r1", "column"), makeRegion("r2", "composite")])
     );
-    expect(out).toEqual({ ok: true, ineligibleRegionIds: [] });
+    expect(out).toEqual({ ok: true, identityWarnings: [] });
   });
 
-  it("flags a single rowPosition region", () => {
+  it("populates identityWarnings for a single rowPosition region in an otherwise stable plan", () => {
     const out = assertSyncEligibleIdentity(
       makePlan([
         makeRegion("r1", "column"),
         makeRegion("r2", "rowPosition"),
       ])
     );
-    expect(out).toEqual({ ok: false, ineligibleRegionIds: ["r2"] });
+    expect(out).toEqual({
+      ok: true,
+      identityWarnings: [{ regionId: "r2" }],
+    });
   });
 
-  it("flags every rowPosition region in a mixed plan", () => {
+  it("populates identityWarnings for every rowPosition region in plan order", () => {
     const out = assertSyncEligibleIdentity(
       makePlan([
         makeRegion("r1", "rowPosition"),
@@ -71,14 +79,14 @@ describe("assertSyncEligibleIdentity", () => {
       ])
     );
     expect(out).toEqual({
-      ok: false,
-      ineligibleRegionIds: ["r1", "r3"],
+      ok: true,
+      identityWarnings: [{ regionId: "r1" }, { regionId: "r3" }],
     });
   });
 
   it("flag check is exact-match on the strategy kind", () => {
     // Defensive — a future identity kind that's a substring of "rowPosition"
-    // (e.g. "rowPositionLite") shouldn't be treated as ineligible.
+    // (e.g. "rowPositionLite") shouldn't be treated as a warning source.
     const region = {
       id: "r1",
       identityStrategy: {
@@ -87,6 +95,6 @@ describe("assertSyncEligibleIdentity", () => {
       },
     } as unknown as LayoutPlan["regions"][number];
     const out = assertSyncEligibleIdentity(makePlan([region]));
-    expect(out.ok).toBe(true);
+    expect(out).toEqual({ ok: true, identityWarnings: [] });
   });
 });

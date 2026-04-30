@@ -1,35 +1,32 @@
 /**
- * Sync-eligibility guard.
+ * Sync-eligibility advisory.
  *
- * A `LayoutPlan` whose regions all use `column` or `composite` identity
- * strategies has stable `sourceId`s across re-runs, so the watermark-
- * based reconciliation works correctly. A region with `rowPosition`
- * identity uses synthesized cell-position ids (`cell-{r}-{c}` etc.) that
- * shift on every row insert/delete in the source sheet, making sync
- * "every record was deleted and re-created" — pathological churn.
+ * `rowPosition` identity uses synthesized cell-position ids (`row-{n}` /
+ * `col-{n}` / `cell-{r}-{c}`) that shift on every row insert/delete in the
+ * source sheet. Records sync correctly against the watermark reaper, but
+ * any structural change to the sheet produces a full reap-and-recreate
+ * delta — not a graceful per-row update. Surfacing the warning lets the UI
+ * render a non-blocking advisory ("re-sync recreates all records in the
+ * affected region(s)") without gating the sync itself; the user has
+ * opted into the trade-off when committing the plan.
  *
- * Both the sync-time route guard (Phase D Slice 5) and the frontend
- * "Sync now" disable check (Phase D Slice 6 via the redacted instance
- * shape) consume this. Phase C's commit-time review banner consumes the
- * same rule but reads region drafts directly off the editor state; the
- * shape difference is why this helper takes a `LayoutPlan` rather than
- * a `RegionDraft[]`.
- *
- * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 2.
+ * Prior versions of this helper returned `ok: false` for `rowPosition` and
+ * the sync route 409'd. The hard gate moved to an advisory in Phase B of
+ * `docs/RECORD_IDENTITY_REVIEW.spec.md`.
  */
 
 import type { LayoutPlan } from "@portalai/core/contracts";
 
-export interface SyncEligibility {
-  ok: boolean;
-  ineligibleRegionIds: string[];
+export interface SyncEligibilityCheck {
+  ok: true;
+  identityWarnings: { regionId: string }[];
 }
 
-export function assertSyncEligibleIdentity(plan: LayoutPlan): SyncEligibility {
-  const ineligibleRegionIds = plan.regions
+export function assertSyncEligibleIdentity(
+  plan: LayoutPlan
+): SyncEligibilityCheck {
+  const identityWarnings = plan.regions
     .filter((r) => r.identityStrategy?.kind === "rowPosition")
-    .map((r) => r.id);
-  return ineligibleRegionIds.length === 0
-    ? { ok: true, ineligibleRegionIds: [] }
-    : { ok: false, ineligibleRegionIds };
+    .map((r) => ({ regionId: r.id }));
+  return { ok: true, identityWarnings };
 }
