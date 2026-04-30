@@ -57,6 +57,20 @@ function candidatesForRegion(
 ): IdentityCandidate[] {
   const { bounds, sheet: sheetName } = region;
 
+  // User-locked identity short-circuits the heuristic. `detectRegions` copies
+  // `hint.identityStrategy` onto the skeleton verbatim; when the user locked
+  // a choice in the review step, `source === "user"` survives through here
+  // and the strategy round-trips unchanged.
+  if (region.identityStrategy?.source === "user") {
+    return [
+      {
+        strategy: region.identityStrategy,
+        score: region.identityStrategy.confidence,
+        rationale: "User-locked identity; heuristic skipped.",
+      },
+    ];
+  }
+
   // Single-locator identity is admitted on 1D regions only — records iterate
   // along one axis, so the perpendicular axis carries one cell per record
   // and we can scan it for uniqueness. 2D crosstabs treat each body cell
@@ -123,7 +137,7 @@ function candidatesForRegion(
                 ],
                 joiner: "|",
                 confidence: 0.55,
-              },
+                    },
               score: 0.55,
               rationale: `Columns ${c1}+${c2} together produce unique row keys.`,
             });
@@ -189,7 +203,7 @@ function candidatesForRegion(
                 ],
                 joiner: "|",
                 confidence: 0.55,
-              },
+                    },
               score: 0.55,
               rationale: `Rows ${r1}+${r2} together produce unique column keys.`,
             });

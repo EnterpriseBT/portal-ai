@@ -9,7 +9,9 @@ import {
   CellValueFieldSchema,
   ColumnBindingSchema,
   DriftKnobsSchema,
+  IdentityStrategySchema,
   LayoutPlanSchema,
+  RegionHintSchema,
   RegionSchema,
   SegmentSchema,
   SkipRuleSchema,
@@ -1081,6 +1083,124 @@ describe("ColumnBindingSchema — user overrides", () => {
     if (!result.success) {
       throw new Error(JSON.stringify(result.error.issues, null, 2));
     }
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("IdentityStrategySchema — source field", () => {
+  // `source` is optional for backward-compat with prior plans; absence is
+  // semantically equivalent to "heuristic" at read sites. Only `"user"` has
+  // consequence (gates the user-lock branch in `detect-identity`).
+
+  it("accepts a column-variant strategy without source (back-compat)", () => {
+    const parsed = IdentityStrategySchema.parse({
+      kind: "column",
+      sourceLocator: { kind: "column", sheet: "Sheet1", col: 1 },
+      confidence: 0.7,
+    });
+    expect(parsed.source).toBeUndefined();
+  });
+
+  it("accepts a composite-variant strategy without source (back-compat)", () => {
+    const parsed = IdentityStrategySchema.parse({
+      kind: "composite",
+      sourceLocators: [
+        { kind: "column", sheet: "Sheet1", col: 1 },
+        { kind: "column", sheet: "Sheet1", col: 2 },
+      ],
+      joiner: "|",
+      confidence: 0.55,
+    });
+    expect(parsed.source).toBeUndefined();
+  });
+
+  it("accepts a rowPosition-variant strategy without source (back-compat)", () => {
+    const parsed = IdentityStrategySchema.parse({
+      kind: "rowPosition",
+      confidence: 0.3,
+    });
+    expect(parsed.source).toBeUndefined();
+  });
+
+  it("round-trips an explicit source: 'user'", () => {
+    const input = {
+      kind: "column" as const,
+      sourceLocator: {
+        kind: "column" as const,
+        sheet: "Sheet1",
+        col: 2,
+      },
+      confidence: 0.7,
+      source: "user" as const,
+    };
+    const parsed = IdentityStrategySchema.parse(input);
+    expect(parsed.source).toBe("user");
+    expect(parsed.kind).toBe("column");
+    if (parsed.kind === "column") {
+      expect(parsed.sourceLocator).toEqual(input.sourceLocator);
+    }
+  });
+
+  it("round-trips source: 'user' on rowPosition", () => {
+    const parsed = IdentityStrategySchema.parse({
+      kind: "rowPosition",
+      confidence: 0,
+      source: "user",
+    });
+    expect(parsed.source).toBe("user");
+  });
+
+  it("rejects unknown source values", () => {
+    const result = IdentityStrategySchema.safeParse({
+      kind: "rowPosition",
+      confidence: 0,
+      source: "ai",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("RegionHintSchema — identityStrategy passthrough", () => {
+  function baseHint(): Record<string, unknown> {
+    return {
+      sheet: "Sheet1",
+      bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+      targetEntityDefinitionId: "ed",
+      headerAxes: ["row"],
+    };
+  }
+
+  it("accepts a hint without identityStrategy (back-compat)", () => {
+    const result = RegionHintSchema.safeParse(baseHint());
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.identityStrategy).toBeUndefined();
+    }
+  });
+
+  it("accepts a hint carrying a user-locked identityStrategy", () => {
+    const hint = {
+      ...baseHint(),
+      identityStrategy: {
+        kind: "column",
+        sourceLocator: { kind: "column", sheet: "Sheet1", col: 1 },
+        confidence: 0.7,
+        source: "user",
+      },
+    };
+    const result = RegionHintSchema.safeParse(hint);
+    expect(result.success).toBe(true);
+    if (result.success && result.data.identityStrategy) {
+      expect(result.data.identityStrategy.source).toBe("user");
+    }
+  });
+
+  it("accepts a hint carrying rowPosition identity locked by the user", () => {
+    const hint = {
+      ...baseHint(),
+      identityStrategy: { kind: "rowPosition", confidence: 0, source: "user" },
+    };
+    const result = RegionHintSchema.safeParse(hint);
     expect(result.success).toBe(true);
   });
 });

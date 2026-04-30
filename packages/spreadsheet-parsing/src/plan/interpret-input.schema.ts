@@ -9,6 +9,7 @@ import {
   SegmentSchema,
   TerminatorSchema,
 } from "./region.schema.js";
+import { IdentityStrategySchema } from "./strategies.schema.js";
 
 /**
  * A region hint mirrors the final `Region` shape, but carries only the pieces
@@ -50,6 +51,13 @@ export const RegionHintSchema = z.object({
     })
     .optional(),
   proposedLabel: z.string().optional(),
+  /**
+   * Pre-seed the region's identity. When omitted, `detectIdentity` runs the
+   * uniqueness heuristic. When provided with `source: "user"`, the heuristic
+   * is skipped and this strategy is preserved verbatim through interpret.
+   * Lets the review-step's identity override survive a re-interpret.
+   */
+  identityStrategy: IdentityStrategySchema.optional(),
 });
 
 export type RegionHint = z.infer<typeof RegionHintSchema>;

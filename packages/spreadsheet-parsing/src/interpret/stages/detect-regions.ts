@@ -58,6 +58,11 @@ function skeletonRegionFromHint(hint: RegionHint, index: number): Region {
   if (hint.axisAnchorCell) {
     region.axisAnchorCell = { ...hint.axisAnchorCell };
   }
+  if (hint.identityStrategy) {
+    // Copy verbatim — `detectIdentity` honors `source: "user"` to short-
+    // circuit the heuristic, otherwise it overwrites the strategy as usual.
+    region.identityStrategy = { ...hint.identityStrategy };
+  }
   return region;
 }
 

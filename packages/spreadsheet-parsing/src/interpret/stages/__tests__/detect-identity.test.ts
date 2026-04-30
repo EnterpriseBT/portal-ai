@@ -271,6 +271,105 @@ describe("detectIdentity", () => {
     }
   });
 
+  it("short-circuits when the input region carries identityStrategy.source: 'user' (column locator)", () => {
+    // Workbook has a unique column at col 1 (a-1 / a-2 / a-3) — the heuristic
+    // would normally pick it. The user has pre-selected col 2 instead and
+    // locked it via the hint. detectIdentity must respect the lock.
+    const input: InterpretInput = {
+      workbook: uniqueColumnInput().workbook,
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+          targetEntityDefinitionId: "contacts",
+          headerAxes: ["row"],
+          identityStrategy: {
+            kind: "column",
+            sourceLocator: { kind: "column", sheet: "Sheet1", col: 2 },
+            confidence: 0.7,
+            source: "user",
+          },
+        },
+      ],
+    };
+    const state = runPipeline(input);
+    const regionId = state.detectedRegions[0].id;
+    const candidates = state.identityCandidates.get(regionId)!;
+    expect(candidates).toHaveLength(1);
+    const only = candidates[0];
+    expect(only.strategy.kind).toBe("column");
+    if (only.strategy.kind === "column") {
+      expect(only.strategy.source).toBe("user");
+      expect(only.strategy.sourceLocator).toEqual({
+        kind: "column",
+        sheet: "Sheet1",
+        col: 2,
+      });
+    }
+    expect(only.rationale).toMatch(/user-locked/i);
+  });
+
+  it("short-circuits when the input region carries identityStrategy.source: 'user' (rowPosition lock)", () => {
+    // Workbook has a unique column the heuristic would prefer. The user
+    // explicitly chose rowPosition (no stable identity) and locked it.
+    const input: InterpretInput = {
+      workbook: uniqueColumnInput().workbook,
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+          targetEntityDefinitionId: "contacts",
+          headerAxes: ["row"],
+          identityStrategy: {
+            kind: "rowPosition",
+            confidence: 0,
+            source: "user",
+          },
+        },
+      ],
+    };
+    const state = runPipeline(input);
+    const regionId = state.detectedRegions[0].id;
+    const candidates = state.identityCandidates.get(regionId)!;
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].strategy.kind).toBe("rowPosition");
+    expect(candidates[0].strategy.source).toBe("user");
+    expect(candidates[0].rationale).toMatch(/user-locked/i);
+  });
+
+  it("re-detects when the input region's identityStrategy.source is 'heuristic'", () => {
+    // Heuristic source should NOT short-circuit even if a stale strategy is
+    // attached to the input. The detection runs and picks the unique col 1.
+    const input: InterpretInput = {
+      workbook: uniqueColumnInput().workbook,
+      regionHints: [
+        {
+          sheet: "Sheet1",
+          bounds: { startRow: 1, startCol: 1, endRow: 4, endCol: 3 },
+          targetEntityDefinitionId: "contacts",
+          headerAxes: ["row"],
+          identityStrategy: {
+            kind: "rowPosition",
+            confidence: 0,
+            source: "heuristic",
+          },
+        },
+      ],
+    };
+    const state = runPipeline(input);
+    const regionId = state.detectedRegions[0].id;
+    const candidates = state.identityCandidates.get(regionId)!;
+    const top = candidates[0];
+    expect(top.strategy.kind).toBe("column");
+    if (top.strategy.kind === "column") {
+      expect(top.strategy.sourceLocator).toEqual({
+        kind: "column",
+        sheet: "Sheet1",
+        col: 1,
+      });
+    }
+  });
+
   it("proposes a composite row strategy when records-are-columns and two rows together are unique", () => {
     // headerAxes=["column"] — header column is column 1. Rows 1 and 2
     // each have a duplicate ("alpha"/"beta" repeats; "alice"/"bob" repeats),

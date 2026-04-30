@@ -33,10 +33,22 @@ export type HeaderStrategy = z.infer<typeof HeaderStrategySchema>;
 
 // ── Identity strategy ──────────────────────────────────────────────────────
 
+/**
+ * `source` flags whether the strategy came from `detectIdentity`'s heuristic
+ * pass (`"heuristic"`; safe to overwrite on re-interpret) or was explicitly
+ * chosen by the user in the review step (`"user"`; locked — the heuristic
+ * must round-trip it unchanged). Optional for backward-compat: prior plans
+ * persisted without the field parse cleanly, and read sites treat the
+ * absence as `"heuristic"` (the only value with consequence is `"user"`,
+ * which gates the user-lock branch in `detect-identity`).
+ */
+const IdentityStrategySourceEnum = z.enum(["heuristic", "user"]).optional();
+
 const IdentityStrategyColumnSchema = z.object({
   kind: z.literal("column"),
   sourceLocator: LocatorSchema,
   confidence: z.number().min(0).max(1),
+  source: IdentityStrategySourceEnum,
 });
 
 const IdentityStrategyCompositeSchema = z.object({
@@ -44,11 +56,13 @@ const IdentityStrategyCompositeSchema = z.object({
   sourceLocators: z.array(LocatorSchema).min(2),
   joiner: z.string(),
   confidence: z.number().min(0).max(1),
+  source: IdentityStrategySourceEnum,
 });
 
 const IdentityStrategyRowPositionSchema = z.object({
   kind: z.literal("rowPosition"),
   confidence: z.number().min(0).max(1),
+  source: IdentityStrategySourceEnum,
 });
 
 export const IdentityStrategySchema = z.discriminatedUnion("kind", [
