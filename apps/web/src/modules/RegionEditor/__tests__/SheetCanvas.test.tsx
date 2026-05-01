@@ -451,6 +451,597 @@ describe("SheetCanvasUI", () => {
     expect(loadSlice).toHaveBeenCalledTimes(1);
   });
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Touch (long-press) gesture model.
+  // Mouse and pen pointerdown act synchronously as before; only `pointerType:
+  // "touch"` events go through the long-press primer with a 350ms threshold
+  // and a 10px movement-cancel.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe("desktop pointer paths (mouse + pen) act synchronously", () => {
+    test("mouse pointerdown immediately starts a draw", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      const cell = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(cell, {
+        pointerId: 1,
+        pointerType: "mouse",
+        clientX: 188,
+        clientY: 66,
+      });
+      fireEvent.pointerMove(cell, {
+        pointerId: 1,
+        pointerType: "mouse",
+        clientX: 380,
+        clientY: 122,
+      });
+      fireEvent.pointerUp(cell, {
+        pointerId: 1,
+        pointerType: "mouse",
+        clientX: 380,
+        clientY: 122,
+      });
+      expect(onDraft).toHaveBeenCalledWith({
+        startRow: 1,
+        endRow: 3,
+        startCol: 1,
+        endCol: 3,
+      });
+    });
+
+    test("pen pointerdown immediately starts a draw", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      const cell = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(cell, {
+        pointerId: 1,
+        pointerType: "pen",
+        clientX: 188,
+        clientY: 66,
+      });
+      fireEvent.pointerMove(cell, {
+        pointerId: 1,
+        pointerType: "pen",
+        clientX: 380,
+        clientY: 122,
+      });
+      fireEvent.pointerUp(cell, {
+        pointerId: 1,
+        pointerType: "pen",
+        clientX: 380,
+        clientY: 122,
+      });
+      expect(onDraft).toHaveBeenCalledWith({
+        startRow: 1,
+        endRow: 3,
+        startCol: 1,
+        endCol: 3,
+      });
+    });
+  });
+
+  describe("touch pointer path requires long-press to engage gestures", () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+    afterEach(() => {
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      jest.useRealTimers();
+    });
+
+    test("touch tap on empty cell does not draft a region", () => {
+      const onDraft = jest.fn();
+      const onSelect = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={onSelect}
+          onRegionDraft={onDraft}
+        />
+      );
+      const cell = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      fireEvent.pointerUp(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      expect(onDraft).not.toHaveBeenCalled();
+      // Tap outside any region clears selection (matches today's "click outside" semantics).
+      expect(onSelect).toHaveBeenCalledWith(null);
+    });
+
+    test("touch tap inside an existing region selects it without drafting", () => {
+      const onDraft = jest.fn();
+      const onSelect = jest.fn();
+      const region: RegionDraft = {
+        id: "r1",
+        sheetId: "s1",
+        bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 3 },
+        headerAxes: ["row"],
+        segmentsByAxis: { row: [{ kind: "field", positionCount: 3 }] },
+        targetEntityDefinitionId: "ent_a",
+      };
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId={null}
+          onRegionSelect={onSelect}
+          onRegionDraft={onDraft}
+        />
+      );
+      const overlay = screen.getByLabelText(/Region/i);
+      fireEvent.pointerDown(overlay, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 200,
+        clientY: 60,
+      });
+      fireEvent.pointerUp(overlay, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 200,
+        clientY: 60,
+      });
+      expect(onSelect).toHaveBeenCalledWith("r1");
+      expect(onDraft).not.toHaveBeenCalled();
+    });
+
+    test("touch drag (pointermove > 10px) before timer fires does NOT draft", () => {
+      const onDraft = jest.fn();
+      const onSelect = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={onSelect}
+          onRegionDraft={onDraft}
+        />
+      );
+      const cell = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      fireEvent.pointerMove(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 230, // 42px right — exceeds 10px tolerance
+        clientY: 66,
+      });
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      fireEvent.pointerUp(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 230,
+        clientY: 66,
+      });
+      expect(onDraft).not.toHaveBeenCalled();
+      // No tap-on-release either, because the pointer moved past the tap threshold.
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    test("touch hold ≥ 350ms then drag draws a region", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      const cell = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      act(() => {
+        jest.advanceTimersByTime(350);
+      });
+      fireEvent.pointerMove(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 380,
+        clientY: 122,
+      });
+      fireEvent.pointerUp(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 380,
+        clientY: 122,
+      });
+      expect(onDraft).toHaveBeenCalledWith({
+        startRow: 1,
+        endRow: 3,
+        startCol: 1,
+        endCol: 3,
+      });
+    });
+
+    test("touch hold < 350ms then drag does NOT draw", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      const cell = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      fireEvent.pointerMove(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 380,
+        clientY: 122,
+      });
+      fireEvent.pointerUp(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 380,
+        clientY: 122,
+      });
+      expect(onDraft).not.toHaveBeenCalled();
+    });
+
+    test("pointercancel during prime aborts the long-press cleanly", () => {
+      const onDraft = jest.fn();
+      const onSelect = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={onSelect}
+          onRegionDraft={onDraft}
+        />
+      );
+      const cell = screen.getByTestId("cell-1-1");
+      fireEvent.pointerDown(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      fireEvent.pointerCancel(cell, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 66,
+      });
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      expect(onDraft).not.toHaveBeenCalled();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    test("touch long-press on a column header drafts a column band", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      // Column header B (data-col-header="1")
+      const colHdr = document.querySelector('[data-col-header="1"]') as HTMLElement;
+      expect(colHdr).toBeTruthy();
+      fireEvent.pointerDown(colHdr, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 12,
+      });
+      act(() => {
+        jest.advanceTimersByTime(350);
+      });
+      fireEvent.pointerUp(colHdr, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 188,
+        clientY: 12,
+      });
+      expect(onDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startRow: 0,
+          endRow: 5,
+          startCol: 1,
+          endCol: 1,
+        })
+      );
+    });
+
+    test("touch long-press on a row header drafts a row band", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      const rowHdr = document.querySelector('[data-row-header="2"]') as HTMLElement;
+      expect(rowHdr).toBeTruthy();
+      fireEvent.pointerDown(rowHdr, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 22,
+        clientY: 24 + 2 * 28 + 14,
+      });
+      act(() => {
+        jest.advanceTimersByTime(350);
+      });
+      fireEvent.pointerUp(rowHdr, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 22,
+        clientY: 24 + 2 * 28 + 14,
+      });
+      expect(onDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startRow: 2,
+          endRow: 2,
+          startCol: 0,
+          endCol: 4,
+        })
+      );
+    });
+
+    test("touch long-press on the corner header drafts whole-sheet", () => {
+      const onDraft = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[]}
+          entityOrder={[]}
+          selectedRegionId={null}
+          onRegionSelect={jest.fn()}
+          onRegionDraft={onDraft}
+        />
+      );
+      const corner = document.querySelector('[data-corner-header]') as HTMLElement;
+      expect(corner).toBeTruthy();
+      fireEvent.pointerDown(corner, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 22,
+        clientY: 12,
+      });
+      act(() => {
+        jest.advanceTimersByTime(350);
+      });
+      fireEvent.pointerUp(corner, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 22,
+        clientY: 12,
+      });
+      expect(onDraft).toHaveBeenCalledWith({
+        startRow: 0,
+        endRow: 5,
+        startCol: 0,
+        endCol: 4,
+      });
+    });
+
+    test("touch tap on a region body selects it synchronously (no timer wait)", () => {
+      const onSelect = jest.fn();
+      const onResize = jest.fn();
+      const region: RegionDraft = {
+        id: "r1",
+        sheetId: "s1",
+        bounds: { startRow: 1, endRow: 3, startCol: 1, endCol: 3 },
+        targetEntityDefinitionId: "ent_a",
+      };
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId={null}
+          onRegionSelect={onSelect}
+          onRegionDraft={jest.fn()}
+          onRegionResize={onResize}
+        />
+      );
+      const overlay = screen.getByLabelText(/Region/i);
+      fireEvent.pointerDown(overlay, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 200,
+        clientY: 60,
+      });
+      // Selection happens immediately, before the 350ms timer.
+      expect(onSelect).toHaveBeenCalledWith("r1");
+      fireEvent.pointerUp(overlay, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 200,
+        clientY: 60,
+      });
+      expect(onResize).not.toHaveBeenCalled();
+    });
+
+    test("touch long-press on a segment divider fires onSegmentResize", () => {
+      const region: RegionDraft = {
+        id: "r1",
+        sheetId: "s1",
+        bounds: { startRow: 1, endRow: 3, startCol: 0, endCol: 3 },
+        headerAxes: ["row"],
+        segmentsByAxis: {
+          row: [
+            { kind: "field", positionCount: 2 },
+            { kind: "skip", positionCount: 2 },
+          ],
+        },
+        targetEntityDefinitionId: "ent_a",
+      };
+      const onSegmentResize = jest.fn();
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId="r1"
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+          onSegmentResize={onSegmentResize}
+        />
+      );
+      const divider = screen.getByTestId("segment-divider-row-0");
+      fireEvent.pointerDown(divider, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 44 + 2 * 96 + 48,
+        clientY: 24 + 1 * 28 + 14,
+      });
+      act(() => {
+        jest.advanceTimersByTime(350);
+      });
+      fireEvent.pointerMove(divider, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 44 + 3 * 96 + 48,
+        clientY: 24 + 1 * 28 + 14,
+      });
+      fireEvent.pointerUp(divider, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 44 + 3 * 96 + 48,
+        clientY: 24 + 1 * 28 + 14,
+      });
+      expect(onSegmentResize).toHaveBeenCalledWith("r1", "row", 0, 3, 1);
+    });
+
+    test("touch long-press on a pivot×pivot intersection opens the editor popover", () => {
+      const region: RegionDraft = {
+        id: "r1",
+        sheetId: "s1",
+        bounds: { startRow: 0, endRow: 4, startCol: 0, endCol: 4 },
+        headerAxes: ["row", "column"],
+        segmentsByAxis: {
+          row: [
+            { kind: "skip", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "rp1",
+              axisName: "Region",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+          column: [
+            { kind: "skip", positionCount: 1 },
+            {
+              kind: "pivot",
+              id: "cp1",
+              axisName: "Quarter",
+              axisNameSource: "user",
+              positionCount: 4,
+            },
+          ],
+        },
+        cellValueField: { name: "Revenue", nameSource: "user" },
+        targetEntityDefinitionId: "ent_a",
+      };
+      render(
+        <SheetCanvasUI
+          sheet={makeSheet()}
+          regions={[region]}
+          entityOrder={["ent_a"]}
+          selectedRegionId="r1"
+          onRegionSelect={jest.fn()}
+          onRegionDraft={jest.fn()}
+          onRegionUpdate={jest.fn()}
+        />
+      );
+      const overlay = screen.getByTestId("intersection-overlay-r1-rp1__cp1");
+      // Tap (no timer advance): popover should NOT open yet.
+      fireEvent.pointerDown(overlay, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 200,
+        clientY: 100,
+      });
+      expect(
+        screen.queryByRole("textbox", {
+          name: /cell-value field name for this intersection/i,
+        })
+      ).not.toBeInTheDocument();
+      // Hold past the threshold: popover opens.
+      act(() => {
+        jest.advanceTimersByTime(350);
+      });
+      expect(
+        screen.getByRole("textbox", {
+          name: /cell-value field name for this intersection/i,
+        })
+      ).toBeInTheDocument();
+    });
+  });
+
   test("clicking a pivot×pivot intersection overlay opens the cell-value editor popover", () => {
     const region: RegionDraft = {
       id: "r1",

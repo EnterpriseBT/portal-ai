@@ -33,6 +33,12 @@ export type ResizeHandleKind =
 export const ROW_HEADER_WIDTH = 44;
 export const COL_HEADER_HEIGHT = 24;
 const HANDLE_SIZE = 10;
+// Inflated hit-area around the visible 10px handle. A finger is ~44px; the
+// 24px wrapper gives enough padding for a touch to land reliably while the
+// visible chrome (sized HANDLE_SIZE) stays unchanged on desktop. Mouse hits
+// the wrapper just as well as the inner dot, so cursor / hover affordances
+// continue to fire on the wrapper.
+const HANDLE_HIT_SIZE = 24;
 const HANDLE_DEFS: {
   kind: ResizeHandleKind;
   cursor: string;
@@ -72,13 +78,13 @@ function anchorOffset(
   startKey: "top" | "left",
   endKey: "bottom" | "right"
 ): Record<string, number | string> {
-  const offset = -HANDLE_SIZE / 2;
+  const offset = -HANDLE_HIT_SIZE / 2;
   if (pos === "start") return { [startKey]: offset };
   if (pos === "end") return { [endKey]: offset };
   if (startKey === "top") {
-    return { top: `calc(50% - ${HANDLE_SIZE / 2}px)` };
+    return { top: `calc(50% - ${HANDLE_HIT_SIZE / 2}px)` };
   }
-  return { left: `calc(50% - ${HANDLE_SIZE / 2}px)` };
+  return { left: `calc(50% - ${HANDLE_HIT_SIZE / 2}px)` };
 }
 
 export interface RegionOverlayUIProps {
@@ -241,18 +247,30 @@ export const RegionOverlayUI: React.FC<RegionOverlayUIProps> = ({
               onPointerDown={onResizeStart(region.id, h.kind, bounds)}
               sx={{
                 position: "absolute",
-                width: HANDLE_SIZE,
-                height: HANDLE_SIZE,
-                backgroundColor: "#fff",
-                border: "2px solid",
-                borderColor: color,
-                borderRadius: "2px",
+                width: HANDLE_HIT_SIZE,
+                height: HANDLE_HIT_SIZE,
                 cursor: h.cursor,
                 zIndex: 7,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 ...anchorOffset(h.anchor, "top", "bottom"),
                 ...anchorOffset(h.cross, "left", "right"),
               }}
-            />
+            >
+              <Box
+                aria-hidden
+                sx={{
+                  width: HANDLE_SIZE,
+                  height: HANDLE_SIZE,
+                  backgroundColor: "#fff",
+                  border: "2px solid",
+                  borderColor: color,
+                  borderRadius: "2px",
+                  pointerEvents: "none",
+                }}
+              />
+            </Box>
           ))}
       </Box>
       {extendsDown && (
