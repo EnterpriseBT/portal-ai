@@ -1578,7 +1578,11 @@ describe("Connector Instance Router", () => {
       expect(res.body.code).toBe(ApiCode.LAYOUT_PLAN_NOT_FOUND);
     });
 
-    it("returns 409 when the plan uses rowPosition identity", async () => {
+    it("accepts a sync request when the plan uses rowPosition identity (advisory, not blocking)", async () => {
+      // `rowPosition` regions sync correctly but produce reap-and-recreate
+      // deltas. The eligibility gate dropped the hard refusal in Phase B
+      // of `RECORD_IDENTITY_REVIEW.spec.md`; the UI now renders a
+      // non-blocking banner from `identityWarnings` instead.
       const { instanceId } = await seedSyncFixture({
         identityKind: "rowPosition",
       });
@@ -1587,10 +1591,9 @@ describe("Connector Instance Router", () => {
         .post(`/api/connector-instances/${instanceId}/sync`)
         .set("Authorization", "Bearer test-token");
 
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe(
-        ApiCode.LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY
-      );
+      expect(res.status).toBe(202);
+      expect(res.body.success).toBe(true);
+      expect(typeof res.body.payload.jobId).toBe("string");
     });
 
     it("returns 202 + jobId and persists a pending connector_sync job", async () => {
@@ -1751,7 +1754,7 @@ describe("Connector Instance Router", () => {
       expect(res.body.payload.connectorInstance.syncEligible).toBe(true);
     });
 
-    it("is false when the plan uses rowPosition identity", async () => {
+    it("stays true when the plan uses rowPosition identity (advisory, not blocking)", async () => {
       const { organizationId } = await seedUserAndOrg(
         db as ReturnType<typeof drizzle>,
         AUTH0_ID
@@ -1787,7 +1790,10 @@ describe("Connector Instance Router", () => {
         .set("Authorization", "Bearer test-token");
 
       expect(res.status).toBe(200);
-      expect(res.body.payload.connectorInstance.syncEligible).toBe(false);
+      expect(res.body.payload.connectorInstance.syncEligible).toBe(true);
+      expect(
+        res.body.payload.connectorInstance.identityWarnings
+      ).toEqual([{ regionId: "r1" }]);
     });
 
     it("is false when the instance has no committed plan", async () => {

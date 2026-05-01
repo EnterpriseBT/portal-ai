@@ -19,6 +19,7 @@ import type {
   CellValueField,
   HeaderStrategyKind,
   IdentityStrategyKind,
+  Locator,
   Segment,
   SkipRuleAxis,
   Terminator,
@@ -188,8 +189,27 @@ export type RegionDraft = {
   headerStrategy?: { kind: HeaderStrategyKind; confidence?: number };
   identityStrategy?: {
     kind: IdentityStrategyKind;
+    /**
+     * Display string used by the editor's decoration layer (e.g. for the
+     * source-id preview chip). Distinct from the structured `rawLocator`,
+     * which is the canonical round-trip form sent back to interpret().
+     */
     sourceLocator?: string;
+    /**
+     * Structured Locator preserved verbatim from the plan so the round-trip
+     * `regionDraftsToHints` → interpret() → `planRegionsToDrafts` is lossless
+     * for column- and composite-locator strategies. Optional because rowPosition
+     * has no locator and old drafts persisted without this field.
+     */
+    rawLocator?: Locator;
     confidence?: number;
+    /**
+     * `"user"` means the user explicitly picked this identity in the review
+     * step — `regionDraftsToHints` writes the strategy onto the hint so
+     * interpret() preserves it on the next pass. Absent or `"heuristic"`
+     * lets the heuristic re-detect.
+     */
+    source?: "heuristic" | "user";
   };
   columnBindings?: ColumnBindingDraft[];
   confidence?: number;

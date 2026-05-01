@@ -691,6 +691,7 @@ export const SheetCanvasUI: React.FC<SheetCanvasUIProps> = ({
     () => ({ width: gridWidth, height: initialRectHeight }),
     [gridWidth, initialRectHeight]
   );
+  // eslint-disable-next-line react-hooks/incompatible-library -- @tanstack/react-virtual returns mutable VirtualItem refs by design; React Compiler memoization is unnecessary here, the virtualizer manages its own caching.
   const rowVirtualizer = useVirtualizer({
     count: sheet.rowCount,
     getScrollElement: () => scrollRef.current,

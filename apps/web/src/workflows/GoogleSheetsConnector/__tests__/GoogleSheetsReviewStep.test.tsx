@@ -1,3 +1,5 @@
+import type React from "react";
+
 import "@testing-library/jest-dom";
 import { jest } from "@jest/globals";
 
@@ -33,8 +35,8 @@ function makeProps(
   } as unknown as GoogleSheetsReviewStepUIProps;
 }
 
-describe("GoogleSheetsReviewStep — rowPosition banner", () => {
-  it("does not render the banner when no region uses rowPosition identity", () => {
+describe("GoogleSheetsReviewStep — rowPosition advisory", () => {
+  it("does not render the advisory when no region uses rowPosition identity", () => {
     render(
       <GoogleSheetsReviewStep
         {...makeProps({
@@ -53,14 +55,11 @@ describe("GoogleSheetsReviewStep — rowPosition banner", () => {
         })}
       />
     );
-    // No alert other than what FormAlert/etc would render — and no
-    // mention of the "rowPosition" warning text.
-    expect(
-      screen.queryByText(/positional row IDs/i)
-    ).toBeNull();
+    expect(screen.queryByText(/no stable identity/i)).toBeNull();
+    expect(screen.queryByText(/reaped and re-created/i)).toBeNull();
   });
 
-  it("renders the rowPosition banner and names every affected region", () => {
+  it("renders an info-severity advisory and names every rowPosition region", () => {
     render(
       <GoogleSheetsReviewStep
         {...makeProps({
@@ -83,17 +82,37 @@ describe("GoogleSheetsReviewStep — rowPosition banner", () => {
         })}
       />
     );
-    const alert = screen.getByText(/positional row IDs/i).closest('[role="status"]');
+    // MUI's `severity="info"` Alert renders with role="status" — the banner
+    // is informational, not a warning.
+    const alert = screen
+      .getByText(/no stable identity/i)
+      .closest('[role="status"]');
     expect(alert).toBeTruthy();
     // Banner names the affected regions (label or id fallback).
     expect(screen.getByText(/Misc data/i)).toBeInTheDocument();
     expect(screen.getByText(/r3/i)).toBeInTheDocument();
     // Forecast (column identity) is NOT named.
-    const banner = screen.getByText(/positional row IDs/i).closest("div");
+    const banner = screen.getByText(/no stable identity/i).closest("div");
     expect(banner?.textContent ?? "").not.toContain("Forecast");
   });
 
-  it("does not block commit even when the banner is present", async () => {
+  it("includes the 'reaped and re-created every sync' explanation", () => {
+    render(
+      <GoogleSheetsReviewStep
+        {...makeProps({
+          regions: [
+            {
+              id: "r1",
+              identityStrategy: { kind: "rowPosition", confidence: 0.3 },
+            } as never,
+          ],
+        })}
+      />
+    );
+    expect(screen.getByText(/reaped and re-created/i)).toBeInTheDocument();
+  });
+
+  it("does not block commit even when the advisory is present", async () => {
     const onCommit = jest.fn();
     render(
       <GoogleSheetsReviewStep
@@ -113,7 +132,7 @@ describe("GoogleSheetsReviewStep — rowPosition banner", () => {
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
-  it("includes the 'Add an identifier column' guidance text", () => {
+  it("nudges the user toward picking an identity field", () => {
     render(
       <GoogleSheetsReviewStep
         {...makeProps({
@@ -126,6 +145,6 @@ describe("GoogleSheetsReviewStep — rowPosition banner", () => {
         })}
       />
     );
-    expect(screen.getByText(/add an identifier column/i)).toBeInTheDocument();
+    expect(screen.getByText(/pick an identity field/i)).toBeInTheDocument();
   });
 });

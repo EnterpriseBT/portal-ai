@@ -364,6 +364,29 @@ export function regionDraftsToHints(
     if (draft.proposedLabel !== undefined) {
       hint.proposedLabel = draft.proposedLabel;
     }
+    if (draft.identityStrategy?.source === "user") {
+      // Only user-locked identities round-trip through the hint. A heuristic-
+      // sourced strategy is omitted so interpret() re-detects against the
+      // current workbook on every pass.
+      const strat = draft.identityStrategy;
+      if (strat.kind === "rowPosition") {
+        hint.identityStrategy = {
+          kind: "rowPosition",
+          confidence: strat.confidence ?? 0,
+          source: "user",
+        };
+      } else if (strat.kind === "column" && strat.rawLocator) {
+        hint.identityStrategy = {
+          kind: "column",
+          sourceLocator: strat.rawLocator,
+          confidence: strat.confidence ?? 0.7,
+          source: "user",
+        };
+      }
+      // Composite user-lock isn't user-constructable yet (Phase D limits the
+      // override to single-locator + rowPosition); a heuristic-emitted
+      // composite that gets locked falls back to skip — interpret() re-runs.
+    }
 
     hints.push(hint);
   }
@@ -488,12 +511,19 @@ export function planRegionsToDrafts(
     if (region.identityStrategy) {
       // The backend's identityStrategy locator is a Locator union (cell/range/
       // column/row) whose shape differs from the BindingSourceLocator used by
-      // columnBindings. The frontend only needs `kind` + an opaque display
-      // string for the decoration layer, so we skip locator serialization for
-      // now; `onEditBinding` will synthesise the richer editor when it lands.
-      draft.identityStrategy = {
+      // columnBindings. We preserve the structured locator on `rawLocator` so
+      // `regionDraftsToHints` can round-trip a user-locked choice back into
+      // the next interpret pass; the editor's decoration layer reads `kind`
+      // for display.
+      const draftIdentity: NonNullable<RegionDraft["identityStrategy"]> = {
         kind: region.identityStrategy.kind,
+        source: region.identityStrategy.source ?? "heuristic",
+        confidence: region.identityStrategy.confidence,
       };
+      if (region.identityStrategy.kind === "column") {
+        draftIdentity.rawLocator = region.identityStrategy.sourceLocator;
+      }
+      draft.identityStrategy = draftIdentity;
     }
 
     return draft;

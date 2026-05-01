@@ -143,7 +143,7 @@ describe("ConnectorInstanceLayoutPlansRepository", () => {
   });
 
   function makePlanRow(
-    overrides: Partial<ConnectorInstanceLayoutPlanInsert> = {}
+    _overrides: Partial<ConnectorInstanceLayoutPlanInsert> = {}
   ): ConnectorInstanceLayoutPlanInsert {
     const now = Date.now();
     return {

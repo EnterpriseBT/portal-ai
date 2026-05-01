@@ -21,7 +21,24 @@ describe("ConnectorInstanceSyncFeedbackUI", () => {
 
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.firstChild).toBeNull();
+    // MUI Snackbar with `open={false}` portals nothing into the document
+    // body — a Snackbar whose `open` is true would mount a positioned
+    // wrapper there.
+    expect(document.querySelector(".MuiSnackbar-root")).toBeNull();
+  });
+
+  it("renders the result/error feedback inside a MUI Snackbar (toast, not inline)", () => {
+    render(
+      <ConnectorInstanceSyncFeedbackUI
+        {...baseProps}
+        jobStatus="completed"
+        recordCounts={{ created: 1, updated: 0, unchanged: 0, deleted: 0 }}
+      />
+    );
+    // Snackbar mounts a positioned root in the document body — the
+    // result Alert is its child. Inline-rendered alerts wouldn't carry
+    // the .MuiSnackbar-root class.
+    expect(document.querySelector(".MuiSnackbar-root")).not.toBeNull();
   });
 
   it("renders a progress bar while the job is active", () => {

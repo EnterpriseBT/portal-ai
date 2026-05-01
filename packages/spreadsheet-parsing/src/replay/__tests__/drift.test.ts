@@ -438,6 +438,119 @@ describe("detectRegionDrift — identity column", () => {
   });
 });
 
+describe("detectRegionDrift — identity row (records-are-columns)", () => {
+  // Records-are-columns shape: header column is col 1 (id, name, age),
+  // each remaining column is a record. Identity is a row-locator at row 1
+  // (the "id" row).
+  function monthlyRegion(overrides: Partial<Region> = {}): Region {
+    return {
+      id: "r1",
+      sheet: "Sheet1",
+      bounds: { startRow: 1, startCol: 1, endRow: 3, endCol: 4 },
+      targetEntityDefinitionId: "contacts",
+      headerAxes: ["column"],
+      segmentsByAxis: {
+        column: [{ kind: "field", positionCount: 3 }],
+      },
+      headerStrategyByAxis: {
+        column: {
+          kind: "rowLabels",
+          locator: { kind: "column", sheet: "Sheet1", col: 1 },
+          confidence: 0.9,
+        },
+      },
+      identityStrategy: {
+        kind: "column",
+        sourceLocator: { kind: "row", sheet: "Sheet1", row: 1 },
+        confidence: 0.9,
+      },
+      columnBindings: [
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "column", name: "id" },
+          columnDefinitionId: "col-id",
+          confidence: 0.9,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "column", name: "name" },
+          columnDefinitionId: "col-name",
+          confidence: 0.9,
+        },
+        {
+          sourceLocator: { kind: "byHeaderName", axis: "column", name: "age" },
+          columnDefinitionId: "col-age",
+          confidence: 0.8,
+        },
+      ],
+      skipRules: [],
+      drift: {
+        headerShiftRows: 0,
+        addedColumns: "halt",
+        removedColumns: { max: 0, action: "halt" },
+      },
+      confidence: { region: 0.9, aggregate: 0.9 },
+      warnings: [],
+      ...overrides,
+    };
+  }
+
+  it("emits identity-column-has-blanks when the identity row has null values in data columns", () => {
+    const wb = makeWorkbook({
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows: 3, cols: 4 },
+          cells: [
+            { row: 1, col: 1, value: "id" },
+            { row: 1, col: 2, value: "a-1" },
+            // col 3 row 1 missing — blank id
+            { row: 1, col: 4, value: "a-3" },
+            { row: 2, col: 1, value: "name" },
+            { row: 2, col: 2, value: "alice" },
+            { row: 2, col: 3, value: "bob" },
+            { row: 2, col: 4, value: "carol" },
+            { row: 3, col: 1, value: "age" },
+            { row: 3, col: 2, value: 30 },
+            { row: 3, col: 3, value: 25 },
+            { row: 3, col: 4, value: 40 },
+          ],
+        },
+      ],
+    });
+    const drift = detectRegionDrift(monthlyRegion(), wb.sheets[0]);
+    expect(drift.kinds).toContain("identity-column-has-blanks");
+  });
+
+  it("emits duplicate-identity-values and marks identityChanging true / severity blocker", () => {
+    const wb = makeWorkbook({
+      sheets: [
+        {
+          name: "Sheet1",
+          dimensions: { rows: 3, cols: 4 },
+          cells: [
+            { row: 1, col: 1, value: "id" },
+            { row: 1, col: 2, value: "a-1" },
+            { row: 1, col: 3, value: "a-1" },
+            { row: 1, col: 4, value: "a-3" },
+            { row: 2, col: 1, value: "name" },
+            { row: 2, col: 2, value: "alice" },
+            { row: 2, col: 3, value: "bob" },
+            { row: 2, col: 4, value: "carol" },
+            { row: 3, col: 1, value: "age" },
+            { row: 3, col: 2, value: 30 },
+            { row: 3, col: 3, value: 25 },
+            { row: 3, col: 4, value: 40 },
+          ],
+        },
+      ],
+    });
+    const drift = detectRegionDrift(monthlyRegion(), wb.sheets[0]);
+    expect(drift.kinds).toContain("duplicate-identity-values");
+    const roll = rollUpDrift([drift]);
+    expect(roll.severity).toBe("blocker");
+    expect(roll.identityChanging).toBe(true);
+  });
+});
+
 describe("detectRegionDrift — records-axis anchor rename", () => {
   it("emits records-axis-value-renamed when a pivot segment's anchor-cell axisName has changed in the workbook", () => {
     const priorRegion: Region = {

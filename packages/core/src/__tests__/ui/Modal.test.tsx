@@ -194,7 +194,6 @@ describe("Modal Component", () => {
       // Both icons live inside the same header row; document position
       // FOLLOWING means `close` comes after `maximize`.
       expect(
-        // eslint-disable-next-line no-bitwise
         maximize.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy();
     });

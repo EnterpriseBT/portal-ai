@@ -45,15 +45,27 @@ export const ConnectorInstanceApiSchema = ConnectorInstanceSchema.omit({
   accountInfo: PublicAccountInfoSchema,
   /**
    * Whether this instance can run a manual sync. `true` if it has a
-   * committed plan with stable identity strategies (`column`/`composite`);
-   * `false` if it has no plan or a plan using `rowPosition` identity
-   * (positional ids shift on every row insert/delete, making sync
-   * pathological). `undefined` on list endpoints to avoid n+1 plan
-   * lookups — the UI's sync affordance reads from the detail view only.
-   *
-   * See `docs/GOOGLE_SHEETS_CONNECTOR.phase-D.plan.md` §Slice 5.
+   * committed plan and the connector supports sync; `false` if it has no
+   * plan or the connector type doesn't support sync. Plans whose regions
+   * use `rowPosition` identity remain `true` (the advisory surfaces via
+   * `identityWarnings` instead). `undefined` on list endpoints to avoid
+   * n+1 plan lookups — the UI's sync affordance reads from the detail
+   * view only.
    */
   syncEligible: z.boolean().optional(),
+  /**
+   * Non-blocking advisories surfaced by the connector adapter's
+   * `assertSyncEligibility`. Currently populated by the gsheets adapter
+   * for regions whose plans use `rowPosition` identity — those sync
+   * correctly but produce reap-and-recreate deltas on structural sheet
+   * changes, so the UI renders an advisory tooltip on the Sync button.
+   * Empty array when no advisories apply; `undefined` on list endpoints
+   * (skipped to avoid n+1 plan lookups). See
+   * `docs/RECORD_IDENTITY_REVIEW.spec.md`.
+   */
+  identityWarnings: z
+    .array(z.object({ regionId: z.string() }))
+    .optional(),
 });
 
 export type ConnectorInstanceApi = z.infer<typeof ConnectorInstanceApiSchema>;

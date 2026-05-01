@@ -10,6 +10,12 @@ export type { RegionDrawingStepUIProps } from "./RegionDrawingStep.component";
 export { ReviewStepUI } from "./ReviewStep.component";
 export type { ReviewStepUIProps } from "./ReviewStep.component";
 
+export { IdentityPanelUI } from "./IdentityPanel.component";
+export type {
+  IdentityChange,
+  IdentityPanelUIProps,
+} from "./IdentityPanel.component";
+
 export { SheetCanvasUI } from "./SheetCanvas.component";
 export type { LoadSliceFn, SheetCanvasUIProps } from "./SheetCanvas.component";
 

@@ -1705,9 +1705,7 @@ describe("Entity Record Router — GIN Index Performance", () => {
   });
 
   it("should use index for JSONB containment queries via EXPLAIN", async () => {
-    const { connectorEntityId } = await seedFullStack(
-      db as ReturnType<typeof drizzle>
-    );
+    await seedFullStack(db as ReturnType<typeof drizzle>);
 
     // Seed a few records so the planner has something to work with
     const records = Array.from({ length: 10 }, (_, i) => ({
@@ -1718,18 +1716,6 @@ describe("Entity Record Router — GIN Index Performance", () => {
       signup_date: "2024-01-01",
       last_login: "2024-01-01T00:00:00Z",
     }));
-
-    const rows = records.map((data, i) =>
-      createEntityRecord(
-        (db as ReturnType<typeof drizzle>)
-          ? "org-placeholder"
-          : "org-placeholder",
-        connectorEntityId,
-        data,
-        String(i + 1),
-        "user-placeholder"
-      )
-    );
 
     // We need real org/user IDs — use the ones from seedFullStack
     // Re-seed to get the IDs

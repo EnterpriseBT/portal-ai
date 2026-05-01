@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- escape hatches for drizzle ORM and JSONB typings; values are validated upstream. */
 /* global AbortController */
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 

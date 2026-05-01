@@ -106,9 +106,9 @@ export const RecordsPreviewDialogUI: React.FC<RecordsPreviewDialogUIProps> = ({
         {renderBody(preview)}
 
         <Typography variant="caption" color="text.secondary">
-          Placeholder labels (shown dimmed / italic) mark fields that don't yet
-          have a labelled header — edit the header cells or rename the pivot
-          axis to replace them.
+          Placeholder labels (shown dimmed / italic) mark fields that don&apos;t
+          yet have a labelled header — edit the header cells or rename the
+          pivot axis to replace them.
         </Typography>
       </Stack>
     </Modal>

@@ -31,6 +31,7 @@ import {
 import { encryptCredentials } from "../utils/crypto.util.js";
 import { getApplicationMetadata } from "../middleware/metadata.middleware.js";
 import {
+  computeIdentityWarnings,
   computeSyncEligible,
   redactInstance,
   redactInstances,
@@ -337,21 +338,29 @@ connectorInstanceRouter.get(
           .findById(connectorInstance.connectorDefinitionId)
           .catch(() => null);
 
-      // Only resolve syncEligible for sync-capable connectors. For
-      // sandbox/file-upload (and anything else without `sync` in
-      // `capabilityFlags`), the detail view has no sync button so the
-      // field stays `undefined` and we skip the adapter call.
+      // Only resolve syncEligible / identityWarnings for sync-capable
+      // connectors. For sandbox/file-upload (and anything else without
+      // `sync` in `capabilityFlags`), the detail view has no sync button
+      // so the fields stay `undefined` and we skip the adapter calls.
       const supportsSync =
         connectorDefinition?.capabilityFlags?.sync === true;
-      const syncEligible =
+      const [syncEligible, identityWarnings] =
         supportsSync && connectorDefinition
-          ? await computeSyncEligible(
-              connectorInstance as unknown as Parameters<
-                typeof computeSyncEligible
-              >[0],
-              connectorDefinition.slug
-            )
-          : undefined;
+          ? await Promise.all([
+              computeSyncEligible(
+                connectorInstance as unknown as Parameters<
+                  typeof computeSyncEligible
+                >[0],
+                connectorDefinition.slug
+              ),
+              computeIdentityWarnings(
+                connectorInstance as unknown as Parameters<
+                  typeof computeIdentityWarnings
+                >[0],
+                connectorDefinition.slug
+              ),
+            ])
+          : [undefined, undefined];
 
       return HttpService.success<ConnectorInstanceGetResponsePayload>(res, {
         connectorInstance: redactInstance({
@@ -361,6 +370,7 @@ connectorInstanceRouter.get(
           slug: connectorDefinition?.slug ?? "",
           connectorDefinition: connectorDefinition ?? null,
           syncEligible,
+          identityWarnings,
         }) as unknown as ConnectorInstanceWithDefinitionApi,
       });
     } catch (error) {

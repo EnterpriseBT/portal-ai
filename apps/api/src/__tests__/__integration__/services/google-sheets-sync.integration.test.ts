@@ -20,11 +20,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, isNull } from "drizzle-orm";
 import postgres from "postgres";
 
-import type { LayoutPlan, WorkbookData } from "@portalai/core/contracts";
+import type { LayoutPlan } from "@portalai/core/contracts";
 
 import * as schema from "../../../db/schema/index.js";
-import type { DbClient } from "../../../db/repositories/base.repository.js";
-import { ApiCode } from "../../../constants/api-codes.constants.js";
 import {
   generateId,
   seedUserAndOrg,
@@ -159,26 +157,6 @@ function makePlan(opts: {
     ],
     confidence: { overall: 0.9, perRegion: { r1: 0.9 } },
   } as unknown as LayoutPlan;
-}
-
-function makeWorkbook(rows: { email: string; name: string }[]): WorkbookData {
-  const cells: WorkbookData["sheets"][number]["cells"] = [
-    { row: 1, col: 1, value: "email" },
-    { row: 1, col: 2, value: "name" },
-  ];
-  for (let i = 0; i < rows.length; i++) {
-    cells.push({ row: 2 + i, col: 1, value: rows[i]!.email });
-    cells.push({ row: 2 + i, col: 2, value: rows[i]!.name });
-  }
-  return {
-    sheets: [
-      {
-        name: "Sheet1",
-        dimensions: { rows: 1 + rows.length, cols: 2 },
-        cells,
-      },
-    ],
-  };
 }
 
 /** Mocks the Sheets API's `spreadsheets.get` response. */
@@ -417,21 +395,43 @@ describe("googleSheetsAdapter.syncInstance", () => {
     };
   }
 
-  it("refuses sync when the plan has any rowPosition-identity region", async () => {
+  it("syncs successfully when the plan has rowPosition-identity regions (advisory, not blocking)", async () => {
+    // The previous behavior — rejecting with 409
+    // LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY — was dropped in Phase B of
+    // `RECORD_IDENTITY_REVIEW.spec.md`. Sync proceeds and produces the
+    // synthetic `row-{n}` source ids; the warning surfaces in
+    // `assertSyncEligibility` as `identityWarnings` for the UI banner.
     const { instance } = await seedCommittedInstance({
-      rows: [{ email: "alice@example.com", name: "Alice" }],
+      rows: [],
       identityKind: "rowPosition",
     });
 
-    await expect(
-      googleSheetsAdapter.syncInstance!(instance, userId)
-    ).rejects.toMatchObject({
-      status: 409,
-      code: ApiCode.LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY,
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse(
+        mockSheetsApiResponse([
+          { email: "alice@example.com", name: "Alice" },
+          { email: "bob@example.com", name: "Bob" },
+        ])
+      )
+    );
+
+    const result = await googleSheetsAdapter.syncInstance!(instance, userId);
+    expect(result.recordCounts.created).toBe(2);
+    expect(result.recordCounts.deleted).toBe(0);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("on rowPosition, surfaces identityWarnings on the eligibility check (advisory channel)", async () => {
+    const { instance } = await seedCommittedInstance({
+      rows: [],
+      identityKind: "rowPosition",
     });
 
-    // No fetch attempted (refusal happens before the network call).
-    expect(fetchMock).not.toHaveBeenCalled();
+    const eligibility = await googleSheetsAdapter.assertSyncEligibility!(
+      instance
+    );
+    expect(eligibility.ok).toBe(true);
+    expect(eligibility.identityWarnings).toEqual([{ regionId: "r1" }]);
   });
 
   it("updates lastSyncAt + clears lastErrorMessage on success", async () => {
@@ -485,19 +485,53 @@ describe("googleSheetsAdapter.syncInstance", () => {
     }
   });
 
-  it("on rowPosition refusal, lastSyncAt is not updated", async () => {
+  it("on rowPosition sync, a row swap produces updates (sourceIds tied to row position)", async () => {
+    // Demonstrates the trade-off the user has accepted: rowPosition
+    // assigns synthetic ids tied to sheet position. Swapping two rows
+    // updates both records (their source_ids are unchanged but contents
+    // differ); inserting/deleting a row would cause reap+recreate on
+    // every shifted row. This is the central reason for the soft banner
+    // in Phase C — the user accepts position-based identity at commit.
     const { instance } = await seedCommittedInstance({
-      rows: [{ email: "alice@example.com", name: "Alice" }],
+      rows: [],
       identityKind: "rowPosition",
     });
-    await expect(
-      googleSheetsAdapter.syncInstance!(instance, userId)
-    ).rejects.toThrow();
+
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse(
+        mockSheetsApiResponse([
+          { email: "alice@example.com", name: "Alice" },
+          { email: "bob@example.com", name: "Bob" },
+        ])
+      )
+    );
+    const first = await googleSheetsAdapter.syncInstance!(instance, userId);
+    expect(first.recordCounts.created).toBe(2);
+
+    // Second sync: rows reordered (Bob now first). Synthetic ids "row-2"
+    // and "row-3" both produce different field-checksums than the prior
+    // committed records, so the upsert finds them and writes updates.
+    // The watermark reaper runs against `synced_at < runStartedAt`, so
+    // unchanged rows under the new shape are not reaped.
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse(
+        mockSheetsApiResponse([
+          { email: "bob@example.com", name: "Bob" },
+          { email: "alice@example.com", name: "Alice" },
+        ])
+      )
+    );
+    const second = await googleSheetsAdapter.syncInstance!(instance, userId);
+    expect(second.recordCounts.created).toBe(0);
+    expect(second.recordCounts.updated).toBe(2);
+    expect(second.recordCounts.deleted).toBe(0);
+
+    // Sanity: lastSyncAt updated.
     const [after] = await db
       .select()
       .from(connectorInstances)
       .where(eq(connectorInstances.id, instance.id));
-    expect(after?.lastSyncAt).toBeNull();
+    expect(after?.lastSyncAt).not.toBeNull();
   });
 
   it("does NOT reap unchanged rows — bumps their syncedAt to the run watermark", async () => {

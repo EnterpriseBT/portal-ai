@@ -224,6 +224,13 @@ export enum ApiCode {
   GOOGLE_SHEETS_INVALID_PAYLOAD = "GOOGLE_SHEETS_INVALID_PAYLOAD",
 
   // Sync (Phase D)
+  /**
+   * @deprecated as of `RECORD_IDENTITY_REVIEW.spec.md` Phase B. The
+   * gsheets adapter no longer emits this code — `rowPosition` identity
+   * is now an advisory (`identityWarnings`), not a hard refusal. Kept in
+   * the enum for backward compatibility with consumers that match on the
+   * string.
+   */
   LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY = "LAYOUT_PLAN_SYNC_INELIGIBLE_IDENTITY",
   SYNC_ALREADY_RUNNING = "SYNC_ALREADY_RUNNING",
   /** Connector type does not implement `syncInstance` (file-upload, sandbox, etc.). */

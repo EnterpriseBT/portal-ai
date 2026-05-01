@@ -5,10 +5,7 @@ import type {
   ColumnDefinitionCatalogEntry,
 } from "@portalai/core/contracts";
 
-import {
-  createInterpretDeps,
-  LlmResponseError,
-} from "../../services/spreadsheet-parsing-llm.service.js";
+import { createInterpretDeps } from "../../services/spreadsheet-parsing-llm.service.js";
 
 type GenerateObjectResult = {
   object: unknown;

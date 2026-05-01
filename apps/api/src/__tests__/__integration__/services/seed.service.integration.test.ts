@@ -16,7 +16,7 @@ import { SeedService } from "../../../services/seed.service.js";
 import { ColumnDefinitionsRepository } from "../../../db/repositories/column-definitions.repository.js";
 import { seedUserAndOrg, teardownOrg } from "../utils/application.util.js";
 
-const { connectorDefinitions, columnDefinitions } = schema;
+const { connectorDefinitions } = schema;
 
 describe("SeedService Integration Tests", () => {
   let connection!: ReturnType<typeof postgres>;

@@ -191,19 +191,35 @@ export function detectRegionDrift(region: Region, sheet: Sheet): RegionDrift {
     if (detail.addedColumns.length > 0) kinds.push("added-columns");
   }
 
-  // ── Identity column checks (records-are-rows with column identity only) ─
+  // ── Identity-locator checks (1D regions with single-locator identity) ──
+  // Drift kind names use "column" for historical reasons — they refer to
+  // the cell that holds the identity value for each record, not the sheet
+  // axis. Records-are-rows uses a column locator scanned down rows;
+  // records-are-columns uses a row locator scanned across columns.
   const recAxis = recordsAxisOf(region);
   if (
-    recAxis === "row" &&
     region.identityStrategy.kind === "column" &&
-    region.identityStrategy.sourceLocator.kind === "column"
+    (recAxis === "row" || recAxis === "column")
   ) {
-    const idCol = region.identityStrategy.sourceLocator.col;
-    const headerRow =
-      header?.axis === "row" ? header.index : bounds.startRow - 1;
+    const locator = region.identityStrategy.sourceLocator;
+    const identityValues: string[] = [];
+    if (recAxis === "row" && locator.kind === "column") {
+      const idCol = locator.col;
+      const headerRow =
+        header?.axis === "row" ? header.index : bounds.startRow - 1;
+      for (let r = headerRow + 1; r <= bounds.endRow; r++) {
+        identityValues.push(cellText(sheet.cell(r, idCol)));
+      }
+    } else if (recAxis === "column" && locator.kind === "row") {
+      const idRow = locator.row;
+      const headerCol =
+        header?.axis === "column" ? header.index : bounds.startCol - 1;
+      for (let c = headerCol + 1; c <= bounds.endCol; c++) {
+        identityValues.push(cellText(sheet.cell(idRow, c)));
+      }
+    }
     const seen = new Map<string, number>();
-    for (let r = headerRow + 1; r <= bounds.endRow; r++) {
-      const txt = cellText(sheet.cell(r, idCol));
+    for (const txt of identityValues) {
       if (txt === "") {
         detail.identityBlanks++;
       } else {

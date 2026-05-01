@@ -25,7 +25,6 @@ import { fileUploads } from "../db/schema/index.js";
 
 import type {
   FileUploadParseSessionResponsePayload,
-  FileUploadParseSheet,
   FileUploadPresignFile,
   FileUploadPresignResponsePayload,
   FileUploadSheetSliceResponsePayload,

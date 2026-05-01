@@ -3,12 +3,18 @@ import { Box, Stack, Typography, Button, Divider } from "@portalai/core/ui";
 import MuiChip from "@mui/material/Chip";
 
 import { ConfidenceChipUI } from "./ConfidenceChip.component";
+import { IdentityPanelUI } from "./IdentityPanel.component";
+import type {
+  IdentityChange,
+  IdentityPanelCurrentSelection,
+} from "./IdentityPanel.component";
 import { WarningRowUI } from "./WarningRow.component";
 import { formatBounds } from "./utils/a1-notation.util";
 import {
   confidenceBand,
   CONFIDENCE_BAND_PALETTE,
 } from "./utils/region-editor-colors.util";
+import type { LocatorOption } from "./utils/identity-locator-options.util";
 import type { RegionDraft } from "./utils/region-editor.types";
 import type { RegionBindingErrors } from "./utils/region-editor-validation.util";
 
@@ -35,6 +41,20 @@ export interface RegionReviewCardUIProps {
    * `columnDefinitionId` (no embedded label like a `ColumnBindingDraft`).
    */
   resolveColumnLabel?: (columnDefinitionId: string) => string | undefined;
+  /**
+   * Pre-computed dropdown options for the IdentityPanel (one entry per
+   * candidate column or row inside the region's bounds). Container builds
+   * these from `computeLocatorOptions(region, sheet)` and passes them as a
+   * prop so the card stays workbook-agnostic. Omit to hide the panel
+   * entirely (e.g. when no sheet is available).
+   */
+  identityLocatorOptions?: LocatorOption[];
+  /**
+   * Fires when the user picks a different identity from the dropdown. The
+   * caller turns the `IdentityChange` into a `RegionDraft` patch with
+   * `identityStrategy.source = "user"` so the lock survives interpret.
+   */
+  onIdentityUpdate?: (regionId: string, change: IdentityChange) => void;
 }
 
 /**
@@ -194,18 +214,73 @@ function buildChips(
   return chips;
 }
 
+function buildIdentitySelection(
+  region: RegionDraft,
+  options: LocatorOption[] | undefined
+): IdentityPanelCurrentSelection {
+  const strat = region.identityStrategy;
+  if (!strat) {
+    return { kind: "rowPosition" };
+  }
+  if (strat.kind === "rowPosition") {
+    return {
+      kind: "rowPosition",
+      source: strat.source,
+      confidence: strat.confidence,
+    };
+  }
+  if (strat.kind === "composite") {
+    return {
+      kind: "composite",
+      source: strat.source,
+      confidence: strat.confidence,
+    };
+  }
+  // strat.kind === "column": match the structured locator against the
+  // dropdown's option list to recover the selected key + label.
+  const loc = strat.rawLocator;
+  let selectedKey: string | undefined;
+  let label: string | undefined;
+  if (loc?.kind === "column") {
+    selectedKey = `col:${loc.col - 1}`;
+  } else if (loc?.kind === "row") {
+    selectedKey = `row:${loc.row - 1}`;
+  }
+  if (selectedKey && options) {
+    const match = options.find((o) => o.key === selectedKey);
+    if (match) label = match.label;
+  }
+  return {
+    kind: "column",
+    selectedKey,
+    label,
+    source: strat.source,
+    confidence: strat.confidence,
+  };
+}
+
 export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
   region,
   onJump,
   onEditBinding,
   bindingErrors,
   resolveColumnLabel,
+  identityLocatorOptions,
+  onIdentityUpdate,
 }) => {
   const chips = buildChips(
     region,
     bindingErrors,
     onEditBinding,
     resolveColumnLabel
+  );
+  const showIdentityPanel =
+    identityLocatorOptions !== undefined &&
+    onIdentityUpdate !== undefined &&
+    identityLocatorOptions.length > 0;
+  const identitySelection = buildIdentitySelection(
+    region,
+    identityLocatorOptions
   );
 
   return (
@@ -246,6 +321,18 @@ export const RegionReviewCardUI: React.FC<RegionReviewCardUIProps> = ({
           Jump to region
         </Button>
       </Stack>
+
+      {showIdentityPanel && (
+        <>
+          <Divider sx={{ my: 1 }} />
+          <IdentityPanelUI
+            regionId={region.id}
+            currentSelection={identitySelection}
+            locatorOptions={identityLocatorOptions!}
+            onIdentityChange={onIdentityUpdate!}
+          />
+        </>
+      )}
 
       {chips.length > 0 && (
         <>

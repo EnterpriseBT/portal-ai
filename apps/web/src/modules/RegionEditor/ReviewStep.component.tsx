@@ -36,6 +36,31 @@ export interface ReviewStepUIProps {
   isCommitting?: boolean;
   commitDisabledReason?: string | null;
   /**
+   * Per-region dropdown options for the IdentityPanel. The container
+   * (workflow harness) closes over the workbook to compute these via
+   * `computeLocatorOptions(region, sheet)`. Returning `undefined` (or
+   * an empty array) hides the panel for that region — useful for 2D
+   * crosstabs where single-locator identity isn't meaningful.
+   */
+  resolveIdentityLocatorOptions?: (
+    region: RegionDraft
+  ) => import("./utils/identity-locator-options.util").LocatorOption[] | undefined;
+  /**
+   * Fires when the user picks an identity option in the panel. The
+   * caller turns the change into a `RegionDraft` patch with
+   * `identityStrategy.source = "user"` so `regionDraftsToHints`
+   * propagates the lock to the next interpret pass.
+   */
+  onIdentityUpdate?: (
+    regionId: string,
+    change:
+      | {
+          kind: "column";
+          locator: { axis: "row" | "column"; index: number };
+        }
+      | { kind: "rowPosition" }
+  ) => void;
+  /**
    * When set (together with `onToggleBindingExcluded` and
    * `columnDefinitionSearch`), clicking a binding chip opens the
    * `BindingEditorPopover` locally — `onEditBinding` becomes a fallback that
@@ -230,6 +255,8 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
   resolveReferenceFieldOptions,
   resolveColumnDefinitionType,
   resolveColumnDefinitionDescription,
+  resolveIdentityLocatorOptions,
+  onIdentityUpdate,
   resolveColumnLabel,
 }) => {
   const popoverEnabled =
@@ -550,6 +577,10 @@ export const ReviewStepUI: React.FC<ReviewStepUIProps> = ({
                   }
                   bindingErrors={bindingErrorsByRegion.get(region.id)}
                   resolveColumnLabel={resolveColumnLabel}
+                  identityLocatorOptions={resolveIdentityLocatorOptions?.(
+                    region
+                  )}
+                  onIdentityUpdate={onIdentityUpdate}
                 />
               ))}
             </Stack>

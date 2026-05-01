@@ -181,6 +181,60 @@ describe("regionDraftsToHints", () => {
       ])
     ).toThrow(/sheet_missing/);
   });
+
+  it("emits hint.identityStrategy when the draft locks rowPosition with source: 'user'", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        identityStrategy: {
+          kind: "rowPosition",
+          source: "user",
+          confidence: 0,
+        },
+      }),
+    ]);
+    expect(hints[0].identityStrategy).toEqual({
+      kind: "rowPosition",
+      source: "user",
+      confidence: 0,
+    });
+  });
+
+  it("emits hint.identityStrategy when the draft locks a column locator with source: 'user'", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        identityStrategy: {
+          kind: "column",
+          source: "user",
+          confidence: 0.7,
+          rawLocator: { kind: "column", sheet: "Alpha", col: 2 },
+        },
+      }),
+    ]);
+    expect(hints[0].identityStrategy).toEqual({
+      kind: "column",
+      source: "user",
+      confidence: 0.7,
+      sourceLocator: { kind: "column", sheet: "Alpha", col: 2 },
+    });
+  });
+
+  it("omits hint.identityStrategy when the draft's source is 'heuristic' (so interpret re-detects)", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [
+      baseDraft({
+        identityStrategy: {
+          kind: "rowPosition",
+          source: "heuristic",
+          confidence: 0,
+        },
+      }),
+    ]);
+    expect(hints[0].identityStrategy).toBeUndefined();
+  });
+
+  it("omits hint.identityStrategy when the draft has no identityStrategy at all (back-compat)", () => {
+    const hints = regionDraftsToHints(makeWorkbook(), [baseDraft()]);
+    expect(hints[0].identityStrategy).toBeUndefined();
+  });
 });
 
 describe("planRegionsToDrafts", () => {
@@ -284,6 +338,61 @@ describe("planRegionsToDrafts", () => {
     } as unknown as Parameters<typeof planRegionsToDrafts>[0];
     expect(() => planRegionsToDrafts(bad, makeWorkbook())).toThrow(
       /NoSuchSheet/
+    );
+  });
+
+  it("copies identityStrategy.source from the plan into the draft", () => {
+    const planWithUserSource = {
+      ...plan,
+      regions: [
+        {
+          ...plan.regions[0],
+          identityStrategy: {
+            kind: "rowPosition" as const,
+            confidence: 0,
+            source: "user" as const,
+          },
+        },
+      ],
+    } as unknown as Parameters<typeof planRegionsToDrafts>[0];
+    const drafts = planRegionsToDrafts(planWithUserSource, makeWorkbook());
+    expect(drafts[0].identityStrategy?.source).toBe("user");
+  });
+
+  it("defaults identityStrategy.source to 'heuristic' on the draft when the plan omits it", () => {
+    // The fixture's identityStrategy has no `source` key; the helper must
+    // fill `"heuristic"` so the editor knows the choice was auto-detected.
+    const drafts = planRegionsToDrafts(plan, makeWorkbook());
+    expect(drafts[0].identityStrategy?.source).toBe("heuristic");
+  });
+
+  it("preserves the structured locator on the draft when the plan carries a column-locator strategy", () => {
+    const planWithLocator = {
+      ...plan,
+      regions: [
+        {
+          ...plan.regions[0],
+          identityStrategy: {
+            kind: "column" as const,
+            sourceLocator: {
+              kind: "column" as const,
+              sheet: "Alpha",
+              col: 1,
+            },
+            confidence: 0.7,
+            source: "user" as const,
+          },
+        },
+      ],
+    } as unknown as Parameters<typeof planRegionsToDrafts>[0];
+    const drafts = planRegionsToDrafts(planWithLocator, makeWorkbook());
+    expect(drafts[0].identityStrategy).toEqual(
+      expect.objectContaining({
+        kind: "column",
+        source: "user",
+        confidence: 0.7,
+        rawLocator: { kind: "column", sheet: "Alpha", col: 1 },
+      })
     );
   });
 });
